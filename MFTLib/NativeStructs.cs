@@ -176,3 +176,12 @@ struct FileNameAttribute
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
     public byte[] FileName;
 }
+
+[StructLayout(LayoutKind.Sequential)]
+struct ObjectIdAttribute
+{
+    public Guid ObjectId;
+    public Guid BirthVolumeId;
+    public Guid BirthObjectId;
+    public Guid DomainId;
+}

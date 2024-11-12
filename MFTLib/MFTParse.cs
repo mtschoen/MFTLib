@@ -24,7 +24,7 @@ public class MFTParse
         return @$"\\.\{driveLetter}:";
     }
 
-    public static Dictionary<string, MFTEntry> GetFileNodes(string volume)
+    public static MFTNode GetMFTNode(string volume)
     {
         if (string.IsNullOrEmpty(volume))
         {
@@ -89,7 +89,10 @@ public class MFTParse
         Console.WriteLine($"MFT Zone End: {volumeData.MftZoneEnd}");
 #endif
 
-        var files = new Dictionary<string, MFTEntry>();
+        var totalFileRecords = volumeData.MftValidDataLength / volumeData.BytesPerFileRecordSegment;
+
+        Console.WriteLine($"Progress: 0 / {totalFileRecords}");
+        var files = new List<MFTFileRecord>((int)totalFileRecords);
 
         // Read MFT records
         ulong fileReferenceNumber = 0;
@@ -119,19 +122,28 @@ public class MFTParse
                     {
                         break;
                     }
-                    throw new IOException("Failed to get NTFS file record", error);
+                    Console.WriteLine("done!");
+                    break;
                 }
 
                 //var outputBuffer = Marshal.PtrToStructure<NTFS_FILE_RECORD_OUTPUT_BUFFER>(outputBufferPtr);
                 var fileRecordPtr = outputBufferPtr + k_OffsetToFileRecordBuffer;
-                var fileName = ParseFileName(fileRecordPtr);
-                if (string.IsNullOrEmpty(fileName))
-                {
-                    Console.WriteLine("Found file record with no name");
-                    continue;
-                }
+                var mftFileRecord = ParseFileRecord(fileRecordPtr);
+                //if (guid == default)
+                //{
+                //    //Console.WriteLine("Found file record with no guid");
+                //    continue;
+                //}
 
-                files[fileName] = new MFTEntry();
+//#if DEBUG
+//                if (files.ContainsKey(guid))
+//                {
+//                    Console.Write($"Encountered guid {guid} twice!!!");
+//                    continue;
+//                }
+//#endif
+
+                files.Add(mftFileRecord);
             }
             finally
             {
@@ -139,12 +151,20 @@ public class MFTParse
                 Marshal.FreeHGlobal(outputBufferPtr);
                 fileReferenceNumber++;
             }
+
+            Console.Write($"\rProgress: {fileReferenceNumber} / {totalFileRecords}");
         }
 
-        return files;
+        Console.WriteLine($"Found {files.Count} files:");
+        foreach (var file in files)
+        {
+            Console.WriteLine(file.FileName);
+        }
+
+        return null;
     }
 
-    static string ParseFileName(IntPtr fileRecordPtr)
+    static MFTFileRecord ParseFileRecord(IntPtr fileRecordPtr)
     {
         var fileRecord = Marshal.PtrToStructure<FileRecordHeader>(fileRecordPtr);
 
@@ -157,9 +177,22 @@ public class MFTParse
         }
 #endif
 
+        //Console.WriteLine("FileRecordHeader:");
+        //Console.WriteLine($"  UpdateSequenceOffset: {fileRecord.UpdateSequenceOffset}");
+        //Console.WriteLine($"  UpdateSequenceSize: {fileRecord.UpdateSequenceSize}");
+        //Console.WriteLine($"  LogFileSequenceNumber: {fileRecord.LogFileSequenceNumber}");
+        //Console.WriteLine($"  SequenceNumber: {fileRecord.SequenceNumber}");
+        //Console.WriteLine($"  HardLinkCount: {fileRecord.HardLinkCount}");
+        //Console.WriteLine($"  FirstAttributeOffset: {fileRecord.FirstAttributeOffset}");
+        //Console.WriteLine($"  Flags: {fileRecord.Flags}");
+        //Console.WriteLine($"  UsedSize: {fileRecord.RealSize}");
+        //Console.WriteLine($"  AllocatedSize: {fileRecord.AllocatedSize}");
+        //Console.WriteLine($"  FileReferenceToBaseRecord: {fileRecord.BaseFileRecord}");
+        //Console.WriteLine($"  NextAttributeId: {fileRecord.NextAttributeId}");
+
         var attributeOffset = fileRecord.FirstAttributeOffset;
         var end = fileRecord.AllocatedSize;
-        var fileName = string.Empty;
+        var mftFileRecord = new MFTFileRecord();
         while (attributeOffset < end)
         {
             var attributePtr = fileRecordPtr + attributeOffset;
@@ -175,75 +208,76 @@ public class MFTParse
             switch (attributeId)
             {
                 case AttributeType.StandardInformation:
-                    Console.WriteLine($"StandardInformation at offset {attributeOffset}");
+                    //Console.WriteLine($"StandardInformation at offset {attributeOffset}");
                     //attributeOffset += 0x4; // Skip the attribute header
                     //var standardInformation = Marshal.PtrToStructure<StandardInformationAttribute>(fileRecordPtr + attributeOffset);
                     //attributeOffset += 0x48; // Skip to the next attribute
                     break;
                 case AttributeType.AttributeList:
-                    Console.WriteLine($"AttributeList at offset {attributeOffset}");
+                    //Console.WriteLine($"AttributeList at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.FileName:
-                    Console.WriteLine($"FileName at offset {attributeOffset}");
+                    //Console.WriteLine($"FileName at offset {attributeOffset}");
                     var fileNameAttributePtr = attributePtr + attributeHeader.AttributeOffset;
                     var fileNameAttribute = Marshal.PtrToStructure<FileNameAttribute>(fileNameAttributePtr);
-                    Console.WriteLine($"File size is {fileNameAttribute.RealSize}");
                     var fileNamePtr = fileNameAttributePtr + k_OffsetToFileNameUnicode;
-                    fileName = Marshal.PtrToStringUni(fileNamePtr, fileNameAttribute.FileNameLength);
-                    Console.WriteLine($"File name is: {fileName}");
-                    //attributeOffset += 4; // Skip the attribute
+                    mftFileRecord.FileName = Marshal.PtrToStringUni(fileNamePtr, fileNameAttribute.FileNameLength);
+                    //Console.WriteLine($"File name is: {mftFileRecord.FileName}");
                     break;
                 case AttributeType.ObjectId:
-                    Console.WriteLine($"ObjectId at offset {attributeOffset}");
-                    //attributeOffset += 4; // Skip the attribute
+                    //Console.WriteLine($"ObjectId at offset {attributeOffset}");
+                    var objAttributePtr = attributePtr + attributeHeader.AttributeOffset;
+                    var objectAttribute = Marshal.PtrToStructure<ObjectIdAttribute>(objAttributePtr);
+                    mftFileRecord.Guid = objectAttribute.ObjectId;
+                    //Console.WriteLine($"Object Id is: {guid}");
                     break;
                 case AttributeType.SecurityDescriptor:
-                    Console.WriteLine($"SecurityDescriptor at offset {attributeOffset}");
+                    //Console.WriteLine($"SecurityDescriptor at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.VolumeName:
-                    Console.WriteLine($"VolumeName at offset {attributeOffset}");
+                    //Console.WriteLine($"VolumeName at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.VolumeInformation:
-                    Console.WriteLine($"VolumeInformation at offset {attributeOffset}");
+                    //Console.WriteLine($"VolumeInformation at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.Data:
-                    Console.WriteLine($"Data at offset {attributeOffset}");
+                    //Console.WriteLine($"Data at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.IndexRoot:
-                    Console.WriteLine($"IndexRoot at offset {attributeOffset}");
+                    //Console.WriteLine($"IndexRoot at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.IndexAllocation:
-                    Console.WriteLine($"IndexAllocation at offset {attributeOffset}");
+                    //Console.WriteLine($"IndexAllocation at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.Bitmap:
-                    Console.WriteLine($"Bitmap at offset {attributeOffset}");
+                    //Console.WriteLine($"Bitmap at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.ReparsePoint:
-                    Console.WriteLine($"ReparsePoint at offset {attributeOffset}");
+                    //Console.WriteLine($"ReparsePoint at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.EAInformation:
-                    Console.WriteLine($"EAInformation at offset {attributeOffset}");
+                    //Console.WriteLine($"EAInformation at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.EA:
-                    Console.WriteLine($"EA at offset {attributeOffset}");
+                    //Console.WriteLine($"EA at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.PropertySet:
-                    Console.WriteLine($"PropertySet at offset {attributeOffset}");
+                    //Console.WriteLine($"PropertySet at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 case AttributeType.LoggedUtilityStream:
-                    Console.WriteLine($"LoggedUtilityStream at offset {attributeOffset}");
+                    //Console.WriteLine($"LoggedUtilityStream at offset {attributeOffset}");
                     //attributeOffset += 4; // Skip the attribute
                     break;
                 default:
@@ -257,6 +291,6 @@ public class MFTParse
         //if (string.IsNullOrEmpty(fileName))
         //    throw new InvalidOperationException($"Could not get filename for FileRecord at {fileRecordPtr}");
         
-        return fileName;
+        return mftFileRecord;
     }
 }
