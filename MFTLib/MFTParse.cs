@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace MFTLib;
 
@@ -30,6 +31,11 @@ public class MFTParse
         {
             throw new ArgumentException("Volume name cannot be null or empty", nameof(volume));
         }
+
+#if DEBUG
+        var stopwatch = new Stopwatch();
+        stopwatch.Start();
+#endif
 
         var volumeHandle = NativeAPI.CreateFile(
             volume,
@@ -92,11 +98,12 @@ public class MFTParse
         var totalFileRecords = volumeData.MftValidDataLength / volumeData.BytesPerFileRecordSegment;
 
         Console.WriteLine($"Progress: 0 / {totalFileRecords}");
-        var files = new List<MFTFileRecord>((int)totalFileRecords);
+        //var files = new List<MFTFileRecord>((int)totalFileRecords);
+        var files = new MFTFileRecord[(int)totalFileRecords];
 
         // Read MFT records
         ulong fileReferenceNumber = 0;
-        while (true)
+        while (fileReferenceNumber < totalFileRecords)
         {
             var inputBuffer = new NTFS_FILE_RECORD_INPUT_BUFFER { FileReferenceNumber = fileReferenceNumber };
             var inputBufferPtr = Marshal.AllocHGlobal(Marshal.SizeOf(inputBuffer));
@@ -143,7 +150,8 @@ public class MFTParse
 //                }
 //#endif
 
-                files.Add(mftFileRecord);
+                //files.Add(mftFileRecord);
+                files[fileReferenceNumber] = mftFileRecord;
             }
             finally
             {
@@ -155,11 +163,13 @@ public class MFTParse
             Console.Write($"\rProgress: {fileReferenceNumber} / {totalFileRecords}");
         }
 
-        Console.WriteLine($"Found {files.Count} files:");
-        foreach (var file in files)
-        {
-            Console.WriteLine(file.FileName);
-        }
+#if DEBUG
+        Console.WriteLine($"Found {files.Length} files in {stopwatch.Elapsed}");
+        //foreach (var file in files)
+        //{
+        //    Console.WriteLine(file.FileName);
+        //}
+#endif
 
         return null;
     }
