@@ -17,14 +17,6 @@ public class MFTParse
     const uint FSCTL_GET_NTFS_FILE_RECORD = 0x00090068;
     // ReSharper restore InconsistentNaming
 
-    public static string GetFileNameForDriveLetter(string driveLetter)
-    {
-        if (driveLetter.EndsWith(':'))
-            throw new ArgumentException("Drive letter should not end with a colon", nameof(driveLetter));
-
-        return @$"\\.\{driveLetter}:";
-    }
-
     public static MFTNode GetMFTNode(string volume)
     {
         if (string.IsNullOrEmpty(volume))
@@ -170,6 +162,8 @@ public class MFTParse
         //    Console.WriteLine(file.FileName);
         //}
 #endif
+        
+        Kernel32.CloseHandle(volumeHandle);
 
         return null;
     }
@@ -203,6 +197,7 @@ public class MFTParse
         var attributeOffset = fileRecord.FirstAttributeOffset;
         var end = fileRecord.AllocatedSize;
         var mftFileRecord = new MFTFileRecord();
+        return mftFileRecord;
         while (attributeOffset < end)
         {
             var attributePtr = fileRecordPtr + attributeOffset;

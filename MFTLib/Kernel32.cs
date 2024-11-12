@@ -16,7 +16,7 @@ class Kernel32
         IntPtr hTemplateFile);
 
     [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool CloseHandle(IntPtr hObject);
+    public static extern bool CloseHandle(SafeHandle hObject);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern bool ReadFile(SafeFileHandle hFile, byte[] lpBuffer, uint nNumberOfBytesToRead,

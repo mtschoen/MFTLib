@@ -4,6 +4,10 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Platforms>x64;x86</Platforms>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RunPostBuildEvent>Always</RunPostBuildEvent>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,7 +15,7 @@
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="xcopy /Y &quot;$(SolutionDir)x64\$(Configuration)\MFTLibC.dll&quot; &quot;$(TargetDir)&quot;" />
+    <Exec Command="xcopy /Y &quot;$(SolutionDir)$(Platform)\$(Configuration)\MFTLibC.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(SolutionDir)$(Platform)\$(Configuration)\MFTLibC.pdb&quot; &quot;$(TargetDir)&quot;" />
   </Target>
 
 </Project>

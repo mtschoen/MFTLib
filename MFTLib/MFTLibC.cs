@@ -2,8 +2,8 @@
 
 namespace MFTLib;
 
-public static class MFTLibC
+static class MFTLibC
 {
-    [DllImport("MFTLibC.dll", CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
-    public static extern void PrintFileSize();
+    [DllImport("MFTLibC.dll", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe void ExtractMFTRecords(SafeHandle volumeHandle, void* files, ulong filesCount);
 }

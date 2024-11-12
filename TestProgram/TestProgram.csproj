@@ -6,14 +6,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;x86</Platforms>
+    <RunPostBuildEvent>Always</RunPostBuildEvent>
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\MFTLibC\MFTLibC.vcxproj" />
     <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="xcopy /Y &quot;$(SolutionDir)x64\$(Configuration)\MFTLibC.dll&quot; &quot;$(TargetDir)&quot;" />
+    <Exec Command="xcopy /Y &quot;$(SolutionDir)$(Platform)\$(Configuration)\MFTLibC.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(SolutionDir)$(Platform)\$(Configuration)\MFTLibC.pdb&quot; &quot;$(TargetDir)&quot;" />
   </Target>
 
 </Project>
