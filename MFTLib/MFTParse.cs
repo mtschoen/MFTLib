@@ -37,7 +37,7 @@ public class MFTParse
         stopwatch.Start();
 #endif
 
-        var volumeHandle = NativeAPI.CreateFile(
+        var volumeHandle = Kernel32.CreateFile(
             volume,
             GENERIC_READ,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -57,7 +57,7 @@ public class MFTParse
 
         try
         {
-            if (!NativeAPI.DeviceIoControl(
+            if (!Kernel32.DeviceIoControl(
                     volumeHandle,
                     FSCTL_GET_NTFS_VOLUME_DATA,
                     IntPtr.Zero,
@@ -114,7 +114,7 @@ public class MFTParse
 
             try
             {
-                if (!NativeAPI.DeviceIoControl(
+                if (!Kernel32.DeviceIoControl(
                         volumeHandle,
                         FSCTL_GET_NTFS_FILE_RECORD,
                         inputBufferPtr,

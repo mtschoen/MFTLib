@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace MFTLib;
 
-class NativeAPI
+class Kernel32
 {
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     public static extern SafeFileHandle CreateFile(

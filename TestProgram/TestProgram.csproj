@@ -12,4 +12,8 @@
     <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
   </ItemGroup>
 
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="xcopy /Y &quot;$(SolutionDir)x64\$(Configuration)\MFTLibC.dll&quot; &quot;$(TargetDir)&quot;" />
+  </Target>
+
 </Project>
