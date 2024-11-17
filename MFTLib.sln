@@ -12,6 +12,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TestProgram", "TestProgram\
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MFTLibC", "MFTLibC\MFTLibC.vcxproj", "{6A21E35F-5A90-4B80-83FE-B33E8B1114B1}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ConsoleApplication1", "ConsoleApplication1\ConsoleApplication1.vcxproj", "{DC7551BB-68CE-407B-87D7-387CFE800B9B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -44,6 +46,14 @@ Global
 		{6A21E35F-5A90-4B80-83FE-B33E8B1114B1}.Release|x64.Build.0 = Release|x64
 		{6A21E35F-5A90-4B80-83FE-B33E8B1114B1}.Release|x86.ActiveCfg = Release|Win32
 		{6A21E35F-5A90-4B80-83FE-B33E8B1114B1}.Release|x86.Build.0 = Release|Win32
+		{DC7551BB-68CE-407B-87D7-387CFE800B9B}.Debug|x64.ActiveCfg = Debug|x64
+		{DC7551BB-68CE-407B-87D7-387CFE800B9B}.Debug|x64.Build.0 = Debug|x64
+		{DC7551BB-68CE-407B-87D7-387CFE800B9B}.Debug|x86.ActiveCfg = Debug|Win32
+		{DC7551BB-68CE-407B-87D7-387CFE800B9B}.Debug|x86.Build.0 = Debug|Win32
+		{DC7551BB-68CE-407B-87D7-387CFE800B9B}.Release|x64.ActiveCfg = Release|x64
+		{DC7551BB-68CE-407B-87D7-387CFE800B9B}.Release|x64.Build.0 = Release|x64
+		{DC7551BB-68CE-407B-87D7-387CFE800B9B}.Release|x86.ActiveCfg = Release|Win32
+		{DC7551BB-68CE-407B-87D7-387CFE800B9B}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

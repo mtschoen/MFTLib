@@ -102,62 +102,85 @@ public class MFTParse
         var mftOffset = (long)volumeData.MftStartLcn * volumeData.BytesPerCluster;
 
         // Seek to the MFT start offset
-        if (!Kernel32.SetFilePointerEx(volumeHandle, mftOffset, IntPtr.Zero, 0))
-        {
-            Console.WriteLine("Failed to set file pointer. Error: " + Marshal.GetLastWin32Error());
-            return null;
-        }
+        //if (!Kernel32.SetFilePointerEx(volumeHandle, mftOffset, IntPtr.Zero, 0))
+        //{
+        //    Console.WriteLine("Failed to set file pointer. Error: " + Marshal.GetLastWin32Error());
+        //    return null;
+        //}
 
         // Read the MFT data
-        const int batchSize = 1024;
-        uint bytesToRead = batchSize * 1024; // 1 MB buffer
+        const int batchSize = 1024 * 16;
+        uint bytesToRead = batchSize * bytesPerFileRecord;
         byte[] readBuffer = new byte[bytesToRead];
         uint bytesRead;
         uint totalBytesRead = 0;
         var validDataLength = volumeData.MftValidDataLength;
+        var totalFileCount = 0;
 
         Console.WriteLine("Reading MFT data...");
         Console.Write($"Read 0 bytes from MFT.");
+
+        //var fileHandle = File.Create("temp.txt");
+        //var newLine = new byte[] { 0x0A };
         while (Kernel32.ReadFile(volumeHandle, readBuffer, bytesToRead, out bytesRead, IntPtr.Zero))
         {
             // Process the readBuffer here (parse MFT entries, etc.)
             totalBytesRead += bytesRead;
-            var batch = new FileRecordBatch { Bytes = readBuffer };
-            var count = bytesRead / bytesPerFileRecord;
-            for (var i = 0; i < count; i++)
+            var readError = false;
+            unsafe
             {
-                switch (bytesPerFileRecord)
+                fixed (byte* ptr = readBuffer)
                 {
-                    case 512:
+                    var fileRecordPtr = ptr;
+                    var endPtr = fileRecordPtr + bytesRead;
+                    while (fileRecordPtr < endPtr)
                     {
-                        if (batch.FileRecords512 != null)
-                            ParseFileRecord(batch.FileRecords512[i]);
-                        break;
+                        if (CheckFileHeader(fileRecordPtr))
+                        {
+                            totalFileCount++;
+                            Console.Write($"\rRead {totalFileCount} files in {totalBytesRead} bytes from MFT.");
+                        }
+
+                        fileRecordPtr += 1024;
+
+                        //try
+                        //{
+                        //    ParseFileRecord(new IntPtr(fileRecordPtr));
+                        //    totalFileCount++;
+                        //}
+                        //catch (Exception e)
+                        //{
+                        //    Console.WriteLine($"Error parsing file record: {e.Message}");
+                        //    Console.Write($"Read 0 bytes from MFT.");
+                        //    readError = true;
+                        //    break;
+                        //}
+                        //finally
+                        //{
+                        //    fileRecordPtr += bytesPerFileRecord;
+                        //}
                     }
-                    case 1024:
-                    {
-                        if (batch.FileRecords1024 != null)
-                            ParseFileRecord(batch.FileRecords1024[i]);
-                        break;
-                    }
-                    case 2048:
-                    {
-                        if (batch.FileRecords2048 != null)
-                            ParseFileRecord(batch.FileRecords2048[i]);
-                        break;
-                    }
-                    default:
-                        throw new NotSupportedException($"Unsupported bytes per file record: {bytesPerFileRecord}");
                 }
             }
 
-            Console.Write($"\rRead {totalBytesRead} / {validDataLength} bytes from MFT.");
-            if (totalBytesRead >= validDataLength)
-                break;
+            //for (var i = 0; i < bytesRead; i += (int)bytesPerFileRecord)
+            //{
+            //    fileHandle.Write(readBuffer, i, (int)bytesPerFileRecord);
+            //    fileHandle.Write(newLine, 0, 1);
+            //}
+
+            //if (readError)
+            //    break;
+
+            //Console.Write($"\rRead {totalBytesRead} / {validDataLength} bytes from MFT.");
+            //if (totalBytesRead >= validDataLength)
+            //    break;
         }
+        
+        //fileHandle.Close();
 
 #if DEBUG
-        Console.WriteLine($"Found {files.Length} files in {stopwatch.Elapsed}");
+        Console.WriteLine($"Found {totalFileCount} files in {stopwatch.Elapsed}");
         //foreach (var file in files)
         //{
         //    Console.WriteLine(file.FileName);
@@ -168,10 +191,16 @@ public class MFTParse
 
         return null;
     }
-
-    static MFTLibFile ParseFileRecord(IFIleRecord record)
+    
+    static unsafe bool CheckFileHeader(byte* fileRecordPtr)
     {
-        var fileRecord = record.Header;
+        // Ensure that the first 4 bytes spell FILE
+        return fileRecordPtr[0] == 'F' && fileRecordPtr[1] == 'I' && fileRecordPtr[2] == 'L' && fileRecordPtr[3] == 'E';
+    }
+
+    static MFTLibFile ParseFileRecord(IntPtr record)
+    {
+        var fileRecord = Marshal.PtrToStructure<FileRecordHeader>(record);
 #if DEBUG
         // Ensure that the first 4 bytes spell FILE
         var magicNumber = fileRecord.MagicNumber;
