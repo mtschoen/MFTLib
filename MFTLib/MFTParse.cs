@@ -59,6 +59,7 @@ public class MFTParse
         Kernel32.ReadFile(volumeHandle, readBuffer, mftFileSize, out _, IntPtr.Zero);
 
         List<MFTLibFile> files = new();
+        var notInUseCount = 0;
 
         fixed (byte* readBufferPtr = readBuffer)
         {
@@ -149,8 +150,11 @@ public class MFTParse
                             fileRecord = (FileRecordHeader*)(mftBufferPtr + mftFileSize * i);
                             recordsProcessed++;
 
-                            if (fileRecord->inUse == 0)
+                            if (!fileRecord->inUse)
+                            {
+                                notInUseCount++;
                                 continue;
+                            }
 
                             attribute = (AttributeHeader*)((byte*)fileRecord + fileRecord->firstAttributeOffset);
                             Debug.Assert(fileRecord->magic == FileRecordHeader.kMagicNumber);
@@ -184,6 +188,7 @@ public class MFTParse
             }
             
             Console.WriteLine($"Found {files.Count} files.");
+            Console.WriteLine($"Found {notInUseCount} files not in use.");
 
             Kernel32.CloseHandle(volumeHandle);
 

@@ -180,6 +180,8 @@ int main(int argc, char** argv) {
     uint64_t approximateRecordCount = 0;
     assert(fileRecord->magic == 0x454C4946);
 
+    int notInUseCount = 0;
+
     while (true) {
         if (attribute->attributeType == 0x80) {
             dataAttribute = (NonResidentAttributeHeader*)attribute;
@@ -237,7 +239,10 @@ int main(int argc, char** argv) {
                 FileRecordHeader* fileRecord = (FileRecordHeader*)(mftBuffer + MFT_FILE_SIZE * i);
                 recordsProcessed++;
 
-                if (!fileRecord->inUse) continue;
+                if (!fileRecord->inUse) {
+                    notInUseCount++;
+                    continue;
+                }
 
                 AttributeHeader* attribute = (AttributeHeader*)((uint8_t*)fileRecord + fileRecord->firstAttributeOffset);
                 assert(fileRecord->magic == 0x454C4946);
@@ -272,6 +277,7 @@ int main(int argc, char** argv) {
     }
 
     fprintf(stderr, "\nFound %lld files.\n", arrlen(files));
+	fprintf(stderr, "Found %d files not in use.\n", notInUseCount);
 
     return 0;
 }

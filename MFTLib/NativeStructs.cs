@@ -1,48 +1,13 @@
-﻿using System;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 // ReSharper disable InconsistentNaming
 
 namespace MFTLib;
-
-[StructLayout(LayoutKind.Sequential)]
-public struct NTFS_VOLUME_DATA_BUFFER
-{
-    public ulong VolumeSerialNumber;
-    public ulong NumberSectors;
-    public ulong TotalClusters;
-    public ulong FreeClusters;
-    public ulong TotalReserved;
-    public uint BytesPerSector;
-    public uint BytesPerCluster;
-    public uint BytesPerFileRecordSegment;
-    public uint ClustersPerFileRecordSegment;
-    public ulong MftValidDataLength;
-    public ulong MftStartLcn;
-    public ulong Mft2StartLcn;
-    public ulong MftZoneStart;
-    public ulong MftZoneEnd;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-public struct NTFS_FILE_RECORD_INPUT_BUFFER
-{
-    public ulong FileReferenceNumber;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-public struct NTFS_FILE_RECORD_OUTPUT_BUFFER
-{
-    public ulong FileReferenceNumber;
-    public int FileRecordLength;
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
-    public byte[] FileRecordBuffer;
-}
 
 /// <summary>
 /// Fixed-layout header for an MFT file record
 /// https://flatcap.github.io/linux-ntfs/ntfs/concepts/file_record.html
 /// </summary>
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct FileRecordHeader
 {
     public const uint kMagicNumber = 0x454C4946; // "FILE"
@@ -81,8 +46,7 @@ public struct FileRecordHeader
     /// </summary>
     public ushort firstAttributeOffset;
 
-    public ushort inUse;
-    public ushort isDirectory;
+    public ushort flags;
 
     /// <summary>
     /// Real size of the FILE record (in bytes)
@@ -113,12 +77,42 @@ public struct FileRecordHeader
     /// Number of this MFT Record
     /// </summary>
     public uint recordNumber;
+
+    /// <summary>
+    /// Indicates if the file record is in use
+    /// </summary>
+    public bool inUse
+    {
+        get => (flags & 0x0001) != 0;
+        set
+        {
+            if (value)
+                flags |= 0x0001;
+            else
+                flags &= 0xFFFE;
+        }
+    }
+
+    /// <summary>
+    /// Indicates if the file record is a directory
+    /// </summary>
+    public bool isDirectory
+    {
+        get => (flags & 0x0002) != 0;
+        set
+        {
+            if (value)
+                flags |= 0x0002;
+            else
+                flags &= 0xFFFD;
+        }
+    }
 }
 
 /// <summary>
 /// Standard attribute header
 /// </summary>
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 struct AttributeHeader
 {
     public AttributeType attributeType;
@@ -130,7 +124,7 @@ struct AttributeHeader
     public ushort attributeID;
 }
 
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 struct ResidentAttributeHeader
 {
     public AttributeHeader standard;
@@ -140,7 +134,7 @@ struct ResidentAttributeHeader
     public byte unused;
 }
 
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 struct NonResidentAttributeHeader
 {
     public AttributeHeader standard;
@@ -154,7 +148,7 @@ struct NonResidentAttributeHeader
     public ulong streamDataSize;
 }
 
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 struct StandardInformationAttribute
 {
     public ulong CreationTime;
@@ -175,8 +169,7 @@ struct StandardInformationAttribute
 struct FileNameAttributeHeader
 {
     public ResidentAttributeHeader resident;
-    public ulong parentRecordNumber;
-    public ulong sequenceNumber;
+    public ulong parentRecordNumberAndSequenceNumber;
     public ulong creationTime;
     public ulong modificationTime;
     public ulong metadataModificationTime;
@@ -189,6 +182,20 @@ struct FileNameAttributeHeader
     public byte namespaceType;
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
     public byte[] FileName;
+
+    // Property to get/set the parent record number (48 bits)
+    public ulong parentRecordNumber
+    {
+        get => parentRecordNumberAndSequenceNumber & 0x0000FFFFFFFFFFFF;
+        set => parentRecordNumberAndSequenceNumber = (parentRecordNumberAndSequenceNumber & 0xFFFF000000000000) | (value & 0x0000FFFFFFFFFFFF);
+    }
+
+    // Property to get/set the sequence number (16 bits)
+    public ushort sequenceNumber
+    {
+        get => (ushort)((parentRecordNumberAndSequenceNumber >> 48) & 0xFFFF);
+        set => parentRecordNumberAndSequenceNumber = (parentRecordNumberAndSequenceNumber & 0x0000FFFFFFFFFFFF) | ((ulong)value << 48);
+    }
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -199,66 +206,6 @@ struct ObjectIdAttribute
     public Guid BirthObjectId;
     public Guid DomainId;
 }
-
-//[StructLayout(LayoutKind.Explicit, Size = 512)]
-//unsafe struct BootSector
-//{
-//    [FieldOffset(0)]
-//    public fixed byte jump[3];
-
-//    // Defined as char[8] in the C++ code
-//    [FieldOffset(3)]
-//    public fixed byte name[8];
-
-//    [FieldOffset(11)]
-//    public ushort bytesPerSector;
-    
-//    [FieldOffset(13)]
-//    public byte sectorsPerCluster;
-
-//    [FieldOffset(14)]
-//    public ushort reservedSectors;
-
-//    [FieldOffset(16)]
-//    public fixed byte unused0[3];
-
-//    [FieldOffset(19)]
-//    public ushort unused1;
-
-//    [FieldOffset(21)]
-//    public byte media;
-
-//    [FieldOffset(22)]
-//    public ushort unused2;
-
-//    [FieldOffset(24)]
-//    public ushort sectorsPerTrack;
-
-//    [FieldOffset(26)]
-//    public ushort headsPerCylinder;
-
-//    [FieldOffset(28)]
-//    public uint hiddenSectors;
-
-//    [FieldOffset(32)]
-//    public uint unused3;
-
-//    [FieldOffset(36)]
-//    public uint unused4;
-
-//    [FieldOffset(40)]
-//    public ulong totalSectors;
-
-//    [FieldOffset(48)]
-//    public ulong mftStart;
-//    //public ulong mftMirrorStart;
-//    //public uint clustersPerFileRecord;
-//    //public uint clustersPerIndexBlock;
-//    //public ulong serialNumber;
-//    //public uint checksum;
-//    //public fixed byte bootloader[426];
-//    //public ushort bootSignature;
-//}
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 unsafe struct BootSector
