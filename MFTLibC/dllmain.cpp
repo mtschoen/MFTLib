@@ -1,5 +1,7 @@
 #include "pch.h"
 
+#include <iostream>
+
 #include "MFTFileRecord.h"
 #include "NativeStructs.h"
 
@@ -154,62 +156,78 @@ static MFTFileRecord ParseFileRecord(void* fileRecordPtr)
     return mftFileRecord;
 }
 
+
+#pragma pack(push, 1)
+struct NTFS_BootSector {
+    BYTE jump[3];
+    BYTE oemID[8];
+    WORD bytesPerSector;
+    BYTE sectorsPerCluster;
+    WORD reservedSectors;
+    BYTE reserved1[3];
+    WORD notUsed1;
+    BYTE mediaDescriptor;
+    WORD notUsed2;
+    WORD sectorsPerTrack;
+    WORD numberOfHeads;
+    DWORD hiddenSectors;
+    DWORD notUsed3;
+    DWORD notUsed4;
+    ULONGLONG totalSectors;
+    ULONGLONG mftCluster;
+    ULONGLONG mftMirrorCluster;
+    BYTE clustersPerFileRecordSegment;
+    BYTE reserved2[3];
+    BYTE clustersPerIndexBuffer;
+    BYTE reserved3[3];
+    ULONGLONG volumeSerialNumber;
+    DWORD checksum;
+    BYTE bootCode[426];
+    WORD endOfSectorMarker;
+};
+#pragma pack(pop)
+
+ULONGLONG GetMFTOffset(HANDLE volumeHandle) {
+    NTFS_BootSector bootSector;
+    DWORD bytesRead;
+    if (!ReadFile(volumeHandle, &bootSector, sizeof(bootSector), &bytesRead, NULL) || bytesRead != sizeof(bootSector)) {
+        std::cerr << "Failed to read boot sector" << std::endl;
+        return 0;
+    }
+
+    // Calculate the MFT offset in bytes
+    ULONGLONG mftOffset = bootSector.mftCluster * bootSector.bytesPerSector * bootSector.sectorsPerCluster;
+    return mftOffset;
+}
+
 extern "C" {
     EXPORT void ExtractMFTRecords(HANDLE volumeHandle, MFTFileRecord* files, ULONG fileCount) {
-        auto volumeData = NTFS_VOLUME_DATA_BUFFER();
-        DWORD bytesReturned = 0;
-
-            if (!DeviceIoControl(
-                volumeHandle,
-                FSCTL_GET_NTFS_VOLUME_DATA,
-                nullptr,
-                0,
-                &volumeData,
-                sizeof(NTFS_VOLUME_DATA_BUFFER),
-                &bytesReturned,
-            nullptr))
-            {
-                // TODO: Handle error
-            }
-
-        // Read MFT records
-        ULONG fileReferenceNumber = 0;
-        while (fileReferenceNumber < fileCount)
-        {
-            NTFS_FILE_RECORD_INPUT_BUFFER inputBuffer = { {{fileReferenceNumber, 0}} };
-            DWORD outputBufferSize = sizeof(NTFS_FILE_RECORD_OUTPUT_BUFFER) + volumeData.BytesPerFileRecordSegment - 1;
-
-            NTFS_FILE_RECORD_OUTPUT_BUFFER* outputBuffer = (NTFS_FILE_RECORD_OUTPUT_BUFFER*)malloc(outputBufferSize);
-            try
-            {
-                if (!DeviceIoControl(
-                    volumeHandle,
-                    FSCTL_GET_NTFS_FILE_RECORD,
-                    &inputBuffer,
-                    sizeof(NTFS_FILE_RECORD_INPUT_BUFFER),
-                    outputBuffer,
-                    outputBufferSize,
-                    &bytesReturned,
-                    nullptr))
-                {
-                    //TODO: handle error
-                    break;
-                }
-
-                auto fileRecordPtr = &outputBuffer->FileRecordBuffer;
-                auto mftFileRecord = ParseFileRecord(fileRecordPtr);
-                files[fileReferenceNumber] = mftFileRecord;
-            }
-            catch (...)
-            {
-                free(outputBuffer);
-                fileReferenceNumber++;
-            }
-
-            free(outputBuffer);
-            fileReferenceNumber++;
-
-            wprintf(L"\rProgress: %d / %d", fileReferenceNumber, fileCount);
+        // Seek to the MFT location
+        LARGE_INTEGER mftOffset;
+        mftOffset.QuadPart = GetMFTOffset(volumeHandle);
+        wprintf(L"MFT Offset: %llu\n", mftOffset.QuadPart);
+        if (SetFilePointerEx(volumeHandle, mftOffset, NULL, FILE_BEGIN) == 0) {
+            std::cerr << "Failed to seek to MFT" << std::endl;
+            CloseHandle(volumeHandle);
+            return;
         }
+
+        // Read the MFT
+        // This is a simplified example and may require additional error handling and logic
+        char buffer[1024 * 512];
+        DWORD bytesRead;
+        long count = 0;
+        while (ReadFile(volumeHandle, buffer, sizeof(buffer), &bytesRead, NULL)) {
+            // Process the MFT entries
+            // This is a simplified example
+            //MFTEntry entry;
+            //memcpy(entry.fileName, buffer, 256);
+            //entry.fileSize = *reinterpret_cast<uint64_t*>(buffer + 256);
+            //entries.push_back(entry);
+
+            wprintf(L"\rProgresssssss: %d / %d", bytesRead, fileCount);
+        }
+
+        CloseHandle(volumeHandle);
     }
 }
