@@ -1,24 +1,20 @@
 ﻿using System.Diagnostics;
-using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
 
 namespace MFTLib;
 
 public class MFTParse
 {
-    static readonly int k_OffsetToFileRecordBuffer = Marshal.OffsetOf<NTFS_FILE_RECORD_OUTPUT_BUFFER>(nameof(NTFS_FILE_RECORD_OUTPUT_BUFFER.FileRecordBuffer)).ToInt32();
-    static readonly int k_OffsetToFileNameUnicode = Marshal.OffsetOf<FileNameAttribute>(nameof(FileNameAttribute.FileName)).ToInt32();
+    static readonly int k_OffsetToFileNameUnicode = Marshal.OffsetOf<FileNameAttributeHeader>(nameof(FileNameAttributeHeader.FileName)).ToInt32();
 
     // ReSharper disable InconsistentNaming
     const uint GENERIC_READ = 0x80000000;
     const uint OPEN_EXISTING = 3;
     const uint FILE_SHARE_READ = 0x00000001;
     const uint FILE_SHARE_WRITE = 0x00000002;
-    const uint FSCTL_GET_NTFS_VOLUME_DATA = 0x00090064;
-    const uint FSCTL_GET_NTFS_FILE_RECORD = 0x00090068;
     // ReSharper restore InconsistentNaming
 
-    public static MFTNode GetMFTNode(string volume)
+    public static unsafe MFTNode GetMFTNode(string volume)
     {
         if (string.IsNullOrEmpty(volume))
         {
@@ -44,287 +40,154 @@ public class MFTParse
             throw new IOException($"Unable to open volume {volume}", Marshal.GetLastWin32Error());
         }
 
-        var volumeData = new NTFS_VOLUME_DATA_BUFFER();
-        uint bytesReturned;
-        var volumeDataPtr = Marshal.AllocHGlobal(Marshal.SizeOf(volumeData));
-
-        try
+        const int bootSectorLength = 512;
+        var readBuffer = new byte[bootSectorLength];
+        Kernel32.ReadFile(volumeHandle, readBuffer, bootSectorLength, out _, IntPtr.Zero);
+        BootSector* bootSector;
+        fixed (byte* readBufferPtr = readBuffer)
         {
-            if (!Kernel32.DeviceIoControl(
-                    volumeHandle,
-                    FSCTL_GET_NTFS_VOLUME_DATA,
-                    IntPtr.Zero,
-                    0,
-                    volumeDataPtr,
-                    (uint)Marshal.SizeOf(volumeData),
-                    out bytesReturned,
-                    IntPtr.Zero))
+            bootSector = (BootSector*)readBufferPtr;
+        }
+
+        var bytesPerCluster = (ulong)bootSector->bytesPerSector * bootSector->sectorsPerCluster;
+        var distanceToMove = (long)(bootSector->mftStart * bytesPerCluster);
+
+        // TODO: Check volume data for mft File Size
+        const int mftFileSize = 1024;
+        readBuffer = new byte[mftFileSize];
+        Kernel32.SetFilePointerEx(volumeHandle, distanceToMove, IntPtr.Zero, 0);
+        Kernel32.ReadFile(volumeHandle, readBuffer, mftFileSize, out _, IntPtr.Zero);
+
+        List<MFTLibFile> files = new();
+
+        fixed (byte* readBufferPtr = readBuffer)
+        {
+            var fileRecord = (FileRecordHeader*)readBufferPtr;
+            var attribute = (AttributeHeader*)(readBufferPtr + fileRecord->firstAttributeOffset);
+            NonResidentAttributeHeader* dataAttribute = null;
+            ulong approximateRecordCount = 0;
+            Debug.Assert(fileRecord->magic == FileRecordHeader.kMagicNumber);
+
+            while (true)
             {
-                throw new IOException("Failed to get NTFS volume data", Marshal.GetLastWin32Error());
+                if (attribute->attributeType == AttributeType.Data)
+                {
+                    dataAttribute = (NonResidentAttributeHeader*)attribute;
+                }
+                else if (attribute->attributeType == AttributeType.Bitmap)
+                {
+                    approximateRecordCount = ((NonResidentAttributeHeader*)attribute)->attributeSize * 8;
+                }
+                else if (attribute->attributeType == AttributeType.EndMarker)
+                {
+                    break;
+                }
+
+                attribute = (AttributeHeader*)((byte*)attribute + attribute->length);
             }
 
-            volumeData = Marshal.PtrToStructure<NTFS_VOLUME_DATA_BUFFER>(volumeDataPtr);
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(volumeDataPtr);
-        }
+            Debug.Assert(dataAttribute != null);
 
-#if DEBUG
-        // Print out all volume data
-        Console.WriteLine($"Volume Serial Number: {volumeData.VolumeSerialNumber}");
-        Console.WriteLine($"Number of Sectors: {volumeData.NumberSectors}");
-        Console.WriteLine($"Total Clusters: {volumeData.TotalClusters}");
-        Console.WriteLine($"Free Clusters: {volumeData.FreeClusters}");
-        Console.WriteLine($"Total Reserved: {volumeData.TotalReserved}");
-        Console.WriteLine($"Bytes Per Sector: {volumeData.BytesPerSector}");
-        Console.WriteLine($"Bytes Per Cluster: {volumeData.BytesPerCluster}");
-        Console.WriteLine($"Bytes Per File Record Segment: {volumeData.BytesPerFileRecordSegment}");
-        Console.WriteLine($"Clusters Per File Record Segment: {volumeData.ClustersPerFileRecordSegment}");
-        Console.WriteLine($"MFT Valid Data Length: {volumeData.MftValidDataLength}");
-        Console.WriteLine($"MFT Start LCN: {volumeData.MftStartLcn}");
-        Console.WriteLine($"MFT2 Start LCN: {volumeData.Mft2StartLcn}");
-        Console.WriteLine($"MFT Zone Start: {volumeData.MftZoneStart}");
-        Console.WriteLine($"MFT Zone End: {volumeData.MftZoneEnd}");
-#endif
+            var dataRun = (RunHeader*)((byte*)dataAttribute + dataAttribute->dataRunsOffset);
+            ulong clusterNumber = 0;
+            ulong recordsProcessed = 0;
 
-        // Assume 512, 1024, or 2048 bytes per file record. Otherwise, we can't do our explicit struct layout truck
-        var bytesPerFileRecord = volumeData.BytesPerFileRecordSegment;
-        if (bytesPerFileRecord != 512 && bytesPerFileRecord != 1024 && bytesPerFileRecord != 2048)
-            throw new NotSupportedException($"Unsupported bytes per file record: {bytesPerFileRecord}");
+            const ulong mftFilesPerBuffer = 65536;
+            var mftBuffer = new byte[mftFileSize * mftFilesPerBuffer];
 
-        var totalFileRecords = volumeData.MftValidDataLength / volumeData.BytesPerFileRecordSegment;
-
-        Console.WriteLine($"Progress: 0 / {totalFileRecords}");
-        //var files = new List<MFTLibFile>((int)totalFileRecords);
-        var files = new MFTLibFile[(int)totalFileRecords];
-
-        var mftOffset = (long)volumeData.MftStartLcn * volumeData.BytesPerCluster;
-
-        // Seek to the MFT start offset
-        //if (!Kernel32.SetFilePointerEx(volumeHandle, mftOffset, IntPtr.Zero, 0))
-        //{
-        //    Console.WriteLine("Failed to set file pointer. Error: " + Marshal.GetLastWin32Error());
-        //    return null;
-        //}
-
-        // Read the MFT data
-        const int batchSize = 1024 * 16;
-        uint bytesToRead = batchSize * bytesPerFileRecord;
-        byte[] readBuffer = new byte[bytesToRead];
-        uint bytesRead;
-        uint totalBytesRead = 0;
-        var validDataLength = volumeData.MftValidDataLength;
-        var totalFileCount = 0;
-
-        Console.WriteLine("Reading MFT data...");
-        Console.Write($"Read 0 bytes from MFT.");
-
-        //var fileHandle = File.Create("temp.txt");
-        //var newLine = new byte[] { 0x0A };
-        while (Kernel32.ReadFile(volumeHandle, readBuffer, bytesToRead, out bytesRead, IntPtr.Zero))
-        {
-            // Process the readBuffer here (parse MFT entries, etc.)
-            totalBytesRead += bytesRead;
-            var readError = false;
-            unsafe
+            while (((byte*)dataRun - (byte*)dataAttribute) < dataAttribute->standard.length &&
+                   dataRun->lengthFieldBytes != 0)
             {
-                fixed (byte* ptr = readBuffer)
+                ulong length = 0, offset = 0;
+
+                for (int i = 0; i < dataRun->lengthFieldBytes; i++)
                 {
-                    var fileRecordPtr = ptr;
-                    var endPtr = fileRecordPtr + bytesRead;
-                    while (fileRecordPtr < endPtr)
+                    length |= (ulong)(((byte*)dataRun)[1 + i]) << (i * 8);
+                }
+
+                for (int i = 0; i < dataRun->offsetFieldBytes; i++)
+                {
+                    offset |= (ulong)(((byte*)dataRun)[1 + dataRun->lengthFieldBytes + i]) << (i * 8);
+                }
+
+                if ((offset & ((ulong)1 << (dataRun->offsetFieldBytes * 8 - 1))) != 0)
+                {
+                    for (int i = dataRun->offsetFieldBytes; i < 8; i++)
                     {
-                        if (CheckFileHeader(fileRecordPtr))
+                        offset |= (ulong)0xFF << (i * 8);
+                    }
+                }
+
+                clusterNumber += offset;
+                dataRun = (RunHeader*)((byte*)dataRun + 1 + dataRun->lengthFieldBytes + dataRun->offsetFieldBytes);
+
+                ulong filesRemaining = length * bytesPerCluster / mftFileSize;
+                ulong positionInBlock = 0;
+
+                while (filesRemaining > 0)
+                {
+                    Console.WriteLine("{0}", (int)(recordsProcessed * 100 / approximateRecordCount));
+
+                    ulong filesToLoad = mftFilesPerBuffer;
+                    if (filesRemaining < mftFilesPerBuffer)
+                        filesToLoad = filesRemaining;
+
+                    distanceToMove = (long)(clusterNumber * bytesPerCluster + positionInBlock);
+                    Kernel32.SetFilePointerEx(volumeHandle, distanceToMove, IntPtr.Zero, 0);
+                    Kernel32.ReadFile(volumeHandle, mftBuffer, (uint)(filesToLoad * mftFileSize), out _, IntPtr.Zero);
+
+                    positionInBlock += filesToLoad * mftFileSize;
+                    filesRemaining -= filesToLoad;
+
+                    fixed (byte* mftBufferPtr = mftBuffer)
+                    {
+                        for (ulong i = 0; i < filesToLoad; i++)
                         {
-                            totalFileCount++;
-                            Console.Write($"\rRead {totalFileCount} files in {totalBytesRead} bytes from MFT.");
+                            // Even on an SSD, processing the file records takes only a fraction of the time to read the data,
+                            // so there's not much point in multithreading this.
+
+                            fileRecord = (FileRecordHeader*)(mftBufferPtr + mftFileSize * i);
+                            recordsProcessed++;
+
+                            if (fileRecord->inUse == 0)
+                                continue;
+
+                            attribute = (AttributeHeader*)((byte*)fileRecord + fileRecord->firstAttributeOffset);
+                            Debug.Assert(fileRecord->magic == FileRecordHeader.kMagicNumber);
+
+                            while ((byte*)attribute - (byte*)fileRecord < mftFileSize)
+                            {
+                                if (attribute->attributeType == AttributeType.FileName)
+                                {
+                                    var fileNameAttribute = (FileNameAttributeHeader*)attribute;
+                                    if (fileNameAttribute->namespaceType != 2 &&
+                                        fileNameAttribute->resident.standard.nonResident == 0)
+                                    {
+                                        var fileNamePtr = (byte*)fileNameAttribute + k_OffsetToFileNameUnicode;
+                                        files.Add(new MFTLibFile
+                                        {
+                                            Parent = fileNameAttribute->parentRecordNumber,
+                                            FileName = Marshal.PtrToStringUni(new IntPtr(fileNamePtr), fileNameAttribute->fileNameLength)
+                                        });
+                                    }
+                                }
+                                else if (attribute->attributeType == AttributeType.EndMarker)
+                                {
+                                    break;
+                                }
+
+                                attribute = (AttributeHeader*)((byte*)attribute + attribute->length);
+                            }
                         }
-
-                        fileRecordPtr += 1024;
-
-                        //try
-                        //{
-                        //    ParseFileRecord(new IntPtr(fileRecordPtr));
-                        //    totalFileCount++;
-                        //}
-                        //catch (Exception e)
-                        //{
-                        //    Console.WriteLine($"Error parsing file record: {e.Message}");
-                        //    Console.Write($"Read 0 bytes from MFT.");
-                        //    readError = true;
-                        //    break;
-                        //}
-                        //finally
-                        //{
-                        //    fileRecordPtr += bytesPerFileRecord;
-                        //}
                     }
                 }
             }
-
-            //for (var i = 0; i < bytesRead; i += (int)bytesPerFileRecord)
-            //{
-            //    fileHandle.Write(readBuffer, i, (int)bytesPerFileRecord);
-            //    fileHandle.Write(newLine, 0, 1);
-            //}
-
-            //if (readError)
-            //    break;
-
-            //Console.Write($"\rRead {totalBytesRead} / {validDataLength} bytes from MFT.");
-            //if (totalBytesRead >= validDataLength)
-            //    break;
-        }
-        
-        //fileHandle.Close();
-
-#if DEBUG
-        Console.WriteLine($"Found {totalFileCount} files in {stopwatch.Elapsed}");
-        //foreach (var file in files)
-        //{
-        //    Console.WriteLine(file.FileName);
-        //}
-#endif
-        
-        Kernel32.CloseHandle(volumeHandle);
-
-        return null;
-    }
-    
-    static unsafe bool CheckFileHeader(byte* fileRecordPtr)
-    {
-        // Ensure that the first 4 bytes spell FILE
-        return fileRecordPtr[0] == 'F' && fileRecordPtr[1] == 'I' && fileRecordPtr[2] == 'L' && fileRecordPtr[3] == 'E';
-    }
-
-    static MFTLibFile ParseFileRecord(IntPtr record)
-    {
-        var fileRecord = Marshal.PtrToStructure<FileRecordHeader>(record);
-#if DEBUG
-        // Ensure that the first 4 bytes spell FILE
-        var magicNumber = fileRecord.MagicNumber;
-        if (magicNumber == null || magicNumber[0] != 'F' || magicNumber[1] != 'I' || magicNumber[2] != 'L' || magicNumber[3] != 'E')
-        {
-            throw new ArgumentException("File record fails magic number check (first 4 bytes should spell FILE)");
-        }
-#endif
-
-        //Console.WriteLine("FileRecordHeader:");
-        //Console.WriteLine($"  UpdateSequenceOffset: {fileRecord.UpdateSequenceOffset}");
-        //Console.WriteLine($"  UpdateSequenceSize: {fileRecord.UpdateSequenceSize}");
-        //Console.WriteLine($"  LogFileSequenceNumber: {fileRecord.LogFileSequenceNumber}");
-        //Console.WriteLine($"  SequenceNumber: {fileRecord.SequenceNumber}");
-        //Console.WriteLine($"  HardLinkCount: {fileRecord.HardLinkCount}");
-        //Console.WriteLine($"  FirstAttributeOffset: {fileRecord.FirstAttributeOffset}");
-        //Console.WriteLine($"  Flags: {fileRecord.Flags}");
-        //Console.WriteLine($"  UsedSize: {fileRecord.RealSize}");
-        //Console.WriteLine($"  AllocatedSize: {fileRecord.AllocatedSize}");
-        //Console.WriteLine($"  FileReferenceToBaseRecord: {fileRecord.BaseFileRecord}");
-        //Console.WriteLine($"  NextAttributeId: {fileRecord.NextAttributeId}");
-
-        var attributeOffset = fileRecord.FirstAttributeOffset;
-        var end = fileRecord.AllocatedSize;
-        var mftFileRecord = new MFTLibFile();
-        return mftFileRecord;
-        //while (attributeOffset < end)
-        //{
-        //    var attributePtr = fileRecordPtr + attributeOffset;
-
-        //    // Read the attribute type before we read the header in case the memory after the end marker isn't readable
-        //    var attributeId = (AttributeType)Marshal.ReadInt32(attributePtr);
-        //    if (attributeId == AttributeType.EndMarker)
-        //    {
-        //        break;
-        //    }
             
-        //    var attributeHeader = Marshal.PtrToStructure<AttributeHeader>(attributePtr);
-        //    switch (attributeId)
-        //    {
-        //        case AttributeType.StandardInformation:
-        //            //Console.WriteLine($"StandardInformation at offset {attributeOffset}");
-        //            //attributeOffset += 0x4; // Skip the attribute header
-        //            //var standardInformation = Marshal.PtrToStructure<StandardInformationAttribute>(fileRecordPtr + attributeOffset);
-        //            //attributeOffset += 0x48; // Skip to the next attribute
-        //            break;
-        //        case AttributeType.AttributeList:
-        //            //Console.WriteLine($"AttributeList at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.FileName:
-        //            //Console.WriteLine($"FileName at offset {attributeOffset}");
-        //            var fileNameAttributePtr = attributePtr + attributeHeader.AttributeOffset;
-        //            var fileNameAttribute = Marshal.PtrToStructure<FileNameAttribute>(fileNameAttributePtr);
-        //            var fileNamePtr = fileNameAttributePtr + k_OffsetToFileNameUnicode;
-        //            mftFileRecord.FileName = Marshal.PtrToStringUni(fileNamePtr, fileNameAttribute.FileNameLength);
-        //            //Console.WriteLine($"File name is: {mftFileRecord.FileName}");
-        //            break;
-        //        case AttributeType.ObjectId:
-        //            //Console.WriteLine($"ObjectId at offset {attributeOffset}");
-        //            var objAttributePtr = attributePtr + attributeHeader.AttributeOffset;
-        //            var objectAttribute = Marshal.PtrToStructure<ObjectIdAttribute>(objAttributePtr);
-        //            mftFileRecord.Guid = objectAttribute.ObjectId;
-        //            //Console.WriteLine($"Object Id is: {guid}");
-        //            break;
-        //        case AttributeType.SecurityDescriptor:
-        //            //Console.WriteLine($"SecurityDescriptor at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.VolumeName:
-        //            //Console.WriteLine($"VolumeName at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.VolumeInformation:
-        //            //Console.WriteLine($"VolumeInformation at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.Data:
-        //            //Console.WriteLine($"Data at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.IndexRoot:
-        //            //Console.WriteLine($"IndexRoot at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.IndexAllocation:
-        //            //Console.WriteLine($"IndexAllocation at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.Bitmap:
-        //            //Console.WriteLine($"Bitmap at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.ReparsePoint:
-        //            //Console.WriteLine($"ReparsePoint at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.EAInformation:
-        //            //Console.WriteLine($"EAInformation at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.EA:
-        //            //Console.WriteLine($"EA at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.PropertySet:
-        //            //Console.WriteLine($"PropertySet at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        case AttributeType.LoggedUtilityStream:
-        //            //Console.WriteLine($"LoggedUtilityStream at offset {attributeOffset}");
-        //            //attributeOffset += 4; // Skip the attribute
-        //            break;
-        //        default:
-        //            throw new ArgumentOutOfRangeException($"Unknown attribute type {attributeId}");
-        //    }
-            
-        //    attributeOffset += (ushort)attributeHeader.Length;
-        //}
+            Console.WriteLine($"Found {files.Count} files.");
 
-        ////Console.WriteLine($"Parsing file record with size {fileRecord.AllocatedSize}");
-        ////if (string.IsNullOrEmpty(fileName))
-        ////    throw new InvalidOperationException($"Could not get filename for FileRecord at {fileRecordPtr}");
-        
-        //return mftFileRecord;
+            Kernel32.CloseHandle(volumeHandle);
+
+            return null;
+        }
     }
 }

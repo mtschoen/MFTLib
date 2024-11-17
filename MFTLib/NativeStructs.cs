@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System;
+using System.Runtime.InteropServices;
 // ReSharper disable InconsistentNaming
 
 namespace MFTLib;
@@ -44,102 +45,113 @@ public struct NTFS_FILE_RECORD_OUTPUT_BUFFER
 [StructLayout(LayoutKind.Sequential)]
 public struct FileRecordHeader
 {
+    public const uint kMagicNumber = 0x454C4946; // "FILE"
     /// <summary>
     /// 4-byte magic number "FILE"
     /// </summary>
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-    public char[] MagicNumber;
+    public uint magic;
 
     /// <summary>
     /// Offset to the Update Sequence Array (in bytes)
     /// </summary>
-    public ushort UpdateSequenceOffset;
+    public ushort updateSequenceOffset;
 
     /// <summary>
     /// Size of the Update Sequence (in words)
     /// </summary>
-    public ushort UpdateSequenceSize;
+    public ushort updateSequenceSize;
 
     /// <summary>
     /// $LogFile sequence number (LSN)
     /// </summary>
-    public ulong LogFileSequenceNumber;
+    public ulong logSequence;
 
     /// <summary>
     /// Sequence number
     /// </summary>
-    public ushort SequenceNumber;
+    public ushort sequenceNumber;
 
     /// <summary>
     /// Hard link count
     /// </summary>
-    public ushort HardLinkCount;
+    public ushort hardLinkCount;
 
     /// <summary>
     /// Offset to the first Attribute (in bytes)
     /// </summary>
-    public ushort FirstAttributeOffset;
+    public ushort firstAttributeOffset;
 
-    /// <summary>
-    /// Flags (e.g., in use, directory)
-    /// </summary>
-    public ushort Flags;
+    public ushort inUse;
+    public ushort isDirectory;
 
     /// <summary>
     /// Real size of the FILE record (in bytes)
     /// </summary>
-    public uint RealSize;
+    public uint usedSize;
 
     /// <summary>
     /// Allocated size of the FILE record (in bytes)
     /// </summary>
-    public uint AllocatedSize;
+    public uint allocatedSize;
 
     /// <summary>
     /// File reference to the base FILE record
     /// </summary>
-    public ulong BaseFileRecord;
+    public ulong fileReference;
 
     /// <summary>
     /// Next Attribute Id
     /// </summary>
-    public ushort NextAttributeId;
+    public ushort nextAttributeID;
 
     /// <summary>
-    /// Padding
+    /// unused
     /// </summary>
-    public ushort Padding;
+    public ushort unused;
 
     /// <summary>
     /// Number of this MFT Record
     /// </summary>
-    public uint MftRecordNumber;
-
-    /// <summary>
-    /// Update Sequence Array
-    /// </summary>
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
-    public ushort[] UpdateSequenceArray;
+    public uint recordNumber;
 }
 
 /// <summary>
 /// Standard attribute header
-/// TODO: Check resident vs. non-resident attributes
-/// TODO: Check name vs no-name
-/// Assume resident, no-name for now
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]
 struct AttributeHeader
 {
-    public AttributeType Type;
-    public uint Length;
-    public byte NonResidentFlag;
-    public byte NameLength;
-    public ushort NameOffset;
-    public ushort Flags;
-    public ushort AttributeId;
-    public uint AttributeLength;
-    public ushort AttributeOffset;
+    public AttributeType attributeType;
+    public uint length;
+    public byte nonResident;
+    public byte nameLength;
+    public ushort nameOffset;
+    public ushort flags;
+    public ushort attributeID;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+struct ResidentAttributeHeader
+{
+    public AttributeHeader standard;
+    public uint attributeLength;
+    public ushort attributeOffset;
+    public byte indexed;
+    public byte unused;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+struct NonResidentAttributeHeader
+{
+    public AttributeHeader standard;
+    public ulong firstCluster;
+    public ulong lastCluster;
+    public ushort dataRunsOffset;
+    public ushort compressionUnit;
+    public uint unused;
+    public ulong attributeAllocated;
+    public ulong attributeSize;
+    public ulong streamDataSize;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -159,29 +171,139 @@ struct StandardInformationAttribute
     public ulong UpdateSequenceNumber;
 }
 
-[StructLayout(LayoutKind.Sequential)]
-struct FileNameAttribute
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+struct FileNameAttributeHeader
 {
-    public ulong ParentDirectory;
-    public ulong CreationTime;
-    public ulong ChangeTime;
-    public ulong LastWriteTime;
-    public ulong LastAccessTime;
-    public ulong AllocatedSize;
-    public ulong RealSize;
-    public uint Flags;
-    public uint EaSize;
-    public byte FileNameLength;
-    public byte FileNameNamespace;
+    public ResidentAttributeHeader resident;
+    public ulong parentRecordNumber;
+    public ulong sequenceNumber;
+    public ulong creationTime;
+    public ulong modificationTime;
+    public ulong metadataModificationTime;
+    public ulong readTime;
+    public ulong allocatedSize;
+    public ulong realSize;
+    public uint flags;
+    public uint repase;
+    public byte fileNameLength;
+    public byte namespaceType;
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
     public byte[] FileName;
 }
 
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 struct ObjectIdAttribute
 {
     public Guid ObjectId;
     public Guid BirthVolumeId;
     public Guid BirthObjectId;
     public Guid DomainId;
+}
+
+//[StructLayout(LayoutKind.Explicit, Size = 512)]
+//unsafe struct BootSector
+//{
+//    [FieldOffset(0)]
+//    public fixed byte jump[3];
+
+//    // Defined as char[8] in the C++ code
+//    [FieldOffset(3)]
+//    public fixed byte name[8];
+
+//    [FieldOffset(11)]
+//    public ushort bytesPerSector;
+    
+//    [FieldOffset(13)]
+//    public byte sectorsPerCluster;
+
+//    [FieldOffset(14)]
+//    public ushort reservedSectors;
+
+//    [FieldOffset(16)]
+//    public fixed byte unused0[3];
+
+//    [FieldOffset(19)]
+//    public ushort unused1;
+
+//    [FieldOffset(21)]
+//    public byte media;
+
+//    [FieldOffset(22)]
+//    public ushort unused2;
+
+//    [FieldOffset(24)]
+//    public ushort sectorsPerTrack;
+
+//    [FieldOffset(26)]
+//    public ushort headsPerCylinder;
+
+//    [FieldOffset(28)]
+//    public uint hiddenSectors;
+
+//    [FieldOffset(32)]
+//    public uint unused3;
+
+//    [FieldOffset(36)]
+//    public uint unused4;
+
+//    [FieldOffset(40)]
+//    public ulong totalSectors;
+
+//    [FieldOffset(48)]
+//    public ulong mftStart;
+//    //public ulong mftMirrorStart;
+//    //public uint clustersPerFileRecord;
+//    //public uint clustersPerIndexBlock;
+//    //public ulong serialNumber;
+//    //public uint checksum;
+//    //public fixed byte bootloader[426];
+//    //public ushort bootSignature;
+//}
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+unsafe struct BootSector
+{
+    public fixed byte jump[3];
+
+    // Defined as char[8] in the C++ code
+    public fixed byte name[8];
+    public ushort bytesPerSector;
+    public byte sectorsPerCluster;
+    public ushort reservedSectors;
+    public fixed byte unused0[3];
+    public ushort unused1;
+    public byte media;
+    public ushort unused2;
+    public ushort sectorsPerTrack;
+    public ushort headsPerCylinder;
+    public uint hiddenSectors;
+    public uint unused3;
+    public uint unused4;
+    public ulong totalSectors;
+    public ulong mftStart;
+    public ulong mftMirrorStart;
+    public uint clustersPerFileRecord;
+    public uint clustersPerIndexBlock;
+    public ulong serialNumber;
+    public uint checksum;
+    public fixed byte bootloader[426];
+    public ushort bootSignature;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+struct RunHeader
+{
+    private byte _data;
+
+    public byte lengthFieldBytes
+    {
+        get => (byte)(_data & 0x0F);
+        set => _data = (byte)((_data & 0xF0) | (value & 0x0F));
+    }
+
+    public byte offsetFieldBytes
+    {
+        get => (byte)((_data >> 4) & 0x0F);
+        set => _data = (byte)((_data & 0x0F) | ((value & 0x0F) << 4));
+    }
 }
