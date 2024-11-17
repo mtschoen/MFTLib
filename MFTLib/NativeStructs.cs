@@ -185,3 +185,58 @@ struct ObjectIdAttribute
     public Guid BirthObjectId;
     public Guid DomainId;
 }
+
+interface IFIleRecord
+{
+    FileRecordHeader Header { get; }
+    byte[] Data { get; }
+}
+
+[StructLayout(LayoutKind.Explicit)]
+struct FileRecordBatch
+{
+    [FieldOffset(0)]
+    public byte[] Bytes;
+
+    [FieldOffset(0)]
+    public FileRecord512[] FileRecords512;
+
+    [FieldOffset(0)]
+    public FileRecord1024[] FileRecords1024;
+
+    [FieldOffset(0)]
+    public FileRecord2048[] FileRecords2048;
+}
+
+[StructLayout(LayoutKind.Sequential, Size = 512)]
+struct FileRecord512 : IFIleRecord
+{
+    FileRecordHeader _header;
+
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
+    byte[] _data;
+    public FileRecordHeader Header => _header;
+    public byte[] Data => _data;
+}
+
+[StructLayout(LayoutKind.Sequential, Size = 1024)]
+struct FileRecord1024 : IFIleRecord
+{
+    FileRecordHeader _header;
+
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
+    byte[] _data;
+    public FileRecordHeader Header => _header;
+    public byte[] Data => _data;
+}
+
+[StructLayout(LayoutKind.Sequential, Size = 2048)]
+struct FileRecord2048 : IFIleRecord
+{
+    FileRecordHeader _header;
+
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
+    byte[] _data;
+    public FileRecordHeader Header => _header;
+    public byte[] Data => _data;
+}

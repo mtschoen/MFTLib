@@ -55,7 +55,7 @@ public class MFTParseC
         return null;
     }
 
-    private static MFTFileRecord[] ExtractMFTRecords(SafeFileHandle volumeHandle)
+    private static MFTLibFile[] ExtractMFTRecords(SafeFileHandle volumeHandle)
     {
         var volumeData = new NTFS_VOLUME_DATA_BUFFER();
         uint bytesReturned;
@@ -101,11 +101,17 @@ public class MFTParseC
         Console.WriteLine($"MFT Zone End: {volumeData.MftZoneEnd}");
 #endif
 
+        // Assume 1024 bytes per file record for fastpath
+        // TODO: Slow path for other file record sizes? Just implement a 512 and 2048 byte struct?
+        var bytesPerFileRecord = volumeData.BytesPerFileRecordSegment;
+        if (bytesPerFileRecord != 1024)
+            throw new NotSupportedException($"Unsupported bytes per file record: {bytesPerFileRecord}");
+
         var totalFileRecords = volumeData.MftValidDataLength / volumeData.BytesPerFileRecordSegment;
 
         Console.WriteLine($"Progress: 0 / {totalFileRecords}");
-        //var files = new List<MFTFileRecord>((int)totalFileRecords);
-        var files = new MFTFileRecord[(int)totalFileRecords];
+        //var files = new List<MFTLibFile>((int)totalFileRecords);
+        var files = new MFTLibFile[(int)totalFileRecords];
         unsafe
         {
             fixed (void* ptr = files)

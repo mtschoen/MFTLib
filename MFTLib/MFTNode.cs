@@ -15,11 +15,11 @@
         {
         }
 
-        internal MFTNode(Guid guid, MFTFileRecord mftFileRecord)
+        internal MFTNode(Guid guid, MFTLibFile mftLibFile)
         {
             Guid = guid;
-            FileName = mftFileRecord.FileName;
-            Size = mftFileRecord.Size;
+            FileName = mftLibFile.FileName;
+            Size = mftLibFile.Size;
         }
 
         public void AddFile(MFTNode mftNode)

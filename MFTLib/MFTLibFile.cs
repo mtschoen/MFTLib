@@ -1,6 +1,6 @@
 ﻿namespace MFTLib;
 
-struct MFTFileRecord
+struct MFTLibFile
 {
     public Guid Guid;
     public string FileName;
