@@ -29,4 +29,9 @@ class Kernel32
         long liDistanceToMove,
         IntPtr lpNewFilePointer,
         uint dwMoveMethod);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool DeviceIoControl(SafeFileHandle hDevice, uint dwIoControlCode, IntPtr lpInBuffer,
+        uint nInBufferSize, IntPtr lpOutBuffer, uint nOutBufferSize, out uint lpBytesReturned,
+        IntPtr lpOverlapped);
 }

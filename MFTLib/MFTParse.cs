@@ -7,12 +7,7 @@ public class MFTParse
 {
     static readonly int k_OffsetToFileNameUnicode = Marshal.OffsetOf<FileNameAttributeHeader>(nameof(FileNameAttributeHeader.FileName)).ToInt32();
 
-    // ReSharper disable InconsistentNaming
-    const uint GENERIC_READ = 0x80000000;
-    const uint OPEN_EXISTING = 3;
-    const uint FILE_SHARE_READ = 0x00000001;
-    const uint FILE_SHARE_WRITE = 0x00000002;
-    // ReSharper restore InconsistentNaming
+
 
     public static unsafe MFTNode GetMFTNode(string volume)
     {
@@ -26,20 +21,7 @@ public class MFTParse
         stopwatch.Start();
 #endif
 
-        var volumeHandle = Kernel32.CreateFile(
-            volume,
-            GENERIC_READ,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            IntPtr.Zero,
-            OPEN_EXISTING,
-            0,
-            IntPtr.Zero);
-
-        if (volumeHandle.IsInvalid)
-        {
-            throw new IOException($"Unable to open volume {volume}", Marshal.GetLastWin32Error());
-        }
-
+        var volumeHandle = FileUtilities.GetVolumeHandle(volume);
         const int bootSectorLength = 512;
         var readBuffer = new byte[bootSectorLength];
         Kernel32.ReadFile(volumeHandle, readBuffer, bootSectorLength, out _, IntPtr.Zero);

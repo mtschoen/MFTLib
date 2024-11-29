@@ -10,5 +10,6 @@
 #include <handleapi.h>
 #include <winioctl.h>
 #include <cstdint>
+#include <winioctl.h>
 
 #include <minwindef.h>

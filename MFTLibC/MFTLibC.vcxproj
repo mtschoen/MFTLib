@@ -118,6 +118,12 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy /Y "$(TargetDir)MFTLibC.dll" "$(SolutionDir)MFTLib\bin\$(Platform)\$(Configuration)\net8.0\MFTLibC.dll"
+xcopy /Y "$(TargetDir)MFTLibC.pdb" "$(SolutionDir)MFTLib\bin\$(Platform)\$(Configuration)\net8.0\MFTLibC.pdb"
+xcopy /Y "$(TargetDir)MFTLibC.dll" "$(SolutionDir)TestProgram\bin\$(Platform)\$(Configuration)\net8.0\MFTLibC.dll"
+xcopy /Y "$(TargetDir)MFTLibC.pdb" "$(SolutionDir)TestProgram\bin\$(Platform)\$(Configuration)\net8.0\MFTLibC.pdb"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>

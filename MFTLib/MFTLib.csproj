@@ -14,8 +14,4 @@
     <ProjectReference Include="..\MFTLibC\MFTLibC.vcxproj" />
   </ItemGroup>
 
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="xcopy /Y &quot;$(SolutionDir)$(Platform)\$(Configuration)\MFTLibC.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(SolutionDir)$(Platform)\$(Configuration)\MFTLibC.pdb&quot; &quot;$(TargetDir)&quot;" />
-  </Target>
-
 </Project>

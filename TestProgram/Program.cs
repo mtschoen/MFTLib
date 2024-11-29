@@ -1,4 +1,7 @@
 ﻿using MFTLib;
 
 var volume = MFTUtilities.GetFileNameForDriveLetter("C");
-var rootNode = MFTParse.GetMFTNode(volume);
+//var dump = VolumeUtilities.DumpVolumeInfo(VolumeUtilities.GetVolumeInfo(volume));
+//Console.WriteLine(dump);
+//var rootNode = MFTParse.GetMFTNode(volume);
+MFTParseC.DumpVolumeInfo();
