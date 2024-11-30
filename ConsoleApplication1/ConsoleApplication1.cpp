@@ -87,7 +87,48 @@ struct ResidentAttributeHeader : AttributeHeader {
     uint8_t     unused;
 };
 
-struct FileNameAttributeHeader : ResidentAttributeHeader {
+struct NonResidentAttributeHeader : AttributeHeader {
+    uint64_t    firstCluster;
+    uint64_t    lastCluster;
+    uint16_t    dataRunsOffset;
+    uint16_t    compressionUnit;
+    uint32_t    unused;
+    uint64_t    attributeAllocated;
+    uint64_t    attributeSize;
+    uint64_t    streamDataSize;
+};
+
+struct StandardInformationAttributeNonResident : NonResidentAttributeHeader {
+    uint64_t    creationTime;
+    uint64_t    modificationTime;
+    uint64_t    metadataModificationTime;
+    uint64_t    readTime;
+    uint32_t    permissions;
+    uint32_t    maxVersions;
+    uint32_t    version;
+    uint32_t    classId;
+    uint32_t    ownerId;
+    uint32_t    securityId;
+    uint64_t    quota;
+    uint64_t    updateSequence;
+};
+
+struct StandardInformationAttributeResident : ResidentAttributeHeader {
+    uint64_t    creationTime;
+    uint64_t    modificationTime;
+    uint64_t    metadataModificationTime;
+    uint64_t    readTime;
+    uint32_t    permissions;
+    uint32_t    maxVersions;
+    uint32_t    version;
+    uint32_t    classId;
+    uint32_t    ownerId;
+    uint32_t    securityId;
+    uint64_t    quota;
+    uint64_t    updateSequence;
+};
+
+struct FileNameAttributeHeaderNonResident : NonResidentAttributeHeader {
     uint64_t    parentRecordNumber : 48;
     uint64_t    sequenceNumber : 16;
     uint64_t    creationTime;
@@ -103,16 +144,23 @@ struct FileNameAttributeHeader : ResidentAttributeHeader {
     wchar_t     fileName[1];
 };
 
-struct NonResidentAttributeHeader : AttributeHeader {
-    uint64_t    firstCluster;
-    uint64_t    lastCluster;
-    uint16_t    dataRunsOffset;
-    uint16_t    compressionUnit;
-    uint32_t    unused;
-    uint64_t    attributeAllocated;
-    uint64_t    attributeSize;
-    uint64_t    streamDataSize;
+struct FileNameAttributeHeaderResident : ResidentAttributeHeader {
+    uint64_t    parentRecordNumber : 48;
+    uint64_t    sequenceNumber : 16;
+    uint64_t    creationTime;
+    uint64_t    modificationTime;
+    uint64_t    metadataModificationTime;
+    uint64_t    readTime;
+    uint64_t    allocatedSize;
+    uint64_t    realSize;
+    uint32_t    flags;
+    uint32_t    repase;
+    uint8_t     fileNameLength;
+    uint8_t     namespaceType;
+    wchar_t     fileName[1];
 };
+
+
 
 struct RunHeader {
     uint8_t     lengthFieldBytes : 4;
@@ -158,6 +206,27 @@ char* DuplicateName(wchar_t* name, size_t nameLength) {
     return buffer;
 }
 
+enum AttributeType : uint32_t
+{
+    StandardInformation = 0x10,
+    AttributeList = 0x20,
+    FileName = 0x30,
+    ObjectId = 0x40,
+    SecurityDescriptor = 0x50,
+    VolumeName = 0x60,
+    VolumeInformation = 0x70,
+    Data = 0x80,
+    IndexRoot = 0x90,
+    IndexAllocation = 0xA0,
+    Bitmap = 0xB0,
+    ReparsePoint = 0xC0,
+    EAInformation = 0xD0,
+    EA = 0xE0,
+    PropertySet = 0xF0,
+    LoggedUtilityStream = 0x100,
+    EndMarker = 0xFFFFFFFF
+};
+
 void Read(void* buffer, uint64_t from, uint64_t count) {
     LONG high = from >> 32;
     SetFilePointer(drive, from & 0xFFFFFFFF, &high, FILE_BEGIN);
@@ -165,10 +234,65 @@ void Read(void* buffer, uint64_t from, uint64_t count) {
     assert(bytesAccessed == count);
 }
 
+static void PrintAttribute(AttributeHeader* attribute)
+{
+	fprintf(stdout, "  Type: %08X\n", attribute->attributeType);
+	fprintf(stdout, "  Length: %u\n", attribute->length);
+	fprintf(stdout, "  Non-resident: %u\n", attribute->nonResident);
+	fprintf(stdout, "  Name length: %u\n", attribute->nameLength);
+	fprintf(stdout, "  Name offset: %u\n", attribute->nameOffset);
+	fprintf(stdout, "  Flags: %u\n", attribute->flags);
+	fprintf(stdout, "  Attribute ID: %u\n", attribute->attributeID);
+}
+
+static void PrintResidentAttribute(ResidentAttributeHeader* attribute)
+{
+    fprintf(stdout, "  *Resident attribute\n");
+    PrintAttribute(attribute);
+	fprintf(stdout, "  Attribute length: %u\n", attribute->attributeLength);
+	fprintf(stdout, "  Attribute offset: %u\n", attribute->attributeOffset);
+	fprintf(stdout, "  Indexed: %u\n", attribute->indexed);
+    fprintf(stdout, "  Unused: %u\n", attribute->unused);
+}
+
+static void PrintNonResidentAttribute(NonResidentAttributeHeader* attribute)
+{
+    fprintf(stdout, "  *Non-resident attribute\n");
+    PrintAttribute(attribute);
+	fprintf(stdout, "  First cluster: %llu\n", attribute->firstCluster);
+	fprintf(stdout, "  Last cluster: %llu\n", attribute->lastCluster);
+	fprintf(stdout, "  Data runs offset: %u\n", attribute->dataRunsOffset);
+	fprintf(stdout, "  Compression unit: %u\n", attribute->compressionUnit);
+	fprintf(stdout, "  Unused: %u\n", attribute->unused);
+	fprintf(stdout, "  Attribute allocated: %llu\n", attribute->attributeAllocated);
+	fprintf(stdout, "  Attribute size: %llu\n", attribute->attributeSize);
+	fprintf(stdout, "  Stream data size: %llu\n", attribute->streamDataSize);
+}
+
 int main(int argc, char** argv) {
     drive = CreateFile(L"\\\\.\\C:", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+    if (drive == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "Failed to open drive. Error: %lu\n", GetLastError());
+        return 1;
+    }
 
     Read(&bootSector, 0, 512);
+    fprintf(stdout, "Boot Sector:\n");
+	fprintf(stdout, "  Bytes per sector: %u\n", bootSector.bytesPerSector);
+	fprintf(stdout, "  Sectors per cluster: %u\n", bootSector.sectorsPerCluster);
+	fprintf(stdout, "  Reserved sectors: %u\n", bootSector.reservedSectors);
+	fprintf(stdout, "  Media: %u\n", bootSector.media);
+	fprintf(stdout, "  Sectors per track: %u\n", bootSector.sectorsPerTrack);
+	fprintf(stdout, "  Heads per cylinder: %u\n", bootSector.headsPerCylinder);
+	fprintf(stdout, "  Hidden sectors: %u\n", bootSector.hiddenSectors);
+	fprintf(stdout, "  Total sectors: %llu\n", bootSector.totalSectors);
+	fprintf(stdout, "  MFT start: %llu\n", bootSector.mftStart);
+	fprintf(stdout, "  MFT mirror start: %llu\n", bootSector.mftMirrorStart);
+	fprintf(stdout, "  Clusters per file record: %u\n", bootSector.clustersPerFileRecord);
+	fprintf(stdout, "  Clusters per index block: %u\n", bootSector.clustersPerIndexBlock);
+	fprintf(stdout, "  Serial number: %llu\n", bootSector.serialNumber);
+	fprintf(stdout, "  Checksum: %u\n", bootSector.checksum);
+	fprintf(stdout, "  Boot signature: %u\n", bootSector.bootSignature);
 
     uint64_t bytesPerCluster = bootSector.bytesPerSector * bootSector.sectorsPerCluster;
 
@@ -183,14 +307,240 @@ int main(int argc, char** argv) {
     int notInUseCount = 0;
 
     while (true) {
-        if (attribute->attributeType == 0x80) {
-            dataAttribute = (NonResidentAttributeHeader*)attribute;
+        if (attribute->attributeType == StandardInformation) {
+            fprintf(stdout, "StandardInformation Attribute:\n");
+            if (attribute->nonResident) {
+                auto standardInformation = (StandardInformationAttributeNonResident*)attribute;
+                PrintNonResidentAttribute(standardInformation);
+                fprintf(stdout, "  Creation time: %llu\n", standardInformation->creationTime);
+                fprintf(stdout, "  Change time: %llu\n", standardInformation->modificationTime);
+                fprintf(stdout, "  Last write time: %llu\n", standardInformation->metadataModificationTime);
+                fprintf(stdout, "  Last access time: %llu\n", standardInformation->readTime);
+                fprintf(stdout, "  Permissions: %08X\n", standardInformation->permissions);
+                fprintf(stdout, "  Max versions: %u\n", standardInformation->maxVersions);
+                fprintf(stdout, "  Version number: %u\n", standardInformation->version);
+                fprintf(stdout, "  Class ID: %u\n", standardInformation->classId);
+                fprintf(stdout, "  Owner ID: %u\n", standardInformation->ownerId);
+                fprintf(stdout, "  Security ID: %u\n", standardInformation->securityId);
+                fprintf(stdout, "  Quota charged: %llu\n", standardInformation->quota);
+                fprintf(stdout, "  Update sequence number: %llu\n", standardInformation->updateSequence);
+            }
+            else {
+                auto standardInformation = (StandardInformationAttributeResident*)attribute;
+                PrintResidentAttribute(standardInformation);
+                fprintf(stdout, "  Creation time: %llu\n", standardInformation->creationTime);
+                fprintf(stdout, "  Change time: %llu\n", standardInformation->modificationTime);
+                fprintf(stdout, "  Last write time: %llu\n", standardInformation->metadataModificationTime);
+                fprintf(stdout, "  Last access time: %llu\n", standardInformation->readTime);
+                fprintf(stdout, "  Permissions: %08X\n", standardInformation->permissions);
+                fprintf(stdout, "  Max versions: %u\n", standardInformation->maxVersions);
+                fprintf(stdout, "  Version number: %u\n", standardInformation->version);
+                fprintf(stdout, "  Class ID: %u\n", standardInformation->classId);
+                fprintf(stdout, "  Owner ID: %u\n", standardInformation->ownerId);
+                fprintf(stdout, "  Security ID: %u\n", standardInformation->securityId);
+                fprintf(stdout, "  Quota charged: %llu\n", standardInformation->quota);
+                fprintf(stdout, "  Update sequence number: %llu\n", standardInformation->updateSequence);
+            }
         }
-        else if (attribute->attributeType == 0xB0) {
-            approximateRecordCount = ((NonResidentAttributeHeader*)attribute)->attributeSize * 8;
+        else if (attribute->attributeType == AttributeList) {
+            fprintf(stdout, "AttributeList Attribute:\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
         }
-        else if (attribute->attributeType == 0xFFFFFFFF) {
+        else if (attribute->attributeType == FileName) {
+            fprintf(stdout, "FileName Attribute:\n");
+            if (attribute->nonResident) {
+                auto fileNameAttribute = (FileNameAttributeHeaderNonResident*)attribute;
+                PrintNonResidentAttribute(fileNameAttribute);
+                fprintf(stdout, "  Parent directory: %llu\n", fileNameAttribute->parentRecordNumber);
+                fprintf(stdout, "  Sequence Number: %llu\n", fileNameAttribute->sequenceNumber);
+                fprintf(stdout, "  Creation time: %llu\n", fileNameAttribute->creationTime);
+                fprintf(stdout, "  Change time: %llu\n", fileNameAttribute->modificationTime);
+                fprintf(stdout, "  Last write time: %llu\n", fileNameAttribute->metadataModificationTime);
+                fprintf(stdout, "  Last access time: %llu\n", fileNameAttribute->readTime);
+                fprintf(stdout, "  Allocated size: %llu\n", fileNameAttribute->allocatedSize);
+                fprintf(stdout, "  Real size: %llu\n", fileNameAttribute->realSize);
+                fprintf(stdout, "  Flags: %08X\n", fileNameAttribute->flags);
+                fprintf(stdout, "  Reparse: %08X\n", fileNameAttribute->repase);
+                fprintf(stdout, "  File name length: %u\n", fileNameAttribute->fileNameLength);
+                fprintf(stdout, "  File name namespace: %u\n", fileNameAttribute->namespaceType);
+                fprintf(stdout, "  File name: %ls\n", fileNameAttribute->fileName);
+            }
+            else {
+                auto fileNameAttribute = (FileNameAttributeHeaderResident*)attribute;
+                PrintResidentAttribute(fileNameAttribute);
+                fprintf(stdout, "  Parent directory: %llu\n", fileNameAttribute->parentRecordNumber);
+                fprintf(stdout, "  Sequence Number: %llu\n", fileNameAttribute->sequenceNumber);
+                fprintf(stdout, "  Creation time: %llu\n", fileNameAttribute->creationTime);
+                fprintf(stdout, "  Change time: %llu\n", fileNameAttribute->modificationTime);
+                fprintf(stdout, "  Last write time: %llu\n", fileNameAttribute->metadataModificationTime);
+                fprintf(stdout, "  Last access time: %llu\n", fileNameAttribute->readTime);
+                fprintf(stdout, "  Allocated size: %llu\n", fileNameAttribute->allocatedSize);
+                fprintf(stdout, "  Real size: %llu\n", fileNameAttribute->realSize);
+                fprintf(stdout, "  Flags: %08X\n", fileNameAttribute->flags);
+                fprintf(stdout, "  Reparse: %08X\n", fileNameAttribute->repase);
+                fprintf(stdout, "  File name length: %u\n", fileNameAttribute->fileNameLength);
+                fprintf(stdout, "  File name namespace: %u\n", fileNameAttribute->namespaceType);
+                fprintf(stdout, "  File name: %ls\n", fileNameAttribute->fileName);
+            }
+        }
+        else if (attribute->attributeType == ObjectId) {
+            fprintf(stdout, "ObjectId Attribute:\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == SecurityDescriptor) {
+            fprintf(stdout, "SecurityDescriptor Attribute:\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == VolumeName) {
+            fprintf(stdout, "VolumeName Attribute:\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == VolumeInformation) {
+            fprintf(stdout, "VolumeInformation Attribute:\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == Data) {
+            fprintf(stdout, "Data Attribute:\n");
+            if (attribute->nonResident) {
+                dataAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(dataAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == IndexRoot) {
+            fprintf(stdout, "IndexRoot Attribute:\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == IndexAllocation) {
+            fprintf(stdout, "IndexAllocation Attribute:\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == Bitmap) {
+            fprintf(stdout, "Bitmap Attribute:\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+
+                approximateRecordCount = nonResidentAttribute->attributeSize * 8;
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == ReparsePoint) {
+            fprintf(stdout, "ReparsePoint\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == EAInformation) {
+            fprintf(stdout, "EAInformation\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == EA) {
+            fprintf(stdout, "EA Attribute:\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == PropertySet) {
+            fprintf(stdout, "PropertySet Attribute:\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == LoggedUtilityStream) {
+            fprintf(stdout, "LoggedUtilityStream Attribute:\n");
+            if (attribute->nonResident) {
+                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                PrintNonResidentAttribute(nonResidentAttribute);
+            }
+            else {
+                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                PrintResidentAttribute(residentAttribute);
+            }
+        }
+        else if (attribute->attributeType == EndMarker) {
+            fprintf(stdout, "EndMarker\n");
             break;
+        }
+        else {
+            fprintf(stdout, "Unknown attribute type %08X\n", attribute->attributeType);
         }
 
         attribute = (AttributeHeader*)((uint8_t*)attribute + attribute->length);
@@ -249,7 +599,7 @@ int main(int argc, char** argv) {
 
                 while ((uint8_t*)attribute - (uint8_t*)fileRecord < MFT_FILE_SIZE) {
                     if (attribute->attributeType == 0x30) {
-                        FileNameAttributeHeader* fileNameAttribute = (FileNameAttributeHeader*)attribute;
+                        FileNameAttributeHeaderResident* fileNameAttribute = (FileNameAttributeHeaderResident*)attribute;
 
                         if (fileNameAttribute->namespaceType != 2 && !fileNameAttribute->nonResident) {
                             File file = {};
