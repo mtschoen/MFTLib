@@ -129,6 +129,14 @@ struct StandardInformationAttributeResident : ResidentAttributeHeader {
     uint64_t    updateSequence;
 };
 
+static uint64_t ExtractParentRecordNumber(uint64_t value) {
+    return value & 0xFFFFFFFFFFFF; // Mask to get the lower 48 bits
+}
+
+static uint16_t ExtractSequenceNumber(uint64_t value) {
+    return (value >> 48) & 0xFFFF; // Shift right by 48 bits and mask to get the upper 16 bits
+}
+
 struct FileNameAttributeHeaderNonResident : NonResidentAttributeHeader {
     uint64_t    parentRecordNumber : 48;
     uint64_t    sequenceNumber : 16;
@@ -282,7 +290,7 @@ static void PrintNonResidentAttribute(NonResidentAttributeHeader* attribute)
 }
 
 int main(int argc, char** argv) {
-    drive = CreateFile(L"\\\\.\\C:", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+    drive = CreateFile(L"\\\\.\\G:", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
     if (drive == INVALID_HANDLE_VALUE) {
         fprintf(stderr, "Failed to open drive. Error: %lu\n", GetLastError());
         return 1;
@@ -315,6 +323,20 @@ int main(int argc, char** argv) {
     NonResidentAttributeHeader* dataAttribute = nullptr;
     uint64_t approximateRecordCount = 0;
     assert(fileRecord->magic == 0x454C4946);
+
+    fprintf(stdout, "  Update sequence offset: %u\n", fileRecord->updateSequenceOffset);
+    fprintf(stdout, "  Update sequence size: %u\n", fileRecord->updateSequenceSize);
+    fprintf(stdout, "  Log file sequence number: %llu\n", fileRecord->logSequence);
+    fprintf(stdout, "  Sequence number: %u\n", fileRecord->sequenceNumber);
+    fprintf(stdout, "  Hard link count: %u\n", fileRecord->hardLinkCount);
+    fprintf(stdout, "  First attribute offset: %u\n", fileRecord->firstAttributeOffset);
+    fprintf(stdout, "  Flags: %u\n", fileRecord->inUse);
+    fprintf(stdout, "  Used size: %u\n", fileRecord->usedSize);
+    fprintf(stdout, "  Allocated size: %u\n", fileRecord->allocatedSize);
+    fprintf(stdout, "  File reference to base record: %llu\n", fileRecord->fileReference);
+    fprintf(stdout, "  Next attribute ID: %u\n", fileRecord->nextAttributeID);
+    fprintf(stdout, "  Unused: %u\n", fileRecord->unused);
+    fprintf(stdout, "  Record number: %u\n", fileRecord->recordNumber);
 
     int notInUseCount = 0;
 
@@ -359,21 +381,139 @@ int main(int argc, char** argv) {
             if (attribute->nonResident) {
                 const auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
                 PrintNonResidentAttribute(nonResidentAttribute);
-                auto attributeListEnumerator = (uint8_t*)(nonResidentAttribute + 1);
-                auto attributeListEnd = (uint8_t*)attribute + nonResidentAttribute->length;
-                while (attributeListEnumerator < attributeListEnd) {
-                    auto attributeListAttribute = (AttributeListAttribute*)attributeListEnumerator;
-                    fprintf(stdout, "  List type: %08X\n", attributeListAttribute->type);
-                    fprintf(stdout, "  List length: %u\n", attributeListAttribute->length);
-                    fprintf(stdout, "  List name length: %u\n", attributeListAttribute->nameLength);
-                    fprintf(stdout, "  List name offset: %u\n", attributeListAttribute->nameOffset);
-                    fprintf(stdout, "  List starting VCN: %llu\n", attributeListAttribute->startingVCN);
-                    fprintf(stdout, "  List base file reference: %llu\n", attributeListAttribute->baseFileReference);
-                    fprintf(stdout, "  List attribute ID: %u\n", attributeListAttribute->attributeID);
-                    fprintf(stdout, "  List name: %.*s\n", attributeListAttribute->nameLength, (char*)attributeListAttribute->name);
 
-                    assert(attributeListAttribute->length > 0);
-                    attributeListEnumerator += attributeListAttribute->length;
+                RunHeader* dataRun = (RunHeader*)((uint8_t*)nonResidentAttribute + nonResidentAttribute->dataRunsOffset);
+                uint64_t clusterNumber = 0;
+                uint64_t externalFileReference = 0;
+
+                while (((uint8_t*)dataRun - (uint8_t*)attribute) < attribute->length && dataRun->lengthFieldBytes) {
+                    uint64_t length = 0, offset = 0;
+
+                    for (int i = 0; i < dataRun->lengthFieldBytes; i++) {
+                        length |= (uint64_t)(((uint8_t*)dataRun)[1 + i]) << (i * 8);
+                    }
+
+                    for (int i = 0; i < dataRun->offsetFieldBytes; i++) {
+                        offset |= (uint64_t)(((uint8_t*)dataRun)[1 + dataRun->lengthFieldBytes + i]) << (i * 8);
+                    }
+
+                    if (offset & ((uint64_t)1 << (dataRun->offsetFieldBytes * 8 - 1))) {
+                        for (int i = dataRun->offsetFieldBytes; i < 8; i++) {
+                            offset |= (uint64_t)0xFF << (i * 8);
+                        }
+                    }
+
+                    clusterNumber += offset;
+                    dataRun = (RunHeader*)((uint8_t*)dataRun + 1 + dataRun->lengthFieldBytes + dataRun->offsetFieldBytes);
+
+                    uint64_t attributeOffset = 0;
+                    auto clusters = length / bytesPerCluster;
+                    if (length % bytesPerCluster) {
+                        clusters++;
+                    }
+
+                    uint8_t* attributeListBuffer = (uint8_t*)malloc(clusters * bytesPerCluster);
+
+                    Read(attributeListBuffer, clusterNumber * bytesPerCluster, clusters * bytesPerCluster);
+
+                    // TODO: read >1 attribute at a time
+                    while (attributeOffset < length) {
+                        auto attributeListAttribute = (AttributeListAttribute*)(attributeListBuffer + attributeOffset);
+                        attributeOffset += attributeListAttribute->length;
+
+                        fprintf(stdout, "  type: %08X\n", attributeListAttribute->type);
+                        fprintf(stdout, "  length: %u\n", attributeListAttribute->length);
+                        fprintf(stdout, "  name length: %u\n", attributeListAttribute->nameLength);
+                        fprintf(stdout, "  name offset: %u\n", attributeListAttribute->nameOffset);
+                        fprintf(stdout, "  starting VCN: %llu\n", attributeListAttribute->startingVCN);
+                        fprintf(stdout, "  base file reference: %llu\n", attributeListAttribute->baseFileReference);
+                        fprintf(stdout, "  attribute ID: %u\n", attributeListAttribute->attributeID);
+                        assert(attributeListAttribute->length > 0);
+
+                        // Just use the last one--it all seems to be the same
+						externalFileReference = attributeListAttribute->baseFileReference;
+                    }
+
+                    free(attributeListBuffer);
+                }
+
+				assert(externalFileReference != 0);
+				auto inputBuffer = NTFS_FILE_RECORD_INPUT_BUFFER();
+                inputBuffer.FileReferenceNumber.QuadPart = (LONGLONG)externalFileReference;
+				auto outputBuffer = NTFS_FILE_RECORD_OUTPUT_BUFFER();
+                const DWORD outputBufferSize = 1036; // sizeof(NTFS_FILE_RECORD_OUTPUT_BUFFER) + MFT_FILE_SIZE;
+                DWORD bytesReturned = 0;
+                if (!DeviceIoControl(drive, FSCTL_GET_NTFS_FILE_RECORD, &inputBuffer, sizeof(NTFS_FILE_RECORD_INPUT_BUFFER), &outputBuffer, outputBufferSize, &bytesReturned, nullptr))
+                {
+                    printf("Failed to get NTFS volume data. Error: %lu\n", GetLastError());
+                    assert(false);
+                }
+
+                if (bytesReturned != outputBufferSize)
+                {
+                    printf("Failed to get NTFS volume data. Buffer sizes don't match. Error: %lu\n", GetLastError());
+                    assert(false);
+                }
+
+				auto externalFileRecord = (FileRecordHeader*)outputBuffer.FileRecordBuffer;
+				fprintf(stdout, "External file record:\n");
+				fprintf(stdout, "  Update sequence offset: %u\n", externalFileRecord->updateSequenceOffset);
+				fprintf(stdout, "  Update sequence size: %u\n", externalFileRecord->updateSequenceSize);
+				fprintf(stdout, "  Log file sequence number: %llu\n", externalFileRecord->logSequence);
+				fprintf(stdout, "  Sequence number: %u\n", externalFileRecord->sequenceNumber);
+				fprintf(stdout, "  Hard link count: %u\n", externalFileRecord->hardLinkCount);
+				fprintf(stdout, "  First attribute offset: %u\n", externalFileRecord->firstAttributeOffset);
+				fprintf(stdout, "  Flags: %u\n", externalFileRecord->inUse);
+				fprintf(stdout, "  Used size: %u\n", externalFileRecord->usedSize);
+				fprintf(stdout, "  Allocated size: %u\n", externalFileRecord->allocatedSize);
+				fprintf(stdout, "  File reference to base record: %llu\n", externalFileRecord->fileReference);
+				fprintf(stdout, "  Next attribute ID: %u\n", externalFileRecord->nextAttributeID);
+                fprintf(stdout, "  Unused: %u\n", externalFileRecord->unused);
+				fprintf(stdout, "  Record number: %u\n", externalFileRecord->recordNumber);
+
+				auto externalAttribute = (AttributeHeader*)((uint8_t*)externalFileRecord + externalFileRecord->firstAttributeOffset);
+                while (externalAttribute->attributeType != EndMarker) {
+                    if (externalAttribute->attributeType == FileName) {
+                        if (externalAttribute->nonResident) {
+                            const auto fileNameAttribute = (FileNameAttributeHeaderNonResident*)externalAttribute;
+                            PrintNonResidentAttribute(fileNameAttribute);
+                            fprintf(stdout, "  Parent directory: %llu\n", ExtractParentRecordNumber(fileNameAttribute->parentRecordNumber));
+                            fprintf(stdout, "  Sequence Number: %llu\n", ExtractSequenceNumber(fileNameAttribute->sequenceNumber));
+                            fprintf(stdout, "  Creation time: %llu\n", fileNameAttribute->creationTime);
+                            fprintf(stdout, "  Change time: %llu\n", fileNameAttribute->modificationTime);
+                            fprintf(stdout, "  Last write time: %llu\n", fileNameAttribute->metadataModificationTime);
+                            fprintf(stdout, "  Last access time: %llu\n", fileNameAttribute->readTime);
+                            fprintf(stdout, "  Allocated size: %llu\n", fileNameAttribute->allocatedSize);
+                            fprintf(stdout, "  Real size: %llu\n", fileNameAttribute->realSize);
+                            fprintf(stdout, "  Flags: %08X\n", fileNameAttribute->filename_flags);
+                            fprintf(stdout, "  Reparse: %08X\n", fileNameAttribute->repase);
+                            fprintf(stdout, "  File name length: %u\n", fileNameAttribute->fileNameLength);
+                            fprintf(stdout, "  File name namespace: %u\n", fileNameAttribute->namespaceType);
+                            fprintf(stdout, "  File name: %ls\n", fileNameAttribute->fileName);
+                        }
+                        else {
+                            auto fileNameAttribute = (FileNameAttributeHeaderResident*)externalAttribute;
+                            PrintResidentAttribute(fileNameAttribute);
+                            fprintf(stdout, "  Parent directory: %llu\n", ExtractParentRecordNumber(fileNameAttribute->parentRecordNumber));
+                            fprintf(stdout, "  Sequence Number: %llu\n", ExtractSequenceNumber(fileNameAttribute->sequenceNumber));
+                            fprintf(stdout, "  Creation time: %llu\n", fileNameAttribute->creationTime);
+                            fprintf(stdout, "  Change time: %llu\n", fileNameAttribute->modificationTime);
+                            fprintf(stdout, "  Last write time: %llu\n", fileNameAttribute->metadataModificationTime);
+                            fprintf(stdout, "  Last access time: %llu\n", fileNameAttribute->readTime);
+                            fprintf(stdout, "  Allocated size: %llu\n", fileNameAttribute->allocatedSize);
+                            fprintf(stdout, "  Real size: %llu\n", fileNameAttribute->realSize);
+                            fprintf(stdout, "  Flags: %08X\n", fileNameAttribute->filename_flags);
+                            fprintf(stdout, "  Reparse: %08X\n", fileNameAttribute->repase);
+                            fprintf(stdout, "  File name length: %u\n", fileNameAttribute->fileNameLength);
+                            fprintf(stdout, "  File name namespace: %u\n", fileNameAttribute->namespaceType);
+                            fprintf(stdout, "  File name: %ls\n", fileNameAttribute->fileName);
+                        }
+                    } else
+                    {
+                        fprintf(stdout, "Attribute: %08X\n", attribute->attributeType);
+                    }
+
+					externalAttribute = (AttributeHeader*)((uint8_t*)externalAttribute + externalAttribute->length);
                 }
             }
             else {
@@ -386,8 +526,8 @@ int main(int argc, char** argv) {
             if (attribute->nonResident) {
                 const auto fileNameAttribute = (FileNameAttributeHeaderNonResident*)attribute;
                 PrintNonResidentAttribute(fileNameAttribute);
-                fprintf(stdout, "  Parent directory: %llu\n", fileNameAttribute->parentRecordNumber);
-                fprintf(stdout, "  Sequence Number: %llu\n", fileNameAttribute->sequenceNumber);
+                fprintf(stdout, "  Parent directory: %llu\n", ExtractParentRecordNumber(fileNameAttribute->parentRecordNumber));
+                fprintf(stdout, "  Sequence Number: %llu\n", ExtractSequenceNumber(fileNameAttribute->sequenceNumber));
                 fprintf(stdout, "  Creation time: %llu\n", fileNameAttribute->creationTime);
                 fprintf(stdout, "  Change time: %llu\n", fileNameAttribute->modificationTime);
                 fprintf(stdout, "  Last write time: %llu\n", fileNameAttribute->metadataModificationTime);
@@ -403,8 +543,8 @@ int main(int argc, char** argv) {
             else {
                 auto fileNameAttribute = (FileNameAttributeHeaderResident*)attribute;
                 PrintResidentAttribute(fileNameAttribute);
-                fprintf(stdout, "  Parent directory: %llu\n", fileNameAttribute->parentRecordNumber);
-                fprintf(stdout, "  Sequence Number: %llu\n", fileNameAttribute->sequenceNumber);
+                fprintf(stdout, "  Parent directory: %llu\n", ExtractParentRecordNumber(fileNameAttribute->parentRecordNumber));
+                fprintf(stdout, "  Sequence Number: %llu\n", ExtractSequenceNumber(fileNameAttribute->sequenceNumber));
                 fprintf(stdout, "  Creation time: %llu\n", fileNameAttribute->creationTime);
                 fprintf(stdout, "  Change time: %llu\n", fileNameAttribute->modificationTime);
                 fprintf(stdout, "  Last write time: %llu\n", fileNameAttribute->metadataModificationTime);
@@ -624,6 +764,20 @@ int main(int argc, char** argv) {
 
                 AttributeHeader* attribute = (AttributeHeader*)((uint8_t*)fileRecord + fileRecord->firstAttributeOffset);
                 assert(fileRecord->magic == 0x454C4946);
+
+                fprintf(stdout, "  Update sequence offset: %u\n", fileRecord->updateSequenceOffset);
+                fprintf(stdout, "  Update sequence size: %u\n", fileRecord->updateSequenceSize);
+                fprintf(stdout, "  Log file sequence number: %llu\n", fileRecord->logSequence);
+                fprintf(stdout, "  Sequence number: %u\n", fileRecord->sequenceNumber);
+                fprintf(stdout, "  Hard link count: %u\n", fileRecord->hardLinkCount);
+                fprintf(stdout, "  First attribute offset: %u\n", fileRecord->firstAttributeOffset);
+                fprintf(stdout, "  Flags: %u\n", fileRecord->inUse);
+                fprintf(stdout, "  Used size: %u\n", fileRecord->usedSize);
+                fprintf(stdout, "  Allocated size: %u\n", fileRecord->allocatedSize);
+                fprintf(stdout, "  File reference to base record: %llu\n", fileRecord->fileReference);
+                fprintf(stdout, "  Next attribute ID: %u\n", fileRecord->nextAttributeID);
+                fprintf(stdout, "  Unused: %u\n", fileRecord->unused);
+                fprintf(stdout, "  Record number: %u\n", fileRecord->recordNumber);
 
                 while ((uint8_t*)attribute - (uint8_t*)fileRecord < MFT_FILE_SIZE) {
                     if (attribute->attributeType == 0x30) {
