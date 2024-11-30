@@ -22,8 +22,9 @@
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{6a21e35f-5a90-4b80-83fe-b33e8b1114b1}</ProjectGuid>
-    <RootNamespace>MFTLibC</RootNamespace>
+    <RootNamespace>MFTLibNative</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>MFTLibNative</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -119,10 +120,10 @@
       <EnableUAC>false</EnableUAC>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y "$(TargetDir)MFTLibC.dll" "$(SolutionDir)MFTLib\bin\$(Platform)\$(Configuration)\net8.0\MFTLibC.dll"
-xcopy /Y "$(TargetDir)MFTLibC.pdb" "$(SolutionDir)MFTLib\bin\$(Platform)\$(Configuration)\net8.0\MFTLibC.pdb"
-xcopy /Y "$(TargetDir)MFTLibC.dll" "$(SolutionDir)TestProgram\bin\$(Platform)\$(Configuration)\net8.0\MFTLibC.dll"
-xcopy /Y "$(TargetDir)MFTLibC.pdb" "$(SolutionDir)TestProgram\bin\$(Platform)\$(Configuration)\net8.0\MFTLibC.pdb"</Command>
+      <Command>xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)MFTLib\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.dll"
+xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)MFTLib\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb"
+xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)TestProgram\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.dll"
+xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)TestProgram\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -146,8 +147,7 @@ xcopy /Y "$(TargetDir)MFTLibC.pdb" "$(SolutionDir)TestProgram\bin\$(Platform)\$(
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
-    <ClInclude Include="MFTFileRecord.h" />
-    <ClInclude Include="NativeStructs.h" />
+    <ClInclude Include="ntfs.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>

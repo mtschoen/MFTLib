@@ -21,10 +21,7 @@
     <ClInclude Include="pch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="MFTFileRecord.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="NativeStructs.h">
+    <ClInclude Include="ntfs.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
