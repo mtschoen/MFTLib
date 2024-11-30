@@ -70,6 +70,7 @@ struct FileRecordHeader {
     uint32_t    recordNumber;
 };
 
+// TODO: https://learn.microsoft.com/en-us/windows/win32/devnotes/attribute-record-header
 struct AttributeHeader {
     uint32_t    attributeType;
     uint32_t    length;
@@ -137,7 +138,7 @@ struct FileNameAttributeHeaderNonResident : NonResidentAttributeHeader {
     uint64_t    readTime;
     uint64_t    allocatedSize;
     uint64_t    realSize;
-    uint32_t    flags;
+    uint32_t    filename_flags;
     uint32_t    repase;
     uint8_t     fileNameLength;
     uint8_t     namespaceType;
@@ -153,14 +154,25 @@ struct FileNameAttributeHeaderResident : ResidentAttributeHeader {
     uint64_t    readTime;
     uint64_t    allocatedSize;
     uint64_t    realSize;
-    uint32_t    flags;
+    uint32_t    filename_flags;
     uint32_t    repase;
     uint8_t     fileNameLength;
     uint8_t     namespaceType;
     wchar_t     fileName[1];
 };
 
-
+// TODO: replace with https://learn.microsoft.com/en-us/windows/win32/devnotes/attribute-list-entry
+struct AttributeListAttribute
+{
+	uint32_t    type;
+	uint16_t    length;
+	uint8_t     nameLength;
+	uint8_t     nameOffset;
+	uint64_t    startingVCN;
+	uint64_t    baseFileReference;
+	uint16_t    attributeID;
+	uint8_t     name[1];
+};
 
 struct RunHeader {
     uint8_t     lengthFieldBytes : 4;
@@ -345,18 +357,34 @@ int main(int argc, char** argv) {
         else if (attribute->attributeType == AttributeList) {
             fprintf(stdout, "AttributeList Attribute:\n");
             if (attribute->nonResident) {
-                auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
+                const auto nonResidentAttribute = (NonResidentAttributeHeader*)attribute;
                 PrintNonResidentAttribute(nonResidentAttribute);
+                auto attributeListEnumerator = (uint8_t*)(nonResidentAttribute + 1);
+                auto attributeListEnd = (uint8_t*)attribute + nonResidentAttribute->length;
+                while (attributeListEnumerator < attributeListEnd) {
+                    auto attributeListAttribute = (AttributeListAttribute*)attributeListEnumerator;
+                    fprintf(stdout, "  List type: %08X\n", attributeListAttribute->type);
+                    fprintf(stdout, "  List length: %u\n", attributeListAttribute->length);
+                    fprintf(stdout, "  List name length: %u\n", attributeListAttribute->nameLength);
+                    fprintf(stdout, "  List name offset: %u\n", attributeListAttribute->nameOffset);
+                    fprintf(stdout, "  List starting VCN: %llu\n", attributeListAttribute->startingVCN);
+                    fprintf(stdout, "  List base file reference: %llu\n", attributeListAttribute->baseFileReference);
+                    fprintf(stdout, "  List attribute ID: %u\n", attributeListAttribute->attributeID);
+                    fprintf(stdout, "  List name: %.*s\n", attributeListAttribute->nameLength, (char*)attributeListAttribute->name);
+
+                    assert(attributeListAttribute->length > 0);
+                    attributeListEnumerator += attributeListAttribute->length;
+                }
             }
             else {
-                auto residentAttribute = (ResidentAttributeHeader*)attribute;
+                const auto residentAttribute = (ResidentAttributeHeader*)attribute;
                 PrintResidentAttribute(residentAttribute);
             }
         }
         else if (attribute->attributeType == FileName) {
             fprintf(stdout, "FileName Attribute:\n");
             if (attribute->nonResident) {
-                auto fileNameAttribute = (FileNameAttributeHeaderNonResident*)attribute;
+                const auto fileNameAttribute = (FileNameAttributeHeaderNonResident*)attribute;
                 PrintNonResidentAttribute(fileNameAttribute);
                 fprintf(stdout, "  Parent directory: %llu\n", fileNameAttribute->parentRecordNumber);
                 fprintf(stdout, "  Sequence Number: %llu\n", fileNameAttribute->sequenceNumber);
@@ -366,7 +394,7 @@ int main(int argc, char** argv) {
                 fprintf(stdout, "  Last access time: %llu\n", fileNameAttribute->readTime);
                 fprintf(stdout, "  Allocated size: %llu\n", fileNameAttribute->allocatedSize);
                 fprintf(stdout, "  Real size: %llu\n", fileNameAttribute->realSize);
-                fprintf(stdout, "  Flags: %08X\n", fileNameAttribute->flags);
+                fprintf(stdout, "  Flags: %08X\n", fileNameAttribute->filename_flags);
                 fprintf(stdout, "  Reparse: %08X\n", fileNameAttribute->repase);
                 fprintf(stdout, "  File name length: %u\n", fileNameAttribute->fileNameLength);
                 fprintf(stdout, "  File name namespace: %u\n", fileNameAttribute->namespaceType);
@@ -383,7 +411,7 @@ int main(int argc, char** argv) {
                 fprintf(stdout, "  Last access time: %llu\n", fileNameAttribute->readTime);
                 fprintf(stdout, "  Allocated size: %llu\n", fileNameAttribute->allocatedSize);
                 fprintf(stdout, "  Real size: %llu\n", fileNameAttribute->realSize);
-                fprintf(stdout, "  Flags: %08X\n", fileNameAttribute->flags);
+                fprintf(stdout, "  Flags: %08X\n", fileNameAttribute->filename_flags);
                 fprintf(stdout, "  Reparse: %08X\n", fileNameAttribute->repase);
                 fprintf(stdout, "  File name length: %u\n", fileNameAttribute->fileNameLength);
                 fprintf(stdout, "  File name namespace: %u\n", fileNameAttribute->namespaceType);
