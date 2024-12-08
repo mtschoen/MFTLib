@@ -15,7 +15,8 @@ public class MFTParse
         stopwatch.Start();
 #endif
 
-        MFTLibNative.ParseMFT(volumeHandle);
+        if (!MFTLibNative.ParseMFT(volumeHandle))
+            throw new InvalidOperationException("Failed to parse MFT.");
 
 #if DEBUG
         Console.WriteLine($"Parsed in {stopwatch.Elapsed}");

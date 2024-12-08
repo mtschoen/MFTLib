@@ -1,17 +1,58 @@
 #include "pch.h"
+
+#include "framework.h"
 #include "ntfs.h"
 
 #define EXPORT __declspec(dllexport)
 
+NTFS_BPB bootSector;
+
+uint8_t mftFile[FILE_RECORD_SIZE];
+
+#define MFT_FILES_PER_BUFFER (65536)
+uint8_t mftBuffer[MFT_FILES_PER_BUFFER * FILE_RECORD_SIZE];
+
+static BOOL Read(HANDLE handle, void* buffer, uint64_t from, DWORD count, PDWORD bytesRead) {
+    LONG high = from >> 32;
+    SetFilePointer(handle, from & 0xFFFFFFFF, &high, FILE_BEGIN);
+    return ReadFile(handle, buffer, count, bytesRead, nullptr);
+}
+
 extern "C" {
-    EXPORT void ParseMFT(HANDLE volumeHandle) {
+    EXPORT bool ParseMFT(HANDLE volumeHandle) {
         if (volumeHandle == INVALID_HANDLE_VALUE)
         {
             printf("Error in ParseMFT: Volume handle is invalid.");
-            return;
+            return false;
         }
 
-        CloseHandle(volumeHandle);
+        // Assume cluster size is 512 bytes; ReadFile on volume handles must be integer multiples of sector size
+        // https://learn.microsoft.com/en-us/windows/win32/fileio/file-buffering
+        constexpr DWORD bootSectorSize = 512;
+        DWORD bytesRead;
+        if (!Read(volumeHandle, &bootSector, 0, bootSectorSize, &bytesRead) || bytesRead != bootSectorSize)
+        {
+            printf("Error in ParseMFT:Failed to read boot sector. Error: %lu\n", GetLastError());
+            return false;
+        }
+
+        if (bootSector.name[0] != 'N' || bootSector.name[1] != 'T' || bootSector.name[2] != 'F' || bootSector.name[3] != 'S')
+        {
+            printf("Error in ParseMFT: Volume is not NTFS.");
+            return false;
+        }
+
+        auto bytesPerCluster = bootSector.bytesPerSector * bootSector.sectorsPerCluster;
+
+        // TODO: Fall back to MFT mirror if MFT is corrupted
+        bytesRead = 0;
+        if (!Read(volumeHandle, &mftFile, bootSector.mftStart * bytesPerCluster, FILE_RECORD_SIZE, &bytesRead) || bytesRead != FILE_RECORD_SIZE)
+        {
+            printf("Error in ParseMFT:Failed to read MFT file. Error: %lu\n", GetLastError());
+            return false;
+        }
+
+        return true;
     }
 
     EXPORT void PrintVolumeInfo(HANDLE volumeHandle) {
@@ -67,7 +108,5 @@ extern "C" {
         {
             printf("Failed to get volume info. Error: %lu\n", GetLastError());
         }
-
-        CloseHandle(volumeHandle);
     }
 }

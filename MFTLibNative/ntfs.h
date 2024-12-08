@@ -5,6 +5,8 @@ typedef LARGE_INTEGER VCN, *PVCN;
 typedef USHORT UPDATE_SEQUENCE_NUMBER, *PUPDATE_SEQUENCE_NUMBER;
 typedef UPDATE_SEQUENCE_NUMBER UPDATE_SEQUENCE_ARRAY[1];
 
+#define FILE_RECORD_SIZE (1024)
+
 enum ATTRIBUTE_TYPE_CODE : uint32_t
 {
     StandardInformation = 0x10,
@@ -109,5 +111,32 @@ struct NTFS_COMBINED_VOLUME_DATA
 {
     NTFS_VOLUME_DATA_BUFFER StandardData;
     NTFS_EXTENDED_VOLUME_DATA ExtendedData;
+};
+
+// BIOS parameter block -- first cluster of the hard drive which contains filesystem info
+struct NTFS_BPB {
+    uint8_t     jump[3];
+    char        name[8];
+    uint16_t    bytesPerSector;
+    uint8_t     sectorsPerCluster;
+    uint16_t    reservedSectors;
+    uint8_t     unused0[3];
+    uint16_t    unused1;
+    uint8_t     media;
+    uint16_t    unused2;
+    uint16_t    sectorsPerTrack;
+    uint16_t    headsPerCylinder;
+    uint32_t    hiddenSectors;
+    uint32_t    unused3;
+    uint32_t    unused4;
+    uint64_t    totalSectors;
+    uint64_t    mftStart;
+    uint64_t    mftMirrorStart;
+    uint32_t    clustersPerFileRecord;
+    uint32_t    clustersPerIndexBlock;
+    uint64_t    serialNumber;
+    uint32_t    checksum;
+    uint8_t     bootloader[426];
+    uint16_t    bootSignature;
 };
 #pragma pack(pop)
