@@ -1,5 +1,7 @@
 #include "pch.h"
 
+#include <cassert>
+
 #include "framework.h"
 #include "ntfs.h"
 
@@ -16,6 +18,32 @@ static BOOL Read(HANDLE handle, void* buffer, uint64_t from, DWORD count, PDWORD
     LONG high = from >> 32;
     SetFilePointer(handle, from & 0xFFFFFFFF, &high, FILE_BEGIN);
     return ReadFile(handle, buffer, count, bytesRead, nullptr);
+}
+
+static BOOL ParseAttributes()
+{
+    
+}
+
+static BOOL ParseMFTFile(ATTRIBUTE_RECORD_HEADER** firstAttribute)
+{
+    auto fileRecord = (PFILE_RECORD_SEGMENT_HEADER)mftFile;
+    *firstAttribute = (PATTRIBUTE_RECORD_HEADER)(mftFile + fileRecord->FirstAttributeOffset);
+    assert((int)fileRecord->MultiSectorHeader.Signature == 0x454C4946);
+
+    fprintf(stdout, "  Update sequence offset: %u\n", fileRecord->MultiSectorHeader.UpdateSequenceArrayOffset);
+    fprintf(stdout, "  Update sequence size: %u\n", fileRecord->MultiSectorHeader.UpdateSequenceArraySize);
+    fprintf(stdout, "  Log file sequence number: %llu\n", fileRecord->Reserved1);
+    fprintf(stdout, "  Sequence number: %u\n", fileRecord->SequenceNumber);
+    fprintf(stdout, "  Hard link count: %u\n", fileRecord->Reserved2);
+    fprintf(stdout, "  First attribute offset: %u\n", fileRecord->FirstAttributeOffset);
+    fprintf(stdout, "  Flags: %u\n", fileRecord->Flags);
+    fprintf(stdout, "  Used size: %u\n", fileRecord->usedSize);
+    fprintf(stdout, "  Allocated size: %u\n", fileRecord->allocatedSize);
+    fprintf(stdout, "  File reference to base record: %llu\n", fileRecord->fileReference);
+    fprintf(stdout, "  Next attribute ID: %u\n", fileRecord->nextAttributeID);
+    fprintf(stdout, "  Unused: %u\n", fileRecord->unused);
+    fprintf(stdout, "  Record number: %u\n", fileRecord->recordNumber);
 }
 
 extern "C" {
@@ -51,6 +79,8 @@ extern "C" {
             printf("Error in ParseMFT:Failed to read MFT file. Error: %lu\n", GetLastError());
             return false;
         }
+
+        ParseMFTFile();
 
         return true;
     }
