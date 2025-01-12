@@ -28,6 +28,7 @@ enum ATTRIBUTE_TYPE_CODE : uint32_t
     EndMarker = 0xFFFFFFFF
 };
 
+// from https://learn.microsoft.com/en-us/windows/win32/devnotes/mft-segment-reference
 typedef struct _MFT_SEGMENT_REFERENCE {
     ULONG  SegmentNumberLowPart;
     USHORT SegmentNumberHighPart;
@@ -36,6 +37,7 @@ typedef struct _MFT_SEGMENT_REFERENCE {
 
 typedef _MFT_SEGMENT_REFERENCE FILE_REFERENCE, *PFILE_REFERENCE;
 
+// from https://learn.microsoft.com/en-us/windows/win32/devnotes/attribute-record-header
 typedef struct _ATTRIBUTE_RECORD_HEADER {
     ATTRIBUTE_TYPE_CODE TypeCode;
     ULONG               RecordLength;
@@ -63,6 +65,7 @@ typedef struct _ATTRIBUTE_RECORD_HEADER {
     } Form;
 } ATTRIBUTE_RECORD_HEADER, * PATTRIBUTE_RECORD_HEADER;
 
+// from https://learn.microsoft.com/en-us/windows/win32/devnotes/attribute-list-entry
 typedef struct _ATTRIBUTE_LIST_ENTRY {
     ATTRIBUTE_TYPE_CODE   AttributeTypeCode;
     USHORT                RecordLength;
@@ -74,6 +77,7 @@ typedef struct _ATTRIBUTE_LIST_ENTRY {
     WCHAR                 AttributeName[1];
 } ATTRIBUTE_LIST_ENTRY, * PATTRIBUTE_LIST_ENTRY;
 
+// from https://learn.microsoft.com/en-us/windows/win32/devnotes/file-name
 typedef struct _FILE_NAME {
     FILE_REFERENCE ParentDirectory;
     UCHAR          Reserved[0x38];
@@ -82,12 +86,18 @@ typedef struct _FILE_NAME {
     WCHAR          FileName[1];
 } FILE_NAME, * PFILE_NAME;
 
+// from https://learn.microsoft.com/en-us/windows/win32/devnotes/multi-sector-header
 typedef struct _MULTI_SECTOR_HEADER {
-    UCHAR  Signature[4];
+    union
+    {
+        UCHAR  Signature[4];
+        UINT Magic;
+    };
     USHORT UpdateSequenceArrayOffset;
     USHORT UpdateSequenceArraySize;
 } MULTI_SECTOR_HEADER, * PMULTI_SECTOR_HEADER;
 
+// from https://learn.microsoft.com/en-us/windows/win32/devnotes/file-record-segment-header
 typedef struct _FILE_RECORD_SEGMENT_HEADER {
     MULTI_SECTOR_HEADER   MultiSectorHeader;
     ULONGLONG             Reserved1;
@@ -101,11 +111,27 @@ typedef struct _FILE_RECORD_SEGMENT_HEADER {
     UPDATE_SEQUENCE_ARRAY UpdateSequenceArray;
 } FILE_RECORD_SEGMENT_HEADER, * PFILE_RECORD_SEGMENT_HEADER;
 
+// from https://learn.microsoft.com/en-us/windows/win32/devnotes/standard-information
 typedef struct _STANDARD_INFORMATION {
     UCHAR Reserved[0x30];
     ULONG OwnerId;
     ULONG SecurityId;
 } STANDARD_INFORMATION, * PSTANDARD_INFORMATION;
+
+struct StandardInformationAttribute : ATTRIBUTE_RECORD_HEADER {
+    uint64_t    creationTime;
+    uint64_t    modificationTime;
+    uint64_t    metadataModificationTime;
+    uint64_t    readTime;
+    uint32_t    permissions;
+    uint32_t    maxVersions;
+    uint32_t    version;
+    uint32_t    classId;
+    uint32_t    ownerId;
+    uint32_t    securityId;
+    uint64_t    quota;
+    uint64_t    updateSequence;
+};
 
 struct NTFS_COMBINED_VOLUME_DATA
 {
