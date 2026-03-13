@@ -27,6 +27,34 @@ static BOOL Read(HANDLE handle, void* buffer, uint64_t from, DWORD count, PDWORD
     return ReadFile(handle, buffer, count, bytesRead, nullptr);
 }
 
+// Apply Update Sequence Array fixup to a file record.
+// NTFS replaces the last 2 bytes of each 512-byte sector with a check value (USN).
+// The original bytes are stored in the USA. This reverses that substitution.
+static bool ApplyFixup(uint8_t* record, uint32_t recordSize) {
+    auto* header = (PFILE_RECORD_SEGMENT_HEADER)record;
+    uint16_t usaOffset = header->MultiSectorHeader.UpdateSequenceArrayOffset;
+    uint16_t usaSize = header->MultiSectorHeader.UpdateSequenceArraySize; // count includes USN + one entry per sector
+
+    if (usaSize < 2) return true; // nothing to fix up
+    uint16_t sectorCount = usaSize - 1;
+
+    auto* usa = (uint16_t*)(record + usaOffset);
+    uint16_t usn = usa[0]; // the check value
+
+    for (uint16_t i = 0; i < sectorCount; i++) {
+        uint32_t sectorEnd = (i + 1) * 512 - 2;
+        if (sectorEnd + 2 > recordSize) break;
+
+        auto* sectorLastWord = (uint16_t*)(record + sectorEnd);
+        if (*sectorLastWord != usn) {
+            printf("Fixup mismatch at sector %u: expected 0x%04X, got 0x%04X\n", i, usn, *sectorLastWord);
+            return false;
+        }
+        *sectorLastWord = usa[i + 1]; // restore original bytes
+    }
+    return true;
+}
+
 static std::vector<DataRun> ParseDataRuns(PATTRIBUTE_RECORD_HEADER attr) {
     std::vector<DataRun> runs;
     if (attr->FormCode != 1) return runs;
@@ -106,7 +134,9 @@ static bool ReadMFTRecord(HANDLE volumeHandle, std::vector<DataRun>& mftRuns, ui
         if (byteOffset >= currentOffset && byteOffset < currentOffset + runBytes) {
             uint64_t diskOffset = (uint64_t)run.clusterOffset * bytesPerCluster + (byteOffset - currentOffset);
             DWORD bytesRead;
-            return Read(volumeHandle, buffer, diskOffset, FILE_RECORD_SIZE, &bytesRead) && bytesRead == FILE_RECORD_SIZE;
+            if (!Read(volumeHandle, buffer, diskOffset, FILE_RECORD_SIZE, &bytesRead) || bytesRead != FILE_RECORD_SIZE)
+                return false;
+            return ApplyFixup(buffer, FILE_RECORD_SIZE);
         }
 
         currentOffset += runBytes;
@@ -326,6 +356,8 @@ extern "C" {
             printf("Error in ParseMFT: Failed to read MFT file. Error: %lu\n", GetLastError());
             return false;
         }
+
+        ApplyFixup(mftFile, FILE_RECORD_SIZE);
 
         PATTRIBUTE_RECORD_HEADER firstAttribute;
         ParseMFTFile(&firstAttribute);
@@ -557,6 +589,8 @@ extern "C" {
             return result;
         }
 
+        ApplyFixup(record0, FILE_RECORD_SIZE);
+
         auto* fileRecord0 = (PFILE_RECORD_SEGMENT_HEADER)record0;
         if (fileRecord0->MultiSectorHeader.Magic != 0x454C4946) {
             swprintf_s(result->errorMessage, 256, L"Invalid MFT record 0 magic");
@@ -660,10 +694,13 @@ extern "C" {
                 filesRemaining -= filesToLoad;
 
                 for (uint64_t i = 0; i < filesToLoad; i++, recordIndex++) {
-                    auto* rec = (PFILE_RECORD_SEGMENT_HEADER)(mftBuffer + FILE_RECORD_SIZE * i);
+                    auto* recPtr = mftBuffer + FILE_RECORD_SIZE * i;
+                    auto* rec = (PFILE_RECORD_SEGMENT_HEADER)recPtr;
 
                     // Skip invalid or not-in-use records
                     if (rec->MultiSectorHeader.Magic != 0x454C4946) continue;
+
+                    ApplyFixup(recPtr, FILE_RECORD_SIZE);
                     if (!(rec->Flags & 0x0001)) continue;
 
                     // Skip extension records (base file reference != 0)
@@ -699,8 +736,9 @@ extern "C" {
                                 entry.flags = rec->Flags;
                                 entry.fileNameLength = fn->FileNameLength;
                                 uint16_t copyLen = min((uint16_t)fn->FileNameLength, (uint16_t)259);
-                                wmemcpy(entry.fileName, fn->FileName, copyLen);
-                                entry.fileName[copyLen] = L'\0';
+                                // Null-terminate the source buffer first to ensure safe copy
+                                memset(entry.fileName, 0, sizeof(entry.fileName));
+                                wmemcpy_s(entry.fileName, 260, fn->FileName, copyLen);
 
                                 usedCount++;
                                 break; // Use first matching FileName
