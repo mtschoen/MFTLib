@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 
 namespace MFTLib;
 
@@ -11,4 +11,10 @@ static class MFTLibNative
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void PrintVolumeInfo(SafeHandle volumeHandle);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr ParseMFTRecords(SafeHandle volumeHandle);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void FreeMftResult(IntPtr result);
 }

@@ -4,6 +4,7 @@
 
 #include "framework.h"
 #include "ntfs.h"
+#include "mft_api.h"
 
 #define EXPORT __declspec(dllexport)
 
@@ -522,6 +523,203 @@ extern "C" {
         catch (...)
         {
             printf("Failed to get volume info. Error: %lu\n", GetLastError());
+        }
+    }
+
+    EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle) {
+        auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
+        if (!result) return nullptr;
+
+        if (volumeHandle == INVALID_HANDLE_VALUE) {
+            swprintf_s(result->errorMessage, 256, L"Volume handle is invalid");
+            return result;
+        }
+
+        // Read boot sector
+        NTFS_BPB bpb;
+        DWORD bytesRead;
+        if (!Read(volumeHandle, &bpb, 0, 512, &bytesRead) || bytesRead != 512) {
+            swprintf_s(result->errorMessage, 256, L"Failed to read boot sector. Error: %lu", GetLastError());
+            return result;
+        }
+        if (bpb.name[0] != 'N' || bpb.name[1] != 'T' || bpb.name[2] != 'F' || bpb.name[3] != 'S') {
+            swprintf_s(result->errorMessage, 256, L"Volume is not NTFS");
+            return result;
+        }
+
+        uint32_t bytesPerCluster = bpb.bytesPerSector * bpb.sectorsPerCluster;
+
+        // Read MFT record 0 ($MFT itself)
+        uint8_t record0[FILE_RECORD_SIZE];
+        if (!Read(volumeHandle, record0, bpb.mftStart * bytesPerCluster, FILE_RECORD_SIZE, &bytesRead)
+            || bytesRead != FILE_RECORD_SIZE) {
+            swprintf_s(result->errorMessage, 256, L"Failed to read MFT record 0");
+            return result;
+        }
+
+        auto* fileRecord0 = (PFILE_RECORD_SEGMENT_HEADER)record0;
+        if (fileRecord0->MultiSectorHeader.Magic != 0x454C4946) {
+            swprintf_s(result->errorMessage, 256, L"Invalid MFT record 0 magic");
+            return result;
+        }
+
+        // Find Data attribute -> MFT data runs
+        auto* dataAttr = FindAttribute(record0, Data);
+        if (!dataAttr) {
+            swprintf_s(result->errorMessage, 256, L"No Data attribute in MFT record 0");
+            return result;
+        }
+        auto mftRuns = ParseDataRuns(dataAttr);
+
+        // Handle AttributeList -> extension records with additional Data runs
+        auto* attrListAttr = FindAttribute(record0, AttributeList);
+        if (attrListAttr) {
+            uint8_t* attrListData = nullptr;
+            uint64_t attrListSize = 0;
+
+            if (attrListAttr->FormCode == 1) {
+                attrListData = ReadNonResidentData(volumeHandle, attrListAttr, bytesPerCluster, &attrListSize);
+            } else {
+                attrListSize = attrListAttr->Form.Resident.ValueLength;
+                attrListData = (uint8_t*)malloc((size_t)attrListSize);
+                if (attrListData)
+                    memcpy(attrListData, (uint8_t*)attrListAttr + attrListAttr->Form.Resident.ValueOffset, (size_t)attrListSize);
+            }
+
+            if (attrListData) {
+                // Collect unique extension record numbers
+                std::vector<uint64_t> extensionRecords;
+                uint64_t offset = 0;
+                while (offset + sizeof(ATTRIBUTE_LIST_ENTRY) <= attrListSize) {
+                    auto* entry = (PATTRIBUTE_LIST_ENTRY)(attrListData + offset);
+                    if (entry->RecordLength == 0) break;
+                    uint64_t segNum = (uint64_t)entry->SegmentReference.SegmentNumberLowPart |
+                        ((uint64_t)entry->SegmentReference.SegmentNumberHighPart << 32);
+                    if (segNum != 0) {
+                        bool found = false;
+                        for (auto r : extensionRecords) if (r == segNum) { found = true; break; }
+                        if (!found) extensionRecords.push_back(segNum);
+                    }
+                    offset += entry->RecordLength;
+                }
+
+                // Read extension records for additional Data runs
+                uint8_t extRecord[FILE_RECORD_SIZE];
+                for (auto recNum : extensionRecords) {
+                    if (!ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, recNum, extRecord))
+                        continue;
+                    auto* extHdr = (PFILE_RECORD_SEGMENT_HEADER)extRecord;
+                    if (extHdr->MultiSectorHeader.Magic != 0x454C4946) continue;
+
+                    auto* extAttr = (PATTRIBUTE_RECORD_HEADER)(extRecord + extHdr->FirstAttributeOffset);
+                    while (extAttr->TypeCode != ATTRIBUTE_TYPE_CODE::EndMarker) {
+                        if (extAttr->RecordLength == 0) break;
+                        if (extAttr->TypeCode == Data) {
+                            auto additionalRuns = ParseDataRuns(extAttr);
+                            for (auto& r : additionalRuns) mftRuns.push_back(r);
+                        }
+                        extAttr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)extAttr + extAttr->RecordLength);
+                    }
+                }
+                free(attrListData);
+            }
+        }
+
+        // Calculate total MFT records
+        uint64_t totalMftBytes = 0;
+        for (auto& run : mftRuns) totalMftBytes += run.clusterCount * bytesPerCluster;
+        uint64_t totalRecords = totalMftBytes / FILE_RECORD_SIZE;
+        result->totalRecords = totalRecords;
+
+        // Allocate entry array with growing capacity
+        uint64_t capacity = totalRecords / 4;
+        if (capacity < 1024) capacity = 1024;
+        result->entries = (MftFileEntry*)malloc((size_t)capacity * sizeof(MftFileEntry));
+        if (!result->entries) {
+            swprintf_s(result->errorMessage, 256, L"Failed to allocate entry array");
+            return result;
+        }
+
+        uint64_t usedCount = 0;
+        uint64_t recordIndex = 0;
+
+        for (auto& run : mftRuns) {
+            uint64_t runBytes = run.clusterCount * bytesPerCluster;
+            uint64_t filesRemaining = runBytes / FILE_RECORD_SIZE;
+            uint64_t positionInBlock = 0;
+
+            while (filesRemaining > 0) {
+                uint64_t filesToLoad = min(filesRemaining, (uint64_t)MFT_FILES_PER_BUFFER);
+                DWORD readBytes;
+                if (!Read(volumeHandle, mftBuffer,
+                          (uint64_t)run.clusterOffset * bytesPerCluster + positionInBlock,
+                          (DWORD)(filesToLoad * FILE_RECORD_SIZE), &readBytes)) {
+                    break;
+                }
+                positionInBlock += filesToLoad * FILE_RECORD_SIZE;
+                filesRemaining -= filesToLoad;
+
+                for (uint64_t i = 0; i < filesToLoad; i++, recordIndex++) {
+                    auto* rec = (PFILE_RECORD_SEGMENT_HEADER)(mftBuffer + FILE_RECORD_SIZE * i);
+
+                    // Skip invalid or not-in-use records
+                    if (rec->MultiSectorHeader.Magic != 0x454C4946) continue;
+                    if (!(rec->Flags & 0x0001)) continue;
+
+                    // Skip extension records (base file reference != 0)
+                    uint64_t baseRef = (uint64_t)rec->BaseFileRecordSegment.SegmentNumberLowPart |
+                                       ((uint64_t)rec->BaseFileRecordSegment.SegmentNumberHighPart << 32);
+                    if (baseRef != 0) continue;
+
+                    // Find FileName attribute (skip DOS-only namespace)
+                    auto* attr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)rec + rec->FirstAttributeOffset);
+                    while ((uint8_t*)attr - (uint8_t*)rec < FILE_RECORD_SIZE) {
+                        if (attr->TypeCode == EndMarker || attr->RecordLength == 0) break;
+
+                        if (attr->TypeCode == FileName && attr->FormCode == 0) {
+                            auto* fn = (PFILE_NAME)((uint8_t*)attr + attr->Form.Resident.ValueOffset);
+                            if (fn->Flags != 2) { // Not DOS-only namespace
+                                // Grow array if needed
+                                if (usedCount >= capacity) {
+                                    capacity *= 2;
+                                    auto* grown = (MftFileEntry*)realloc(result->entries, (size_t)capacity * sizeof(MftFileEntry));
+                                    if (!grown) {
+                                        swprintf_s(result->errorMessage, 256, L"Failed to grow entry array");
+                                        result->usedRecords = usedCount;
+                                        return result;
+                                    }
+                                    result->entries = grown;
+                                }
+
+                                auto& entry = result->entries[usedCount];
+                                memset(&entry, 0, sizeof(MftFileEntry));
+                                entry.recordNumber = recordIndex;
+                                entry.parentRecordNumber = (uint64_t)fn->ParentDirectory.SegmentNumberLowPart |
+                                                           ((uint64_t)fn->ParentDirectory.SegmentNumberHighPart << 32);
+                                entry.flags = rec->Flags;
+                                entry.fileNameLength = fn->FileNameLength;
+                                uint16_t copyLen = min((uint16_t)fn->FileNameLength, (uint16_t)259);
+                                wmemcpy(entry.fileName, fn->FileName, copyLen);
+                                entry.fileName[copyLen] = L'\0';
+
+                                usedCount++;
+                                break; // Use first matching FileName
+                            }
+                        }
+                        attr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)attr + attr->RecordLength);
+                    }
+                }
+            }
+        }
+
+        result->usedRecords = usedCount;
+        return result;
+    }
+
+    EXPORT void FreeMftResult(MftParseResult* result) {
+        if (result) {
+            free(result->entries);
+            free(result);
         }
     }
 }

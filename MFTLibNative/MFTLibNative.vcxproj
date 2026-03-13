@@ -30,26 +30,26 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -123,7 +123,9 @@
       <Command>xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)MFTLib\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.dll*"
 xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)MFTLib\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb*"
 xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)TestProgram\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.dll*"
-xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)TestProgram\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb*"</Command>
+xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)TestProgram\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb*"
+xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)MFTLib.Tests\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.dll*"
+xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)MFTLib.Tests\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb*"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -147,6 +149,7 @@ xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)TestProgram\bin\$(Platfor
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
+    <ClInclude Include="mft_api.h" />
     <ClInclude Include="ntfs.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
