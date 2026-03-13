@@ -133,6 +133,11 @@ struct StandardInformationAttribute : ATTRIBUTE_RECORD_HEADER {
     uint64_t    updateSequence;
 };
 
+struct RunHeader {
+    uint8_t lengthFieldBytes : 4;
+    uint8_t offsetFieldBytes : 4;
+};
+
 struct NTFS_COMBINED_VOLUME_DATA
 {
     NTFS_VOLUME_DATA_BUFFER StandardData;
