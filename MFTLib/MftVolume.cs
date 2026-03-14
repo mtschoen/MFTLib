@@ -12,6 +12,8 @@ public sealed class MftVolume : IDisposable
     private readonly string _driveLetter;
     private bool _disposed;
 
+    public uint BufferSizeRecords { get; set; } = 262144;
+
     private MftVolume(SafeFileHandle volumeHandle, string driveLetter)
     {
         _volumeHandle = volumeHandle;
@@ -49,7 +51,7 @@ public sealed class MftVolume : IDisposable
 
     private MftRecord[] ParseNative(string? filter, uint matchFlags, out MftParseTimings timings)
     {
-        IntPtr resultPtr = MFTLibNative.ParseMFTRecords(_volumeHandle, filter, matchFlags);
+        IntPtr resultPtr = MFTLibNative.ParseMFTRecords(_volumeHandle, filter, matchFlags, BufferSizeRecords);
         if (resultPtr == IntPtr.Zero)
             throw new InvalidOperationException("ParseMFTRecords returned null");
 
@@ -121,18 +123,18 @@ public sealed class MftVolume : IDisposable
         return $"{_driveLetter}:\\{string.Join('\\', parts)}";
     }
 
-    public static void GenerateSyntheticMFT(string filePath, ulong recordCount)
+    public static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords = 262144)
     {
-        if (!MFTLibNative.GenerateSyntheticMFT(filePath, recordCount))
+        if (!MFTLibNative.GenerateSyntheticMFT(filePath, recordCount, bufferSizeRecords))
             throw new InvalidOperationException("Failed to generate synthetic MFT file");
     }
 
     public static MftRecord[] ParseMFTFromFile(string filePath, out MftParseTimings timings)
         => ParseMFTFromFile(filePath, null, 0, out timings);
 
-    public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, uint matchFlags, out MftParseTimings timings)
+    public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, uint matchFlags, out MftParseTimings timings, uint bufferSizeRecords = 262144)
     {
-        IntPtr resultPtr = MFTLibNative.ParseMFTFromFile(filePath, filter, matchFlags);
+        IntPtr resultPtr = MFTLibNative.ParseMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords);
         if (resultPtr == IntPtr.Zero)
             throw new InvalidOperationException("ParseMFTFromFile returned null");
 
@@ -171,22 +173,39 @@ public sealed class MftVolume : IDisposable
     // u16 flags, u16 pathLength, wchar_t[1024] path = 2068 bytes total.
     private const int NativePathEntrySize = 8 + 8 + 2 + 2 + 1024 * 2; // 2068
 
+    private const int ParallelThreshold = 500_000;
+
     private static unsafe MftRecord[] ReadEntriesUnsafe(IntPtr entries, ulong count)
     {
         var records = new MftRecord[count];
-        byte* ptr = (byte*)entries;
+        byte* basePtr = (byte*)entries;
 
-        for (ulong i = 0; i < count; i++)
+        if (count >= ParallelThreshold)
         {
-            ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
-            ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
-            ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
-            ushort nameLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
-
-            var fileName = new string((char*)(ptr + 20), 0, nameLength);
-
-            records[i] = new MftRecord(recordNumber, parentRecordNumber, flags, fileName);
-            ptr += NativeEntrySize;
+            Parallel.For(0L, (long)count, i =>
+            {
+                byte* ptr = basePtr + i * NativeEntrySize;
+                ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
+                ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
+                ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
+                ushort nameLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
+                var fileName = new string((char*)(ptr + 20), 0, nameLength);
+                records[i] = new MftRecord(recordNumber, parentRecordNumber, flags, fileName);
+            });
+        }
+        else
+        {
+            byte* ptr = basePtr;
+            for (ulong i = 0; i < count; i++)
+            {
+                ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
+                ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
+                ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
+                ushort nameLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
+                var fileName = new string((char*)(ptr + 20), 0, nameLength);
+                records[i] = new MftRecord(recordNumber, parentRecordNumber, flags, fileName);
+                ptr += NativeEntrySize;
+            }
         }
 
         return records;
@@ -195,24 +214,40 @@ public sealed class MftVolume : IDisposable
     private static unsafe MftRecord[] ReadPathEntriesUnsafe(IntPtr entries, ulong count, string driveLetter)
     {
         var records = new MftRecord[count];
-        byte* ptr = (byte*)entries;
+        byte* basePtr = (byte*)entries;
 
-        for (ulong i = 0; i < count; i++)
+        if (count >= ParallelThreshold)
         {
-            ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
-            ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
-            ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
-            ushort pathLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
-
-            var relativePath = new string((char*)(ptr + 20), 0, pathLength);
-            var fullPath = $"{driveLetter}:\\{relativePath}";
-
-            // Extract filename from the last path component
-            var lastSep = relativePath.LastIndexOf('\\');
-            var fileName = lastSep >= 0 ? relativePath[(lastSep + 1)..] : relativePath;
-
-            records[i] = new MftRecord(recordNumber, parentRecordNumber, flags, fileName, fullPath);
-            ptr += NativePathEntrySize;
+            Parallel.For(0L, (long)count, i =>
+            {
+                byte* ptr = basePtr + i * NativePathEntrySize;
+                ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
+                ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
+                ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
+                ushort pathLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
+                var relativePath = new string((char*)(ptr + 20), 0, pathLength);
+                var fullPath = $"{driveLetter}:\\{relativePath}";
+                var lastSep = relativePath.LastIndexOf('\\');
+                var fileName = lastSep >= 0 ? relativePath[(lastSep + 1)..] : relativePath;
+                records[i] = new MftRecord(recordNumber, parentRecordNumber, flags, fileName, fullPath);
+            });
+        }
+        else
+        {
+            byte* ptr = basePtr;
+            for (ulong i = 0; i < count; i++)
+            {
+                ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
+                ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
+                ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
+                ushort pathLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
+                var relativePath = new string((char*)(ptr + 20), 0, pathLength);
+                var fullPath = $"{driveLetter}:\\{relativePath}";
+                var lastSep = relativePath.LastIndexOf('\\');
+                var fileName = lastSep >= 0 ? relativePath[(lastSep + 1)..] : relativePath;
+                records[i] = new MftRecord(recordNumber, parentRecordNumber, flags, fileName, fullPath);
+                ptr += NativePathEntrySize;
+            }
         }
 
         return records;
