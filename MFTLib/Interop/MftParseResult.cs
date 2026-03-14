@@ -17,4 +17,6 @@ internal struct MftParseResult
     public double FixupTimeMs;
     public double ParseTimeMs;
     public double TotalTimeMs;
+
+    public IntPtr PathEntries; // MftPathEntry*, set when path resolution is requested
 }

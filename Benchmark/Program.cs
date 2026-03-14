@@ -46,44 +46,59 @@ Console.WriteLine(genLine);
 output.AppendLine($"Generating synthetic MFT... {genLine}");
 Log();
 
-// Run benchmark iterations
-var allTimings = new List<MftParseTimings>();
-var allWallClocks = new List<double>();
-
-for (int i = 0; i < iterations; i++)
+// Benchmark scenarios
+var scenarios = new (string Name, string? Filter, uint MatchFlags)[]
 {
-    Console.Write($"Iteration {i + 1}/{iterations}... ");
-    var sw = Stopwatch.StartNew();
-    MftVolume.ParseMFTFromFile(mftPath, out var timings);
-    sw.Stop();
+    ("Unfiltered (all records)", null, 0),
+    ("Filtered: exact \".git\"", ".git", 1),
+    ("Filtered: contains \"config\"", "config", 2),
+    ("Filtered: exact \".git\" + paths", ".git", 1 | 4),
+};
 
-    allTimings.Add(timings);
-    allWallClocks.Add(sw.Elapsed.TotalMilliseconds);
+foreach (var (scenarioName, filter, matchFlags) in scenarios)
+{
+    Log($"--- {scenarioName} ---");
 
-    var iterLine = $"{sw.Elapsed.TotalMilliseconds:F0}ms";
-    Console.WriteLine(iterLine);
-    output.AppendLine($"Iteration {i + 1}/{iterations}... {iterLine}");
+    var allTimings = new List<MftParseTimings>();
+    var allWallClocks = new List<double>();
+    var recordCounts = new List<int>();
+
+    for (int i = 0; i < iterations; i++)
+    {
+        Console.Write($"  Iteration {i + 1}/{iterations}... ");
+        var sw = Stopwatch.StartNew();
+        var records = MftVolume.ParseMFTFromFile(mftPath, filter, matchFlags, out var timings);
+        sw.Stop();
+
+        allTimings.Add(timings);
+        allWallClocks.Add(sw.Elapsed.TotalMilliseconds);
+        recordCounts.Add(records.Length);
+
+        var iterLine = $"{sw.Elapsed.TotalMilliseconds:F0}ms ({records.Length:N0} records)";
+        Console.WriteLine(iterLine);
+        output.AppendLine($"  Iteration {i + 1}/{iterations}... {iterLine}");
+    }
+
+    var sorted = allWallClocks.OrderBy(x => x).ToList();
+    var medianWall = sorted[sorted.Count / 2];
+    var medianIdx = allWallClocks.IndexOf(medianWall);
+    var medianTimings = allTimings[medianIdx];
+    var medianRecords = recordCounts[medianIdx];
+
+    Log($"  Results (median):");
+    Log($"    Records:      {medianRecords,12:N0}");
+    Log($"    Wall clock:   {medianWall,12:F1}ms");
+    Log($"    Native total: {medianTimings.NativeTotalMs,12:F1}ms");
+    Log($"      I/O:        {medianTimings.NativeIoMs,12:F1}ms  ({medianTimings.NativeIoMs / medianWall * 100:F1}%)");
+    Log($"      Fixup:      {medianTimings.NativeFixupMs,12:F1}ms  ({medianTimings.NativeFixupMs / medianWall * 100:F1}%)");
+    Log($"      Parse:      {medianTimings.NativeParseMs,12:F1}ms  ({medianTimings.NativeParseMs / medianWall * 100:F1}%)");
+    Log($"    Marshal:      {medianTimings.MarshalMs,12:F1}ms  ({medianTimings.MarshalMs / medianWall * 100:F1}%)");
+    Log($"    Throughput:   {recordCount / (medianWall / 1000.0),12:N0} records/sec");
+    Log();
 }
-
-Log();
-Log("Results (median of all iterations):");
-Log("====================================");
-
-var sorted = allWallClocks.OrderBy(x => x).ToList();
-var medianWall = sorted[sorted.Count / 2];
-var medianTimings = allTimings[allWallClocks.IndexOf(medianWall)];
-
-Log($"  Wall clock:     {medianWall,9:F1}ms");
-Log($"  Native total:   {medianTimings.NativeTotalMs,9:F1}ms");
-Log($"    I/O:          {medianTimings.NativeIoMs,9:F1}ms  ({medianTimings.NativeIoMs / medianWall * 100:F1}%)");
-Log($"    Fixup:        {medianTimings.NativeFixupMs,9:F1}ms  ({medianTimings.NativeFixupMs / medianWall * 100:F1}%)");
-Log($"    Parse:        {medianTimings.NativeParseMs,9:F1}ms  ({medianTimings.NativeParseMs / medianWall * 100:F1}%)");
-Log($"  Marshal:        {medianTimings.MarshalMs,9:F1}ms  ({medianTimings.MarshalMs / medianWall * 100:F1}%)");
-Log($"  Throughput:     {recordCount / (medianWall / 1000.0):N0} records/sec");
 
 // Cleanup
 File.Delete(mftPath);
-Log();
 Log("Synthetic MFT file cleaned up.");
 
 // Save baseline

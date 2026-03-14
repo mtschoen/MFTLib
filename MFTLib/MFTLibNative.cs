@@ -12,8 +12,8 @@ static class MFTLibNative
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void PrintVolumeInfo(SafeHandle volumeHandle);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr ParseMFTRecords(SafeHandle volumeHandle);
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    internal static extern IntPtr ParseMFTRecords(SafeHandle volumeHandle, string? filter, uint matchFlags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void FreeMftResult(IntPtr result);
@@ -22,5 +22,5 @@ static class MFTLibNative
     internal static extern bool GenerateSyntheticMFT(string filePath, ulong recordCount);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
-    internal static extern IntPtr ParseMFTFromFile(string filePath);
+    internal static extern IntPtr ParseMFTFromFile(string filePath, string? filter, uint matchFlags);
 }
