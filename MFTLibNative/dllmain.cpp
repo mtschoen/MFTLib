@@ -2,6 +2,8 @@
 
 #include <cassert>
 #include <chrono>
+#include <thread>
+#include <vector>
 
 #include "framework.h"
 #include "ntfs.h"
@@ -833,24 +835,24 @@ extern "C" {
             parents = (uint64_t*)calloc((size_t)totalRecords, sizeof(uint64_t));
             nameLens = (uint8_t*)calloc((size_t)totalRecords, sizeof(uint8_t));
             nameOffsets = (uint32_t*)calloc((size_t)totalRecords, sizeof(uint32_t));
-            // Average ~12 chars per name, ~75% of records are used
-            namePoolCapacity = totalRecords * 10;
+            // Average ~12 chars per name, ~75% of records are used.
+            // Pre-allocate generously since we can't realloc with atomic allocation.
+            namePoolCapacity = totalRecords * 16;
             namePool = (wchar_t*)malloc((size_t)namePoolCapacity * sizeof(wchar_t));
             namePoolUsed = 0;
             return parents && nameLens && nameOffsets && namePool;
         }
 
+        // Thread-safe: parents/nameLens/nameOffsets are indexed by unique recordIndex
+        // (each thread handles different indices). namePool uses atomic allocation.
         void storeName(uint64_t recordIndex, uint64_t parent, const wchar_t* name, uint8_t nameLen) {
             parents[recordIndex] = parent;
             nameLens[recordIndex] = nameLen;
-            // Grow pool if needed
-            if (namePoolUsed + nameLen > namePoolCapacity) {
-                namePoolCapacity *= 2;
-                namePool = (wchar_t*)realloc(namePool, (size_t)namePoolCapacity * sizeof(wchar_t));
-            }
-            nameOffsets[recordIndex] = (uint32_t)namePoolUsed;
-            wmemcpy(namePool + namePoolUsed, name, nameLen);
-            namePoolUsed += nameLen;
+            uint64_t offset = (uint64_t)InterlockedExchangeAdd64(
+                (volatile LONG64*)&namePoolUsed, (LONG64)nameLen);
+            if (offset + nameLen > namePoolCapacity) return; // pool exhausted
+            nameOffsets[recordIndex] = (uint32_t)offset;
+            wmemcpy(namePool + offset, name, nameLen);
         }
 
         void cleanup() {
@@ -900,17 +902,93 @@ extern "C" {
         return pos;
     }
 
-    // Shared inner parse loop. Processes filesToLoad records from mftBuffer,
+    // Thread-local entry collection for parallel parsing.
+    struct SliceResult {
+        MftFileEntry* entries;
+        uint64_t count;
+        uint64_t capacity;
+
+        void init(uint64_t cap) {
+            entries = (MftFileEntry*)malloc((size_t)cap * sizeof(MftFileEntry));
+            count = 0;
+            capacity = cap;
+        }
+        void cleanup() { free(entries); }
+    };
+
+    // Process a slice of records from buffer[startIdx..endIdx) into thread-local SliceResult.
+    // recordBase is the global record index of buffer[0].
+    static void ProcessRecordSlice(
+            uint8_t* buffer, uint64_t startIdx, uint64_t endIdx, uint64_t recordBase,
+            SliceResult* slice,
+            const wchar_t* filter, uint16_t filterLen, uint32_t matchFlags,
+            PathLookup* lookup, uint64_t totalRecords) {
+
+        for (uint64_t i = startIdx; i < endIdx; i++) {
+            uint64_t recordIndex = recordBase + i;
+            auto* recPtr = buffer + FILE_RECORD_SIZE * i;
+            auto* rec = (PFILE_RECORD_SEGMENT_HEADER)recPtr;
+
+            if (rec->MultiSectorHeader.Magic != 0x454C4946) continue;
+            if (!(rec->Flags & 0x0001)) continue;
+
+            uint64_t baseRef = (uint64_t)rec->BaseFileRecordSegment.SegmentNumberLowPart |
+                               ((uint64_t)rec->BaseFileRecordSegment.SegmentNumberHighPart << 32);
+            if (baseRef != 0) continue;
+
+            auto* attr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)rec + rec->FirstAttributeOffset);
+            while ((uint8_t*)attr - (uint8_t*)rec < FILE_RECORD_SIZE) {
+                if (attr->TypeCode == EndMarker || attr->RecordLength == 0) break;
+
+                if (attr->TypeCode == FileName && attr->FormCode == 0) {
+                    auto* fn = (PFILE_NAME)((uint8_t*)attr + attr->Form.Resident.ValueOffset);
+                    if (fn->Flags != 2) {
+                        uint64_t parent = (uint64_t)fn->ParentDirectory.SegmentNumberLowPart |
+                                          ((uint64_t)fn->ParentDirectory.SegmentNumberHighPart << 32);
+
+                        if (lookup && recordIndex < totalRecords) {
+                            lookup->storeName(recordIndex, parent, fn->FileName, fn->FileNameLength);
+                        }
+
+                        if (filter && !FileNameMatches(fn->FileName, fn->FileNameLength, filter, filterLen, matchFlags))
+                            break;
+
+                        if (slice->count >= slice->capacity) {
+                            slice->capacity *= 2;
+                            slice->entries = (MftFileEntry*)realloc(slice->entries,
+                                (size_t)slice->capacity * sizeof(MftFileEntry));
+                        }
+
+                        auto& entry = slice->entries[slice->count];
+                        memset(&entry, 0, sizeof(MftFileEntry));
+                        entry.recordNumber = recordIndex;
+                        entry.parentRecordNumber = parent;
+                        entry.flags = rec->Flags;
+                        entry.fileNameLength = fn->FileNameLength;
+                        uint16_t copyLen = min((uint16_t)fn->FileNameLength, (uint16_t)259);
+                        wmemcpy_s(entry.fileName, 260, fn->FileName, copyLen);
+
+                        slice->count++;
+                        break;
+                    }
+                }
+                attr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)attr + attr->RecordLength);
+            }
+        }
+    }
+
+    // Shared inner parse loop. Processes filesToLoad records from a buffer,
     // optionally filtering by filename. If filter is nullptr, all used records are emitted.
     // If lookup is non-null, stores parent+name for every used record (for path resolution).
     static void ProcessRecordBatch(
+            uint8_t* buffer,
             uint64_t filesToLoad, uint64_t& recordIndex,
             MftParseResult* result, uint64_t& usedCount, uint64_t& capacity,
             const wchar_t* filter, uint16_t filterLen, uint32_t matchFlags,
             PathLookup* lookup, uint64_t totalRecords) {
 
         for (uint64_t i = 0; i < filesToLoad; i++, recordIndex++) {
-            auto* recPtr = mftBuffer + FILE_RECORD_SIZE * i;
+            auto* recPtr = buffer + FILE_RECORD_SIZE * i;
             auto* rec = (PFILE_RECORD_SEGMENT_HEADER)recPtr;
 
             if (rec->MultiSectorHeader.Magic != 0x454C4946) continue;
@@ -969,12 +1047,13 @@ extern "C" {
         }
     }
 
-    // Callback that reads the next chunk of MFT records into mftBuffer.
+    // Callback that reads the next chunk of MFT records into the target buffer.
     // Returns the number of records loaded (0 = done). ioMs accumulates I/O time.
-    typedef uint64_t (*ReadChunkFn)(void* context, double& ioMs);
+    typedef uint64_t (*ReadChunkFn)(void* context, uint8_t* targetBuffer, double& ioMs);
 
     // Shared implementation: fixup, parse, filter, and optionally resolve paths.
-    // I/O is abstracted via the readChunk callback.
+    // Uses double-buffering to overlap I/O with compute, and parallel threads
+    // for fixup and parsing.
     static MftParseResult* ParseMFTImpl(
             ReadChunkFn readChunk, void* readContext,
             uint64_t totalRecords,
@@ -999,10 +1078,28 @@ extern "C" {
             }
         }
 
+        unsigned numThreads = std::thread::hardware_concurrency();
+        if (numThreads < 1) numThreads = 1;
+
+        // Double-buffering: two dynamically allocated buffers
+        const size_t bufSize = (size_t)MFT_FILES_PER_BUFFER * FILE_RECORD_SIZE;
+        uint8_t* buf[2];
+        buf[0] = (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        buf[1] = (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!buf[0] || !buf[1]) {
+            if (buf[0]) VirtualFree(buf[0], 0, MEM_RELEASE);
+            if (buf[1]) VirtualFree(buf[1], 0, MEM_RELEASE);
+            if (resolvePaths) lookup.cleanup();
+            swprintf_s(result->errorMessage, 256, L"Failed to allocate I/O buffers");
+            return result;
+        }
+
         uint64_t capacity = filter ? 1024 : totalRecords / 4;
         if (capacity < 1024) capacity = 1024;
         result->entries = (MftFileEntry*)malloc((size_t)capacity * sizeof(MftFileEntry));
         if (!result->entries) {
+            VirtualFree(buf[0], 0, MEM_RELEASE);
+            VirtualFree(buf[1], 0, MEM_RELEASE);
             if (resolvePaths) lookup.cleanup();
             swprintf_s(result->errorMessage, 256, L"Failed to allocate entry array");
             return result;
@@ -1011,25 +1108,119 @@ extern "C" {
         uint64_t usedCount = 0;
         uint64_t recordIndex = 0;
 
-        while (true) {
-            uint64_t filesToLoad = readChunk(readContext, ioMs);
-            if (filesToLoad == 0) break;
+        // Read first chunk
+        uint64_t currentChunkSize = readChunk(readContext, buf[0], ioMs);
+        int curBuf = 0;
 
-            auto fixupStart = SteadyClock::now();
-            for (uint64_t i = 0; i < filesToLoad; i++) {
-                auto* recPtr = mftBuffer + FILE_RECORD_SIZE * i;
-                auto* rec = (PFILE_RECORD_SEGMENT_HEADER)recPtr;
-                if (rec->MultiSectorHeader.Magic == 0x454C4946)
-                    ApplyFixup(recPtr, FILE_RECORD_SIZE);
+        while (currentChunkSize > 0) {
+            // Start async read of next chunk into the other buffer
+            uint64_t nextChunkSize = 0;
+            double nextIoMs = 0;
+            std::thread ioThread([&]() {
+                nextChunkSize = readChunk(readContext, buf[1 - curBuf], nextIoMs);
+            });
+
+            uint8_t* buffer = buf[curBuf];
+
+            if (numThreads > 1) {
+                uint64_t perThread = (currentChunkSize + numThreads - 1) / numThreads;
+
+                // Combined parallel fixup + parse (one thread spawn per chunk)
+                auto fixupStart = SteadyClock::now();
+                {
+                    std::vector<SliceResult> slices(numThreads);
+                    std::vector<std::thread> workers;
+                    std::vector<double> threadFixupMs(numThreads, 0.0);
+                    unsigned actualThreads = 0;
+
+                    for (unsigned t = 0; t < numThreads; t++) {
+                        uint64_t tStart = t * perThread;
+                        uint64_t tEnd = min(tStart + perThread, currentChunkSize);
+                        if (tStart >= currentChunkSize) break;
+                        actualThreads++;
+
+                        uint64_t initCap = filter ? 64 : (tEnd - tStart) / 4;
+                        if (initCap < 64) initCap = 64;
+                        slices[t].init(initCap);
+
+                        workers.emplace_back([buffer, tStart, tEnd, t, &slices, &threadFixupMs,
+                                              filter, filterLen, matchFlags,
+                                              &lookup, resolvePaths, totalRecords, recordIndex]() {
+                            // Fixup phase for this slice
+                            auto fStart = SteadyClock::now();
+                            for (uint64_t i = tStart; i < tEnd; i++) {
+                                auto* recPtr = buffer + FILE_RECORD_SIZE * i;
+                                auto* rec = (PFILE_RECORD_SEGMENT_HEADER)recPtr;
+                                if (rec->MultiSectorHeader.Magic == 0x454C4946)
+                                    ApplyFixup(recPtr, FILE_RECORD_SIZE);
+                            }
+                            threadFixupMs[t] = ElapsedMs(fStart, SteadyClock::now());
+
+                            // Parse phase for this slice
+                            ProcessRecordSlice(buffer, tStart, tEnd, recordIndex,
+                                               &slices[t], filter, filterLen, matchFlags,
+                                               resolvePaths ? &lookup : nullptr, totalRecords);
+                        });
+                    }
+                    for (auto& w : workers) w.join();
+
+                    auto combinedEnd = SteadyClock::now();
+                    double totalElapsed = ElapsedMs(fixupStart, combinedEnd);
+
+                    // Report max fixup time across threads (wall clock of parallel fixup)
+                    double maxFixup = 0;
+                    for (unsigned t = 0; t < actualThreads; t++)
+                        if (threadFixupMs[t] > maxFixup) maxFixup = threadFixupMs[t];
+                    fixupMs += maxFixup;
+                    parseMs += totalElapsed - maxFixup;
+
+                    // Merge thread-local results
+                    for (unsigned t = 0; t < actualThreads; t++) {
+                        auto& s = slices[t];
+                        if (s.count > 0) {
+                            if (usedCount + s.count > capacity) {
+                                while (usedCount + s.count > capacity) capacity *= 2;
+                                result->entries = (MftFileEntry*)realloc(result->entries,
+                                    (size_t)capacity * sizeof(MftFileEntry));
+                            }
+                            memcpy(result->entries + usedCount, s.entries,
+                                   (size_t)s.count * sizeof(MftFileEntry));
+                            usedCount += s.count;
+                        }
+                        s.cleanup();
+                    }
+                }
+            } else {
+                // Single-threaded fallback
+                auto fixupStart = SteadyClock::now();
+                for (uint64_t i = 0; i < currentChunkSize; i++) {
+                    auto* recPtr = buffer + FILE_RECORD_SIZE * i;
+                    auto* rec = (PFILE_RECORD_SEGMENT_HEADER)recPtr;
+                    if (rec->MultiSectorHeader.Magic == 0x454C4946)
+                        ApplyFixup(recPtr, FILE_RECORD_SIZE);
+                }
+                fixupMs += ElapsedMs(fixupStart, SteadyClock::now());
+
+                auto parseStart = SteadyClock::now();
+                ProcessRecordBatch(buffer, currentChunkSize, recordIndex,
+                                   result, usedCount, capacity,
+                                   filter, filterLen, matchFlags,
+                                   resolvePaths ? &lookup : nullptr, totalRecords);
+                parseMs += ElapsedMs(parseStart, SteadyClock::now());
             }
-            fixupMs += ElapsedMs(fixupStart, SteadyClock::now());
 
-            auto parseStart = SteadyClock::now();
-            ProcessRecordBatch(filesToLoad, recordIndex, result, usedCount, capacity,
-                               filter, filterLen, matchFlags,
-                               resolvePaths ? &lookup : nullptr, totalRecords);
-            parseMs += ElapsedMs(parseStart, SteadyClock::now());
+            recordIndex += currentChunkSize;
+
+            // Wait for I/O to complete
+            ioThread.join();
+            ioMs += nextIoMs;
+
+            currentChunkSize = nextChunkSize;
+            curBuf = 1 - curBuf;
         }
+
+        VirtualFree(buf[0], 0, MEM_RELEASE);
+        VirtualFree(buf[1], 0, MEM_RELEASE);
 
         if (resolvePaths && usedCount > 0) {
             result->pathEntries = (MftPathEntry*)calloc((size_t)usedCount, sizeof(MftPathEntry));
@@ -1066,7 +1257,7 @@ extern "C" {
         uint64_t positionInBlock; // byte offset within current run
     };
 
-    static uint64_t VolumeReadChunk(void* ctx, double& ioMs) {
+    static uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
         auto* c = (VolumeReadContext*)ctx;
         while (c->filesRemaining == 0) {
             c->runIndex++;
@@ -1080,7 +1271,7 @@ extern "C" {
         uint64_t filesToLoad = min(c->filesRemaining, (uint64_t)MFT_FILES_PER_BUFFER);
         DWORD readBytes;
         auto ioStart = SteadyClock::now();
-        if (!Read(c->volumeHandle, mftBuffer,
+        if (!Read(c->volumeHandle, targetBuffer,
                   (uint64_t)run.clusterOffset * c->bytesPerCluster + c->positionInBlock,
                   (DWORD)(filesToLoad * FILE_RECORD_SIZE), &readBytes)) {
             return 0;
@@ -1218,13 +1409,13 @@ extern "C" {
         uint64_t recordsRemaining;
     };
 
-    static uint64_t FileReadChunk(void* ctx, double& ioMs) {
+    static uint64_t FileReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
         auto* c = (FileReadContext*)ctx;
         if (c->recordsRemaining == 0) return 0;
         uint64_t filesToLoad = min(c->recordsRemaining, (uint64_t)MFT_FILES_PER_BUFFER);
         DWORD readBytes;
         auto ioStart = SteadyClock::now();
-        if (!ReadFile(c->hFile, mftBuffer, (DWORD)(filesToLoad * FILE_RECORD_SIZE), &readBytes, nullptr)) {
+        if (!ReadFile(c->hFile, targetBuffer, (DWORD)(filesToLoad * FILE_RECORD_SIZE), &readBytes, nullptr)) {
             return 0;
         }
         ioMs += ElapsedMs(ioStart, SteadyClock::now());

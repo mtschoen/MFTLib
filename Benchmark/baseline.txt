@@ -6,7 +6,7 @@ System Info
   RAM:         64 GB
   Disk:        Samsung SSD 990 PRO 4TB
   .NET:        .NET 8.0.25
-  Date:        2026-03-14 01:47:42
+  Date:        2026-03-14 02:15:51
 
 MFT Benchmark
   Records: 8,000,000
@@ -15,59 +15,59 @@ MFT Benchmark
 Generating synthetic MFT... done in 4.7s (7.63 GB)
 
 --- Unfiltered (all records) ---
-  Iteration 1/3... 3655ms (6,000,541 records)
-  Iteration 2/3... 3638ms (6,000,541 records)
-  Iteration 3/3... 3573ms (6,000,541 records)
+  Iteration 1/3... 3253ms (6,000,541 records)
+  Iteration 2/3... 3228ms (6,000,541 records)
+  Iteration 3/3... 3144ms (6,000,541 records)
   Results (median):
     Records:         6,000,541
-    Wall clock:         3638.3ms
-    Native total:       2699.4ms
-      I/O:               899.7ms  (24.7%)
-      Fixup:             159.3ms  (4.4%)
-      Parse:            1517.5ms  (41.7%)
-    Marshal:             586.3ms  (16.1%)
-    Throughput:      2,198,837 records/sec
+    Wall clock:         3227.6ms
+    Native total:       2425.4ms
+      I/O:              1296.7ms  (40.2%)
+      Fixup:              11.6ms  (0.4%)
+      Parse:            1149.8ms  (35.6%)
+    Marshal:             553.7ms  (17.2%)
+    Throughput:      2,478,645 records/sec
 
 --- Filtered: exact ".git" ---
-  Iteration 1/3... 1481ms (75,316 records)
-  Iteration 2/3... 1442ms (75,316 records)
-  Iteration 3/3... 1424ms (75,316 records)
+  Iteration 1/3... 1141ms (75,316 records)
+  Iteration 2/3... 1160ms (75,316 records)
+  Iteration 3/3... 1131ms (75,316 records)
   Results (median):
     Records:            75,316
-    Wall clock:         1441.9ms
-    Native total:       1434.6ms
-      I/O:               876.1ms  (60.8%)
-      Fixup:             153.9ms  (10.7%)
-      Parse:             404.4ms  (28.0%)
-    Marshal:               3.4ms  (0.2%)
-    Throughput:      5,548,414 records/sec
+    Wall clock:         1141.3ms
+    Native total:       1133.7ms
+      I/O:              1108.1ms  (97.1%)
+      Fixup:               9.2ms  (0.8%)
+      Parse:             234.6ms  (20.6%)
+    Marshal:               3.8ms  (0.3%)
+    Throughput:      7,009,430 records/sec
 
 --- Filtered: contains "config" ---
-  Iteration 1/3... 2019ms (375,094 records)
-  Iteration 2/3... 1919ms (375,094 records)
-  Iteration 3/3... 1987ms (375,094 records)
+  Iteration 1/3... 1350ms (375,094 records)
+  Iteration 2/3... 1221ms (375,094 records)
+  Iteration 3/3... 1317ms (375,094 records)
   Results (median):
     Records:           375,094
-    Wall clock:         1987.0ms
-    Native total:       1896.4ms
-      I/O:               889.4ms  (44.8%)
-      Fixup:             154.3ms  (7.8%)
-      Parse:             852.4ms  (42.9%)
-    Marshal:              76.1ms  (3.8%)
-    Throughput:      4,026,102 records/sec
+    Wall clock:         1316.7ms
+    Native total:       1220.8ms
+      I/O:              1166.3ms  (88.6%)
+      Fixup:              10.2ms  (0.8%)
+      Parse:             266.4ms  (20.2%)
+    Marshal:              78.6ms  (6.0%)
+    Throughput:      6,075,581 records/sec
 
 --- Filtered: exact ".git" + paths ---
-  Iteration 1/3... 1720ms (75,316 records)
-  Iteration 2/3... 1712ms (75,316 records)
-  Iteration 3/3... 1718ms (75,316 records)
+  Iteration 1/3... 1346ms (75,316 records)
+  Iteration 2/3... 1356ms (75,316 records)
+  Iteration 3/3... 1335ms (75,316 records)
   Results (median):
     Records:            75,316
-    Wall clock:         1717.5ms
-    Native total:       1696.0ms
-      I/O:               883.1ms  (51.4%)
-      Fixup:             153.5ms  (8.9%)
-      Parse:             571.7ms  (33.3%)
-    Marshal:               8.4ms  (0.5%)
-    Throughput:      4,657,856 records/sec
+    Wall clock:         1346.4ms
+    Native total:       1325.4ms
+      I/O:              1200.2ms  (89.1%)
+      Fixup:              10.4ms  (0.8%)
+      Parse:             305.7ms  (22.7%)
+    Marshal:               8.7ms  (0.6%)
+    Throughput:      5,941,746 records/sec
 
 Synthetic MFT file cleaned up.
