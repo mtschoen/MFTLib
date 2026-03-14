@@ -80,7 +80,14 @@ typedef struct _ATTRIBUTE_LIST_ENTRY {
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/file-name
 typedef struct _FILE_NAME {
     FILE_REFERENCE ParentDirectory;
-    UCHAR          Reserved[0x38];
+    uint64_t       CreationTime;
+    uint64_t       ModificationTime;
+    uint64_t       MftModificationTime;
+    uint64_t       ReadTime;
+    uint64_t       AllocatedSize;
+    uint64_t       FileSize;
+    uint32_t       FileAttributes;     // e.g. FILE_ATTRIBUTE_DIRECTORY
+    uint32_t       ReparsePointTag;    // or EA size
     UCHAR          FileNameLength;
     UCHAR          Flags;
     WCHAR          FileName[1];

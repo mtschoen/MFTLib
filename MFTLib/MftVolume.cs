@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using MFTLib.Interop;
@@ -24,7 +25,9 @@ public sealed class MftVolume : IDisposable
         return new MftVolume(handle, letter);
     }
 
-    public MftRecord[] ReadAllRecords()
+    public MftRecord[] ReadAllRecords() => ReadAllRecords(out _);
+
+    public MftRecord[] ReadAllRecords(out MftParseTimings timings)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -43,12 +46,18 @@ public sealed class MftVolume : IDisposable
             var records = new MftRecord[result.UsedRecords];
             nint currentPtr = result.Entries;
 
+            var marshalSw = Stopwatch.StartNew();
             for (ulong i = 0; i < result.UsedRecords; i++)
             {
                 var entry = Marshal.PtrToStructure<MftFileEntry>(currentPtr);
                 records[i] = new MftRecord(entry.RecordNumber, entry.ParentRecordNumber, entry.Flags, entry.FileName);
                 currentPtr += entrySize;
             }
+            marshalSw.Stop();
+
+            timings = new MftParseTimings(
+                result.IoTimeMs, result.FixupTimeMs, result.ParseTimeMs,
+                result.TotalTimeMs, marshalSw.Elapsed.TotalMilliseconds);
 
             return records;
         }
@@ -113,6 +122,50 @@ public sealed class MftVolume : IDisposable
 
         parts.Reverse();
         return $"{_driveLetter}:\\{string.Join('\\', parts)}";
+    }
+
+    public static void GenerateSyntheticMFT(string filePath, ulong recordCount)
+    {
+        if (!MFTLibNative.GenerateSyntheticMFT(filePath, recordCount))
+            throw new InvalidOperationException("Failed to generate synthetic MFT file");
+    }
+
+    public static MftRecord[] ParseMFTFromFile(string filePath, out MftParseTimings timings)
+    {
+        IntPtr resultPtr = MFTLibNative.ParseMFTFromFile(filePath);
+        if (resultPtr == IntPtr.Zero)
+            throw new InvalidOperationException("ParseMFTFromFile returned null");
+
+        try
+        {
+            var result = Marshal.PtrToStructure<MftParseResult>(resultPtr);
+
+            if (!string.IsNullOrEmpty(result.ErrorMessage) && result.UsedRecords == 0)
+                throw new InvalidOperationException($"MFT parse failed: {result.ErrorMessage}");
+
+            int entrySize = Marshal.SizeOf<MftFileEntry>();
+            var records = new MftRecord[result.UsedRecords];
+            nint currentPtr = result.Entries;
+
+            var marshalSw = Stopwatch.StartNew();
+            for (ulong i = 0; i < result.UsedRecords; i++)
+            {
+                var entry = Marshal.PtrToStructure<MftFileEntry>(currentPtr);
+                records[i] = new MftRecord(entry.RecordNumber, entry.ParentRecordNumber, entry.Flags, entry.FileName);
+                currentPtr += entrySize;
+            }
+            marshalSw.Stop();
+
+            timings = new MftParseTimings(
+                result.IoTimeMs, result.FixupTimeMs, result.ParseTimeMs,
+                result.TotalTimeMs, marshalSw.Elapsed.TotalMilliseconds);
+
+            return records;
+        }
+        finally
+        {
+            MFTLibNative.FreeMftResult(resultPtr);
+        }
     }
 
     public void Dispose()

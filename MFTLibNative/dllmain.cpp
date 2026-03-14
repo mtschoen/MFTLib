@@ -1,10 +1,18 @@
 #include "pch.h"
 
 #include <cassert>
+#include <chrono>
 
 #include "framework.h"
 #include "ntfs.h"
 #include "mft_api.h"
+
+using SteadyClock = std::chrono::steady_clock;
+using TimePoint = SteadyClock::time_point;
+
+static double ElapsedMs(TimePoint start, TimePoint end) {
+    return std::chrono::duration<double, std::milli>(end - start).count();
+}
 
 #define EXPORT __declspec(dllexport)
 
@@ -559,6 +567,9 @@ extern "C" {
     }
 
     EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle) {
+        auto wallStart = SteadyClock::now();
+        double ioMs = 0, fixupMs = 0, parseMs = 0;
+
         auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
         if (!result) return nullptr;
 
@@ -685,22 +696,32 @@ extern "C" {
             while (filesRemaining > 0) {
                 uint64_t filesToLoad = min(filesRemaining, (uint64_t)MFT_FILES_PER_BUFFER);
                 DWORD readBytes;
+                auto ioStart = SteadyClock::now();
                 if (!Read(volumeHandle, mftBuffer,
                           (uint64_t)run.clusterOffset * bytesPerCluster + positionInBlock,
                           (DWORD)(filesToLoad * FILE_RECORD_SIZE), &readBytes)) {
                     break;
                 }
+                ioMs += ElapsedMs(ioStart, SteadyClock::now());
                 positionInBlock += filesToLoad * FILE_RECORD_SIZE;
                 filesRemaining -= filesToLoad;
 
+                auto fixupStart = SteadyClock::now();
+                for (uint64_t i = 0; i < filesToLoad; i++) {
+                    auto* recPtr = mftBuffer + FILE_RECORD_SIZE * i;
+                    auto* rec = (PFILE_RECORD_SEGMENT_HEADER)recPtr;
+                    if (rec->MultiSectorHeader.Magic == 0x454C4946)
+                        ApplyFixup(recPtr, FILE_RECORD_SIZE);
+                }
+                fixupMs += ElapsedMs(fixupStart, SteadyClock::now());
+
+                auto parseStart = SteadyClock::now();
                 for (uint64_t i = 0; i < filesToLoad; i++, recordIndex++) {
                     auto* recPtr = mftBuffer + FILE_RECORD_SIZE * i;
                     auto* rec = (PFILE_RECORD_SEGMENT_HEADER)recPtr;
 
                     // Skip invalid or not-in-use records
                     if (rec->MultiSectorHeader.Magic != 0x454C4946) continue;
-
-                    ApplyFixup(recPtr, FILE_RECORD_SIZE);
                     if (!(rec->Flags & 0x0001)) continue;
 
                     // Skip extension records (base file reference != 0)
@@ -747,10 +768,15 @@ extern "C" {
                         attr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)attr + attr->RecordLength);
                     }
                 }
+                parseMs += ElapsedMs(parseStart, SteadyClock::now());
             }
         }
 
         result->usedRecords = usedCount;
+        result->ioTimeMs = ioMs;
+        result->fixupTimeMs = fixupMs;
+        result->parseTimeMs = parseMs;
+        result->totalTimeMs = ElapsedMs(wallStart, SteadyClock::now());
         return result;
     }
 
@@ -759,5 +785,342 @@ extern "C" {
             free(result->entries);
             free(result);
         }
+    }
+
+    // Apply USA protection to a record (reverse of ApplyFixup).
+    // Saves original sector-end bytes into USA, replaces them with USN.
+    static void ApplyUSAProtection(uint8_t* record, uint32_t recordSize, uint16_t usn) {
+        auto* header = (PFILE_RECORD_SEGMENT_HEADER)record;
+        uint16_t usaOffset = header->MultiSectorHeader.UpdateSequenceArrayOffset;
+        uint16_t usaSize = header->MultiSectorHeader.UpdateSequenceArraySize;
+        auto* usa = (uint16_t*)(record + usaOffset);
+        usa[0] = usn;
+
+        uint16_t sectorCount = usaSize - 1;
+        for (uint16_t i = 0; i < sectorCount; i++) {
+            uint32_t sectorEnd = (i + 1) * 512 - 2;
+            if (sectorEnd + 2 > recordSize) break;
+            auto* sectorLastWord = (uint16_t*)(record + sectorEnd);
+            usa[i + 1] = *sectorLastWord; // save original
+            *sectorLastWord = usn;         // replace with check value
+        }
+    }
+
+    // Build a synthetic FILE record with a FileName attribute.
+    // The record is USA-protected so that ApplyFixup must be called before parsing.
+    // rng is a pointer to the PRNG state so metadata varies per record.
+    static void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex,
+                                     uint64_t parentRecord, uint16_t flags,
+                                     const wchar_t* name, uint8_t nameLen,
+                                     uint64_t baseRef, uint64_t* rng) {
+        memset(record, 0, FILE_RECORD_SIZE);
+
+        auto nextRng = [rng]() -> uint64_t {
+            *rng ^= *rng << 13;
+            *rng ^= *rng >> 7;
+            *rng ^= *rng << 17;
+            return *rng;
+        };
+
+        auto* hdr = (PFILE_RECORD_SEGMENT_HEADER)record;
+        hdr->MultiSectorHeader.Magic = 0x454C4946; // "FILE"
+        hdr->MultiSectorHeader.UpdateSequenceArrayOffset = 0x30;
+        hdr->MultiSectorHeader.UpdateSequenceArraySize = 3; // 1 USN + 2 sector entries
+        hdr->SequenceNumber = (uint16_t)(recordIndex + 1);
+        hdr->Flags = flags;
+        hdr->FirstAttributeOffset = 0x38;
+
+        // Set base file reference for extension records
+        hdr->BaseFileRecordSegment.SegmentNumberLowPart = (ULONG)(baseRef & 0xFFFFFFFF);
+        hdr->BaseFileRecordSegment.SegmentNumberHighPart = (USHORT)(baseRef >> 32);
+
+        if (baseRef != 0 || !(flags & 0x0001)) {
+            auto* endAttr = (PATTRIBUTE_RECORD_HEADER)(record + hdr->FirstAttributeOffset);
+            endAttr->TypeCode = EndMarker;
+            ApplyUSAProtection(record, FILE_RECORD_SIZE, (uint16_t)(recordIndex & 0xFFFF));
+            return;
+        }
+
+        // Generate timestamps: spread across 2015-2025 range
+        // Windows FILETIME epoch is Jan 1 1601; 2015 ≈ 130645440000000000
+        constexpr uint64_t ftBase2015 = 130645440000000000ULL;
+        constexpr uint64_t tenYearsTicks = 10ULL * 365 * 24 * 3600 * 10000000ULL;
+        uint64_t createTime = ftBase2015 + (nextRng() % tenYearsTicks);
+        uint64_t modTime = createTime + (nextRng() % (tenYearsTicks / 10)); // modified after creation
+        uint64_t mftModTime = modTime + (nextRng() % 100000000ULL);        // shortly after mod
+        uint64_t readTime = modTime + (nextRng() % (tenYearsTicks / 5));    // read sometime later
+
+        bool isDir = (flags & 0x0002) != 0;
+        uint64_t fileSize = isDir ? 0 : (nextRng() % (256ULL * 1024 * 1024)); // 0-256MB
+        uint64_t allocSize = (fileSize + 4095) & ~4095ULL;                     // round up to 4K cluster
+        uint32_t fileAttrs = isDir ? 0x10 : 0x20; // FILE_ATTRIBUTE_DIRECTORY or ARCHIVE
+        if (nextRng() % 20 == 0) fileAttrs |= 0x02; // ~5% hidden
+        if (nextRng() % 50 == 0) fileAttrs |= 0x04; // ~2% system
+        if (nextRng() % 10 == 0) fileAttrs |= 0x01; // ~10% read-only
+
+        uint16_t offset = hdr->FirstAttributeOffset;
+
+        // StandardInformation attribute (type 0x10)
+        auto* siAttr = (PATTRIBUTE_RECORD_HEADER)(record + offset);
+        siAttr->TypeCode = StandardInformation;
+        siAttr->FormCode = 0; // resident
+        siAttr->Form.Resident.ValueLength = 0x48;
+        siAttr->Form.Resident.ValueOffset = 0x18;
+        siAttr->RecordLength = (0x18 + 0x48 + 7) & ~7;
+
+        // Fill in StandardInformation value: timestamps + permissions
+        auto* siValue = (uint8_t*)(record + offset + 0x18);
+        memcpy(siValue + 0x00, &createTime, 8);
+        memcpy(siValue + 0x08, &modTime, 8);
+        memcpy(siValue + 0x10, &mftModTime, 8);
+        memcpy(siValue + 0x18, &readTime, 8);
+        memcpy(siValue + 0x20, &fileAttrs, 4);  // permissions/flags
+
+        offset += (uint16_t)siAttr->RecordLength;
+
+        // FileName attribute (type 0x30)
+        uint16_t fnValueSize = (uint16_t)(sizeof(FILE_NAME) - sizeof(WCHAR) + nameLen * sizeof(WCHAR));
+        auto* fnAttr = (PATTRIBUTE_RECORD_HEADER)(record + offset);
+        fnAttr->TypeCode = FileName;
+        fnAttr->FormCode = 0; // resident
+        fnAttr->Form.Resident.ValueLength = fnValueSize;
+        fnAttr->Form.Resident.ValueOffset = 0x18;
+        fnAttr->RecordLength = (0x18 + fnValueSize + 7) & ~7;
+
+        auto* fn = (PFILE_NAME)(record + offset + 0x18);
+        fn->ParentDirectory.SegmentNumberLowPart = (ULONG)(parentRecord & 0xFFFFFFFF);
+        fn->ParentDirectory.SegmentNumberHighPart = (USHORT)(parentRecord >> 32);
+        fn->CreationTime = createTime;
+        fn->ModificationTime = modTime;
+        fn->MftModificationTime = mftModTime;
+        fn->ReadTime = readTime;
+        fn->AllocatedSize = allocSize;
+        fn->FileSize = fileSize;
+        fn->FileAttributes = fileAttrs;
+        fn->FileNameLength = nameLen;
+        fn->Flags = 3; // WIN32_AND_DOS namespace
+        wmemcpy(fn->FileName, name, nameLen);
+
+        offset += (uint16_t)fnAttr->RecordLength;
+
+        // Data attribute (type 0x80) — non-resident stub with file size info
+        if (!isDir && fileSize > 0) {
+            auto* dataAttr = (PATTRIBUTE_RECORD_HEADER)(record + offset);
+            dataAttr->TypeCode = Data;
+            dataAttr->FormCode = 1; // non-resident
+            dataAttr->NameLength = 0;
+            dataAttr->Form.Nonresident.LowestVcn.QuadPart = 0;
+            dataAttr->Form.Nonresident.HighestVcn.QuadPart = (allocSize / 4096) - 1;
+            dataAttr->Form.Nonresident.MappingPairsOffset = 0x48;
+            dataAttr->Form.Nonresident.AllocatedLength = allocSize;
+            dataAttr->Form.Nonresident.FileSize = fileSize;
+            dataAttr->Form.Nonresident.ValidDataLength = fileSize;
+            // Write a single data run: length = allocSize/4096 clusters, offset = recordIndex*64
+            // Run header: 1 byte length field, 3 byte offset field -> header byte = 0x31
+            uint64_t clusterCount = allocSize / 4096;
+            uint64_t clusterOffset = recordIndex * 64; // spread out so offsets don't collide
+            auto* runPtr = (uint8_t*)dataAttr + 0x48;
+            *runPtr++ = 0x31; // 3 bytes offset, 1 byte length
+            *runPtr++ = (uint8_t)(clusterCount & 0xFF);
+            *runPtr++ = (uint8_t)(clusterOffset & 0xFF);
+            *runPtr++ = (uint8_t)((clusterOffset >> 8) & 0xFF);
+            *runPtr++ = (uint8_t)((clusterOffset >> 16) & 0xFF);
+            *runPtr++ = 0; // terminator
+            dataAttr->RecordLength = (0x48 + 6 + 7) & ~7; // 0x50
+            offset += (uint16_t)dataAttr->RecordLength;
+        }
+
+        // End marker
+        auto* endAttr = (PATTRIBUTE_RECORD_HEADER)(record + offset);
+        endAttr->TypeCode = EndMarker;
+
+        // Apply USA protection so the benchmark exercises the fixup path
+        ApplyUSAProtection(record, FILE_RECORD_SIZE, (uint16_t)(recordIndex & 0xFFFF));
+    }
+
+    EXPORT bool GenerateSyntheticMFT(const wchar_t* filePath, uint64_t recordCount) {
+        HANDLE hFile = CreateFileW(filePath, GENERIC_WRITE, 0, nullptr,
+                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (hFile == INVALID_HANDLE_VALUE) return false;
+
+        // Deterministic PRNG for reproducibility
+        uint64_t rng = 12345678901ULL;
+        auto nextRng = [&rng]() -> uint32_t {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            return (uint32_t)(rng & 0xFFFFFFFF);
+        };
+
+        // Pre-generate some realistic filenames
+        const wchar_t* fileNames[] = {
+            L"README.md", L"index.html", L"main.cpp", L"package.json",
+            L"Makefile", L"config.yaml", L"data.bin", L"icon.png",
+            L"setup.py", L"app.js", L"style.css", L"test.go",
+            L"build.gradle", L"Cargo.toml", L"Program.cs", L"pom.xml",
+        };
+        const wchar_t* dirNames[] = {
+            L"src", L"bin", L"obj", L"node_modules", L".git",
+            L"build", L"docs", L"tests", L"lib", L"include",
+            L"assets", L"scripts", L"config", L"data", L"temp", L"cache",
+        };
+        constexpr int numFileNames = 16;
+        constexpr int numDirNames = 16;
+
+        // Write in bulk using the same mftBuffer (64K records = 64MB chunks)
+        uint64_t remaining = recordCount;
+        uint64_t recordIndex = 0;
+
+        while (remaining > 0) {
+            uint64_t batchSize = min(remaining, (uint64_t)MFT_FILES_PER_BUFFER);
+
+            for (uint64_t i = 0; i < batchSize; i++, recordIndex++) {
+                uint8_t* record = mftBuffer + i * FILE_RECORD_SIZE;
+                uint32_t r = nextRng();
+
+                if (recordIndex < 5) {
+                    BuildSyntheticRecord(record, recordIndex, 0, 0x0001, L"$MFT", 4, 0, &rng);
+                } else if (recordIndex == 5) {
+                    BuildSyntheticRecord(record, recordIndex, 5, 0x0003, L".", 1, 0, &rng);
+                } else if (r % 100 < 10) {
+                    // 10% unused/invalid records
+                    memset(record, 0, FILE_RECORD_SIZE);
+                } else if (r % 100 < 25) {
+                    // 15% extension records (skipped by parser)
+                    uint64_t baseRec = (nextRng() % recordIndex) + 1;
+                    BuildSyntheticRecord(record, recordIndex, 0, 0x0001, L"ext", 3, baseRec, &rng);
+                } else if (r % 100 < 40) {
+                    // 15% directories
+                    uint64_t parent = (recordIndex < 100) ? 5 : (nextRng() % (recordIndex / 2)) + 5;
+                    const wchar_t* name = dirNames[nextRng() % numDirNames];
+                    BuildSyntheticRecord(record, recordIndex, parent, 0x0003, name, (uint8_t)wcslen(name), 0, &rng);
+                } else {
+                    // 60% files
+                    uint64_t parent = (recordIndex < 100) ? 5 : (nextRng() % (recordIndex / 2)) + 5;
+                    const wchar_t* name = fileNames[nextRng() % numFileNames];
+                    BuildSyntheticRecord(record, recordIndex, parent, 0x0001, name, (uint8_t)wcslen(name), 0, &rng);
+                }
+            }
+
+            DWORD written;
+            WriteFile(hFile, mftBuffer, (DWORD)(batchSize * FILE_RECORD_SIZE), &written, nullptr);
+            remaining -= batchSize;
+        }
+
+        CloseHandle(hFile);
+        return true;
+    }
+
+    // Parse a synthetic MFT file (same processing as ParseMFTRecords but from a flat file).
+    EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath) {
+        auto wallStart = SteadyClock::now();
+        double ioMs = 0, fixupMs = 0, parseMs = 0;
+
+        auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
+        if (!result) return nullptr;
+
+        HANDLE hFile = CreateFileW(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                   OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+        if (hFile == INVALID_HANDLE_VALUE) {
+            swprintf_s(result->errorMessage, 256, L"Failed to open file. Error: %lu", GetLastError());
+            return result;
+        }
+
+        LARGE_INTEGER fileSize;
+        GetFileSizeEx(hFile, &fileSize);
+        uint64_t totalRecords = fileSize.QuadPart / FILE_RECORD_SIZE;
+        result->totalRecords = totalRecords;
+
+        uint64_t capacity = totalRecords / 4;
+        if (capacity < 1024) capacity = 1024;
+        result->entries = (MftFileEntry*)malloc((size_t)capacity * sizeof(MftFileEntry));
+        if (!result->entries) {
+            swprintf_s(result->errorMessage, 256, L"Failed to allocate entry array");
+            CloseHandle(hFile);
+            return result;
+        }
+
+        uint64_t usedCount = 0;
+        uint64_t recordIndex = 0;
+        uint64_t recordsRemaining = totalRecords;
+
+        while (recordsRemaining > 0) {
+            uint64_t filesToLoad = min(recordsRemaining, (uint64_t)MFT_FILES_PER_BUFFER);
+            DWORD readBytes;
+            auto ioStart = SteadyClock::now();
+            if (!ReadFile(hFile, mftBuffer, (DWORD)(filesToLoad * FILE_RECORD_SIZE), &readBytes, nullptr)) {
+                break;
+            }
+            ioMs += ElapsedMs(ioStart, SteadyClock::now());
+            recordsRemaining -= filesToLoad;
+
+            auto fixupStart = SteadyClock::now();
+            for (uint64_t i = 0; i < filesToLoad; i++) {
+                auto* recPtr = mftBuffer + FILE_RECORD_SIZE * i;
+                auto* rec = (PFILE_RECORD_SEGMENT_HEADER)recPtr;
+                if (rec->MultiSectorHeader.Magic == 0x454C4946)
+                    ApplyFixup(recPtr, FILE_RECORD_SIZE);
+            }
+            fixupMs += ElapsedMs(fixupStart, SteadyClock::now());
+
+            auto parseStart = SteadyClock::now();
+            for (uint64_t i = 0; i < filesToLoad; i++, recordIndex++) {
+                auto* recPtr = mftBuffer + FILE_RECORD_SIZE * i;
+                auto* rec = (PFILE_RECORD_SEGMENT_HEADER)recPtr;
+
+                if (rec->MultiSectorHeader.Magic != 0x454C4946) continue;
+                if (!(rec->Flags & 0x0001)) continue;
+
+                uint64_t baseRef = (uint64_t)rec->BaseFileRecordSegment.SegmentNumberLowPart |
+                                   ((uint64_t)rec->BaseFileRecordSegment.SegmentNumberHighPart << 32);
+                if (baseRef != 0) continue;
+
+                auto* attr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)rec + rec->FirstAttributeOffset);
+                while ((uint8_t*)attr - (uint8_t*)rec < FILE_RECORD_SIZE) {
+                    if (attr->TypeCode == EndMarker || attr->RecordLength == 0) break;
+
+                    if (attr->TypeCode == FileName && attr->FormCode == 0) {
+                        auto* fn = (PFILE_NAME)((uint8_t*)attr + attr->Form.Resident.ValueOffset);
+                        if (fn->Flags != 2) {
+                            if (usedCount >= capacity) {
+                                capacity *= 2;
+                                auto* grown = (MftFileEntry*)realloc(result->entries, (size_t)capacity * sizeof(MftFileEntry));
+                                if (!grown) {
+                                    swprintf_s(result->errorMessage, 256, L"Failed to grow entry array");
+                                    result->usedRecords = usedCount;
+                                    CloseHandle(hFile);
+                                    return result;
+                                }
+                                result->entries = grown;
+                            }
+
+                            auto& entry = result->entries[usedCount];
+                            memset(&entry, 0, sizeof(MftFileEntry));
+                            entry.recordNumber = recordIndex;
+                            entry.parentRecordNumber = (uint64_t)fn->ParentDirectory.SegmentNumberLowPart |
+                                                       ((uint64_t)fn->ParentDirectory.SegmentNumberHighPart << 32);
+                            entry.flags = rec->Flags;
+                            entry.fileNameLength = fn->FileNameLength;
+                            uint16_t copyLen = min((uint16_t)fn->FileNameLength, (uint16_t)259);
+                            memset(entry.fileName, 0, sizeof(entry.fileName));
+                            wmemcpy_s(entry.fileName, 260, fn->FileName, copyLen);
+
+                            usedCount++;
+                            break;
+                        }
+                    }
+                    attr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)attr + attr->RecordLength);
+                }
+            }
+            parseMs += ElapsedMs(parseStart, SteadyClock::now());
+        }
+
+        CloseHandle(hFile);
+        result->usedRecords = usedCount;
+        result->ioTimeMs = ioMs;
+        result->fixupTimeMs = fixupMs;
+        result->parseTimeMs = parseMs;
+        result->totalTimeMs = ElapsedMs(wallStart, SteadyClock::now());
+        return result;
     }
 }

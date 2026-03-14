@@ -16,6 +16,11 @@ struct MftParseResult {
     uint64_t      usedRecords;
     MftFileEntry* entries;        // array, owned by native side
     wchar_t       errorMessage[256];
+    // Performance counters (milliseconds)
+    double        ioTimeMs;       // time spent in ReadFile calls
+    double        fixupTimeMs;    // time spent applying USA fixups
+    double        parseTimeMs;    // time spent scanning attributes
+    double        totalTimeMs;    // wall clock for entire ParseMFTRecords
 };
 
 #pragma pack(pop)

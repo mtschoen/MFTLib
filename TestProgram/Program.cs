@@ -19,7 +19,7 @@ foreach (var drive in driveLetters)
     {
         var sw = Stopwatch.StartNew();
         using var volume = MftVolume.Open(letter);
-        var records = volume.ReadAllRecords();
+        var records = volume.ReadAllRecords(out var timings);
         sw.Stop();
 
         Console.WriteLine($"Read {records.Length} records in {sw.Elapsed}");
@@ -28,6 +28,11 @@ foreach (var drive in driveLetters)
         var files = records.Length - dirs;
         Console.WriteLine($"  Directories: {dirs}");
         Console.WriteLine($"  Files: {files}");
+
+        Console.WriteLine();
+        Console.WriteLine("Performance breakdown:");
+        Console.WriteLine($"  {timings}");
+        Console.WriteLine($"  Wall clock: {sw.Elapsed.TotalMilliseconds:F1}ms");
 
         // Find .git directories
         Console.WriteLine();
