@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using MFTLib.Interop;
@@ -42,17 +43,8 @@ public sealed class MftVolume : IDisposable
             if (!string.IsNullOrEmpty(result.ErrorMessage) && result.UsedRecords == 0)
                 throw new InvalidOperationException($"MFT parse failed: {result.ErrorMessage}");
 
-            int entrySize = Marshal.SizeOf<MftFileEntry>();
-            var records = new MftRecord[result.UsedRecords];
-            nint currentPtr = result.Entries;
-
             var marshalSw = Stopwatch.StartNew();
-            for (ulong i = 0; i < result.UsedRecords; i++)
-            {
-                var entry = Marshal.PtrToStructure<MftFileEntry>(currentPtr);
-                records[i] = new MftRecord(entry.RecordNumber, entry.ParentRecordNumber, entry.Flags, entry.FileName);
-                currentPtr += entrySize;
-            }
+            var records = ReadEntriesUnsafe(result.Entries, result.UsedRecords);
             marshalSw.Stop();
 
             timings = new MftParseTimings(
@@ -143,17 +135,8 @@ public sealed class MftVolume : IDisposable
             if (!string.IsNullOrEmpty(result.ErrorMessage) && result.UsedRecords == 0)
                 throw new InvalidOperationException($"MFT parse failed: {result.ErrorMessage}");
 
-            int entrySize = Marshal.SizeOf<MftFileEntry>();
-            var records = new MftRecord[result.UsedRecords];
-            nint currentPtr = result.Entries;
-
             var marshalSw = Stopwatch.StartNew();
-            for (ulong i = 0; i < result.UsedRecords; i++)
-            {
-                var entry = Marshal.PtrToStructure<MftFileEntry>(currentPtr);
-                records[i] = new MftRecord(entry.RecordNumber, entry.ParentRecordNumber, entry.Flags, entry.FileName);
-                currentPtr += entrySize;
-            }
+            var records = ReadEntriesUnsafe(result.Entries, result.UsedRecords);
             marshalSw.Stop();
 
             timings = new MftParseTimings(
@@ -166,6 +149,31 @@ public sealed class MftVolume : IDisposable
         {
             MFTLibNative.FreeMftResult(resultPtr);
         }
+    }
+
+    // Native MftFileEntry layout (pack=1): u64 recordNumber, u64 parentRecordNumber,
+    // u16 flags, u16 fileNameLength, wchar_t[260] fileName = 540 bytes total.
+    private const int NativeEntrySize = 8 + 8 + 2 + 2 + 260 * 2; // 540
+
+    private static unsafe MftRecord[] ReadEntriesUnsafe(IntPtr entries, ulong count)
+    {
+        var records = new MftRecord[count];
+        byte* ptr = (byte*)entries;
+
+        for (ulong i = 0; i < count; i++)
+        {
+            ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
+            ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
+            ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
+            ushort nameLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
+
+            var fileName = new string((char*)(ptr + 20), 0, nameLength);
+
+            records[i] = new MftRecord(recordNumber, parentRecordNumber, flags, fileName);
+            ptr += NativeEntrySize;
+        }
+
+        return records;
     }
 
     public void Dispose()
