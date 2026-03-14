@@ -1,0 +1,7 @@
+<Project>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\MFTLibNative.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="MFTLibNative.dll" />
+  </ItemGroup>
+</Project>

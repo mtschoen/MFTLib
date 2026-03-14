@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -8,6 +8,18 @@
     <Platforms>x64;x86</Platforms>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RunPostBuildEvent>Always</RunPostBuildEvent>
+
+    <!-- NuGet package metadata -->
+    <PackageId>MFTLib</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Matt Schoen</Authors>
+    <Description>Fast NTFS MFT (Master File Table) enumeration library for Windows. Parses MFT records via raw volume access with native C++ I/O, multi-threaded parsing, and double-buffered reads. Supports filename filtering, path resolution, and configurable buffer sizes.</Description>
+    <PackageProjectUrl>https://github.com/mtschoen/MFTLib</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mtschoen/MFTLib</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>ntfs;mft;filesystem;windows;file-enumeration</PackageTags>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +28,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" />
+  </ItemGroup>
+
+  <!-- Pack native DLL into the NuGet package -->
+  <ItemGroup>
+    <None Include="..\x64\$(Configuration)\MFTLibNative.dll" Pack="true" PackagePath="runtimes/win-x64/native" Visible="false" />
+    <None Include="build\MFTLib.targets" Pack="true" PackagePath="build" />
+    <None Include="build\MFTLib.targets" Pack="true" PackagePath="buildTransitive" />
+    <None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
+    <None Include="..\README.md" Pack="true" PackagePath="" />
   </ItemGroup>
 
 </Project>
