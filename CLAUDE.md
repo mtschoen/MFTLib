@@ -18,6 +18,19 @@ MSBuild.exe TestProgram\TestProgram.csproj -p:Configuration=Debug -p:Platform=x6
 
 Do NOT use `dotnet build` - it cannot build the native C++ dependency (MFTLibNative).
 
+### NuGet packaging
+
+```bash
+# Build Release and pack the NuGet package
+MSBuild.exe MFTLib.sln -p:Configuration=Release -p:Platform=x64
+MSBuild.exe MFTLib\MFTLib.csproj -t:Pack -p:Configuration=Release -p:Platform=x64
+
+# Publish to nuget.org
+dotnet nuget push "MFTLib\bin\x64\Release\MFTLib.*.nupkg" --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json
+```
+
+Use `MSBuild -t:Pack` (not `dotnet pack`) since `dotnet pack` can't handle the vcxproj reference.
+
 ### Running the test program
 
 The test program requires admin elevation (raw volume access). Output is written to `output.log` next to the exe.
@@ -32,7 +45,9 @@ cat TestProgram\bin\x64\Debug\net8.0\output.log
 
 ## Architecture
 
-- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic. Reads boot sector, file records, and attributes via raw volume access. Exports `ParseMFT` and `PrintVolumeInfo`.
-- **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop, volume utilities, and NTFS structure definitions.
+- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Exports `ParseMFTRecords`, `ParseMFTFromFile`, `GenerateSyntheticMFT`, and `PrintVolumeInfo`.
+- **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop, `MftVolume` public API, and NTFS structure definitions. Packaged as a NuGet package with the native DLL bundled.
 - **TestProgram** (C# Console App) - CLI that reads MFT metadata for specified drives. Requires admin elevation.
+- **Benchmark** (C# Console App) - Performance benchmark using synthetic MFT generation. Targets `net8.0-windows`.
+- **MFTLib.Tests** (C# xUnit) - Unit tests.
 - **ConsoleApplication1** (C++ Console) - Legacy prototype, superseded by MFTLibNative.
