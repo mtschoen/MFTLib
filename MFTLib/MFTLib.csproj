@@ -11,7 +11,7 @@
 
     <!-- NuGet package metadata -->
     <PackageId>MFTLib</PackageId>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Authors>Matt Schoen</Authors>
     <Description>Fast NTFS MFT (Master File Table) enumeration library for Windows. Parses MFT records via raw volume access with native C++ I/O, multi-threaded parsing, and double-buffered reads. Supports filename filtering, path resolution, and configurable buffer sizes.</Description>
     <PackageProjectUrl>https://github.com/mtschoen/MFTLib</PackageProjectUrl>
@@ -20,7 +20,19 @@
     <PackageTags>ntfs;mft;filesystem;windows;file-enumeration</PackageTags>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <!-- NuGet health checks -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="all" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="MFTLib.Tests" />
