@@ -884,9 +884,9 @@ extern "C" {
             parents = (uint64_t*)calloc((size_t)totalRecords, sizeof(uint64_t));
             nameLens = (uint8_t*)calloc((size_t)totalRecords, sizeof(uint8_t));
             nameOffsets = (uint32_t*)calloc((size_t)totalRecords, sizeof(uint32_t));
-            // Average ~12 chars per name, ~75% of records are used.
+            // Average ~20 chars per name, ~75% of records are used.
             // Pre-allocate generously since we can't realloc with atomic allocation.
-            namePoolCapacity = totalRecords * 16;
+            namePoolCapacity = totalRecords * 32;
             namePool = (wchar_t*)malloc((size_t)namePoolCapacity * sizeof(wchar_t));
             namePoolUsed = 0;
             return parents && nameLens && nameOffsets && namePool;
@@ -896,12 +896,12 @@ extern "C" {
         // (each thread handles different indices). namePool uses atomic allocation.
         void storeName(uint64_t recordIndex, uint64_t parent, const wchar_t* name, uint8_t nameLen) {
             parents[recordIndex] = parent;
-            nameLens[recordIndex] = nameLen;
             uint64_t offset = (uint64_t)InterlockedExchangeAdd64(
                 (volatile LONG64*)&namePoolUsed, (LONG64)nameLen);
             if (offset + nameLen > namePoolCapacity) return; // pool exhausted
             nameOffsets[recordIndex] = (uint32_t)offset;
             wmemcpy(namePool + offset, name, nameLen);
+            nameLens[recordIndex] = nameLen; // set only after successful write
         }
 
         void cleanup() {

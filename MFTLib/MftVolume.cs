@@ -71,7 +71,7 @@ public sealed class MftVolume : IDisposable
             marshalSw.Stop();
 
             timings = new MftParseTimings(
-                result.IoTimeMs, result.FixupTimeMs, result.ParseTimeMs,
+                result.TotalRecords, result.IoTimeMs, result.FixupTimeMs, result.ParseTimeMs,
                 result.TotalTimeMs, marshalSw.Elapsed.TotalMilliseconds);
 
             return records;
@@ -154,7 +154,7 @@ public sealed class MftVolume : IDisposable
             marshalSw.Stop();
 
             timings = new MftParseTimings(
-                result.IoTimeMs, result.FixupTimeMs, result.ParseTimeMs,
+                result.TotalRecords, result.IoTimeMs, result.FixupTimeMs, result.ParseTimeMs,
                 result.TotalTimeMs, marshalSw.Elapsed.TotalMilliseconds);
 
             return records;
