@@ -56,18 +56,6 @@ public class PathResolutionTests
         var lookup = new Dictionary<ulong, MftRecord>();
         foreach (var r in records)
             lookup[r.RecordNumber] = r;
-
-        var parts = new List<string>();
-        var current = recordNumber;
-        var visited = new HashSet<ulong>();
-
-        while (current != 5 && lookup.TryGetValue(current, out var record) && visited.Add(current))
-        {
-            parts.Add(record.FileName);
-            current = record.ParentRecordNumber;
-        }
-
-        parts.Reverse();
-        return $"{driveLetter}:\\{string.Join('\\', parts)}";
+        return MftPathUtilities.ResolvePath(recordNumber, lookup, driveLetter);
     }
 }

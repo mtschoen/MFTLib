@@ -20,6 +20,7 @@ void Log(string line = "")
 // System info
 Log("System Info");
 Log("====================================");
+Log($"  Build:       {GetBuildConfiguration()}");
 Log($"  OS:          {GetWmiValue("Win32_OperatingSystem", "Caption")} ({Environment.OSVersion.Version})");
 Log($"  CPU:         {GetWmiValue("Win32_Processor", "Name")}");
 Log($"  Threads:     {Environment.ProcessorCount}");
@@ -116,6 +117,15 @@ static string GetWmiValue(string wmiClass, string property)
     }
     catch { }
     return "Unknown";
+}
+
+static string GetBuildConfiguration()
+{
+#if DEBUG
+    return "Debug";
+#else
+    return "Release";
+#endif
 }
 
 static int GetInstalledMemoryGB()

@@ -28,12 +28,19 @@ public sealed class MftVolume : IDisposable
         return new MftVolume(handle, letter);
     }
 
-    public MftRecord[] ReadAllRecords() => ReadAllRecords(out _);
+    public MftRecord[] ReadAllRecords() => ReadAllRecords(resolvePaths: false, out _);
+
+    public MftRecord[] ReadAllRecords(bool resolvePaths) => ReadAllRecords(resolvePaths, out _);
 
     public MftRecord[] ReadAllRecords(out MftParseTimings timings)
     {
+        return ReadAllRecords(resolvePaths: false, out timings);
+    }
+
+    public MftRecord[] ReadAllRecords(bool resolvePaths, out MftParseTimings timings)
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return ParseNative(null, 0, out timings);
+        return ParseNative(null, resolvePaths ? 4u : 0u, out timings);
     }
 
     public MftRecord[] FindByName(string name, bool exactMatch = true)
@@ -94,20 +101,14 @@ public sealed class MftVolume : IDisposable
 
     public IEnumerable<string> FindRecords(string name, bool? isDirectory = null)
     {
-        var records = ReadAllRecords();
-        var lookup = new Dictionary<ulong, MftRecord>();
-        foreach (var r in records)
-            lookup[r.RecordNumber] = r;
+        var records = FindByName(name, exactMatch: true, resolvePaths: true, out _);
 
         foreach (var record in records)
         {
-            if (!string.Equals(record.FileName, name, StringComparison.OrdinalIgnoreCase))
-                continue;
-
             if (isDirectory.HasValue && record.IsDirectory != isDirectory.Value)
                 continue;
 
-            yield return ResolvePath(record.RecordNumber, lookup);
+            yield return record.FullPath ?? record.FileName;
         }
     }
 
@@ -122,18 +123,7 @@ public sealed class MftVolume : IDisposable
 
     private string ResolvePath(ulong recordNumber, Dictionary<ulong, MftRecord> lookup)
     {
-        var parts = new List<string>();
-        var current = recordNumber;
-        var visited = new HashSet<ulong>();
-
-        while (current != 5 && lookup.TryGetValue(current, out var record) && visited.Add(current))
-        {
-            parts.Add(record.FileName);
-            current = record.ParentRecordNumber;
-        }
-
-        parts.Reverse();
-        return $"{_driveLetter}:\\{string.Join('\\', parts)}";
+        return MftPathUtilities.ResolvePath(recordNumber, lookup, _driveLetter);
     }
 
     public static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords = 262144)
