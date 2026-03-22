@@ -1,0 +1,16 @@
+## Review Follow-Ups
+
+- Publish a new `MFTLib` package version that includes:
+  - `MftVolume.ReadAllRecords(bool resolvePaths, ...)`
+  - `MftPathUtilities.ResolvePath(...)`
+  - updated `FindRecords(...)` path-resolved behavior
+  Address by bumping package version, packing/publishing it, and then updating downstream repos off local project references.
+
+- Add tests that exercise the public API directly for the new path-aware surface.
+  Address by adding coverage for `ReadAllRecords(resolvePaths: true)` and `FindRecords(...)` semantics instead of only shared utility-level path tests.
+
+- Decide whether `MFTLib` should expose a higher-level scan-result contract for app-to-helper transport.
+  Address by evaluating whether downstream apps should keep custom text formats for elevated scans or share a library-owned record serializer.
+
+- Optional: make benchmark environment failures explicit instead of silently printing `Unknown`.
+  Address by logging the WMI/CIM exception message or HRESULT in the benchmark header when system info queries fail.
