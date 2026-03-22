@@ -84,6 +84,16 @@ public sealed class MftVolume : IDisposable
 
     public IEnumerable<string> FindDirectories(string name)
     {
+        return FindRecords(name, isDirectory: true);
+    }
+
+    public IEnumerable<string> FindFiles(string name)
+    {
+        return FindRecords(name, isDirectory: false);
+    }
+
+    public IEnumerable<string> FindRecords(string name, bool? isDirectory = null)
+    {
         var records = ReadAllRecords();
         var lookup = new Dictionary<ulong, MftRecord>();
         foreach (var r in records)
@@ -91,10 +101,13 @@ public sealed class MftVolume : IDisposable
 
         foreach (var record in records)
         {
-            if (record.IsDirectory && string.Equals(record.FileName, name, StringComparison.OrdinalIgnoreCase))
-            {
-                yield return ResolvePath(record.RecordNumber, lookup);
-            }
+            if (!string.Equals(record.FileName, name, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (isDirectory.HasValue && record.IsDirectory != isDirectory.Value)
+                continue;
+
+            yield return ResolvePath(record.RecordNumber, lookup);
         }
     }
 
