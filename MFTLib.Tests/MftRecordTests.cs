@@ -9,7 +9,7 @@ public class MftRecordTests
     [TestMethod]
     public void Constructor_InUseFlag_SetsProperty()
     {
-        var record = new MftRecord(100, 5, 0x0001, "test.txt");
+        var record = new MftRecord(100, 5, 0x0001, "test.txt", null);
         Assert.IsTrue(record.InUse);
         Assert.IsFalse(record.IsDirectory);
     }
@@ -17,7 +17,7 @@ public class MftRecordTests
     [TestMethod]
     public void Constructor_DirectoryFlag_SetsProperty()
     {
-        var record = new MftRecord(100, 5, 0x0003, "Documents");
+        var record = new MftRecord(100, 5, 0x0003, "Documents", null);
         Assert.IsTrue(record.InUse);
         Assert.IsTrue(record.IsDirectory);
     }
@@ -25,7 +25,7 @@ public class MftRecordTests
     [TestMethod]
     public void Constructor_NoFlags_NotInUse()
     {
-        var record = new MftRecord(100, 5, 0x0000, "deleted.txt");
+        var record = new MftRecord(100, 5, 0x0000, "deleted.txt", null);
         Assert.IsFalse(record.InUse);
         Assert.IsFalse(record.IsDirectory);
     }
@@ -33,7 +33,7 @@ public class MftRecordTests
     [TestMethod]
     public void Properties_StoreCorrectValues()
     {
-        var record = new MftRecord(42, 10, 0x0001, "readme.md");
+        var record = new MftRecord(42, 10, 0x0001, "readme.md", null);
         Assert.AreEqual(42UL, record.RecordNumber);
         Assert.AreEqual(10UL, record.ParentRecordNumber);
         Assert.AreEqual("readme.md", record.FileName);
@@ -42,7 +42,7 @@ public class MftRecordTests
     [TestMethod]
     public void ToString_ReturnsFileName()
     {
-        var record = new MftRecord(1, 5, 0x0001, "hello.txt");
+        var record = new MftRecord(1, 5, 0x0001, "hello.txt", null);
         Assert.AreEqual("hello.txt", record.ToString());
     }
 }

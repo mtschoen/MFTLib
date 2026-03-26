@@ -8,12 +8,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Build entire solution
-MSBuild.exe MFTLib.sln -p:Configuration=Debug -p:Platform=x64
+MSBuild.exe MFTLib.sln -p:Configuration=Release -p:Platform=x64
 
 # Build just the test program (includes native dependency)
 # NOTE: Always build the solution, not individual projects. The native DLL post-build
 # xcopy only resolves $(SolutionDir) correctly when building the .sln.
-MSBuild.exe TestProgram\TestProgram.csproj -p:Configuration=Debug -p:Platform=x64
+MSBuild.exe TestProgram\TestProgram.csproj -p:Configuration=Release -p:Platform=x64
 ```
 
 Do NOT use `dotnet build` - it cannot build the native C++ dependency (MFTLibNative).
@@ -33,21 +33,29 @@ Use `MSBuild -t:Pack` (not `dotnet pack`) since `dotnet pack` can't handle the v
 
 ### Running the test program
 
-The test program requires admin elevation (raw volume access). Output is written to `output.log` next to the exe.
+The test program requires admin elevation (raw volume access). It now includes **self-elevation logic** via `ElevationUtilities`.
+
+For the most reliable experience (proper UAC prompt handling), **run the compiled .exe directly**:
 
 ```bash
-# Launch elevated (output goes to output.log)
-powershell -command "Start-Process -FilePath 'TestProgram\bin\x64\Debug\net8.0\TestProgram.exe' -Verb RunAs -Wait -ArgumentList 'G'"
+# Launch directly (will trigger UAC prompt if not already elevated)
+.\TestProgram\bin\x64\Release\net8.0\TestProgram.exe C:
 
-# Read the captured output
-cat TestProgram\bin\x64\Debug\net8.0\output.log
+# Results are written to output.log in the same directory
+cat .\TestProgram\bin\x64\Release\net8.0\output.log
 ```
+
+If running via `dotnet TestProgram.dll`, the helper will still attempt to relaunch the process with `runas`, but running the `.exe` is preferred.
 
 ## Architecture
 
-- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Exports `ParseMFTRecords`, `ParseMFTFromFile`, `GenerateSyntheticMFT`, and `PrintVolumeInfo`.
-- **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop, `MftVolume` public API, and NTFS structure definitions. Packaged as a NuGet package with the native DLL bundled.
-- **TestProgram** (C# Console App) - CLI that reads MFT metadata for specified drives. Requires admin elevation.
-- **Benchmark** (C# Console App) - Performance benchmark using synthetic MFT generation. Targets `net8.0-windows`.
-- **MFTLib.Tests** (C# xUnit) - Unit tests.
+- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant.
+- **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop.
+    - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
+    - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
+    - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`.
+    - **ElevationUtilities**: Shared logic for detecting and ensuring Administrative privileges.
+- **TestProgram** (C# Console App) - CLI that reads MFT metadata for specified drives. Automatically self-elevates.
+- **Benchmark** (C# Console App) - Performance benchmark using synthetic MFT generation.
+- **MFTLib.Tests** (C# xUnit) - Unit tests for record mapping and path resolution.
 - **ConsoleApplication1** (C++ Console) - Legacy prototype, superseded by MFTLibNative.

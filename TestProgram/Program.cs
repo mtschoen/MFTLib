@@ -2,9 +2,32 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using MFTLib;
 
-// Redirect C runtime stdout to a log file. This captures both native
-// printf output from the DLL and managed Console.WriteLine, so we can
-// read results after the elevated process exits.
+// Self-elevation logic for TestProgram
+if (!ElevationUtilities.IsElevated())
+{
+    Console.WriteLine("Not running as administrator. Attempting to self-elevate...");
+    if (ElevationUtilities.EnsureElevated())
+    {
+        // If we reach here, the child process has finished
+        return;
+    }
+
+    Console.WriteLine("------------------------------------------------------------------");
+    Console.WriteLine("AUTOMATIC ELEVATION FAILED.");
+    Console.WriteLine("This program requires Administrative privileges to read the MFT.");
+    Console.WriteLine("Please run this command from an ELEVATED terminal:");
+    Console.WriteLine();
+    
+    var processPath = ElevationUtilities.GetProcessPath();
+    var allArgs = Environment.GetCommandLineArgs();
+    var formattedArgs = string.Join(" ", allArgs.Skip(1).Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+    Console.WriteLine($"  {processPath} {formattedArgs}");
+    Console.WriteLine("------------------------------------------------------------------");
+    return;
+}
+
+// Redirect C runtime stdout to a log file ONLY when elevated. 
+// This captures both native printf output from the DLL and managed Console.WriteLine.
 var logPath = Path.Combine(AppContext.BaseDirectory, "output.log");
 var stdout = __acrt_iob_func(1); // FILE* for stdout
 _wfreopen(logPath, "w", stdout);

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using MFTLib.Interop;
@@ -20,12 +19,19 @@ public sealed class MftVolume : IDisposable
         _driveLetter = driveLetter;
     }
 
-    public static MftVolume Open(string driveLetter)
+    public static MftVolume Open(string volumePath)
     {
-        var letter = driveLetter.TrimEnd(':');
-        var volumePath = MFTUtilities.GetFileNameForDriveLetter(letter);
-        var handle = FileUtilities.GetVolumeHandle(volumePath);
-        return new MftVolume(handle, letter);
+        var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
+        var handle = FileUtilities.GetVolumeHandle(normalizedPath);
+        
+        // Extract drive letter for path resolution if available
+        var driveLetter = string.Empty;
+        if (normalizedPath.StartsWith(@"\\.\", StringComparison.OrdinalIgnoreCase) && normalizedPath.Length == 6 && normalizedPath[5] == ':')
+        {
+            driveLetter = normalizedPath[4].ToString();
+        }
+
+        return new MftVolume(handle, driveLetter);
     }
 
     public MftRecord[] ReadAllRecords() => ReadAllRecords(resolvePaths: false, out _);
@@ -39,8 +45,12 @@ public sealed class MftVolume : IDisposable
 
     public MftRecord[] ReadAllRecords(bool resolvePaths, out MftParseTimings timings)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return ParseNative(null, resolvePaths ? 4u : 0u, out timings);
+        using var result = StreamRecords(null, resolvePaths ? 4u : 0u);
+        var sw = Stopwatch.StartNew();
+        var records = result.ToArray();
+        sw.Stop();
+        timings = result.Timings.WithMarshalMs(sw.Elapsed.TotalMilliseconds);
+        return records;
     }
 
     public MftRecord[] FindByName(string name, bool exactMatch = true)
@@ -51,42 +61,24 @@ public sealed class MftVolume : IDisposable
 
     public MftRecord[] FindByName(string name, bool exactMatch, bool resolvePaths, out MftParseTimings timings)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         uint matchFlags = (exactMatch ? 1u : 2u) | (resolvePaths ? 4u : 0u);
-        return ParseNative(name, matchFlags, out timings);
+        using var result = StreamRecords(name, matchFlags);
+        var sw = Stopwatch.StartNew();
+        var records = result.ToArray();
+        sw.Stop();
+        timings = result.Timings.WithMarshalMs(sw.Elapsed.TotalMilliseconds);
+        return records;
     }
 
-    private MftRecord[] ParseNative(string? filter, uint matchFlags, out MftParseTimings timings)
+    public MftResult StreamRecords(string? filter = null, uint matchFlags = 0)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         IntPtr resultPtr = MFTLibNative.ParseMFTRecords(_volumeHandle, filter, matchFlags, BufferSizeRecords);
+
         if (resultPtr == IntPtr.Zero)
             throw new InvalidOperationException("ParseMFTRecords returned null");
 
-        try
-        {
-            var result = Marshal.PtrToStructure<MftParseResult>(resultPtr);
-
-            if (!string.IsNullOrEmpty(result.ErrorMessage) && result.UsedRecords == 0)
-                throw new InvalidOperationException($"MFT parse failed: {result.ErrorMessage}");
-
-            var marshalSw = Stopwatch.StartNew();
-            MftRecord[] records;
-            if (result.PathEntries != IntPtr.Zero)
-                records = ReadPathEntriesUnsafe(result.PathEntries, result.UsedRecords, _driveLetter);
-            else
-                records = ReadEntriesUnsafe(result.Entries, result.UsedRecords);
-            marshalSw.Stop();
-
-            timings = new MftParseTimings(
-                result.TotalRecords, result.IoTimeMs, result.FixupTimeMs, result.ParseTimeMs,
-                result.TotalTimeMs, marshalSw.Elapsed.TotalMilliseconds);
-
-            return records;
-        }
-        finally
-        {
-            MFTLibNative.FreeMftResult(resultPtr);
-        }
+        return new MftResult(resultPtr, _driveLetter, 0);
     }
 
     public IEnumerable<string> FindDirectories(string name)
@@ -101,9 +93,9 @@ public sealed class MftVolume : IDisposable
 
     public IEnumerable<string> FindRecords(string name, bool? isDirectory = null)
     {
-        var records = FindByName(name, exactMatch: true, resolvePaths: true, out _);
+        using var result = StreamRecords(name, 1u | 4u); // exact match + resolve paths
 
-        foreach (var record in records)
+        foreach (var record in result)
         {
             if (isDirectory.HasValue && record.IsDirectory != isDirectory.Value)
                 continue;
@@ -138,121 +130,15 @@ public sealed class MftVolume : IDisposable
     public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, uint matchFlags, out MftParseTimings timings, uint bufferSizeRecords = 262144)
     {
         IntPtr resultPtr = MFTLibNative.ParseMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords);
+
         if (resultPtr == IntPtr.Zero)
             throw new InvalidOperationException("ParseMFTFromFile returned null");
 
-        try
-        {
-            var result = Marshal.PtrToStructure<MftParseResult>(resultPtr);
-
-            if (!string.IsNullOrEmpty(result.ErrorMessage) && result.UsedRecords == 0)
-                throw new InvalidOperationException($"MFT parse failed: {result.ErrorMessage}");
-
-            var marshalSw = Stopwatch.StartNew();
-            MftRecord[] records;
-            if (result.PathEntries != IntPtr.Zero)
-                records = ReadPathEntriesUnsafe(result.PathEntries, result.UsedRecords, "");
-            else
-                records = ReadEntriesUnsafe(result.Entries, result.UsedRecords);
-            marshalSw.Stop();
-
-            timings = new MftParseTimings(
-                result.TotalRecords, result.IoTimeMs, result.FixupTimeMs, result.ParseTimeMs,
-                result.TotalTimeMs, marshalSw.Elapsed.TotalMilliseconds);
-
-            return records;
-        }
-        finally
-        {
-            MFTLibNative.FreeMftResult(resultPtr);
-        }
-    }
-
-    // Native MftFileEntry layout (pack=1): u64 recordNumber, u64 parentRecordNumber,
-    // u16 flags, u16 fileNameLength, wchar_t[260] fileName = 540 bytes total.
-    private const int NativeEntrySize = 8 + 8 + 2 + 2 + 260 * 2; // 540
-
-    // Native MftPathEntry layout (pack=1): u64 recordNumber, u64 parentRecordNumber,
-    // u16 flags, u16 pathLength, wchar_t[1024] path = 2068 bytes total.
-    private const int NativePathEntrySize = 8 + 8 + 2 + 2 + 1024 * 2; // 2068
-
-    private const int ParallelThreshold = 500_000;
-
-    private static unsafe MftRecord[] ReadEntriesUnsafe(IntPtr entries, ulong count)
-    {
-        var records = new MftRecord[count];
-        byte* basePtr = (byte*)entries;
-
-        if (count >= ParallelThreshold)
-        {
-            Parallel.For(0L, (long)count, i =>
-            {
-                byte* ptr = basePtr + i * NativeEntrySize;
-                ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
-                ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
-                ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
-                ushort nameLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
-                var fileName = new string((char*)(ptr + 20), 0, nameLength);
-                records[i] = new MftRecord(recordNumber, parentRecordNumber, flags, fileName);
-            });
-        }
-        else
-        {
-            byte* ptr = basePtr;
-            for (ulong i = 0; i < count; i++)
-            {
-                ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
-                ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
-                ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
-                ushort nameLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
-                var fileName = new string((char*)(ptr + 20), 0, nameLength);
-                records[i] = new MftRecord(recordNumber, parentRecordNumber, flags, fileName);
-                ptr += NativeEntrySize;
-            }
-        }
-
-        return records;
-    }
-
-    private static unsafe MftRecord[] ReadPathEntriesUnsafe(IntPtr entries, ulong count, string driveLetter)
-    {
-        var records = new MftRecord[count];
-        byte* basePtr = (byte*)entries;
-
-        if (count >= ParallelThreshold)
-        {
-            Parallel.For(0L, (long)count, i =>
-            {
-                byte* ptr = basePtr + i * NativePathEntrySize;
-                ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
-                ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
-                ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
-                ushort pathLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
-                var relativePath = new string((char*)(ptr + 20), 0, pathLength);
-                var fullPath = $"{driveLetter}:\\{relativePath}";
-                var lastSep = relativePath.LastIndexOf('\\');
-                var fileName = lastSep >= 0 ? relativePath[(lastSep + 1)..] : relativePath;
-                records[i] = new MftRecord(recordNumber, parentRecordNumber, flags, fileName, fullPath);
-            });
-        }
-        else
-        {
-            byte* ptr = basePtr;
-            for (ulong i = 0; i < count; i++)
-            {
-                ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
-                ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
-                ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
-                ushort pathLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
-                var relativePath = new string((char*)(ptr + 20), 0, pathLength);
-                var fullPath = $"{driveLetter}:\\{relativePath}";
-                var lastSep = relativePath.LastIndexOf('\\');
-                var fileName = lastSep >= 0 ? relativePath[(lastSep + 1)..] : relativePath;
-                records[i] = new MftRecord(recordNumber, parentRecordNumber, flags, fileName, fullPath);
-                ptr += NativePathEntrySize;
-            }
-        }
-
+        using var result = new MftResult(resultPtr, string.Empty, 0);
+        var sw = Stopwatch.StartNew();
+        var records = result.ToArray();
+        sw.Stop();
+        timings = result.Timings.WithMarshalMs(sw.Elapsed.TotalMilliseconds);
         return records;
     }
 

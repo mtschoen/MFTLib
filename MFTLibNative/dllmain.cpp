@@ -18,12 +18,6 @@ static double ElapsedMs(TimePoint start, TimePoint end) {
 
 #define EXPORT __declspec(dllexport)
 
-NTFS_BPB bootSector;
-
-uint8_t mftFile[FILE_RECORD_SIZE];
-uint8_t extensionRecord[FILE_RECORD_SIZE];
-
-
 struct DataRun {
     int64_t clusterOffset;
     uint64_t clusterCount;
@@ -304,7 +298,7 @@ static void PrintFileRecord(PFILE_RECORD_SEGMENT_HEADER fileRecord) {
     fprintf(stdout, "  Update Sequence Array: %hu\n", fileRecord->UpdateSequenceArray[0]);
 }
 
-static void ParseMFTFile(ATTRIBUTE_RECORD_HEADER** firstAttribute) {
+static void ParseMFTFile(uint8_t* mftFile, ATTRIBUTE_RECORD_HEADER** firstAttribute) {
     auto fileRecord = (PFILE_RECORD_SEGMENT_HEADER)mftFile;
     *firstAttribute = (PATTRIBUTE_RECORD_HEADER)(mftFile + fileRecord->FirstAttributeOffset);
     assert(fileRecord->MultiSectorHeader.Magic == 0x454C4946);
@@ -312,7 +306,7 @@ static void ParseMFTFile(ATTRIBUTE_RECORD_HEADER** firstAttribute) {
     PrintFileRecord(fileRecord);
 }
 
-static void PrintBootSector() {
+static void PrintBootSector(const NTFS_BPB& bootSector) {
     fprintf(stdout, "Boot Sector=================================\n");
     fprintf(stdout, "  Bytes per sector: %u\n", bootSector.bytesPerSector);
     fprintf(stdout, "  Sectors per cluster: %u\n", bootSector.sectorsPerCluster);
@@ -339,6 +333,7 @@ extern "C" {
             return false;
         }
 
+        NTFS_BPB bootSector;
         constexpr DWORD bootSectorSize = 512;
         DWORD bytesRead;
         if (!Read(volumeHandle, &bootSector, 0, bootSectorSize, &bytesRead) || bytesRead != bootSectorSize)
@@ -347,7 +342,7 @@ extern "C" {
             return false;
         }
 
-        PrintBootSector();
+        PrintBootSector(bootSector);
 
         if (bootSector.name[0] != 'N' || bootSector.name[1] != 'T' || bootSector.name[2] != 'F' || bootSector.name[3] != 'S')
         {
@@ -358,8 +353,9 @@ extern "C" {
         auto bytesPerCluster = bootSector.bytesPerSector * bootSector.sectorsPerCluster;
 
         // Read MFT file record 0 ($MFT itself)
+        uint8_t mftFile[FILE_RECORD_SIZE];
         bytesRead = 0;
-        if (!Read(volumeHandle, &mftFile, bootSector.mftStart * bytesPerCluster, FILE_RECORD_SIZE, &bytesRead) || bytesRead != FILE_RECORD_SIZE)
+        if (!Read(volumeHandle, mftFile, bootSector.mftStart * bytesPerCluster, FILE_RECORD_SIZE, &bytesRead) || bytesRead != FILE_RECORD_SIZE)
         {
             printf("Error in ParseMFT: Failed to read MFT file. Error: %lu\n", GetLastError());
             return false;
@@ -368,7 +364,7 @@ extern "C" {
         ApplyFixup(mftFile, FILE_RECORD_SIZE);
 
         PATTRIBUTE_RECORD_HEADER firstAttribute;
-        ParseMFTFile(&firstAttribute);
+        ParseMFTFile(mftFile, &firstAttribute);
         ParseAttributes(firstAttribute);
 
         // Collect key attributes from record 0
@@ -456,6 +452,7 @@ extern "C" {
             printf("\n  Extension records to read: %zu\n", extensionRecords.size());
 
             // Read each extension record and parse its attributes
+            uint8_t extensionRecord[FILE_RECORD_SIZE];
             for (auto recNum : extensionRecords) {
                 printf("\nEXTENSION RECORD %llu ======================\n", recNum);
 

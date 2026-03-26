@@ -21,4 +21,9 @@ public readonly struct MftParseTimings
 
     public override string ToString() =>
         $"Native: {NativeTotalMs:F1}ms (IO: {NativeIoMs:F1}ms, Fixup: {NativeFixupMs:F1}ms, Parse: {NativeParseMs:F1}ms), Marshal: {MarshalMs:F1}ms, Total records: {TotalRecords:N0}";
+
+    internal MftParseTimings WithMarshalMs(double marshalMs)
+    {
+        return new MftParseTimings(TotalRecords, NativeIoMs, NativeFixupMs, NativeParseMs, NativeTotalMs, marshalMs);
+    }
 }
