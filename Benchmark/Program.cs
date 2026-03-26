@@ -115,7 +115,10 @@ static string GetWmiValue(string wmiClass, string property)
         foreach (var obj in searcher.Get())
             return obj[property]?.ToString()?.Trim() ?? "Unknown";
     }
-    catch { }
+    catch (Exception ex)
+    {
+        return $"Error: {ex.Message}";
+    }
     return "Unknown";
 }
 
@@ -141,7 +144,10 @@ static int GetInstalledMemoryGB()
         if (total > 0)
             return (int)(total / 1024 / 1024 / 1024);
     }
-    catch { }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Warning: Failed to query RAM capacity: {ex.Message}");
+    }
     return 0;
 }
 
@@ -161,6 +167,9 @@ static string GetDiskModel(string path)
                 return disk["Model"]?.ToString()?.Trim() ?? "Unknown";
         }
     }
-    catch { }
+    catch (Exception ex)
+    {
+        return $"Error: {ex.Message}";
+    }
     return "Unknown";
 }
