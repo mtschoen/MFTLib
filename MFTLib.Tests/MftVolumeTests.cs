@@ -174,6 +174,49 @@ public class MftVolumeTests
     }
 
     [TestMethod]
+    public void ParseMFTFromFile_SubstringFilterWithPaths_CombinesFlags()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        // matchFlags = 2 (substring) | 4 (resolve paths) = 6
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "main", 2 | 4, out _);
+
+        Assert.IsTrue(records.Length > 0, "Expected combined filter to match");
+        foreach (var record in records)
+        {
+            Assert.IsTrue(record.FileName.Contains("main", StringComparison.OrdinalIgnoreCase));
+            Assert.IsNotNull(record.FullPath);
+        }
+    }
+
+    [TestMethod]
+    public void ParseMFTFromFile_RootRecord_IsDirectory()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out _);
+
+        // Synthetic MFT places root at record 5 with name "."
+        var root = records.FirstOrDefault(r => r.RecordNumber == 5);
+        Assert.AreEqual(".", root.FileName);
+        Assert.IsTrue(root.IsDirectory);
+        Assert.IsTrue(root.InUse);
+    }
+
+    [TestMethod]
+    public void ParseMFTFromFile_SystemRecords_ArePresent()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out _);
+
+        // Records 0-4 are $MFT in synthetic data
+        var mftRecords = records.Where(r => r.RecordNumber < 5).ToArray();
+        Assert.IsTrue(mftRecords.Length > 0, "Expected system records to be present");
+        foreach (var r in mftRecords)
+        {
+            Assert.AreEqual("$MFT", r.FileName);
+        }
+    }
+
+    [TestMethod]
     public void GenerateSyntheticMFT_CreatesFile()
     {
         var path = Path.GetTempFileName();
@@ -181,6 +224,24 @@ public class MftVolumeTests
         {
             MftVolume.GenerateSyntheticMFT(path, 100, 256);
             Assert.IsTrue(new FileInfo(path).Length > 0);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void GenerateSyntheticMFT_FileSize_MatchesRecordCount()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            const ulong recordCount = 500;
+            MftVolume.GenerateSyntheticMFT(path, recordCount, 256);
+            // Each MFT record is 1024 bytes
+            var expectedSize = (long)recordCount * 1024;
+            Assert.AreEqual(expectedSize, new FileInfo(path).Length);
         }
         finally
         {

@@ -91,4 +91,18 @@ public class MFTUtilitiesTests
     {
         MFTUtilities.GetVolumePath("not-a-volume");
     }
+
+    [TestMethod]
+    [ExpectedException(typeof(ArgumentException))]
+    public void GetFileNameForDriveLetter_MultiChar_Throws()
+    {
+        MFTUtilities.GetFileNameForDriveLetter("CD");
+    }
+
+    [TestMethod]
+    [ExpectedException(typeof(ArgumentException))]
+    public void GetFileNameForDriveLetter_Empty_Throws()
+    {
+        MFTUtilities.GetFileNameForDriveLetter("");
+    }
 }
