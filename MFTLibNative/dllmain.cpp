@@ -1115,7 +1115,7 @@ extern "C" {
         result->totalRecords = totalRecords;
 
         uint16_t filterLen = filter ? (uint16_t)wcslen(filter) : 0;
-        bool resolvePaths = filter && (matchFlags & 4);
+        bool resolvePaths = (matchFlags & 4) != 0;
 
         PathLookup lookup = {};
         if (resolvePaths) {

@@ -65,8 +65,6 @@ public class MftVolumeAdminTests
     }
 
     [TestMethod]
-    [Ignore("Known bug: native code requires filter!=null for path resolution (matchFlags & 4). " +
-            "ReadAllRecords passes null filter, so paths are never resolved.")]
     public void ReadAllRecords_WithResolvePaths_PopulatesFullPath()
     {
         RequireElevation();
