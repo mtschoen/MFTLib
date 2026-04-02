@@ -278,4 +278,30 @@ public class MftVolumeTests
             File.Delete(path);
         }
     }
+
+    [TestMethod]
+    public void ExtractDriveLetter_ValidPath_ReturnsLetter()
+    {
+        Assert.AreEqual("C", MftVolume.ExtractDriveLetter(@"\\.\C:"));
+        Assert.AreEqual("D", MftVolume.ExtractDriveLetter(@"\\.\D:"));
+    }
+
+    [TestMethod]
+    public void ExtractDriveLetter_WrongLength_ReturnsEmpty()
+    {
+        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(@"\\.\C:\"));
+        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(@"\\.\"));
+    }
+
+    [TestMethod]
+    public void ExtractDriveLetter_WrongPrefix_ReturnsEmpty()
+    {
+        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(@"XX.\C:"));
+    }
+
+    [TestMethod]
+    public void ExtractDriveLetter_NoColon_ReturnsEmpty()
+    {
+        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(@"\\.\CX"));
+    }
 }

@@ -24,12 +24,8 @@ public sealed class MftVolume : IDisposable
         var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
         var handle = FileUtilities.GetVolumeHandle(normalizedPath);
         
-        // Extract drive letter for path resolution if available
-        var driveLetter = string.Empty;
-        if (normalizedPath.StartsWith(@"\\.\", StringComparison.OrdinalIgnoreCase) && normalizedPath.Length == 6 && normalizedPath[5] == ':')
-        {
-            driveLetter = normalizedPath[4].ToString();
-        }
+        // Extract drive letter for path resolution — matches \\.\X: format from GetVolumePath
+        var driveLetter = ExtractDriveLetter(normalizedPath);
 
         return new MftVolume(handle, driveLetter);
     }
@@ -100,7 +96,7 @@ public sealed class MftVolume : IDisposable
             if (isDirectory.HasValue && record.IsDirectory != isDirectory.Value)
                 continue;
 
-            yield return record.FullPath ?? record.FileName;
+            yield return record.FullPath!;
         }
     }
 
@@ -140,6 +136,14 @@ public sealed class MftVolume : IDisposable
         sw.Stop();
         timings = result.Timings.WithMarshalMs(sw.Elapsed.TotalMilliseconds);
         return records;
+    }
+
+    internal static string ExtractDriveLetter(string normalizedPath)
+    {
+        if (normalizedPath.Length != 6) return string.Empty;
+        if (!normalizedPath.StartsWith(@"\\.\", StringComparison.Ordinal)) return string.Empty;
+        if (normalizedPath[5] != ':') return string.Empty;
+        return normalizedPath[4].ToString();
     }
 
     public void Dispose()
