@@ -336,4 +336,19 @@ public class MftVolumeAdminTests
             }
         }
     }
+
+    [TestMethod]
+    public void IsElevated_WhenAdmin_ReturnsTrue()
+    {
+        RequireElevation();
+        Assert.IsTrue(ElevationUtilities.IsElevated());
+    }
+
+    [TestMethod]
+    public void EnsureElevated_WhenAlreadyAdmin_ReturnsTrue()
+    {
+        RequireElevation();
+        // Already elevated, so this should hit the early-return path
+        Assert.IsTrue(ElevationUtilities.EnsureElevated());
+    }
 }
