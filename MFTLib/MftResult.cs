@@ -50,6 +50,8 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     private const int ParallelThreshold = 500_000;
+    private const int NativeEntrySize = 540;
+    private const int NativePathEntrySize = 2068;
 
     public unsafe MftRecord[] ToArray()
     {
@@ -90,7 +92,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     private unsafe MftRecord GetEntryUnsafe(byte* basePtr, ulong index)
     {
         // NativeEntrySize = 540
-        byte* ptr = basePtr + index * 540;
+        byte* ptr = basePtr + index * NativeEntrySize;
         ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
         ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
         ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
@@ -103,7 +105,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     private unsafe MftRecord GetPathEntryUnsafe(byte* basePtr, ulong index)
     {
         // NativePathEntrySize = 2068
-        byte* ptr = basePtr + index * 2068;
+        byte* ptr = basePtr + index * NativePathEntrySize;
         ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
         ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
         ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);

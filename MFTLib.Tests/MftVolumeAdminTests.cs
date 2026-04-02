@@ -262,4 +262,78 @@ public class MftVolumeAdminTests
         RequireElevation();
         Assert.ThrowsException<IOException>(() => MftVolume.Open("Q"));
     }
+
+    [TestMethod]
+    public void GetVolumeHandle_ValidVolume_ReturnsValidHandle()
+    {
+        RequireElevation();
+        using var handle = FileUtilities.GetVolumeHandle(@"\\.\C:");
+        Assert.IsFalse(handle.IsInvalid);
+        Assert.IsFalse(handle.IsClosed);
+    }
+
+    [TestMethod]
+    public void GetVolumeHandle_InvalidVolume_Throws()
+    {
+        RequireElevation();
+        Assert.ThrowsException<IOException>(() => FileUtilities.GetVolumeHandle(@"\\.\Q:"));
+    }
+
+    [TestMethod]
+    public void MftResult_Dispose_PreventsEnumeration()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        var result = volume.StreamRecords();
+        result.Dispose();
+
+        Assert.ThrowsException<ObjectDisposedException>(() =>
+        {
+            foreach (var _ in result) { }
+        });
+    }
+
+    [TestMethod]
+    public void MftResult_Dispose_PreventsToArray()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        var result = volume.StreamRecords();
+        result.Dispose();
+
+        Assert.ThrowsException<ObjectDisposedException>(() => result.ToArray());
+    }
+
+    [TestMethod]
+    public void MftResult_Properties_MatchRecordCounts()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        using var result = volume.StreamRecords();
+
+        Assert.IsTrue(result.TotalRecords > 0);
+        Assert.IsTrue(result.UsedRecords > 0);
+        Assert.IsTrue(result.UsedRecords <= result.TotalRecords);
+    }
+
+    [TestMethod]
+    public void StreamRecords_WithPaths_FileNameExtractedFromPath()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        // matchFlags = 2 (substring) | 4 (resolve paths) = 6
+        using var result = volume.StreamRecords("explorer", 2 | 4);
+
+        foreach (var record in result)
+        {
+            // When path entries are used, FileName is extracted from the path
+            Assert.IsTrue(record.FileName.Length > 0, "FileName should not be empty");
+            if (record.FullPath != null && record.FullPath.Contains('\\'))
+            {
+                var expected = record.FullPath[(record.FullPath.LastIndexOf('\\') + 1)..];
+                Assert.AreEqual(expected, record.FileName,
+                    $"FileName '{record.FileName}' should match end of FullPath '{record.FullPath}'");
+            }
+        }
+    }
 }

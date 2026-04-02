@@ -6,12 +6,6 @@ static class MFTLibNative
 {
     private const string LibraryName = "MFTLibNative.dll";
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern bool ParseMFT(SafeHandle volumeHandle);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void PrintVolumeInfo(SafeHandle volumeHandle);
-
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
     internal static extern IntPtr ParseMFTRecords(SafeHandle volumeHandle, string? filter, uint matchFlags, uint bufferSizeRecords);
 

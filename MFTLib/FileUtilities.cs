@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace MFTLib
 {
-    public class FileUtilities
+    public static class FileUtilities
     {
         // ReSharper disable InconsistentNaming
         const uint GENERIC_READ = 0x80000000;
