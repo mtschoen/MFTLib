@@ -96,7 +96,7 @@ public sealed class MftVolume : IDisposable
             if (isDirectory.HasValue && record.IsDirectory != isDirectory.Value)
                 continue;
 
-            yield return record.FullPath!;
+            yield return record.FullPath ?? record.FileName;
         }
     }
 
