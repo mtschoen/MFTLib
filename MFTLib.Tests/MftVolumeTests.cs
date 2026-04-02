@@ -46,6 +46,43 @@ public class MftVolumeTests
     }
 
     [TestMethod]
+    public void ParseMFTFromFile_FilterWithResolvePathsOnly_ReturnsEmpty()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        // matchFlags=4 with a filter but no match bits — FileNameMatches returns false for everything
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 4, out _);
+        Assert.AreEqual(0, records.Length, "Expected no results when filter is set but only resolve-paths bit is set");
+    }
+
+    [TestMethod]
+    public void ParseMFTFromFile_ExactAndSubstringBits_ExactTakesPrecedence()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        // matchFlags = 1|2 = 3: both match bits set. Native code checks exact first, so
+        // "README.md" should match exactly, not as a substring
+        var bothBits = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 1 | 2, out _);
+        var exactOnly = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 1, out _);
+
+        Assert.AreEqual(exactOnly.Length, bothBits.Length, "1|2 should behave the same as 1 (exact wins)");
+    }
+
+    [TestMethod]
+    public void ParseMFTFromFile_AllBitsSet_SameAsExactWithPaths()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        // matchFlags = 1|2|4 = 7: all bits. Should be same as 1|4 since exact takes precedence
+        var allBits = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 1 | 2 | 4, out _);
+        var exactWithPaths = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 1 | 4, out _);
+
+        Assert.AreEqual(exactWithPaths.Length, allBits.Length, "1|2|4 should behave the same as 1|4");
+        foreach (var record in allBits)
+        {
+            Assert.AreEqual("README.md", record.FileName);
+            Assert.IsNotNull(record.FullPath);
+        }
+    }
+
+    [TestMethod]
     public void ParseMFTFromFile_NullFilterWithResolvePaths_PopulatesPaths()
     {
         Assert.IsNotNull(_tempMftPath);
