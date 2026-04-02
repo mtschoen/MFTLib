@@ -118,6 +118,7 @@ public class ElevationUtilitiesTests
     }
 
     [TestMethod]
+    [TestCategory("Interactive")]
     public void EnsureElevated_WhenNotAdmin_Declined_ReturnsFalse()
     {
         if (ElevationUtilities.IsElevated())
@@ -132,6 +133,7 @@ public class ElevationUtilitiesTests
     }
 
     [TestMethod]
+    [TestCategory("Interactive")]
     public void EnsureElevated_WhenNotAdmin_Accepted_ReturnsResult()
     {
         if (ElevationUtilities.IsElevated())
