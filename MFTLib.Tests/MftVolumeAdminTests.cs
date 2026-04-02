@@ -119,6 +119,47 @@ public class MftVolumeAdminTests
     }
 
     [TestMethod]
+    public void StreamRecords_SubstringWithPaths_CombinesFlags()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        // matchFlags = 2 (substring) | 4 (resolve paths) = 6
+        using var result = volume.StreamRecords(".dll", 2 | 4);
+
+        var count = 0;
+        MftRecord? firstWithPath = null;
+        foreach (var record in result)
+        {
+            Assert.IsTrue(record.FileName.Contains(".dll", StringComparison.OrdinalIgnoreCase),
+                $"Record '{record.FileName}' doesn't match substring '.dll'");
+
+            if (firstWithPath == null && record.FullPath != null)
+                firstWithPath = record.Materialize();
+
+            count++;
+            if (count >= 100) break;
+        }
+
+        Assert.IsTrue(count > 0, "Expected substring filter to find .dll files");
+        Assert.IsNotNull(firstWithPath, "Expected at least one record with a resolved path");
+        Assert.IsTrue(firstWithPath.Value.FullPath!.StartsWith(@"C:\"),
+            $"Expected path to start with C:\\ but got '{firstWithPath.Value.FullPath}'");
+    }
+
+    [TestMethod]
+    public void StreamRecords_FilterWithNoMatchBits_ReturnsEmpty()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        // Filter provided but matchFlags=0 — no match mode, so nothing matches
+        using var result = volume.StreamRecords("explorer.exe", 0);
+
+        var count = 0;
+        foreach (var _ in result) count++;
+        Assert.AreEqual(0, count, "Expected no results when filter is set but no match bits");
+    }
+
+    [TestMethod]
     public void FindFiles_ReturnsOnlyFiles()
     {
         RequireElevation();

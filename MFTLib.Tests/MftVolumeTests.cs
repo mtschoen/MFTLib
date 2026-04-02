@@ -37,31 +37,24 @@ public class MftVolumeTests
     }
 
     [TestMethod]
-    public void ParseMFTFromFile_WithFilter_ReturnsFilteredRecords()
+    public void ParseMFTFromFile_FilterWithNoMatchBits_ReturnsEmpty()
     {
         Assert.IsNotNull(_tempMftPath);
-        // The synthetic generator creates files like "file_0.txt", "dir_1", etc.
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "file_10", 0, out _);
-        
-        foreach (var record in records)
-        {
-            Assert.IsTrue(record.FileName.Contains("file_10"));
-        }
+        // matchFlags=0 means no match mode is set, so FileNameMatches always returns false
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 0, out _);
+        Assert.AreEqual(0, records.Length, "Expected no results when filter is set but no match bits");
     }
 
     [TestMethod]
-    public void ParseMFTFromFile_WithResolvePaths_ReturnsPaths()
+    public void ParseMFTFromFile_NullFilterWithResolvePaths_PopulatesPaths()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, null, 4u, out _); // 4u = resolve paths
-        
-        // Synthetic generator creates some nested structures
-        var nestedFile = records.FirstOrDefault(r => r.FileName == "nested_file.txt");
-        if (nestedFile.RecordNumber != 0)
-        {
-            Assert.IsNotNull(nestedFile.FullPath);
-            Assert.IsTrue(nestedFile.FullPath.Contains("\\"));
-        }
+        // null filter + matchFlags=4 should return all records with paths resolved
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, null, 4u, out _);
+
+        Assert.IsTrue(records.Length > 0, "Expected records to be returned");
+        var withPaths = records.Where(r => r.FullPath != null).ToArray();
+        Assert.IsTrue(withPaths.Length > 0, "Expected some records to have resolved paths");
     }
 
     [TestMethod]
