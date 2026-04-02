@@ -74,4 +74,5 @@ public class MftResultTests
                 $"FileName '{record.FileName}' doesn't match end of FullPath '{record.FullPath}'");
         }
     }
+
 }

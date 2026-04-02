@@ -1,3 +1,4 @@
+using System.Collections;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MFTLib;
 
@@ -348,7 +349,45 @@ public class MftVolumeAdminTests
     public void EnsureElevated_WhenAlreadyAdmin_ReturnsTrue()
     {
         RequireElevation();
-        // Already elevated, so this should hit the early-return path
         Assert.IsTrue(ElevationUtilities.EnsureElevated());
+    }
+
+    [TestMethod]
+    public void ResolvePath_SingleRecord_ReturnsFullPath()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        // Record 5 is the NTFS root directory
+        var path = volume.ResolvePath(5);
+        Assert.IsNotNull(path);
+        Assert.IsTrue(path.StartsWith("C:\\"));
+    }
+
+    [TestMethod]
+    public void FindRecords_NoDirectoryFilter_ReturnsBothTypes()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        // isDirectory: null means return both files and directories
+        var results = volume.FindRecords("Windows").ToList();
+        Assert.IsTrue(results.Count > 0, "Expected to find records named 'Windows'");
+    }
+
+    [TestMethod]
+    public void MftResult_NonGenericEnumerator_Works()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        using var result = volume.StreamRecords("explorer.exe", 1);
+
+        // Cast to non-generic IEnumerable to hit the explicit interface implementation
+        IEnumerable enumerable = result;
+        var count = 0;
+        foreach (var item in enumerable)
+        {
+            Assert.IsInstanceOfType(item, typeof(MftRecord));
+            count++;
+        }
+        Assert.IsTrue(count > 0, "Expected at least one record via non-generic enumerator");
     }
 }

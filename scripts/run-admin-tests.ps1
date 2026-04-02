@@ -14,6 +14,9 @@ $logFile = "$repoRoot\scripts\admin-test-results.log"
 
 if ($AllTests) { $Filter = "" }
 
+# Clear stale log
+if (Test-Path $logFile) { Remove-Item $logFile }
+
 # Build first (doesn't need admin)
 Write-Host "Building solution..." -ForegroundColor Cyan
 & MSBuild.exe "$repoRoot\MFTLib.sln" -p:Configuration=$Configuration -p:Platform=x64 -v:q -nologo
@@ -34,10 +37,18 @@ $encodedCmd = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(
 ))
 
 Write-Host "Launching elevated test runner (UAC prompt)..." -ForegroundColor Yellow
-Start-Process powershell -Verb RunAs -ArgumentList "-EncodedCommand", $encodedCmd -Wait
+try {
+    Start-Process powershell -Verb RunAs -ArgumentList "-EncodedCommand", $encodedCmd -Wait
+} catch {
+    Write-Host "UAC prompt was declined or elevation failed." -ForegroundColor Red
+    exit 1
+}
 
 # Show results
 if (Test-Path $logFile) {
     Write-Host "`n--- Test Results ---" -ForegroundColor Cyan
     Get-Content $logFile
+} else {
+    Write-Host "No test results found. UAC prompt may have been declined." -ForegroundColor Red
+    exit 1
 }
