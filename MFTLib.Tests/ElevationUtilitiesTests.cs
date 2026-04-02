@@ -26,14 +26,12 @@ public class ElevationUtilitiesTests
     public void EnsureElevated_WhenNotAdmin_LaunchesElevatedProcess()
     {
         if (ElevationUtilities.IsElevated())
-            Assert.Inconclusive("Test must run non-elevated to exercise the launch path.");
+            Assert.Inconclusive("Test must run non-elevated.");
 
-        // This will trigger a UAC prompt. The elevated process is the test host,
-        // which will run and exit. EnsureElevated waits for it and returns the result.
+        // This triggers a UAC prompt. Accept or decline — both paths return without throwing.
+        // Decline exercises the Win32Exception (1223) catch; accept exercises the full launch path.
+        // The return value depends on the UAC response and the elevated process exit code.
         var result = ElevationUtilities.EnsureElevated();
-
-        // The return value depends on the elevated process exit code.
-        // We just verify it didn't throw — the code path is what matters for coverage.
         Assert.IsInstanceOfType(result, typeof(bool));
     }
 }
