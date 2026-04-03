@@ -1,5 +1,4 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MFTLib;
 
 namespace MFTLib.Tests;
 
@@ -120,7 +119,7 @@ public class PathResolutionTests
         Assert.AreEqual(@"Z:\data.db", ResolveTestPath(records, 10, "Z"));
     }
 
-    private static string ResolveTestPath(MftRecord[] records, ulong recordNumber, string driveLetter)
+    static string ResolveTestPath(MftRecord[] records, ulong recordNumber, string driveLetter)
     {
         var lookup = new Dictionary<ulong, MftRecord>();
         foreach (var r in records)

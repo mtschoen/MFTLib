@@ -7,10 +7,10 @@ namespace MFTLib;
 
 public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 {
-    private IntPtr _resultPtr;
-    private readonly MftParseResult _result;
-    private readonly char _driveLetter;
-    private bool _disposed;
+    IntPtr _resultPtr;
+    readonly MftParseResult _result;
+    readonly char _driveLetter;
+    bool _disposed;
 
     public ulong TotalRecords => _result.TotalRecords;
     public ulong UsedRecords => _result.UsedRecords;
@@ -46,11 +46,11 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    private const int ParallelThreshold = 500_000;
-    private const int NativeEntrySize = 540;
-    private const int NativePathEntrySize = 2068;
+    const int ParallelThreshold = 500_000;
+    const int NativeEntrySize = 540;
+    const int NativePathEntrySize = 2068;
 
-    private unsafe delegate MftRecord EntryReader(byte* basePtr, ulong index);
+    unsafe delegate MftRecord EntryReader(byte* basePtr, ulong index);
 
     public unsafe MftRecord[] ToArray()
     {
@@ -79,27 +79,28 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         return records;
     }
 
-    private unsafe MftRecord GetEntry(ulong index) => GetEntryUnsafe((byte*)_result.Entries, index);
+    unsafe MftRecord GetEntry(ulong index) => GetEntryUnsafe((byte*)_result.Entries, index);
 
-    private unsafe MftRecord GetEntryUnsafe(byte* basePtr, ulong index)
+    unsafe MftRecord GetEntryUnsafe(byte* basePtr, ulong index)
     {
-        byte* ptr = basePtr + index * NativeEntrySize;
-        ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
-        ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
-        ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
-        ushort nameLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
+        var ptr = basePtr + index * NativeEntrySize;
+        var recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
+        var parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
+        var flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
+        var nameLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
+        // ReSharper disable once PreferConcreteValueOverDefault
         return new MftRecord(recordNumber, parentRecordNumber, flags, (IntPtr)(ptr + 20), nameLength, default, 0, _driveLetter);
     }
 
-    private unsafe MftRecord GetPathEntry(ulong index) => GetPathEntryUnsafe((byte*)_result.PathEntries, index);
+    unsafe MftRecord GetPathEntry(ulong index) => GetPathEntryUnsafe((byte*)_result.PathEntries, index);
 
-    private unsafe MftRecord GetPathEntryUnsafe(byte* basePtr, ulong index)
+    unsafe MftRecord GetPathEntryUnsafe(byte* basePtr, ulong index)
     {
-        byte* ptr = basePtr + index * NativePathEntrySize;
-        ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
-        ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
-        ushort flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
-        ushort pathLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
+        var ptr = basePtr + index * NativePathEntrySize;
+        var recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
+        var parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
+        var flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
+        var pathLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
         return new MftRecord(recordNumber, parentRecordNumber, flags, IntPtr.Zero, 0, (IntPtr)(ptr + 20), pathLength, _driveLetter);
     }
 

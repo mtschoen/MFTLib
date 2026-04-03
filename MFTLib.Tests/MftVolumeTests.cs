@@ -1,12 +1,11 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MFTLib;
 
 namespace MFTLib.Tests;
 
 [TestClass]
 public class MftVolumeTests
 {
-    private string? _tempMftPath;
+    string? _tempMftPath;
 
     [TestInitialize]
     public void Setup()
@@ -30,7 +29,7 @@ public class MftVolumeTests
     {
         Assert.IsNotNull(_tempMftPath);
         var records = MftVolume.ParseMFTFromFile(_tempMftPath, out var timings);
-        
+
         Assert.IsTrue(records.Length > 0);
         Assert.IsTrue(timings.TotalRecords >= 1000);
         Assert.IsNotNull(records[0].FileName);

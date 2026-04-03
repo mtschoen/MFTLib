@@ -1,32 +1,30 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
-using MFTLib.Interop;
 
 namespace MFTLib;
 
 public sealed class MftVolume : IDisposable
 {
-    private readonly SafeFileHandle _volumeHandle;
-    private readonly string _driveLetter;
-    private bool _disposed;
+    readonly SafeFileHandle _volumeHandle;
+    readonly string _driveLetter;
+    readonly uint _bufferSizeRecords;
+    bool _disposed;
 
-    public uint BufferSizeRecords { get; set; } = 262144;
-
-    private MftVolume(SafeFileHandle volumeHandle, string driveLetter)
+    MftVolume(SafeFileHandle volumeHandle, string driveLetter, uint bufferSizeRecords)
     {
         _volumeHandle = volumeHandle;
         _driveLetter = driveLetter;
+        _bufferSizeRecords = bufferSizeRecords;
     }
 
-    public static MftVolume Open(string volumePath)
+    public static MftVolume Open(string volumePath, uint bufferSizeRecords = 262144)
     {
         var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
         var handle = FileUtilities.GetVolumeHandle(normalizedPath);
-        
+
         var driveLetter = ExtractDriveLetter(normalizedPath);
 
-        return new MftVolume(handle, driveLetter);
+        return new MftVolume(handle, driveLetter, bufferSizeRecords);
     }
 
     public MftRecord[] ReadAllRecords() => ReadAllRecords(resolvePaths: false, out _);
@@ -56,7 +54,7 @@ public sealed class MftVolume : IDisposable
     public MftResult StreamRecords(string? filter = null, MatchFlags matchFlags = MatchFlags.None)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        IntPtr resultPtr = MFTLibNative.ParseMFTRecords(_volumeHandle, filter, matchFlags, BufferSizeRecords);
+        var resultPtr = MFTLibNative.ParseMFTRecords(_volumeHandle, filter, matchFlags, _bufferSizeRecords);
 
         if (resultPtr == IntPtr.Zero)
             throw new InvalidOperationException("ParseMFTRecords returned null");
@@ -98,7 +96,7 @@ public sealed class MftVolume : IDisposable
 
     public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags, out MftParseTimings timings, uint bufferSizeRecords = 262144)
     {
-        IntPtr resultPtr = MFTLibNative.ParseMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords);
+        var resultPtr = MFTLibNative.ParseMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords);
 
         if (resultPtr == IntPtr.Zero)
             throw new InvalidOperationException("ParseMFTFromFile returned null");
@@ -107,7 +105,7 @@ public sealed class MftVolume : IDisposable
         return MaterializeWithTimings(result, out timings);
     }
 
-    private static MftRecord[] MaterializeWithTimings(MftResult result, out MftParseTimings timings)
+    static MftRecord[] MaterializeWithTimings(MftResult result, out MftParseTimings timings)
     {
         var sw = Stopwatch.StartNew();
         var records = result.ToArray();

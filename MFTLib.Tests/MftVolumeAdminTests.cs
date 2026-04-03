@@ -1,6 +1,5 @@
 using System.Collections;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MFTLib;
 
 namespace MFTLib.Tests;
 
@@ -12,7 +11,7 @@ namespace MFTLib.Tests;
 [TestCategory("RequiresAdmin")]
 public class MftVolumeAdminTests
 {
-    private static void RequireElevation()
+    static void RequireElevation()
     {
         if (!ElevationUtilities.IsElevated())
             Assert.Inconclusive("Requires admin elevation. Run scripts/run-admin-tests.ps1");
@@ -40,6 +39,15 @@ public class MftVolumeAdminTests
         RequireElevation();
         using var volume = MftVolume.Open(@"C:\");
         Assert.IsNotNull(volume);
+    }
+
+    [TestMethod]
+    public void Open_WithCustomBufferSize_Succeeds()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C", bufferSizeRecords: 65536);
+        var records = volume.ReadAllRecords();
+        Assert.IsTrue(records.Length > 0);
     }
 
     [TestMethod]
@@ -72,6 +80,18 @@ public class MftVolumeAdminTests
         using var volume = MftVolume.Open("C");
         var records = volume.ReadAllRecords(resolvePaths: true);
 
+        var withPaths = records.Where(r => r.FullPath != null).ToArray();
+        Assert.IsTrue(withPaths.Length > 0, "Expected some records with resolved paths");
+    }
+
+    [TestMethod]
+    public void ReadAllRecords_WithResolvePathsAndTimings_PopulatesFullPath()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        var records = volume.ReadAllRecords(resolvePaths: true, out var timings);
+
+        Assert.IsTrue(timings.TotalRecords > 0);
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
         Assert.IsTrue(withPaths.Length > 0, "Expected some records with resolved paths");
 
@@ -151,7 +171,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords("explorer.exe", MatchFlags.None);
+        using var result = volume.StreamRecords("explorer.exe");
 
         var count = 0;
         foreach (var _ in result) count++;
@@ -190,7 +210,7 @@ public class MftVolumeAdminTests
         using var result = volume.StreamRecords();
 
         var count = 0;
-        foreach (var record in result)
+        foreach (var unused in result)
         {
             count++;
             if (count >= 100) break; // Don't enumerate everything

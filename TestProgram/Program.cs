@@ -67,7 +67,9 @@ foreach (var drive in driveLetters)
 Console.WriteLine($"Completed at {DateTime.Now}");
 
 [DllImport("ucrtbase.dll", CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+// ReSharper disable once IdentifierTypo
 static extern IntPtr _wfreopen(string path, string mode, IntPtr stream);
 
 [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl)]
+// ReSharper disable once IdentifierTypo
 static extern IntPtr __acrt_iob_func(uint index);

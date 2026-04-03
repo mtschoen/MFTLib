@@ -1,5 +1,4 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MFTLib;
 
 namespace MFTLib.Tests;
 
@@ -91,7 +90,7 @@ public class MftRecordTests
     [TestMethod]
     public void Materialize_NullPointers_ReturnsSame()
     {
-        var record = new MftRecord(1, 5, 0x0000, (string?)null, null);
+        var record = new MftRecord(1, 5, 0x0000, null, null);
         var materialized = record.Materialize();
         Assert.AreEqual(string.Empty, materialized.FileName);
         Assert.IsNull(materialized.FullPath);

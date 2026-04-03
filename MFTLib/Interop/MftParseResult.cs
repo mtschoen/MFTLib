@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace MFTLib.Interop;
 
 [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Unicode)]
-internal struct MftParseResult
+struct MftParseResult
 {
     public ulong TotalRecords;
     public ulong UsedRecords;

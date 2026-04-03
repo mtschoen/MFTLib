@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 [assembly: InternalsVisibleTo("MFTLib.Tests")]
 
@@ -7,18 +6,18 @@ namespace MFTLib;
 
 public readonly struct MftRecord
 {
-    private readonly ulong _recordNumber;
-    private readonly ulong _parentRecordNumber;
-    private readonly ushort _flags;
-    private readonly ushort _nameLength;
-    private readonly ushort _pathLength;
-    private readonly char _driveLetter;
-    
+    readonly ulong _recordNumber;
+    readonly ulong _parentRecordNumber;
+    readonly ushort _flags;
+    readonly ushort _nameLength;
+    readonly ushort _pathLength;
+    readonly char _driveLetter;
+
     // These are either pointers to native memory (temporary) or materialized strings
-    private readonly IntPtr _namePtr;
-    private readonly IntPtr _pathPtr;
-    private readonly string? _fileName;
-    private readonly string? _fullPath;
+    readonly IntPtr _namePtr;
+    readonly IntPtr _pathPtr;
+    readonly string? _fileName;
+    readonly string? _fullPath;
 
     public ulong RecordNumber => _recordNumber;
     public ulong ParentRecordNumber => _parentRecordNumber;
@@ -35,13 +34,13 @@ public readonly struct MftRecord
 
             if (_pathPtr != IntPtr.Zero && _pathLength > 0)
             {
-                char* pathChars = (char*)_pathPtr;
-                int lastSep = -1;
-                for (int i = _pathLength - 1; i >= 0; i--)
+                var pathChars = (char*)_pathPtr;
+                var lastSep = -1;
+                for (var i = _pathLength - 1; i >= 0; i--)
                 {
                     if (pathChars[i] == '\\') { lastSep = i; break; }
                 }
-                int start = lastSep + 1;
+                var start = lastSep + 1;
                 return new string(pathChars, start, _pathLength - start);
             }
 
@@ -60,6 +59,7 @@ public readonly struct MftRecord
         }
     }
 
+    // ReSharper disable once PreferConcreteValueOverDefault
     internal MftRecord(ulong recordNumber, ulong parentRecordNumber, ushort flags, IntPtr namePtr, ushort nameLength, IntPtr pathPtr = default, ushort pathLength = 0, char driveLetter = '\0')
     {
         _recordNumber = recordNumber;

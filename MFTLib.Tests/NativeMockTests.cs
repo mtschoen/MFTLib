@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MFTLib;
 using MFTLib.Interop;
 
 namespace MFTLib.Tests;
@@ -27,7 +26,7 @@ public class NativeMockTests
     public void ParseMFTFromFile_NativeErrorMessage_ThrowsWithMessage()
     {
         var errorResult = new MftParseResult { ErrorMessage = "Volume is not NTFS" };
-        IntPtr resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(errorResult, resultPtr, false);
 
         MFTLibNative.ParseMFTFromFile = (_, _, _, _) => resultPtr;
@@ -57,8 +56,8 @@ public class NativeMockTests
         MFTLibNative.ParseMFTRecords = (_, _, _, _) => IntPtr.Zero;
 
         using var volume = MftVolume.Open("C");
-        Assert.ThrowsException<InvalidOperationException>(() =>
-            volume.StreamRecords());
+        // ReSharper disable once AccessToDisposedClosure
+        Assert.ThrowsException<InvalidOperationException>(() => volume.StreamRecords());
     }
 
     [TestMethod]
@@ -70,7 +69,7 @@ public class NativeMockTests
 
         // Build a synthetic MftParseResult with one entry (no path data)
         const int entrySize = 540; // 8 + 8 + 2 + 2 + 520 (260 chars)
-        byte* entryBuf = stackalloc byte[entrySize];
+        var entryBuf = stackalloc byte[entrySize];
         new Span<byte>(entryBuf, entrySize).Clear();
 
         // recordNumber = 100, parentRecordNumber = 5, flags = 1 (InUse)
@@ -92,7 +91,7 @@ public class NativeMockTests
             PathEntries = IntPtr.Zero,
         };
 
-        IntPtr resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
 
         MFTLibNative.ParseMFTRecords = (_, _, _, _) => resultPtr;

@@ -43,8 +43,7 @@ var records = volume.ReadAllRecords(out var timings);
 ### Configure buffer size
 
 ```csharp
-using var volume = MftVolume.Open("C");
-volume.BufferSizeRecords = 65536; // 64MB buffers (default is 262144 = 256MB)
+using var volume = MftVolume.Open("C", bufferSizeRecords: 65536); // 64MB buffers (default is 262144 = 256MB)
 var records = volume.ReadAllRecords();
 ```
 

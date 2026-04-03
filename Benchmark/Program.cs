@@ -30,7 +30,7 @@ Log($"  .NET:        {RuntimeInformation.FrameworkDescription}");
 Log($"  Date:        {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
 Log();
 
-Log($"MFT Benchmark");
+Log("MFT Benchmark");
 Log($"  Records: {recordCount:N0}");
 Log($"  Iterations: {iterations}");
 Log();
@@ -64,7 +64,7 @@ foreach (var (scenarioName, filter, matchFlags) in scenarios)
     var allWallClocks = new List<double>();
     var recordCounts = new List<int>();
 
-    for (int i = 0; i < iterations; i++)
+    for (var i = 0; i < iterations; i++)
     {
         Console.Write($"  Iteration {i + 1}/{iterations}... ");
         var sw = Stopwatch.StartNew();
@@ -75,9 +75,9 @@ foreach (var (scenarioName, filter, matchFlags) in scenarios)
         allWallClocks.Add(sw.Elapsed.TotalMilliseconds);
         recordCounts.Add(records.Length);
 
-        var iterLine = $"{sw.Elapsed.TotalMilliseconds:F0}ms ({records.Length:N0} records)";
-        Console.WriteLine(iterLine);
-        output.AppendLine($"  Iteration {i + 1}/{iterations}... {iterLine}");
+        var iterationLine = $"{sw.Elapsed.TotalMilliseconds:F0}ms ({records.Length:N0} records)";
+        Console.WriteLine(iterationLine);
+        output.AppendLine($"  Iteration {i + 1}/{iterations}... {iterationLine}");
     }
 
     var sorted = allWallClocks.OrderBy(x => x).ToList();
@@ -86,7 +86,7 @@ foreach (var (scenarioName, filter, matchFlags) in scenarios)
     var medianTimings = allTimings[medianIdx];
     var medianRecords = recordCounts[medianIdx];
 
-    Log($"  Results (median):");
+    Log("  Results (median):");
     Log($"    Records:      {medianRecords,12:N0}");
     Log($"    Wall clock:   {medianWall,12:F1}ms");
     Log($"    Native total: {medianTimings.NativeTotalMs,12:F1}ms");

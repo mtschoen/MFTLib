@@ -1,12 +1,11 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MFTLib;
 
 namespace MFTLib.Tests;
 
 [TestClass]
 public class MftResultTests
 {
-    private string? _tempMftPath;
+    string? _tempMftPath;
 
     [TestInitialize]
     public void Setup()
@@ -26,7 +25,7 @@ public class MftResultTests
     public void TotalRecords_ReturnsExpectedCount()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out var timings);
+        MftVolume.ParseMFTFromFile(_tempMftPath, out var timings);
         Assert.AreEqual(500UL, timings.TotalRecords);
     }
 
