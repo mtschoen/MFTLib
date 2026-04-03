@@ -37,6 +37,69 @@ public static class ElevationUtilities
 
     public static string? GetProcessPath() => GetProcessPathFunc();
 
+    /// <summary>
+    /// Returns true if the current process can self-elevate via UAC — i.e., there is a
+    /// resolvable executable path and the host is not dotnet.exe.
+    /// </summary>
+    public static bool CanSelfElevate()
+    {
+        var processPath = GetProcessPath();
+        if (string.IsNullOrEmpty(processPath))
+            return false;
+
+        var fileName = Path.GetFileNameWithoutExtension(processPath).ToLowerInvariant();
+        return fileName != "dotnet";
+    }
+
+    /// <summary>
+    /// Launch an elevated copy of this executable with the given arguments and wait
+    /// for it to exit. Returns false if the process path is unavailable, the user
+    /// declines UAC, the child process returns a non-zero exit code, or the timeout
+    /// elapses (in which case the child is killed).
+    /// </summary>
+    public static bool TryRunElevated(string arguments, int timeoutMs = 60000)
+    {
+        var exePath = GetProcessPath();
+        if (string.IsNullOrEmpty(exePath))
+            return false;
+
+        // Cannot self-elevate when hosted by dotnet.exe
+        if (!CanSelfElevate())
+            return false;
+
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = arguments,
+                Verb = "runas",
+                UseShellExecute = true,
+                CreateNoWindow = true
+            };
+
+            var process = StartProcess(startInfo);
+            if (process == null)
+                return false;
+
+            if (!process.WaitForExit(timeoutMs))
+            {
+                process.Kill();
+                return false;
+            }
+
+            return process.ExitCode == 0;
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static bool EnsureElevated(string[]? arguments = null)
     {
         if (IsElevated())
