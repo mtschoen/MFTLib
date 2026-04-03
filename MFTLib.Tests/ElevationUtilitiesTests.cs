@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MFTLib;
 
@@ -8,9 +7,6 @@ namespace MFTLib.Tests;
 [TestClass]
 public class ElevationUtilitiesTests
 {
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
-
     [TestCleanup]
     public void Cleanup() => ElevationUtilities.ResetToDefaults();
 
@@ -36,116 +32,98 @@ public class ElevationUtilitiesTests
         Assert.IsTrue(path.Length > 0);
     }
 
+    // --- CanSelfElevate ---
+
     [TestMethod]
-    public void EnsureElevated_NullProcessPath_ReturnsFalse()
+    public void CanSelfElevate_NullProcessPath_ReturnsFalse()
     {
-        ElevationUtilities.IsWindows = () => false;
         ElevationUtilities.GetProcessPathFunc = () => null;
-        Assert.IsFalse(ElevationUtilities.EnsureElevated());
+        Assert.IsFalse(ElevationUtilities.CanSelfElevate());
     }
 
     [TestMethod]
-    public void EnsureElevated_WhenAlreadyElevated_ReturnsTrue()
+    public void CanSelfElevate_EmptyProcessPath_ReturnsFalse()
     {
-        // Covers the true branch of `if (IsElevated())` at line 40
-        var originalIsWindows = ElevationUtilities.IsWindows;
-        ElevationUtilities.IsWindows = () => true;
-        // If we're actually elevated, this returns true immediately.
-        // If not, WindowsIdentity.GetCurrent() still works — it just returns non-admin.
-        // So we also need IsElevated to return true. We can't mock IsElevated directly,
-        // but we only need this for the branch where IsElevated returns true.
-        if (!ElevationUtilities.IsElevated())
-        {
-            ElevationUtilities.IsWindows = originalIsWindows;
-            Assert.Inconclusive("This branch is covered by admin tests.");
-        }
-
-        Assert.IsTrue(ElevationUtilities.EnsureElevated());
+        ElevationUtilities.GetProcessPathFunc = () => "";
+        Assert.IsFalse(ElevationUtilities.CanSelfElevate());
     }
 
     [TestMethod]
-    public void EnsureElevated_ExePath_UsesArguments()
+    public void CanSelfElevate_DotnetExe_ReturnsFalse()
     {
-        ElevationUtilities.IsWindows = () => false;
+        ElevationUtilities.GetProcessPathFunc = () => @"C:\dotnet\dotnet.exe";
+        Assert.IsFalse(ElevationUtilities.CanSelfElevate());
+    }
+
+    [TestMethod]
+    public void CanSelfElevate_NormalExe_ReturnsTrue()
+    {
+        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
+        Assert.IsTrue(ElevationUtilities.CanSelfElevate());
+    }
+
+    // --- TryRunElevated ---
+
+    [TestMethod]
+    public void TryRunElevated_NullProcessPath_ReturnsFalse()
+    {
+        ElevationUtilities.GetProcessPathFunc = () => null;
+        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
+    }
+
+    [TestMethod]
+    public void TryRunElevated_DotnetExe_ReturnsFalse()
+    {
+        ElevationUtilities.GetProcessPathFunc = () => @"C:\dotnet\dotnet.exe";
+        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
+    }
+
+    [TestMethod]
+    public void TryRunElevated_ProcessReturnsNull_ReturnsFalse()
+    {
         ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
         ElevationUtilities.StartProcess = _ => null;
-        var result = ElevationUtilities.EnsureElevated(["--verbose"]);
-        Assert.IsFalse(result);
+        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
     [TestMethod]
-    public void EnsureElevated_ExePath_QuotesArgsWithSpaces()
+    public void TryRunElevated_ProcessExitsZero_ReturnsTrue()
     {
-        // Covers the true branch of `a.Contains(' ')` ternary in the exe path (line 65)
-        ElevationUtilities.IsWindows = () => false;
         ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
-        ProcessStartInfo? captured = null;
-        ElevationUtilities.StartProcess = info => { captured = info; return null; };
-        ElevationUtilities.EnsureElevated(["--path", @"C:\my folder\file.txt"]);
-        Assert.IsNotNull(captured);
-        Assert.IsTrue(captured!.Arguments.Contains("\"C:\\my folder\\file.txt\""));
+        ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 0") { CreateNoWindow = true });
+        Assert.IsTrue(ElevationUtilities.TryRunElevated("--test"));
     }
 
     [TestMethod]
-    public void EnsureElevated_DotnetPath_QuotesArgsWithSpaces()
+    public void TryRunElevated_ProcessExitsNonZero_ReturnsFalse()
     {
-        ElevationUtilities.IsWindows = () => false;
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\dotnet\dotnet.exe";
-        ElevationUtilities.GetCommandLineArgs = () => ["dotnet", @"C:\my app\app.dll", "--flag"];
-        ProcessStartInfo? captured = null;
-        ElevationUtilities.StartProcess = info => { captured = info; return null; };
-        ElevationUtilities.EnsureElevated();
-        Assert.IsNotNull(captured);
-        Assert.IsTrue(captured!.Arguments.Contains("\"C:\\my app\\app.dll\""));
+        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 1") { CreateNoWindow = true });
+        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
     [TestMethod]
-    public void EnsureElevated_ProcessReturnsNull_ReturnsFalse()
+    public void TryRunElevated_Timeout_KillsProcessAndReturnsFalse()
     {
-        ElevationUtilities.IsWindows = () => false;
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\dotnet\dotnet.exe";
-        ElevationUtilities.StartProcess = _ => null;
-        Assert.IsFalse(ElevationUtilities.EnsureElevated());
+        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 30 127.0.0.1 >nul") { CreateNoWindow = true });
+        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", timeoutMs: 100));
     }
 
     [TestMethod]
-    public void EnsureElevated_GenericException_ReturnsFalse()
+    public void TryRunElevated_Win32Exception1223_ReturnsFalse()
     {
-        ElevationUtilities.IsWindows = () => false;
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\dotnet\dotnet.exe";
+        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities.StartProcess = _ => throw new System.ComponentModel.Win32Exception(1223);
+        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
+    }
+
+    [TestMethod]
+    public void TryRunElevated_GenericException_ReturnsFalse()
+    {
+        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
         ElevationUtilities.StartProcess = _ => throw new InvalidOperationException("test");
-        Assert.IsFalse(ElevationUtilities.EnsureElevated());
+        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
-    [TestMethod]
-    [TestCategory("Interactive")]
-    public void EnsureElevated_WhenNotAdmin_Declined_ReturnsFalse()
-    {
-        if (ElevationUtilities.IsElevated())
-            Assert.Inconclusive("Test must run non-elevated.");
-
-        MessageBox(IntPtr.Zero,
-            "A UAC prompt will appear next.\n\nPlease DECLINE (click No) to test the cancellation path.",
-            "MFTLib Test — Decline UAC", 0x00010040 /* MB_ICONINFORMATION | MB_SETFOREGROUND */);
-
-        var result = ElevationUtilities.EnsureElevated();
-        Assert.IsFalse(result);
-    }
-
-    [TestMethod]
-    [TestCategory("Interactive")]
-    public void EnsureElevated_WhenNotAdmin_Accepted_ReturnsResult()
-    {
-        if (ElevationUtilities.IsElevated())
-            Assert.Inconclusive("Test must run non-elevated.");
-
-        Thread.Sleep(1000);
-
-        MessageBox(IntPtr.Zero,
-            "A UAC prompt will appear next.\n\nPlease ACCEPT (click Yes) to test the elevation path.",
-            "MFTLib Test — Accept UAC", 0x00010040 /* MB_ICONINFORMATION | MB_SETFOREGROUND */);
-
-        var result = ElevationUtilities.EnsureElevated();
-        Assert.IsInstanceOfType(result, typeof(bool));
-    }
 }

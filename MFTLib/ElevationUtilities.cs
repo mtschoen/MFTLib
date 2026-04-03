@@ -13,14 +13,11 @@ public static class ElevationUtilities
     internal static Func<bool> IsWindows = () => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
     internal static Func<string?> GetProcessPathFunc = () => Environment.ProcessPath;
     internal static Func<ProcessStartInfo, Process?> StartProcess = Process.Start;
-    internal static Func<string[]> GetCommandLineArgs = Environment.GetCommandLineArgs;
-
     internal static void ResetToDefaults()
     {
         IsWindows = () => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
         GetProcessPathFunc = () => Environment.ProcessPath;
         StartProcess = Process.Start;
-        GetCommandLineArgs = Environment.GetCommandLineArgs;
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "CA1416",
@@ -100,52 +97,4 @@ public static class ElevationUtilities
         }
     }
 
-    public static bool EnsureElevated(string[]? arguments = null)
-    {
-        if (IsElevated())
-            return true;
-
-        var processPath = GetProcessPath();
-        if (processPath == null)
-            return false;
-
-        var fileName = Path.GetFileNameWithoutExtension(processPath).ToLowerInvariant();
-        var startInfo = new ProcessStartInfo
-        {
-            UseShellExecute = true,
-            Verb = "runas",
-            CreateNoWindow = false
-        };
-
-        if (fileName == "dotnet")
-        {
-            var allArgs = GetCommandLineArgs();
-            startInfo.FileName = processPath;
-            startInfo.Arguments = string.Join(" ", allArgs.Skip(1).Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
-        }
-        else
-        {
-            var argsList = arguments ?? GetCommandLineArgs().Skip(1).ToArray();
-            startInfo.FileName = processPath;
-            startInfo.Arguments = string.Join(" ", argsList.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
-        }
-
-        try
-        {
-            var process = StartProcess(startInfo);
-            if (process == null)
-                return false;
-
-            process.WaitForExit();
-            return process.ExitCode == 0;
-        }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
-        {
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
 }

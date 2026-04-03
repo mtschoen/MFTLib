@@ -6,10 +6,11 @@ using MFTLib;
 if (!ElevationUtilities.IsElevated())
 {
     Console.WriteLine("Not running as administrator. Attempting to self-elevate...");
-    if (ElevationUtilities.EnsureElevated())
+    if (ElevationUtilities.CanSelfElevate())
     {
-        // If we reach here, the child process has finished
-        return;
+        var formattedArgs = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+        if (ElevationUtilities.TryRunElevated(formattedArgs))
+            return;
     }
 
     Console.WriteLine("------------------------------------------------------------------");
@@ -17,11 +18,10 @@ if (!ElevationUtilities.IsElevated())
     Console.WriteLine("This program requires Administrative privileges to read the MFT.");
     Console.WriteLine("Please run this command from an ELEVATED terminal:");
     Console.WriteLine();
-    
+
     var processPath = ElevationUtilities.GetProcessPath();
-    var allArgs = Environment.GetCommandLineArgs();
-    var formattedArgs = string.Join(" ", allArgs.Skip(1).Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
-    Console.WriteLine($"  {processPath} {formattedArgs}");
+    var formattedArgsForDisplay = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+    Console.WriteLine($"  {processPath} {formattedArgsForDisplay}");
     Console.WriteLine("------------------------------------------------------------------");
     return;
 }

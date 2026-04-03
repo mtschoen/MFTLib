@@ -57,7 +57,6 @@ dotnet test "$testProject" --no-build -c $Configuration -p:Platform=x64 ``
 `$exitCode = `$LASTEXITCODE
 if (`$exitCode -eq 0) { Write-Host "Admin tests passed." -ForegroundColor Green }
 else { Write-Host "Admin tests failed." -ForegroundColor Red }
-Read-Host "Press Enter to close"
 exit `$exitCode
 "@
 

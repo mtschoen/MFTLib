@@ -101,20 +101,6 @@ public sealed class MftVolume : IDisposable
         }
     }
 
-    public string ResolvePath(ulong recordNumber)
-    {
-        var records = ReadAllRecords();
-        var lookup = new Dictionary<ulong, MftRecord>();
-        foreach (var r in records)
-            lookup[r.RecordNumber] = r;
-        return ResolvePath(recordNumber, lookup);
-    }
-
-    private string ResolvePath(ulong recordNumber, Dictionary<ulong, MftRecord> lookup)
-    {
-        return MftPathUtilities.ResolvePath(recordNumber, lookup, _driveLetter);
-    }
-
     public static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords = 262144)
     {
         if (!MFTLibNative.GenerateSyntheticMFT(filePath, recordCount, bufferSizeRecords))

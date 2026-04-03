@@ -7,27 +7,6 @@ namespace MFTLib.Tests;
 public class MFTUtilitiesTests
 {
     [TestMethod]
-    public void GetFileNameForDriveLetter_ValidLetter_ReturnsVolumePath()
-    {
-        var result = MFTUtilities.GetFileNameForDriveLetter("C");
-        Assert.AreEqual(@"\\.\C:", result);
-    }
-
-    [TestMethod]
-    public void GetFileNameForDriveLetter_LowercaseLetter_ReturnsVolumePath()
-    {
-        var result = MFTUtilities.GetFileNameForDriveLetter("g");
-        Assert.AreEqual(@"\\.\g:", result);
-    }
-
-    [TestMethod]
-    [ExpectedException(typeof(ArgumentException))]
-    public void GetFileNameForDriveLetter_WithColon_Throws()
-    {
-        MFTUtilities.GetFileNameForDriveLetter("C:");
-    }
-
-    [TestMethod]
     public void GetVolumePath_SingleLetter_ReturnsVolumePath()
     {
         Assert.AreEqual(@"\\.\C:", MFTUtilities.GetVolumePath("C"));
@@ -92,17 +71,4 @@ public class MFTUtilitiesTests
         MFTUtilities.GetVolumePath("not-a-volume");
     }
 
-    [TestMethod]
-    [ExpectedException(typeof(ArgumentException))]
-    public void GetFileNameForDriveLetter_MultiChar_Throws()
-    {
-        MFTUtilities.GetFileNameForDriveLetter("CD");
-    }
-
-    [TestMethod]
-    [ExpectedException(typeof(ArgumentException))]
-    public void GetFileNameForDriveLetter_Empty_Throws()
-    {
-        MFTUtilities.GetFileNameForDriveLetter("");
-    }
 }

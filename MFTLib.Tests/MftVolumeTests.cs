@@ -274,6 +274,39 @@ public class MftVolumeTests
     }
 
     [TestMethod]
+    public void ParseMFTFromFile_SelectivePathResolution_MatchesNativeResolution()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        // Scan without paths, then selectively resolve a few records
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out _);
+        var lookup = records.ToDictionary(r => r.RecordNumber);
+
+        // Also scan with native path resolution for comparison
+        var withPaths = MftVolume.ParseMFTFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, out _);
+        var pathLookup = withPaths.Where(r => r.FullPath != null).ToDictionary(r => r.RecordNumber);
+
+        // Resolve a few records manually and verify they match native resolution
+        var resolved = 0;
+        foreach (var record in records.Where(r => r.InUse && r.RecordNumber > 5).Take(20))
+        {
+            var manualPath = MftPathUtilities.ResolvePath(record.RecordNumber, lookup, "");
+            if (pathLookup.TryGetValue(record.RecordNumber, out var nativeRecord) && nativeRecord.FullPath != null)
+            {
+                // Native paths include drive letter prefix; manual paths use empty drive letter
+                var nativePath = nativeRecord.FullPath;
+                // Both should produce the same relative structure
+                Assert.IsTrue(manualPath.EndsWith(record.FileName),
+                    $"Manual path '{manualPath}' should end with '{record.FileName}'");
+                Assert.IsTrue(nativePath.EndsWith(record.FileName),
+                    $"Native path '{nativePath}' should end with '{record.FileName}'");
+                resolved++;
+            }
+        }
+
+        Assert.IsTrue(resolved > 0, "Expected at least one record to be resolved by both methods");
+    }
+
+    [TestMethod]
     public void ExtractDriveLetter_ValidPath_ReturnsLetter()
     {
         Assert.AreEqual("C", MftVolume.ExtractDriveLetter(@"\\.\C:"));

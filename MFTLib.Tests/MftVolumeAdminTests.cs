@@ -341,23 +341,6 @@ public class MftVolumeAdminTests
         Assert.IsTrue(ElevationUtilities.IsElevated());
     }
 
-    [TestMethod]
-    public void EnsureElevated_WhenAlreadyAdmin_ReturnsTrue()
-    {
-        RequireElevation();
-        Assert.IsTrue(ElevationUtilities.EnsureElevated());
-    }
-
-    [TestMethod]
-    public void ResolvePath_SingleRecord_ReturnsFullPath()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        // Record 5 is the NTFS root directory
-        var path = volume.ResolvePath(5);
-        Assert.IsNotNull(path);
-        Assert.IsTrue(path.StartsWith("C:\\"));
-    }
 
     [TestMethod]
     public void FindRecords_NoDirectoryFilter_ReturnsBothTypes()

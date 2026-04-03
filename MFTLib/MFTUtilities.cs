@@ -2,17 +2,6 @@ namespace MFTLib;
 
 static class MFTUtilities
 {
-    public static string GetFileNameForDriveLetter(string driveLetter)
-    {
-        if (driveLetter.EndsWith(':'))
-            throw new ArgumentException("Drive letter should not end with a colon", nameof(driveLetter));
-
-        if (driveLetter.Length != 1)
-            throw new ArgumentException("Drive letter must be a single character", nameof(driveLetter));
-
-        return @$"\\.\{driveLetter}:";
-    }
-
     public static string GetVolumePath(string input)
     {
         if (string.IsNullOrEmpty(input)) throw new ArgumentNullException(nameof(input));

@@ -15,23 +15,4 @@ class Kernel32
         uint dwFlagsAndAttributes,
         IntPtr hTemplateFile);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    internal static extern bool CloseHandle(SafeHandle hObject);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    internal static extern bool ReadFile(SafeFileHandle hFile, byte[] lpBuffer, uint nNumberOfBytesToRead,
-        out uint lpNumberOfBytesRead, IntPtr lpOverlapped);
-
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    internal static extern bool SetFilePointerEx(
-        SafeFileHandle hFile,
-        long liDistanceToMove,
-        IntPtr lpNewFilePointer,
-        uint dwMoveMethod);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    internal static extern bool DeviceIoControl(SafeFileHandle hDevice, uint dwIoControlCode, IntPtr lpInBuffer,
-        uint nInBufferSize, IntPtr lpOutBuffer, uint nOutBufferSize, out uint lpBytesReturned,
-        IntPtr lpOverlapped);
 }
