@@ -80,21 +80,24 @@ foreach (var (scenarioName, filter, matchFlags) in scenarios)
         output.AppendLine($"  Iteration {i + 1}/{iterations}... {iterationLine}");
     }
 
-    var sorted = allWallClocks.OrderBy(x => x).ToList();
-    var medianWall = sorted[sorted.Count / 2];
-    var medianIdx = allWallClocks.IndexOf(medianWall);
-    var medianTimings = allTimings[medianIdx];
-    var medianRecords = recordCounts[medianIdx];
+    var medianRecords = recordCounts.OrderBy(x => x).ElementAt(recordCounts.Count / 2);
+    var medianIo = allTimings.Select(t => t.NativeIoMs).OrderBy(x => x).ElementAt(iterations / 2);
+    var medianFixup = allTimings.Select(t => t.NativeFixupMs).OrderBy(x => x).ElementAt(iterations / 2);
+    var medianParse = allTimings.Select(t => t.NativeParseMs).OrderBy(x => x).ElementAt(iterations / 2);
+    var medianMarshal = allTimings.Select(t => t.MarshalMs).OrderBy(x => x).ElementAt(iterations / 2);
+    var medianWall = allWallClocks.OrderBy(x => x).ElementAt(iterations / 2);
+    var computeMs = medianFixup + medianParse + medianMarshal;
 
-    Log("  Results (median):");
+    Log("  Results (median of each timing):");
     Log($"    Records:      {medianRecords,12:N0}");
+    Log($"    I/O:          {medianIo,12:F1}ms");
+    Log($"    Fixup:        {medianFixup,12:F1}ms");
+    Log($"    Parse:        {medianParse,12:F1}ms");
+    Log($"    Marshal:      {medianMarshal,12:F1}ms");
+    Log($"    Compute:      {computeMs,12:F1}ms  (fixup + parse + marshal)");
     Log($"    Wall clock:   {medianWall,12:F1}ms");
-    Log($"    Native total: {medianTimings.NativeTotalMs,12:F1}ms");
-    Log($"      I/O:        {medianTimings.NativeIoMs,12:F1}ms  ({medianTimings.NativeIoMs / medianWall * 100:F1}%)");
-    Log($"      Fixup:      {medianTimings.NativeFixupMs,12:F1}ms  ({medianTimings.NativeFixupMs / medianWall * 100:F1}%)");
-    Log($"      Parse:      {medianTimings.NativeParseMs,12:F1}ms  ({medianTimings.NativeParseMs / medianWall * 100:F1}%)");
-    Log($"    Marshal:      {medianTimings.MarshalMs,12:F1}ms  ({medianTimings.MarshalMs / medianWall * 100:F1}%)");
-    Log($"    Throughput:   {recordCount / (medianWall / 1000.0),12:N0} records/sec");
+    Log($"    Throughput:   {recordCount / (computeMs / 1000.0),12:N0} records/sec (compute)");
+    Log($"                  {recordCount / (medianWall / 1000.0),12:N0} records/sec (wall clock)");
     Log();
 }
 
