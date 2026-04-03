@@ -41,6 +41,17 @@ if (git tag -l $tag) {
     exit 1
 }
 
+# --- Clean and restore ---
+Write-Host "Cleaning solution..." -ForegroundColor Cyan
+& MSBuild.exe "$repoRoot\MFTLib.sln" -t:Clean -p:Configuration=Release -p:Platform=x64 -v:q -nologo
+
+Write-Host "Restoring NuGet packages..." -ForegroundColor Cyan
+dotnet restore "$repoRoot\MFTLib.sln"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Restore failed." -ForegroundColor Red
+    exit 1
+}
+
 # --- Run coverage (builds the solution internally) ---
 Write-Host "Running coverage..." -ForegroundColor Cyan
 & "$PSScriptRoot\run-coverage.ps1" -Configuration Release
