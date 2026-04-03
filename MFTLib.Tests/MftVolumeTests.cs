@@ -40,8 +40,7 @@ public class MftVolumeTests
     public void ParseMFTFromFile_FilterWithNoMatchBits_ReturnsEmpty()
     {
         Assert.IsNotNull(_tempMftPath);
-        // matchFlags=0 means no match mode is set, so FileNameMatches always returns false
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 0, out _);
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.None, out _);
         Assert.AreEqual(0, records.Length, "Expected no results when filter is set but no match bits");
     }
 
@@ -49,8 +48,7 @@ public class MftVolumeTests
     public void ParseMFTFromFile_FilterWithResolvePathsOnly_ReturnsEmpty()
     {
         Assert.IsNotNull(_tempMftPath);
-        // matchFlags=4 with a filter but no match bits — FileNameMatches returns false for everything
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 4, out _);
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.ResolvePaths, out _);
         Assert.AreEqual(0, records.Length, "Expected no results when filter is set but only resolve-paths bit is set");
     }
 
@@ -58,10 +56,10 @@ public class MftVolumeTests
     public void ParseMFTFromFile_ExactAndSubstringBits_ExactTakesPrecedence()
     {
         Assert.IsNotNull(_tempMftPath);
-        // matchFlags = 1|2 = 3: both match bits set. Native code checks exact first, so
+        // Both match bits set. Native code checks exact first, so
         // "README.md" should match exactly, not as a substring
-        var bothBits = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 1 | 2, out _);
-        var exactOnly = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 1, out _);
+        var bothBits = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.ExactMatch | MatchFlags.Contains, out _);
+        var exactOnly = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.ExactMatch, out _);
 
         Assert.AreEqual(exactOnly.Length, bothBits.Length, "1|2 should behave the same as 1 (exact wins)");
     }
@@ -70,9 +68,9 @@ public class MftVolumeTests
     public void ParseMFTFromFile_AllBitsSet_SameAsExactWithPaths()
     {
         Assert.IsNotNull(_tempMftPath);
-        // matchFlags = 1|2|4 = 7: all bits. Should be same as 1|4 since exact takes precedence
-        var allBits = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 1 | 2 | 4, out _);
-        var exactWithPaths = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 1 | 4, out _);
+        // All bits set. Should be same as ExactMatch|ResolvePaths since exact takes precedence
+        var allBits = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.ExactMatch | MatchFlags.Contains | MatchFlags.ResolvePaths, out _);
+        var exactWithPaths = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.ExactMatch | MatchFlags.ResolvePaths, out _);
 
         Assert.AreEqual(exactWithPaths.Length, allBits.Length, "1|2|4 should behave the same as 1|4");
         foreach (var record in allBits)
@@ -86,8 +84,7 @@ public class MftVolumeTests
     public void ParseMFTFromFile_NullFilterWithResolvePaths_PopulatesPaths()
     {
         Assert.IsNotNull(_tempMftPath);
-        // null filter + matchFlags=4 should return all records with paths resolved
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, null, 4u, out _);
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, out _);
 
         Assert.IsTrue(records.Length > 0, "Expected records to be returned");
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
@@ -152,8 +149,7 @@ public class MftVolumeTests
     public void ParseMFTFromFile_WithSubstringFilter_ReturnsMatches()
     {
         Assert.IsNotNull(_tempMftPath);
-        // matchFlags=2 is substring match; synthetic MFT uses names like "README.md", "main.cpp"
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "main", 2, out _);
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "main", MatchFlags.Contains, out _);
 
         Assert.IsTrue(records.Length > 0, "Expected substring filter 'main' to match some records");
         foreach (var record in records)
@@ -167,8 +163,7 @@ public class MftVolumeTests
     public void ParseMFTFromFile_ExactFilter_NoMatch_ReturnsEmpty()
     {
         Assert.IsNotNull(_tempMftPath);
-        // matchFlags=1 is exact match
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "nonexistent_file_xyz", 1, out _);
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "nonexistent_file_xyz", MatchFlags.ExactMatch, out _);
         Assert.AreEqual(0, records.Length);
     }
 
@@ -177,7 +172,7 @@ public class MftVolumeTests
     {
         Assert.IsNotNull(_tempMftPath);
         // "README.md" is one of the fixed synthetic filenames
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 1, out _);
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.ExactMatch, out _);
         Assert.IsTrue(records.Length > 0, "Expected exact filter to find 'README.md'");
         foreach (var record in records)
         {
@@ -190,7 +185,7 @@ public class MftVolumeTests
     {
         Assert.IsNotNull(_tempMftPath);
         // Path resolution requires filter != null; use substring match + resolve paths (2|4=6)
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", 1 | 4, out _);
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.ExactMatch | MatchFlags.ResolvePaths, out _);
 
         Assert.IsTrue(records.Length > 0, "Expected filter to match some records");
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
@@ -207,8 +202,7 @@ public class MftVolumeTests
     public void ParseMFTFromFile_SubstringFilterWithPaths_CombinesFlags()
     {
         Assert.IsNotNull(_tempMftPath);
-        // matchFlags = 2 (substring) | 4 (resolve paths) = 6
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "main", 2 | 4, out _);
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "main", MatchFlags.Contains | MatchFlags.ResolvePaths, out _);
 
         Assert.IsTrue(records.Length > 0, "Expected combined filter to match");
         foreach (var record in records)

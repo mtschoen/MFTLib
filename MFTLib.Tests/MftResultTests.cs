@@ -59,7 +59,7 @@ public class MftResultTests
     public void ToArray_WithPaths_MaterializesFullPaths()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, null, 4, out _);
+        var records = MftVolume.ParseMFTFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, out _);
 
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
         Assert.IsTrue(withPaths.Length > 0);

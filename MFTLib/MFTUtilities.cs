@@ -1,6 +1,6 @@
 namespace MFTLib;
 
-public static class MFTUtilities
+static class MFTUtilities
 {
     public static string GetFileNameForDriveLetter(string driveLetter)
     {

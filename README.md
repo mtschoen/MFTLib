@@ -30,7 +30,7 @@ var records = volume.FindByName(".git", exactMatch: true, resolvePaths: true, ou
 foreach (var record in records.Where(r => r.IsDirectory))
     Console.WriteLine(record.FullPath);
 
-Console.WriteLine($"Found {records.Length} matches in {timings.WallClockMs:F0}ms");
+Console.WriteLine($"Found {records.Length} matches in {timings.NativeTotalMs:F0}ms");
 ```
 
 ### Read all records (unfiltered)

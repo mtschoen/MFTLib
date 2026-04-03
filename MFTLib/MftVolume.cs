@@ -41,7 +41,7 @@ public sealed class MftVolume : IDisposable
 
     public MftRecord[] ReadAllRecords(bool resolvePaths, out MftParseTimings timings)
     {
-        using var result = StreamRecords(null, resolvePaths ? 4u : 0u);
+        using var result = StreamRecords(null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None);
         var sw = Stopwatch.StartNew();
         var records = result.ToArray();
         sw.Stop();
@@ -57,7 +57,8 @@ public sealed class MftVolume : IDisposable
 
     public MftRecord[] FindByName(string name, bool exactMatch, bool resolvePaths, out MftParseTimings timings)
     {
-        uint matchFlags = (exactMatch ? 1u : 2u) | (resolvePaths ? 4u : 0u);
+        var matchFlags = (exactMatch ? MatchFlags.ExactMatch : MatchFlags.Contains)
+            | (resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None);
         using var result = StreamRecords(name, matchFlags);
         var sw = Stopwatch.StartNew();
         var records = result.ToArray();
@@ -66,7 +67,7 @@ public sealed class MftVolume : IDisposable
         return records;
     }
 
-    public MftResult StreamRecords(string? filter = null, uint matchFlags = 0)
+    public MftResult StreamRecords(string? filter = null, MatchFlags matchFlags = MatchFlags.None)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         IntPtr resultPtr = MFTLibNative.ParseMFTRecords(_volumeHandle, filter, matchFlags, BufferSizeRecords);
@@ -89,7 +90,7 @@ public sealed class MftVolume : IDisposable
 
     public IEnumerable<string> FindRecords(string name, bool? isDirectory = null)
     {
-        using var result = StreamRecords(name, 1u | 4u); // exact match + resolve paths
+        using var result = StreamRecords(name, MatchFlags.ExactMatch | MatchFlags.ResolvePaths);
 
         foreach (var record in result)
         {
@@ -121,9 +122,9 @@ public sealed class MftVolume : IDisposable
     }
 
     public static MftRecord[] ParseMFTFromFile(string filePath, out MftParseTimings timings)
-        => ParseMFTFromFile(filePath, null, 0, out timings);
+        => ParseMFTFromFile(filePath, null, MatchFlags.None, out timings);
 
-    public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, uint matchFlags, out MftParseTimings timings, uint bufferSizeRecords = 262144)
+    public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags, out MftParseTimings timings, uint bufferSizeRecords = 262144)
     {
         IntPtr resultPtr = MFTLibNative.ParseMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords);
 

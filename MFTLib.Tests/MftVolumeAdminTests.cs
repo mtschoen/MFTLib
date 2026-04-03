@@ -124,8 +124,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        // matchFlags = 2 (substring) | 4 (resolve paths) = 6
-        using var result = volume.StreamRecords(".dll", 2 | 4);
+        using var result = volume.StreamRecords(".dll", MatchFlags.Contains | MatchFlags.ResolvePaths);
 
         var count = 0;
         MftRecord? firstWithPath = null;
@@ -152,8 +151,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        // Filter provided but matchFlags=0 — no match mode, so nothing matches
-        using var result = volume.StreamRecords("explorer.exe", 0);
+        using var result = volume.StreamRecords("explorer.exe", MatchFlags.None);
 
         var count = 0;
         foreach (var _ in result) count++;
@@ -206,8 +204,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        // matchFlags=1 is exact match
-        using var result = volume.StreamRecords("explorer.exe", 1);
+        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch);
 
         var records = new List<MftRecord>();
         foreach (var record in result)
@@ -322,8 +319,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        // matchFlags = 2 (substring) | 4 (resolve paths) = 6
-        using var result = volume.StreamRecords("explorer", 2 | 4);
+        using var result = volume.StreamRecords("explorer", MatchFlags.Contains | MatchFlags.ResolvePaths);
 
         foreach (var record in result)
         {
@@ -378,7 +374,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords("explorer.exe", 1);
+        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch);
 
         // Cast to non-generic IEnumerable to hit the explicit interface implementation
         IEnumerable enumerable = result;

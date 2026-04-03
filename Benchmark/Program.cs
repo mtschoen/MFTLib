@@ -48,12 +48,12 @@ output.AppendLine($"Generating synthetic MFT... {genLine}");
 Log();
 
 // Benchmark scenarios
-var scenarios = new (string Name, string? Filter, uint MatchFlags)[]
+var scenarios = new (string Name, string? Filter, MatchFlags MatchFlags)[]
 {
-    ("Unfiltered (all records)", null, 0),
-    ("Filtered: exact \".git\"", ".git", 1),
-    ("Filtered: contains \"config\"", "config", 2),
-    ("Filtered: exact \".git\" + paths", ".git", 1 | 4),
+    ("Unfiltered (all records)", null, MatchFlags.None),
+    ("Filtered: exact \".git\"", ".git", MatchFlags.ExactMatch),
+    ("Filtered: contains \"config\"", "config", MatchFlags.Contains),
+    ("Filtered: exact \".git\" + paths", ".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths),
 };
 
 foreach (var (scenarioName, filter, matchFlags) in scenarios)

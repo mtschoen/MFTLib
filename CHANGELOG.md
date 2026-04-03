@@ -6,15 +6,20 @@
 
 - Removed `MFTParse` class (use `MftVolume.ReadAllRecords()` or `MftVolume.FindByName()` instead)
 - Removed `MftFileEntry` interop struct (internal; replaced by `MftRecord`)
+- Replaced `uint matchFlags` with `MatchFlags` enum (`ExactMatch`, `Contains`, `ResolvePaths`) across all public APIs
+- `FileUtilities`, `MFTUtilities`, and `Kernel32` are now internal
 - `FileUtilities` is now a `static class`
 
 ### Improvements
 
+- Added `MatchFlags` flags enum for type-safe filter options
+- Added `CanSelfElevate()` and `TryRunElevated(string, int)` to `ElevationUtilities`
 - Swappable native function indirection (`MFTLibNative`) for testability
 - Swappable dependencies in `ElevationUtilities` for testability
 - Extracted `MftVolume.ExtractDriveLetter()` helper
 - Replaced magic numbers in `MftResult` with named constants (`NativeEntrySize`, `NativePathEntrySize`)
 - Fixed path resolution when filter is null
+- Enabled `ContinuousIntegrationBuild` for deterministic NuGet DLLs
 
 ### Tests
 
