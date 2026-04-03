@@ -114,5 +114,14 @@ Write-Host "Tagging $tag..." -ForegroundColor Cyan
 git tag $tag
 git push origin $tag
 
+# --- Create GitHub release ---
+Write-Host ""
+Write-Host "Creating GitHub release..." -ForegroundColor Cyan
+gh release create $tag $nupkg $snupkg --title $tag --notes-file "$repoRoot\CHANGELOG.md"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "GitHub release creation failed." -ForegroundColor Red
+    exit 1
+}
+
 Write-Host ""
 Write-Host "Release $tag complete." -ForegroundColor Green
