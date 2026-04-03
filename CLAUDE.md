@@ -59,3 +59,7 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 - **Benchmark** (C# Console App) - Performance benchmark using synthetic MFT generation.
 - **MFTLib.Tests** (C# xUnit) - Unit tests for record mapping and path resolution.
 - **ConsoleApplication1** (C++ Console) - Legacy prototype, superseded by MFTLibNative.
+
+## Roadmap
+
+See `.plan` for details. Next milestone is **0.3.0 — USN journal support** for incremental index updates (complement to full MFT scanning). Primary consumer is [file-wizard](C:\Users\mtsch\file-wizard).
