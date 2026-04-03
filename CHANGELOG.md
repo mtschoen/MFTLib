@@ -8,7 +8,10 @@
 - Removed `MftFileEntry` interop struct (internal; replaced by `MftRecord`)
 - Replaced `uint matchFlags` with `MatchFlags` enum (`ExactMatch`, `Contains`, `ResolvePaths`) across all public APIs
 - `FileUtilities`, `MFTUtilities`, and `Kernel32` are now internal
-- `FileUtilities` is now a `static class`
+- Removed `EnsureElevated()` (use `CanSelfElevate()` + `TryRunElevated()` instead)
+- Removed `MftVolume.ResolvePath(ulong)` (use `ReadAllRecords(resolvePaths: true)` or `MftPathUtilities.ResolvePath()` with a lookup)
+- Removed `MFTUtilities.GetFileNameForDriveLetter()` (use `MFTUtilities.GetVolumePath()`)
+- Removed unused `Kernel32` P/Invoke methods (`CloseHandle`, `ReadFile`, `SetFilePointerEx`, `DeviceIoControl`)
 
 ### Improvements
 
@@ -23,7 +26,7 @@
 
 ### Tests
 
-- Expanded test suite from 16 to 60+ tests
+- Expanded test suite from 16 to 80+ tests
 - Achieved 100% line, branch, method, and full-method coverage
 - Added admin-elevated test suite (`MftVolumeAdminTests`)
 - Added coverage for `ElevationUtilities`, `MftResult`, `MftRecord`, path resolution, native mock indirection
