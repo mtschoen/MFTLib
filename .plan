@@ -21,10 +21,14 @@ file-wizard currently re-scans the entire MFT on every run. On a drive with 12M+
 - Journal entries reference MFT record numbers, so consumers will typically pair this with a cached MFT index
 - Requires admin elevation (same as MFT scanning)
 
-## Review Follow-Ups
+## Native C++ Cleanup (dllmain.cpp)
 
-- Add tests that exercise the public API directly for the path-aware surface.
-  Address by adding coverage for `ReadAllRecords(resolvePaths: true)` and `FindRecords(...)` semantics.
+- **Parallelize path resolution**: The post-parse path resolution loop (line ~1272) is serial despite being trivially parallelizable — each `ResolvePath` call does read-only access to `PathLookup` and writes to independent output slots. Could use the same thread pool pattern as fixup+parse.
+- **Deduplicate ProcessRecordBatch / ProcessRecordSlice**: These share ~60 lines of nearly identical record-scanning logic. The single-threaded path (numThreads == 1) could use `ProcessRecordSlice` with a single slice, eliminating `ProcessRecordBatch` entirely.
+- **Optimize ResolvePath cycle detection**: Uses O(n^2) linear scan over a `visited[128]` array. A simple bitmask or hash set would be O(1) per check. At millions of records this adds up.
+- **PathLookup memory**: `namePoolCapacity = totalRecords * 32` over-allocates (~512 MB at 8M records). Average filename is ~12-15 chars; `totalRecords * 20` would be safer. Also, `storeName` silently drops names when the pool is exhausted — should at least set an error flag.
+
+## Review Follow-Ups
 
 - Decide whether `MFTLib` should expose a higher-level scan-result contract for app-to-helper transport.
   Address by evaluating whether downstream apps should keep custom text formats for elevated scans or share a library-owned record serializer.

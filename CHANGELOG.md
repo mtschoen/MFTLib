@@ -8,6 +8,7 @@
 - Removed `MftFileEntry` interop struct (internal; replaced by `MftRecord`)
 - Replaced `uint matchFlags` with `MatchFlags` enum (`ExactMatch`, `Contains`, `ResolvePaths`) across all public APIs
 - `FileUtilities`, `MFTUtilities`, and `Kernel32` are now internal
+- `FindByName` now takes `MatchFlags` instead of `bool exactMatch` / `bool resolvePaths` (e.g. `FindByName(".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths)`)
 - Removed `EnsureElevated()` (use `CanSelfElevate()` + `TryRunElevated()` instead)
 - Removed `MftVolume.ResolvePath(ulong)` (use `ReadAllRecords(resolvePaths: true)` or `MftPathUtilities.ResolvePath()` with a lookup)
 - Removed `MFTUtilities.GetFileNameForDriveLetter()` (use `MFTUtilities.GetVolumePath()`)
@@ -21,6 +22,7 @@
 - Swappable dependencies in `ElevationUtilities` for testability
 - Extracted `MftVolume.ExtractDriveLetter()` helper
 - Replaced magic numbers in `MftResult` with named constants (`NativeEntrySize`, `NativePathEntrySize`)
+- Native error messages (e.g. "Volume is not NTFS", allocation failures) are now surfaced as `InvalidOperationException` instead of being silently ignored
 - Fixed path resolution when filter is null
 - Enabled `ContinuousIntegrationBuild` for deterministic NuGet DLLs
 

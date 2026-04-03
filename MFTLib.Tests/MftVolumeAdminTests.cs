@@ -86,11 +86,11 @@ public class MftVolumeAdminTests
         RequireElevation();
         using var volume = MftVolume.Open("C");
         // ntldr or bootmgr should exist on C:
-        var records = volume.FindByName("bootmgr", exactMatch: true);
+        var records = volume.FindByName("bootmgr");
 
         // If bootmgr doesn't exist, try a Windows system file
         if (records.Length == 0)
-            records = volume.FindByName("ntldr", exactMatch: true);
+            records = volume.FindByName("ntldr");
 
         // At minimum, we verified the call didn't throw
         Assert.IsNotNull(records);
@@ -101,7 +101,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var records = volume.FindByName(".dll", exactMatch: false);
+        var records = volume.FindByName(".dll", MatchFlags.Contains);
 
         Assert.IsTrue(records.Length > 0, "Expected to find some .dll files on C:");
     }
@@ -111,7 +111,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var records = volume.FindByName(".exe", exactMatch: false, resolvePaths: true, out var timings);
+        var records = volume.FindByName(".exe", MatchFlags.Contains | MatchFlags.ResolvePaths, out var timings);
 
         Assert.IsTrue(records.Length > 0, "Expected to find some .exe files");
         var withPaths = records.Where(r => r.FullPath != null).ToArray();

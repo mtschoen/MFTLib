@@ -6,22 +6,16 @@ using MFTLib;
 if (!ElevationUtilities.IsElevated())
 {
     Console.WriteLine("Not running as administrator. Attempting to self-elevate...");
-    if (ElevationUtilities.CanSelfElevate())
-    {
-        var formattedArgs = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
-        if (ElevationUtilities.TryRunElevated(formattedArgs))
-            return;
-    }
+    var formattedArgs = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+    if (ElevationUtilities.CanSelfElevate() && ElevationUtilities.TryRunElevated(formattedArgs))
+        return;
 
     Console.WriteLine("------------------------------------------------------------------");
     Console.WriteLine("AUTOMATIC ELEVATION FAILED.");
     Console.WriteLine("This program requires Administrative privileges to read the MFT.");
     Console.WriteLine("Please run this command from an ELEVATED terminal:");
     Console.WriteLine();
-
-    var processPath = ElevationUtilities.GetProcessPath();
-    var formattedArgsForDisplay = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
-    Console.WriteLine($"  {processPath} {formattedArgsForDisplay}");
+    Console.WriteLine($"  {ElevationUtilities.GetProcessPath()} {formattedArgs}");
     Console.WriteLine("------------------------------------------------------------------");
     return;
 }
@@ -43,7 +37,7 @@ foreach (var drive in driveLetters)
         using var volume = MftVolume.Open(letter);
 
         var sw = Stopwatch.StartNew();
-        var records = volume.FindByName(".git", exactMatch: true, resolvePaths: true, out var timings);
+        var records = volume.FindByName(".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths, out var timings);
         sw.Stop();
 
         var gitDirs = records.Where(r => r.IsDirectory).ToArray();

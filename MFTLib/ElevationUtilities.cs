@@ -60,8 +60,7 @@ public static class ElevationUtilities
         if (string.IsNullOrEmpty(exePath))
             return false;
 
-        // Cannot self-elevate when hosted by dotnet.exe
-        if (!CanSelfElevate())
+        if (Path.GetFileNameWithoutExtension(exePath).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
             return false;
 
         try

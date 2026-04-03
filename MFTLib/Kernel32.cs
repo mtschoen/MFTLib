@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace MFTLib;
 
-class Kernel32
+static class Kernel32
 {
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     internal static extern SafeFileHandle CreateFile(

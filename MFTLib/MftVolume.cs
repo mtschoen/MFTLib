@@ -24,7 +24,6 @@ public sealed class MftVolume : IDisposable
         var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
         var handle = FileUtilities.GetVolumeHandle(normalizedPath);
         
-        // Extract drive letter for path resolution — matches \\.\X: format from GetVolumePath
         var driveLetter = ExtractDriveLetter(normalizedPath);
 
         return new MftVolume(handle, driveLetter);
@@ -42,29 +41,16 @@ public sealed class MftVolume : IDisposable
     public MftRecord[] ReadAllRecords(bool resolvePaths, out MftParseTimings timings)
     {
         using var result = StreamRecords(null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None);
-        var sw = Stopwatch.StartNew();
-        var records = result.ToArray();
-        sw.Stop();
-        timings = result.Timings.WithMarshalMs(sw.Elapsed.TotalMilliseconds);
-        return records;
+        return MaterializeWithTimings(result, out timings);
     }
 
-    public MftRecord[] FindByName(string name, bool exactMatch = true)
-        => FindByName(name, exactMatch, out _);
+    public MftRecord[] FindByName(string name, MatchFlags matchFlags = MatchFlags.ExactMatch)
+        => FindByName(name, matchFlags, out _);
 
-    public MftRecord[] FindByName(string name, bool exactMatch, out MftParseTimings timings)
-        => FindByName(name, exactMatch, resolvePaths: false, out timings);
-
-    public MftRecord[] FindByName(string name, bool exactMatch, bool resolvePaths, out MftParseTimings timings)
+    public MftRecord[] FindByName(string name, MatchFlags matchFlags, out MftParseTimings timings)
     {
-        var matchFlags = (exactMatch ? MatchFlags.ExactMatch : MatchFlags.Contains)
-            | (resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None);
         using var result = StreamRecords(name, matchFlags);
-        var sw = Stopwatch.StartNew();
-        var records = result.ToArray();
-        sw.Stop();
-        timings = result.Timings.WithMarshalMs(sw.Elapsed.TotalMilliseconds);
-        return records;
+        return MaterializeWithTimings(result, out timings);
     }
 
     public MftResult StreamRecords(string? filter = null, MatchFlags matchFlags = MatchFlags.None)
@@ -118,6 +104,11 @@ public sealed class MftVolume : IDisposable
             throw new InvalidOperationException("ParseMFTFromFile returned null");
 
         using var result = new MftResult(resultPtr, string.Empty, 0);
+        return MaterializeWithTimings(result, out timings);
+    }
+
+    private static MftRecord[] MaterializeWithTimings(MftResult result, out MftParseTimings timings)
+    {
         var sw = Stopwatch.StartNew();
         var records = result.ToArray();
         sw.Stop();

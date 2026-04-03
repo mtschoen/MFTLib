@@ -32,12 +32,17 @@ public readonly struct MftRecord
             if (_fileName != null) return _fileName;
             if (_namePtr != IntPtr.Zero && _nameLength > 0)
                 return new string((char*)_namePtr, 0, _nameLength);
-            
+
             if (_pathPtr != IntPtr.Zero && _pathLength > 0)
             {
-                var path = new string((char*)_pathPtr, 0, _pathLength);
-                var lastSep = path.LastIndexOf('\\');
-                return lastSep >= 0 ? path[(lastSep + 1)..] : path;
+                char* pathChars = (char*)_pathPtr;
+                int lastSep = -1;
+                for (int i = _pathLength - 1; i >= 0; i--)
+                {
+                    if (pathChars[i] == '\\') { lastSep = i; break; }
+                }
+                int start = lastSep + 1;
+                return new string(pathChars, start, _pathLength - start);
             }
 
             return string.Empty;
@@ -81,7 +86,6 @@ public readonly struct MftRecord
         return new MftRecord(_recordNumber, _parentRecordNumber, _flags, FileName, FullPath);
     }
 
-    // For unit testing and internal use
     internal MftRecord(ulong recordNumber, ulong parentRecordNumber, ushort flags, string? fileName, string? fullPath)
     {
         _recordNumber = recordNumber;

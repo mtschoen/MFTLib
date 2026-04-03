@@ -22,6 +22,13 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         _result = Marshal.PtrToStructure<MftParseResult>(resultPtr);
         _driveLetter = string.IsNullOrEmpty(driveLetter) ? '\0' : driveLetter[0];
 
+        if (!string.IsNullOrEmpty(_result.ErrorMessage))
+        {
+            MFTLibNative.FreeMftResult(resultPtr);
+            _resultPtr = IntPtr.Zero;
+            throw new InvalidOperationException(_result.ErrorMessage);
+        }
+
         Timings = new MftParseTimings(
             _result.TotalRecords, _result.IoTimeMs, _result.FixupTimeMs, _result.ParseTimeMs,
             _result.TotalTimeMs, marshalMs);
@@ -31,19 +38,9 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_result.PathEntries != IntPtr.Zero)
+        for (ulong i = 0; i < _result.UsedRecords; i++)
         {
-            for (ulong i = 0; i < _result.UsedRecords; i++)
-            {
-                yield return GetPathEntry(i);
-            }
-        }
-        else
-        {
-            for (ulong i = 0; i < _result.UsedRecords; i++)
-            {
-                yield return GetEntry(i);
-            }
+            yield return _result.PathEntries != IntPtr.Zero ? GetPathEntry(i) : GetEntry(i);
         }
     }
 
@@ -53,36 +50,31 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     private const int NativeEntrySize = 540;
     private const int NativePathEntrySize = 2068;
 
+    private unsafe delegate MftRecord EntryReader(byte* basePtr, ulong index);
+
     public unsafe MftRecord[] ToArray()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var count = _result.UsedRecords;
         var records = new MftRecord[count];
 
+        byte* basePtr;
+        EntryReader getEntry;
         if (_result.PathEntries != IntPtr.Zero)
         {
-            byte* basePtr = (byte*)_result.PathEntries;
-            if (count >= ParallelThreshold)
-            {
-                Parallel.For(0L, (long)count, i => records[i] = GetPathEntryUnsafe(basePtr, (ulong)i).Materialize());
-            }
-            else
-            {
-                for (ulong i = 0; i < count; i++) records[i] = GetPathEntryUnsafe(basePtr, i).Materialize();
-            }
+            basePtr = (byte*)_result.PathEntries;
+            getEntry = GetPathEntryUnsafe;
         }
         else
         {
-            byte* basePtr = (byte*)_result.Entries;
-            if (count >= ParallelThreshold)
-            {
-                Parallel.For(0L, (long)count, i => records[i] = GetEntryUnsafe(basePtr, (ulong)i).Materialize());
-            }
-            else
-            {
-                for (ulong i = 0; i < count; i++) records[i] = GetEntryUnsafe(basePtr, i).Materialize();
-            }
+            basePtr = (byte*)_result.Entries;
+            getEntry = GetEntryUnsafe;
         }
+
+        if (count >= ParallelThreshold)
+            Parallel.For(0L, (long)count, i => records[i] = getEntry(basePtr, (ulong)i).Materialize());
+        else
+            for (ulong i = 0; i < count; i++) records[i] = getEntry(basePtr, i).Materialize();
 
         return records;
     }
@@ -91,7 +83,6 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 
     private unsafe MftRecord GetEntryUnsafe(byte* basePtr, ulong index)
     {
-        // NativeEntrySize = 540
         byte* ptr = basePtr + index * NativeEntrySize;
         ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
         ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
@@ -104,7 +95,6 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 
     private unsafe MftRecord GetPathEntryUnsafe(byte* basePtr, ulong index)
     {
-        // NativePathEntrySize = 2068
         byte* ptr = basePtr + index * NativePathEntrySize;
         ulong recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
         ulong parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);

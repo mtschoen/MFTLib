@@ -25,7 +25,7 @@ using MFTLib;
 
 // Open a volume and search for .git directories
 using var volume = MftVolume.Open("C");
-var records = volume.FindByName(".git", exactMatch: true, resolvePaths: true, out var timings);
+var records = volume.FindByName(".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths, out var timings);
 
 foreach (var record in records.Where(r => r.IsDirectory))
     Console.WriteLine(record.FullPath);
