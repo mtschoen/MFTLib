@@ -20,4 +20,4 @@ Managed coverage command:
   .\scripts\run-coverage.ps1 -NonInteractive  # skip admin tests (CI / headless)
 
 Native coverage command:
-  .\.claude\scripts\native-coverage.ps1
+  .\scripts\native-coverage.ps1

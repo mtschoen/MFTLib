@@ -57,8 +57,8 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 
 **Native (C++):** Microsoft.CodeCoverage.Console via `.claude/scripts/native-coverage.ps1`:
 ```powershell
-.\.claude\scripts\native-coverage.ps1           # cobertura XML output
-.\.claude\scripts\native-coverage.ps1 -HtmlReport  # also generate HTML
+.\scripts\native-coverage.ps1           # cobertura XML output
+.\scripts\native-coverage.ps1 -HtmlReport  # also generate HTML
 ```
 
 The native DLL must be built Debug|x64 (linked with `/PROFILE`) for instrumentation. The script handles build, instrument, test, and report automatically. Settings in `native-coverage.runsettings`.
