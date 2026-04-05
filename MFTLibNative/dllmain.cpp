@@ -1,6 +1,5 @@
 #include "pch.h"
 
-#include <cassert>
 #include <chrono>
 #include <thread>
 #include <vector>
@@ -18,12 +17,35 @@ static double ElapsedMs(TimePoint start, TimePoint end) {
 
 #define EXPORT __declspec(dllexport)
 
+// --- Test support: injectable failure points ---
+static unsigned g_maxThreads = 0;
+static int g_allocFailCountdown = 0;
+static int g_readFailCountdown = 0;
+
+static unsigned EffectiveThreadCount() {
+    unsigned n = std::thread::hardware_concurrency();
+    if (n < 1) n = 1;
+    if (g_maxThreads > 0 && g_maxThreads < n) n = g_maxThreads;
+    return n;
+}
+
+static bool ShouldFailAlloc() {
+    if (g_allocFailCountdown <= 0) return false;
+    return --g_allocFailCountdown == 0;
+}
+
+static bool ShouldFailRead() {
+    if (g_readFailCountdown <= 0) return false;
+    return --g_readFailCountdown == 0;
+}
+
 struct DataRun {
     int64_t clusterOffset;
     uint64_t clusterCount;
 };
 
 static BOOL Read(HANDLE handle, void* buffer, uint64_t from, DWORD count, PDWORD bytesRead) {
+    if (ShouldFailRead()) return FALSE;
     LONG high = from >> 32;
     SetFilePointer(handle, from & 0xFFFFFFFF, &high, FILE_BEGIN);
     return ReadFile(handle, buffer, count, bytesRead, nullptr);
@@ -148,120 +170,6 @@ static bool ReadMFTRecord(HANDLE volumeHandle, std::vector<DataRun>& mftRuns, ui
     return false;
 }
 
-static void PrintStandardInformationAttribute(PSTANDARD_INFORMATION attribute)
-{
-    fprintf(stdout, "Standard Information Attribute:\n");
-    fprintf(stdout, "  Reserved: ");
-
-    for (int i = 0; i < 0x30; i++)
-    {
-        fprintf(stdout, "%02X", attribute->Reserved[i]);
-    }
-
-    fprintf(stdout, "\n");
-
-    fprintf(stdout, "  Owner ID: %u\n", attribute->OwnerId);
-    fprintf(stdout, "  Security ID: %u\n", attribute->SecurityId);
-}
-
-static void PrintStandardInformationAlt(StandardInformationAttribute* attribute)
-{
-    fprintf(stdout, "Standard Information Attribute alt:\n");
-	fprintf(stdout, "  Creation time: %llu\n", attribute->creationTime);
-	fprintf(stdout, "  Modification time: %llu\n", attribute->modificationTime);
-	fprintf(stdout, "  Metadata modification time: %llu\n", attribute->metadataModificationTime);
-	fprintf(stdout, "  Read time: %llu\n", attribute->readTime);
-	fprintf(stdout, "  Permissions: %u\n", attribute->permissions);
-	fprintf(stdout, "  Max versions: %u\n", attribute->maxVersions);
-	fprintf(stdout, "  Version: %u\n", attribute->version);
-	fprintf(stdout, "  Class ID: %u\n", attribute->classId);
-	fprintf(stdout, "  Owner ID: %u\n", attribute->ownerId);
-	fprintf(stdout, "  Security ID: %u\n", attribute->securityId);
-	fprintf(stdout, "  Quota: %llu\n", attribute->quota);
-	fprintf(stdout, "  Update sequence: %llu\n", attribute->updateSequence);
-}
-
-static const char* AttributeTypeName(ATTRIBUTE_TYPE_CODE type) {
-    switch (type) {
-        case StandardInformation: return "StandardInformation";
-        case AttributeList: return "AttributeList";
-        case FileName: return "FileName";
-        case ObjectId: return "ObjectId";
-        case SecurityDescriptor: return "SecurityDescriptor";
-        case VolumeName: return "VolumeName";
-        case VolumeInformation: return "VolumeInformation";
-        case Data: return "Data";
-        case IndexRoot: return "IndexRoot";
-        case IndexAllocation: return "IndexAllocation";
-        case Bitmap: return "Bitmap";
-        case ReparsePoint: return "ReparsePoint";
-        case EAInformation: return "EAInformation";
-        case EA: return "EA";
-        case PropertySet: return "PropertySet";
-        case LoggedUtilityStream: return "LoggedUtilityStream";
-        case EndMarker: return "EndMarker";
-        default: return "Unknown";
-    }
-}
-
-static void PrintAttributeHeader(PATTRIBUTE_RECORD_HEADER attribute) {
-    printf("ATTRIBUTE %p ======================\n", attribute);
-    fprintf(stdout, "Attribute Type: %s (0x%X)\n", AttributeTypeName(attribute->TypeCode), attribute->TypeCode);
-    fprintf(stdout, "Attribute Record Length: %lu\n", attribute->RecordLength);
-    fprintf(stdout, "Attribute Form Code: %u (%s)\n", attribute->FormCode, attribute->FormCode ? "non-resident" : "resident");
-    fprintf(stdout, "Attribute Name Length: %u\n", attribute->NameLength);
-    fprintf(stdout, "Attribute Name Offset: %u\n", attribute->NameOffset);
-    fprintf(stdout, "Attribute Flags: %u\n", attribute->Flags);
-    fprintf(stdout, "Attribute Instance: %u\n", attribute->Instance);
-
-    if (attribute->FormCode == 1) {
-        fprintf(stdout, "  Lowest VCN: %lld\n", attribute->Form.Nonresident.LowestVcn.QuadPart);
-        fprintf(stdout, "  Highest VCN: %lld\n", attribute->Form.Nonresident.HighestVcn.QuadPart);
-        fprintf(stdout, "  Allocated Length: %lld\n", attribute->Form.Nonresident.AllocatedLength);
-        fprintf(stdout, "  File Size: %lld\n", attribute->Form.Nonresident.FileSize);
-        fprintf(stdout, "  Valid Data Length: %lld\n", attribute->Form.Nonresident.ValidDataLength);
-    }
-}
-
-static BOOL ParseAttributes(PATTRIBUTE_RECORD_HEADER firstAttribute) {
-    auto attribute = firstAttribute;
-    while (attribute->TypeCode != ATTRIBUTE_TYPE_CODE::EndMarker)
-    {
-        auto attributeLength = attribute->RecordLength;
-        if (attributeLength == 0)
-            break;
-
-        PrintAttributeHeader(attribute);
-
-        switch (attribute->TypeCode)
-        {
-        case StandardInformation:
-            PrintStandardInformationAttribute((PSTANDARD_INFORMATION)attribute);
-            PrintStandardInformationAlt((StandardInformationAttribute*)attribute);
-            break;
-        case AttributeList:
-        case FileName:
-        case ObjectId:
-        case SecurityDescriptor:
-        case VolumeName:
-        case VolumeInformation:
-        case Data:
-        case IndexRoot:
-        case IndexAllocation:
-        case Bitmap:
-        case ReparsePoint:
-        case EAInformation:
-        case EA:
-        case PropertySet:
-        case LoggedUtilityStream:
-        case EndMarker:
-            break;
-        }
-        attribute = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)attribute + attributeLength);
-    }
-    return true;
-}
-
 // Find a specific attribute type in a file record. Returns nullptr if not found.
 static PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type) {
     auto* fileRecord = (PFILE_RECORD_SEGMENT_HEADER)record;
@@ -276,292 +184,11 @@ static PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CO
     return nullptr;
 }
 
-static void PrintFileRecord(PFILE_RECORD_SEGMENT_HEADER fileRecord) {
-    printf("FILE RECORD %p ======================\n", fileRecord);
-
-    assert(fileRecord->MultiSectorHeader.Magic == 0x454C4946);
-    fprintf(stdout, "  Update sequence offset: %u\n", fileRecord->MultiSectorHeader.UpdateSequenceArrayOffset);
-    fprintf(stdout, "  Update sequence size: %u\n", fileRecord->MultiSectorHeader.UpdateSequenceArraySize);
-    fprintf(stdout, "  Log file sequence number: %llu\n", fileRecord->Reserved1);
-    fprintf(stdout, "  Sequence number: %u\n", fileRecord->SequenceNumber);
-    fprintf(stdout, "  Hard link count: %u\n", fileRecord->Reserved2);
-    fprintf(stdout, "  First attribute offset: %u\n", fileRecord->FirstAttributeOffset);
-    fprintf(stdout, "  Flags: %u\n", fileRecord->Flags);
-
-    fprintf(stdout, "  Reserved3[0] (Used size?): %lu\n", fileRecord->Reserved3[0]);
-    fprintf(stdout, "  Reserved3[1] (Allocated size?): %lu\n", fileRecord->Reserved3[1]);
-    fprintf(stdout, "  File reference to base record:\n");
-    fprintf(stdout, "    Sequence Number: %hu\n", fileRecord->BaseFileRecordSegment.SequenceNumber);
-    fprintf(stdout, "    Segment Number Low Part: %lu\n", fileRecord->BaseFileRecordSegment.SegmentNumberLowPart);
-    fprintf(stdout, "    Segment Number High Part: %hu\n", fileRecord->BaseFileRecordSegment.SegmentNumberHighPart);
-    fprintf(stdout, "  Reserved4: %u\n", fileRecord->Reserved4);
-    fprintf(stdout, "  Update Sequence Array: %hu\n", fileRecord->UpdateSequenceArray[0]);
-}
-
-static void ParseMFTFile(uint8_t* mftFile, ATTRIBUTE_RECORD_HEADER** firstAttribute) {
-    auto fileRecord = (PFILE_RECORD_SEGMENT_HEADER)mftFile;
-    *firstAttribute = (PATTRIBUTE_RECORD_HEADER)(mftFile + fileRecord->FirstAttributeOffset);
-    assert(fileRecord->MultiSectorHeader.Magic == 0x454C4946);
-
-    PrintFileRecord(fileRecord);
-}
-
-static void PrintBootSector(const NTFS_BPB& bootSector) {
-    fprintf(stdout, "Boot Sector=================================\n");
-    fprintf(stdout, "  Bytes per sector: %u\n", bootSector.bytesPerSector);
-    fprintf(stdout, "  Sectors per cluster: %u\n", bootSector.sectorsPerCluster);
-    fprintf(stdout, "  Reserved sectors: %u\n", bootSector.reservedSectors);
-    fprintf(stdout, "  Media: %u\n", bootSector.media);
-    fprintf(stdout, "  Sectors per track: %u\n", bootSector.sectorsPerTrack);
-    fprintf(stdout, "  Heads per cylinder: %u\n", bootSector.headsPerCylinder);
-    fprintf(stdout, "  Hidden sectors: %u\n", bootSector.hiddenSectors);
-    fprintf(stdout, "  Total sectors: %llu\n", bootSector.totalSectors);
-    fprintf(stdout, "  MFT start: %llu\n", bootSector.mftStart);
-    fprintf(stdout, "  MFT mirror start: %llu\n", bootSector.mftMirrorStart);
-    fprintf(stdout, "  Clusters per file record: %u\n", bootSector.clustersPerFileRecord);
-    fprintf(stdout, "  Clusters per index block: %u\n", bootSector.clustersPerIndexBlock);
-    fprintf(stdout, "  Serial number: %llu\n", bootSector.serialNumber);
-    fprintf(stdout, "  Checksum: %u\n", bootSector.checksum);
-    fprintf(stdout, "  Boot signature: %u\n", bootSector.bootSignature);
-}
-
 extern "C" {
-    EXPORT bool ParseMFT(HANDLE volumeHandle) {
-        if (volumeHandle == INVALID_HANDLE_VALUE)
-        {
-            printf("Error in ParseMFT: Volume handle is invalid.");
-            return false;
-        }
-
-        NTFS_BPB bootSector;
-        constexpr DWORD bootSectorSize = 512;
-        DWORD bytesRead;
-        if (!Read(volumeHandle, &bootSector, 0, bootSectorSize, &bytesRead) || bytesRead != bootSectorSize)
-        {
-            printf("Error in ParseMFT: Failed to read boot sector. Error: %lu\n", GetLastError());
-            return false;
-        }
-
-        PrintBootSector(bootSector);
-
-        if (bootSector.name[0] != 'N' || bootSector.name[1] != 'T' || bootSector.name[2] != 'F' || bootSector.name[3] != 'S')
-        {
-            printf("Error in ParseMFT: Volume is not NTFS.");
-            return false;
-        }
-
-        auto bytesPerCluster = bootSector.bytesPerSector * bootSector.sectorsPerCluster;
-
-        // Read MFT file record 0 ($MFT itself)
-        uint8_t mftFile[FILE_RECORD_SIZE];
-        bytesRead = 0;
-        if (!Read(volumeHandle, mftFile, bootSector.mftStart * bytesPerCluster, FILE_RECORD_SIZE, &bytesRead) || bytesRead != FILE_RECORD_SIZE)
-        {
-            printf("Error in ParseMFT: Failed to read MFT file. Error: %lu\n", GetLastError());
-            return false;
-        }
-
-        ApplyFixup(mftFile, FILE_RECORD_SIZE);
-
-        PATTRIBUTE_RECORD_HEADER firstAttribute;
-        ParseMFTFile(mftFile, &firstAttribute);
-        ParseAttributes(firstAttribute);
-
-        // Collect key attributes from record 0
-        auto* dataAttr = FindAttribute(mftFile, Data);
-        auto* attrListAttr = FindAttribute(mftFile, AttributeList);
-        auto* bitmapAttr = FindAttribute(mftFile, Bitmap);
-
-        if (!dataAttr) {
-            printf("Error: No Data attribute in $MFT record 0\n");
-            return false;
-        }
-
-        // Parse the Data attribute's data runs - this tells us where the MFT lives on disk
-        auto mftRuns = ParseDataRuns(dataAttr);
-        printf("\nMFT DATA RUNS ======================\n");
-        printf("  %zu run(s) in base record's Data attribute:\n", mftRuns.size());
-        uint64_t totalMftBytes = 0;
-        for (size_t i = 0; i < mftRuns.size(); i++) {
-            uint64_t runBytes = mftRuns[i].clusterCount * bytesPerCluster;
-            printf("    Run %zu: cluster %lld, %llu clusters (%llu bytes)\n",
-                i, mftRuns[i].clusterOffset, mftRuns[i].clusterCount, runBytes);
-            totalMftBytes += runBytes;
-        }
-        printf("  Total MFT size from base runs: %llu bytes (%llu records)\n", totalMftBytes, totalMftBytes / FILE_RECORD_SIZE);
-
-        if (bitmapAttr) {
-            printf("\nBitmap found directly in record 0\n");
-        }
-
-        // If there's an AttributeList, we need to read it to find extension records
-        // that contain the Bitmap and possibly additional Data runs
-        if (attrListAttr) {
-            printf("\nATTRIBUTE LIST ======================\n");
-
-            uint8_t* attrListData = nullptr;
-            uint64_t attrListSize = 0;
-
-            if (attrListAttr->FormCode == 1) {
-                // Non-resident: read from disk using its data runs
-                attrListData = ReadNonResidentData(volumeHandle, attrListAttr, bytesPerCluster, &attrListSize);
-                printf("  AttributeList is non-resident, %llu bytes\n", attrListSize);
-            } else {
-                // Resident: data is inline
-                attrListSize = attrListAttr->Form.Resident.ValueLength;
-                attrListData = (uint8_t*)malloc((size_t)attrListSize);
-                if (attrListData)
-                    memcpy(attrListData, (uint8_t*)attrListAttr + attrListAttr->Form.Resident.ValueOffset, (size_t)attrListSize);
-                printf("  AttributeList is resident, %llu bytes\n", attrListSize);
-            }
-
-            if (!attrListData) {
-                printf("Error: Failed to read AttributeList data\n");
-                return false;
-            }
-
-            // Enumerate entries and track which extension records we need to visit
-            printf("\n  Entries:\n");
-            std::vector<uint64_t> extensionRecords;
-            uint64_t offset = 0;
-
-            while (offset + sizeof(ATTRIBUTE_LIST_ENTRY) <= attrListSize) {
-                auto* entry = (PATTRIBUTE_LIST_ENTRY)(attrListData + offset);
-                if (entry->RecordLength == 0) break;
-
-                uint64_t segNum = (uint64_t)entry->SegmentReference.SegmentNumberLowPart |
-                    ((uint64_t)entry->SegmentReference.SegmentNumberHighPart << 32);
-
-                printf("    Type: %-22s (0x%02X)  Record: %5llu  VCN: %lld\n",
-                    AttributeTypeName(entry->AttributeTypeCode),
-                    entry->AttributeTypeCode, segNum,
-                    entry->LowestVcn.QuadPart);
-
-                // Track unique extension record numbers (skip record 0, that's the base)
-                if (segNum != 0) {
-                    bool found = false;
-                    for (auto r : extensionRecords)
-                        if (r == segNum) { found = true; break; }
-                    if (!found)
-                        extensionRecords.push_back(segNum);
-                }
-
-                offset += entry->RecordLength;
-            }
-
-            printf("\n  Extension records to read: %zu\n", extensionRecords.size());
-
-            // Read each extension record and parse its attributes
-            uint8_t extensionRecord[FILE_RECORD_SIZE];
-            for (auto recNum : extensionRecords) {
-                printf("\nEXTENSION RECORD %llu ======================\n", recNum);
-
-                if (!ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, recNum, extensionRecord)) {
-                    printf("  Failed to read extension record %llu\n", recNum);
-                    continue;
-                }
-
-                auto* extFileRecord = (PFILE_RECORD_SEGMENT_HEADER)extensionRecord;
-                if (extFileRecord->MultiSectorHeader.Magic != 0x454C4946) {
-                    printf("  Invalid magic in extension record %llu\n", recNum);
-                    continue;
-                }
-
-                auto* extAttr = (PATTRIBUTE_RECORD_HEADER)(extensionRecord + extFileRecord->FirstAttributeOffset);
-                while (extAttr->TypeCode != ATTRIBUTE_TYPE_CODE::EndMarker) {
-                    if (extAttr->RecordLength == 0) break;
-
-                    PrintAttributeHeader(extAttr);
-
-                    if (extAttr->TypeCode == Data) {
-                        // Additional Data runs for the MFT
-                        auto additionalRuns = ParseDataRuns(extAttr);
-                        printf("  -> %zu additional MFT data run(s):\n", additionalRuns.size());
-                        for (size_t i = 0; i < additionalRuns.size(); i++) {
-                            uint64_t runBytes = additionalRuns[i].clusterCount * bytesPerCluster;
-                            printf("     Run %zu: cluster %lld, %llu clusters (%llu bytes)\n",
-                                i, additionalRuns[i].clusterOffset, additionalRuns[i].clusterCount, runBytes);
-                            totalMftBytes += runBytes;
-                            mftRuns.push_back(additionalRuns[i]);
-                        }
-                    }
-
-                    if (extAttr->TypeCode == Bitmap) {
-                        printf("  -> Found Bitmap in extension record %llu!\n", recNum);
-                        bitmapAttr = extAttr; // Note: points into extensionRecord buffer
-                    }
-
-                    extAttr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)extAttr + extAttr->RecordLength);
-                }
-            }
-
-            free(attrListData);
-
-            printf("\nSUMMARY ======================\n");
-            printf("  Total MFT data runs: %zu\n", mftRuns.size());
-            printf("  Total MFT size: %llu bytes (%llu records)\n", totalMftBytes, totalMftBytes / FILE_RECORD_SIZE);
-            printf("  Bitmap found: %s\n", bitmapAttr ? "yes" : "NO");
-        }
-
-        return true;
-    }
-
-    EXPORT void PrintVolumeInfo(HANDLE volumeHandle) {
-        if (volumeHandle == INVALID_HANDLE_VALUE)
-        {
-            printf("Error in PrintVolumeInfo: Volume handle is invalid.");
-            return;
-        }
-
-        auto combinedVolumeData = NTFS_COMBINED_VOLUME_DATA();
-        DWORD bytesReturned;
-
-        try
-        {
-            DWORD combinedBufferSize = sizeof(NTFS_COMBINED_VOLUME_DATA);
-            if (!DeviceIoControl(volumeHandle, FSCTL_GET_NTFS_VOLUME_DATA, nullptr, 0, &combinedVolumeData, combinedBufferSize, &bytesReturned, nullptr))
-            {
-                printf("Failed to get NTFS volume data. Error: %lu\n", GetLastError());
-                return;
-            }
-
-            if (bytesReturned != combinedBufferSize)
-            {
-                printf("Failed to get NTFS volume data. Buffer sizes don't match. Error: %lu\n", GetLastError());
-                return;
-            }
-
-            printf("VOLUME DATA======================\n");
-
-            auto volumeData = combinedVolumeData.StandardData;
-            printf("Volume Serial Number: %lld\n", volumeData.VolumeSerialNumber.QuadPart);
-            printf("Number Sectors: %lld\n", volumeData.NumberSectors.QuadPart);
-            printf("Total Clusters: %lld\n", volumeData.TotalClusters.QuadPart);
-            printf("Free Clusters: %lld\n", volumeData.FreeClusters.QuadPart);
-            printf("Total Reserved: %lld\n", volumeData.TotalReserved.QuadPart);
-            printf("Bytes Per Sector: %lu\n", volumeData.BytesPerSector);
-            printf("Bytes Per Cluster: %lu\n", volumeData.BytesPerCluster);
-            printf("Bytes Per File Record Segment: %lu\n", volumeData.BytesPerFileRecordSegment);
-            printf("Clusters Per File Record Segment: %lu\n", volumeData.ClustersPerFileRecordSegment);
-            printf("MFT Valid Data Length: %lld\n", volumeData.MftValidDataLength.QuadPart);
-            printf("MFT Start LCN: %lld\n", volumeData.MftStartLcn.QuadPart);
-            printf("MFT2 Start LCN: %lld\n", volumeData.Mft2StartLcn.QuadPart);
-            printf("MFT Zone Start: %lld\n", volumeData.MftZoneStart.QuadPart);
-            printf("MFT Zone End: %lld\n", volumeData.MftZoneEnd.QuadPart);
-
-            auto extendedVolumeData = combinedVolumeData.ExtendedData;
-            printf("Byte Count: %lu\n", extendedVolumeData.ByteCount);
-            printf("Major Version: %d\n", extendedVolumeData.MajorVersion);
-            printf("Minor Version: %d\n", extendedVolumeData.MinorVersion);
-            printf("Bytes Per Physical Sector: %lu\n", extendedVolumeData.BytesPerPhysicalSector);
-            printf("Lfs Major Version: %d\n", extendedVolumeData.LfsMajorVersion);
-            printf("Lfs Minor Version: %d\n", extendedVolumeData.LfsMinorVersion);
-        }
-        catch (...)
-        {
-            printf("Failed to get volume info. Error: %lu\n", GetLastError());
-        }
-    }
+    EXPORT void SetMaxThreads(unsigned maxThreads) { g_maxThreads = maxThreads; }
+    EXPORT void SetAllocFailCountdown(int countdown) { g_allocFailCountdown = countdown; }
+    EXPORT void SetReadFailCountdown(int countdown) { g_readFailCountdown = countdown; }
+    EXPORT void ResetTestState() { g_maxThreads = 0; g_allocFailCountdown = 0; g_readFailCountdown = 0; }
 
     EXPORT void FreeMftResult(MftParseResult* result) {
         if (result) {
@@ -727,8 +354,7 @@ extern "C" {
                                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
         if (hFile == INVALID_HANDLE_VALUE) return false;
 
-        unsigned numThreads = std::thread::hardware_concurrency();
-        if (numThreads < 1) numThreads = 1;
+        unsigned numThreads = EffectiveThreadCount();
 
         // Pre-generate some realistic filenames
         const wchar_t* fileNames[] = {
@@ -748,8 +374,8 @@ extern "C" {
         // Double-buffered: build records in one buffer while writing the other
         const size_t bufSize = (size_t)bufferSizeRecords * FILE_RECORD_SIZE;
         uint8_t* buf[2];
-        buf[0] = (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        buf[1] = (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        buf[0] = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        buf[1] = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!buf[0] || !buf[1]) {
             if (buf[0]) VirtualFree(buf[0], 0, MEM_RELEASE);
             if (buf[1]) VirtualFree(buf[1], 0, MEM_RELEASE);
@@ -1064,13 +690,14 @@ extern "C" {
                             break;
 
                         if (usedCount >= capacity) {
-                            capacity *= 2;
-                            auto* grown = (MftFileEntry*)realloc(result->entries, (size_t)capacity * sizeof(MftFileEntry));
+                            uint64_t newCapacity = capacity * 2;
+                            auto* grown = ShouldFailAlloc() ? nullptr : (MftFileEntry*)realloc(result->entries, (size_t)newCapacity * sizeof(MftFileEntry));
                             if (!grown) {
                                 swprintf_s(result->errorMessage, 256, L"Failed to grow entry array");
                                 result->usedRecords = usedCount;
                                 return;
                             }
+                            capacity = newCapacity;
                             result->entries = grown;
                         }
 
@@ -1109,7 +736,7 @@ extern "C" {
         auto wallStart = SteadyClock::now();
         double ioMs = 0, fixupMs = 0, parseMs = 0;
 
-        auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
+        auto* result = ShouldFailAlloc() ? nullptr : (MftParseResult*)calloc(1, sizeof(MftParseResult));
         if (!result) return nullptr;
 
         result->totalRecords = totalRecords;
@@ -1119,20 +746,19 @@ extern "C" {
 
         PathLookup lookup = {};
         if (resolvePaths) {
-            if (!lookup.init(totalRecords)) {
+            if (ShouldFailAlloc() || !lookup.init(totalRecords)) {
                 swprintf_s(result->errorMessage, 256, L"Failed to allocate path lookup");
                 return result;
             }
         }
 
-        unsigned numThreads = std::thread::hardware_concurrency();
-        if (numThreads < 1) numThreads = 1;
+        unsigned numThreads = EffectiveThreadCount();
 
         // Double-buffering: two dynamically allocated buffers
         const size_t bufSize = (size_t)bufferSizeRecords * FILE_RECORD_SIZE;
         uint8_t* buf[2];
-        buf[0] = (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        buf[1] = (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        buf[0] = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        buf[1] = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!buf[0] || !buf[1]) {
             if (buf[0]) VirtualFree(buf[0], 0, MEM_RELEASE);
             if (buf[1]) VirtualFree(buf[1], 0, MEM_RELEASE);
@@ -1143,7 +769,7 @@ extern "C" {
 
         uint64_t capacity = filter ? 1024 : totalRecords / 4;
         if (capacity < 1024) capacity = 1024;
-        result->entries = (MftFileEntry*)malloc((size_t)capacity * sizeof(MftFileEntry));
+        result->entries = ShouldFailAlloc() ? nullptr : (MftFileEntry*)malloc((size_t)capacity * sizeof(MftFileEntry));
         if (!result->entries) {
             VirtualFree(buf[0], 0, MEM_RELEASE);
             VirtualFree(buf[1], 0, MEM_RELEASE);
@@ -1254,6 +880,10 @@ extern "C" {
                                    filter, filterLen, matchFlags,
                                    resolvePaths ? &lookup : nullptr, totalRecords);
                 parseMs += ElapsedMs(parseStart, SteadyClock::now());
+                if (result->errorMessage[0] != L'\0') {
+                    ioThread.join();
+                    break;
+                }
             }
 
             recordIndex += currentChunkSize;
@@ -1465,7 +1095,7 @@ extern "C" {
         uint64_t filesToLoad = min(c->recordsRemaining, (uint64_t)c->bufferSizeRecords);
         DWORD readBytes;
         auto ioStart = SteadyClock::now();
-        if (!ReadFile(c->hFile, targetBuffer, (DWORD)(filesToLoad * FILE_RECORD_SIZE), &readBytes, nullptr)) {
+        if (ShouldFailRead() || !ReadFile(c->hFile, targetBuffer, (DWORD)(filesToLoad * FILE_RECORD_SIZE), &readBytes, nullptr)) {
             return 0;
         }
         ioMs += ElapsedMs(ioStart, SteadyClock::now());

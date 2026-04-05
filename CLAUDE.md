@@ -47,6 +47,22 @@ cat .\TestProgram\bin\x64\Release\net8.0\output.log
 
 If running via `dotnet TestProgram.dll`, the helper will still attempt to relaunch the process with `runas`, but running the `.exe` is preferred.
 
+### Test coverage
+
+**Managed (C#):** Run `scripts/run-coverage.ps1` — builds, runs all tests (including admin with UAC prompt), and reports coverage:
+```powershell
+.\scripts\run-coverage.ps1                  # full run with admin tests (UAC prompt)
+.\scripts\run-coverage.ps1 -NonInteractive  # skip admin tests (CI / headless)
+```
+
+**Native (C++):** Microsoft.CodeCoverage.Console via `.claude/scripts/native-coverage.ps1`:
+```powershell
+.\.claude\scripts\native-coverage.ps1           # cobertura XML output
+.\.claude\scripts\native-coverage.ps1 -HtmlReport  # also generate HTML
+```
+
+The native DLL must be built Debug|x64 (linked with `/PROFILE`) for instrumentation. The script handles build, instrument, test, and report automatically. Settings in `native-coverage.runsettings`.
+
 ## Architecture
 
 - **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant.

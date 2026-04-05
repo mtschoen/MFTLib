@@ -373,4 +373,6 @@ out.txt
 
 # Coverage reports
 **/coverage-report/
+native-coverage-html/
 coverage*.xml
+native-coverage.cobertura.xml

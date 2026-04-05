@@ -2,18 +2,22 @@ MFTLib test report — 2026-04-05
 ═══════════════════════════════════════════
 
 Status:   PASS
-Tests:    157 passed, 30 skipped (admin-only), 187 total
-Git:      4f8833d (main, with uncommitted changes)
-Coverage: 100% line, 100% branch, 100% method
-          0 lines uncovered
-          0 exclusion annotations
-          0 coverlet exclude filters
+Tests:    218 total (185 non-admin + 33 admin), all passing
+Git:      db030e8 (main, with uncommitted changes)
 
-Per-module breakdown:
+Managed coverage: 100% line, 100% branch, 100% method
   MFTLib      — 100% line, 100% branch, 100% method
   TestProgram — 100% line, 100% branch, 100% method
   Benchmark   — 100% line, 100% branch, 100% method
+  0 exclusion annotations
 
-Coverage command:
-  MSBuild.exe MFTLib.sln -p:Configuration=Release -p:Platform=x64 -v:quiet
-  dotnet test MFTLib.Tests/MFTLib.Tests.csproj -p:Platform=x64 -p:CollectCoverage=true -p:CoverletOutputFormat=cobertura -p:CoverletOutput=./coverage.xml '-p:Include="[MFTLib]*,[TestProgram]*,[Benchmark]*"' --no-build -c Release
+Native coverage: 100% line, 100% branch
+  MFTLibNative — 100% line, 100% branch
+  0 exclusion annotations
+
+Managed coverage command:
+  .\scripts\run-coverage.ps1                  # full run with admin tests
+  .\scripts\run-coverage.ps1 -NonInteractive  # skip admin tests (CI / headless)
+
+Native coverage command:
+  .\.claude\scripts\native-coverage.ps1

@@ -19,6 +19,23 @@ static class MFTLibNative
     [DllImport(LibraryName, EntryPoint = "ParseMFTFromFile", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
     static extern IntPtr NativeParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags, uint bufferSizeRecords);
 
+    // Test support exports — control native failure injection
+    [DllImport(LibraryName, EntryPoint = "SetMaxThreads", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetMaxThreads(uint maxThreads);
+
+    [DllImport(LibraryName, EntryPoint = "SetAllocFailCountdown", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetAllocFailCountdown(int countdown);
+
+    [DllImport(LibraryName, EntryPoint = "SetReadFailCountdown", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetReadFailCountdown(int countdown);
+
+    [DllImport(LibraryName, EntryPoint = "ResetTestState", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeResetTestState();
+
+    // ParseMFTRecords overload that takes raw IntPtr handle (for testing with invalid handles)
+    [DllImport(LibraryName, EntryPoint = "ParseMFTRecords", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    internal static extern IntPtr NativeParseMFTRecordsRaw(IntPtr volumeHandle, string? filter, uint matchFlags, uint bufferSizeRecords);
+
     // Swappable function pointers — default to the native P/Invoke implementations.
     // Tests or platforms without the native library can replace these.
     internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr> ParseMFTRecords = NativeParseMFTRecords;

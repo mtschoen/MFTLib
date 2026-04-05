@@ -118,6 +118,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
+      <Profile>true</Profile>
     </Link>
     <PostBuildEvent>
       <Command>xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)MFTLib\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.dll*"
