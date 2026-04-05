@@ -22,6 +22,8 @@
   <ItemGroup>
     <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
     <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" />
+    <ProjectReference Include="..\TestProgram\TestProgram.csproj" />
+    <ProjectReference Include="..\Benchmark\Benchmark.csproj" />
   </ItemGroup>
 
 </Project>

@@ -12,7 +12,7 @@ static class FileUtilities
     const uint FILE_SHARE_WRITE = 0x00000002;
     // ReSharper restore InconsistentNaming
 
-    internal static SafeFileHandle GetVolumeHandle(string volume)
+    static SafeFileHandle NativeGetVolumeHandle(string volume)
     {
         var volumeHandle = Kernel32.CreateFile(
             volume,
@@ -29,5 +29,12 @@ static class FileUtilities
         }
 
         return volumeHandle;
+    }
+
+    internal static Func<string, SafeFileHandle> GetVolumeHandle = NativeGetVolumeHandle;
+
+    internal static void ResetToDefaults()
+    {
+        GetVolumeHandle = NativeGetVolumeHandle;
     }
 }

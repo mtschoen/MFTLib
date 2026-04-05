@@ -11,6 +11,7 @@ public class NativeMockTests
     public void Cleanup()
     {
         MFTLibNative.ResetToDefaults();
+        FileUtilities.ResetToDefaults();
     }
 
     [TestMethod]
@@ -47,12 +48,9 @@ public class NativeMockTests
     }
 
     [TestMethod]
-    [TestCategory("RequiresAdmin")]
     public void StreamRecords_NullReturn_ThrowsInvalidOperation()
     {
-        if (!ElevationUtilities.IsElevated())
-            Assert.Inconclusive("Requires admin elevation.");
-
+        FileUtilities.GetVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), ownsHandle: false);
         MFTLibNative.ParseMFTRecords = (_, _, _, _) => IntPtr.Zero;
 
         using var volume = MftVolume.Open("C");
@@ -61,11 +59,9 @@ public class NativeMockTests
     }
 
     [TestMethod]
-    [TestCategory("RequiresAdmin")]
     public unsafe void FindRecords_NullFullPath_FallsBackToFileName()
     {
-        if (!ElevationUtilities.IsElevated())
-            Assert.Inconclusive("Requires admin elevation.");
+        FileUtilities.GetVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), ownsHandle: false);
 
         // Build a synthetic MftParseResult with one entry (no path data)
         const int entrySize = 540; // 8 + 8 + 2 + 2 + 520 (260 chars)

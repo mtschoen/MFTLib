@@ -46,7 +46,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    const int ParallelThreshold = 500_000;
+    internal static int ParallelThreshold = 500_000;
     const int NativeEntrySize = 540;
     const int NativePathEntrySize = 2068;
 
@@ -71,7 +71,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
             getEntry = GetEntryUnsafe;
         }
 
-        if (count >= ParallelThreshold)
+        if (count >= (ulong)ParallelThreshold)
             Parallel.For(0L, (long)count, i => records[i] = getEntry(basePtr, (ulong)i).Materialize());
         else
             for (ulong i = 0; i < count; i++) records[i] = getEntry(basePtr, i).Materialize();

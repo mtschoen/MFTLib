@@ -15,4 +15,8 @@
     <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="MFTLib.Tests" />
+  </ItemGroup>
+
 </Project>
