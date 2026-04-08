@@ -64,7 +64,7 @@ public class NativeMockTests
         FileUtilities.GetVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), ownsHandle: false);
 
         // Build a synthetic MftParseResult with one entry (no path data)
-        const int entrySize = 540; // 8 + 8 + 2 + 2 + 520 (260 chars)
+        const int entrySize = 544; // 8 + 8 + 2 + 2 + 4 + 520 (260 chars)
         var entryBuf = stackalloc byte[entrySize];
         new Span<byte>(entryBuf, entrySize).Clear();
 
@@ -75,7 +75,7 @@ public class NativeMockTests
 
         // nameLength = 4 chars, name = "test"
         *(ushort*)(entryBuf + 18) = 4;
-        var nameSpan = new Span<char>(entryBuf + 20, 4);
+        var nameSpan = new Span<char>(entryBuf + 24, 4);
         "test".AsSpan().CopyTo(nameSpan);
 
         // Build MftParseResult with PathEntries = IntPtr.Zero (no paths)

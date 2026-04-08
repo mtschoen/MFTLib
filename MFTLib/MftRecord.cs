@@ -12,6 +12,7 @@ public readonly struct MftRecord
     readonly ushort _nameLength;
     readonly ushort _pathLength;
     readonly char _driveLetter;
+    readonly FileAttributes _fileAttributes;
 
     // These are either pointers to native memory (temporary) or materialized strings
     readonly IntPtr _namePtr;
@@ -23,6 +24,7 @@ public readonly struct MftRecord
     public ulong ParentRecordNumber => _parentRecordNumber;
     public bool InUse => (_flags & 1) != 0;
     public bool IsDirectory => (_flags & 2) != 0;
+    public FileAttributes FileAttributes => _fileAttributes;
 
     public unsafe string FileName
     {
@@ -60,11 +62,12 @@ public readonly struct MftRecord
     }
 
     // ReSharper disable once PreferConcreteValueOverDefault
-    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, ushort flags, IntPtr namePtr, ushort nameLength, IntPtr pathPtr = default, ushort pathLength = 0, char driveLetter = '\0')
+    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, ushort flags, FileAttributes fileAttributes, IntPtr namePtr, ushort nameLength, IntPtr pathPtr = default, ushort pathLength = 0, char driveLetter = '\0')
     {
         _recordNumber = recordNumber;
         _parentRecordNumber = parentRecordNumber;
         _flags = flags;
+        _fileAttributes = fileAttributes;
         _namePtr = namePtr;
         _nameLength = nameLength;
         _pathPtr = pathPtr;
@@ -83,14 +86,15 @@ public readonly struct MftRecord
         if (_fileName != null || (_namePtr == IntPtr.Zero && _pathPtr == IntPtr.Zero))
             return this;
 
-        return new MftRecord(_recordNumber, _parentRecordNumber, _flags, FileName, FullPath);
+        return new MftRecord(_recordNumber, _parentRecordNumber, _flags, FileName, FullPath, _fileAttributes);
     }
 
-    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, ushort flags, string? fileName, string? fullPath)
+    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, ushort flags, string? fileName, string? fullPath, FileAttributes fileAttributes = 0)
     {
         _recordNumber = recordNumber;
         _parentRecordNumber = parentRecordNumber;
         _flags = flags;
+        _fileAttributes = fileAttributes;
         _fileName = fileName;
         _fullPath = fullPath;
         _namePtr = IntPtr.Zero;

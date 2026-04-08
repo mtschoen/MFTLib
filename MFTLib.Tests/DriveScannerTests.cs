@@ -265,7 +265,7 @@ public class DriveScannerTests
                 *(ushort*)(entryPtr + 16) = 0x0003; // InUse | Directory
                 var path = ".git";
                 *(ushort*)(entryPtr + 18) = (ushort)path.Length;
-                var pathChars = (char*)(entryPtr + 20);
+                var pathChars = (char*)(entryPtr + 24);
                 for (var i = 0; i < path.Length; i++)
                     pathChars[i] = path[i];
             }

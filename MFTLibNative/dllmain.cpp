@@ -637,6 +637,7 @@ extern "C" {
                         entry.parentRecordNumber = parent;
                         entry.flags = rec->Flags;
                         entry.fileNameLength = fn->FileNameLength;
+                        entry.fileAttributes = fn->FileAttributes;
                         uint16_t copyLen = min((uint16_t)fn->FileNameLength, (uint16_t)259);
                         wmemcpy_s(entry.fileName, 260, fn->FileName, copyLen);
 
@@ -707,6 +708,7 @@ extern "C" {
                         entry.parentRecordNumber = parent;
                         entry.flags = rec->Flags;
                         entry.fileNameLength = fn->FileNameLength;
+                        entry.fileAttributes = fn->FileAttributes;
                         uint16_t copyLen = min((uint16_t)fn->FileNameLength, (uint16_t)259);
                         memset(entry.fileName, 0, sizeof(entry.fileName));
                         wmemcpy_s(entry.fileName, 260, fn->FileName, copyLen);
@@ -908,6 +910,7 @@ extern "C" {
                     dst.recordNumber = src.recordNumber;
                     dst.parentRecordNumber = src.parentRecordNumber;
                     dst.flags = src.flags;
+                    dst.fileAttributes = src.fileAttributes;
                     dst.pathLength = ResolvePath(src.recordNumber, lookup, totalRecords,
                                                 dst.path, 1024);
                 }

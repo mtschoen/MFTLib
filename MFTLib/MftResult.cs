@@ -47,8 +47,12 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     internal static int ParallelThreshold = 500_000;
-    const int NativeEntrySize = 540;
-    const int NativePathEntrySize = 2068;
+    // Layouts mirror mft_api.h (pack(1)):
+    //   MftFileEntry:  8+8+2+2+4 header, 260 wchar_t fileName → 24 + 520 = 544 bytes
+    //   MftPathEntry:  8+8+2+2+4 header, 1024 wchar_t path    → 24 + 2048 = 2072 bytes
+    const int NativeEntrySize = 544;
+    const int NativePathEntrySize = 2072;
+    const int NativeStringOffset = 24; // offset of fileName/path after fileAttributes
 
     unsafe delegate MftRecord EntryReader(byte* basePtr, ulong index);
 
@@ -88,8 +92,9 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         var parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
         var flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
         var nameLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
+        var fileAttributes = (FileAttributes)Unsafe.ReadUnaligned<uint>(ptr + 20);
         // ReSharper disable once PreferConcreteValueOverDefault
-        return new MftRecord(recordNumber, parentRecordNumber, flags, (IntPtr)(ptr + 20), nameLength, default, 0, _driveLetter);
+        return new MftRecord(recordNumber, parentRecordNumber, flags, fileAttributes, (IntPtr)(ptr + NativeStringOffset), nameLength, default, 0, _driveLetter);
     }
 
     unsafe MftRecord GetPathEntry(ulong index) => GetPathEntryUnsafe((byte*)_result.PathEntries, index);
@@ -101,7 +106,8 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         var parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
         var flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
         var pathLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
-        return new MftRecord(recordNumber, parentRecordNumber, flags, IntPtr.Zero, 0, (IntPtr)(ptr + 20), pathLength, _driveLetter);
+        var fileAttributes = (FileAttributes)Unsafe.ReadUnaligned<uint>(ptr + 20);
+        return new MftRecord(recordNumber, parentRecordNumber, flags, fileAttributes, IntPtr.Zero, 0, (IntPtr)(ptr + NativeStringOffset), pathLength, _driveLetter);
     }
 
     public void Dispose()
