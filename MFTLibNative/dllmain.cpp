@@ -609,10 +609,30 @@ extern "C" {
             if (baseRef != 0) continue;
 
             auto* attr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)rec + rec->FirstAttributeOffset);
+            // Capture $STANDARD_INFORMATION.FileAttributes if we see it before
+            // $FILE_NAME. SI holds the authoritative current attributes (updated
+            // on every change); $FILE_NAME.FileAttributes is set at name-creation
+            // and not kept in sync, so flags like Offline / RecallOnDataAccess /
+            // RecallOnOpen (set at cloud-hydration time) never appear there.
+            // SI (0x10) walks before FN (0x30) in normal attribute order, so
+            // by the time we hit FN the siAttributes variable is populated.
+            uint32_t siAttributes = 0;
+            bool sawStandardInformation = false;
             while ((uint8_t*)attr - (uint8_t*)rec < FILE_RECORD_SIZE) {
                 if (attr->TypeCode == EndMarker || attr->RecordLength == 0) break;
 
-                if (attr->TypeCode == FileName && attr->FormCode == 0) {
+                if (attr->TypeCode == StandardInformation && attr->FormCode == 0) {
+                    // $STANDARD_INFORMATION value layout (see MS devnotes):
+                    //   0  CreationTime        (8)
+                    //   8  LastModification    (8)
+                    //  16  LastMftModification (8)
+                    //  24  LastAccess          (8)
+                    //  32  FileAttributes      (4)  ← we want this
+                    auto* siValue = (uint8_t*)attr + attr->Form.Resident.ValueOffset;
+                    siAttributes = *(uint32_t*)(siValue + 32);
+                    sawStandardInformation = true;
+                }
+                else if (attr->TypeCode == FileName && attr->FormCode == 0) {
                     auto* fn = (PFILE_NAME)((uint8_t*)attr + attr->Form.Resident.ValueOffset);
                     if (fn->Flags != 2) {
                         uint64_t parent = (uint64_t)fn->ParentDirectory.SegmentNumberLowPart |
@@ -637,7 +657,7 @@ extern "C" {
                         entry.parentRecordNumber = parent;
                         entry.flags = rec->Flags;
                         entry.fileNameLength = fn->FileNameLength;
-                        entry.fileAttributes = fn->FileAttributes;
+                        entry.fileAttributes = sawStandardInformation ? siAttributes : fn->FileAttributes;
                         uint16_t copyLen = min((uint16_t)fn->FileNameLength, (uint16_t)259);
                         wmemcpy_s(entry.fileName, 260, fn->FileName, copyLen);
 
@@ -672,10 +692,20 @@ extern "C" {
             if (baseRef != 0) continue;
 
             auto* attr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)rec + rec->FirstAttributeOffset);
+            // See ProcessRecordSlice above for rationale. $STANDARD_INFORMATION
+            // holds the authoritative current FileAttributes (including cloud
+            // placeholder flags); $FILE_NAME.FileAttributes is historical.
+            uint32_t siAttributes = 0;
+            bool sawStandardInformation = false;
             while ((uint8_t*)attr - (uint8_t*)rec < FILE_RECORD_SIZE) {
                 if (attr->TypeCode == EndMarker || attr->RecordLength == 0) break;
 
-                if (attr->TypeCode == FileName && attr->FormCode == 0) {
+                if (attr->TypeCode == StandardInformation && attr->FormCode == 0) {
+                    auto* siValue = (uint8_t*)attr + attr->Form.Resident.ValueOffset;
+                    siAttributes = *(uint32_t*)(siValue + 32);
+                    sawStandardInformation = true;
+                }
+                else if (attr->TypeCode == FileName && attr->FormCode == 0) {
                     auto* fn = (PFILE_NAME)((uint8_t*)attr + attr->Form.Resident.ValueOffset);
                     if (fn->Flags != 2) {
                         uint64_t parent = (uint64_t)fn->ParentDirectory.SegmentNumberLowPart |
@@ -708,7 +738,7 @@ extern "C" {
                         entry.parentRecordNumber = parent;
                         entry.flags = rec->Flags;
                         entry.fileNameLength = fn->FileNameLength;
-                        entry.fileAttributes = fn->FileAttributes;
+                        entry.fileAttributes = sawStandardInformation ? siAttributes : fn->FileAttributes;
                         uint16_t copyLen = min((uint16_t)fn->FileNameLength, (uint16_t)259);
                         memset(entry.fileName, 0, sizeof(entry.fileName));
                         wmemcpy_s(entry.fileName, 260, fn->FileName, copyLen);
