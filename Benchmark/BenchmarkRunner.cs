@@ -106,28 +106,45 @@ internal class BenchmarkRunner
         for (var iteration = 0; iteration < iterations; iteration++)
         {
             WriteToConsole($"  Iteration {iteration + 1}/{iterations}... ");
-            var stopwatch = Stopwatch.StartNew();
-            var (records, timings) = ParseFromFile(mftPath, filter, matchFlags);
-            stopwatch.Stop();
+            try
+            {
+                var stopwatch = Stopwatch.StartNew();
+                var (records, timings) = ParseFromFile(mftPath, filter, matchFlags);
+                stopwatch.Stop();
 
-            allTimings.Add(timings);
-            allWallClocks.Add(stopwatch.Elapsed.TotalMilliseconds);
-            recordCounts.Add(records.Length);
+                allTimings.Add(timings);
+                allWallClocks.Add(stopwatch.Elapsed.TotalMilliseconds);
+                recordCounts.Add(records.Length);
 
-            var iterationLine = $"{stopwatch.Elapsed.TotalMilliseconds:F0}ms ({records.Length:N0} records)";
-            WriteLineToConsole(iterationLine);
-            output.AppendLine($"  Iteration {iteration + 1}/{iterations}... {iterationLine}");
+                var iterationLine = $"{stopwatch.Elapsed.TotalMilliseconds:F0}ms ({records.Length:N0} records)";
+                WriteLineToConsole(iterationLine);
+                output.AppendLine($"  Iteration {iteration + 1}/{iterations}... {iterationLine}");
+            }
+            catch (Exception exception)
+            {
+                var failLine = $"FAILED: {exception.GetType().Name}: {exception.Message}";
+                WriteLineToConsole(failLine);
+                output.AppendLine($"  Iteration {iteration + 1}/{iterations}... {failLine}");
+            }
+        }
+
+        if (allWallClocks.Count == 0)
+        {
+            log("  All iterations failed — no results to report.");
+            log(string.Empty);
+            return;
         }
 
         var medianRecords = recordCounts.OrderBy(x => x).ElementAt(recordCounts.Count / 2);
-        var medianIo = allTimings.Select(t => t.NativeIoMs).OrderBy(x => x).ElementAt(iterations / 2);
-        var medianFixup = allTimings.Select(t => t.NativeFixupMs).OrderBy(x => x).ElementAt(iterations / 2);
-        var medianParse = allTimings.Select(t => t.NativeParseMs).OrderBy(x => x).ElementAt(iterations / 2);
-        var medianMarshal = allTimings.Select(t => t.MarshalMs).OrderBy(x => x).ElementAt(iterations / 2);
-        var medianWall = allWallClocks.OrderBy(x => x).ElementAt(iterations / 2);
+        var medianIo = allTimings.Select(t => t.NativeIoMs).OrderBy(x => x).ElementAt(allTimings.Count / 2);
+        var successCount = allTimings.Count;
+        var medianFixup = allTimings.Select(t => t.NativeFixupMs).OrderBy(x => x).ElementAt(successCount / 2);
+        var medianParse = allTimings.Select(t => t.NativeParseMs).OrderBy(x => x).ElementAt(successCount / 2);
+        var medianMarshal = allTimings.Select(t => t.MarshalMs).OrderBy(x => x).ElementAt(successCount / 2);
+        var medianWall = allWallClocks.OrderBy(x => x).ElementAt(successCount / 2);
         var computeMs = medianFixup + medianParse + medianMarshal;
 
-        log("  Results (median of each timing):");
+        log($"  Results (median of {successCount} successful iteration{(successCount == 1 ? "" : "s")}):");
         log($"    Records:      {medianRecords,12:N0}");
         log($"    I/O:          {medianIo,12:F1}ms");
         log($"    Fixup:        {medianFixup,12:F1}ms");

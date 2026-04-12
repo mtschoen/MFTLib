@@ -127,8 +127,8 @@ xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)TestProgram\bin\$(Platfor
 xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)TestProgram\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb*"
 xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)MFTLib.Tests\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.dll*"
 xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)MFTLib.Tests\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb*"
-xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)Benchmark\bin\$(Platform)\$(Configuration)\net8.0-windows\MFTLibNative.dll*"
-xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)Benchmark\bin\$(Platform)\$(Configuration)\net8.0-windows\MFTLibNative.pdb*"</Command>
+xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)Benchmark\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.dll*"
+xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)Benchmark\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb*"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -164,8 +164,8 @@ xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)TestProgram\bin\$(Platfor
 xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)TestProgram\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb*"
 xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)MFTLib.Tests\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.dll*"
 xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)MFTLib.Tests\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb*"
-xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)Benchmark\bin\$(Platform)\$(Configuration)\net8.0-windows\MFTLibNative.dll*"
-xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)Benchmark\bin\$(Platform)\$(Configuration)\net8.0-windows\MFTLibNative.pdb*"</Command>
+xcopy /Y "$(TargetDir)MFTLibNative.dll" "$(SolutionDir)Benchmark\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.dll*"
+xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)Benchmark\bin\$(Platform)\$(Configuration)\net8.0\MFTLibNative.pdb*"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
