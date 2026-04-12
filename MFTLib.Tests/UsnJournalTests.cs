@@ -227,6 +227,58 @@ public class UsnJournalTests
     }
 
     [TestMethod]
+    public void QueryUsnJournal_Disposed_Throws()
+    {
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+        var volume = MftVolume.Open("C");
+        volume.Dispose();
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.QueryUsnJournal());
+    }
+
+    [TestMethod]
+    public void ReadUsnJournal_Disposed_Throws()
+    {
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+        var volume = MftVolume.Open("C");
+        volume.Dispose();
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.ReadUsnJournal(new UsnJournalCursor(1, 0)));
+    }
+
+    [TestMethod]
+    public async Task WatchUsnJournal_Disposed_Throws()
+    {
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+        var volume = MftVolume.Open("C");
+        volume.Dispose();
+        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(async () =>
+        {
+            await foreach (var _ in volume.WatchUsnJournal(new UsnJournalCursor(1, 0)))
+            {
+            }
+        });
+    }
+
+    [TestMethod]
+    public void UsnJournalEntry_PositiveTimestamp_ParsesAsDateTime()
+    {
+        // 2020-01-01 00:00:00 UTC as FILETIME
+        var filetime = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc).ToFileTimeUtc();
+        var entry = new UsnJournalEntry(1, 5, 100, filetime, (uint)UsnReason.FileCreate, 0x20, "timestamped.txt");
+
+        Assert.AreEqual(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc), entry.Timestamp);
+        Assert.AreEqual(100L, entry.Usn);
+        Assert.AreEqual(5UL, entry.ParentRecordNumber);
+        Assert.AreEqual(FileAttributes.Archive, entry.FileAttributes);
+    }
+
+    [TestMethod]
+    public void UsnJournalEntry_ZeroTimestamp_ReturnsMinValue()
+    {
+        var entry = new UsnJournalEntry(1, 5, 100, 0, (uint)UsnReason.FileCreate, 0, "test.txt");
+        Assert.AreEqual(DateTime.MinValue, entry.Timestamp);
+    }
+
+    [TestMethod]
     public void UsnJournalCursor_StoresValues()
     {
         var cursor = new UsnJournalCursor(0xDEADBEEF, 12345);
@@ -311,6 +363,34 @@ public class UsnJournalTests
             {
             }
         });
+    }
+
+    [TestMethod]
+    public async Task WatchUsnJournal_EmptyBatchWithCancellation_YieldsBreak()
+    {
+        // Simulate the race: native call returns empty (CancelIoEx fired mid-call)
+        // and the token is already cancelled by the time we check.
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        MFTLibNative.WatchUsnJournalBatch = (_, startUsn, journalId) =>
+        {
+            // Simulate CancelIoEx race: cancel token then return empty result
+            cancellationTokenSource.Cancel();
+            return BuildEmptyWatchResult(journalId, startUsn);
+        };
+        MFTLibNative.CancelUsnJournalWatch = _ => true;
+        MFTLibNative.FreeUsnJournalResult = _ => { };
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+
+        using var volume = MftVolume.Open("C");
+        var batches = new List<UsnJournalEntry[]>();
+
+        await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+        {
+            batches.Add(batch);
+        }
+
+        Assert.AreEqual(0, batches.Count);
     }
 
     // --- Watch test helpers ---

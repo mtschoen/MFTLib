@@ -442,4 +442,85 @@ public class MockVolumeTests
         Assert.AreEqual("file0.txt", records[0].FileName);
         Assert.AreEqual("file4.txt", records[4].FileName);
     }
+
+    [TestMethod]
+    public unsafe void MftRecord_FileName_ExtractedFromPathWhenNoNamePointer()
+    {
+        // Build a path entry with namePtr=Zero, pathPtr has "dir\file.txt"
+        var pathEntrySize = MftResult.NativePathEntrySize;
+        var entryBuf = (IntPtr)NativeMemory.AllocZeroed((nuint)pathEntrySize);
+        try
+        {
+            var ptr = (byte*)entryBuf;
+            Unsafe.WriteUnaligned(ptr, 0UL); // recordNumber
+            Unsafe.WriteUnaligned(ptr + 8, 5UL); // parentRecordNumber
+            Unsafe.WriteUnaligned(ptr + 16, (ushort)1); // flags = InUse
+            var path = "dir\\file.txt";
+            Unsafe.WriteUnaligned(ptr + 18, (ushort)path.Length);
+            path.AsSpan().CopyTo(new Span<char>(ptr + MftResult.NativeStringOffset, path.Length));
+
+            var result = new MftParseResult
+            {
+                TotalRecords = 1,
+                UsedRecords = 1,
+                Entries = IntPtr.Zero,
+                PathEntries = entryBuf,
+            };
+
+            var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+            Marshal.StructureToPtr(result, resultPtr, false);
+
+            FileUtilities.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
+            MFTLibNative.ParseMFTRecords = (_, _, _, _) => resultPtr;
+            MFTLibNative.FreeMftResult = _ => { };
+
+            using var volume = MftVolume.Open("T");
+            // Use StreamRecords to get the raw MftRecord (unmaterialized, with native pointers)
+            using var stream = volume.StreamRecords();
+            var record = stream.First();
+
+            // FileName should be extracted from the path (last segment after backslash)
+            Assert.AreEqual("file.txt", record.FileName);
+            // FullPath should be "T:\dir\file.txt"
+            Assert.AreEqual("T:\\dir\\file.txt", record.FullPath);
+        }
+        finally
+        {
+            NativeMemory.Free((void*)entryBuf);
+        }
+    }
+
+    [TestMethod]
+    public void MftRecord_FullPath_NoDriveLetter_ReturnsRelativePath()
+    {
+        // MftRecord constructed with string path but no drive letter (e.g. from ParseMFTFromFile after Materialize)
+        var record = new MftRecord(0, 5, 1, "file.txt", "some\\path\\file.txt");
+        Assert.AreEqual("some\\path\\file.txt", record.FullPath);
+        Assert.AreEqual("file.txt", record.FileName);
+    }
+
+    [TestMethod]
+    public void MftRecord_FileName_NoPathNoName_ReturnsEmpty()
+    {
+        var record = new MftRecord(0, 5, 1, null, null);
+        Assert.AreEqual(string.Empty, record.FileName);
+        Assert.IsNull(record.FullPath);
+    }
+
+    [TestMethod]
+    public void MftRecord_ToString_ReturnsFullPathOrFileName()
+    {
+        var withPath = new MftRecord(0, 5, 1, "file.txt", "dir\\file.txt");
+        Assert.AreEqual("dir\\file.txt", withPath.ToString());
+
+        var withoutPath = new MftRecord(0, 5, 1, "orphan.txt", null);
+        Assert.AreEqual("orphan.txt", withoutPath.ToString());
+    }
+
+    [TestMethod]
+    public void MftRecord_FileAttributes_ReturnsStoredValue()
+    {
+        var record = new MftRecord(0, 5, 1, "test.txt", null, FileAttributes.Hidden | FileAttributes.ReadOnly);
+        Assert.AreEqual(FileAttributes.Hidden | FileAttributes.ReadOnly, record.FileAttributes);
+    }
 }

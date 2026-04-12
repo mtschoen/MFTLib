@@ -187,6 +187,24 @@ public class BenchmarkRunnerTests
     }
 
     [TestMethod]
+    public void Benchmark_EntryPoint_Executes()
+    {
+        var entryPoint = typeof(BenchmarkRunner).Assembly.EntryPoint!;
+        var baselinePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Benchmark", "baseline.txt"));
+        var backup = File.Exists(baselinePath) ? File.ReadAllText(baselinePath) : null;
+        try
+        {
+            var exitCode = entryPoint.Invoke(null, [new[] { "10", "1" }]);
+            Assert.AreEqual(0, exitCode);
+        }
+        finally
+        {
+            if (backup != null)
+                File.WriteAllText(baselinePath, backup);
+        }
+    }
+
+    [TestMethod]
     public void Benchmark_EndToEnd_WithNativeCalls_RunsAndExits()
     {
         var temporaryBaseline = Path.GetTempFileName();
