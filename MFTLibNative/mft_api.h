@@ -8,7 +8,7 @@ struct MftFileEntry {
     uint64_t parentRecordNumber;
     uint16_t flags;           // bit 0 = in use, bit 1 = directory
     uint16_t fileNameLength;  // wchar_t count (excluding null terminator)
-    uint32_t fileAttributes;  // Win32 FILE_ATTRIBUTE_* flags from $FILE_NAME
+    uint32_t fileAttributes;  // Win32 FILE_ATTRIBUTE_* flags from $STANDARD_INFORMATION (preferred) or $FILE_NAME (fallback)
     wchar_t  fileName[260];   // MAX_PATH, null-terminated
 };
 
@@ -17,7 +17,7 @@ struct MftPathEntry {
     uint64_t parentRecordNumber;
     uint16_t flags;
     uint16_t pathLength;      // wchar_t count
-    uint32_t fileAttributes;  // Win32 FILE_ATTRIBUTE_* flags from $FILE_NAME
+    uint32_t fileAttributes;  // Win32 FILE_ATTRIBUTE_* flags from $STANDARD_INFORMATION (preferred) or $FILE_NAME (fallback)
     wchar_t  path[1024];      // full resolved path from root
 };
 

@@ -14,8 +14,8 @@ namespace MFTLib.Tests;
 [TestClass]
 public class MockVolumeTests
 {
-    const int NativeEntrySize = 544;
-    const int NativePathEntrySize = 2072;
+    static readonly int NativeEntrySize = MftResult.NativeEntrySize;
+    static readonly int NativePathEntrySize = MftResult.NativePathEntrySize;
 
     [TestCleanup]
     public void Cleanup()
@@ -44,7 +44,7 @@ public class MockVolumeTests
                 Unsafe.WriteUnaligned(ptr + 16, (ushort)1);     // flags = InUse
                 var path = $"dir\\file{i}.txt";
                 Unsafe.WriteUnaligned(ptr + 18, (ushort)path.Length); // pathLength
-                var pathSpan = new Span<char>(ptr + 24, path.Length);
+                var pathSpan = new Span<char>(ptr + MftResult.NativeStringOffset, path.Length);
                 path.AsSpan().CopyTo(pathSpan);
             }
             else
@@ -55,7 +55,7 @@ public class MockVolumeTests
                 Unsafe.WriteUnaligned(ptr + 16, (ushort)1);     // flags = InUse
                 var name = $"file{i}.txt";
                 Unsafe.WriteUnaligned(ptr + 18, (ushort)name.Length); // nameLength
-                var nameSpan = new Span<char>(ptr + 24, name.Length);
+                var nameSpan = new Span<char>(ptr + MftResult.NativeStringOffset, name.Length);
                 name.AsSpan().CopyTo(nameSpan);
             }
         }
@@ -240,7 +240,7 @@ public class MockVolumeTests
         Unsafe.WriteUnaligned(ptr + 16, (ushort)1); // InUse, not directory
         var path = "test.txt";
         Unsafe.WriteUnaligned(ptr + 18, (ushort)path.Length);
-        path.AsSpan().CopyTo(new Span<char>(ptr + 24, path.Length));
+        path.AsSpan().CopyTo(new Span<char>(ptr + MftResult.NativeStringOffset, path.Length));
 
         // Directory entry
         ptr = (byte*)entryBuf + NativePathEntrySize;
@@ -249,7 +249,7 @@ public class MockVolumeTests
         Unsafe.WriteUnaligned(ptr + 16, (ushort)3); // InUse + Directory
         var dirPath = "somedir";
         Unsafe.WriteUnaligned(ptr + 18, (ushort)dirPath.Length);
-        dirPath.AsSpan().CopyTo(new Span<char>(ptr + 24, dirPath.Length));
+        dirPath.AsSpan().CopyTo(new Span<char>(ptr + MftResult.NativeStringOffset, dirPath.Length));
 
         var result = new MftParseResult
         {
@@ -291,7 +291,7 @@ public class MockVolumeTests
         Unsafe.WriteUnaligned(ptr + 16, (ushort)1);
         var filePath = "test.txt";
         Unsafe.WriteUnaligned(ptr + 18, (ushort)filePath.Length);
-        filePath.AsSpan().CopyTo(new Span<char>(ptr + 24, filePath.Length));
+        filePath.AsSpan().CopyTo(new Span<char>(ptr + MftResult.NativeStringOffset, filePath.Length));
 
         // Directory entry
         ptr = (byte*)entryBuf + NativePathEntrySize;
@@ -300,7 +300,7 @@ public class MockVolumeTests
         Unsafe.WriteUnaligned(ptr + 16, (ushort)3);
         var dirPath = "somedir";
         Unsafe.WriteUnaligned(ptr + 18, (ushort)dirPath.Length);
-        dirPath.AsSpan().CopyTo(new Span<char>(ptr + 24, dirPath.Length));
+        dirPath.AsSpan().CopyTo(new Span<char>(ptr + MftResult.NativeStringOffset, dirPath.Length));
 
         var result = new MftParseResult
         {

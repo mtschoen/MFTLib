@@ -50,9 +50,9 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     // Layouts mirror mft_api.h (pack(1)):
     //   MftFileEntry:  8+8+2+2+4 header, 260 wchar_t fileName → 24 + 520 = 544 bytes
     //   MftPathEntry:  8+8+2+2+4 header, 1024 wchar_t path    → 24 + 2048 = 2072 bytes
-    const int NativeEntrySize = 544;
-    const int NativePathEntrySize = 2072;
-    const int NativeStringOffset = 24; // offset of fileName/path after fileAttributes
+    internal const int NativeEntrySize = 544;
+    internal const int NativePathEntrySize = 2072;
+    internal const int NativeStringOffset = 24; // offset of fileName/path after fileAttributes
 
     unsafe delegate MftRecord EntryReader(byte* basePtr, ulong index);
 

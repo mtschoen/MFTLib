@@ -249,13 +249,14 @@ public class DriveScannerTests
 
     static unsafe (IntPtr resultPtr, Action<IntPtr> cleanup) BuildMftParseResult(ulong recordCount, bool includeDirectory = false)
     {
-        const int pathEntrySize = 2068;
+        var pathEntrySize = MftResult.NativePathEntrySize;
 
         var entriesPtr = IntPtr.Zero;
         if (recordCount > 0)
         {
-            entriesPtr = Marshal.AllocHGlobal((int)(recordCount * pathEntrySize));
-            new Span<byte>((void*)entriesPtr, (int)(recordCount * pathEntrySize)).Clear();
+            var bufferSize = (int)recordCount * pathEntrySize;
+            entriesPtr = Marshal.AllocHGlobal(bufferSize);
+            new Span<byte>((void*)entriesPtr, bufferSize).Clear();
 
             if (includeDirectory)
             {
@@ -265,7 +266,7 @@ public class DriveScannerTests
                 *(ushort*)(entryPtr + 16) = 0x0003; // InUse | Directory
                 var path = ".git";
                 *(ushort*)(entryPtr + 18) = (ushort)path.Length;
-                var pathChars = (char*)(entryPtr + 24);
+                var pathChars = (char*)(entryPtr + MftResult.NativeStringOffset);
                 for (var i = 0; i < path.Length; i++)
                     pathChars[i] = path[i];
             }

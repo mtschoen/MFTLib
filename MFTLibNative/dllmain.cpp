@@ -349,6 +349,19 @@ extern "C" {
         ApplyUSAProtection(record, FILE_RECORD_SIZE, (uint16_t)(recordIndex & 0xFFFF));
     }
 
+    // Generates a synthetic $MFT file that third-party parsers can also consume.
+    // Record distribution per index (deterministic, seeded on record index):
+    //   indices 0..4   : $MFT-like system records
+    //   index   5      : root directory record
+    //   indices 6+     : weighted mix chosen by a per-record PRNG roll (r % 100):
+    //       0..9   (10%) : zeroed slot (no FILE signature — "uninitialized")
+    //       10..24 (15%) : extension record (BaseFileRecordSegment != 0)
+    //       25..39 (15%) : directory
+    //       40..99 (60%) : regular file
+    // MFTLib's parser drops uninitialized AND extension records, so it reports
+    // ~75% of recordCount as logical files. Other parsers may drop only
+    // uninitialized slots and report ~90%. Both are correct — they answer
+    // different questions (logical files vs raw MFT entries).
     EXPORT bool GenerateSyntheticMFT(const wchar_t* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
         HANDLE hFile = CreateFileW(filePath, GENERIC_WRITE, 0, nullptr,
                                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
