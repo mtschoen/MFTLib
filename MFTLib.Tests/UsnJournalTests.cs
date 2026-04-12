@@ -233,4 +233,129 @@ public class UsnJournalTests
         Assert.AreEqual(0xDEADBEEFUL, cursor.JournalId);
         Assert.AreEqual(12345L, cursor.NextUsn);
     }
+
+    [TestMethod]
+    public async Task WatchUsnJournal_YieldsBatchThenCancels()
+    {
+        var callCount = 0;
+
+        MFTLibNative.WatchUsnJournalBatch = (_, startUsn, journalId) =>
+        {
+            callCount++;
+            if (callCount == 1)
+            {
+                return BuildSingleEntryWatchResult(journalId, startUsn + 100, "created.txt", 0x00000100);
+            }
+            return BuildEmptyWatchResult(journalId, startUsn);
+        };
+        MFTLibNative.CancelUsnJournalWatch = _ => true;
+        MFTLibNative.FreeUsnJournalResult = ptr => Marshal.FreeHGlobal(ptr);
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+
+        using var volume = MftVolume.Open("C");
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var batches = new List<UsnJournalEntry[]>();
+
+        await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+        {
+            batches.Add(batch);
+            cancellationTokenSource.Cancel();
+        }
+
+        Assert.AreEqual(1, batches.Count);
+        Assert.AreEqual("created.txt", batches[0][0].FileName);
+        Assert.IsTrue(batches[0][0].IsCreate);
+    }
+
+    [TestMethod]
+    public async Task WatchUsnJournal_ErrorInBatch_Throws()
+    {
+        MFTLibNative.WatchUsnJournalBatch = (_, _, _) =>
+        {
+            var nativeResult = new UsnJournalResultNative
+            {
+                ErrorMessage = "USN journal is not active",
+            };
+            var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
+            Marshal.StructureToPtr(nativeResult, resultPtr, false);
+            return resultPtr;
+        };
+        MFTLibNative.CancelUsnJournalWatch = _ => true;
+        MFTLibNative.FreeUsnJournalResult = ptr => Marshal.FreeHGlobal(ptr);
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+
+        using var volume = MftVolume.Open("C");
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+            {
+            }
+        });
+    }
+
+    [TestMethod]
+    public async Task WatchUsnJournal_NullPointer_Throws()
+    {
+        MFTLibNative.WatchUsnJournalBatch = (_, _, _) => IntPtr.Zero;
+        MFTLibNative.CancelUsnJournalWatch = _ => true;
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+
+        using var volume = MftVolume.Open("C");
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+            {
+            }
+        });
+    }
+
+    // --- Watch test helpers ---
+
+    static unsafe IntPtr BuildSingleEntryWatchResult(ulong journalId, long nextUsn, string fileName, uint reason)
+    {
+        var entrySize = MftVolume.NativeUsnEntrySize;
+        var entriesPtr = Marshal.AllocHGlobal(entrySize);
+        new Span<byte>((void*)entriesPtr, entrySize).Clear();
+
+        var ptr = (byte*)entriesPtr;
+        *(ulong*)ptr = 42;                  // recordNumber
+        *(ulong*)(ptr + 8) = 5;            // parentRecordNumber
+        *(long*)(ptr + 16) = nextUsn - 50; // usn
+        *(long*)(ptr + 24) = 0;            // timestamp
+        *(uint*)(ptr + 32) = reason;        // reason
+        *(uint*)(ptr + 36) = 0x20;         // fileAttributes = Archive
+        *(ushort*)(ptr + 40) = (ushort)fileName.Length;
+        fileName.AsSpan().CopyTo(new Span<char>(ptr + 42, fileName.Length));
+
+        var nativeResult = new UsnJournalResultNative
+        {
+            EntryCount = 1,
+            Entries = entriesPtr,
+            NextUsn = nextUsn,
+            JournalId = journalId,
+        };
+
+        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
+        Marshal.StructureToPtr(nativeResult, resultPtr, false);
+        return resultPtr;
+    }
+
+    static IntPtr BuildEmptyWatchResult(ulong journalId, long nextUsn)
+    {
+        var nativeResult = new UsnJournalResultNative
+        {
+            EntryCount = 0,
+            Entries = IntPtr.Zero,
+            NextUsn = nextUsn,
+            JournalId = journalId,
+        };
+
+        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
+        Marshal.StructureToPtr(nativeResult, resultPtr, false);
+        return resultPtr;
+    }
 }
