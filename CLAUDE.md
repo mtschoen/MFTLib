@@ -78,4 +78,4 @@ The native DLL must be built Debug|x64 (linked with `/PROFILE`) for instrumentat
 
 ## Roadmap
 
-See `.plan` for details. Next milestone is **0.3.0 — USN journal support** for incremental index updates (complement to full MFT scanning). Primary consumer is [file-wizard](C:\Users\mtsch\file-wizard).
+See `.plan` for details. Current release is **0.3.0** with USN journal support (`QueryUsnJournal`, `ReadUsnJournal`, `WatchUsnJournal`). Primary consumer is [file-wizard](C:\Users\mtsch\file-wizard).

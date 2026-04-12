@@ -1,25 +1,10 @@
-## 0.3.0 — USN Journal Support
+## 0.3.0 — USN Journal Support (SHIPPED)
 
-Add NTFS USN (Update Sequence Number) journal reading for incremental file index updates. This is the complement to MFT scanning: MFT gives the full snapshot, USN journal gives the delta since last scan.
-
-### Why
-
-file-wizard currently re-scans the entire MFT on every run. On a drive with 12M+ records this takes seconds for the MFT read but minutes for the content dedup pass. With USN journal support, file-wizard can detect only what changed since the last scan and update its index incrementally.
-
-### Scope
-
-- Read USN journal entries from a volume handle (native C++ read via `FSCTL_READ_USN_JOURNAL`)
-- Return structured records: file reference number, parent reference number, reason flags (create/delete/rename/modify), timestamp, filename
-- Map USN records back to `MftRecord` via record numbers for path resolution
-- Track journal cursor (USN ID + next USN) so callers can resume from where they left off
-- Expose as `MftVolume.ReadUsnJournal(sinceUsn)` or similar
-
-### Design Notes
-
-- Reuses the existing volume handle from `MftVolume.Open()`
-- Native layer already has buffer management infrastructure — USN reads use similar double-buffered pattern
-- Journal entries reference MFT record numbers, so consumers will typically pair this with a cached MFT index
-- Requires admin elevation (same as MFT scanning)
+Shipped in v0.3.0. Three APIs:
+- `MftVolume.QueryUsnJournal()` — get current journal cursor
+- `MftVolume.ReadUsnJournal(cursor)` — batch catch-up read
+- `MftVolume.WatchUsnJournal(cursor, cancellationToken)` — live IAsyncEnumerable event stream
+- `FileAttributes` sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback
 
 ## Native C++ Cleanup (dllmain.cpp)
 

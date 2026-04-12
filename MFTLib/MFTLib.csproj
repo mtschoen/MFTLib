@@ -11,9 +11,9 @@
 
     <!-- NuGet package metadata -->
     <PackageId>MFTLib</PackageId>
-    <Version>0.2.1</Version>
+    <Version>0.3.0</Version>
     <Authors>Matt Schoen</Authors>
-    <Description>Fast NTFS MFT (Master File Table) enumeration library for Windows. Parses MFT records via raw volume access with native C++ I/O, multi-threaded parsing, and double-buffered reads. Supports filename filtering, path resolution, and configurable buffer sizes.</Description>
+    <Description>Fast NTFS MFT (Master File Table) enumeration and USN journal library for Windows. Parses MFT records via raw volume access with native C++ I/O, multi-threaded parsing, and double-buffered reads. Supports filename filtering, path resolution, configurable buffer sizes, and incremental change detection via the USN change journal.</Description>
     <PackageProjectUrl>https://github.com/mtschoen/MFTLib</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mtschoen/MFTLib</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

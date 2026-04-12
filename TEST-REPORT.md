@@ -1,9 +1,9 @@
-MFTLib test report — 2026-04-05
-═══════════════════════════════════════════
+MFTLib test report — 2026-04-12
+===========================================
 
 Status:   PASS
-Tests:    218 total (185 non-admin + 33 admin), all passing
-Git:      db030e8 (main, with uncommitted changes)
+Tests:    237 total (200 non-admin + 37 admin), all passing
+Git:      main (v0.3.0 pre-release)
 
 Managed coverage: 100% line, 100% branch, 100% method
   MFTLib      — 100% line, 100% branch, 100% method
