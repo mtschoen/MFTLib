@@ -70,4 +70,49 @@ public class UsnJournalLiveTests
         Assert.IsTrue(entries.Length < 1000,
             $"Expected few entries from current position, got {entries.Length}");
     }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public async Task WatchUsnJournal_DetectsNewFile()
+    {
+        if (!IsAdmin()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+
+        using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var tempPath = Path.Combine(Path.GetTempPath(), $"mftlib-watch-test-{Guid.NewGuid()}.tmp");
+        var tempFileName = Path.GetFileName(tempPath);
+
+        var batches = new List<UsnJournalEntry[]>();
+        var watchTask = Task.Run(async () =>
+        {
+            await foreach (var batch in volume.WatchUsnJournal(cursor, cancellationTokenSource.Token))
+            {
+                batches.Add(batch);
+                if (batch.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase)))
+                    break;
+            }
+        });
+
+        await Task.Delay(200);
+        File.WriteAllText(tempPath, "watch test");
+
+        try
+        {
+            await watchTask;
+        }
+        catch (OperationCanceledException)
+        {
+            // Timeout is acceptable
+        }
+        finally
+        {
+            File.Delete(tempPath);
+        }
+
+        var allEntries = batches.SelectMany(b => b).ToArray();
+        Assert.IsTrue(allEntries.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase)),
+            $"Should find {tempFileName} in watched entries");
+    }
 }
