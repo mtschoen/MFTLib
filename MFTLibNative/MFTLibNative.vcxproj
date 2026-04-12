@@ -170,12 +170,19 @@ xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)Benchmark\bin\$(Platform)
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
+    <ClInclude Include="internal.h" />
     <ClInclude Include="mft_api.h" />
     <ClInclude Include="ntfs.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="core\ntfs_io.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="core\test_hooks.cpp" />
+    <ClCompile Include="core\ntfs_io.cpp" />
+    <ClCompile Include="mft\mft_parse.cpp" />
+    <ClCompile Include="mft\mft_synthetic.cpp" />
+    <ClCompile Include="usn\usn_journal.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
