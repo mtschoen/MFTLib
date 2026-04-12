@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib;
@@ -112,6 +113,92 @@ public sealed class MftVolume : IDisposable
         sw.Stop();
         timings = result.Timings.WithMarshalMs(sw.Elapsed.TotalMilliseconds);
         return records;
+    }
+
+    /// <summary>
+    /// Query the USN journal to get the current cursor position.
+    /// Use this after a full MFT scan to establish a baseline for incremental updates.
+    /// </summary>
+    public UsnJournalCursor QueryUsnJournal()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var infoPtr = MFTLibNative.QueryUsnJournal(_volumeHandle);
+        if (infoPtr == IntPtr.Zero)
+            throw new InvalidOperationException("QueryUsnJournal returned null");
+
+        try
+        {
+            var info = Marshal.PtrToStructure<Interop.UsnJournalInfoNative>(infoPtr);
+            if (!string.IsNullOrEmpty(info.ErrorMessage))
+                throw new InvalidOperationException(info.ErrorMessage);
+
+            return new UsnJournalCursor(info.JournalId, info.NextUsn);
+        }
+        finally
+        {
+            MFTLibNative.FreeUsnJournalInfo(infoPtr);
+        }
+    }
+
+    /// <summary>
+    /// Read USN journal entries since the given cursor.
+    /// Returns entries and an updated cursor for the next call.
+    /// Throws InvalidOperationException if the journal was recreated or entries
+    /// were overwritten — caller should fall back to a full MFT rescan.
+    /// </summary>
+    public (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor) ReadUsnJournal(UsnJournalCursor since)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var resultPtr = MFTLibNative.ReadUsnJournal(_volumeHandle, since.NextUsn, since.JournalId);
+        if (resultPtr == IntPtr.Zero)
+            throw new InvalidOperationException("ReadUsnJournal returned null");
+
+        try
+        {
+            var result = Marshal.PtrToStructure<Interop.UsnJournalResultNative>(resultPtr);
+            if (!string.IsNullOrEmpty(result.ErrorMessage))
+                throw new InvalidOperationException(result.ErrorMessage);
+
+            var entries = MarshalUsnEntries(result);
+            var updatedCursor = new UsnJournalCursor(result.JournalId, result.NextUsn);
+            return (entries, updatedCursor);
+        }
+        finally
+        {
+            MFTLibNative.FreeUsnJournalResult(resultPtr);
+        }
+    }
+
+    // Native UsnJournalEntry layout (pack 1):
+    //   recordNumber(8) + parentRecordNumber(8) + usn(8) + timestamp(8) +
+    //   reason(4) + fileAttributes(4) + fileNameLength(2) + fileName(260*2=520)
+    //   = 562 bytes
+    internal const int NativeUsnEntrySize = 562;
+
+    static unsafe UsnJournalEntry[] MarshalUsnEntries(Interop.UsnJournalResultNative result)
+    {
+        var count = (int)result.EntryCount;
+        if (count == 0) return [];
+        var entries = new UsnJournalEntry[count];
+        var basePtr = (byte*)result.Entries;
+
+        for (var i = 0; i < count; i++)
+        {
+            var ptr = basePtr + i * NativeUsnEntrySize;
+            var recordNumber = *(ulong*)ptr;
+            var parentRecordNumber = *(ulong*)(ptr + 8);
+            var usn = *(long*)(ptr + 16);
+            var timestamp = *(long*)(ptr + 24);
+            var reason = *(uint*)(ptr + 32);
+            var fileAttributes = *(uint*)(ptr + 36);
+            var fileNameLength = *(ushort*)(ptr + 40);
+            var fileName = new string((char*)(ptr + 42), 0, fileNameLength);
+
+            entries[i] = new UsnJournalEntry(recordNumber, parentRecordNumber,
+                usn, timestamp, reason, fileAttributes, fileName);
+        }
+
+        return entries;
     }
 
     internal static string ExtractDriveLetter(string normalizedPath)

@@ -36,12 +36,28 @@ static class MFTLibNative
     [DllImport(LibraryName, EntryPoint = "ParseMFTRecords", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
     internal static extern IntPtr NativeParseMFTRecordsRaw(IntPtr volumeHandle, string? filter, uint matchFlags, uint bufferSizeRecords);
 
+    [DllImport(LibraryName, EntryPoint = "QueryUsnJournal", CallingConvention = CallingConvention.Cdecl)]
+    static extern IntPtr NativeQueryUsnJournal(SafeHandle volumeHandle);
+
+    [DllImport(LibraryName, EntryPoint = "FreeUsnJournalInfo", CallingConvention = CallingConvention.Cdecl)]
+    static extern void NativeFreeUsnJournalInfo(IntPtr info);
+
+    [DllImport(LibraryName, EntryPoint = "ReadUsnJournal", CallingConvention = CallingConvention.Cdecl)]
+    static extern IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalId);
+
+    [DllImport(LibraryName, EntryPoint = "FreeUsnJournalResult", CallingConvention = CallingConvention.Cdecl)]
+    static extern void NativeFreeUsnJournalResult(IntPtr result);
+
     // Swappable function pointers — default to the native P/Invoke implementations.
     // Tests or platforms without the native library can replace these.
     internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr> ParseMFTRecords = NativeParseMFTRecords;
     internal static Action<IntPtr> FreeMftResult = NativeFreeMftResult;
     internal static Func<string, ulong, uint, bool> GenerateSyntheticMFT = NativeGenerateSyntheticMFT;
     internal static Func<string, string?, MatchFlags, uint, IntPtr> ParseMFTFromFile = NativeParseMFTFromFile;
+    internal static Func<SafeHandle, IntPtr> QueryUsnJournal = NativeQueryUsnJournal;
+    internal static Action<IntPtr> FreeUsnJournalInfo = NativeFreeUsnJournalInfo;
+    internal static Func<SafeHandle, long, ulong, IntPtr> ReadUsnJournal = NativeReadUsnJournal;
+    internal static Action<IntPtr> FreeUsnJournalResult = NativeFreeUsnJournalResult;
 
     /// <summary>
     /// Reset all function pointers to their native P/Invoke defaults.
@@ -52,5 +68,9 @@ static class MFTLibNative
         FreeMftResult = NativeFreeMftResult;
         GenerateSyntheticMFT = NativeGenerateSyntheticMFT;
         ParseMFTFromFile = NativeParseMFTFromFile;
+        QueryUsnJournal = NativeQueryUsnJournal;
+        FreeUsnJournalInfo = NativeFreeUsnJournalInfo;
+        ReadUsnJournal = NativeReadUsnJournal;
+        FreeUsnJournalResult = NativeFreeUsnJournalResult;
     }
 }
