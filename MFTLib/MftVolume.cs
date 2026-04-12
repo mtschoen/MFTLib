@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -199,6 +200,59 @@ public sealed class MftVolume : IDisposable
         }
 
         return entries;
+    }
+
+    /// <summary>
+    /// Yields batches of USN journal entries as filesystem changes arrive.
+    /// Blocks on the kernel (zero CPU) until new entries appear.
+    /// Cancel the token to stop watching — unblocks the kernel wait via CancelIoEx.
+    /// </summary>
+    public async IAsyncEnumerable<UsnJournalEntry[]> WatchUsnJournal(
+        UsnJournalCursor since,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var nextUsn = since.NextUsn;
+        var journalId = since.JournalId;
+
+        using var registration = cancellationToken.Register(() =>
+            MFTLibNative.CancelUsnJournalWatch(_volumeHandle));
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            var resultPtr = await Task.Run(
+                () => MFTLibNative.WatchUsnJournalBatch(_volumeHandle, nextUsn, journalId),
+                cancellationToken).ConfigureAwait(false);
+
+            if (resultPtr == IntPtr.Zero)
+                throw new InvalidOperationException("WatchUsnJournalBatch returned null");
+
+            UsnJournalEntry[] entries;
+            try
+            {
+                var result = Marshal.PtrToStructure<Interop.UsnJournalResultNative>(resultPtr);
+                if (!string.IsNullOrEmpty(result.ErrorMessage))
+                    throw new InvalidOperationException(result.ErrorMessage);
+
+                entries = MarshalUsnEntries(result);
+                nextUsn = result.NextUsn;
+            }
+            finally
+            {
+                MFTLibNative.FreeUsnJournalResult(resultPtr);
+            }
+
+            if (entries.Length == 0)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    yield break;
+                continue;
+            }
+
+            yield return entries;
+        }
     }
 
     internal static string ExtractDriveLetter(string normalizedPath)

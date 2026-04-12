@@ -48,6 +48,13 @@ static class MFTLibNative
     [DllImport(LibraryName, EntryPoint = "FreeUsnJournalResult", CallingConvention = CallingConvention.Cdecl)]
     static extern void NativeFreeUsnJournalResult(IntPtr result);
 
+    [DllImport(LibraryName, EntryPoint = "WatchUsnJournalBatch", CallingConvention = CallingConvention.Cdecl)]
+    static extern IntPtr NativeWatchUsnJournalBatch(SafeHandle volumeHandle, long startUsn, ulong journalId);
+
+    [DllImport(LibraryName, EntryPoint = "CancelUsnJournalWatch", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool NativeCancelUsnJournalWatch(SafeHandle volumeHandle);
+
     // Swappable function pointers — default to the native P/Invoke implementations.
     // Tests or platforms without the native library can replace these.
     internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr> ParseMFTRecords = NativeParseMFTRecords;
@@ -58,6 +65,8 @@ static class MFTLibNative
     internal static Action<IntPtr> FreeUsnJournalInfo = NativeFreeUsnJournalInfo;
     internal static Func<SafeHandle, long, ulong, IntPtr> ReadUsnJournal = NativeReadUsnJournal;
     internal static Action<IntPtr> FreeUsnJournalResult = NativeFreeUsnJournalResult;
+    internal static Func<SafeHandle, long, ulong, IntPtr> WatchUsnJournalBatch = NativeWatchUsnJournalBatch;
+    internal static Func<SafeHandle, bool> CancelUsnJournalWatch = NativeCancelUsnJournalWatch;
 
     /// <summary>
     /// Reset all function pointers to their native P/Invoke defaults.
@@ -72,5 +81,7 @@ static class MFTLibNative
         FreeUsnJournalInfo = NativeFreeUsnJournalInfo;
         ReadUsnJournal = NativeReadUsnJournal;
         FreeUsnJournalResult = NativeFreeUsnJournalResult;
+        WatchUsnJournalBatch = NativeWatchUsnJournalBatch;
+        CancelUsnJournalWatch = NativeCancelUsnJournalWatch;
     }
 }
