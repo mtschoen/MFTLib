@@ -1335,4 +1335,141 @@ extern "C" {
             delete result;
         }
     }
+
+    // Blocking single-batch read. Uses BytesToWaitFor=1 with overlapped I/O so
+    // the kernel blocks until new entries appear. CancelUsnJournalWatch() calls
+    // CancelIoEx to unblock. Returns a UsnJournalResult* — caller must free with
+    // FreeUsnJournalResult. On cancellation, returns a result with entryCount=0
+    // and no error message (normal shutdown).
+    EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId) {
+        auto* result = new UsnJournalResult{};
+        result->journalId = journalId;
+        result->nextUsn = startUsn;
+
+        constexpr size_t readBufferSize = 64 * 1024;
+        auto* readBuffer = (uint8_t*)VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!readBuffer) {
+            swprintf_s(result->errorMessage, 256, L"Failed to allocate read buffer");
+            return result;
+        }
+
+        READ_USN_JOURNAL_DATA_V1 readData{};
+        readData.StartUsn          = startUsn;
+        readData.ReasonMask        = 0xFFFFFFFF;
+        readData.ReturnOnlyOnClose = 0;
+        readData.Timeout           = 0;
+        readData.BytesToWaitFor    = 1; // Block until at least 1 byte of data
+        readData.UsnJournalID      = journalId;
+        readData.MinMajorVersion   = 2;
+        readData.MaxMajorVersion   = 2;
+
+        // Use overlapped I/O so CancelIoEx can interrupt the blocking wait
+        OVERLAPPED overlapped{};
+        overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!overlapped.hEvent) {
+            VirtualFree(readBuffer, 0, MEM_RELEASE);
+            swprintf_s(result->errorMessage, 256, L"Failed to create event. Error: %lu", GetLastError());
+            return result;
+        }
+
+        DWORD bytesReturned = 0;
+        BOOL ok = DeviceIoControl(volumeHandle, FSCTL_READ_USN_JOURNAL,
+                                  &readData, sizeof(readData),
+                                  readBuffer, (DWORD)readBufferSize,
+                                  &bytesReturned, &overlapped);
+
+        if (!ok) {
+            DWORD error = GetLastError();
+            if (error == ERROR_IO_PENDING) {
+                // Expected — wait for completion or cancellation
+                ok = GetOverlappedResult(volumeHandle, &overlapped, &bytesReturned, TRUE);
+                if (!ok) {
+                    error = GetLastError();
+                    if (error == ERROR_OPERATION_ABORTED) {
+                        // CancelIoEx was called — clean shutdown
+                        CloseHandle(overlapped.hEvent);
+                        VirtualFree(readBuffer, 0, MEM_RELEASE);
+                        return result; // entryCount=0, no error
+                    }
+                }
+            }
+
+            if (!ok) {
+                CloseHandle(overlapped.hEvent);
+                VirtualFree(readBuffer, 0, MEM_RELEASE);
+                DWORD finalError = GetLastError();
+                if (finalError == ERROR_HANDLE_EOF || finalError == ERROR_WRITE_PROTECT) {
+                    return result; // normal end
+                } else if (finalError == ERROR_JOURNAL_NOT_ACTIVE) {
+                    swprintf_s(result->errorMessage, 256, L"USN journal is not active");
+                } else if (finalError == ERROR_JOURNAL_DELETE_IN_PROGRESS) {
+                    swprintf_s(result->errorMessage, 256, L"USN journal deletion is in progress");
+                } else if (finalError == ERROR_JOURNAL_ENTRY_DELETED) {
+                    swprintf_s(result->errorMessage, 256, L"USN journal entries have been deleted; full rescan needed");
+                } else {
+                    swprintf_s(result->errorMessage, 256, L"FSCTL_READ_USN_JOURNAL watch failed. Error: %lu", finalError);
+                }
+                return result;
+            }
+        }
+
+        CloseHandle(overlapped.hEvent);
+
+        // Parse entries (same logic as ReadUsnJournal)
+        if (bytesReturned >= sizeof(int64_t)) {
+            int64_t bufferNextUsn;
+            memcpy(&bufferNextUsn, readBuffer, sizeof(int64_t));
+            result->nextUsn = bufferNextUsn;
+
+            // Count entries first to allocate exactly
+            uint64_t count = 0;
+            uint8_t* scanPtr = readBuffer + sizeof(int64_t);
+            uint8_t* endPtr = readBuffer + bytesReturned;
+            while (scanPtr + sizeof(USN_RECORD_V2) <= endPtr) {
+                auto* rec = (USN_RECORD_V2*)scanPtr;
+                if (rec->RecordLength == 0) break;
+                count++;
+                scanPtr += rec->RecordLength;
+            }
+
+            if (count > 0) {
+                result->entries = (UsnJournalEntry*)VirtualAlloc(
+                    nullptr, (size_t)count * sizeof(UsnJournalEntry), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                if (result->entries) {
+                    constexpr uint64_t fileRefMask = 0x0000FFFFFFFFFFFF;
+                    uint8_t* recordPtr = readBuffer + sizeof(int64_t);
+                    for (uint64_t i = 0; i < count && recordPtr + sizeof(USN_RECORD_V2) <= endPtr; i++) {
+                        auto* usnRecord = (USN_RECORD_V2*)recordPtr;
+                        if (usnRecord->RecordLength == 0) break;
+
+                        auto& entry = result->entries[i];
+                        memset(&entry, 0, sizeof(UsnJournalEntry));
+                        entry.recordNumber       = usnRecord->FileReferenceNumber & fileRefMask;
+                        entry.parentRecordNumber = usnRecord->ParentFileReferenceNumber & fileRefMask;
+                        entry.usn                = usnRecord->Usn;
+                        entry.timestamp          = usnRecord->TimeStamp.QuadPart;
+                        entry.reason             = usnRecord->Reason;
+                        entry.fileAttributes     = usnRecord->FileAttributes;
+
+                        uint16_t nameLenChars = usnRecord->FileNameLength / sizeof(WCHAR);
+                        uint16_t copyLen = min(nameLenChars, (uint16_t)259);
+                        entry.fileNameLength = copyLen;
+                        wmemcpy_s(entry.fileName, 260,
+                                  (wchar_t*)((uint8_t*)usnRecord + usnRecord->FileNameOffset),
+                                  copyLen);
+
+                        result->entryCount++;
+                        recordPtr += usnRecord->RecordLength;
+                    }
+                }
+            }
+        }
+
+        VirtualFree(readBuffer, 0, MEM_RELEASE);
+        return result;
+    }
+
+    EXPORT BOOL CancelUsnJournalWatch(HANDLE volumeHandle) {
+        return CancelIoEx(volumeHandle, nullptr);
+    }
 }
