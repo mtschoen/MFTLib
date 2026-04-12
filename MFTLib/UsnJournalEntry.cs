@@ -2,7 +2,16 @@ namespace MFTLib;
 
 public readonly struct UsnJournalEntry
 {
+    /// <summary>
+    /// MFT segment index (48-bit, sequence number stripped). Matches MftRecord.RecordNumber.
+    /// Safe to use as a dictionary key across MFT scans and USN journal reads on the same volume.
+    /// </summary>
     public ulong RecordNumber { get; }
+
+    /// <summary>
+    /// Parent directory's MFT segment index (48-bit, sequence number stripped). Matches MftRecord.ParentRecordNumber.
+    /// The NTFS root directory is segment 5 (its parent is also 5).
+    /// </summary>
     public ulong ParentRecordNumber { get; }
     public long Usn { get; }
     public DateTime Timestamp { get; }

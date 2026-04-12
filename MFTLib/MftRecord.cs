@@ -20,7 +20,15 @@ public readonly struct MftRecord
     readonly string? _fileName;
     readonly string? _fullPath;
 
+    /// <summary>
+    /// MFT segment index (48-bit, sequence number stripped). Stable across USN journal reads.
+    /// </summary>
     public ulong RecordNumber => _recordNumber;
+
+    /// <summary>
+    /// Parent directory's MFT segment index (48-bit, sequence number stripped).
+    /// The NTFS root directory is segment 5 (its parent is also 5).
+    /// </summary>
     public ulong ParentRecordNumber => _parentRecordNumber;
     public bool InUse => (_flags & 1) != 0;
     public bool IsDirectory => (_flags & 2) != 0;
