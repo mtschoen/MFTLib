@@ -37,6 +37,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="MFTLib.Tests" />
+    <InternalsVisibleTo Include="FileWizardTests" />
   </ItemGroup>
 
   <ItemGroup>
