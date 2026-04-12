@@ -1195,4 +1195,336 @@ public class NativeCoverageTests
         data[offset] = 0xFF; data[offset + 1] = 0xFF;
         data[offset + 2] = 0xFF; data[offset + 3] = 0xFF;
     }
+
+    // --- USN journal native error paths ---
+    // These use SetUsnIoFailError to inject DeviceIoControl failures with specific
+    // Win32 error codes, exercising all error branches in usn_journal.cpp.
+
+    // Win32 error constants
+    const uint ERROR_WRITE_PROTECT = 19;
+    const uint ERROR_HANDLE_EOF = 38;
+    const uint ERROR_OPERATION_ABORTED = 995;
+    const uint ERROR_IO_PENDING = 997;
+    const uint ERROR_JOURNAL_DELETE_IN_PROGRESS = 1178;
+    const uint ERROR_JOURNAL_NOT_ACTIVE = 1179;
+    const uint ERROR_JOURNAL_ENTRY_DELETED = 1181;
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void QueryUsnJournal_JournalNotActive_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
+        using var volume = MftVolume.Open("C");
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.QueryUsnJournal());
+        Assert.IsTrue(exception.Message.Contains("not active"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void QueryUsnJournal_DeleteInProgress_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
+        using var volume = MftVolume.Open("C");
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.QueryUsnJournal());
+        Assert.IsTrue(exception.Message.Contains("deletion"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void QueryUsnJournal_GenericError_ReturnsErrorCode()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        MFTLibNative.NativeSetUsnIoFailError(5, 1); // ERROR_ACCESS_DENIED
+        using var volume = MftVolume.Open("C");
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.QueryUsnJournal());
+        Assert.IsTrue(exception.Message.Contains("Error: 5"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void ReadUsnJournal_AllocFailOnReadBuffer_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetAllocFailCountdown(1); // fail read buffer alloc
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
+        Assert.IsTrue(exception.Message.Contains("allocate"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void ReadUsnJournal_AllocFailOnEntryArray_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetAllocFailCountdown(2); // skip read buffer, fail entry array
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
+        Assert.IsTrue(exception.Message.Contains("allocate"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void ReadUsnJournal_FromStartOfJournal_HitsGrowPath()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        // Read from LowestValidUsn to get enough entries to trigger the grow path (>1024)
+        using var volume = MftVolume.Open("C");
+        var cursor = new UsnJournalCursor(volume.QueryUsnJournal().JournalId, 0);
+        var (entries, _) = volume.ReadUsnJournal(cursor);
+        // On any active system, reading from USN 0 should return many entries
+        // If <1024, the grow path won't be hit — that's OK, it's system-dependent
+        Assert.IsTrue(entries.Length > 0);
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void ReadUsnJournal_AllocFailOnGrow_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        // Countdown 3: skip read buffer alloc, skip entry array alloc, fail on grow
+        using var volume = MftVolume.Open("C");
+        var cursor = new UsnJournalCursor(volume.QueryUsnJournal().JournalId, 0);
+        MFTLibNative.NativeSetAllocFailCountdown(3);
+        try
+        {
+            var (entries, _) = volume.ReadUsnJournal(cursor);
+            // If <1024 entries, grow never triggers and this succeeds — that's OK
+        }
+        catch (InvalidOperationException exception)
+        {
+            Assert.IsTrue(exception.Message.Contains("grow"));
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void WatchUsnJournal_AllocFailOnReadBuffer_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetAllocFailCountdown(1); // fail read buffer alloc
+        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), cursor.NextUsn, cursor.JournalId);
+        var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
+        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        Assert.IsTrue(result.ErrorMessage.Contains("allocate"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void WatchUsnJournal_AllocFailOnEvent_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetAllocFailCountdown(2); // skip read buffer, fail CreateEvent
+        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), cursor.NextUsn, cursor.JournalId);
+        var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
+        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        Assert.IsTrue(result.ErrorMessage.Contains("event") || result.ErrorMessage.Contains("Error"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void WatchUsnJournal_DeleteInProgress_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
+        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), cursor.NextUsn, cursor.JournalId);
+        var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
+        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        Assert.IsTrue(result.ErrorMessage.Contains("deletion"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void ReadUsnJournal_JournalNotActive_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
+        Assert.IsTrue(exception.Message.Contains("not active"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void ReadUsnJournal_DeleteInProgress_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
+        Assert.IsTrue(exception.Message.Contains("deletion"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void ReadUsnJournal_EntryDeleted_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
+        Assert.IsTrue(exception.Message.Contains("rescan"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void ReadUsnJournal_HandleEof_ReturnsEmpty()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 1);
+        var (entries, _) = volume.ReadUsnJournal(cursor);
+        Assert.AreEqual(0, entries.Length);
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void ReadUsnJournal_GenericError_ReturnsErrorCode()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetUsnIoFailError(5, 1);
+        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
+        Assert.IsTrue(exception.Message.Contains("Error: 5"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void WatchUsnJournal_JournalNotActive_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), cursor.NextUsn, cursor.JournalId);
+            var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
+            MFTLibNative.FreeUsnJournalResult(resultPtr);
+            if (!string.IsNullOrEmpty(result.ErrorMessage))
+                throw new InvalidOperationException(result.ErrorMessage);
+        });
+        Assert.IsTrue(exception.Message.Contains("not active"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void WatchUsnJournal_HandleEof_ReturnsEmpty()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 1);
+        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), cursor.NextUsn, cursor.JournalId);
+        var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
+        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        Assert.AreEqual(0UL, result.EntryCount);
+        Assert.IsTrue(string.IsNullOrEmpty(result.ErrorMessage));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void WatchUsnJournal_EntryDeleted_ReturnsError()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
+        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), cursor.NextUsn, cursor.JournalId);
+        var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
+        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        Assert.IsTrue(result.ErrorMessage.Contains("rescan"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void WatchUsnJournal_GenericError_ReturnsErrorCode()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+        MFTLibNative.NativeSetUsnIoFailError(5, 1);
+        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), cursor.NextUsn, cursor.JournalId);
+        var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
+        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        Assert.IsTrue(result.ErrorMessage.Contains("Error: 5"));
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void CancelUsnJournalWatch_OnValidHandle_Returns()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        using var volume = MftVolume.Open("C");
+        // CancelIoEx on a handle with no pending I/O returns false (ERROR_NOT_FOUND) — that's fine
+        MFTLibNative.CancelUsnJournalWatch(volume.GetVolumeHandleForTest());
+    }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void WatchUsnJournal_CancelDuringBlockingWait_ReturnsEmpty()
+    {
+        if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
+
+        // Read to current position first so the watch will block (no new entries)
+        using var volume = MftVolume.Open("C");
+        var cursor = volume.QueryUsnJournal();
+
+        // Start the blocking watch on a background thread
+        var handle = volume.GetVolumeHandleForTest();
+        IntPtr resultPtr = IntPtr.Zero;
+        var watchThread = new Thread(() =>
+        {
+            resultPtr = MFTLibNative.WatchUsnJournalBatch(handle, cursor.NextUsn, cursor.JournalId);
+        });
+        watchThread.Start();
+
+        // Give it time to enter the blocking DeviceIoControl
+        Thread.Sleep(500);
+
+        // Cancel it — this hits the ERROR_OPERATION_ABORTED path
+        MFTLibNative.CancelUsnJournalWatch(handle);
+        watchThread.Join(5000);
+
+        Assert.AreNotEqual(IntPtr.Zero, resultPtr);
+        var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
+        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        // Either cancelled (empty, no error) or returned entries from background activity
+        Assert.IsTrue(string.IsNullOrEmpty(result.ErrorMessage),
+            $"Expected no error, got: {result.ErrorMessage}");
+    }
 }

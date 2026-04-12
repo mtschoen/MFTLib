@@ -15,3 +15,4 @@ static inline double ElapsedMs(TimePoint start, TimePoint end) {
 unsigned EffectiveThreadCount();
 bool ShouldFailAlloc();
 bool ShouldFailRead();
+bool ShouldFailUsnIo(DWORD& outError);

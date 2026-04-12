@@ -12,6 +12,8 @@ public sealed class MftVolume : IDisposable
     readonly uint _bufferSizeRecords;
     bool _disposed;
 
+    internal SafeFileHandle GetVolumeHandleForTest() => _volumeHandle;
+
     MftVolume(SafeFileHandle volumeHandle, string driveLetter, uint bufferSizeRecords)
     {
         _volumeHandle = volumeHandle;

@@ -29,6 +29,9 @@ static class MFTLibNative
     [DllImport(LibraryName, EntryPoint = "SetReadFailCountdown", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetReadFailCountdown(int countdown);
 
+    [DllImport(LibraryName, EntryPoint = "SetUsnIoFailError", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetUsnIoFailError(uint error, int countdown);
+
     [DllImport(LibraryName, EntryPoint = "ResetTestState", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeResetTestState();
 

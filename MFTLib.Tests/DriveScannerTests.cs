@@ -241,8 +241,9 @@ public class DriveScannerTests
     {
         var entryPoint = typeof(TestProgram.DriveScanner).Assembly.EntryPoint!;
         var exitCode = entryPoint.Invoke(null, [Array.Empty<string>()]);
-        // Not elevated in test runner, so it prints the failure message and returns 1
-        Assert.AreEqual(1, exitCode);
+        // Non-elevated: prints failure message and returns 1
+        // Elevated: scans default drive G and returns 0
+        Assert.IsTrue(exitCode is 0 or 1);
     }
 
     // --- Helpers ---

@@ -4,13 +4,29 @@
 #include "../mft_api.h"
 #include "../internal.h"
 
+// Wraps DeviceIoControl with test hook support.
+// When the USN I/O fail countdown fires, returns FALSE with the configured error code.
+static BOOL UsnDeviceIoControl(HANDLE handle, DWORD ioControlCode,
+    LPVOID inBuffer, DWORD inBufferSize,
+    LPVOID outBuffer, DWORD outBufferSize,
+    LPDWORD bytesReturned, LPOVERLAPPED overlapped)
+{
+    DWORD hookError;
+    if (ShouldFailUsnIo(hookError)) {
+        SetLastError(hookError);
+        return FALSE;
+    }
+    return DeviceIoControl(handle, ioControlCode, inBuffer, inBufferSize,
+                           outBuffer, outBufferSize, bytesReturned, overlapped);
+}
+
 extern "C" {
     EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
         auto* info = new UsnJournalInfo{};
 
         USN_JOURNAL_DATA_V0 journalData{};
         DWORD bytesReturned = 0;
-        if (!DeviceIoControl(volumeHandle, FSCTL_QUERY_USN_JOURNAL,
+        if (!UsnDeviceIoControl(volumeHandle, FSCTL_QUERY_USN_JOURNAL,
                              nullptr, 0,
                              &journalData, sizeof(journalData),
                              &bytesReturned, nullptr)) {
@@ -43,7 +59,7 @@ extern "C" {
         result->journalId = journalId;
 
         constexpr size_t readBufferSize = 64 * 1024;
-        auto* readBuffer = (uint8_t*)VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        auto* readBuffer = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!readBuffer) {
             swprintf_s(result->errorMessage, 256, L"Failed to allocate read buffer");
             return result;
@@ -75,7 +91,7 @@ extern "C" {
             readData.StartUsn = nextUsn;
 
             DWORD bytesReturned = 0;
-            BOOL ok = DeviceIoControl(volumeHandle, FSCTL_READ_USN_JOURNAL,
+            BOOL ok = UsnDeviceIoControl(volumeHandle, FSCTL_READ_USN_JOURNAL,
                                       &readData, sizeof(readData),
                                       readBuffer, (DWORD)readBufferSize,
                                       &bytesReturned, nullptr);
@@ -171,7 +187,7 @@ extern "C" {
         result->nextUsn = startUsn;
 
         constexpr size_t readBufferSize = 64 * 1024;
-        auto* readBuffer = (uint8_t*)VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        auto* readBuffer = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!readBuffer) {
             swprintf_s(result->errorMessage, 256, L"Failed to allocate read buffer");
             return result;
@@ -188,7 +204,7 @@ extern "C" {
         readData.MaxMajorVersion   = 2;
 
         OVERLAPPED overlapped{};
-        overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        overlapped.hEvent = ShouldFailAlloc() ? nullptr : CreateEventW(nullptr, TRUE, FALSE, nullptr);
         if (!overlapped.hEvent) {
             VirtualFree(readBuffer, 0, MEM_RELEASE);
             swprintf_s(result->errorMessage, 256, L"Failed to create event. Error: %lu", GetLastError());
@@ -196,7 +212,7 @@ extern "C" {
         }
 
         DWORD bytesReturned = 0;
-        BOOL ok = DeviceIoControl(volumeHandle, FSCTL_READ_USN_JOURNAL,
+        BOOL ok = UsnDeviceIoControl(volumeHandle, FSCTL_READ_USN_JOURNAL,
                                   &readData, sizeof(readData),
                                   readBuffer, (DWORD)readBufferSize,
                                   &bytesReturned, &overlapped);

@@ -191,10 +191,17 @@ public class SystemInfoTests
     }
 
     [TestMethod]
-    public void DefaultQueryPartitionIds_WithInvalidDrive_ReturnsEmpty()
+    public void DefaultQueryPartitionIds_WithInvalidDrive_ReturnsEmptyOrThrows()
     {
-        var partitions = SystemInfo.DefaultQueryPartitionIds("Z").ToList();
-        Assert.AreEqual(0, partitions.Count);
+        try
+        {
+            var partitions = SystemInfo.DefaultQueryPartitionIds("Z").ToList();
+            Assert.AreEqual(0, partitions.Count);
+        }
+        catch (System.Management.ManagementException)
+        {
+            // WMI throws "Not found" under elevated context for invalid drives
+        }
     }
 
     [TestMethod]
