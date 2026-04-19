@@ -79,16 +79,15 @@ public class UsnJournalLiveTests
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
 
-        using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var tempPath = Path.Combine(Path.GetTempPath(), $"mftlib-watch-test-{Guid.NewGuid()}.tmp");
         var tempFileName = Path.GetFileName(tempPath);
 
         var batches = new List<UsnJournalEntry[]>();
         var watchTask = Task.Run(async () =>
         {
+            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             // ReSharper disable once AccessToDisposedClosure
-            // volume is captured inside Task.Run, but watchTask is awaited before the enclosing using exits,
-            // so volume remains alive for the full duration of the task.
+            // volume is captured from outer scope; watchTask is awaited before volume's using exits.
             await foreach (var batch in volume.WatchUsnJournal(cursor, cancellationTokenSource.Token))
             {
                 batches.Add(batch);

@@ -7,7 +7,6 @@
 #include "../ntfs.h"
 #include "../mft_api.h"
 #include "../internal.h"
-#include "../core/ntfs_io.h"
 
 static void ApplyUSAProtection(uint8_t* record, uint32_t recordSize, uint16_t usn) {
     auto* header = (PFILE_RECORD_SEGMENT_HEADER)record;

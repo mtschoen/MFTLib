@@ -384,7 +384,9 @@ public class UsnJournalTests
 
         MFTLibNative.WatchUsnJournalBatch = (_, startUsn, journalId) =>
         {
-            // Simulate CancelIoEx race: cancel token then return empty result
+            // Simulate CancelIoEx race: cancel token then return empty result.
+            // ReSharper disable once AccessToDisposedClosure
+            // cancellationTokenSource is captured by this delegate; delegate runs synchronously during await foreach.
             cancellationTokenSource.Cancel();
             return BuildEmptyWatchResult(journalId, startUsn);
         };
