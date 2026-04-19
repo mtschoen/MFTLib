@@ -60,8 +60,11 @@ public class UsnJournalTests
         MFTLibNative.QueryUsnJournal = _ => infoPtr;
         MFTLibNative.FreeUsnJournalInfo = _ => Marshal.FreeHGlobal(infoPtr);
 
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.QueryUsnJournal());
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.QueryUsnJournal();
+        });
         Assert.IsTrue(exception.Message.Contains("error 5"));
     }
 
@@ -71,8 +74,11 @@ public class UsnJournalTests
         FileUtilities.GetVolumeHandle = _ => FakeHandle();
         MFTLibNative.QueryUsnJournal = _ => IntPtr.Zero;
 
-        using var volume = MftVolume.Open("C");
-        Assert.ThrowsException<InvalidOperationException>(() => volume.QueryUsnJournal());
+        Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.QueryUsnJournal();
+        });
     }
 
     [TestMethod]
@@ -182,9 +188,11 @@ public class UsnJournalTests
         MFTLibNative.ReadUsnJournal = (_, _, _) => resultPtr;
         MFTLibNative.FreeUsnJournalResult = _ => Marshal.FreeHGlobal(resultPtr);
 
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(
-            () => volume.ReadUsnJournal(new UsnJournalCursor(0xABCD, 500)));
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.ReadUsnJournal(new UsnJournalCursor(0xABCD, 500));
+        });
         Assert.IsTrue(exception.Message.Contains("overwritten"));
     }
 
@@ -194,9 +202,11 @@ public class UsnJournalTests
         FileUtilities.GetVolumeHandle = _ => FakeHandle();
         MFTLibNative.ReadUsnJournal = (_, _, _) => IntPtr.Zero;
 
-        using var volume = MftVolume.Open("C");
-        Assert.ThrowsException<InvalidOperationException>(
-            () => volume.ReadUsnJournal(new UsnJournalCursor(0xABCD, 500)));
+        Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.ReadUsnJournal(new UsnJournalCursor(0xABCD, 500));
+        });
     }
 
     [TestMethod]
@@ -382,6 +392,9 @@ public class UsnJournalTests
         MFTLibNative.FreeUsnJournalResult = _ => { };
         FileUtilities.GetVolumeHandle = _ => FakeHandle();
 
+        // ReSharper disable once AccessToDisposedClosure
+        // volume is captured by the async enumerator state machine; ReSharper cannot prove the using scope
+        // outlives the enumeration, but the await foreach completes before Dispose() is called.
         using var volume = MftVolume.Open("C");
         var batches = new List<UsnJournalEntry[]>();
 

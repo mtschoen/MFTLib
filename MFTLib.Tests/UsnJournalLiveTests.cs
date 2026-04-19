@@ -86,6 +86,9 @@ public class UsnJournalLiveTests
         var batches = new List<UsnJournalEntry[]>();
         var watchTask = Task.Run(async () =>
         {
+            // ReSharper disable once AccessToDisposedClosure
+            // volume is captured inside Task.Run, but watchTask is awaited before the enclosing using exits,
+            // so volume remains alive for the full duration of the task.
             await foreach (var batch in volume.WatchUsnJournal(cursor, cancellationTokenSource.Token))
             {
                 batches.Add(batch);

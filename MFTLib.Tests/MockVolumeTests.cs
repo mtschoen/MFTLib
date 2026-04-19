@@ -155,8 +155,11 @@ public class MockVolumeTests
     {
         FileUtilities.GetVolumeHandle = _ => FakeHandle();
         MFTLibNative.ParseMFTRecords = (_, _, _, _) => IntPtr.Zero;
-        using var volume = MftVolume.Open("C");
-        Assert.ThrowsException<InvalidOperationException>(() => volume.StreamRecords());
+        Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.StreamRecords();
+        });
     }
 
     // --- MftVolume.ReadAllRecords overloads ---

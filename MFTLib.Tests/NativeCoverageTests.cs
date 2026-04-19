@@ -1212,8 +1212,11 @@ public class NativeCoverageTests
         if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
 
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.QueryUsnJournal());
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.QueryUsnJournal();
+        });
         Assert.IsTrue(exception.Message.Contains("not active"));
     }
 
@@ -1224,8 +1227,11 @@ public class NativeCoverageTests
         if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
 
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.QueryUsnJournal());
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.QueryUsnJournal();
+        });
         Assert.IsTrue(exception.Message.Contains("deletion"));
     }
 
@@ -1236,8 +1242,11 @@ public class NativeCoverageTests
         if (!ElevationUtilities.IsElevated()) { Assert.Inconclusive("Requires admin"); return; }
 
         MFTLibNative.NativeSetUsnIoFailError(5, 1); // ERROR_ACCESS_DENIED
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.QueryUsnJournal());
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.QueryUsnJournal();
+        });
         Assert.IsTrue(exception.Message.Contains("Error: 5"));
     }
 
@@ -1250,6 +1259,9 @@ public class NativeCoverageTests
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
         MFTLibNative.NativeSetAllocFailCountdown(1); // fail read buffer alloc
+        // ReSharper disable once AccessToDisposedClosure
+        // QueryUsnJournal must succeed before the alloc-fail countdown is set, so volume and cursor cannot
+        // both be moved inside the lambda without breaking the test ordering. ThrowsException is synchronous.
         var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
         Assert.IsTrue(exception.Message.Contains("allocate"));
     }
@@ -1263,6 +1275,9 @@ public class NativeCoverageTests
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
         MFTLibNative.NativeSetAllocFailCountdown(2); // skip read buffer, fail entry array
+        // ReSharper disable once AccessToDisposedClosure
+        // QueryUsnJournal must succeed before the alloc-fail countdown is set, so volume and cursor cannot
+        // both be moved inside the lambda without breaking the test ordering. ThrowsException is synchronous.
         var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
         Assert.IsTrue(exception.Message.Contains("allocate"));
     }
@@ -1357,6 +1372,9 @@ public class NativeCoverageTests
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
+        // ReSharper disable once AccessToDisposedClosure
+        // QueryUsnJournal must succeed before the IO-fail injection, so volume and cursor cannot both be
+        // moved inside the lambda without changing test semantics. ThrowsException is synchronous.
         var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
         Assert.IsTrue(exception.Message.Contains("not active"));
     }
@@ -1370,6 +1388,9 @@ public class NativeCoverageTests
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
+        // ReSharper disable once AccessToDisposedClosure
+        // QueryUsnJournal must succeed before the IO-fail injection, so volume and cursor cannot both be
+        // moved inside the lambda without changing test semantics. ThrowsException is synchronous.
         var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
         Assert.IsTrue(exception.Message.Contains("deletion"));
     }
@@ -1383,6 +1404,9 @@ public class NativeCoverageTests
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
+        // ReSharper disable once AccessToDisposedClosure
+        // QueryUsnJournal must succeed before the IO-fail injection, so volume and cursor cannot both be
+        // moved inside the lambda without changing test semantics. ThrowsException is synchronous.
         var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
         Assert.IsTrue(exception.Message.Contains("rescan"));
     }
@@ -1409,6 +1433,9 @@ public class NativeCoverageTests
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
         MFTLibNative.NativeSetUsnIoFailError(5, 1);
+        // ReSharper disable once AccessToDisposedClosure
+        // QueryUsnJournal must succeed before the IO-fail injection, so volume and cursor cannot both be
+        // moved inside the lambda without changing test semantics. ThrowsException is synchronous.
         var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(cursor));
         Assert.IsTrue(exception.Message.Contains("Error: 5"));
     }
@@ -1422,6 +1449,9 @@ public class NativeCoverageTests
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
+        // ReSharper disable once AccessToDisposedClosure
+        // QueryUsnJournal must succeed before the IO-fail injection, so volume and cursor cannot both be
+        // moved inside the lambda without changing test semantics. ThrowsException is synchronous.
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), cursor.NextUsn, cursor.JournalId);
