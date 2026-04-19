@@ -32,11 +32,11 @@ extern "C" {
                              &bytesReturned, nullptr)) {
             DWORD error = GetLastError();
             if (error == ERROR_JOURNAL_NOT_ACTIVE)
-                (void)swprintf_s(info->errorMessage, 256, L"USN journal is not active");
+                swprintf_s(info->errorMessage, 256, L"USN journal is not active");
             else if (error == ERROR_JOURNAL_DELETE_IN_PROGRESS)
-                (void)swprintf_s(info->errorMessage, 256, L"USN journal deletion is in progress");
+                swprintf_s(info->errorMessage, 256, L"USN journal deletion is in progress");
             else
-                (void)swprintf_s(info->errorMessage, 256, L"FSCTL_QUERY_USN_JOURNAL failed. Error: %lu", error);
+                swprintf_s(info->errorMessage, 256, L"FSCTL_QUERY_USN_JOURNAL failed. Error: %lu", error);
             return info;
         }
 
@@ -61,7 +61,7 @@ extern "C" {
         constexpr size_t readBufferSize = 64 * 1024;
         auto* readBuffer = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!readBuffer) {
-            (void)swprintf_s(result->errorMessage, 256, L"Failed to allocate read buffer");
+            swprintf_s(result->errorMessage, 256, L"Failed to allocate read buffer");
             return result;
         }
 
@@ -71,7 +71,7 @@ extern "C" {
             nullptr, (size_t)capacity * sizeof(UsnJournalEntry), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!result->entries) {
             VirtualFree(readBuffer, 0, MEM_RELEASE);
-            (void)swprintf_s(result->errorMessage, 256, L"Failed to allocate entry array");
+            swprintf_s(result->errorMessage, 256, L"Failed to allocate entry array");
             return result;
         }
 
@@ -100,16 +100,16 @@ extern "C" {
                 if (error == ERROR_HANDLE_EOF || error == ERROR_WRITE_PROTECT) {
                     break;
                 } else if (error == ERROR_JOURNAL_NOT_ACTIVE) {
-                    (void)swprintf_s(result->errorMessage, 256, L"USN journal is not active");
+                    swprintf_s(result->errorMessage, 256, L"USN journal is not active");
                     break;
                 } else if (error == ERROR_JOURNAL_DELETE_IN_PROGRESS) {
-                    (void)swprintf_s(result->errorMessage, 256, L"USN journal deletion is in progress");
+                    swprintf_s(result->errorMessage, 256, L"USN journal deletion is in progress");
                     break;
                 } else if (error == ERROR_JOURNAL_ENTRY_DELETED) {
-                    (void)swprintf_s(result->errorMessage, 256, L"USN journal entries have been deleted; full rescan needed");
+                    swprintf_s(result->errorMessage, 256, L"USN journal entries have been deleted; full rescan needed");
                     break;
                 } else {
-                    (void)swprintf_s(result->errorMessage, 256, L"FSCTL_READ_USN_JOURNAL failed. Error: %lu", error);
+                    swprintf_s(result->errorMessage, 256, L"FSCTL_READ_USN_JOURNAL failed. Error: %lu", error);
                     break;
                 }
             }
@@ -136,7 +136,7 @@ extern "C" {
                         nullptr, (size_t)newCapacity * sizeof(UsnJournalEntry),
                         MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
                     if (!grown) {
-                        (void)swprintf_s(result->errorMessage, 256, L"Failed to grow entry array");
+                        swprintf_s(result->errorMessage, 256, L"Failed to grow entry array");
                         VirtualFree(readBuffer, 0, MEM_RELEASE);
                         result->nextUsn = nextUsn;
                         return result;
@@ -189,7 +189,7 @@ extern "C" {
         constexpr size_t readBufferSize = 64 * 1024;
         auto* readBuffer = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!readBuffer) {
-            (void)swprintf_s(result->errorMessage, 256, L"Failed to allocate read buffer");
+            swprintf_s(result->errorMessage, 256, L"Failed to allocate read buffer");
             return result;
         }
 
@@ -207,7 +207,7 @@ extern "C" {
         overlapped.hEvent = ShouldFailAlloc() ? nullptr : CreateEventW(nullptr, TRUE, FALSE, nullptr);
         if (!overlapped.hEvent) {
             VirtualFree(readBuffer, 0, MEM_RELEASE);
-            (void)swprintf_s(result->errorMessage, 256, L"Failed to create event. Error: %lu", GetLastError());
+            swprintf_s(result->errorMessage, 256, L"Failed to create event. Error: %lu", GetLastError());
             return result;
         }
 
@@ -238,13 +238,13 @@ extern "C" {
                 if (finalError == ERROR_HANDLE_EOF || finalError == ERROR_WRITE_PROTECT) {
                     return result;
                 } else if (finalError == ERROR_JOURNAL_NOT_ACTIVE) {
-                    (void)swprintf_s(result->errorMessage, 256, L"USN journal is not active");
+                    swprintf_s(result->errorMessage, 256, L"USN journal is not active");
                 } else if (finalError == ERROR_JOURNAL_DELETE_IN_PROGRESS) {
-                    (void)swprintf_s(result->errorMessage, 256, L"USN journal deletion is in progress");
+                    swprintf_s(result->errorMessage, 256, L"USN journal deletion is in progress");
                 } else if (finalError == ERROR_JOURNAL_ENTRY_DELETED) {
-                    (void)swprintf_s(result->errorMessage, 256, L"USN journal entries have been deleted; full rescan needed");
+                    swprintf_s(result->errorMessage, 256, L"USN journal entries have been deleted; full rescan needed");
                 } else {
-                    (void)swprintf_s(result->errorMessage, 256, L"FSCTL_READ_USN_JOURNAL watch failed. Error: %lu", finalError);
+                    swprintf_s(result->errorMessage, 256, L"FSCTL_READ_USN_JOURNAL watch failed. Error: %lu", finalError);
                 }
                 return result;
             }

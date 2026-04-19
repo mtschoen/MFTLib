@@ -1,0 +1,7 @@
+# cert-err33-c fires on every swprintf_s that writes a fixed-size error
+# buffer — the return value isn't actionable here (the _s variant traps
+# real failures via the invalid-parameter handler, and callers detect
+# "no error set" via errorMessage[0] == 0). CERT ERR33-C-EX1 exempts
+# sprintf but not snprintf/swprintf; this project doesn't enforce CERT C,
+# so disabling the check is cleaner than peppering (void) casts everywhere.
+Checks: '-cert-err33-c'

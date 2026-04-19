@@ -224,7 +224,7 @@ static void ProcessRecordBatch(
                         uint64_t newCapacity = capacity * 2;
                         auto* grown = ShouldFailAlloc() ? nullptr : (MftFileEntry*)realloc(result->entries, (size_t)newCapacity * sizeof(MftFileEntry));
                         if (!grown) {
-                            (void)swprintf_s(result->errorMessage, 256, L"Failed to grow entry array");
+                            swprintf_s(result->errorMessage, 256, L"Failed to grow entry array");
                             result->usedRecords = usedCount;
                             return;
                         }
@@ -274,7 +274,7 @@ static MftParseResult* ParseMFTImpl(
     PathLookup lookup = {};
     if (resolvePaths) {
         if (ShouldFailAlloc() || !lookup.init(totalRecords)) {
-            (void)swprintf_s(result->errorMessage, 256, L"Failed to allocate path lookup");
+            swprintf_s(result->errorMessage, 256, L"Failed to allocate path lookup");
             return result;
         }
     }
@@ -289,7 +289,7 @@ static MftParseResult* ParseMFTImpl(
         if (buf[0]) VirtualFree(buf[0], 0, MEM_RELEASE);
         if (buf[1]) VirtualFree(buf[1], 0, MEM_RELEASE);
         if (resolvePaths) lookup.cleanup();
-        (void)swprintf_s(result->errorMessage, 256, L"Failed to allocate I/O buffers");
+        swprintf_s(result->errorMessage, 256, L"Failed to allocate I/O buffers");
         return result;
     }
 
@@ -300,7 +300,7 @@ static MftParseResult* ParseMFTImpl(
         VirtualFree(buf[0], 0, MEM_RELEASE);
         VirtualFree(buf[1], 0, MEM_RELEASE);
         if (resolvePaths) lookup.cleanup();
-        (void)swprintf_s(result->errorMessage, 256, L"Failed to allocate entry array");
+        swprintf_s(result->errorMessage, 256, L"Failed to allocate entry array");
         return result;
     }
 
@@ -510,18 +510,18 @@ extern "C" {
         if (!result) return nullptr;
 
         if (volumeHandle == INVALID_HANDLE_VALUE) {
-            (void)swprintf_s(result->errorMessage, 256, L"Volume handle is invalid");
+            swprintf_s(result->errorMessage, 256, L"Volume handle is invalid");
             return result;
         }
 
         NTFS_BPB bpb;
         DWORD bytesRead;
         if (!Read(volumeHandle, &bpb, 0, 512, &bytesRead) || bytesRead != 512) {
-            (void)swprintf_s(result->errorMessage, 256, L"Failed to read boot sector. Error: %lu", GetLastError());
+            swprintf_s(result->errorMessage, 256, L"Failed to read boot sector. Error: %lu", GetLastError());
             return result;
         }
         if (bpb.name[0] != 'N' || bpb.name[1] != 'T' || bpb.name[2] != 'F' || bpb.name[3] != 'S') {
-            (void)swprintf_s(result->errorMessage, 256, L"Volume is not NTFS");
+            swprintf_s(result->errorMessage, 256, L"Volume is not NTFS");
             return result;
         }
 
@@ -530,7 +530,7 @@ extern "C" {
         uint8_t record0[FILE_RECORD_SIZE];
         if (!Read(volumeHandle, record0, bpb.mftStart * bytesPerCluster, FILE_RECORD_SIZE, &bytesRead)
             || bytesRead != FILE_RECORD_SIZE) {
-            (void)swprintf_s(result->errorMessage, 256, L"Failed to read MFT record 0");
+            swprintf_s(result->errorMessage, 256, L"Failed to read MFT record 0");
             return result;
         }
 
@@ -538,13 +538,13 @@ extern "C" {
 
         auto* fileRecord0 = (PFILE_RECORD_SEGMENT_HEADER)record0;
         if (fileRecord0->MultiSectorHeader.Magic != 0x454C4946) {
-            (void)swprintf_s(result->errorMessage, 256, L"Invalid MFT record 0 magic");
+            swprintf_s(result->errorMessage, 256, L"Invalid MFT record 0 magic");
             return result;
         }
 
         auto* dataAttr = FindAttribute(record0, Data);
         if (!dataAttr) {
-            (void)swprintf_s(result->errorMessage, 256, L"No Data attribute in MFT record 0");
+            swprintf_s(result->errorMessage, 256, L"No Data attribute in MFT record 0");
             return result;
         }
         auto mftRuns = ParseDataRuns(dataAttr);
@@ -622,7 +622,7 @@ extern "C" {
                                    OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
         if (hFile == INVALID_HANDLE_VALUE) {
             auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
-            if (result) (void)swprintf_s(result->errorMessage, 256, L"Failed to open file. Error: %lu", GetLastError());
+            if (result) swprintf_s(result->errorMessage, 256, L"Failed to open file. Error: %lu", GetLastError());
             return result;
         }
 
