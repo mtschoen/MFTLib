@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MFTLib;
 using MFTLib.Interop;
 
 namespace MFTLib.Tests;
@@ -371,7 +370,7 @@ public class NativeCoverageTests
     // --- Fixup mismatch path ---
 
     [TestMethod]
-    public unsafe void ParseFromFile_CorruptedFixup_StillParses()
+    public void ParseFromFile_CorruptedFixup_StillParses()
     {
         // Generate a synthetic MFT, then corrupt a sector-end checksum
         var path = Path.GetTempFileName();
@@ -638,7 +637,7 @@ public class NativeCoverageTests
     // --- Resident AttributeList path ---
 
     [TestMethod]
-    public unsafe void ParseMFTRecords_ResidentAttributeList_ParsesExtensionRecords()
+    public void ParseMFTRecords_ResidentAttributeList_ParsesExtensionRecords()
     {
         // Record 0 with Data + empty resident AttributeList.
         // Exercises the resident else branch (lines 1017-1020).
@@ -787,7 +786,7 @@ public class NativeCoverageTests
     // --- ReadNonResidentData success path ---
 
     [TestMethod]
-    public unsafe void ParseMFTRecords_NonResidentAttributeList_Succeeds()
+    public void ParseMFTRecords_NonResidentAttributeList_Succeeds()
     {
         // Non-resident AttributeList with data runs pointing to valid data in the file.
         // Exercises ReadNonResidentData success path (lines 142-145, 147).
@@ -846,7 +845,7 @@ public class NativeCoverageTests
     // --- Extension record Data attribute parsing ---
 
     [TestMethod]
-    public unsafe void ParseMFTRecords_ResidentAttributeList_WithExtensionRecord()
+    public void ParseMFTRecords_ResidentAttributeList_WithExtensionRecord()
     {
         // Record 0 has Data + resident AttributeList pointing to record 1.
         // Record 1 has a Data attribute with additional data runs.
@@ -904,7 +903,7 @@ public class NativeCoverageTests
     // --- ReadMFTRecord: record not found in data runs ---
 
     [TestMethod]
-    public unsafe void ParseMFTRecords_ExtensionRecordNotInRuns_StillParses()
+    public void ParseMFTRecords_ExtensionRecordNotInRuns_StillParses()
     {
         // AttributeList points to segment 9999 which is beyond the data runs.
         // Exercises lines 166-170 (ReadMFTRecord "not found").
@@ -948,7 +947,7 @@ public class NativeCoverageTests
     // --- ReadMFTRecord: Read failure during extension record ---
 
     [TestMethod]
-    public unsafe void ParseMFTRecords_ReadFailDuringExtensionRecordRead()
+    public void ParseMFTRecords_ReadFailDuringExtensionRecordRead()
     {
         // Covers line 162 (ReadMFTRecord Read failure).
         // Reads: 1=boot sector, 2=record 0, 3=ReadMFTRecord for extension → fail here
@@ -995,7 +994,7 @@ public class NativeCoverageTests
     // --- VolumeReadChunk Read failure ---
 
     [TestMethod]
-    public unsafe void ParseMFTRecords_VolumeReadChunkFail_ReturnsZeroUsedRecords()
+    public void ParseMFTRecords_VolumeReadChunkFail_ReturnsZeroUsedRecords()
     {
         // Covers line 950 (VolumeReadChunk returns 0 on Read failure).
         // With no attribute list, reads: 1=boot sector, 2=record 0, 3=VolumeReadChunk → fail
@@ -1036,7 +1035,7 @@ public class NativeCoverageTests
     // --- ReadNonResidentData failure ---
 
     [TestMethod]
-    public unsafe void ParseMFTRecords_ReadFailDuringNonResidentAttributeList()
+    public void ParseMFTRecords_ReadFailDuringNonResidentAttributeList()
     {
         // Covers lines 138-140 (ReadNonResidentData Read failure).
         // Record 0 has non-resident AttributeList. Read #3 targets its data → fail.
@@ -1166,16 +1165,16 @@ public class NativeCoverageTests
         data[offset] = 0x20; // TypeCode = AttributeList
         data[offset + 8] = 0x00; // FormCode = resident
         // ValueLength
-        data[offset + 0x10] = (byte)(entrySize & 0xFF);
-        data[offset + 0x11] = (byte)((entrySize >> 8) & 0xFF);
+        data[offset + 0x10] = entrySize & 0xFF;
+        data[offset + 0x11] = (entrySize >> 8) & 0xFF;
         // ValueOffset
-        data[offset + 0x14] = (byte)valueOffset;
+        data[offset + 0x14] = valueOffset;
 
         // Write the ATTRIBUTE_LIST_ENTRY at valueOffset
         var entry = offset + valueOffset;
         data[entry] = 0x80; // AttributeTypeCode = Data
-        data[entry + 4] = (byte)(entrySize & 0xFF); // RecordLength
-        data[entry + 5] = (byte)((entrySize >> 8) & 0xFF);
+        data[entry + 4] = entrySize & 0xFF; // RecordLength
+        data[entry + 5] = (entrySize >> 8) & 0xFF;
         // SegmentReference at offset 16 within entry
         data[entry + 16] = (byte)(segmentNumber & 0xFF);
         data[entry + 17] = (byte)((segmentNumber >> 8) & 0xFF);
@@ -1201,10 +1200,7 @@ public class NativeCoverageTests
     // Win32 error codes, exercising all error branches in usn_journal.cpp.
 
     // Win32 error constants
-    const uint ERROR_WRITE_PROTECT = 19;
     const uint ERROR_HANDLE_EOF = 38;
-    const uint ERROR_OPERATION_ABORTED = 995;
-    const uint ERROR_IO_PENDING = 997;
     const uint ERROR_JOURNAL_DELETE_IN_PROGRESS = 1178;
     const uint ERROR_JOURNAL_NOT_ACTIVE = 1179;
     const uint ERROR_JOURNAL_ENTRY_DELETED = 1181;

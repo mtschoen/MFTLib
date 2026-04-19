@@ -551,7 +551,7 @@ extern "C" {
 
         auto* attrListAttr = FindAttribute(record0, AttributeList);
         if (attrListAttr) {
-            uint8_t* attrListData = nullptr;
+            uint8_t* attrListData;
             uint64_t attrListSize = 0;
 
             if (attrListAttr->FormCode == 1) {
@@ -604,7 +604,7 @@ extern "C" {
         for (auto& run : mftRuns) totalMftBytes += run.clusterCount * bytesPerCluster;
         uint64_t totalRecords = totalMftBytes / FILE_RECORD_SIZE;
 
-        VolumeReadContext ctx = {};
+        VolumeReadContext ctx;
         ctx.volumeHandle = volumeHandle;
         ctx.mftRuns = &mftRuns;
         ctx.bytesPerCluster = bytesPerCluster;

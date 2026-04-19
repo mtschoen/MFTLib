@@ -75,7 +75,7 @@ extern "C" {
             return result;
         }
 
-        READ_USN_JOURNAL_DATA_V1 readData{};
+        READ_USN_JOURNAL_DATA_V1 readData;
         readData.StartUsn          = startUsn;
         readData.ReasonMask        = 0xFFFFFFFF;
         readData.ReturnOnlyOnClose = 0;
@@ -193,7 +193,7 @@ extern "C" {
             return result;
         }
 
-        READ_USN_JOURNAL_DATA_V1 readData{};
+        READ_USN_JOURNAL_DATA_V1 readData;
         readData.StartUsn          = startUsn;
         readData.ReasonMask        = 0xFFFFFFFF;
         readData.ReturnOnlyOnClose = 0;

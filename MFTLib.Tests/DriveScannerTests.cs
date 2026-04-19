@@ -1,8 +1,6 @@
-using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
-using MFTLib;
 using MFTLib.Interop;
 
 namespace MFTLib.Tests;
@@ -215,7 +213,7 @@ public class DriveScannerTests
     }
 
     [TestMethod]
-    public unsafe void ScanDrive_WithDirectoryRecord_PrintsDirectoryPath()
+    public void ScanDrive_WithDirectoryRecord_PrintsDirectoryPath()
     {
         var (resultPtr, cleanupAction) = BuildMftParseResult(recordCount: 1, includeDirectory: true);
         FileUtilities.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
