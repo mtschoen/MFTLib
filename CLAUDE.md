@@ -74,7 +74,6 @@ The native DLL must be built Debug|x64 (linked with `/PROFILE`) for instrumentat
 - **TestProgram** (C# Console App) - CLI that reads MFT metadata for specified drives. Automatically self-elevates.
 - **Benchmark** (C# Console App) - Performance benchmark using synthetic MFT generation.
 - **MFTLib.Tests** (C# xUnit) - Unit tests for record mapping and path resolution.
-- **ConsoleApplication1** (C++ Console) - Legacy prototype, superseded by MFTLibNative.
 
 ## Roadmap
 

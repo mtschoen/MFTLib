@@ -56,7 +56,7 @@ struct PathLookup {
         nameLens[recordIndex] = nameLen;
     }
 
-    void cleanup() {
+    void cleanup() const {
         free(parents);
         free(nameLens);
         free(nameOffsets);
@@ -67,10 +67,10 @@ struct PathLookup {
 static uint16_t ResolvePath(uint64_t recordIndex, PathLookup& lookup, uint64_t totalRecords,
                             wchar_t* pathBuf, uint16_t pathBufSize) {
     struct Component { const wchar_t* name; uint8_t len; };
-    Component stack[128];
+    Component stack[128] = {};
     int depth = 0;
     uint64_t current = recordIndex;
-    uint64_t visited[128];
+    uint64_t visited[128] = {};
     int visitCount = 0;
 
     while (current != 5 && current < totalRecords && depth < 128) {
@@ -108,7 +108,7 @@ struct SliceResult {
         count = 0;
         capacity = cap;
     }
-    void cleanup() { free(entries); }
+    void cleanup() const { free(entries); }
 };
 
 static void ProcessRecordSlice(
@@ -282,7 +282,7 @@ static MftParseResult* ParseMFTImpl(
     unsigned numThreads = EffectiveThreadCount();
 
     const size_t bufSize = (size_t)bufferSizeRecords * FILE_RECORD_SIZE;
-    uint8_t* buf[2];
+    uint8_t* buf[2] = {};
     buf[0] = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     buf[1] = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!buf[0] || !buf[1]) {

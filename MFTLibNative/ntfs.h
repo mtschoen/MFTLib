@@ -5,7 +5,7 @@ typedef LARGE_INTEGER VCN, *PVCN;
 typedef USHORT UPDATE_SEQUENCE_NUMBER, *PUPDATE_SEQUENCE_NUMBER;
 typedef UPDATE_SEQUENCE_NUMBER UPDATE_SEQUENCE_ARRAY[1];
 
-#define FILE_RECORD_SIZE (1024)
+constexpr uint32_t FILE_RECORD_SIZE = 1024;
 
 enum ATTRIBUTE_TYPE_CODE : uint32_t
 {
@@ -118,37 +118,9 @@ typedef struct _FILE_RECORD_SEGMENT_HEADER {
     UPDATE_SEQUENCE_ARRAY UpdateSequenceArray;
 } FILE_RECORD_SEGMENT_HEADER, * PFILE_RECORD_SEGMENT_HEADER;
 
-// from https://learn.microsoft.com/en-us/windows/win32/devnotes/standard-information
-typedef struct _STANDARD_INFORMATION {
-    UCHAR Reserved[0x30];
-    ULONG OwnerId;
-    ULONG SecurityId;
-} STANDARD_INFORMATION, * PSTANDARD_INFORMATION;
-
-struct StandardInformationAttribute : ATTRIBUTE_RECORD_HEADER {
-    uint64_t    creationTime;
-    uint64_t    modificationTime;
-    uint64_t    metadataModificationTime;
-    uint64_t    readTime;
-    uint32_t    permissions;
-    uint32_t    maxVersions;
-    uint32_t    version;
-    uint32_t    classId;
-    uint32_t    ownerId;
-    uint32_t    securityId;
-    uint64_t    quota;
-    uint64_t    updateSequence;
-};
-
 struct RunHeader {
     uint8_t lengthFieldBytes : 4;
     uint8_t offsetFieldBytes : 4;
-};
-
-struct NTFS_COMBINED_VOLUME_DATA
-{
-    NTFS_VOLUME_DATA_BUFFER StandardData;
-    NTFS_EXTENDED_VOLUME_DATA ExtendedData;
 };
 
 // BIOS parameter block -- first cluster of the hard drive which contains filesystem info
