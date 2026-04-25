@@ -20,3 +20,11 @@ Shipped in v0.3.0. Three APIs:
 
 - Optional: make benchmark environment failures explicit instead of silently printing `Unknown`.
   Address by logging the WMI/CIM exception message or HRESULT in the benchmark header when system info queries fail.
+
+## Test Infrastructure
+
+- **Admin test runs hang on exit (recurring).** When `run-coverage.ps1` (full mode) or `native-coverage.ps1` is launched elevated via UAC, the elevated process intermittently fails to exit cleanly after `dotnet test` reports all tests passed — the parent shell sits indefinitely waiting on `Start-Process -Wait`. Same symptom appears with both `Microsoft.CodeCoverage.Console collect` (native script) and the plain coverlet path (managed script). Suspects to investigate:
+  - `WatchUsnJournal_*` admin tests use `CancelIoEx` to unblock a kernel wait — possible the cancel races with process teardown and leaves a worker thread in a non-signaled wait, blocking the runtime's exit. Worth checking with `procdump -ma` on a hung session to see what threads are alive.
+  - `dotnet test` host process (`testhost.dll`) running under instrumentation may not flush the coverage file before the parent reaps it — could be the instrumentation harness, not the tests themselves.
+  - A timeout wrapper around the elevated invocation (e.g. `Start-Process` with a watchdog that issues `taskkill /T` after N minutes past the last log line) would at least prevent the session from blocking forever.
+  - Long-term: split admin-only tests into a separate test project so the non-admin run stays the default and elevated runs can be opted into with a known-stable test set.
