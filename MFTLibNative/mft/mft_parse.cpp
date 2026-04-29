@@ -1,6 +1,10 @@
 #include "pch.h"
 
+#include <atomic>
 #include <chrono>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -9,10 +13,12 @@
 #include "../mft_api.h"
 #include "../internal.h"
 #include "../core/ntfs_io.h"
+#include "../core/platform.h"
 
-static bool FileNameMatches(const wchar_t* name, uint8_t nameLen,
+static bool FileNameMatches(const WCHAR* name, uint8_t nameLen,
                             const wchar_t* filter, uint16_t filterLen,
                             uint32_t matchFlags) {
+#ifdef _WIN32
     if (matchFlags & 1) {
         if (nameLen != filterLen) return false;
         return _wcsnicmp(name, filter, nameLen) == 0;
@@ -25,6 +31,9 @@ static bool FileNameMatches(const wchar_t* name, uint8_t nameLen,
         }
         return false;
     }
+#else
+    (void)name; (void)nameLen; (void)filter; (void)filterLen; (void)matchFlags;
+#endif
     return false;
 }
 
@@ -32,27 +41,32 @@ struct PathLookup {
     uint64_t* parents;
     uint8_t*  nameLens;
     uint32_t* nameOffsets;
-    wchar_t*  namePool;
-    uint64_t  namePoolUsed;
+    // namePool stores raw NTFS UTF-16 bytes (2 bytes per WCHAR unit).
+    // On Windows wchar_t==WCHAR so this is a direct match.
+    // On Linux wchar_t is 32-bit, so we use a byte pool and keep sizes in code units.
+    uint8_t*  namePool;
+    std::atomic<uint64_t> namePoolUsed;
     uint64_t  namePoolCapacity;
 
     bool init(uint64_t totalRecords) {
         parents = (uint64_t*)calloc((size_t)totalRecords, sizeof(uint64_t));
         nameLens = (uint8_t*)calloc((size_t)totalRecords, sizeof(uint8_t));
         nameOffsets = (uint32_t*)calloc((size_t)totalRecords, sizeof(uint32_t));
-        namePoolCapacity = totalRecords * 32;
-        namePool = (wchar_t*)malloc((size_t)namePoolCapacity * sizeof(wchar_t));
+        // Each name entry can be up to 255 WCHAR units = 510 bytes; use 32 bytes avg * 2 for bytes
+        namePoolCapacity = totalRecords * 64; // bytes
+        namePool = (uint8_t*)malloc((size_t)namePoolCapacity);
         namePoolUsed = 0;
         return parents && nameLens && nameOffsets && namePool;
     }
 
-    void storeName(uint64_t recordIndex, uint64_t parent, const wchar_t* name, uint8_t nameLen) {
+    // Store a name from an NTFS FileName attribute (WCHAR* = char16_t*, nameLen in WCHAR units)
+    void storeName(uint64_t recordIndex, uint64_t parent, const WCHAR* name, uint8_t nameLen) {
         parents[recordIndex] = parent;
-        uint64_t offset = (uint64_t)InterlockedExchangeAdd64(
-            (volatile LONG64*)&namePoolUsed, (LONG64)nameLen);
-        if (offset + nameLen > namePoolCapacity) return;
+        uint64_t byteCount = (uint64_t)nameLen * sizeof(WCHAR);
+        uint64_t offset = namePoolUsed.fetch_add(byteCount, std::memory_order_relaxed);
+        if (offset + byteCount > namePoolCapacity) return;
         nameOffsets[recordIndex] = (uint32_t)offset;
-        wmemcpy(namePool + offset, name, nameLen);
+        memcpy(namePool + offset, name, (size_t)byteCount);
         nameLens[recordIndex] = nameLen;
     }
 
@@ -64,9 +78,42 @@ struct PathLookup {
     }
 };
 
+// Copy NTFS WCHAR units (UTF-16, char16_t) to wchar_t, combining surrogate pairs on Linux.
+// Returns the number of wchar_t codepoints written.
+static uint16_t CopyNtfsNameUnits(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src, uint16_t srcLen) {
+    uint16_t out = 0;
+    for (uint16_t i = 0; i < srcLen && out < dstCapacity; i++) {
+        uint16_t unit;
+        memcpy(&unit, src + i, sizeof(WCHAR));
+#ifndef _WIN32
+        if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < srcLen) {
+            uint16_t low;
+            memcpy(&low, src + i + 1, sizeof(WCHAR));
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                uint32_t codepoint = 0x10000u + (((uint32_t)(unit - 0xD800)) << 10) + (low - 0xDC00);
+                dst[out++] = (wchar_t)codepoint;
+                i++;
+                continue;
+            }
+        }
+#endif
+        dst[out++] = (wchar_t)unit;
+    }
+    return out;
+}
+
+// Copy a NTFS WCHAR name (UTF-16, char16_t units) into a wchar_t buffer.
+// On Windows (wchar_t==uint16_t) this is a direct unit copy.
+// On Linux (wchar_t==uint32_t) surrogate pairs are combined into a single codepoint.
+// Always null-terminates if there's room (callers pass dstCapacity > srcLen in practice).
+static void CopyNtfsName(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src, uint16_t srcLen) {
+    uint16_t out = CopyNtfsNameUnits(dst, dstCapacity, src, srcLen);
+    if (out < dstCapacity) dst[out] = L'\0';
+}
+
 static uint16_t ResolvePath(uint64_t recordIndex, PathLookup& lookup, uint64_t totalRecords,
                             wchar_t* pathBuf, uint16_t pathBufSize) {
-    struct Component { const wchar_t* name; uint8_t len; };
+    struct Component { const uint8_t* nameBytes; uint8_t len; };
     Component stack[128] = {};
     int depth = 0;
     uint64_t current = recordIndex;
@@ -81,7 +128,7 @@ static uint16_t ResolvePath(uint64_t recordIndex, PathLookup& lookup, uint64_t t
         visited[visitCount++] = current;
 
         if (lookup.nameLens[current] == 0) break;
-        stack[depth].name = lookup.namePool + lookup.nameOffsets[current];
+        stack[depth].nameBytes = lookup.namePool + lookup.nameOffsets[current];
         stack[depth].len = lookup.nameLens[current];
         depth++;
         current = lookup.parents[current];
@@ -91,8 +138,12 @@ static uint16_t ResolvePath(uint64_t recordIndex, PathLookup& lookup, uint64_t t
     for (int i = depth - 1; i >= 0; i--) {
         if (pos + stack[i].len + 1 >= pathBufSize) break;
         if (pos > 0) pathBuf[pos++] = L'\\';
-        wmemcpy(pathBuf + pos, stack[i].name, stack[i].len);
-        pos += stack[i].len;
+        const uint8_t* src = stack[i].nameBytes;
+        uint8_t len = stack[i].len;
+        // Copy with surrogate-pair combining; Clamp to remaining buffer space.
+        uint16_t remaining = (uint16_t)(pathBufSize - pos);
+        uint16_t written = CopyNtfsNameUnits(pathBuf + pos, remaining, (const WCHAR*)src, (uint16_t)len);
+        pos += written;
     }
     pathBuf[pos] = L'\0';
     return pos;
@@ -166,8 +217,8 @@ static void ProcessRecordSlice(
                     entry.flags = rec->Flags;
                     entry.fileNameLength = fn->FileNameLength;
                     entry.fileAttributes = sawStandardInformation ? siAttributes : fn->FileAttributes;
-                    uint16_t copyLen = min((uint16_t)fn->FileNameLength, (uint16_t)259);
-                    wmemcpy_s(entry.fileName, 260, fn->FileName, copyLen);
+                    // FileNameLength is UCHAR (max 255) which fits in fileName[260]; no clamping needed.
+                    CopyNtfsName(entry.fileName, 260, fn->FileName, fn->FileNameLength);
 
                     slice->count++;
                     break;
@@ -239,9 +290,8 @@ static void ProcessRecordBatch(
                     entry.flags = rec->Flags;
                     entry.fileNameLength = fn->FileNameLength;
                     entry.fileAttributes = sawStandardInformation ? siAttributes : fn->FileAttributes;
-                    uint16_t copyLen = min((uint16_t)fn->FileNameLength, (uint16_t)259);
-                    memset(entry.fileName, 0, sizeof(entry.fileName));
-                    wmemcpy_s(entry.fileName, 260, fn->FileName, copyLen);
+                    // FileNameLength is UCHAR (max 255) which fits in fileName[260]; no clamping needed.
+                    CopyNtfsName(entry.fileName, 260, fn->FileName, fn->FileNameLength);
 
                     usedCount++;
                     break;
@@ -283,11 +333,11 @@ static MftParseResult* ParseMFTImpl(
 
     const size_t bufSize = (size_t)bufferSizeRecords * FILE_RECORD_SIZE;
     uint8_t* buf[2] = {};
-    buf[0] = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    buf[1] = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    buf[0] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
+    buf[1] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
     if (!buf[0] || !buf[1]) {
-        if (buf[0]) VirtualFree(buf[0], 0, MEM_RELEASE);
-        if (buf[1]) VirtualFree(buf[1], 0, MEM_RELEASE);
+        if (buf[0]) mftlib::platform::big_free(buf[0], bufSize);
+        if (buf[1]) mftlib::platform::big_free(buf[1], bufSize);
         if (resolvePaths) lookup.cleanup();
         SetErrorMessage(result->errorMessage, L"Failed to allocate I/O buffers");
         return result;
@@ -297,8 +347,8 @@ static MftParseResult* ParseMFTImpl(
     if (capacity < 1024) capacity = 1024;
     result->entries = ShouldFailAlloc() ? nullptr : (MftFileEntry*)malloc((size_t)capacity * sizeof(MftFileEntry));
     if (!result->entries) {
-        VirtualFree(buf[0], 0, MEM_RELEASE);
-        VirtualFree(buf[1], 0, MEM_RELEASE);
+        mftlib::platform::big_free(buf[0], bufSize);
+        mftlib::platform::big_free(buf[1], bufSize);
         if (resolvePaths) lookup.cleanup();
         SetErrorMessage(result->errorMessage, L"Failed to allocate entry array");
         return result;
@@ -331,7 +381,7 @@ static MftParseResult* ParseMFTImpl(
 
                 for (unsigned t = 0; t < numThreads; t++) {
                     uint64_t tStart = t * perThread;
-                    uint64_t tEnd = min(tStart + perThread, currentChunkSize);
+                    uint64_t tEnd = tStart + perThread < currentChunkSize ? tStart + perThread : currentChunkSize;
                     if (tStart >= currentChunkSize) break;
                     actualThreads++;
 
@@ -413,8 +463,8 @@ static MftParseResult* ParseMFTImpl(
         curBuf = 1 - curBuf;
     }
 
-    VirtualFree(buf[0], 0, MEM_RELEASE);
-    VirtualFree(buf[1], 0, MEM_RELEASE);
+    mftlib::platform::big_free(buf[0], bufSize);
+    mftlib::platform::big_free(buf[1], bufSize);
 
     if (resolvePaths && usedCount > 0) {
         result->pathEntries = (MftPathEntry*)calloc((size_t)usedCount, sizeof(MftPathEntry));
@@ -441,6 +491,7 @@ static MftParseResult* ParseMFTImpl(
     return result;
 }
 
+#ifdef _WIN32
 struct VolumeReadContext {
     HANDLE volumeHandle;
     std::vector<DataRun>* mftRuns;
@@ -462,7 +513,7 @@ static uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) 
     }
 
     auto& run = (*c->mftRuns)[c->runIndex];
-    uint64_t filesToLoad = min(c->filesRemaining, (uint64_t)c->bufferSizeRecords);
+    uint64_t filesToLoad = c->filesRemaining < (uint64_t)c->bufferSizeRecords ? c->filesRemaining : (uint64_t)c->bufferSizeRecords;
     DWORD readBytes;
     auto ioStart = SteadyClock::now();
     if (!Read(c->volumeHandle, targetBuffer,
@@ -475,25 +526,65 @@ static uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) 
     c->filesRemaining -= filesToLoad;
     return filesToLoad;
 }
+#endif  // _WIN32
 
 struct FileReadContext {
-    HANDLE hFile;
+    mftlib::platform::File* file;
     uint64_t recordsRemaining;
     uint32_t bufferSizeRecords;
+    int64_t  fileOffset;  // current read position in bytes
 };
 
 static uint64_t FileReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
     auto* c = (FileReadContext*)ctx;
     if (c->recordsRemaining == 0) return 0;
-    uint64_t filesToLoad = min(c->recordsRemaining, (uint64_t)c->bufferSizeRecords);
-    DWORD readBytes;
+    uint64_t filesToLoad = c->recordsRemaining < (uint64_t)c->bufferSizeRecords ? c->recordsRemaining : (uint64_t)c->bufferSizeRecords;
+    size_t byteCount = (size_t)(filesToLoad * FILE_RECORD_SIZE);
     auto ioStart = SteadyClock::now();
-    if (ShouldFailRead() || !ReadFile(c->hFile, targetBuffer, (DWORD)(filesToLoad * FILE_RECORD_SIZE), &readBytes, nullptr)) {
-        return 0;
-    }
+    if (ShouldFailRead()) return 0;
+    int64_t bytesRead = mftlib::platform::pread_at(c->file, targetBuffer, byteCount, c->fileOffset);
+    if (bytesRead <= 0) return 0;
     ioMs += ElapsedMs(ioStart, SteadyClock::now());
-    c->recordsRemaining -= filesToLoad;
-    return filesToLoad;
+    uint64_t recordsRead = (uint64_t)bytesRead / FILE_RECORD_SIZE;
+    c->fileOffset += (int64_t)recordsRead * FILE_RECORD_SIZE;
+    c->recordsRemaining -= recordsRead;
+    return recordsRead;
+}
+
+// Core implementation that takes a UTF-8 file path.
+static MftParseResult* ParseMFTFromFileImpl(const char* path_utf8,
+                                            const wchar_t* filter,
+                                            uint32_t matchFlags,
+                                            uint32_t bufferSizeRecords) {
+#ifndef _WIN32
+    if (filter != nullptr) {
+        auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
+        if (result) SetErrorMessage(result->errorMessage, L"Filter not supported on Linux yet");
+        return result;
+    }
+#endif
+
+    auto* file = mftlib::platform::open_read(path_utf8);
+    if (!file) {
+        auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
+        if (result) SetErrorMessage(result->errorMessage, L"Failed to open file. Error: %lu",
+                                    (unsigned long)mftlib::platform::last_error());
+        return result;
+    }
+
+    int64_t fileSize = mftlib::platform::size_of(file);
+    if (fileSize < 0) {
+        mftlib::platform::close_file(file);
+        auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
+        if (result) SetErrorMessage(result->errorMessage, L"Failed to get file size");
+        return result;
+    }
+
+    uint64_t totalRecords = (uint64_t)fileSize / FILE_RECORD_SIZE;
+    FileReadContext ctx = { file, totalRecords, bufferSizeRecords, 0 };
+    auto* result = ParseMFTImpl(FileReadChunk, &ctx, totalRecords, filter, matchFlags, bufferSizeRecords);
+    mftlib::platform::close_file(file);
+    return result;
 }
 
 extern "C" {
@@ -505,6 +596,7 @@ extern "C" {
         }
     }
 
+#ifdef _WIN32
     EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags, uint32_t bufferSizeRecords) {
         auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
         if (!result) return nullptr;
@@ -617,22 +709,26 @@ extern "C" {
         return ParseMFTImpl(VolumeReadChunk, &ctx, totalRecords, filter, matchFlags, bufferSizeRecords);
     }
 
-    EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* filter, uint32_t matchFlags, uint32_t bufferSizeRecords) {
-        HANDLE hFile = CreateFileW(filePath, GENERIC_READ, FILE_SHARE_READ, nullptr,
-                                   OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
-        if (hFile == INVALID_HANDLE_VALUE) {
+    EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* filter,
+                                            uint32_t matchFlags, uint32_t bufferSizeRecords) {
+        int u8len = WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
+        if (u8len <= 0) {
             auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
-            if (result) SetErrorMessage(result->errorMessage, L"Failed to open file. Error: %lu", GetLastError());
+            if (result) SetErrorMessage(result->errorMessage, L"Failed to convert path to UTF-8");
             return result;
         }
-
-        LARGE_INTEGER fileSize;
-        GetFileSizeEx(hFile, &fileSize);
-        uint64_t totalRecords = fileSize.QuadPart / FILE_RECORD_SIZE;
-
-        FileReadContext ctx = { hFile, totalRecords, bufferSizeRecords };
-        auto* result = ParseMFTImpl(FileReadChunk, &ctx, totalRecords, filter, matchFlags, bufferSizeRecords);
-        CloseHandle(hFile);
-        return result;
+        std::string utf8(static_cast<size_t>(u8len - 1), '\0');
+        WideCharToMultiByte(CP_UTF8, 0, filePath, -1, utf8.data(), u8len, nullptr, nullptr);
+        return ParseMFTFromFileImpl(utf8.c_str(), filter, matchFlags, bufferSizeRecords);
     }
+#endif  // _WIN32
+
+#ifndef _WIN32
+    EXPORT MftParseResult* ParseMFTFromFileUtf8(const char* filePath,
+                                                const wchar_t* filter,
+                                                uint32_t matchFlags,
+                                                uint32_t bufferSizeRecords) {
+        return ParseMFTFromFileImpl(filePath, filter, matchFlags, bufferSizeRecords);
+    }
+#endif
 }

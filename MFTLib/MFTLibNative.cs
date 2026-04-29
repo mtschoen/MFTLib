@@ -4,7 +4,10 @@ namespace MFTLib;
 
 static class MFTLibNative
 {
-    const string LibraryName = "MFTLibNative.dll";
+    // .NET's DllImport resolver adds the right platform suffix:
+    //   Windows → MFTLibNative.dll
+    //   Linux   → libMFTLibNative.so
+    const string LibraryName = "MFTLibNative";
 
     // P/Invoke declarations (private — all access goes through the Func fields)
     [DllImport(LibraryName, EntryPoint = "ParseMFTRecords", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]

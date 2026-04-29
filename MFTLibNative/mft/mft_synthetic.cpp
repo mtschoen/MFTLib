@@ -1,5 +1,9 @@
 #include "pch.h"
 
+#include <atomic>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -7,6 +11,11 @@
 #include "../ntfs.h"
 #include "../mft_api.h"
 #include "../internal.h"
+#include "../core/platform.h"
+
+#ifdef _WIN32
+#include <stringapiset.h>
+#endif
 
 static void ApplyUSAProtection(uint8_t* record, uint32_t recordSize, uint16_t usn) {
     auto* header = (PFILE_RECORD_SEGMENT_HEADER)record;
@@ -22,6 +31,17 @@ static void ApplyUSAProtection(uint8_t* record, uint32_t recordSize, uint16_t us
         auto* sectorLastWord = (uint16_t*)(record + sectorEnd);
         usa[i + 1] = *sectorLastWord;
         *sectorLastWord = usn;
+    }
+}
+
+// Narrow a wchar_t literal/string to NTFS WCHAR (UTF-16, char16_t units).
+// On Windows wchar_t is 16-bit so this is a direct copy.
+// On Linux wchar_t is 32-bit; we truncate each unit to 16 bits.
+static void StoreNtfsName(WCHAR* dst, uint16_t dstCapacity, const wchar_t* src, uint16_t srcLen) {
+    uint16_t copyLen = srcLen < dstCapacity ? srcLen : dstCapacity;
+    for (uint16_t i = 0; i < copyLen; i++) {
+        uint16_t unit = (uint16_t)src[i];
+        memcpy(dst + i, &unit, sizeof(uint16_t));
     }
 }
 
@@ -109,7 +129,7 @@ static void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex,
     fn->FileAttributes = fileAttrs;
     fn->FileNameLength = nameLen;
     fn->Flags = 3;
-    wmemcpy(fn->FileName, name, nameLen);
+    StoreNtfsName(fn->FileName, nameLen, name, nameLen);
 
     offset += (uint16_t)fnAttr->RecordLength;
 
@@ -143,120 +163,139 @@ static void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex,
     ApplyUSAProtection(record, FILE_RECORD_SIZE, (uint16_t)(recordIndex & 0xFFFF));
 }
 
-extern "C" {
-    EXPORT bool GenerateSyntheticMFT(const wchar_t* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
-        HANDLE hFile = CreateFileW(filePath, GENERIC_WRITE, 0, nullptr,
-                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
-        if (hFile == INVALID_HANDLE_VALUE) return false;
+static bool GenerateSyntheticMFTImpl(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
+    auto* hFile = mftlib::platform::open_write(filePath);
+    if (!hFile) return false;
 
-        unsigned numThreads = EffectiveThreadCount();
+    unsigned numThreads = EffectiveThreadCount();
 
-        const wchar_t* fileNames[] = {
-            L"README.md", L"index.html", L"main.cpp", L"package.json",
-            L"Makefile", L"config.yaml", L"data.bin", L"icon.png",
-            L"setup.py", L"app.js", L"style.css", L"test.go",
-            L"build.gradle", L"Cargo.toml", L"Program.cs", L"pom.xml",
-        };
-        const wchar_t* dirNames[] = {
-            L"src", L"bin", L"obj", L"node_modules", L".git",
-            L"build", L"docs", L"tests", L"lib", L"include",
-            L"assets", L"scripts", L"config", L"data", L"temp", L"cache",
-        };
-        constexpr int numFileNames = 16;
-        constexpr int numDirNames = 16;
+    const wchar_t* fileNames[] = {
+        L"README.md", L"index.html", L"main.cpp", L"package.json",
+        L"Makefile", L"config.yaml", L"data.bin", L"icon.png",
+        L"setup.py", L"app.js", L"style.css", L"test.go",
+        L"build.gradle", L"Cargo.toml", L"Program.cs", L"pom.xml",
+    };
+    const wchar_t* dirNames[] = {
+        L"src", L"bin", L"obj", L"node_modules", L".git",
+        L"build", L"docs", L"tests", L"lib", L"include",
+        L"assets", L"scripts", L"config", L"data", L"temp", L"cache",
+    };
+    constexpr int numFileNames = 16;
+    constexpr int numDirNames = 16;
 
-        const size_t bufSize = (size_t)bufferSizeRecords * FILE_RECORD_SIZE;
-        uint8_t* buf[2];
-        buf[0] = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        buf[1] = ShouldFailAlloc() ? nullptr : (uint8_t*)VirtualAlloc(nullptr, bufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (!buf[0] || !buf[1]) {
-            if (buf[0]) VirtualFree(buf[0], 0, MEM_RELEASE);
-            if (buf[1]) VirtualFree(buf[1], 0, MEM_RELEASE);
-            CloseHandle(hFile);
-            return false;
-        }
-
-        uint64_t remaining = recordCount;
-        uint64_t recordIndex = 0;
-        int curBuf = 0;
-        bool writeOk = true;
-        std::thread writeThread;
-        bool hasWritePending = false;
-
-        while (remaining > 0) {
-            uint64_t batchSize = min(remaining, (uint64_t)bufferSizeRecords);
-            uint8_t* buffer = buf[curBuf];
-
-            uint64_t perThread = (batchSize + numThreads - 1) / numThreads;
-            std::vector<std::thread> workers;
-            for (unsigned t = 0; t < numThreads; t++) {
-                uint64_t tStart = t * perThread;
-                uint64_t tEnd = min(tStart + perThread, batchSize);
-                if (tStart >= batchSize) break;
-                uint64_t baseIdx = recordIndex;
-
-                workers.emplace_back([buffer, tStart, tEnd, baseIdx,
-                                      &fileNames, &dirNames, numFileNames, numDirNames]() {
-                    for (uint64_t i = tStart; i < tEnd; i++) {
-                        uint64_t ri = baseIdx + i;
-                        uint8_t* record = buffer + i * FILE_RECORD_SIZE;
-
-                        uint64_t rng = 12345678901ULL ^ (ri * 6364136223846793005ULL + 1);
-                        auto nextRng = [&rng]() -> uint32_t {
-                            rng ^= rng << 13;
-                            rng ^= rng >> 7;
-                            rng ^= rng << 17;
-                            return (uint32_t)(rng & 0xFFFFFFFF);
-                        };
-
-                        uint32_t r = nextRng();
-
-                        if (ri < 5) {
-                            BuildSyntheticRecord(record, ri, 0, 0x0001, L"$MFT", 4, 0, &rng);
-                        } else if (ri == 5) {
-                            BuildSyntheticRecord(record, ri, 5, 0x0003, L".", 1, 0, &rng);
-                        } else if (r % 100 < 10) {
-                            memset(record, 0, FILE_RECORD_SIZE);
-                        } else if (r % 100 < 25) {
-                            uint64_t baseRec = (nextRng() % ri) + 1;
-                            BuildSyntheticRecord(record, ri, 0, 0x0001, L"ext", 3, baseRec, &rng);
-                        } else if (r % 100 < 40) {
-                            uint64_t parent = (ri < 100) ? 5 : (nextRng() % (ri / 2)) + 5;
-                            const wchar_t* name = dirNames[nextRng() % numDirNames];
-                            BuildSyntheticRecord(record, ri, parent, 0x0003, name, (uint8_t)wcslen(name), 0, &rng);
-                        } else {
-                            uint64_t parent = (ri < 100) ? 5 : (nextRng() % (ri / 2)) + 5;
-                            const wchar_t* name = fileNames[nextRng() % numFileNames];
-                            BuildSyntheticRecord(record, ri, parent, 0x0001, name, (uint8_t)wcslen(name), 0, &rng);
-                        }
-                    }
-                });
-            }
-            for (auto& w : workers) w.join();
-
-            if (hasWritePending) {
-                writeThread.join();
-                if (!writeOk) break;
-            }
-
-            uint64_t writeSize = batchSize;
-            uint8_t* writeBuf = buffer;
-            writeThread = std::thread([hFile, writeBuf, writeSize, &writeOk]() {
-                DWORD written;
-                writeOk = WriteFile(hFile, writeBuf, (DWORD)(writeSize * FILE_RECORD_SIZE), &written, nullptr);
-            });
-            hasWritePending = true;
-
-            recordIndex += batchSize;
-            remaining -= batchSize;
-            curBuf = 1 - curBuf;
-        }
-
-        if (hasWritePending) writeThread.join();
-
-        VirtualFree(buf[0], 0, MEM_RELEASE);
-        VirtualFree(buf[1], 0, MEM_RELEASE);
-        CloseHandle(hFile);
-        return writeOk;
+    const size_t bufSize = (size_t)bufferSizeRecords * FILE_RECORD_SIZE;
+    uint8_t* buf[2];
+    buf[0] = ShouldFailAlloc() ? nullptr : (uint8_t*)mftlib::platform::big_alloc(bufSize);
+    buf[1] = ShouldFailAlloc() ? nullptr : (uint8_t*)mftlib::platform::big_alloc(bufSize);
+    if (!buf[0] || !buf[1]) {
+        if (buf[0]) mftlib::platform::big_free(buf[0], bufSize);
+        if (buf[1]) mftlib::platform::big_free(buf[1], bufSize);
+        mftlib::platform::close_file(hFile);
+        return false;
     }
+
+    uint64_t remaining = recordCount;
+    uint64_t recordIndex = 0;
+    int curBuf = 0;
+    bool writeOk = true;
+    std::thread writeThread;
+    bool hasWritePending = false;
+    int64_t writeOffset = 0;
+
+    while (remaining > 0) {
+        uint64_t batchSize = remaining < (uint64_t)bufferSizeRecords ? remaining : (uint64_t)bufferSizeRecords;
+        uint8_t* buffer = buf[curBuf];
+
+        uint64_t perThread = (batchSize + numThreads - 1) / numThreads;
+        std::vector<std::thread> workers;
+        for (unsigned t = 0; t < numThreads; t++) {
+            uint64_t tStart = t * perThread;
+            uint64_t tEnd = tStart + perThread < batchSize ? tStart + perThread : batchSize;
+            if (tStart >= batchSize) break;
+            uint64_t baseIdx = recordIndex;
+
+            workers.emplace_back([buffer, tStart, tEnd, baseIdx,
+                                  &fileNames, &dirNames, numFileNames, numDirNames]() {
+                for (uint64_t i = tStart; i < tEnd; i++) {
+                    uint64_t ri = baseIdx + i;
+                    uint8_t* record = buffer + i * FILE_RECORD_SIZE;
+
+                    uint64_t rng = 12345678901ULL ^ (ri * 6364136223846793005ULL + 1);
+                    auto nextRng = [&rng]() -> uint32_t {
+                        rng ^= rng << 13;
+                        rng ^= rng >> 7;
+                        rng ^= rng << 17;
+                        return (uint32_t)(rng & 0xFFFFFFFF);
+                    };
+
+                    uint32_t r = nextRng();
+
+                    if (ri < 5) {
+                        BuildSyntheticRecord(record, ri, 0, 0x0001, L"$MFT", 4, 0, &rng);
+                    } else if (ri == 5) {
+                        BuildSyntheticRecord(record, ri, 5, 0x0003, L".", 1, 0, &rng);
+                    } else if (r % 100 < 10) {
+                        memset(record, 0, FILE_RECORD_SIZE);
+                    } else if (r % 100 < 25) {
+                        uint64_t baseRec = (nextRng() % ri) + 1;
+                        BuildSyntheticRecord(record, ri, 0, 0x0001, L"ext", 3, baseRec, &rng);
+                    } else if (r % 100 < 40) {
+                        uint64_t parent = (ri < 100) ? 5 : (nextRng() % (ri / 2)) + 5;
+                        const wchar_t* name = dirNames[nextRng() % numDirNames];
+                        BuildSyntheticRecord(record, ri, parent, 0x0003, name, (uint8_t)wcslen(name), 0, &rng);
+                    } else {
+                        uint64_t parent = (ri < 100) ? 5 : (nextRng() % (ri / 2)) + 5;
+                        const wchar_t* name = fileNames[nextRng() % numFileNames];
+                        BuildSyntheticRecord(record, ri, parent, 0x0001, name, (uint8_t)wcslen(name), 0, &rng);
+                    }
+                }
+            });
+        }
+        for (auto& w : workers) w.join();
+
+        if (hasWritePending) {
+            writeThread.join();
+            if (!writeOk) break;
+        }
+
+        uint64_t writeSize = batchSize;
+        uint8_t* writeBuf = buffer;
+        int64_t curOffset = writeOffset;
+        writeThread = std::thread([hFile, writeBuf, writeSize, curOffset, &writeOk]() {
+            size_t byteCount = (size_t)(writeSize * FILE_RECORD_SIZE);
+            int64_t written = mftlib::platform::pwrite_at(hFile, writeBuf, byteCount, curOffset);
+            writeOk = (written == (int64_t)byteCount);
+        });
+        hasWritePending = true;
+        writeOffset += (int64_t)(batchSize * FILE_RECORD_SIZE);
+
+        recordIndex += batchSize;
+        remaining -= batchSize;
+        curBuf = 1 - curBuf;
+    }
+
+    if (hasWritePending) writeThread.join();
+
+    mftlib::platform::big_free(buf[0], bufSize);
+    mftlib::platform::big_free(buf[1], bufSize);
+    mftlib::platform::close_file(hFile);
+    return writeOk;
+}
+
+extern "C" {
+#ifdef _WIN32
+    EXPORT bool GenerateSyntheticMFT(const wchar_t* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
+        int u8len = WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
+        if (u8len <= 0) return false;
+        std::string utf8(static_cast<size_t>(u8len - 1), '\0');
+        WideCharToMultiByte(CP_UTF8, 0, filePath, -1, utf8.data(), u8len, nullptr, nullptr);
+        return GenerateSyntheticMFTImpl(utf8.c_str(), recordCount, bufferSizeRecords);
+    }
+#endif
+
+#ifndef _WIN32
+    EXPORT bool GenerateSyntheticMFTUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
+        return GenerateSyntheticMFTImpl(filePath, recordCount, bufferSizeRecords);
+    }
+#endif
 }

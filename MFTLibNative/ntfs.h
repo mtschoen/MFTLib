@@ -1,5 +1,26 @@
 ﻿#pragma once
 
+#include <cstdint>
+
+#ifndef _WIN32
+    using ULONG  = uint32_t;
+    using USHORT = uint16_t;
+    using UCHAR  = uint8_t;
+    using LONGLONG = int64_t;
+    using ULONGLONG = uint64_t;
+    union LARGE_INTEGER {
+        struct { uint32_t LowPart; int32_t HighPart; };
+        int64_t QuadPart;
+    };
+    using PVOID = void*;
+    using BOOL = int;
+    using DWORD = uint32_t;
+    using HANDLE = void*;
+    using PDWORD = DWORD*;
+    using UINT = unsigned int;
+    using WCHAR = char16_t;
+#endif
+
 #pragma pack(push, 1)
 typedef LARGE_INTEGER VCN, *PVCN;
 typedef USHORT UPDATE_SEQUENCE_NUMBER, *PUPDATE_SEQUENCE_NUMBER;

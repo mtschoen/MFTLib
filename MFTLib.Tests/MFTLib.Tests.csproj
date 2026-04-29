@@ -21,9 +21,42 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
+  </ItemGroup>
+
+  <!-- Windows: pull in the native vcxproj plus TestProgram and Benchmark consumers. -->
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" />
     <ProjectReference Include="..\TestProgram\TestProgram.csproj" />
     <ProjectReference Include="..\Benchmark\Benchmark.csproj" />
+  </ItemGroup>
+
+  <!-- Coverlet include filter: restrict coverage to our three assemblies.
+       Conditioned on CollectCoverage=true so it only applies during coverage runs.
+       This sidesteps the PS7 + dotnet CLI + MSBuild comma-splitting issue that
+       prevented passing -p:Include on the command line. -->
+  <PropertyGroup Condition="'$(CollectCoverage)' == 'true'">
+    <Include>[MFTLib]*,[TestProgram]*,[Benchmark]*</Include>
+  </PropertyGroup>
+
+  <!-- Linux: copy CMake-built libMFTLibNative.so into the test bin directory. -->
+  <ItemGroup Condition="'$(OS)' != 'Windows_NT'">
+    <None Include="..\build\linux-coverage\libMFTLibNative.so" Condition="Exists('..\build\linux-coverage\libMFTLibNative.so')">
+      <Link>libMFTLibNative.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\build\linux\libMFTLibNative.so" Condition="!Exists('..\build\linux-coverage\libMFTLibNative.so') And Exists('..\build\linux\libMFTLibNative.so')">
+      <Link>libMFTLibNative.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Linux: exclude tests that depend on Benchmark / TestProgram (Windows-side tooling)
+       or that exercise raw NTFS volume access (Windows-only).
+       Compile-time exclusions because they reference unavailable namespaces. -->
+  <ItemGroup Condition="'$(OS)' != 'Windows_NT'">
+    <Compile Remove="BenchmarkRunnerTests.cs" />
+    <Compile Remove="SystemInfoTests.cs" />
+    <Compile Remove="DriveScannerTests.cs" />
   </ItemGroup>
 
 </Project>

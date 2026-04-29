@@ -12,17 +12,61 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Resolve-Path "$PSScriptRoot\.."
-$testProject = "$repoRoot\MFTLib.Tests\MFTLib.Tests.csproj"
-$coverageDir = "$repoRoot\MFTLib.Tests"
-$jsonFile = "$coverageDir\coverage.json"
-$coberturaFile = "$coverageDir\coverage.xml"
-$reportDir = "$coverageDir\coverage-report"
-$includeFilter = '\"[MFTLib]*,[TestProgram]*,[Benchmark]*\"'
+# Under act_runner (Gitea CI) host mode, $PSScriptRoot for inline run: blocks
+# resolves to the act\workflow temp directory, not the checkout root. Use
+# $env:GITHUB_WORKSPACE when set (which is the checkout root), and fall back
+# to $PSScriptRoot\.. for local interactive use.
+$repoRoot = if ($env:GITHUB_WORKSPACE) {
+    # Use raw string to avoid Resolve-Path PathInfo object issues
+    [string]$env:GITHUB_WORKSPACE
+} else {
+    [string](Resolve-Path "$PSScriptRoot\..")
+}
 
-# Build first (doesn't need admin)
+# Navigate to repo root so relative paths work for tools that don't honour CWD
+Push-Location $repoRoot
+
+$testProject = Join-Path $repoRoot "MFTLib.Tests\MFTLib.Tests.csproj"
+$coverageDir  = Join-Path $repoRoot "MFTLib.Tests"
+$jsonFile     = Join-Path $coverageDir "coverage.json"
+$coberturaFile= Join-Path $coverageDir "coverage.xml"
+$reportDir    = Join-Path $coverageDir "coverage-report"
+
+# Build strategy for a mixed C#/C++ solution on VS BuildTools runner:
+#
+# Step 1 — dotnet restore: generates project.assets.json for C# projects.
+#   (VS MSBuild doesn't auto-restore; dotnet.exe is 64-bit so no WOW64 issue.)
+# Step 2 — 64-bit VS MSBuild builds the full solution.
+#   Use the amd64 binary: the workspace is under C:\Windows\System32\config\
+#   systemprofile\... which WOW64 redirects to SysWOW64 for 32-bit processes.
+#   Set MSBuildSDKsPath so the .NET SDK resolver finds Microsoft.NET.Sdk.
+#   Set MSBUILDENABLEWORKLOADRESOLVER=false to skip workload auto-import props
+#   which fail when no workloads are installed (standard for BuildTools-only CI).
+#   Override PlatformToolset=v143 since the vcxproj has v145 (not present here).
+
+Write-Host "Restoring NuGet packages..." -ForegroundColor Cyan
+$slnPath = Join-Path $repoRoot "MFTLib.sln"
+& dotnet restore $slnPath
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Restore failed." -ForegroundColor Red
+    exit 1
+}
+Write-Host "Restore succeeded." -ForegroundColor Green
+
+$vsInstallPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+    -products '*' -requires Microsoft.Component.MSBuild -property installationPath -latest 2>$null
+$msbuild = if ($vsInstallPath) {
+    Join-Path $vsInstallPath "MSBuild\Current\Bin\amd64\MSBuild.exe"
+} else { "MSBuild.exe" }
+
+$sdkEntry = & dotnet --list-sdks 2>$null | Where-Object { $_ -match '^8\.' } | Select-Object -Last 1
+if ($sdkEntry -match '^(\S+)\s+\[(.+)\]') {
+    $env:MSBuildSDKsPath = Join-Path (Join-Path $Matches[2] $Matches[1]) "Sdks"
+}
+$env:MSBUILDENABLEWORKLOADRESOLVER = "false"
+
 Write-Host "Building solution ($Configuration|x64)..." -ForegroundColor Cyan
-& MSBuild.exe "$repoRoot\MFTLib.sln" -p:Configuration=$Configuration -p:Platform=x64 -v:q -nologo
+& $msbuild $slnPath -p:Configuration=$Configuration -p:Platform=x64 -p:PlatformToolset=v143 -v:q -nologo
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Build failed." -ForegroundColor Red
     exit 1
@@ -40,7 +84,6 @@ if ($NonInteractive) {
         -p:CollectCoverage=true `
         -p:CoverletOutputFormat=cobertura `
         "-p:CoverletOutput=$coberturaFile" `
-        "-p:Include=$includeFilter" `
         --verbosity quiet
 
     if ($LASTEXITCODE -ne 0) {
@@ -54,7 +97,6 @@ if ($NonInteractive) {
         -p:CollectCoverage=true `
         -p:CoverletOutputFormat=json `
         "-p:CoverletOutput=$jsonFile" `
-        "-p:Include=$includeFilter" `
         --verbosity quiet
 
     if ($LASTEXITCODE -ne 0) {
@@ -74,7 +116,6 @@ if ($NonInteractive) {
     $template = @'
 $ErrorActionPreference = "Stop"
 Set-Location "REPO_ROOT"
-$inc = '\"[MFTLib]*,[TestProgram]*,[Benchmark]*\"'
 try {
     dotnet test "TEST_PROJECT" --no-build -c CONFIGURATION -p:Platform=x64 `
         --filter "TestCategory=RequiresAdmin" `
@@ -82,7 +123,6 @@ try {
         -p:CoverletOutputFormat=cobertura `
         "-p:CoverletOutput=COBERTURA_FILE" `
         "-p:MergeWith=JSON_FILE" `
-        "-p:Include=$inc" `
         --verbosity normal *>&1 | Tee-Object -FilePath "LOG_FILE"
     exit $LASTEXITCODE
 } catch {
@@ -126,6 +166,8 @@ if (Test-Path "$reportDir\Summary.txt") {
     Get-Content "$reportDir\Summary.txt"
 }
 
-# Cleanup
-Remove-Item $coberturaFile -ErrorAction SilentlyContinue
-Remove-Item $reportDir -Recurse -ErrorAction SilentlyContinue
+# Cleanup (skip in non-interactive mode so CI can upload artifacts)
+if (-not $NonInteractive) {
+    Remove-Item $coberturaFile -ErrorAction SilentlyContinue
+    Remove-Item $reportDir -Recurse -ErrorAction SilentlyContinue
+}

@@ -40,12 +40,24 @@
     <InternalsVisibleTo Include="FileWizardTests" />
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- Pack native DLL into the NuGet package -->
-  <ItemGroup>
+  <!-- Linux: copy CMake-built libMFTLibNative.so into the bin output so consumers find it. -->
+  <ItemGroup Condition="'$(OS)' != 'Windows_NT'">
+    <None Include="..\build\linux-coverage\libMFTLibNative.so" Condition="Exists('..\build\linux-coverage\libMFTLibNative.so')">
+      <Link>libMFTLibNative.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\build\linux\libMFTLibNative.so" Condition="!Exists('..\build\linux-coverage\libMFTLibNative.so') And Exists('..\build\linux\libMFTLibNative.so')">
+      <Link>libMFTLibNative.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Pack native DLL into the NuGet package (Windows only — Linux package not yet built) -->
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <None Include="..\x64\$(Configuration)\MFTLibNative.dll" Pack="true" PackagePath="runtimes/win-x64/native" Visible="false" />
     <None Include="build\MFTLib.targets" Pack="true" PackagePath="build" />
     <None Include="build\MFTLib.targets" Pack="true" PackagePath="buildTransitive" />

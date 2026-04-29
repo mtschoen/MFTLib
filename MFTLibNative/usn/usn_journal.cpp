@@ -1,5 +1,7 @@
 #include "pch.h"
 
+#ifdef _WIN32
+
 #include "../framework.h"
 #include "../mft_api.h"
 #include "../internal.h"
@@ -308,3 +310,5 @@ extern "C" {
         return CancelIoEx(volumeHandle, nullptr);
     }
 }
+
+#endif // _WIN32

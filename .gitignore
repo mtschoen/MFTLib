@@ -1,6 +1,12 @@
 # Benchmark artifacts
 *.mft
 
+# CMake build trees (Linux side)
+build/
+
+# Coverage reports (Linux side)
+coverage-report/
+
 # JetBrains IDEs (Rider, ReSharper)
 .idea/
 

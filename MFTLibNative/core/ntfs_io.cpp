@@ -7,12 +7,14 @@
 #include "../internal.h"
 #include "ntfs_io.h"
 
+#ifdef _WIN32
 BOOL Read(HANDLE handle, void* buffer, uint64_t from, DWORD count, PDWORD bytesRead) {
     if (ShouldFailRead()) return FALSE;
     LONG high = from >> 32;
     SetFilePointer(handle, from & 0xFFFFFFFF, &high, FILE_BEGIN);
     return ReadFile(handle, buffer, count, bytesRead, nullptr);
 }
+#endif // _WIN32
 
 static bool ApplyFixupInternal(uint8_t* record, uint32_t recordSize) {
     auto* header = (PFILE_RECORD_SEGMENT_HEADER)record;
@@ -76,6 +78,7 @@ std::vector<DataRun> ParseDataRuns(PATTRIBUTE_RECORD_HEADER attr) {
     return runs;
 }
 
+#ifdef _WIN32
 uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr, uint32_t bytesPerCluster, uint64_t* outSize) {
     auto runs = ParseDataRuns(attr);
     auto fileSize = (uint64_t)attr->Form.Nonresident.FileSize;
@@ -129,6 +132,7 @@ bool ReadMFTRecord(HANDLE volumeHandle, std::vector<DataRun>& mftRuns, uint32_t 
     printf("Error: MFT record %llu not found in data runs (covered %llu bytes, needed offset %llu)\n", recordNumber, currentOffset, byteOffset);
     return false;
 }
+#endif // _WIN32
 
 PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type) {
     auto* fileRecord = (PFILE_RECORD_SEGMENT_HEADER)record;

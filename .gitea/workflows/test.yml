@@ -1,0 +1,81 @@
+# .gitea/workflows/test.yml
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      # Node.js uses its bundled cert store, not Windows trust. Gitea's mkcert-signed
+      # cert isn't in it. Long-term fix: install mkcert CA into Node.js cert store
+      # on the runner. Short-term: bypass.
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install reportgenerator
+        shell: pwsh
+        run: |
+          dotnet tool update --global dotnet-reportgenerator-globaltool
+          echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Run coverage
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: scripts\run-coverage.ps1 -NonInteractive
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-coverage
+          path: |
+            MFTLib.Tests/coverage.xml
+            MFTLib.Tests/coverage-report/**
+
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          apt-get update
+          apt-get install -y cmake ninja-build
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Install gcovr
+        run: |
+          pip3 install --user --break-system-packages gcovr
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Run coverage
+        run: bash scripts/coverage-linux.sh
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: linux-coverage
+          path: coverage-report/
