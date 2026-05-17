@@ -38,5 +38,26 @@ public readonly struct UsnJournalEntry
         FileName = fileName;
     }
 
+    UsnJournalEntry(ulong recordNumber, ulong parentRecordNumber,
+        long usn, DateTime timestamp, UsnReason reason, FileAttributes fileAttributes, string fileName)
+    {
+        RecordNumber = recordNumber;
+        ParentRecordNumber = parentRecordNumber;
+        Usn = usn;
+        Timestamp = timestamp;
+        Reason = reason;
+        FileAttributes = fileAttributes;
+        FileName = fileName;
+    }
+
+    /// <summary>
+    /// Construct a USN journal entry from already-decoded values. For callers that
+    /// produce entries outside the native marshaling path (e.g. a tool that
+    /// serializes journal data to disk and reconstructs it in another process).
+    /// </summary>
+    public static UsnJournalEntry Create(ulong recordNumber, ulong parentRecordNumber,
+        long usn, DateTime timestamp, UsnReason reason, FileAttributes fileAttributes, string fileName)
+        => new UsnJournalEntry(recordNumber, parentRecordNumber, usn, timestamp, reason, fileAttributes, fileName);
+
     public override string ToString() => $"[{Reason}] {FileName} (record {RecordNumber})";
 }
