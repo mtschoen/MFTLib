@@ -13,8 +13,12 @@
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!-- Windows: build native DLL via MSBuild vcxproj -->
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
   </ItemGroup>
 

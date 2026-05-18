@@ -97,6 +97,10 @@ public class MockVolumeTests
     [TestMethod]
     public void GetVolumeHandle_InvalidVolume_ThrowsIOException()
     {
+        // kernel32.dll doesn't exist on Linux, so DllImport fails before we can throw IOException
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            Assert.Inconclusive("Windows-only test");
+
         // Use the real native GetVolumeHandle - an invalid volume path will fail
         Assert.ThrowsException<IOException>(() => FileUtilities.GetVolumeHandle(@"\\.\ZZZINVALID:"));
     }

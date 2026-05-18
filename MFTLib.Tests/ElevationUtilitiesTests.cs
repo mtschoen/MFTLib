@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -50,7 +51,8 @@ public class ElevationUtilitiesTests
     [TestMethod]
     public void CanSelfElevate_DotnetExe_ReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\dotnet\dotnet.exe";
+        // Use forward slashes so Path.GetFileNameWithoutExtension works on both Windows and Linux
+        ElevationUtilities.GetProcessPathFunc = () => "C:/dotnet/dotnet.exe";
         Assert.IsFalse(ElevationUtilities.CanSelfElevate());
     }
 
@@ -88,8 +90,14 @@ public class ElevationUtilitiesTests
     [TestMethod]
     public void TryRunElevated_ProcessExitsZero_ReturnsTrue()
     {
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
-        ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 0") { CreateNoWindow = true });
+        ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
+        // Use cross-platform command: 'true' on POSIX, 'cmd /c exit 0' on Windows
+        ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo(
+                RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                    ? "true" : "cmd.exe",
+                RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                    ? string.Empty : "/c exit 0"
+            ) { CreateNoWindow = true });
         Assert.IsTrue(ElevationUtilities.TryRunElevated("--test"));
     }
 
