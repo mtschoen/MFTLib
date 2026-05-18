@@ -257,6 +257,61 @@ public sealed class MftVolume : IDisposable
         }
     }
 
+    /// <summary>
+    /// Like <see cref="WatchUsnJournal"/> but yields the post-batch cursor
+    /// alongside each batch, so callers can persist progress without a
+    /// separate <see cref="QueryUsnJournal"/> IOCTL.
+    /// </summary>
+    public async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchUsnJournalWithCursor(
+        UsnJournalCursor since,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var nextUsn = since.NextUsn;
+        var journalId = since.JournalId;
+
+        using var registration = cancellationToken.Register(() =>
+            MFTLibNative.CancelUsnJournalWatch(_volumeHandle));
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            var resultPtr = await Task.Run(
+                () => MFTLibNative.WatchUsnJournalBatch(_volumeHandle, nextUsn, journalId),
+                cancellationToken).ConfigureAwait(false);
+
+            if (resultPtr == IntPtr.Zero)
+                throw new InvalidOperationException("WatchUsnJournalBatch returned null");
+
+            UsnJournalEntry[] entries;
+            UsnJournalCursor cursor;
+            try
+            {
+                var result = Marshal.PtrToStructure<Interop.UsnJournalResultNative>(resultPtr);
+                if (!string.IsNullOrEmpty(result.ErrorMessage))
+                    throw new InvalidOperationException(result.ErrorMessage);
+
+                entries = MarshalUsnEntries(result);
+                nextUsn = result.NextUsn;
+                cursor = new UsnJournalCursor(result.JournalId, result.NextUsn);
+            }
+            finally
+            {
+                MFTLibNative.FreeUsnJournalResult(resultPtr);
+            }
+
+            if (entries.Length == 0)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    yield break;
+                continue;
+            }
+
+            yield return (entries, cursor);
+        }
+    }
+
     internal static string ExtractDriveLetter(string normalizedPath)
     {
         if (normalizedPath.Length != 6) return string.Empty;
