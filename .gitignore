@@ -375,7 +375,8 @@ MigrationBackup/
 FodyWeavers.xsd
 
 # Claude Code
-.claude/
+.claude/*
+!.claude/settings.json
 
 # Test output
 out.txt
