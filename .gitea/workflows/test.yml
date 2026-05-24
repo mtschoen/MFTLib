@@ -49,6 +49,28 @@ jobs:
             MFTLib.Tests/coverage.xml
             MFTLib.Tests/coverage-report/**
 
+      - name: Post coverage status
+        if: always()
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $summary = "MFTLib.Tests/coverage-report/Summary.txt"
+          $pct = $null
+          if (Test-Path $summary) {
+            $match = Select-String -Path $summary -Pattern 'Line coverage:\s*([\d.]+)%' | Select-Object -First 1
+            if ($match) { $pct = $match.Matches[0].Groups[1].Value }
+          }
+          if ($null -eq $pct) { $state = "error"; $desc = "coverage measurement failed" }
+          else { $state = "success"; $desc = "$pct% line coverage" }
+          $runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $body = @{ context = "pr-crew/coverage"; state = $state; description = $desc; target_url = $runUrl } | ConvertTo-Json -Compress
+          curl.exe -sk -X POST `
+            -H "Authorization: token $env:GITHUB_TOKEN" `
+            -H "Content-Type: application/json" `
+            -d $body `
+            "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY/statuses/$env:GITHUB_SHA"
+
   linux:
     runs-on: ubuntu-latest
     timeout-minutes: 30
