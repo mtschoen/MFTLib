@@ -1,0 +1,18 @@
+{
+  "percent_covered": 97.86,
+  "as_of": "2026-05-24T01:44:37+00:00",
+  "by_file": {
+    "ElevationUtilities.cs": 94.34,
+    "FileUtilities.cs": 88.89,
+    "Kernel32.cs": 100.0,
+    "MFTLibNative.cs": 100.0,
+    "MFTUtilities.cs": 100.0,
+    "MftParseTimings.cs": 100.0,
+    "MftPathUtilities.cs": 100.0,
+    "MftRecord.cs": 100.0,
+    "MftResult.cs": 100.0,
+    "MftVolume.cs": 96.95,
+    "UsnJournalCursor.cs": 100.0,
+    "UsnJournalEntry.cs": 100.0
+  }
+}
