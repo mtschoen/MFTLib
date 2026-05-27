@@ -7,6 +7,20 @@ namespace MFTLib;
 
 public static class ElevationUtilities
 {
+    /// <summary>
+    /// Default <see cref="IElevationProvider"/> backed by the static methods below.
+    /// Consumers default to this and inject a fake in tests.
+    /// </summary>
+    public static IElevationProvider DefaultProvider { get; } = new DefaultElevationProvider();
+
+    private sealed class DefaultElevationProvider : IElevationProvider
+    {
+        public bool IsElevated() => ElevationUtilities.IsElevated();
+        public bool CanSelfElevate() => ElevationUtilities.CanSelfElevate();
+        public bool TryRunElevated(string arguments, int timeoutMs = 60000)
+            => ElevationUtilities.TryRunElevated(arguments, timeoutMs);
+    }
+
     // Swappable dependencies for testability — tests replace these to exercise
     // defensive branches (non-Windows, null process path, process start failures)
     // that cannot be triggered in a normal Windows test environment.

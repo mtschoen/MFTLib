@@ -289,6 +289,26 @@ public class UsnJournalTests
     }
 
     [TestMethod]
+    public void UsnJournalEntry_Create_RoundTripsDecodedValues()
+    {
+        var timestamp = new DateTime(2021, 6, 15, 12, 30, 0, DateTimeKind.Utc);
+        var entry = UsnJournalEntry.Create(
+            recordNumber: 77, parentRecordNumber: 5, usn: 9000, timestamp: timestamp,
+            reason: UsnReason.FileCreate | UsnReason.Close,
+            fileAttributes: FileAttributes.Archive, fileName: "reconstructed.txt");
+
+        Assert.AreEqual(77UL, entry.RecordNumber);
+        Assert.AreEqual(5UL, entry.ParentRecordNumber);
+        Assert.AreEqual(9000L, entry.Usn);
+        Assert.AreEqual(timestamp, entry.Timestamp);
+        Assert.AreEqual(UsnReason.FileCreate | UsnReason.Close, entry.Reason);
+        Assert.AreEqual(FileAttributes.Archive, entry.FileAttributes);
+        Assert.AreEqual("reconstructed.txt", entry.FileName);
+        Assert.IsTrue(entry.IsCreate);
+        Assert.IsTrue(entry.IsClose);
+    }
+
+    [TestMethod]
     public void UsnJournalCursor_StoresValues()
     {
         var cursor = new UsnJournalCursor(0xDEADBEEF, 12345);
@@ -401,6 +421,126 @@ public class UsnJournalTests
         var batches = new List<UsnJournalEntry[]>();
 
         await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+        {
+            batches.Add(batch);
+        }
+
+        Assert.AreEqual(0, batches.Count);
+    }
+
+    // --- WatchUsnJournalWithCursor ---
+
+    [TestMethod]
+    public async Task WatchUsnJournalWithCursor_Disposed_Throws()
+    {
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+        var volume = MftVolume.Open("C");
+        volume.Dispose();
+        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(async () =>
+        {
+            await foreach (var _ in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(1, 0)))
+            {
+            }
+        });
+    }
+
+    [TestMethod]
+    public async Task WatchUsnJournalWithCursor_NullPointer_Throws()
+    {
+        MFTLibNative.WatchUsnJournalBatch = (_, _, _) => IntPtr.Zero;
+        MFTLibNative.CancelUsnJournalWatch = _ => true;
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+
+        using var volume = MftVolume.Open("C");
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+            {
+            }
+        });
+    }
+
+    [TestMethod]
+    public async Task WatchUsnJournalWithCursor_ErrorInBatch_Throws()
+    {
+        MFTLibNative.WatchUsnJournalBatch = (_, _, _) =>
+        {
+            var nativeResult = new UsnJournalResultNative { ErrorMessage = "USN journal is not active" };
+            var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
+            Marshal.StructureToPtr(nativeResult, resultPtr, false);
+            return resultPtr;
+        };
+        MFTLibNative.CancelUsnJournalWatch = _ => true;
+        MFTLibNative.FreeUsnJournalResult = ptr => Marshal.FreeHGlobal(ptr);
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+
+        using var volume = MftVolume.Open("C");
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+            {
+            }
+        });
+    }
+
+    [TestMethod]
+    public async Task WatchUsnJournalWithCursor_EmptyThenEntry_YieldsBatchWithCursor()
+    {
+        // Call 1 returns empty (not cancelled) → continue; call 2 returns an entry → yield (entries, cursor).
+        var callCount = 0;
+        MFTLibNative.WatchUsnJournalBatch = (_, startUsn, journalId) =>
+        {
+            callCount++;
+            return callCount == 1
+                ? BuildEmptyWatchResult(journalId, startUsn)
+                : BuildSingleEntryWatchResult(journalId, startUsn + 100, "created.txt", 0x00000100);
+        };
+        MFTLibNative.CancelUsnJournalWatch = _ => true;
+        MFTLibNative.FreeUsnJournalResult = ptr => Marshal.FreeHGlobal(ptr);
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+
+        using var volume = MftVolume.Open("C");
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var batches = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
+
+        await foreach (var batch in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+        {
+            batches.Add(batch);
+            cancellationTokenSource.Cancel();
+        }
+
+        Assert.AreEqual(1, batches.Count);
+        Assert.AreEqual("created.txt", batches[0].Entries[0].FileName);
+        Assert.IsTrue(batches[0].Entries[0].IsCreate);
+        Assert.AreEqual(0xABCDUL, batches[0].Cursor.JournalId);
+        Assert.AreEqual(600L, batches[0].Cursor.NextUsn);
+    }
+
+    [TestMethod]
+    public async Task WatchUsnJournalWithCursor_EmptyBatchWithCancellation_YieldsBreak()
+    {
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        MFTLibNative.WatchUsnJournalBatch = (_, startUsn, journalId) =>
+        {
+            // Simulate CancelIoEx race: cancel token then return empty result.
+            // ReSharper disable once AccessToDisposedClosure
+            cancellationTokenSource.Cancel();
+            return BuildEmptyWatchResult(journalId, startUsn);
+        };
+        MFTLibNative.CancelUsnJournalWatch = _ => true;
+        MFTLibNative.FreeUsnJournalResult = _ => { };
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+
+        // ReSharper disable once AccessToDisposedClosure
+        using var volume = MftVolume.Open("C");
+        var batches = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
+
+        await foreach (var batch in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
         {
             batches.Add(batch);
         }
