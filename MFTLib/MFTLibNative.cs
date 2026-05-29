@@ -32,6 +32,15 @@ static class MFTLibNative
     [DllImport(LibraryName, EntryPoint = "SetReadFailCountdown", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetReadFailCountdown(int countdown);
 
+    [DllImport(LibraryName, EntryPoint = "SetNamePoolCapacityOverride", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetNamePoolCapacityOverride(ulong bytes);
+
+    [DllImport(LibraryName, EntryPoint = "SetFailFileSize", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetFailFileSize(int fail);
+
+    [DllImport(LibraryName, EntryPoint = "SetFailPathConversion", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetFailPathConversion(int fail);
+
     [DllImport(LibraryName, EntryPoint = "SetUsnIoFailError", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetUsnIoFailError(uint error, int countdown);
 

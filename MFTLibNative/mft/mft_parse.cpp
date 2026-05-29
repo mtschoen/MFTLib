@@ -1,5 +1,6 @@
 #include "pch.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -47,15 +48,21 @@ struct PathLookup {
     uint8_t*  namePool;
     std::atomic<uint64_t> namePoolUsed;
     uint64_t  namePoolCapacity;
+    // Count of names dropped because the pool filled up. Nonzero means some
+    // resolved paths are truncated; surfaced to the caller via errorMessage.
+    std::atomic<uint64_t> namesDropped;
 
     bool init(uint64_t totalRecords) {
         parents = (uint64_t*)calloc((size_t)totalRecords, sizeof(uint64_t));
         nameLens = (uint8_t*)calloc((size_t)totalRecords, sizeof(uint8_t));
         nameOffsets = (uint32_t*)calloc((size_t)totalRecords, sizeof(uint32_t));
-        // Each name entry can be up to 255 WCHAR units = 510 bytes; use 32 bytes avg * 2 for bytes
-        namePoolCapacity = totalRecords * 64; // bytes
+        // Each name entry can be up to 255 WCHAR units = 510 bytes; use 32 bytes avg * 2 for bytes.
+        // A test hook can shrink the pool to exercise the exhaustion path.
+        uint64_t capacityOverride = NamePoolCapacityOverride();
+        namePoolCapacity = capacityOverride ? capacityOverride : totalRecords * 64; // bytes
         namePool = (uint8_t*)malloc((size_t)namePoolCapacity);
         namePoolUsed = 0;
+        namesDropped = 0;
         return parents && nameLens && nameOffsets && namePool;
     }
 
@@ -64,7 +71,10 @@ struct PathLookup {
         parents[recordIndex] = parent;
         uint64_t byteCount = (uint64_t)nameLen * sizeof(WCHAR);
         uint64_t offset = namePoolUsed.fetch_add(byteCount, std::memory_order_relaxed);
-        if (offset + byteCount > namePoolCapacity) return;
+        if (offset + byteCount > namePoolCapacity) {
+            namesDropped.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
         nameOffsets[recordIndex] = (uint32_t)offset;
         memcpy(namePool + offset, name, (size_t)byteCount);
         nameLens[recordIndex] = nameLen;
@@ -466,18 +476,42 @@ static MftParseResult* ParseMFTImpl(
     mftlib::platform::big_free(buf[0], bufSize);
     mftlib::platform::big_free(buf[1], bufSize);
 
+    if (resolvePaths && lookup.namesDropped.load(std::memory_order_relaxed) > 0) {
+        SetErrorMessage(result->errorMessage,
+            L"Path name pool exhausted; %llu names dropped, some paths truncated",
+            (unsigned long long)lookup.namesDropped.load(std::memory_order_relaxed));
+    }
+
     if (resolvePaths && usedCount > 0) {
         result->pathEntries = (MftPathEntry*)calloc((size_t)usedCount, sizeof(MftPathEntry));
         if (result->pathEntries) {
-            for (uint64_t i = 0; i < usedCount; i++) {
-                auto& src = result->entries[i];
-                auto& dst = result->pathEntries[i];
-                dst.recordNumber = src.recordNumber;
-                dst.parentRecordNumber = src.parentRecordNumber;
-                dst.flags = src.flags;
-                dst.fileAttributes = src.fileAttributes;
-                dst.pathLength = ResolvePath(src.recordNumber, lookup, totalRecords,
-                                            dst.path, 1024);
+            auto resolveRange = [&](uint64_t start, uint64_t end) {
+                for (uint64_t i = start; i < end; i++) {
+                    auto& src = result->entries[i];
+                    auto& dst = result->pathEntries[i];
+                    dst.recordNumber = src.recordNumber;
+                    dst.parentRecordNumber = src.parentRecordNumber;
+                    dst.flags = src.flags;
+                    dst.fileAttributes = src.fileAttributes;
+                    dst.pathLength = ResolvePath(src.recordNumber, lookup, totalRecords,
+                                                dst.path, 1024);
+                }
+            };
+
+            // Path resolution is read-only on the lookup and writes to independent
+            // output slots, so it fans out the same way fixup+parse does. Ranges are
+            // clamped with std::min, so extra workers simply get empty ranges.
+            if (numThreads > 1) {
+                uint64_t perThread = (usedCount + numThreads - 1) / numThreads;
+                std::vector<std::thread> workers;
+                for (unsigned t = 0; t < numThreads; t++) {
+                    uint64_t start = (std::min)((uint64_t)t * perThread, usedCount);
+                    uint64_t end = (std::min)(start + perThread, usedCount);
+                    workers.emplace_back(resolveRange, start, end);
+                }
+                for (auto& w : workers) w.join();
+            } else {
+                resolveRange(0, usedCount);
             }
         }
         lookup.cleanup();
@@ -572,7 +606,7 @@ static MftParseResult* ParseMFTFromFileImpl(const char* path_utf8,
         return result;
     }
 
-    int64_t fileSize = mftlib::platform::size_of(file);
+    int64_t fileSize = ShouldFailFileSize() ? -1 : mftlib::platform::size_of(file);
     if (fileSize < 0) {
         mftlib::platform::close_file(file);
         auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
@@ -711,7 +745,7 @@ extern "C" {
 
     EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* filter,
                                             uint32_t matchFlags, uint32_t bufferSizeRecords) {
-        int u8len = WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
+        int u8len = ShouldFailPathConversion() ? 0 : WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
         if (u8len <= 0) {
             auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
             if (result) SetErrorMessage(result->errorMessage, L"Failed to convert path to UTF-8");

@@ -106,6 +106,118 @@ public class NativeCoverageTests
         }
     }
 
+    [TestMethod]
+    public void ParseFromFile_MultiThreaded_WithPaths_ResolvesPathEntries()
+    {
+        // Default thread count (>1) exercises the parallel path-resolution branch;
+        // the single-threaded variant above covers the serial fallback.
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MftVolume.GenerateSyntheticMFT(path, 5000, 256);
+
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.ResolvePaths, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsTrue(result.UsedRecords > 0);
+                Assert.AreNotEqual(IntPtr.Zero, result.PathEntries);
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void ParseFromFile_NamePoolExhausted_ReportsTruncation()
+    {
+        // Shrink the path-name pool so names can't fit, forcing the exhaustion path
+        // in PathLookup::storeName. The parse still succeeds with truncated paths,
+        // but errorMessage reports the drop.
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MftVolume.GenerateSyntheticMFT(path, 5000, 256);
+            MFTLibNative.NativeSetNamePoolCapacityOverride(16);
+
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.ResolvePaths, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsTrue(result.ErrorMessage!.Contains("exhausted"),
+                    $"Expected pool-exhaustion message, got: {result.ErrorMessage}");
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void ParseFromFile_FileSizeFailure_ReturnsError()
+    {
+        // size_of() returning < 0 after a successful open — defensive error path.
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MftVolume.GenerateSyntheticMFT(path, 10, 256);
+            MFTLibNative.NativeSetFailFileSize(1);
+
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsTrue(result.ErrorMessage!.Contains("file size"),
+                    $"Expected file-size error, got: {result.ErrorMessage}");
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void ParseFromFile_PathConversionFailure_ReturnsError()
+    {
+        // WideCharToMultiByte returning <= 0 — defensive error path. The conversion
+        // fails before the file is touched, so the path need not exist.
+        MFTLibNative.NativeSetFailPathConversion(1);
+        var resultPointer = MFTLibNative.ParseMFTFromFile(@"C:\does_not_matter.mft", null, MatchFlags.None, 256);
+        Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+        try
+        {
+            var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+            Assert.IsTrue(result.ErrorMessage!.Contains("UTF-8"),
+                $"Expected UTF-8 conversion error, got: {result.ErrorMessage}");
+        }
+        finally
+        {
+            MFTLibNative.FreeMftResult(resultPointer);
+        }
+    }
+
     // --- Allocation failure paths ---
 
     [TestMethod]

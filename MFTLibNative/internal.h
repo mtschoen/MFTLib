@@ -40,6 +40,9 @@ inline void SetErrorMessage(wchar_t (&buffer)[N], const wchar_t* format, Args...
 unsigned EffectiveThreadCount();
 bool ShouldFailAlloc();
 bool ShouldFailRead();
+uint64_t NamePoolCapacityOverride();
+bool ShouldFailFileSize();
+bool ShouldFailPathConversion();
 
 #ifdef _WIN32
 bool ShouldFailUsnIo(DWORD& outError);

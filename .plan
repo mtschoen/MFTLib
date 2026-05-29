@@ -1,17 +1,32 @@
-## 0.3.0 — USN Journal Support (SHIPPED)
+## 0.3.0 — USN Journal Support (code-complete; NOT yet published to NuGet)
 
-Shipped in v0.3.0. Three APIs:
+Code-complete. Three APIs:
 - `MftVolume.QueryUsnJournal()` — get current journal cursor
 - `MftVolume.ReadUsnJournal(cursor)` — batch catch-up read
 - `MftVolume.WatchUsnJournal(cursor, cancellationToken)` — live IAsyncEnumerable event stream
 - `FileAttributes` sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback
 
-## Native C++ Cleanup (dllmain.cpp)
+### 0.3.0 NuGet publish checklist (blockers — currently gated on file-wizard finishing the USN cross-drive rename/move work)
 
-- **Parallelize path resolution**: The post-parse path resolution loop (line ~1272) is serial despite being trivially parallelizable — each `ResolvePath` call does read-only access to `PathLookup` and writes to independent output slots. Could use the same thread pool pattern as fixup+parse.
-- **Deduplicate ProcessRecordBatch / ProcessRecordSlice**: These share ~60 lines of nearly identical record-scanning logic. The single-threaded path (numThreads == 1) could use `ProcessRecordSlice` with a single slice, eliminating `ProcessRecordBatch` entirely.
-- **Optimize ResolvePath cycle detection**: Uses O(n^2) linear scan over a `visited[128]` array. A simple bitmask or hash set would be O(1) per check. At millions of records this adds up.
-- **PathLookup memory**: `namePoolCapacity = totalRecords * 32` over-allocates (~512 MB at 8M records). Average filename is ~12-15 chars; `totalRecords * 20` would be safer. Also, `storeName` silently drops names when the pool is exhausted — should at least set an error flag.
+Surfaced in the 2026-05-28 pre-publish audit; none are code — all are release packaging:
+- **CHANGELOG.md** has no 0.3.0 section (stops at 0.2.0). Add: USN journal trio, `IElevationProvider`, `UsnJournalEntry.Create`, the `WatchUsnJournalWithCursor` overload, `$STANDARD_INFORMATION`-sourced `FileAttributes`.
+- **README.md** never mentions USN — and it IS the `<PackageReadmeFile>` (the NuGet landing page). Update the intro + Features list and add a `QueryUsnJournal`/`ReadUsnJournal`/`WatchUsnJournal` usage example.
+- **MFTLib.csproj:30** stale TODO references "GitHub Actions pipeline" — CI is Gitea Actions now and is set up. `ContinuousIntegrationBuild` is unconditionally `true` (correct for deterministic packs); just resolve/remove the comment.
+- **Tag + push `v0.3.0`.** SourceLink (`PublishRepositoryUrl=true` + `SourceLink.GitHub`) resolves against github.com/mtschoen/MFTLib, so the exact packed commit AND the tag must be pushed to the GitHub mirror before `-t:Pack`, or source links 404.
+- Already confirmed fine: 0.2.0 IS on NuGet; github.com/mtschoen/MFTLib exists (public); LICENSE.txt + README are packaged.
+
+## Native C++ Cleanup (mft/mft_parse.cpp)
+
+(Code moved out of `dllmain.cpp` into `mft/mft_parse.cpp` during the Linux-port refactor; line numbers in older notes are stale.)
+
+- **[DONE] Parallelize path resolution**: The post-parse `ResolvePath` loop now fans out across `EffectiveThreadCount()` workers (same pattern as fixup+parse) when `numThreads > 1`, with a serial fallback. Read-only on `PathLookup`, independent output slots. Ranges are clamped with `std::min` so extra workers just get empty ranges (no thread-count-dependent branch to cover). Covered by `ParseFromFile_MultiThreaded_WithPaths_ResolvesPathEntries` (parallel) + the existing single-threaded test (serial).
+- **[DONE] PathLookup silent name-drop**: `storeName` now bumps a `namesDropped` atomic on pool exhaustion; `ParseMFTImpl` surfaces it via `errorMessage` ("Path name pool exhausted; N names dropped, some paths truncated"). New `SetNamePoolCapacityOverride` test hook forces the branch (`ParseFromFile_NamePoolExhausted_ReportsTruncation`).
+
+### Deferred — investigate later (not blocking 0.3)
+
+- **Deduplicate ProcessRecordBatch / ProcessRecordSlice**: ~40 lines of shared attribute-scan logic. CAUTION: the two diverge in alloc-failure semantics — `ProcessRecordBatch` has `ShouldFailAlloc` + "entry array" error propagation, `ProcessRecordSlice` does a bare `realloc`. A wholesale merge (routing single-thread through the slice path) would change observable error behavior and break `ParseFromFile_SingleThreaded_AllocFailOnRealloc`. Safe form: extract only the shared per-record attribute walk into a helper, leave each function's alloc/error path intact. Cosmetic.
+- **ResolvePath cycle detection**: O(depth^2) linear scan over `visited[128]`, but `depth` and `visitCount` are both capped at 128, so worst case is 128^2 per path and only for pathological 128-deep chains; the depth cap already guarantees termination. True O(1) needs a hash set keyed on uint64 record numbers. Low value vs risk — revisit only if path resolution shows up in a profile.
+- **PathLookup over-allocation**: `namePoolCapacity = totalRecords * 64` bytes (~512 MB at 8M records). Avg filename is ~12-15 WCHAR, so a smaller multiplier would save memory — but now that exhaustion is surfaced (above) rather than silent, a blind reduction just trades memory for more truncated-path reports. Investigate a tuned multiplier (e.g. *32) paired with a pool-grow fallback, not a bare reduction.
 
 ## Review Follow-Ups
 
@@ -24,6 +39,7 @@ Shipped in v0.3.0. Three APIs:
 ## Test Infrastructure
 
 - **Admin test runs hang on exit (recurring).** When `run-coverage.ps1` (full mode) or `native-coverage.ps1` is launched elevated via UAC, the elevated process intermittently fails to exit cleanly after `dotnet test` reports all tests passed — the parent shell sits indefinitely waiting on `Start-Process -Wait`. Same symptom appears with both `Microsoft.CodeCoverage.Console collect` (native script) and the plain coverlet path (managed script). Suspects to investigate:
+  - **2026-05-28 confirmed — it is a real hang, not a missed UAC prompt.** The elevated `native-coverage-elevated.ps1` run launched (build + instrument + test-run-start all appeared in the elevated log, so UAC *was* approved), then `dotnet test` never returned within 300s. A watchdog killing the hung `dotnet`/`testhost` to escape produces a CORRUPT cobertura (normally-covered lines show uncovered; `collect` only finalizes on a clean child exit) — so kill-to-recover does not yield a usable report. Pragmatic verification meanwhile: run `scripts/native-coverage.ps1` NON-elevated — branch coverage stays 100%, only USN/admin lines drop; inspect the cobertura per-file to confirm changed lines are covered. See memory `reference_native_coverage_hang.md`. The split-admin-tests item below is the real remedy.
   - `WatchUsnJournal_*` admin tests use `CancelIoEx` to unblock a kernel wait — possible the cancel races with process teardown and leaves a worker thread in a non-signaled wait, blocking the runtime's exit. Worth checking with `procdump -ma` on a hung session to see what threads are alive.
   - `dotnet test` host process (`testhost.dll`) running under instrumentation may not flush the coverage file before the parent reaps it — could be the instrumentation harness, not the tests themselves.
   - A timeout wrapper around the elevated invocation (e.g. `Start-Process` with a watchdog that issues `taskkill /T` after N minutes past the last log line) would at least prevent the session from blocking forever.
