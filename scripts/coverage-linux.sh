@@ -61,7 +61,9 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     mkdir -p "$MANAGED_REPORT_DIR"
 
     # Tests excluded on Linux (call Windows-only entry points or use raw volume APIs):
-    #   MftResultTests, MftVolumeTests, NativeCoverageTests
+    #   MftResultTests, MftVolumeTests, NativeCoverageTests, UsnJournalSyntheticTests
+    #   (UsnJournalSyntheticTests P/Invokes the USN test hooks + usn_journal exports,
+    #    all #ifdef _WIN32, so they don't exist in libMFTLibNative.so)
     # Plus 3 individual tests that need Windows-side platform behavior:
     #   ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse
     #   ElevationUtilitiesTests.TryRunElevated_ProcessExitsZero_ReturnsTrue
@@ -70,6 +72,7 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     FILTER='FullyQualifiedName!~MftResultTests'
     FILTER+='&FullyQualifiedName!~MftVolumeTests'
     FILTER+='&FullyQualifiedName!~NativeCoverageTests'
+    FILTER+='&FullyQualifiedName!~UsnJournalSyntheticTests'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.ElevationUtilitiesTests.TryRunElevated_ProcessExitsZero_ReturnsTrue'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.MockVolumeTests.GetVolumeHandle_InvalidVolume_ThrowsIOException'

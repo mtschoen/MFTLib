@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "platform.h"
+#include "../internal.h"
 
 #include <fileapi.h>
 #include <handleapi.h>
@@ -55,7 +56,9 @@ int64_t pread_at(File* f, void* buf, size_t count, int64_t offset) {
     ov.Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
     ov.OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
     DWORD bytesRead = 0;
-    if (!ReadFile(f->h, buf, static_cast<DWORD>(count), &bytesRead, &ov)) {
+    BOOL readOk = ReadFile(f->h, buf, static_cast<DWORD>(count), &bytesRead, &ov);
+    if (ShouldFailPlatformRead()) { readOk = FALSE; SetLastError(ERROR_ACCESS_DENIED); }
+    if (!readOk) {
         DWORD err = GetLastError();
         if (err != ERROR_HANDLE_EOF) return -1;
     }
@@ -68,7 +71,9 @@ int64_t pwrite_at(File* f, const void* buf, size_t count, int64_t offset) {
     ov.Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
     ov.OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
     DWORD bytesWritten = 0;
-    if (!WriteFile(f->h, buf, static_cast<DWORD>(count), &bytesWritten, &ov)) {
+    BOOL writeOk = WriteFile(f->h, buf, static_cast<DWORD>(count), &bytesWritten, &ov);
+    if (ShouldFailPlatformWrite()) writeOk = FALSE;
+    if (!writeOk) {
         return -1;
     }
     return bytesWritten;

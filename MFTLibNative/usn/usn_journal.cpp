@@ -18,8 +18,22 @@ static BOOL UsnDeviceIoControl(HANDLE handle, DWORD ioControlCode,
         SetLastError(hookError);
         return FALSE;
     }
+    if (UsnIoInjectSuccess(outBuffer, outBufferSize, bytesReturned)) {
+        return TRUE;
+    }
     return DeviceIoControl(handle, ioControlCode, inBuffer, inBufferSize,
                            outBuffer, outBufferSize, bytesReturned, overlapped);
+}
+
+// Wraps GetOverlappedResult so tests can simulate a cancelled (aborted) wait
+// without a real pending IOCTL — pairs with SetUsnIoFailError(ERROR_IO_PENDING).
+static BOOL UsnGetOverlappedResult(HANDLE handle, LPOVERLAPPED overlapped,
+                                   LPDWORD bytesReturned, BOOL wait) {
+    if (UsnIoShouldAbortOverlapped()) {
+        SetLastError(ERROR_OPERATION_ABORTED);
+        return FALSE;
+    }
+    return GetOverlappedResult(handle, overlapped, bytesReturned, wait);
 }
 
 extern "C" {
@@ -134,7 +148,7 @@ extern "C" {
 
                 if (result->entryCount >= capacity) {
                     uint64_t newCapacity = capacity * 2;
-                    auto* grown = (UsnJournalEntry*)VirtualAlloc(
+                    auto* grown = ShouldFailAlloc() ? nullptr : (UsnJournalEntry*)VirtualAlloc(
                         nullptr, (size_t)newCapacity * sizeof(UsnJournalEntry),
                         MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
                     if (!grown) {
@@ -222,7 +236,7 @@ extern "C" {
         if (!ok) {
             DWORD error = GetLastError();
             if (error == ERROR_IO_PENDING) {
-                ok = GetOverlappedResult(volumeHandle, &overlapped, &bytesReturned, TRUE);
+                ok = UsnGetOverlappedResult(volumeHandle, &overlapped, &bytesReturned, TRUE);
                 if (!ok) {
                     error = GetLastError();
                     if (error == ERROR_OPERATION_ABORTED) {

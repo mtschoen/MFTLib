@@ -41,8 +41,20 @@ static class MFTLibNative
     [DllImport(LibraryName, EntryPoint = "SetFailPathConversion", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetFailPathConversion(int fail);
 
+    [DllImport(LibraryName, EntryPoint = "SetFailPlatformRead", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetFailPlatformRead(int countdown);
+
+    [DllImport(LibraryName, EntryPoint = "SetFailPlatformWrite", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetFailPlatformWrite(int fail);
+
     [DllImport(LibraryName, EntryPoint = "SetUsnIoFailError", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetUsnIoFailError(uint error, int countdown);
+
+    [DllImport(LibraryName, EntryPoint = "SetUsnIoSuccess", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe void NativeSetUsnIoSuccess(byte* data, uint size);
+
+    [DllImport(LibraryName, EntryPoint = "SetUsnOverlappedAbort", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetUsnOverlappedAbort();
 
     [DllImport(LibraryName, EntryPoint = "ResetTestState", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeResetTestState();

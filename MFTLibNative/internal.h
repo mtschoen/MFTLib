@@ -43,7 +43,18 @@ bool ShouldFailRead();
 uint64_t NamePoolCapacityOverride();
 bool ShouldFailFileSize();
 bool ShouldFailPathConversion();
+// Force the platform positioned read/write to take their failure branch, so
+// pread_at/pwrite_at error handling is coverable without a real I/O failure.
+bool ShouldFailPlatformRead();
+bool ShouldFailPlatformWrite();
 
 #ifdef _WIN32
 bool ShouldFailUsnIo(DWORD& outError);
+// Test seam: inject a synthetic IOCTL success response (dequeues one buffer
+// queued via SetUsnIoSuccess), so USN journal success + record-parsing paths
+// can be covered without a real elevated volume handle.
+bool UsnIoInjectSuccess(void* outBuffer, unsigned long outBufferSize, unsigned long* bytesReturned);
+// Test seam: force the overlapped wait to report ERROR_OPERATION_ABORTED,
+// exercising the watch cancel path without a real pending IOCTL.
+bool UsnIoShouldAbortOverlapped();
 #endif
