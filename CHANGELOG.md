@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.0
+
+### Features
+
+- **USN journal support** on `MftVolume`:
+  - `QueryUsnJournal()` — get the current journal cursor (`UsnJournalCursor`) to baseline incremental updates after a full scan
+  - `ReadUsnJournal(cursor)` — batch catch-up read; returns `(UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor)`. Throws `InvalidOperationException` if the journal was recreated or entries were overwritten (caller should fall back to a full rescan)
+  - `WatchUsnJournal(cursor, cancellationToken)` — live `IAsyncEnumerable<UsnJournalEntry[]>` event stream; blocks on the kernel (zero CPU) until changes arrive, unblocks via `CancelIoEx` on cancellation
+  - `WatchUsnJournalWithCursor(cursor, cancellationToken)` — same as above but yields `(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)` so callers can persist progress without a separate `QueryUsnJournal` IOCTL
+- `UsnJournalEntry` exposes `RecordNumber` / `ParentRecordNumber` (48-bit MFT segment indices matching `MftRecord`), `Usn`, `Timestamp`, `Reason`, `FileAttributes`, `FileName`, plus `IsCreate` / `IsDelete` / `IsRename` / `IsClose` reason helpers
+- `UsnJournalEntry.Create(...)` — public factory to reconstruct an entry from already-decoded values (e.g. journal data serialized to disk and rebuilt in another process)
+- `MftRecord.FileAttributes` now sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback
+- Added public `IElevationProvider` interface (with `ElevationUtilities.DefaultProvider`) so consumers can substitute elevation behavior in their own tests
+
+### Improvements
+
+- Native path resolution now parallelizes across worker threads (same fan-out as fixup+parse) when `numThreads > 1`, with a serial fallback
+- Path name-pool exhaustion is now surfaced via the native `errorMessage` ("Path name pool exhausted; N names dropped, some paths truncated") instead of silently truncating
+
+### Tests
+
+- 100% native coverage achieved without admin via synthetic seams
+- Added USN journal test suites (synthetic, live, and admin-elevated)
+
 ## 0.2.0
 
 ### Breaking Changes

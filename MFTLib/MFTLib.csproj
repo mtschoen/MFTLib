@@ -27,7 +27,7 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <Deterministic>true</Deterministic>
-    <!-- TODO: Revert to Condition="'$(CI)' == 'true'" once GitHub Actions pipeline is set up -->
+    <!-- Unconditionally true so local `-t:Pack` produces the same deterministic DLLs as CI. -->
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 

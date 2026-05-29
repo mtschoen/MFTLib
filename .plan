@@ -9,10 +9,10 @@ Code-complete. Three APIs:
 ### 0.3.0 NuGet publish checklist (blockers — currently gated on file-wizard finishing the USN cross-drive rename/move work)
 
 Surfaced in the 2026-05-28 pre-publish audit; none are code — all are release packaging:
-- **CHANGELOG.md** has no 0.3.0 section (stops at 0.2.0). Add: USN journal trio, `IElevationProvider`, `UsnJournalEntry.Create`, the `WatchUsnJournalWithCursor` overload, `$STANDARD_INFORMATION`-sourced `FileAttributes`.
-- **README.md** never mentions USN — and it IS the `<PackageReadmeFile>` (the NuGet landing page). Update the intro + Features list and add a `QueryUsnJournal`/`ReadUsnJournal`/`WatchUsnJournal` usage example.
-- **MFTLib.csproj:30** stale TODO references "GitHub Actions pipeline" — CI is Gitea Actions now and is set up. `ContinuousIntegrationBuild` is unconditionally `true` (correct for deterministic packs); just resolve/remove the comment.
-- **Tag + push `v0.3.0`.** SourceLink (`PublishRepositoryUrl=true` + `SourceLink.GitHub`) resolves against github.com/mtschoen/MFTLib, so the exact packed commit AND the tag must be pushed to the GitHub mirror before `-t:Pack`, or source links 404.
+- **[DONE 2026-05-29]** **CHANGELOG.md** 0.3.0 section added: USN journal trio + `WatchUsnJournalWithCursor`, `IElevationProvider`, `UsnJournalEntry.Create`, `$STANDARD_INFORMATION`-sourced `FileAttributes`, parallel path resolution, name-pool exhaustion surfacing.
+- **[DONE 2026-05-29]** **README.md** intro + Features updated to mention USN; added a "Tracking changes with the USN journal" section with `QueryUsnJournal`/`ReadUsnJournal`/`WatchUsnJournalWithCursor` examples.
+- **[DONE 2026-05-29]** **MFTLib.csproj:30** stale "GitHub Actions pipeline" TODO replaced with an accurate note; `ContinuousIntegrationBuild` stays unconditionally `true` for deterministic packs.
+- **[TODO — deliberately held]** **Tag + push `v0.3.0`.** SourceLink (`PublishRepositoryUrl=true` + `SourceLink.GitHub`) resolves against github.com/mtschoen/MFTLib, so the exact packed commit AND the tag must be pushed to the GitHub mirror before `-t:Pack`, or source links 404. Held until file-wizard's USN cross-drive rename/move work settles (we may still need more changes before shipping).
 - Already confirmed fine: 0.2.0 IS on NuGet; github.com/mtschoen/MFTLib exists (public); LICENSE.txt + README are packaged.
 
 ## Native C++ Cleanup (mft/mft_parse.cpp)
