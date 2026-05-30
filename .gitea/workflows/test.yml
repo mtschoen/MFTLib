@@ -17,7 +17,7 @@ jobs:
       # Node.js uses its bundled cert store, not Windows trust. Gitea's mkcert-signed
       # cert isn't in it. Long-term fix: install mkcert CA into Node.js cert store
       # on the runner. Short-term: bypass.
-      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+      NODE_EXTRA_CA_CERTS: C:\actions-runner\mkcert-ca.pem
     steps:
       - uses: actions/checkout@v4
 
