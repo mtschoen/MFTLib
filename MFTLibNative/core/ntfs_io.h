@@ -17,8 +17,8 @@ PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type
 // Windows-only HANDLE-based volume readers:
 #ifdef _WIN32
 BOOL Read(HANDLE handle, void* buffer, uint64_t from, DWORD count, PDWORD bytesRead);
-uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr,
-                              uint32_t bytesPerCluster, uint64_t* outSize);
-bool ReadMFTRecord(HANDLE volumeHandle, std::vector<DataRun>& mftRuns,
-                    uint32_t bytesPerCluster, uint64_t recordNumber, uint8_t* buffer);
+uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr, uint32_t bytesPerCluster,
+                             uint64_t* outSize);
+bool ReadMFTRecord(HANDLE volumeHandle, std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster, uint64_t recordNumber,
+                   uint8_t* buffer);
 #endif

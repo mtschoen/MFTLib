@@ -1,0 +1,12 @@
+# clang-format config for MFTLibNative (C++).
+# Google base matches the existing attached-brace, left-aligned-pointer style;
+# widened to 4-space indent and a 120-col limit to match the codebase as written.
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 120
+# Windows headers require <windows.h> before the per-API headers that depend on
+# it (sorting them alphabetically breaks the target-arch macro setup → C1189).
+SortIncludes: false
+# The codebase indents preprocessor directives nested inside #if/#ifdef blocks;
+# keep that to minimize churn from the formatting sweep.
+IndentPPDirectives: BeforeHash

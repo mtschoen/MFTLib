@@ -29,7 +29,7 @@ public class ElevationUtilitiesCoverageTests
 
     // --- TryRunElevated: exit code 0 path (line 87) ---
 
-  [TestMethod]
+    [TestMethod]
     public void TryRunElevated_ExitCodeZero_ReturnsTrue()
     {
         // Exercises the exit code check at line 87 of TryRunElevated.
@@ -43,7 +43,8 @@ public class ElevationUtilitiesCoverageTests
                     ? "true" : "cmd.exe",
                 RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
                     ? string.Empty : "/c exit 0"
-            ) { CreateNoWindow = true, UseShellExecute = false };
+            )
+            { CreateNoWindow = true, UseShellExecute = false };
             return Process.Start(psi);
         };
         Assert.IsTrue(ElevationUtilities.TryRunElevated("--test"));
@@ -63,7 +64,8 @@ public class ElevationUtilitiesCoverageTests
                     ? "false" : "cmd.exe",
                 RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
                     ? string.Empty : "/c exit 1"
-            ) { CreateNoWindow = true, UseShellExecute = false };
+            )
+            { CreateNoWindow = true, UseShellExecute = false };
             return Process.Start(psi);
         };
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
@@ -86,7 +88,8 @@ public class ElevationUtilitiesCoverageTests
                     ? "sleep" : "cmd.exe",
                 RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
                     ? "60" : "/c ping -n 30 127.0.0.1 >nul"
-            ) { CreateNoWindow = true, UseShellExecute = false };
+            )
+            { CreateNoWindow = true, UseShellExecute = false };
             return Process.Start(psi);
         };
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", timeoutMs: 100));

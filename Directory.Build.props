@@ -1,0 +1,17 @@
+<Project>
+
+  <!-- Analyzer / code-style gate. Conditioned on .csproj so the MFTLibNative
+       vcxproj (which also imports this file) doesn't pick up a C#-only Roslyn
+       analyzer PackageReference. -->
+  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-Recommended</AnalysisLevel>
+    <!-- Turns the .editorconfig naming/style rules into build diagnostics. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
+    <PackageReference Include="Roslynator.Analyzers" Version="4.15.0" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

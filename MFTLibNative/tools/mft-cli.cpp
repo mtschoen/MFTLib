@@ -18,10 +18,8 @@
 
 #include "mft_api.h"
 
-extern "C" MftParseResult* ParseMFTFromFileUtf8(const char* filePath,
-                                                 const wchar_t* filter,
-                                                 uint32_t matchFlags,
-                                                 uint32_t bufferSizeRecords);
+extern "C" MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,
+                                                uint32_t bufferSizeRecords);
 extern "C" void FreeMftResult(MftParseResult* result);
 
 namespace {
@@ -31,10 +29,10 @@ constexpr uint64_t kDumpSampleCount = 25;
 
 void print_usage(const char* prog) {
     std::fprintf(stderr,
-        "Usage:\n"
-        "  %s dump   <mft-path>             # summary + first %llu filenames\n"
-        "  %s search <mft-path> <pattern>   # case-insensitive substring on filename\n",
-        prog, (unsigned long long)kDumpSampleCount, prog);
+                 "Usage:\n"
+                 "  %s dump   <mft-path>             # summary + first %llu filenames\n"
+                 "  %s search <mft-path> <pattern>   # case-insensitive substring on filename\n",
+                 prog, (unsigned long long)kDumpSampleCount, prog);
 }
 
 // Encode a wchar_t buffer (codepoints, possibly zero-padded after the name)
@@ -69,24 +67,16 @@ std::string wide_to_utf8(const wchar_t* w, size_t maxLen) {
 bool icontains_ascii(const std::string& haystack, const std::string& needle) {
     if (needle.empty()) return true;
     auto cmp = [](char a, char b) {
-        return std::tolower(static_cast<unsigned char>(a)) ==
-               std::tolower(static_cast<unsigned char>(b));
+        return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
     };
-    return std::search(haystack.begin(), haystack.end(),
-                       needle.begin(), needle.end(), cmp) != haystack.end();
+    return std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(), cmp) != haystack.end();
 }
 
-const char* type_marker(uint16_t flags) {
-    return (flags & 0x2) ? "/" : "";
-}
+const char* type_marker(uint16_t flags) { return (flags & 0x2) ? "/" : ""; }
 
 void print_entry(const MftFileEntry& e, const std::string& name) {
-    std::printf("rec=%-8llu parent=%-8llu flags=0x%04x attr=0x%08x %s%s\n",
-                (unsigned long long)e.recordNumber,
-                (unsigned long long)e.parentRecordNumber,
-                (unsigned)e.flags,
-                (unsigned)e.fileAttributes,
-                name.c_str(),
+    std::printf("rec=%-8llu parent=%-8llu flags=0x%04x attr=0x%08x %s%s\n", (unsigned long long)e.recordNumber,
+                (unsigned long long)e.parentRecordNumber, (unsigned)e.flags, (unsigned)e.fileAttributes, name.c_str(),
                 type_marker(e.flags));
 }
 
@@ -114,23 +104,29 @@ int do_search(const MftParseResult* r, const std::string& pattern) {
             hits++;
         }
     }
-    std::printf("\n%llu match(es) for \"%s\"\n",
-                (unsigned long long)hits, pattern.c_str());
+    std::printf("\n%llu match(es) for \"%s\"\n", (unsigned long long)hits, pattern.c_str());
     return 0;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 3) { print_usage(argv[0]); return 2; }
+    if (argc < 3) {
+        print_usage(argv[0]);
+        return 2;
+    }
     std::string cmd = argv[1];
     const char* path = argv[2];
     std::string pattern;
     if (cmd == "search") {
-        if (argc < 4) { print_usage(argv[0]); return 2; }
+        if (argc < 4) {
+            print_usage(argv[0]);
+            return 2;
+        }
         pattern = argv[3];
     } else if (cmd != "dump") {
-        print_usage(argv[0]); return 2;
+        print_usage(argv[0]);
+        return 2;
     }
 
     std::printf("Parsing %s ...\n", path);
@@ -147,9 +143,8 @@ int main(int argc, char** argv) {
     }
 
     std::printf("totalRecords=%llu usedRecords=%llu ioMs=%.2f parseMs=%.2f totalMs=%.2f\n\n",
-                (unsigned long long)r->totalRecords,
-                (unsigned long long)r->usedRecords,
-                r->ioTimeMs, r->parseTimeMs, r->totalTimeMs);
+                (unsigned long long)r->totalRecords, (unsigned long long)r->usedRecords, r->ioTimeMs, r->parseTimeMs,
+                r->totalTimeMs);
 
     int rc = (cmd == "dump") ? do_dump(r) : do_search(r, pattern);
     FreeMftResult(r);

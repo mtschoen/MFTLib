@@ -44,7 +44,10 @@ int64_t pread_at(File* f, void* buf, size_t count, int64_t offset) {
         ssize_t n = ::pread(f->fd, p, count, offset);
         if (n < 0) return -1;
         if (n == 0) break;  // EOF
-        total += n; p += n; offset += n; count -= static_cast<size_t>(n);
+        total += n;
+        p += n;
+        offset += n;
+        count -= static_cast<size_t>(n);
     }
     return total;
 }
@@ -57,7 +60,10 @@ int64_t pwrite_at(File* f, const void* buf, size_t count, int64_t offset) {
         ssize_t n = ::pwrite(f->fd, p, count, offset);
         if (n < 0) return -1;
         if (n == 0) break;
-        total += n; p += n; offset += n; count -= static_cast<size_t>(n);
+        total += n;
+        p += n;
+        offset += n;
+        count -= static_cast<size_t>(n);
     }
     return total;
 }
@@ -74,12 +80,8 @@ void* big_alloc(size_t bytes) {
     return p;
 }
 
-void big_free(void* ptr, size_t /*bytes*/) {
-    std::free(ptr);
-}
+void big_free(void* ptr, size_t /*bytes*/) { std::free(ptr); }
 
-uint32_t last_error() {
-    return static_cast<uint32_t>(errno);
-}
+uint32_t last_error() { return static_cast<uint32_t>(errno); }
 
 }  // namespace mftlib::platform

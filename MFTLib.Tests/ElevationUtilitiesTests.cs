@@ -97,7 +97,8 @@ public class ElevationUtilitiesTests
                     ? "true" : "cmd.exe",
                 RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
                     ? string.Empty : "/c exit 0"
-            ) { CreateNoWindow = true });
+            )
+        { CreateNoWindow = true });
         Assert.IsTrue(ElevationUtilities.TryRunElevated("--test"));
     }
 

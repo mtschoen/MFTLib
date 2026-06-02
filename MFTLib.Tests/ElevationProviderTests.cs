@@ -59,7 +59,8 @@ public class ElevationProviderTests
         ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo(
             isPosix ? "true" : "cmd.exe",
             isPosix ? string.Empty : "/c exit 0"
-        ) { CreateNoWindow = true, UseShellExecute = false });
+        )
+        { CreateNoWindow = true, UseShellExecute = false });
         Assert.IsTrue(ElevationUtilities.DefaultProvider.TryRunElevated("--test"));
     }
 }

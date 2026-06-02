@@ -2,34 +2,46 @@
 
 #include <cstdint>
 
+// These types mirror the on-disk NTFS layout and the Microsoft-documented
+// structures (see learn.microsoft.com links below). They are the C ABI / binary
+// surface: several use trailing flexible-array members (e.g. WCHAR FileName[1])
+// read past [0] for variable-length on-disk data, which std::array cannot model.
+// Wrapping them in extern "C" both states that intent and makes clang-tidy skip
+// modernize-avoid-c-arrays here (it ignores extern "C" shared-header code).
+extern "C" {
+
 #ifndef _WIN32
-    using ULONG  = uint32_t;
-    using USHORT = uint16_t;
-    using UCHAR  = uint8_t;
-    using LONGLONG = int64_t;
-    using ULONGLONG = uint64_t;
-    union LARGE_INTEGER {
-        struct { uint32_t LowPart; int32_t HighPart; };
-        int64_t QuadPart;
+using ULONG = uint32_t;
+using USHORT = uint16_t;
+using UCHAR = uint8_t;
+using LONGLONG = int64_t;
+using ULONGLONG = uint64_t;
+union LARGE_INTEGER {
+    struct {
+        uint32_t LowPart;
+        int32_t HighPart;
     };
-    using PVOID = void*;
-    using BOOL = int;
-    using DWORD = uint32_t;
-    using HANDLE = void*;
-    using PDWORD = DWORD*;
-    using UINT = unsigned int;
-    using WCHAR = char16_t;
+    int64_t QuadPart;
+};
+using PVOID = void*;
+using BOOL = int;
+using DWORD = uint32_t;
+using HANDLE = void*;
+using PDWORD = DWORD*;
+using UINT = unsigned int;
+using WCHAR = char16_t;
 #endif
 
 #pragma pack(push, 1)
-typedef LARGE_INTEGER VCN, *PVCN;
-typedef USHORT UPDATE_SEQUENCE_NUMBER, *PUPDATE_SEQUENCE_NUMBER;
+using VCN = LARGE_INTEGER;
+using PVCN = VCN*;
+using UPDATE_SEQUENCE_NUMBER = USHORT;
+using PUPDATE_SEQUENCE_NUMBER = UPDATE_SEQUENCE_NUMBER*;
 typedef UPDATE_SEQUENCE_NUMBER UPDATE_SEQUENCE_ARRAY[1];
 
 constexpr uint32_t FILE_RECORD_SIZE = 1024;
 
-enum ATTRIBUTE_TYPE_CODE : uint32_t
-{
+enum ATTRIBUTE_TYPE_CODE : uint32_t {
     StandardInformation = 0x10,
     AttributeList = 0x20,
     FileName = 0x30,
@@ -50,94 +62,100 @@ enum ATTRIBUTE_TYPE_CODE : uint32_t
 };
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/mft-segment-reference
-typedef struct _MFT_SEGMENT_REFERENCE {
-    ULONG  SegmentNumberLowPart;
+using MFT_SEGMENT_REFERENCE = struct MftSegmentReferenceLayout {
+    ULONG SegmentNumberLowPart;
     USHORT SegmentNumberHighPart;
     USHORT SequenceNumber;
-} MFT_SEGMENT_REFERENCE, * PMFT_SEGMENT_REFERENCE;
+};
+using PMFT_SEGMENT_REFERENCE = MFT_SEGMENT_REFERENCE*;
 
-typedef _MFT_SEGMENT_REFERENCE FILE_REFERENCE, *PFILE_REFERENCE;
+using FILE_REFERENCE = MftSegmentReferenceLayout;
+using PFILE_REFERENCE = FILE_REFERENCE*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/attribute-record-header
-typedef struct _ATTRIBUTE_RECORD_HEADER {
+using ATTRIBUTE_RECORD_HEADER = struct AttributeRecordHeaderLayout {
     ATTRIBUTE_TYPE_CODE TypeCode;
-    ULONG               RecordLength;
-    UCHAR               FormCode;
-    UCHAR               NameLength;
-    USHORT              NameOffset;
-    USHORT              Flags;
-    USHORT              Instance;
+    ULONG RecordLength;
+    UCHAR FormCode;
+    UCHAR NameLength;
+    USHORT NameOffset;
+    USHORT Flags;
+    USHORT Instance;
     union {
         struct {
-            ULONG  ValueLength;
+            ULONG ValueLength;
             USHORT ValueOffset;
-            UCHAR  Reserved[2];
+            UCHAR Reserved[2];
         } Resident;
         struct {
-            VCN      LowestVcn;
-            VCN      HighestVcn;
-            USHORT   MappingPairsOffset;
-            UCHAR    Reserved[6];
+            VCN LowestVcn;
+            VCN HighestVcn;
+            USHORT MappingPairsOffset;
+            UCHAR Reserved[6];
             LONGLONG AllocatedLength;
             LONGLONG FileSize;
             LONGLONG ValidDataLength;
             LONGLONG TotalAllocated;
         } Nonresident;
     } Form;
-} ATTRIBUTE_RECORD_HEADER, * PATTRIBUTE_RECORD_HEADER;
+};
+using PATTRIBUTE_RECORD_HEADER = ATTRIBUTE_RECORD_HEADER*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/attribute-list-entry
-typedef struct _ATTRIBUTE_LIST_ENTRY {
-    ATTRIBUTE_TYPE_CODE   AttributeTypeCode;
-    USHORT                RecordLength;
-    UCHAR                 AttributeNameLength;
-    UCHAR                 AttributeNameOffset;
-    VCN                   LowestVcn;
+using ATTRIBUTE_LIST_ENTRY = struct AttributeListEntryLayout {
+    ATTRIBUTE_TYPE_CODE AttributeTypeCode;
+    USHORT RecordLength;
+    UCHAR AttributeNameLength;
+    UCHAR AttributeNameOffset;
+    VCN LowestVcn;
     MFT_SEGMENT_REFERENCE SegmentReference;
-    USHORT                Reserved;
-    WCHAR                 AttributeName[1];
-} ATTRIBUTE_LIST_ENTRY, * PATTRIBUTE_LIST_ENTRY;
+    USHORT Reserved;
+    WCHAR AttributeName[1];
+};
+using PATTRIBUTE_LIST_ENTRY = ATTRIBUTE_LIST_ENTRY*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/file-name
-typedef struct _FILE_NAME {
+using FILE_NAME = struct FileNameLayout {
     FILE_REFERENCE ParentDirectory;
-    uint64_t       CreationTime;
-    uint64_t       ModificationTime;
-    uint64_t       MftModificationTime;
-    uint64_t       ReadTime;
-    uint64_t       AllocatedSize;
-    uint64_t       FileSize;
-    uint32_t       FileAttributes;     // e.g. FILE_ATTRIBUTE_DIRECTORY
-    uint32_t       ReparsePointTag;    // or EA size
-    UCHAR          FileNameLength;
-    UCHAR          Flags;
-    WCHAR          FileName[1];
-} FILE_NAME, * PFILE_NAME;
+    uint64_t CreationTime;
+    uint64_t ModificationTime;
+    uint64_t MftModificationTime;
+    uint64_t ReadTime;
+    uint64_t AllocatedSize;
+    uint64_t FileSize;
+    uint32_t FileAttributes;   // e.g. FILE_ATTRIBUTE_DIRECTORY
+    uint32_t ReparsePointTag;  // or EA size
+    UCHAR FileNameLength;
+    UCHAR Flags;
+    WCHAR FileName[1];
+};
+using PFILE_NAME = FILE_NAME*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/multi-sector-header
-typedef struct _MULTI_SECTOR_HEADER {
-    union
-    {
-        UCHAR  Signature[4];
+using MULTI_SECTOR_HEADER = struct MultiSectorHeaderLayout {
+    union {
+        UCHAR Signature[4];
         UINT Magic;
     };
     USHORT UpdateSequenceArrayOffset;
     USHORT UpdateSequenceArraySize;
-} MULTI_SECTOR_HEADER, * PMULTI_SECTOR_HEADER;
+};
+using PMULTI_SECTOR_HEADER = MULTI_SECTOR_HEADER*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/file-record-segment-header
-typedef struct _FILE_RECORD_SEGMENT_HEADER {
-    MULTI_SECTOR_HEADER   MultiSectorHeader;
-    ULONGLONG             Reserved1;
-    USHORT                SequenceNumber;
-    USHORT                Reserved2;
-    USHORT                FirstAttributeOffset;
-    USHORT                Flags;
-    ULONG                 Reserved3[2];
-    FILE_REFERENCE        BaseFileRecordSegment;
-    USHORT                Reserved4;
+using FILE_RECORD_SEGMENT_HEADER = struct FileRecordSegmentHeaderLayout {
+    MULTI_SECTOR_HEADER MultiSectorHeader;
+    ULONGLONG Reserved1;
+    USHORT SequenceNumber;
+    USHORT Reserved2;
+    USHORT FirstAttributeOffset;
+    USHORT Flags;
+    ULONG Reserved3[2];
+    FILE_REFERENCE BaseFileRecordSegment;
+    USHORT Reserved4;
     UPDATE_SEQUENCE_ARRAY UpdateSequenceArray;
-} FILE_RECORD_SEGMENT_HEADER, * PFILE_RECORD_SEGMENT_HEADER;
+};
+using PFILE_RECORD_SEGMENT_HEADER = FILE_RECORD_SEGMENT_HEADER*;
 
 struct RunHeader {
     uint8_t lengthFieldBytes : 4;
@@ -146,28 +164,30 @@ struct RunHeader {
 
 // BIOS parameter block -- first cluster of the hard drive which contains filesystem info
 struct NTFS_BPB {
-    uint8_t     jump[3];
-    char        name[8];
-    uint16_t    bytesPerSector;
-    uint8_t     sectorsPerCluster;
-    uint16_t    reservedSectors;
-    uint8_t     unused0[3];
-    uint16_t    unused1;
-    uint8_t     media;
-    uint16_t    unused2;
-    uint16_t    sectorsPerTrack;
-    uint16_t    headsPerCylinder;
-    uint32_t    hiddenSectors;
-    uint32_t    unused3;
-    uint32_t    unused4;
-    uint64_t    totalSectors;
-    uint64_t    mftStart;
-    uint64_t    mftMirrorStart;
-    uint32_t    clustersPerFileRecord;
-    uint32_t    clustersPerIndexBlock;
-    uint64_t    serialNumber;
-    uint32_t    checksum;
-    uint8_t     bootloader[426];
-    uint16_t    bootSignature;
+    uint8_t jump[3];
+    char name[8];
+    uint16_t bytesPerSector;
+    uint8_t sectorsPerCluster;
+    uint16_t reservedSectors;
+    uint8_t unused0[3];
+    uint16_t unused1;
+    uint8_t media;
+    uint16_t unused2;
+    uint16_t sectorsPerTrack;
+    uint16_t headsPerCylinder;
+    uint32_t hiddenSectors;
+    uint32_t unused3;
+    uint32_t unused4;
+    uint64_t totalSectors;
+    uint64_t mftStart;
+    uint64_t mftMirrorStart;
+    uint32_t clustersPerFileRecord;
+    uint32_t clustersPerIndexBlock;
+    uint64_t serialNumber;
+    uint32_t checksum;
+    uint8_t bootloader[426];
+    uint16_t bootSignature;
 };
 #pragma pack(pop)
+
+}  // extern "C"
