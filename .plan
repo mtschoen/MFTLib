@@ -44,3 +44,18 @@ Surfaced in the 2026-05-28 pre-publish audit; none are code — all are release 
   - `dotnet test` host process (`testhost.dll`) running under instrumentation may not flush the coverage file before the parent reaps it — could be the instrumentation harness, not the tests themselves.
   - A timeout wrapper around the elevated invocation (e.g. `Start-Process` with a watchdog that issues `taskkill /T` after N minutes past the last log line) would at least prevent the session from blocking forever.
   - Long-term: split admin-only tests into a separate test project so the non-admin run stays the default and elevated runs can be opted into with a known-stable test set.
+
+## Cross-Platform Managed Port (deferred)
+
+(Preserved 2026-06-19 from the reaped `docs/superpowers/plans/2026-04-24-linux-port-mvp.md`. The native Linux port shipped; these managed-side items did not.)
+
+- **Managed wrapper Linux loading**: needs `wchar_t` -> `char16_t` API surgery before the C# wrapper can load the native lib on Linux. Separate plan when picked up.
+- **`ParseMFTFromFileUtf8` filter parameter is still `wchar_t*`**: the Linux smoke test passes `nullptr`. Full cross-platform filter support comes with the managed-side port above.
+
+## CI / Build Follow-Ups (deferred)
+
+(Preserved 2026-06-19 from the reaped Gitea-CI plan/spec docs. CI is live; these are known residual items.)
+
+- **vcxproj `PlatformToolset=v145` vs runner v143**: CI overrides to v143 per-invocation. Reconcile by pinning v143 in the vcxproj or installing v145 on the runner.
+- **Gitea artifact REST API gap**: `actions/upload-artifact@v3` succeeds but Gitea's `/api/v1/.../artifacts` endpoint returns `total_count: 0`. Artifacts upload but are not retrievable via REST. Gitea limitation; acceptable since branch protection gates on job status, not artifacts.
+- **Tag-triggered release / benchmark workflow**: not yet designed; revisit when 0.4 ships.

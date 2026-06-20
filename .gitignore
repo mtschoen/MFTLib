@@ -386,3 +386,5 @@ out.txt
 native-coverage-html/
 coverage*.xml
 native-coverage.cobertura.xml
+
+.maintenance.json
