@@ -378,6 +378,10 @@ FodyWeavers.xsd
 .claude/*
 !.claude/settings.json
 
+# aislop runtime artifacts (keep only .aislop/config.yml)
+.aislop/*
+!.aislop/config.yml
+
 # Test output
 out.txt
 
