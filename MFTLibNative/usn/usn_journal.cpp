@@ -71,10 +71,11 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
     auto* result = new UsnJournalResult{};
     result->journalId = journalId;
 
-    constexpr size_t readBufferSize = 64 * 1024;
-    auto* readBuffer = ShouldFailAlloc()
-                           ? nullptr
-                           : (uint8_t*)VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    constexpr size_t readBufferSize = 64ULL * 1024;
+    auto* readBuffer =
+        ShouldFailAlloc()
+            ? nullptr
+            : static_cast<uint8_t*>(VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     if (readBuffer == nullptr) {
         SetErrorMessage(result->errorMessage, L"Failed to allocate read buffer");
         return result;
@@ -82,10 +83,10 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
 
     constexpr uint64_t initialCapacity = 1024;
     uint64_t capacity = initialCapacity;
-    result->entries = ShouldFailAlloc()
-                          ? nullptr
-                          : (UsnJournalEntry*)VirtualAlloc(nullptr, (size_t)capacity * sizeof(UsnJournalEntry),
-                                                           MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    result->entries = ShouldFailAlloc() ? nullptr
+                                        : static_cast<UsnJournalEntry*>(VirtualAlloc(
+                                              nullptr, static_cast<size_t>(capacity) * sizeof(UsnJournalEntry),
+                                              MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     if (result->entries == nullptr) {
         VirtualFree(readBuffer, 0, MEM_RELEASE);
         SetErrorMessage(result->errorMessage, L"Failed to allocate entry array");
@@ -109,7 +110,7 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
 
         DWORD bytesReturned = 0;
         BOOL success = UsnDeviceIoControl(volumeHandle, FSCTL_READ_USN_JOURNAL, &readData, sizeof(readData), readBuffer,
-                                          (DWORD)readBufferSize, &bytesReturned, nullptr);
+                                          static_cast<DWORD>(readBufferSize), &bytesReturned, nullptr);
         if (success == 0) {
             DWORD error = GetLastError();
             if (error == ERROR_HANDLE_EOF || error == ERROR_WRITE_PROTECT) {
@@ -148,24 +149,25 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
         uint8_t* endPtr = readBuffer + bytesReturned;
 
         while (recordPtr + sizeof(USN_RECORD_V2) <= endPtr) {
-            auto* usnRecord = (USN_RECORD_V2*)recordPtr;
+            auto* usnRecord = reinterpret_cast<USN_RECORD_V2*>(recordPtr);
             if (usnRecord->RecordLength == 0) {
                 break;
             }
 
             if (result->entryCount >= capacity) {
                 uint64_t newCapacity = capacity * 2;
-                auto* grown = ShouldFailAlloc() ? nullptr
-                                                : (UsnJournalEntry*)VirtualAlloc(
-                                                      nullptr, (size_t)newCapacity * sizeof(UsnJournalEntry),
-                                                      MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                auto* grown = ShouldFailAlloc()
+                                  ? nullptr
+                                  : static_cast<UsnJournalEntry*>(VirtualAlloc(
+                                        nullptr, static_cast<size_t>(newCapacity) * sizeof(UsnJournalEntry),
+                                        MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
                 if (grown == nullptr) {
                     SetErrorMessage(result->errorMessage, L"Failed to grow entry array");
                     VirtualFree(readBuffer, 0, MEM_RELEASE);
                     result->nextUsn = nextUsn;
                     return result;
                 }
-                memcpy(grown, result->entries, (size_t)result->entryCount * sizeof(UsnJournalEntry));
+                memcpy(grown, result->entries, static_cast<size_t>(result->entryCount) * sizeof(UsnJournalEntry));
                 VirtualFree(result->entries, 0, MEM_RELEASE);
                 result->entries = grown;
                 capacity = newCapacity;
@@ -183,8 +185,10 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
 
             uint16_t nameLenChars = usnRecord->FileNameLength / sizeof(WCHAR);
             entry.fileNameLength = nameLenChars;
-            uint16_t copyLen = min(nameLenChars, (uint16_t)259);
-            wmemcpy_s(entry.fileName, 260, (wchar_t*)((uint8_t*)usnRecord + usnRecord->FileNameOffset), copyLen);
+            uint16_t copyLen = min(nameLenChars, static_cast<uint16_t>(259));
+            wmemcpy_s(entry.fileName, 260,
+                      reinterpret_cast<wchar_t*>(reinterpret_cast<uint8_t*>(usnRecord) + usnRecord->FileNameOffset),
+                      copyLen);
 
             result->entryCount++;
             recordPtr += usnRecord->RecordLength;
@@ -210,10 +214,11 @@ EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t start
     result->journalId = journalId;
     result->nextUsn = startUsn;
 
-    constexpr size_t readBufferSize = 64 * 1024;
-    auto* readBuffer = ShouldFailAlloc()
-                           ? nullptr
-                           : (uint8_t*)VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    constexpr size_t readBufferSize = 64ULL * 1024;
+    auto* readBuffer =
+        ShouldFailAlloc()
+            ? nullptr
+            : static_cast<uint8_t*>(VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     if (readBuffer == nullptr) {
         SetErrorMessage(result->errorMessage, L"Failed to allocate read buffer");
         return result;
@@ -239,7 +244,7 @@ EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t start
 
     DWORD bytesReturned = 0;
     BOOL success = UsnDeviceIoControl(volumeHandle, FSCTL_READ_USN_JOURNAL, &readData, sizeof(readData), readBuffer,
-                                      (DWORD)readBufferSize, &bytesReturned, &overlapped);
+                                      static_cast<DWORD>(readBufferSize), &bytesReturned, &overlapped);
 
     if (success == 0) {
         DWORD error = GetLastError();
@@ -286,7 +291,7 @@ EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t start
         uint8_t* scanPtr = readBuffer + sizeof(int64_t);
         uint8_t* endPtr = readBuffer + bytesReturned;
         while (scanPtr + sizeof(USN_RECORD_V2) <= endPtr) {
-            auto* rec = (USN_RECORD_V2*)scanPtr;
+            auto* rec = reinterpret_cast<USN_RECORD_V2*>(scanPtr);
             if (rec->RecordLength == 0) {
                 break;
             }
@@ -295,12 +300,13 @@ EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t start
         }
 
         if (count > 0) {
-            result->entries = (UsnJournalEntry*)VirtualAlloc(nullptr, (size_t)count * sizeof(UsnJournalEntry),
-                                                             MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            result->entries = static_cast<UsnJournalEntry*>(
+                VirtualAlloc(nullptr, static_cast<size_t>(count) * sizeof(UsnJournalEntry), MEM_COMMIT | MEM_RESERVE,
+                             PAGE_READWRITE));
             if (result->entries != nullptr) {
                 uint8_t* recordPtr = readBuffer + sizeof(int64_t);
                 for (uint64_t i = 0; i < count && recordPtr + sizeof(USN_RECORD_V2) <= endPtr; i++) {
-                    auto* usnRecord = (USN_RECORD_V2*)recordPtr;
+                    auto* usnRecord = reinterpret_cast<USN_RECORD_V2*>(recordPtr);
                     if (usnRecord->RecordLength == 0) {
                         break;
                     }
@@ -316,10 +322,12 @@ EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t start
                     entry.fileAttributes = usnRecord->FileAttributes;
 
                     uint16_t nameLenChars = usnRecord->FileNameLength / sizeof(WCHAR);
-                    uint16_t copyLen = min(nameLenChars, (uint16_t)259);
+                    uint16_t copyLen = min(nameLenChars, static_cast<uint16_t>(259));
                     entry.fileNameLength = copyLen;
-                    wmemcpy_s(entry.fileName, 260, (wchar_t*)((uint8_t*)usnRecord + usnRecord->FileNameOffset),
-                              copyLen);
+                    wmemcpy_s(
+                        entry.fileName, 260,
+                        reinterpret_cast<wchar_t*>(reinterpret_cast<uint8_t*>(usnRecord) + usnRecord->FileNameOffset),
+                        copyLen);
 
                     result->entryCount++;
                     recordPtr += usnRecord->RecordLength;

@@ -110,8 +110,8 @@ uint16_t CopyNtfsNameUnits(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src,
             uint16_t low;
             memcpy(&low, src + i + 1, sizeof(WCHAR));
             if (low >= 0xDC00 && low <= 0xDFFF) {
-                uint32_t codepoint = 0x10000u + (((uint32_t)(unit - 0xD800)) << 10) + (low - 0xDC00);
-                dst[out++] = (wchar_t)codepoint;
+                uint32_t codepoint = 0x10000u + (static_cast<uint32_t>(unit - 0xD800) << 10) + (low - 0xDC00);
+                dst[out++] = static_cast<wchar_t>(codepoint);
                 i++;
                 continue;
             }
@@ -662,7 +662,7 @@ MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filte
                                      uint32_t bufferSizeRecords) {
 #ifndef _WIN32
     if (filter != nullptr) {
-        auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
+        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
         if (result) SetErrorMessage(result->errorMessage, L"Filter not supported on Linux yet");
         return result;
     }
@@ -709,7 +709,7 @@ EXPORT void FreeMftResult(MftParseResult* result) {
 #ifdef _WIN32
 EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags,
                                        uint32_t bufferSizeRecords) {
-    auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
+    auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
     if (result == nullptr) {
         return nullptr;
     }
@@ -741,7 +741,7 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
 
     ApplyFixup(record0, FILE_RECORD_SIZE);
 
-    auto* fileRecord0 = (PFILE_RECORD_SEGMENT_HEADER)record0;
+    auto* fileRecord0 = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record0);
     if (fileRecord0->MultiSectorHeader.Magic != 0x454C4946) {
         SetErrorMessage(result->errorMessage, L"Invalid MFT record 0 magic");
         return result;
@@ -763,10 +763,10 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
             attrListData = ReadNonResidentData(volumeHandle, attrListAttr, bytesPerCluster, &attrListSize);
         } else {
             attrListSize = attrListAttr->Form.Resident.ValueLength;
-            attrListData = (uint8_t*)malloc((size_t)attrListSize);
+            attrListData = static_cast<uint8_t*>(malloc(static_cast<size_t>(attrListSize)));
             if (attrListData != nullptr) {
-                memcpy(attrListData, (uint8_t*)attrListAttr + attrListAttr->Form.Resident.ValueOffset,
-                       (size_t)attrListSize);
+                memcpy(attrListData, reinterpret_cast<uint8_t*>(attrListAttr) + attrListAttr->Form.Resident.ValueOffset,
+                       static_cast<size_t>(attrListSize));
             }
         }
 
@@ -774,12 +774,12 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
             std::vector<uint64_t> extensionRecords;
             uint64_t offset = 0;
             while (offset + sizeof(ATTRIBUTE_LIST_ENTRY) <= attrListSize) {
-                auto* entry = (PATTRIBUTE_LIST_ENTRY)(attrListData + offset);
+                auto* entry = reinterpret_cast<PATTRIBUTE_LIST_ENTRY>(attrListData + offset);
                 if (entry->RecordLength == 0) {
                     break;
                 }
-                uint64_t segNum = (uint64_t)entry->SegmentReference.SegmentNumberLowPart |
-                                  ((uint64_t)entry->SegmentReference.SegmentNumberHighPart << 32);
+                uint64_t segNum = static_cast<uint64_t>(entry->SegmentReference.SegmentNumberLowPart) |
+                                  (static_cast<uint64_t>(entry->SegmentReference.SegmentNumberHighPart) << 32);
                 if (segNum != 0) {
                     bool found = false;
                     for (auto existing : extensionRecords) {
@@ -800,12 +800,12 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
                 if (!ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, recNum, extRecord)) {
                     continue;
                 }
-                auto* extHdr = (PFILE_RECORD_SEGMENT_HEADER)extRecord;
+                auto* extHdr = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(extRecord);
                 if (extHdr->MultiSectorHeader.Magic != 0x454C4946) {
                     continue;
                 }
 
-                auto* extAttr = (PATTRIBUTE_RECORD_HEADER)(extRecord + extHdr->FirstAttributeOffset);
+                auto* extAttr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(extRecord + extHdr->FirstAttributeOffset);
                 while (extAttr->TypeCode != ATTRIBUTE_TYPE_CODE::EndMarker) {
                     if (extAttr->RecordLength == 0) {
                         break;
@@ -816,7 +816,8 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
                             mftRuns.push_back(additionalRun);
                         }
                     }
-                    extAttr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)extAttr + extAttr->RecordLength);
+                    extAttr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(extAttr) +
+                                                                         extAttr->RecordLength);
                 }
             }
             free(attrListData);
@@ -847,7 +848,7 @@ EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* 
     int u8len =
         ShouldFailPathConversion() ? 0 : WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
     if (u8len <= 0) {
-        auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
+        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
         if (result != nullptr) {
             SetErrorMessage(result->errorMessage, L"Failed to convert path to UTF-8");
         }
