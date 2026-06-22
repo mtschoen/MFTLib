@@ -104,9 +104,9 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
         readData.StartUsn = nextUsn;
 
         DWORD bytesReturned = 0;
-        BOOL ok = UsnDeviceIoControl(volumeHandle, FSCTL_READ_USN_JOURNAL, &readData, sizeof(readData), readBuffer,
-                                     (DWORD)readBufferSize, &bytesReturned, nullptr);
-        if (ok == 0) {
+        BOOL success = UsnDeviceIoControl(volumeHandle, FSCTL_READ_USN_JOURNAL, &readData, sizeof(readData), readBuffer,
+                                          (DWORD)readBufferSize, &bytesReturned, nullptr);
+        if (success == 0) {
             DWORD error = GetLastError();
             if (error == ERROR_HANDLE_EOF || error == ERROR_WRITE_PROTECT) {
                 break;
@@ -234,14 +234,14 @@ EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t start
     }
 
     DWORD bytesReturned = 0;
-    BOOL ok = UsnDeviceIoControl(volumeHandle, FSCTL_READ_USN_JOURNAL, &readData, sizeof(readData), readBuffer,
-                                 (DWORD)readBufferSize, &bytesReturned, &overlapped);
+    BOOL success = UsnDeviceIoControl(volumeHandle, FSCTL_READ_USN_JOURNAL, &readData, sizeof(readData), readBuffer,
+                                      (DWORD)readBufferSize, &bytesReturned, &overlapped);
 
-    if (ok == 0) {
+    if (success == 0) {
         DWORD error = GetLastError();
         if (error == ERROR_IO_PENDING) {
-            ok = UsnGetOverlappedResult(volumeHandle, &overlapped, &bytesReturned, TRUE);
-            if (ok == 0) {
+            success = UsnGetOverlappedResult(volumeHandle, &overlapped, &bytesReturned, TRUE);
+            if (success == 0) {
                 error = GetLastError();
                 if (error == ERROR_OPERATION_ABORTED) {
                     CloseHandle(overlapped.hEvent);
@@ -251,7 +251,7 @@ EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t start
             }
         }
 
-        if (ok == 0) {
+        if (success == 0) {
             CloseHandle(overlapped.hEvent);
             VirtualFree(readBuffer, 0, MEM_RELEASE);
             DWORD finalError = GetLastError();
