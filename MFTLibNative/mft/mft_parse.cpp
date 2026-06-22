@@ -16,8 +16,10 @@
 #include "../core/ntfs_io.h"
 #include "../core/platform.h"
 
-static bool FileNameMatches(const WCHAR* name, uint8_t nameLen, const wchar_t* filter, uint16_t filterLen,
-                            uint32_t matchFlags) {
+namespace {
+
+bool FileNameMatches(const WCHAR* name, uint8_t nameLen, const wchar_t* filter, uint16_t filterLen,
+                     uint32_t matchFlags) {
 #ifdef _WIN32
     if ((matchFlags & 1) != 0U) {
         if (nameLen != filterLen) {
@@ -98,7 +100,7 @@ struct PathLookup {
 
 // Copy NTFS WCHAR units (UTF-16, char16_t) to wchar_t, combining surrogate pairs on Linux.
 // Returns the number of wchar_t codepoints written.
-static uint16_t CopyNtfsNameUnits(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src, uint16_t srcLen) {
+uint16_t CopyNtfsNameUnits(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src, uint16_t srcLen) {
     uint16_t out = 0;
     for (uint16_t i = 0; i < srcLen && out < dstCapacity; i++) {
         uint16_t unit;
@@ -124,15 +126,15 @@ static uint16_t CopyNtfsNameUnits(wchar_t* dst, uint16_t dstCapacity, const WCHA
 // On Windows (wchar_t==uint16_t) this is a direct unit copy.
 // On Linux (wchar_t==uint32_t) surrogate pairs are combined into a single codepoint.
 // Always null-terminates if there's room (callers pass dstCapacity > srcLen in practice).
-static void CopyNtfsName(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src, uint16_t srcLen) {
+void CopyNtfsName(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src, uint16_t srcLen) {
     uint16_t out = CopyNtfsNameUnits(dst, dstCapacity, src, srcLen);
     if (out < dstCapacity) {
         dst[out] = L'\0';
     }
 }
 
-static uint16_t ResolvePath(uint64_t recordIndex, PathLookup& lookup, uint64_t totalRecords, wchar_t* pathBuf,
-                            uint16_t pathBufSize) {
+uint16_t ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalRecords, wchar_t* pathBuf,
+                     uint16_t pathBufSize) {
     struct Component {
         const uint8_t* nameBytes;
         uint8_t len;
@@ -145,8 +147,8 @@ static uint16_t ResolvePath(uint64_t recordIndex, PathLookup& lookup, uint64_t t
 
     while (current != 5 && current < totalRecords && depth < 128) {
         bool cycle = false;
-        for (int v = 0; v < visitCount; v++) {
-            if (visited[v] == current) {
+        for (int vi = 0; vi < visitCount; vi++) {
+            if (visited[vi] == current) {
                 cycle = true;
                 break;
             }
@@ -198,9 +200,9 @@ struct SliceResult {
     void cleanup() const { free(entries); }
 };
 
-static void ProcessRecordSlice(uint8_t* buffer, uint64_t startIdx, uint64_t endIdx, uint64_t recordBase,
-                               SliceResult* slice, const wchar_t* filter, uint16_t filterLen, uint32_t matchFlags,
-                               PathLookup* lookup, uint64_t totalRecords) {
+void ProcessRecordSlice(uint8_t* buffer, uint64_t startIdx, uint64_t endIdx, uint64_t recordBase, SliceResult* slice,
+                        const wchar_t* filter, uint16_t filterLen, uint32_t matchFlags, PathLookup* lookup,
+                        uint64_t totalRecords) {
     for (uint64_t i = startIdx; i < endIdx; i++) {
         uint64_t recordIndex = recordBase + i;
         auto* recPtr = buffer + (FILE_RECORD_SIZE * i);
@@ -233,18 +235,18 @@ static void ProcessRecordSlice(uint8_t* buffer, uint64_t startIdx, uint64_t endI
                 siAttributes = *reinterpret_cast<uint32_t*>(siValue + 32);
                 sawStandardInformation = true;
             } else if (attr->TypeCode == FileName && attr->FormCode == 0) {
-                auto* fn =
+                auto* nameAttr =
                     reinterpret_cast<PFILE_NAME>(reinterpret_cast<uint8_t*>(attr) + attr->Form.Resident.ValueOffset);
-                if (fn->Flags != 2) {
-                    uint64_t parent = static_cast<uint64_t>(fn->ParentDirectory.SegmentNumberLowPart) |
-                                      (static_cast<uint64_t>(fn->ParentDirectory.SegmentNumberHighPart) << 32);
+                if (nameAttr->Flags != 2) {
+                    uint64_t parent = static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberLowPart) |
+                                      (static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberHighPart) << 32);
 
                     if ((lookup != nullptr) && recordIndex < totalRecords) {
-                        lookup->storeName(recordIndex, parent, fn->FileName, fn->FileNameLength);
+                        lookup->storeName(recordIndex, parent, nameAttr->FileName, nameAttr->FileNameLength);
                     }
 
                     if ((filter != nullptr) &&
-                        !FileNameMatches(fn->FileName, fn->FileNameLength, filter, filterLen, matchFlags)) {
+                        !FileNameMatches(nameAttr->FileName, nameAttr->FileNameLength, filter, filterLen, matchFlags)) {
                         break;
                     }
 
@@ -259,10 +261,10 @@ static void ProcessRecordSlice(uint8_t* buffer, uint64_t startIdx, uint64_t endI
                     entry.recordNumber = recordIndex;
                     entry.parentRecordNumber = parent;
                     entry.flags = rec->Flags;
-                    entry.fileNameLength = fn->FileNameLength;
-                    entry.fileAttributes = sawStandardInformation ? siAttributes : fn->FileAttributes;
+                    entry.fileNameLength = nameAttr->FileNameLength;
+                    entry.fileAttributes = sawStandardInformation ? siAttributes : nameAttr->FileAttributes;
                     // FileNameLength is UCHAR (max 255) which fits in fileName[260]; no clamping needed.
-                    CopyNtfsName(entry.fileName, 260, fn->FileName, fn->FileNameLength);
+                    CopyNtfsName(entry.fileName, 260, nameAttr->FileName, nameAttr->FileNameLength);
 
                     slice->count++;
                     break;
@@ -273,9 +275,9 @@ static void ProcessRecordSlice(uint8_t* buffer, uint64_t startIdx, uint64_t endI
     }
 }
 
-static void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, MftParseResult* result,
-                               uint64_t& usedCount, uint64_t& capacity, const wchar_t* filter, uint16_t filterLen,
-                               uint32_t matchFlags, PathLookup* lookup, uint64_t totalRecords) {
+void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, MftParseResult* result,
+                        uint64_t& usedCount, uint64_t& capacity, const wchar_t* filter, uint16_t filterLen,
+                        uint32_t matchFlags, PathLookup* lookup, uint64_t totalRecords) {
     for (uint64_t i = 0; i < filesToLoad; i++, recordIndex++) {
         auto* recPtr = buffer + (FILE_RECORD_SIZE * i);
         auto* rec = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recPtr);
@@ -307,18 +309,18 @@ static void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& 
                 siAttributes = *reinterpret_cast<uint32_t*>(siValue + 32);
                 sawStandardInformation = true;
             } else if (attr->TypeCode == FileName && attr->FormCode == 0) {
-                auto* fn =
+                auto* nameAttr =
                     reinterpret_cast<PFILE_NAME>(reinterpret_cast<uint8_t*>(attr) + attr->Form.Resident.ValueOffset);
-                if (fn->Flags != 2) {
-                    uint64_t parent = static_cast<uint64_t>(fn->ParentDirectory.SegmentNumberLowPart) |
-                                      (static_cast<uint64_t>(fn->ParentDirectory.SegmentNumberHighPart) << 32);
+                if (nameAttr->Flags != 2) {
+                    uint64_t parent = static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberLowPart) |
+                                      (static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberHighPart) << 32);
 
                     if ((lookup != nullptr) && recordIndex < totalRecords) {
-                        lookup->storeName(recordIndex, parent, fn->FileName, fn->FileNameLength);
+                        lookup->storeName(recordIndex, parent, nameAttr->FileName, nameAttr->FileNameLength);
                     }
 
                     if ((filter != nullptr) &&
-                        !FileNameMatches(fn->FileName, fn->FileNameLength, filter, filterLen, matchFlags)) {
+                        !FileNameMatches(nameAttr->FileName, nameAttr->FileNameLength, filter, filterLen, matchFlags)) {
                         break;
                     }
 
@@ -343,10 +345,10 @@ static void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& 
                     entry.recordNumber = recordIndex;
                     entry.parentRecordNumber = parent;
                     entry.flags = rec->Flags;
-                    entry.fileNameLength = fn->FileNameLength;
-                    entry.fileAttributes = sawStandardInformation ? siAttributes : fn->FileAttributes;
+                    entry.fileNameLength = nameAttr->FileNameLength;
+                    entry.fileAttributes = sawStandardInformation ? siAttributes : nameAttr->FileAttributes;
                     // FileNameLength is UCHAR (max 255) which fits in fileName[260]; no clamping needed.
-                    CopyNtfsName(entry.fileName, 260, fn->FileName, fn->FileNameLength);
+                    CopyNtfsName(entry.fileName, 260, nameAttr->FileName, nameAttr->FileNameLength);
 
                     usedCount++;
                     break;
@@ -359,8 +361,8 @@ static void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& 
 
 using ReadChunkFn = uint64_t (*)(void* context, uint8_t* targetBuffer, double& ioMs);
 
-static MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords,
-                                    const wchar_t* filter, uint32_t matchFlags, uint32_t bufferSizeRecords) {
+MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, const wchar_t* filter,
+                             uint32_t matchFlags, uint32_t bufferSizeRecords) {
     auto wallStart = SteadyClock::now();
     double ioMs = 0;
     double fixupMs = 0;
@@ -435,15 +437,15 @@ static MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, ui
         if (numThreads > 1) {
             uint64_t perThread = (currentChunkSize + numThreads - 1) / numThreads;
 
-            auto fixupStart = SteadyClock::now();
             {
+                auto fixupStart = SteadyClock::now();
                 std::vector<SliceResult> slices(numThreads);
                 std::vector<std::thread> workers;
                 std::vector<double> threadFixupMs(numThreads, 0.0);
                 unsigned actualThreads = 0;
 
-                for (unsigned t = 0; t < numThreads; t++) {
-                    uint64_t tStart = t * perThread;
+                for (unsigned ti = 0; ti < numThreads; ti++) {
+                    uint64_t tStart = ti * perThread;
                     uint64_t tEnd = tStart + perThread < currentChunkSize ? tStart + perThread : currentChunkSize;
                     if (tStart >= currentChunkSize) {
                         break;
@@ -452,9 +454,9 @@ static MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, ui
 
                     uint64_t initCap = (filter != nullptr) ? 64 : (tEnd - tStart) / 4;
                     initCap = std::max<uint64_t>(initCap, 64);
-                    slices[t].init(initCap);
+                    slices[ti].init(initCap);
 
-                    workers.emplace_back([buffer, tStart, tEnd, t, &slices, &threadFixupMs, filter, filterLen,
+                    workers.emplace_back([buffer, tStart, tEnd, ti, &slices, &threadFixupMs, filter, filterLen,
                                           matchFlags, &lookup, resolvePaths, totalRecords, recordIndex]() {
                         auto fStart = SteadyClock::now();
                         for (uint64_t i = tStart; i < tEnd; i++) {
@@ -464,41 +466,41 @@ static MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, ui
                                 ApplyFixup(recPtr, FILE_RECORD_SIZE);
                             }
                         }
-                        threadFixupMs[t] = ElapsedMs(fStart, SteadyClock::now());
+                        threadFixupMs[ti] = ElapsedMs(fStart, SteadyClock::now());
 
-                        ProcessRecordSlice(buffer, tStart, tEnd, recordIndex, &slices[t], filter, filterLen, matchFlags,
-                                           resolvePaths ? &lookup : nullptr, totalRecords);
+                        ProcessRecordSlice(buffer, tStart, tEnd, recordIndex, &slices[ti], filter, filterLen,
+                                           matchFlags, resolvePaths ? &lookup : nullptr, totalRecords);
                     });
                 }
-                for (auto& w : workers) {
-                    w.join();
+                for (auto& worker : workers) {
+                    worker.join();
                 }
 
                 auto combinedEnd = SteadyClock::now();
                 double totalElapsed = ElapsedMs(fixupStart, combinedEnd);
 
                 double maxFixup = 0;
-                for (unsigned t = 0; t < actualThreads; t++) {
-                    maxFixup = (std::max)(threadFixupMs[t], maxFixup);
+                for (unsigned ti = 0; ti < actualThreads; ti++) {
+                    maxFixup = (std::max)(threadFixupMs[ti], maxFixup);
                 }
                 fixupMs += maxFixup;
                 parseMs += totalElapsed - maxFixup;
 
-                for (unsigned t = 0; t < actualThreads; t++) {
-                    auto& s = slices[t];
-                    if (s.count > 0) {
-                        if (usedCount + s.count > capacity) {
-                            while (usedCount + s.count > capacity) {
+                for (unsigned ti = 0; ti < actualThreads; ti++) {
+                    auto& slice = slices[ti];
+                    if (slice.count > 0) {
+                        if (usedCount + slice.count > capacity) {
+                            while (usedCount + slice.count > capacity) {
                                 capacity *= 2;
                             }
                             result->entries = static_cast<MftFileEntry*>(
                                 realloc(result->entries, static_cast<size_t>(capacity) * sizeof(MftFileEntry)));
                         }
-                        memcpy(result->entries + usedCount, s.entries,
-                               static_cast<size_t>(s.count) * sizeof(MftFileEntry));
-                        usedCount += s.count;
+                        memcpy(result->entries + usedCount, slice.entries,
+                               static_cast<size_t>(slice.count) * sizeof(MftFileEntry));
+                        usedCount += slice.count;
                     }
-                    s.cleanup();
+                    slice.cleanup();
                 }
             }
         } else {
@@ -560,13 +562,13 @@ static MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, ui
             if (numThreads > 1) {
                 uint64_t perThread = (usedCount + numThreads - 1) / numThreads;
                 std::vector<std::thread> workers;
-                for (unsigned t = 0; t < numThreads; t++) {
-                    uint64_t start = (std::min)(static_cast<uint64_t>(t) * perThread, usedCount);
+                for (unsigned ti = 0; ti < numThreads; ti++) {
+                    uint64_t start = (std::min)(static_cast<uint64_t>(ti) * perThread, usedCount);
                     uint64_t end = (std::min)(start + perThread, usedCount);
                     workers.emplace_back(resolveRange, start, end);
                 }
-                for (auto& w : workers) {
-                    w.join();
+                for (auto& worker : workers) {
+                    worker.join();
                 }
             } else {
                 resolveRange(0, usedCount);
@@ -594,32 +596,32 @@ struct VolumeReadContext {
     uint32_t bufferSizeRecords;
 };
 
-static uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
-    auto* c = static_cast<VolumeReadContext*>(ctx);
-    while (c->filesRemaining == 0) {
-        c->runIndex++;
-        if (c->runIndex >= c->mftRuns->size()) {
+uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
+    auto* volumeCtx = static_cast<VolumeReadContext*>(ctx);
+    while (volumeCtx->filesRemaining == 0) {
+        volumeCtx->runIndex++;
+        if (volumeCtx->runIndex >= volumeCtx->mftRuns->size()) {
             return 0;
         }
-        auto& run = (*c->mftRuns)[c->runIndex];
-        c->filesRemaining = run.clusterCount * c->bytesPerCluster / FILE_RECORD_SIZE;
-        c->positionInBlock = 0;
+        auto& run = (*volumeCtx->mftRuns)[volumeCtx->runIndex];
+        volumeCtx->filesRemaining = run.clusterCount * volumeCtx->bytesPerCluster / FILE_RECORD_SIZE;
+        volumeCtx->positionInBlock = 0;
     }
 
-    auto& run = (*c->mftRuns)[c->runIndex];
-    uint64_t filesToLoad = c->filesRemaining < static_cast<uint64_t>(c->bufferSizeRecords)
-                               ? c->filesRemaining
-                               : static_cast<uint64_t>(c->bufferSizeRecords);
+    auto& run = (*volumeCtx->mftRuns)[volumeCtx->runIndex];
+    uint64_t filesToLoad = volumeCtx->filesRemaining < static_cast<uint64_t>(volumeCtx->bufferSizeRecords)
+                               ? volumeCtx->filesRemaining
+                               : static_cast<uint64_t>(volumeCtx->bufferSizeRecords);
     DWORD readBytes;
     auto ioStart = SteadyClock::now();
-    if (Read(c->volumeHandle, targetBuffer,
-             (static_cast<uint64_t>(run.clusterOffset) * c->bytesPerCluster) + c->positionInBlock,
+    if (Read(volumeCtx->volumeHandle, targetBuffer,
+             (static_cast<uint64_t>(run.clusterOffset) * volumeCtx->bytesPerCluster) + volumeCtx->positionInBlock,
              static_cast<DWORD>(filesToLoad * FILE_RECORD_SIZE), &readBytes) == 0) {
         return 0;
     }
     ioMs += ElapsedMs(ioStart, SteadyClock::now());
-    c->positionInBlock += filesToLoad * FILE_RECORD_SIZE;
-    c->filesRemaining -= filesToLoad;
+    volumeCtx->positionInBlock += filesToLoad * FILE_RECORD_SIZE;
+    volumeCtx->filesRemaining -= filesToLoad;
     return filesToLoad;
 }
 #endif  // _WIN32
@@ -631,33 +633,33 @@ struct FileReadContext {
     int64_t fileOffset;  // current read position in bytes
 };
 
-static uint64_t FileReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
-    auto* c = static_cast<FileReadContext*>(ctx);
-    if (c->recordsRemaining == 0) {
+uint64_t FileReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
+    auto* fileCtx = static_cast<FileReadContext*>(ctx);
+    if (fileCtx->recordsRemaining == 0) {
         return 0;
     }
-    uint64_t filesToLoad = c->recordsRemaining < static_cast<uint64_t>(c->bufferSizeRecords)
-                               ? c->recordsRemaining
-                               : static_cast<uint64_t>(c->bufferSizeRecords);
+    uint64_t filesToLoad = fileCtx->recordsRemaining < static_cast<uint64_t>(fileCtx->bufferSizeRecords)
+                               ? fileCtx->recordsRemaining
+                               : static_cast<uint64_t>(fileCtx->bufferSizeRecords);
     auto byteCount = static_cast<size_t>(filesToLoad * FILE_RECORD_SIZE);
     auto ioStart = SteadyClock::now();
     if (ShouldFailRead()) {
         return 0;
     }
-    int64_t bytesRead = mftlib::platform::pread_at(c->file, targetBuffer, byteCount, c->fileOffset);
+    int64_t bytesRead = mftlib::platform::pread_at(fileCtx->file, targetBuffer, byteCount, fileCtx->fileOffset);
     if (bytesRead <= 0) {
         return 0;
     }
     ioMs += ElapsedMs(ioStart, SteadyClock::now());
     uint64_t recordsRead = static_cast<uint64_t>(bytesRead) / FILE_RECORD_SIZE;
-    c->fileOffset += static_cast<int64_t>(recordsRead) * FILE_RECORD_SIZE;
-    c->recordsRemaining -= recordsRead;
+    fileCtx->fileOffset += static_cast<int64_t>(recordsRead) * FILE_RECORD_SIZE;
+    fileCtx->recordsRemaining -= recordsRead;
     return recordsRead;
 }
 
 // Core implementation that takes a UTF-8 file path.
-static MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filter, uint32_t matchFlags,
-                                            uint32_t bufferSizeRecords) {
+MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filter, uint32_t matchFlags,
+                                     uint32_t bufferSizeRecords) {
 #ifndef _WIN32
     if (filter != nullptr) {
         auto* result = (MftParseResult*)calloc(1, sizeof(MftParseResult));
@@ -692,6 +694,8 @@ static MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t
     mftlib::platform::close_file(file);
     return result;
 }
+
+}  // namespace
 
 extern "C" {
 EXPORT void FreeMftResult(MftParseResult* result) {
@@ -778,8 +782,8 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
                                   ((uint64_t)entry->SegmentReference.SegmentNumberHighPart << 32);
                 if (segNum != 0) {
                     bool found = false;
-                    for (auto r : extensionRecords) {
-                        if (r == segNum) {
+                    for (auto existing : extensionRecords) {
+                        if (existing == segNum) {
                             found = true;
                             break;
                         }
@@ -808,8 +812,8 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
                     }
                     if (extAttr->TypeCode == Data) {
                         auto additionalRuns = ParseDataRuns(extAttr);
-                        for (auto& r : additionalRuns) {
-                            mftRuns.push_back(r);
+                        for (auto& additionalRun : additionalRuns) {
+                            mftRuns.push_back(additionalRun);
                         }
                     }
                     extAttr = (PATTRIBUTE_RECORD_HEADER)((uint8_t*)extAttr + extAttr->RecordLength);
