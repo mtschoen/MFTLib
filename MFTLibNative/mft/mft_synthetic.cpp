@@ -1,7 +1,5 @@
 #include "pch.h"
 
-#include <atomic>
-#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <thread>
@@ -9,7 +7,6 @@
 
 #include "../framework.h"
 #include "../ntfs.h"
-#include "../mft_api.h"
 #include "../internal.h"
 #include "../core/platform.h"
 
@@ -17,7 +14,9 @@
     #include <stringapiset.h>
 #endif
 
-static void ApplyUSAProtection(uint8_t* record, uint32_t recordSize, uint16_t usn) {
+namespace {
+
+void ApplyUSAProtection(uint8_t* record, uint32_t recordSize, uint16_t usn) {
     auto* header = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
     uint16_t usaOffset = header->MultiSectorHeader.UpdateSequenceArrayOffset;
     uint16_t usaSize = header->MultiSectorHeader.UpdateSequenceArraySize;
@@ -39,7 +38,7 @@ static void ApplyUSAProtection(uint8_t* record, uint32_t recordSize, uint16_t us
 // Narrow a wchar_t literal/string to NTFS WCHAR (UTF-16, char16_t units).
 // On Windows wchar_t is 16-bit so this is a direct copy.
 // On Linux wchar_t is 32-bit; we truncate each unit to 16 bits.
-static void StoreNtfsName(WCHAR* dst, uint16_t dstCapacity, const wchar_t* src, uint16_t srcLen) {
+void StoreNtfsName(WCHAR* dst, uint16_t dstCapacity, const wchar_t* src, uint16_t srcLen) {
     uint16_t copyLen = srcLen < dstCapacity ? srcLen : dstCapacity;
     for (uint16_t i = 0; i < copyLen; i++) {
         auto unit = static_cast<uint16_t>(src[i]);
@@ -47,8 +46,8 @@ static void StoreNtfsName(WCHAR* dst, uint16_t dstCapacity, const wchar_t* src, 
     }
 }
 
-static void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex, uint64_t parentRecord, uint16_t flags,
-                                 const wchar_t* name, uint8_t nameLen, uint64_t baseRef, uint64_t* rng) {
+void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex, uint64_t parentRecord, uint16_t flags,
+                          const wchar_t* name, uint8_t nameLen, uint64_t baseRef, uint64_t* rng) {
     memset(record, 0, FILE_RECORD_SIZE);
 
     auto nextRng = [rng]() -> uint64_t {
@@ -87,15 +86,9 @@ static void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex, uint64_t
     uint64_t fileSize = isDir ? 0 : (nextRng() % (256ULL * 1024 * 1024));
     uint64_t allocSize = (fileSize + 4095) & ~4095ULL;
     uint32_t fileAttrs = isDir ? 0x10 : 0x20;
-    if (nextRng() % 20 == 0) {
-        fileAttrs |= 0x02;
-    }
-    if (nextRng() % 50 == 0) {
-        fileAttrs |= 0x04;
-    }
-    if (nextRng() % 10 == 0) {
-        fileAttrs |= 0x01;
-    }
+    if (nextRng() % 20 == 0) { fileAttrs |= 0x02; }
+    if (nextRng() % 50 == 0) { fileAttrs |= 0x04; }
+    if (nextRng() % 10 == 0) { fileAttrs |= 0x01; }
 
     uint16_t offset = hdr->FirstAttributeOffset;
 
@@ -158,7 +151,7 @@ static void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex, uint64_t
         *runPtr++ = static_cast<uint8_t>(clusterOffset & 0xFF);
         *runPtr++ = static_cast<uint8_t>((clusterOffset >> 8) & 0xFF);
         *runPtr++ = static_cast<uint8_t>((clusterOffset >> 16) & 0xFF);
-        *runPtr++ = 0;
+        *runPtr = 0;
         dataAttr->RecordLength = (0x48 + 6 + 7) & ~7;
         offset += static_cast<uint16_t>(dataAttr->RecordLength);
     }
@@ -169,14 +162,7 @@ static void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex, uint64_t
     ApplyUSAProtection(record, FILE_RECORD_SIZE, static_cast<uint16_t>(recordIndex & 0xFFFF));
 }
 
-static bool GenerateSyntheticMFTImpl(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
-    auto* hFile = mftlib::platform::open_write(filePath);
-    if (hFile == nullptr) {
-        return false;
-    }
-
-    unsigned numThreads = EffectiveThreadCount();
-
+void GenerateBatch(uint8_t* buffer, uint64_t batchSize, uint64_t baseIdx, unsigned numThreads) {
     const wchar_t* fileNames[] = {
         L"README.md",    L"index.html", L"main.cpp",   L"package.json", L"Makefile",  L"config.yaml",
         L"data.bin",     L"icon.png",   L"setup.py",   L"app.js",       L"style.css", L"test.go",
@@ -189,17 +175,69 @@ static bool GenerateSyntheticMFTImpl(const char* filePath, uint64_t recordCount,
     constexpr int numFileNames = 16;
     constexpr int numDirNames = 16;
 
+    uint64_t perThread = (batchSize + numThreads - 1) / numThreads;
+    std::vector<std::thread> workers;
+    for (unsigned t = 0; t < numThreads; t++) {
+        uint64_t tStart = t * perThread;
+        uint64_t tEnd = tStart + perThread < batchSize ? tStart + perThread : batchSize;
+        if (tStart >= batchSize) {
+            break;
+        }
+        workers.emplace_back([buffer, tStart, tEnd, baseIdx, &fileNames, &dirNames, numFileNames, numDirNames]() {
+            for (uint64_t i = tStart; i < tEnd; i++) {
+                uint64_t ri = baseIdx + i;
+                uint8_t* record = buffer + (i * FILE_RECORD_SIZE);
+
+                uint64_t rng = 12345678901ULL ^ ((ri * 6364136223846793005ULL) + 1);
+                auto nextRng = [&rng]() -> uint32_t {
+                    rng ^= rng << 13;
+                    rng ^= rng >> 7;
+                    rng ^= rng << 17;
+                    return static_cast<uint32_t>(rng & 0xFFFFFFFF);
+                };
+
+                uint32_t r = nextRng();
+
+                if (ri < 5) {
+                    BuildSyntheticRecord(record, ri, 0, 0x0001, L"$MFT", 4, 0, &rng);
+                } else if (ri == 5) {
+                    BuildSyntheticRecord(record, ri, 5, 0x0003, L".", 1, 0, &rng);
+                } else if (r % 100 < 10) {
+                    memset(record, 0, FILE_RECORD_SIZE);
+                } else if (r % 100 < 25) {
+                    uint64_t baseRec = (nextRng() % ri) + 1;
+                    BuildSyntheticRecord(record, ri, 0, 0x0001, L"ext", 3, baseRec, &rng);
+                } else if (r % 100 < 40) {
+                    uint64_t parent = (ri < 100) ? 5 : (nextRng() % (ri / 2)) + 5;
+                    const wchar_t* name = dirNames[nextRng() % numDirNames];
+                    BuildSyntheticRecord(record, ri, parent, 0x0003, name, static_cast<uint8_t>(wcslen(name)), 0, &rng);
+                } else {
+                    uint64_t parent = (ri < 100) ? 5 : (nextRng() % (ri / 2)) + 5;
+                    const wchar_t* name = fileNames[nextRng() % numFileNames];
+                    BuildSyntheticRecord(record, ri, parent, 0x0001, name, static_cast<uint8_t>(wcslen(name)), 0, &rng);
+                }
+            }
+        });
+    }
+    for (auto& w : workers) {
+        w.join();
+    }
+}
+
+bool GenerateSyntheticMFTImpl(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
+    auto* hFile = mftlib::platform::open_write(filePath);
+    if (hFile == nullptr) {
+        return false;
+    }
+
+    unsigned numThreads = EffectiveThreadCount();
     const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * FILE_RECORD_SIZE;
     uint8_t* buf[2];
     buf[0] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
     buf[1] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
     if ((buf[0] == nullptr) || (buf[1] == nullptr)) {
-        if (buf[0] != nullptr) {
-            mftlib::platform::big_free(buf[0], bufSize);
-        }
-        if (buf[1] != nullptr) {
-            mftlib::platform::big_free(buf[1], bufSize);
-        }
+        if (buf[0] != nullptr) { mftlib::platform::big_free(buf[0], bufSize); }
+        if (buf[1] != nullptr) { mftlib::platform::big_free(buf[1], bufSize); }
         mftlib::platform::close_file(hFile);
         return false;
     }
@@ -217,63 +255,11 @@ static bool GenerateSyntheticMFTImpl(const char* filePath, uint64_t recordCount,
             remaining < static_cast<uint64_t>(bufferSizeRecords) ? remaining : static_cast<uint64_t>(bufferSizeRecords);
         uint8_t* buffer = buf[curBuf];
 
-        uint64_t perThread = (batchSize + numThreads - 1) / numThreads;
-        std::vector<std::thread> workers;
-        for (unsigned t = 0; t < numThreads; t++) {
-            uint64_t tStart = t * perThread;
-            uint64_t tEnd = tStart + perThread < batchSize ? tStart + perThread : batchSize;
-            if (tStart >= batchSize) {
-                break;
-            }
-            uint64_t baseIdx = recordIndex;
-
-            workers.emplace_back([buffer, tStart, tEnd, baseIdx, &fileNames, &dirNames, numFileNames, numDirNames]() {
-                for (uint64_t i = tStart; i < tEnd; i++) {
-                    uint64_t ri = baseIdx + i;
-                    uint8_t* record = buffer + (i * FILE_RECORD_SIZE);
-
-                    uint64_t rng = 12345678901ULL ^ ((ri * 6364136223846793005ULL) + 1);
-                    auto nextRng = [&rng]() -> uint32_t {
-                        rng ^= rng << 13;
-                        rng ^= rng >> 7;
-                        rng ^= rng << 17;
-                        return static_cast<uint32_t>(rng & 0xFFFFFFFF);
-                    };
-
-                    uint32_t r = nextRng();
-
-                    if (ri < 5) {
-                        BuildSyntheticRecord(record, ri, 0, 0x0001, L"$MFT", 4, 0, &rng);
-                    } else if (ri == 5) {
-                        BuildSyntheticRecord(record, ri, 5, 0x0003, L".", 1, 0, &rng);
-                    } else if (r % 100 < 10) {
-                        memset(record, 0, FILE_RECORD_SIZE);
-                    } else if (r % 100 < 25) {
-                        uint64_t baseRec = (nextRng() % ri) + 1;
-                        BuildSyntheticRecord(record, ri, 0, 0x0001, L"ext", 3, baseRec, &rng);
-                    } else if (r % 100 < 40) {
-                        uint64_t parent = (ri < 100) ? 5 : (nextRng() % (ri / 2)) + 5;
-                        const wchar_t* name = dirNames[nextRng() % numDirNames];
-                        BuildSyntheticRecord(record, ri, parent, 0x0003, name, static_cast<uint8_t>(wcslen(name)), 0,
-                                             &rng);
-                    } else {
-                        uint64_t parent = (ri < 100) ? 5 : (nextRng() % (ri / 2)) + 5;
-                        const wchar_t* name = fileNames[nextRng() % numFileNames];
-                        BuildSyntheticRecord(record, ri, parent, 0x0001, name, static_cast<uint8_t>(wcslen(name)), 0,
-                                             &rng);
-                    }
-                }
-            });
-        }
-        for (auto& w : workers) {
-            w.join();
-        }
+        GenerateBatch(buffer, batchSize, recordIndex, numThreads);
 
         if (hasWritePending) {
             writeThread.join();
-            if (!writeOk) {
-                break;
-            }
+            if (!writeOk) { break; }
         }
 
         uint64_t writeSize = batchSize;
@@ -301,6 +287,8 @@ static bool GenerateSyntheticMFTImpl(const char* filePath, uint64_t recordCount,
     mftlib::platform::close_file(hFile);
     return writeOk;
 }
+
+}  // namespace
 
 extern "C" {
 #ifdef _WIN32

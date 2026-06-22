@@ -2,9 +2,7 @@
 
 #include <chrono>
 #include <cassert>
-#include <cstdarg>
 #include <cstdio>
-#include <cwchar>
 #include <cstdint>
 
 #include "core/platform.h"
