@@ -16,6 +16,18 @@
 
 namespace {
 
+constexpr const wchar_t* fileNames[] = {
+    L"README.md",    L"index.html", L"main.cpp",   L"package.json", L"Makefile",  L"config.yaml",
+    L"data.bin",     L"icon.png",   L"setup.py",   L"app.js",       L"style.css", L"test.go",
+    L"build.gradle", L"Cargo.toml", L"Program.cs", L"pom.xml",
+};
+constexpr const wchar_t* dirNames[] = {
+    L"src", L"bin",     L"obj",    L"node_modules", L".git",   L"build", L"docs", L"tests",
+    L"lib", L"include", L"assets", L"scripts",      L"config", L"data",  L"temp", L"cache",
+};
+constexpr int numFileNames = 16;
+constexpr int numDirNames = 16;
+
 void ApplyUSAProtection(uint8_t* record, uint32_t recordSize, uint16_t usn) {
     auto* header = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
     uint16_t usaOffset = header->MultiSectorHeader.UpdateSequenceArrayOffset;
@@ -122,19 +134,19 @@ void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex, uint64_t parent
     fnAttr->Form.Resident.ValueOffset = 0x18;
     fnAttr->RecordLength = (0x18 + fnValueSize + 7) & ~7;
 
-    auto* fn = reinterpret_cast<PFILE_NAME>(record + offset + 0x18);
-    fn->ParentDirectory.SegmentNumberLowPart = static_cast<ULONG>(parentRecord & 0xFFFFFFFF);
-    fn->ParentDirectory.SegmentNumberHighPart = static_cast<USHORT>(parentRecord >> 32);
-    fn->CreationTime = createTime;
-    fn->ModificationTime = modTime;
-    fn->MftModificationTime = mftModTime;
-    fn->ReadTime = readTime;
-    fn->AllocatedSize = allocSize;
-    fn->FileSize = fileSize;
-    fn->FileAttributes = fileAttrs;
-    fn->FileNameLength = nameLen;
-    fn->Flags = 3;
-    StoreNtfsName(fn->FileName, nameLen, name, nameLen);
+    auto* nameAttr = reinterpret_cast<PFILE_NAME>(record + offset + 0x18);
+    nameAttr->ParentDirectory.SegmentNumberLowPart = static_cast<ULONG>(parentRecord & 0xFFFFFFFF);
+    nameAttr->ParentDirectory.SegmentNumberHighPart = static_cast<USHORT>(parentRecord >> 32);
+    nameAttr->CreationTime = createTime;
+    nameAttr->ModificationTime = modTime;
+    nameAttr->MftModificationTime = mftModTime;
+    nameAttr->ReadTime = readTime;
+    nameAttr->AllocatedSize = allocSize;
+    nameAttr->FileSize = fileSize;
+    nameAttr->FileAttributes = fileAttrs;
+    nameAttr->FileNameLength = nameLen;
+    nameAttr->Flags = 3;
+    StoreNtfsName(nameAttr->FileName, nameLen, name, nameLen);
 
     offset += static_cast<uint16_t>(fnAttr->RecordLength);
 
@@ -169,32 +181,20 @@ void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex, uint64_t parent
 }
 
 void GenerateBatch(uint8_t* buffer, uint64_t batchSize, uint64_t baseIdx, unsigned numThreads) {
-    const wchar_t* fileNames[] = {
-        L"README.md",    L"index.html", L"main.cpp",   L"package.json", L"Makefile",  L"config.yaml",
-        L"data.bin",     L"icon.png",   L"setup.py",   L"app.js",       L"style.css", L"test.go",
-        L"build.gradle", L"Cargo.toml", L"Program.cs", L"pom.xml",
-    };
-    const wchar_t* dirNames[] = {
-        L"src", L"bin",     L"obj",    L"node_modules", L".git",   L"build", L"docs", L"tests",
-        L"lib", L"include", L"assets", L"scripts",      L"config", L"data",  L"temp", L"cache",
-    };
-    constexpr int numFileNames = 16;
-    constexpr int numDirNames = 16;
-
     uint64_t perThread = (batchSize + numThreads - 1) / numThreads;
     std::vector<std::thread> workers;
-    for (unsigned t = 0; t < numThreads; t++) {
-        uint64_t tStart = t * perThread;
+    for (unsigned ti = 0; ti < numThreads; ti++) {
+        uint64_t tStart = ti * perThread;
         uint64_t tEnd = tStart + perThread < batchSize ? tStart + perThread : batchSize;
         if (tStart >= batchSize) {
             break;
         }
-        workers.emplace_back([buffer, tStart, tEnd, baseIdx, &fileNames, &dirNames, numFileNames, numDirNames]() {
+        workers.emplace_back([buffer, tStart, tEnd, baseIdx]() {
             for (uint64_t i = tStart; i < tEnd; i++) {
-                uint64_t ri = baseIdx + i;
+                uint64_t recordIndex = baseIdx + i;
                 uint8_t* record = buffer + (i * FILE_RECORD_SIZE);
 
-                uint64_t rng = 12345678901ULL ^ ((ri * 6364136223846793005ULL) + 1);
+                uint64_t rng = 12345678901ULL ^ ((recordIndex * 6364136223846793005ULL) + 1);
                 auto nextRng = [&rng]() -> uint32_t {
                     rng ^= rng << 13;
                     rng ^= rng >> 7;
@@ -202,31 +202,33 @@ void GenerateBatch(uint8_t* buffer, uint64_t batchSize, uint64_t baseIdx, unsign
                     return static_cast<uint32_t>(rng & 0xFFFFFFFF);
                 };
 
-                uint32_t r = nextRng();
+                uint32_t randomValue = nextRng();
 
-                if (ri < 5) {
-                    BuildSyntheticRecord(record, ri, 0, 0x0001, L"$MFT", 4, 0, &rng);
-                } else if (ri == 5) {
-                    BuildSyntheticRecord(record, ri, 5, 0x0003, L".", 1, 0, &rng);
-                } else if (r % 100 < 10) {
+                if (recordIndex < 5) {
+                    BuildSyntheticRecord(record, recordIndex, 0, 0x0001, L"$MFT", 4, 0, &rng);
+                } else if (recordIndex == 5) {
+                    BuildSyntheticRecord(record, recordIndex, 5, 0x0003, L".", 1, 0, &rng);
+                } else if (randomValue % 100 < 10) {
                     memset(record, 0, FILE_RECORD_SIZE);
-                } else if (r % 100 < 25) {
-                    uint64_t baseRec = (nextRng() % ri) + 1;
-                    BuildSyntheticRecord(record, ri, 0, 0x0001, L"ext", 3, baseRec, &rng);
-                } else if (r % 100 < 40) {
-                    uint64_t parent = (ri < 100) ? 5 : (nextRng() % (ri / 2)) + 5;
+                } else if (randomValue % 100 < 25) {
+                    uint64_t baseRec = (nextRng() % recordIndex) + 1;
+                    BuildSyntheticRecord(record, recordIndex, 0, 0x0001, L"ext", 3, baseRec, &rng);
+                } else if (randomValue % 100 < 40) {
+                    uint64_t parent = (recordIndex < 100) ? 5 : (nextRng() % (recordIndex / 2)) + 5;
                     const wchar_t* name = dirNames[nextRng() % numDirNames];
-                    BuildSyntheticRecord(record, ri, parent, 0x0003, name, static_cast<uint8_t>(wcslen(name)), 0, &rng);
+                    BuildSyntheticRecord(record, recordIndex, parent, 0x0003, name, static_cast<uint8_t>(wcslen(name)),
+                                         0, &rng);
                 } else {
-                    uint64_t parent = (ri < 100) ? 5 : (nextRng() % (ri / 2)) + 5;
+                    uint64_t parent = (recordIndex < 100) ? 5 : (nextRng() % (recordIndex / 2)) + 5;
                     const wchar_t* name = fileNames[nextRng() % numFileNames];
-                    BuildSyntheticRecord(record, ri, parent, 0x0001, name, static_cast<uint8_t>(wcslen(name)), 0, &rng);
+                    BuildSyntheticRecord(record, recordIndex, parent, 0x0001, name, static_cast<uint8_t>(wcslen(name)),
+                                         0, &rng);
                 }
             }
         });
     }
-    for (auto& w : workers) {
-        w.join();
+    for (auto& worker : workers) {
+        worker.join();
     }
 }
 

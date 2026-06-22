@@ -6,10 +6,12 @@
     #include "../mft_api.h"
     #include "../internal.h"
 
+namespace {
+
 // Wraps DeviceIoControl with test hook support.
 // When the USN I/O fail countdown fires, returns FALSE with the configured error code.
-static BOOL UsnDeviceIoControl(HANDLE handle, DWORD ioControlCode, LPVOID inBuffer, DWORD inBufferSize,
-                               LPVOID outBuffer, DWORD outBufferSize, LPDWORD bytesReturned, LPOVERLAPPED overlapped) {
+BOOL UsnDeviceIoControl(HANDLE handle, DWORD ioControlCode, LPVOID inBuffer, DWORD inBufferSize, LPVOID outBuffer,
+                        DWORD outBufferSize, LPDWORD bytesReturned, LPOVERLAPPED overlapped) {
     DWORD hookError;
     if (ShouldFailUsnIo(hookError)) {
         SetLastError(hookError);
@@ -24,13 +26,15 @@ static BOOL UsnDeviceIoControl(HANDLE handle, DWORD ioControlCode, LPVOID inBuff
 
 // Wraps GetOverlappedResult so tests can simulate a cancelled (aborted) wait
 // without a real pending IOCTL — pairs with SetUsnIoFailError(ERROR_IO_PENDING).
-static BOOL UsnGetOverlappedResult(HANDLE handle, LPOVERLAPPED overlapped, LPDWORD bytesReturned, BOOL wait) {
+BOOL UsnGetOverlappedResult(HANDLE handle, LPOVERLAPPED overlapped, LPDWORD bytesReturned, BOOL wait) {
     if (UsnIoShouldAbortOverlapped()) {
         SetLastError(ERROR_OPERATION_ABORTED);
         return FALSE;
     }
     return GetOverlappedResult(handle, overlapped, bytesReturned, wait);
 }
+
+}  // namespace
 
 extern "C" {
 EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
@@ -61,7 +65,7 @@ EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
     return info;
 }
 
-EXPORT void FreeUsnJournalInfo(UsnJournalInfo* info) { delete info; }
+EXPORT void FreeUsnJournalInfo(const UsnJournalInfo* info) { delete info; }
 
 EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId) {
     auto* result = new UsnJournalResult{};
@@ -192,7 +196,7 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
     return result;
 }
 
-EXPORT void FreeUsnJournalResult(UsnJournalResult* result) {
+EXPORT void FreeUsnJournalResult(const UsnJournalResult* result) {
     if (result != nullptr) {
         if (result->entries != nullptr) {
             VirtualFree(result->entries, 0, MEM_RELEASE);
@@ -294,7 +298,6 @@ EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t start
             result->entries = (UsnJournalEntry*)VirtualAlloc(nullptr, (size_t)count * sizeof(UsnJournalEntry),
                                                              MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (result->entries != nullptr) {
-                constexpr uint64_t fileRefMask = 0x0000FFFFFFFFFFFF;
                 uint8_t* recordPtr = readBuffer + sizeof(int64_t);
                 for (uint64_t i = 0; i < count && recordPtr + sizeof(USN_RECORD_V2) <= endPtr; i++) {
                     auto* usnRecord = (USN_RECORD_V2*)recordPtr;
@@ -302,6 +305,7 @@ EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t start
                         break;
                     }
 
+                    constexpr uint64_t fileRefMask = 0x0000FFFFFFFFFFFF;
                     auto& entry = result->entries[i];
                     memset(&entry, 0, sizeof(UsnJournalEntry));
                     entry.recordNumber = usnRecord->FileReferenceNumber & fileRefMask;
