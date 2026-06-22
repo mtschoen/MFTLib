@@ -114,16 +114,17 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
             if (error == ERROR_JOURNAL_NOT_ACTIVE) {
                 SetErrorMessage(result->errorMessage, L"USN journal is not active");
                 break;
-            } else if (error == ERROR_JOURNAL_DELETE_IN_PROGRESS) {
+            }
+            if (error == ERROR_JOURNAL_DELETE_IN_PROGRESS) {
                 SetErrorMessage(result->errorMessage, L"USN journal deletion is in progress");
                 break;
-            } else if (error == ERROR_JOURNAL_ENTRY_DELETED) {
+            }
+            if (error == ERROR_JOURNAL_ENTRY_DELETED) {
                 SetErrorMessage(result->errorMessage, L"USN journal entries have been deleted; full rescan needed");
                 break;
-            } else {
-                SetErrorMessage(result->errorMessage, L"FSCTL_READ_USN_JOURNAL failed. Error: %lu", error);
-                break;
             }
+            SetErrorMessage(result->errorMessage, L"FSCTL_READ_USN_JOURNAL failed. Error: %lu", error);
+            break;
         }
 
         if (bytesReturned < sizeof(int64_t)) {

@@ -19,13 +19,13 @@
 static bool FileNameMatches(const WCHAR* name, uint8_t nameLen, const wchar_t* filter, uint16_t filterLen,
                             uint32_t matchFlags) {
 #ifdef _WIN32
-    if ((matchFlags & 1) != 0u) {
+    if ((matchFlags & 1) != 0U) {
         if (nameLen != filterLen) {
             return false;
         }
         return _wcsnicmp(name, filter, nameLen) == 0;
     }
-    if ((matchFlags & 2) != 0u) {
+    if ((matchFlags & 2) != 0U) {
         if (filterLen > nameLen) {
             return false;
         }
@@ -67,7 +67,7 @@ struct PathLookup {
         // Each name entry can be up to 255 WCHAR units = 510 bytes; use 32 bytes avg * 2 for bytes.
         // A test hook can shrink the pool to exercise the exhaustion path.
         uint64_t capacityOverride = NamePoolCapacityOverride();
-        namePoolCapacity = (capacityOverride != 0u) ? capacityOverride : totalRecords * 64;  // bytes
+        namePoolCapacity = (capacityOverride != 0U) ? capacityOverride : totalRecords * 64;  // bytes
         namePool = static_cast<uint8_t*>(malloc(static_cast<size_t>(namePoolCapacity)));
         namePoolUsed = 0;
         namesDropped = 0;

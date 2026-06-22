@@ -79,7 +79,7 @@ std::vector<DataRun> ParseDataRuns(PATTRIBUTE_RECORD_HEADER attr) {
         }
 
         if (header->offsetFieldBytes > 0 &&
-            ((offset & (static_cast<int64_t>(1) << (header->offsetFieldBytes * 8 - 1))) != 0)) {
+            ((offset & (static_cast<int64_t>(1) << ((header->offsetFieldBytes * 8) - 1))) != 0)) {
             for (int i = header->offsetFieldBytes; i < 8; i++) {
                 offset |= static_cast<int64_t>(0xFF) << (i * 8);
             }
@@ -137,7 +137,7 @@ bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uin
     uint64_t byteOffset = recordNumber * FILE_RECORD_SIZE;
     uint64_t currentOffset = 0;
 
-    for (auto& run : mftRuns) {
+    for (const auto& run : mftRuns) {
         uint64_t runBytes = run.clusterCount * bytesPerCluster;
 
         if (byteOffset >= currentOffset && byteOffset < currentOffset + runBytes) {
