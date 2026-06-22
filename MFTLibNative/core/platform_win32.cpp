@@ -16,60 +16,60 @@ struct File {
 };
 
 namespace {
-std::wstring utf8_to_wide(const char* s) {
-    if (s == nullptr) {
+std::wstring utf8_to_wide(const char* utf8) {
+    if (utf8 == nullptr) {
         return {};
     }
-    int wlen = MultiByteToWideChar(CP_UTF8, 0, s, -1, nullptr, 0);
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
     if (wlen <= 0) {
         return {};
     }
-    std::wstring w(static_cast<size_t>(wlen - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s, -1, w.data(), wlen);
-    return w;
+    std::wstring wide(static_cast<size_t>(wlen - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide.data(), wlen);
+    return wide;
 }
 }  // namespace
 
 File* open_read(const char* path_utf8) {
     auto wide = utf8_to_wide(path_utf8);
-    HANDLE h = CreateFileW(wide.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-                           OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
-    if (h == INVALID_HANDLE_VALUE) {
+    HANDLE handle = CreateFileW(wide.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
         return nullptr;
     }
-    return new File{h};
+    return new File{handle};
 }
 
 File* open_write(const char* path_utf8) {
     auto wide = utf8_to_wide(path_utf8);
-    HANDLE h = CreateFileW(wide.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
-                           nullptr);
-    if (h == INVALID_HANDLE_VALUE) {
+    HANDLE handle = CreateFileW(wide.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+                                FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
         return nullptr;
     }
-    return new File{h};
+    return new File{handle};
 }
 
-int64_t size_of(const File* f) {
-    if (f == nullptr) {
+int64_t size_of(const File* file) {
+    if (file == nullptr) {
         return -1;
     }
-    LARGE_INTEGER li{};
-    if (GetFileSizeEx(f->h, &li) == 0) {
+    LARGE_INTEGER sizeInfo{};
+    if (GetFileSizeEx(file->h, &sizeInfo) == 0) {
         return -1;
     }
-    return li.QuadPart;
+    return sizeInfo.QuadPart;
 }
 
-int64_t pread_at(const File* f, void* buf, size_t count, int64_t offset) {
-    if (f == nullptr) {
+int64_t pread_at(const File* file, void* buf, size_t count, int64_t offset) {
+    if (file == nullptr) {
         return -1;
     }
-    OVERLAPPED ov{};
-    ov.Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
-    ov.OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
+    OVERLAPPED overlapped{};
+    overlapped.Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
+    overlapped.OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
     DWORD bytesRead = 0;
-    BOOL readOk = ReadFile(f->h, buf, static_cast<DWORD>(count), &bytesRead, &ov);
+    BOOL readOk = ReadFile(file->h, buf, static_cast<DWORD>(count), &bytesRead, &overlapped);
     if (ShouldFailPlatformRead()) {
         readOk = FALSE;
         SetLastError(ERROR_ACCESS_DENIED);
@@ -83,15 +83,15 @@ int64_t pread_at(const File* f, void* buf, size_t count, int64_t offset) {
     return bytesRead;
 }
 
-int64_t pwrite_at(const File* f, const void* buf, size_t count, int64_t offset) {
-    if (f == nullptr) {
+int64_t pwrite_at(const File* file, const void* buf, size_t count, int64_t offset) {
+    if (file == nullptr) {
         return -1;
     }
-    OVERLAPPED ov{};
-    ov.Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
-    ov.OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
+    OVERLAPPED overlapped{};
+    overlapped.Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
+    overlapped.OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
     DWORD bytesWritten = 0;
-    BOOL writeOk = WriteFile(f->h, buf, static_cast<DWORD>(count), &bytesWritten, &ov);
+    BOOL writeOk = WriteFile(file->h, buf, static_cast<DWORD>(count), &bytesWritten, &overlapped);
     if (ShouldFailPlatformWrite()) {
         writeOk = FALSE;
     }
@@ -101,8 +101,8 @@ int64_t pwrite_at(const File* f, const void* buf, size_t count, int64_t offset) 
     return bytesWritten;
 }
 
-void close_file(File* f) {
-    std::unique_ptr<File> owned(f);
+void close_file(File* file) {
+    std::unique_ptr<File> owned(file);
     if (owned == nullptr) {
         return;
     }
