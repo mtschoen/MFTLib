@@ -132,8 +132,8 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr,
     return buffer;
 }
 
-bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster, uint64_t recordNumber,
-                   uint8_t* buffer) {
+bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
+                   uint64_t recordNumber, uint8_t* buffer) {
     uint64_t byteOffset = recordNumber * FILE_RECORD_SIZE;
     uint64_t currentOffset = 0;
 

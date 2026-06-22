@@ -86,9 +86,15 @@ void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex, uint64_t parent
     uint64_t fileSize = isDir ? 0 : (nextRng() % (256ULL * 1024 * 1024));
     uint64_t allocSize = (fileSize + 4095) & ~4095ULL;
     uint32_t fileAttrs = isDir ? 0x10 : 0x20;
-    if (nextRng() % 20 == 0) { fileAttrs |= 0x02; }
-    if (nextRng() % 50 == 0) { fileAttrs |= 0x04; }
-    if (nextRng() % 10 == 0) { fileAttrs |= 0x01; }
+    if (nextRng() % 20 == 0) {
+        fileAttrs |= 0x02;
+    }
+    if (nextRng() % 50 == 0) {
+        fileAttrs |= 0x04;
+    }
+    if (nextRng() % 10 == 0) {
+        fileAttrs |= 0x01;
+    }
 
     uint16_t offset = hdr->FirstAttributeOffset;
 
@@ -236,8 +242,12 @@ bool GenerateSyntheticMFTImpl(const char* filePath, uint64_t recordCount, uint32
     buf[0] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
     buf[1] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
     if ((buf[0] == nullptr) || (buf[1] == nullptr)) {
-        if (buf[0] != nullptr) { mftlib::platform::big_free(buf[0], bufSize); }
-        if (buf[1] != nullptr) { mftlib::platform::big_free(buf[1], bufSize); }
+        if (buf[0] != nullptr) {
+            mftlib::platform::big_free(buf[0], bufSize);
+        }
+        if (buf[1] != nullptr) {
+            mftlib::platform::big_free(buf[1], bufSize);
+        }
         mftlib::platform::close_file(hFile);
         return false;
     }
@@ -259,7 +269,9 @@ bool GenerateSyntheticMFTImpl(const char* filePath, uint64_t recordCount, uint32
 
         if (hasWritePending) {
             writeThread.join();
-            if (!writeOk) { break; }
+            if (!writeOk) {
+                break;
+            }
         }
 
         uint64_t writeSize = batchSize;
