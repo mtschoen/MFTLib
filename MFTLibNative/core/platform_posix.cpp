@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 
 namespace mftlib::platform {
 
@@ -29,14 +30,14 @@ File* open_write(const char* path_utf8) {
     return new File{fd};
 }
 
-int64_t size_of(File* f) {
+int64_t size_of(const File* f) {
     if (!f) return -1;
     struct stat st{};
     if (::fstat(f->fd, &st) != 0) return -1;
     return static_cast<int64_t>(st.st_size);
 }
 
-int64_t pread_at(File* f, void* buf, size_t count, int64_t offset) {
+int64_t pread_at(const File* f, void* buf, size_t count, int64_t offset) {
     if (!f) return -1;
     ssize_t total = 0;
     auto* p = static_cast<char*>(buf);
@@ -52,7 +53,7 @@ int64_t pread_at(File* f, void* buf, size_t count, int64_t offset) {
     return total;
 }
 
-int64_t pwrite_at(File* f, const void* buf, size_t count, int64_t offset) {
+int64_t pwrite_at(const File* f, const void* buf, size_t count, int64_t offset) {
     if (!f) return -1;
     ssize_t total = 0;
     const auto* p = static_cast<const char*>(buf);
@@ -69,9 +70,9 @@ int64_t pwrite_at(File* f, const void* buf, size_t count, int64_t offset) {
 }
 
 void close_file(File* f) {
-    if (!f) return;
-    if (f->fd >= 0) ::close(f->fd);
-    delete f;
+    std::unique_ptr<File> owned(f);
+    if (!owned) return;
+    if (owned->fd >= 0) ::close(owned->fd);
 }
 
 void* big_alloc(size_t bytes) {

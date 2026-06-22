@@ -5,24 +5,26 @@
 
 #include "../internal.h"
 
-static unsigned g_maxThreads = 0;
-static int g_allocFailCountdown = 0;
-static int g_readFailCountdown = 0;
-static uint64_t g_namePoolCapacityOverride = 0;
-static int g_failFileSize = 0;
-static int g_failPathConversion = 0;
-static int g_failPlatformReadCountdown = 0;
-static int g_failPlatformWrite = 0;
+namespace {
+unsigned g_maxThreads = 0;
+int g_allocFailCountdown = 0;
+int g_readFailCountdown = 0;
+uint64_t g_namePoolCapacityOverride = 0;
+int g_failFileSize = 0;
+int g_failPathConversion = 0;
+int g_failPlatformReadCountdown = 0;
+int g_failPlatformWrite = 0;
 #ifdef _WIN32
-static DWORD g_usnIoFailError = 0;
-static int g_usnIoFailCountdown = 0;
+DWORD g_usnIoFailError = 0;
+int g_usnIoFailCountdown = 0;
 // Ring queue of synthetic IOCTL success responses (buffers owned by the caller).
-static const uint8_t* g_usnIoData[8] = {};
-static uint32_t g_usnIoSize[8] = {};
-static int g_usnIoHead = 0;
-static int g_usnIoCount = 0;
-static int g_usnOverlappedAbort = 0;
+const uint8_t* g_usnIoData[8] = {};
+uint32_t g_usnIoSize[8] = {};
+int g_usnIoHead = 0;
+int g_usnIoCount = 0;
+int g_usnOverlappedAbort = 0;
 #endif
+}  // namespace
 
 unsigned EffectiveThreadCount() {
     unsigned n = std::thread::hardware_concurrency();

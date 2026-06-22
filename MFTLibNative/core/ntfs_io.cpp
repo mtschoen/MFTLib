@@ -18,7 +18,8 @@ BOOL Read(HANDLE handle, void* buffer, uint64_t from, DWORD count, PDWORD bytesR
 }
 #endif  // _WIN32
 
-static bool ApplyFixupInternal(uint8_t* record, uint32_t recordSize) {
+namespace {
+bool ApplyFixupInternal(uint8_t* record, uint32_t recordSize) {
     auto* header = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
     uint16_t usaOffset = header->MultiSectorHeader.UpdateSequenceArrayOffset;
     uint16_t usaSize = header->MultiSectorHeader.UpdateSequenceArraySize;
@@ -46,6 +47,7 @@ static bool ApplyFixupInternal(uint8_t* record, uint32_t recordSize) {
     }
     return true;
 }
+}  // namespace
 
 bool ApplyFixup(uint8_t* record, uint32_t recordSize) { return ApplyFixupInternal(record, recordSize); }
 
@@ -130,7 +132,7 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr,
     return buffer;
 }
 
-bool ReadMFTRecord(HANDLE volumeHandle, std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster, uint64_t recordNumber,
+bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster, uint64_t recordNumber,
                    uint8_t* buffer) {
     uint64_t byteOffset = recordNumber * FILE_RECORD_SIZE;
     uint64_t currentOffset = 0;

@@ -15,7 +15,8 @@ struct File {
     HANDLE h;
 };
 
-static std::wstring utf8_to_wide(const char* s) {
+namespace {
+std::wstring utf8_to_wide(const char* s) {
     if (s == nullptr) {
         return {};
     }
@@ -27,6 +28,7 @@ static std::wstring utf8_to_wide(const char* s) {
     MultiByteToWideChar(CP_UTF8, 0, s, -1, w.data(), wlen);
     return w;
 }
+}  // namespace
 
 File* open_read(const char* path_utf8) {
     auto wide = utf8_to_wide(path_utf8);
@@ -48,7 +50,7 @@ File* open_write(const char* path_utf8) {
     return new File{h};
 }
 
-int64_t size_of(File* f) {
+int64_t size_of(const File* f) {
     if (f == nullptr) {
         return -1;
     }
@@ -59,7 +61,7 @@ int64_t size_of(File* f) {
     return li.QuadPart;
 }
 
-int64_t pread_at(File* f, void* buf, size_t count, int64_t offset) {
+int64_t pread_at(const File* f, void* buf, size_t count, int64_t offset) {
     if (f == nullptr) {
         return -1;
     }
@@ -81,7 +83,7 @@ int64_t pread_at(File* f, void* buf, size_t count, int64_t offset) {
     return bytesRead;
 }
 
-int64_t pwrite_at(File* f, const void* buf, size_t count, int64_t offset) {
+int64_t pwrite_at(const File* f, const void* buf, size_t count, int64_t offset) {
     if (f == nullptr) {
         return -1;
     }
@@ -100,13 +102,13 @@ int64_t pwrite_at(File* f, const void* buf, size_t count, int64_t offset) {
 }
 
 void close_file(File* f) {
-    if (f == nullptr) {
+    std::unique_ptr<File> owned(f);
+    if (owned == nullptr) {
         return;
     }
-    if (f->h != INVALID_HANDLE_VALUE) {
-        CloseHandle(f->h);
+    if (owned->h != INVALID_HANDLE_VALUE) {
+        CloseHandle(owned->h);
     }
-    delete f;
 }
 
 void* big_alloc(size_t bytes) { return VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); }

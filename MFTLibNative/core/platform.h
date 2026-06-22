@@ -21,14 +21,13 @@ File* open_read(const char* path_utf8);
 // Open for writing (creates/truncates). Returns nullptr on failure. Path is UTF-8.
 File* open_write(const char* path_utf8);
 
-// Returns -1 on failure.
-int64_t size_of(File* f);
+int64_t size_of(const File* f);
 
 // Reads up to count bytes at offset. Returns bytes read (>=0) or -1 on error.
-int64_t pread_at(File* f, void* buf, size_t count, int64_t offset);
+int64_t pread_at(const File* f, void* buf, size_t count, int64_t offset);
 
 // Writes count bytes at offset. Returns bytes written or -1 on error.
-int64_t pwrite_at(File* f, const void* buf, size_t count, int64_t offset);
+int64_t pwrite_at(const File* f, const void* buf, size_t count, int64_t offset);
 
 // Closes the file. Safe with nullptr.
 void close_file(File* f);
