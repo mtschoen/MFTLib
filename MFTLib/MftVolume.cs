@@ -224,8 +224,9 @@ public sealed class MftVolume : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
+            var currentUsn = nextUsn;
             var resultPtr = await Task.Run(
-                () => MFTLibNative.WatchUsnJournalBatch(_volumeHandle, nextUsn, journalId),
+                () => MFTLibNative.WatchUsnJournalBatch(_volumeHandle, currentUsn, journalId),
                 cancellationToken).ConfigureAwait(false);
 
             if (resultPtr == IntPtr.Zero)
@@ -277,8 +278,9 @@ public sealed class MftVolume : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
+            var currentUsn = nextUsn;
             var resultPtr = await Task.Run(
-                () => MFTLibNative.WatchUsnJournalBatch(_volumeHandle, nextUsn, journalId),
+                () => MFTLibNative.WatchUsnJournalBatch(_volumeHandle, currentUsn, journalId),
                 cancellationToken).ConfigureAwait(false);
 
             if (resultPtr == IntPtr.Zero)

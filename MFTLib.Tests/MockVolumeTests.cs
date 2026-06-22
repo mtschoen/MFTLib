@@ -74,13 +74,10 @@ public class MockVolumeTests
         return resultPtr;
     }
 
-    readonly List<IntPtr> _allocations = [];
-
-    void SetupMocks(uint usedRecords = 3, bool withPaths = false)
+    static void SetupMocks(uint usedRecords = 3, bool withPaths = false)
     {
         FileUtilities.GetVolumeHandle = _ => FakeHandle();
         var resultPtr = BuildResult(usedRecords, withPaths);
-        _allocations.Add(resultPtr);
         MFTLibNative.ParseMFTRecords = (_, _, _, _) => resultPtr;
         MFTLibNative.FreeMftResult = ptr =>
         {
@@ -281,7 +278,7 @@ public class MockVolumeTests
         var files = volume.FindFiles("test.txt").ToList();
 
         Assert.AreEqual(1, files.Count);
-        Assert.IsTrue(files[0].EndsWith("test.txt"));
+        Assert.IsTrue(files[0].EndsWith("test.txt", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -332,7 +329,7 @@ public class MockVolumeTests
         var directories = volume.FindDirectories("somedir").ToList();
 
         Assert.AreEqual(1, directories.Count);
-        Assert.IsTrue(directories[0].EndsWith("somedir"));
+        Assert.IsTrue(directories[0].EndsWith("somedir", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -375,7 +372,7 @@ public class MockVolumeTests
         var count = 0;
         foreach (var item in enumerable)
         {
-            Assert.IsInstanceOfType(item, typeof(MftRecord));
+            Assert.IsInstanceOfType<MftRecord>(item);
             count++;
         }
         Assert.AreEqual(3, count);

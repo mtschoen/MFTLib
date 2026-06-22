@@ -75,8 +75,16 @@ public class SystemInfoTests
     public void DefaultGetWmiValue_WithInvalidQuery_ReturnsError()
     {
         var result = SystemInfo.DefaultGetWmiValue("NonExistentWmiClass_XYZ_12345", "Property");
-        Assert.IsTrue(result.StartsWith("Error:"));
+        Assert.IsTrue(result.StartsWith("Error:", StringComparison.Ordinal));
     }
+
+    [TestMethod]
+    public void WmiString_NullValue_ReturnsUnknown()
+        => Assert.AreEqual("Unknown", SystemInfo.WmiString(null));
+
+    [TestMethod]
+    public void WmiString_TrimsValue()
+        => Assert.AreEqual("disk", SystemInfo.WmiString("  disk  "));
 
     // --- ComputeInstalledMemoryGB ---
 
@@ -146,7 +154,7 @@ public class SystemInfoTests
         systemInfo.QueryPartitionIds = _ => throw new InvalidOperationException("WMI failed");
 
         var result = systemInfo.GetDiskModel("C:\\");
-        Assert.IsTrue(result.StartsWith("Error:"));
+        Assert.IsTrue(result.StartsWith("Error:", StringComparison.Ordinal));
         Assert.IsTrue(result.Contains("WMI failed"));
     }
 

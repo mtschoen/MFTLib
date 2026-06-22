@@ -156,7 +156,7 @@ public class DriveScannerTests
         scanner.Run(["T"]);
         Assert.AreEqual(1u, capturedIndex);
         Assert.IsNotNull(redirectedPath);
-        Assert.IsTrue(redirectedPath!.EndsWith("output.log"));
+        Assert.IsTrue(redirectedPath!.EndsWith("output.log", StringComparison.Ordinal));
     }
 
     // --- ScanDrive ---

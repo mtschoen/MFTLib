@@ -95,17 +95,42 @@ This project uses **aislop** as a deterministic quality gate for AI-written code
 (narrative comments, swallowed exceptions, `as any`, dead stubs, oversized
 functions, etc.) across TS/JS, Python, Go, Rust, Ruby, PHP, Java, and C#.
 
-`aislop` is installed globally on this machine (pinned to the fork
-`mtschoen/aislop`, which adds C#/roslynator support). Call the installed binary
-directly — do NOT use `npx aislop`, which pulls upstream from npm with no C#
+`aislop` is installed globally on this machine, pinned to the **v0.12.3** tag of
+the fork `mtschoen/aislop` (which adds the C# engine: roslynator + jb
+inspectcode; upstream npm `aislop` is Python-only). Call the installed binary
+directly - do NOT use `npx aislop`, which pulls upstream from npm with no C#
 support:
 
 - **Before declaring work complete**, run `aislop scan .` and address findings.
 - **Before committing**, run `aislop scan --staged` (staged files only).
 - `aislop fix` auto-clears mechanical issues (formatting, unused imports, dead
   code); `aislop fix --claude` hands the rest back with full context.
-- `aislop ci .` is the gate — exits non-zero if the score drops below the
-  threshold in `.aislop/config.yml`. Treat a failing gate like a failing test.
+- `aislop ci .` is the gate - exits non-zero if the score drops below the
+  threshold (`failBelow: 100`) in `.aislop/config.yml`. Treat a failing gate
+  like a failing test.
 
-To refresh the pinned binary after new commits land on the fork branch:
-`pnpm add -g --allow-build=aislop "github:mtschoen/aislop#feat/csharp-support"`
+### CI gate (Windows)
+
+`.gitea/workflows/aislop.yml` runs the gate on every PR and on push to `main`.
+It runs on **windows-latest**, not Linux like the rest of the fleet: `MFTLib.sln`
+includes the native `MFTLibNative.vcxproj`, which only loads/builds under
+MSBuild + MSVC, and both jb inspectcode and roslynator load the full solution.
+`lint.csharp.jbProjects` in `.aislop/config.yml` scopes jb inspection to the four
+C# projects so the C++ tree stays on its own clang-tidy/cppcheck gate. The
+workflow installs the prebuilt `@schoen/aislop` tarball (mirror of the C# fork)
+from the Gitea npm registry with `npm ci` and runs it with `npx --no-install`;
+the version is pinned by content (sha512 integrity) in `package.json` +
+`package-lock.json`, and the `@schoen` scope to registry mapping lives in the
+committed `.npmrc`. To bump aislop, change the version in `package.json` and
+refresh the lockfile (`npm install --package-lock-only`). It deliberately does
+NOT use `actions/setup-node` and does NOT clone+build the fork on the runner -
+both fail on the host-mode act_runner (setup-node's 7zr extraction dies with exit
+code 2; the fork's tsdown/postinstall build is POSIX-only). The build step also
+mirrors `run-coverage.ps1`'s 64-bit-amd64-MSBuild recipe (the checkout path is
+WOW64-virtualized away from 32-bit MSBuild). See the traps in
+`~/local-ci/docs/project-ci-setup.md`. For the gate to block merges, add
+`aislop / quality-gate (pull_request)` to the branch-protection required checks
+on `main`.
+
+To refresh the pinned global binary to a newer fork release:
+`pnpm add -g --allow-build=aislop "github:mtschoen/aislop#v0.12.3"`

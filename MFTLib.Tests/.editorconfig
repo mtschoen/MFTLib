@@ -1,0 +1,6 @@
+# Test-project overrides layered on the repo-root .editorconfig.
+[*.cs]
+# Test methods follow the Method_Scenario_Expected naming convention, so the
+# underscores are intentional. CA1707 (identifiers should not contain
+# underscores) is pure noise here. Production code keeps CA1707 enforced.
+dotnet_diagnostic.CA1707.severity = none

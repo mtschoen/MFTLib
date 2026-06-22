@@ -45,7 +45,7 @@ public class BenchmarkRunnerTests
     {
         _runner.Run([]);
 
-        var parseCalls = _consoleWrites.Count(write => write.StartsWith("  Iteration "));
+        var parseCalls = _consoleWrites.Count(write => write.StartsWith("  Iteration ", StringComparison.Ordinal));
         Assert.AreEqual(12, parseCalls); // 4 scenarios * 3 iterations
     }
 
@@ -54,7 +54,7 @@ public class BenchmarkRunnerTests
     {
         _runner.Run(["100000", "2"]);
 
-        var parseCalls = _consoleWrites.Count(write => write.StartsWith("  Iteration "));
+        var parseCalls = _consoleWrites.Count(write => write.StartsWith("  Iteration ", StringComparison.Ordinal));
         Assert.AreEqual(8, parseCalls); // 4 scenarios * 2 iterations
     }
 
@@ -89,7 +89,7 @@ public class BenchmarkRunnerTests
         _runner.Run([]);
 
         Assert.AreEqual(1, _deletedFiles.Count);
-        Assert.IsTrue(_deletedFiles[0].EndsWith("synthetic.mft"));
+        Assert.IsTrue(_deletedFiles[0].EndsWith("synthetic.mft", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -98,7 +98,7 @@ public class BenchmarkRunnerTests
         _runner.Run([]);
 
         Assert.AreEqual(1, _writtenFiles.Count);
-        Assert.IsTrue(_writtenFiles[0].Path.EndsWith("baseline.txt"));
+        Assert.IsTrue(_writtenFiles[0].Path.EndsWith("baseline.txt", StringComparison.Ordinal));
         Assert.IsTrue(_writtenFiles[0].Content.Contains("System Info"));
         Assert.IsTrue(_writtenFiles[0].Content.Contains("MFT Benchmark"));
     }
@@ -172,10 +172,9 @@ public class BenchmarkRunnerTests
             MftVolume.GenerateSyntheticMFT(temporaryPath, 10, 256);
 
             var freshRunner = new BenchmarkRunner();
-            var (records, timings) = freshRunner.ParseFromFile(temporaryPath, null, MatchFlags.None);
+            var (records, _) = freshRunner.ParseFromFile(temporaryPath, null, MatchFlags.None);
 
             Assert.IsNotNull(records);
-            Assert.IsTrue(records.Length >= 0);
         }
         finally
         {
@@ -183,6 +182,8 @@ public class BenchmarkRunnerTests
                 File.Delete(temporaryPath);
         }
     }
+
+    static readonly string[] EntryPointArgs = ["10", "1"];
 
     [TestMethod]
     public void Benchmark_EntryPoint_Executes()
@@ -192,7 +193,7 @@ public class BenchmarkRunnerTests
         var backup = File.Exists(baselinePath) ? File.ReadAllText(baselinePath) : null;
         try
         {
-            var exitCode = entryPoint.Invoke(null, [new[] { "10", "1" }]);
+            var exitCode = entryPoint.Invoke(null, [EntryPointArgs]);
             Assert.AreEqual(0, exitCode);
         }
         finally

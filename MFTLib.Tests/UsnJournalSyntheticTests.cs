@@ -40,7 +40,7 @@ public class UsnJournalSyntheticTests
     const uint ERROR_JOURNAL_NOT_ACTIVE = 1179;
     const uint ERROR_JOURNAL_ENTRY_DELETED = 1181;
 
-    void UseFakeHandle() => FileUtilities.GetVolumeHandle = _ => FakeHandle();
+    static void UseFakeHandle() => FileUtilities.GetVolumeHandle = _ => FakeHandle();
 
     // Queues a synthetic IOCTL success buffer; keeps it alive until cleanup.
     unsafe void QueueSuccess(byte[] data)
@@ -201,8 +201,11 @@ public class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         MFTLibNative.NativeSetAllocFailCountdown(1); // fail read buffer alloc (before any IOCTL)
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(Cursor));
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.ReadUsnJournal(Cursor);
+        });
         Assert.IsTrue(exception.Message.Contains("allocate"));
     }
 
@@ -211,8 +214,11 @@ public class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         MFTLibNative.NativeSetAllocFailCountdown(2); // skip read buffer, fail entry array
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(Cursor));
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.ReadUsnJournal(Cursor);
+        });
         Assert.IsTrue(exception.Message.Contains("allocate"));
     }
 
@@ -224,8 +230,11 @@ public class UsnJournalSyntheticTests
         QueueSuccess(BuildManyRecords(startUsn: 1000, nextUsn: 2000, count: 700));
         QueueSuccess(BuildManyRecords(startUsn: 2000, nextUsn: 3000, count: 700));
         MFTLibNative.NativeSetAllocFailCountdown(3); // readBuffer, entryArray, then grow → fail
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(Cursor));
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.ReadUsnJournal(Cursor);
+        });
         Assert.IsTrue(exception.Message.Contains("grow"));
     }
 
@@ -234,8 +243,11 @@ public class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(Cursor));
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.ReadUsnJournal(Cursor);
+        });
         Assert.IsTrue(exception.Message.Contains("not active"));
     }
 
@@ -244,8 +256,11 @@ public class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(Cursor));
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.ReadUsnJournal(Cursor);
+        });
         Assert.IsTrue(exception.Message.Contains("deletion"));
     }
 
@@ -254,8 +269,11 @@ public class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(Cursor));
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.ReadUsnJournal(Cursor);
+        });
         Assert.IsTrue(exception.Message.Contains("rescan"));
     }
 
@@ -264,8 +282,11 @@ public class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         MFTLibNative.NativeSetUsnIoFailError(5, 1);
-        using var volume = MftVolume.Open("C");
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => volume.ReadUsnJournal(Cursor));
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            volume.ReadUsnJournal(Cursor);
+        });
         Assert.IsTrue(exception.Message.Contains("Error: 5"));
     }
 

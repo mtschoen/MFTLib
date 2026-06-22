@@ -14,7 +14,7 @@ public class ElevationUtilitiesTests
     public void IsElevated_ReturnsBool()
     {
         var result = ElevationUtilities.IsElevated();
-        Assert.IsInstanceOfType(result, typeof(bool));
+        Assert.IsInstanceOfType<bool>(result);
     }
 
     [TestMethod]

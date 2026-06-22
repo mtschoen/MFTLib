@@ -9,7 +9,7 @@ static class MFTUtilities
         // Volume GUID format: \\?\Volume{guid}\
         if (input.StartsWith(@"\\?\Volume{", StringComparison.OrdinalIgnoreCase))
         {
-            return input.EndsWith(@"\") ? input[..^1] : input;
+            return input.EndsWith('\\') ? input[..^1] : input;
         }
 
         // Drive letter format: C or C: or C:\

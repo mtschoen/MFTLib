@@ -5,7 +5,7 @@ namespace MFTLib;
 
 static class Kernel32
 {
-    [DllImport("kernel32.dll", EntryPoint = "CreateFile", SetLastError = true, CharSet = CharSet.Auto)]
+    [DllImport("kernel32.dll", EntryPoint = "CreateFile", SetLastError = true, CharSet = CharSet.Unicode)]
     static extern SafeFileHandle NativeCreateFile(
         string lpFileName,
         uint dwDesiredAccess,

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using MFTLib;
@@ -65,7 +66,7 @@ internal class BenchmarkRunner
         var fileInfo = GetFileInfo(mftPath);
         var generationLine = $"done in {generationStopwatch.Elapsed.TotalSeconds:F1}s ({fileInfo.Length / 1024.0 / 1024 / 1024:F2} GB)";
         WriteLineToConsole(generationLine);
-        output.AppendLine($"Generating synthetic MFT... {generationLine}");
+        output.Append(CultureInfo.InvariantCulture, $"Generating synthetic MFT... {generationLine}").AppendLine();
         Log();
 
         // Benchmark scenarios
@@ -118,13 +119,13 @@ internal class BenchmarkRunner
 
                 var iterationLine = $"{stopwatch.Elapsed.TotalMilliseconds:F0}ms ({records.Length:N0} records)";
                 WriteLineToConsole(iterationLine);
-                output.AppendLine($"  Iteration {iteration + 1}/{iterations}... {iterationLine}");
+                output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {iterationLine}").AppendLine();
             }
             catch (Exception exception)
             {
                 var failLine = $"FAILED: {exception.GetType().Name}: {exception.Message}";
                 WriteLineToConsole(failLine);
-                output.AppendLine($"  Iteration {iteration + 1}/{iterations}... {failLine}");
+                output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {failLine}").AppendLine();
             }
         }
 

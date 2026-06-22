@@ -96,7 +96,7 @@ public class MftVolumeAdminTests
         Assert.IsTrue(withPaths.Length > 0, "Expected some records with resolved paths");
 
         // Paths should start with C:\
-        var withDrive = withPaths.Where(r => r.FullPath!.StartsWith(@"C:\")).ToArray();
+        var withDrive = withPaths.Where(r => r.FullPath!.StartsWith(@"C:\", StringComparison.Ordinal)).ToArray();
         Assert.IsTrue(withDrive.Length > 0, "Expected paths to start with C:\\");
     }
 
@@ -162,7 +162,7 @@ public class MftVolumeAdminTests
 
         Assert.IsTrue(count > 0, "Expected substring filter to find .dll files");
         Assert.IsNotNull(firstWithPath, "Expected at least one record with a resolved path");
-        Assert.IsTrue(firstWithPath.Value.FullPath!.StartsWith(@"C:\"),
+        Assert.IsTrue(firstWithPath.Value.FullPath!.StartsWith(@"C:\", StringComparison.Ordinal),
             $"Expected path to start with C:\\ but got '{firstWithPath.Value.FullPath}'");
     }
 
@@ -384,7 +384,7 @@ public class MftVolumeAdminTests
         var count = 0;
         foreach (var item in enumerable)
         {
-            Assert.IsInstanceOfType(item, typeof(MftRecord));
+            Assert.IsInstanceOfType<MftRecord>(item);
             count++;
         }
         Assert.IsTrue(count > 0, "Expected at least one record via non-generic enumerator");

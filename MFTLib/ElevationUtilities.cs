@@ -13,14 +13,6 @@ public static class ElevationUtilities
     /// </summary>
     public static IElevationProvider DefaultProvider { get; } = new DefaultElevationProvider();
 
-    private sealed class DefaultElevationProvider : IElevationProvider
-    {
-        public bool IsElevated() => ElevationUtilities.IsElevated();
-        public bool CanSelfElevate() => ElevationUtilities.CanSelfElevate();
-        public bool TryRunElevated(string arguments, int timeoutMs = 60000)
-            => ElevationUtilities.TryRunElevated(arguments, timeoutMs);
-    }
-
     // Swappable dependencies for testability — tests replace these to exercise
     // defensive branches (non-Windows, null process path, process start failures)
     // that cannot be triggered in a normal Windows test environment.
@@ -34,8 +26,7 @@ public static class ElevationUtilities
         StartProcess = Process.Start;
     }
 
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "CA1416",
-        Justification = "Guarded by IsWindows() runtime check")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "CA1416", Justification = "Guarded by IsWindows() runtime check")]
     public static bool IsElevated()
     {
         if (!IsWindows())
@@ -109,5 +100,12 @@ public static class ElevationUtilities
             return false;
         }
     }
+}
 
+internal sealed class DefaultElevationProvider : IElevationProvider
+{
+    public bool IsElevated() => ElevationUtilities.IsElevated();
+    public bool CanSelfElevate() => ElevationUtilities.CanSelfElevate();
+    public bool TryRunElevated(string arguments, int timeoutMs = 60000)
+        => ElevationUtilities.TryRunElevated(arguments, timeoutMs);
 }

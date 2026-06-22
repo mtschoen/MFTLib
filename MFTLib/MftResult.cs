@@ -93,8 +93,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         var flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
         var nameLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
         var fileAttributes = (FileAttributes)Unsafe.ReadUnaligned<uint>(ptr + 20);
-        // ReSharper disable once PreferConcreteValueOverDefault
-        return new MftRecord(recordNumber, parentRecordNumber, flags, fileAttributes, (IntPtr)(ptr + NativeStringOffset), nameLength, default, 0, _driveLetter);
+        return new MftRecord(recordNumber, parentRecordNumber, flags, fileAttributes, new NativeStrings((IntPtr)(ptr + NativeStringOffset), nameLength, IntPtr.Zero, 0), _driveLetter);
     }
 
     unsafe MftRecord GetPathEntry(ulong index) => GetPathEntryUnsafe((byte*)_result.PathEntries, index);
@@ -107,7 +106,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         var flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
         var pathLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
         var fileAttributes = (FileAttributes)Unsafe.ReadUnaligned<uint>(ptr + 20);
-        return new MftRecord(recordNumber, parentRecordNumber, flags, fileAttributes, IntPtr.Zero, 0, (IntPtr)(ptr + NativeStringOffset), pathLength, _driveLetter);
+        return new MftRecord(recordNumber, parentRecordNumber, flags, fileAttributes, new NativeStrings(IntPtr.Zero, 0, (IntPtr)(ptr + NativeStringOffset), pathLength), _driveLetter);
     }
 
     public void Dispose()

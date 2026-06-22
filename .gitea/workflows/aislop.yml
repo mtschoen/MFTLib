@@ -1,0 +1,115 @@
+name: aislop
+# Quality gate for AI-generated slop patterns (https://github.com/scanaislop/aislop).
+# `aislop ci` scores the whole repo (0-100) and exits non-zero when the score
+# drops below ci.failBelow (100) in .aislop/config.yml - gating the PR/push.
+#
+# Runs on Windows (not Linux like test.yml's other jobs): MFTLib.sln includes the
+# native MFTLibNative.vcxproj, which only loads/builds under MSBuild + MSVC, and
+# both jb inspectcode and roslynator load the full solution. lint.csharp.jbProjects
+# in .aislop/config.yml scopes jb inspection to the four C# projects so the C++
+# tree stays on its own clang-tidy/cppcheck gate.
+#
+# The C# engine lives ONLY in the personal fork github.com/mtschoen/aislop (the
+# public npm `aislop` scores just Python). Rather than clone+build that fork on
+# the runner (its tsdown/postinstall build is POSIX-only and fails under host-mode
+# act_runner - "Trap 2" in local-ci project-ci-setup.md), we install the prebuilt
+# tarball published as @schoen/aislop to the Gitea npm registry. It is pinned by
+# content via package.json + package-lock.json (sha512 integrity) and installed
+# with `npm ci`, then run with `npx --no-install` so CI only ever executes the
+# locked build. The @schoen scope -> registry mapping lives in the committed
+# .npmrc. Bump the version in package.json (and refresh the lockfile) deliberately
+# and re-validate; a newer ruleset can surface new findings.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # The aislop version is pinned in package.json + package-lock.json (content-hashed
+  # via the lockfile's sha512 integrity), installed with `npm ci`. Bump there.
+  # Node ignores the Windows cert store, so npm pulls over the Gitea registry need
+  # the mkcert CA staged on the runner to keep TLS verification ON (local-ci #33).
+  # Harmless now that Gitea serves a Let's Encrypt cert (Node falls back to its
+  # bundle if the file is missing).
+  NODE_EXTRA_CA_CERTS: C:\actions-runner\mkcert-ca.pem
+
+jobs:
+  quality-gate:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # No actions/setup-node: on host-mode act_runner its 7zr.exe Node extraction
+      # dies with exit code 2 (actions/setup-node#1147, "Trap 1" in local-ci
+      # project-ci-setup.md). The Windows runner host has Node LTS on the machine
+      # PATH (>= aislop's node>=20 floor); npx uses it directly.
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install C# lint engines (roslynator + jb / ReSharper CLT)
+        shell: pwsh
+        run: |
+          dotnet tool install -g roslynator.dotnet.cli
+          dotnet tool install -g JetBrains.ReSharper.GlobalTools
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Build MFTLib solution (native + managed; jb/roslynator load it)
+        shell: pwsh
+        env:
+          # VS BuildTools MSBuild auto-imports workload props that fail with no
+          # workloads installed (standard for BuildTools-only CI).
+          MSBUILDENABLEWORKLOADRESOLVER: 'false'
+        run: |
+          # Mixed C#/C++ build on the SYSTEM-account VS BuildTools runner. Mirrors
+          # scripts/run-coverage.ps1 (the test job's proven build):
+          #  - the checkout lives under System32\...\hostexecutor, which WOW64
+          #    redirects away from 32-bit MSBuild, so pass the absolute
+          #    $env:GITHUB_WORKSPACE path AND use the 64-bit amd64 MSBuild;
+          #  - dotnet restore first (VS MSBuild does not auto-restore);
+          #  - set MSBuildSDKsPath so the .NET SDK resolver is found;
+          #  - override PlatformToolset to v143 (the vcxproj pins v145, absent here).
+          $sln = "$env:GITHUB_WORKSPACE\MFTLib.sln"
+          dotnet restore $sln
+          if ($LASTEXITCODE -ne 0) { Write-Error "dotnet restore failed"; exit 1 }
+          $vsInstallPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+            -products '*' -requires Microsoft.Component.MSBuild -property installationPath -latest
+          $msbuild = if ($vsInstallPath) { Join-Path $vsInstallPath "MSBuild\Current\Bin\amd64\MSBuild.exe" } else { "MSBuild.exe" }
+          $sdkEntry = & dotnet --list-sdks | Where-Object { $_ -match '^8\.' } | Select-Object -Last 1
+          if ($sdkEntry -match '^(\S+)\s+\[(.+)\]') { $env:MSBuildSDKsPath = Join-Path (Join-Path $Matches[2] $Matches[1]) "Sdks" }
+          & $msbuild $sln -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -v:minimal -nologo
+          if ($LASTEXITCODE -ne 0) { Write-Error "msbuild failed"; exit 1 }
+
+      - name: Install pinned aislop (npm ci, integrity-verified)
+        shell: pwsh
+        run: |
+          # Run from the real checkout path (node is 64-bit so it sees the System32
+          # workspace fine; cwd just defaults to the virtualized temp dir). `npm ci`
+          # installs exactly package-lock.json and fails on any integrity mismatch.
+          Set-Location $env:GITHUB_WORKSPACE
+          npm ci --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { Write-Error "npm ci failed"; exit 1 }
+
+      - name: aislop quality gate
+        # Sanity-fail if the C# engine did not actually analyze the .cs tree (avoid a
+        # silent Python-only pass): require a healthy file count alongside the score gate.
+        shell: pwsh
+        run: |
+          # --no-install: run only the locally installed, content-hashed aislop; never
+          # silently fetch a different build. .npmrc + .aislop/config.yml resolve from cwd.
+          Set-Location $env:GITHUB_WORKSPACE
+          $report = "$env:RUNNER_TEMP\aislop-report.json"
+          npx --no-install aislop ci . --json > $report
+          $gateExit = $LASTEXITCODE
+          $result = Get-Content $report -Raw | ConvertFrom-Json
+          $files = if ($result.summary.files) { $result.summary.files } else { 0 }
+          Write-Host "aislop score $($result.score) over $files files"
+          if ($files -lt 10) { Write-Error "aislop only scanned $files files - the C# engine did not run"; exit 1 }
+          if ($gateExit -ne 0) { Write-Error "aislop score below failBelow"; exit 1 }

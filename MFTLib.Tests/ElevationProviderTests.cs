@@ -21,7 +21,7 @@ public class ElevationProviderTests
 
     [TestMethod]
     public void DefaultProvider_IsElevationProvider()
-        => Assert.IsInstanceOfType(ElevationUtilities.DefaultProvider, typeof(IElevationProvider));
+        => Assert.IsInstanceOfType<IElevationProvider>(ElevationUtilities.DefaultProvider);
 
     [TestMethod]
     public void DefaultProvider_IsElevated_DelegatesToStatic()

@@ -4,6 +4,14 @@ using System.Runtime.CompilerServices;
 
 namespace MFTLib;
 
+internal readonly struct NativeStrings(IntPtr namePtr, ushort nameLength, IntPtr pathPtr, ushort pathLength)
+{
+    public readonly IntPtr NamePtr = namePtr;
+    public readonly ushort NameLength = nameLength;
+    public readonly IntPtr PathPtr = pathPtr;
+    public readonly ushort PathLength = pathLength;
+}
+
 public readonly struct MftRecord
 {
     readonly ulong _recordNumber;
@@ -69,17 +77,16 @@ public readonly struct MftRecord
         }
     }
 
-    // ReSharper disable once PreferConcreteValueOverDefault
-    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, ushort flags, FileAttributes fileAttributes, IntPtr namePtr, ushort nameLength, IntPtr pathPtr = default, ushort pathLength = 0, char driveLetter = '\0')
+    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, ushort flags, FileAttributes fileAttributes, NativeStrings strings, char driveLetter = '\0')
     {
         _recordNumber = recordNumber;
         _parentRecordNumber = parentRecordNumber;
         _flags = flags;
         _fileAttributes = fileAttributes;
-        _namePtr = namePtr;
-        _nameLength = nameLength;
-        _pathPtr = pathPtr;
-        _pathLength = pathLength;
+        _namePtr = strings.NamePtr;
+        _nameLength = strings.NameLength;
+        _pathPtr = strings.PathPtr;
+        _pathLength = strings.PathLength;
         _driveLetter = driveLetter;
         _fileName = null;
         _fullPath = null;

@@ -154,7 +154,7 @@ public class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage!.Contains("exhausted"),
+                Assert.IsTrue(result.ErrorMessage.Contains("exhausted"),
                     $"Expected pool-exhaustion message, got: {result.ErrorMessage}");
             }
             finally
@@ -184,7 +184,7 @@ public class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage!.Contains("file size"),
+                Assert.IsTrue(result.ErrorMessage.Contains("file size"),
                     $"Expected file-size error, got: {result.ErrorMessage}");
             }
             finally
@@ -209,7 +209,7 @@ public class NativeCoverageTests
         try
         {
             var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-            Assert.IsTrue(result.ErrorMessage!.Contains("UTF-8"),
+            Assert.IsTrue(result.ErrorMessage.Contains("UTF-8"),
                 $"Expected UTF-8 conversion error, got: {result.ErrorMessage}");
         }
         finally
@@ -764,7 +764,7 @@ public class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage!.Contains("entry array"));
+                Assert.IsTrue(result.ErrorMessage.Contains("entry array"));
                 Assert.IsTrue(result.UsedRecords > 0, "Should have partial results");
                 Assert.IsTrue(result.UsedRecords < 5000, "Should not have all records");
             }
@@ -1269,22 +1269,22 @@ public class NativeCoverageTests
     {
         // ATTRIBUTE_LIST_ENTRY is 26 bytes minimum (with 1-char name)
         // We use 28 bytes (no name, padded)
-        const int entrySize = 28;
+        int entrySize = 28;
         const int valueOffset = 0x18; // header is 24 bytes for resident attribute
 
         data[offset] = 0x20; // TypeCode = AttributeList
         data[offset + 8] = 0x00; // FormCode = resident
         // ValueLength
-        data[offset + 0x10] = entrySize & 0xFF;
-        data[offset + 0x11] = (entrySize >> 8) & 0xFF;
+        data[offset + 0x10] = (byte)(entrySize & 0xFF);
+        data[offset + 0x11] = (byte)((entrySize >> 8) & 0xFF);
         // ValueOffset
         data[offset + 0x14] = valueOffset;
 
         // Write the ATTRIBUTE_LIST_ENTRY at valueOffset
         var entry = offset + valueOffset;
         data[entry] = 0x80; // AttributeTypeCode = Data
-        data[entry + 4] = entrySize & 0xFF; // RecordLength
-        data[entry + 5] = (entrySize >> 8) & 0xFF;
+        data[entry + 4] = (byte)(entrySize & 0xFF); // RecordLength
+        data[entry + 5] = (byte)((entrySize >> 8) & 0xFF);
         // SegmentReference at offset 16 within entry
         data[entry + 16] = (byte)(segmentNumber & 0xFF);
         data[entry + 17] = (byte)((segmentNumber >> 8) & 0xFF);

@@ -192,7 +192,7 @@ public class MftVolumeTests
 
         // Some records may be directly under root (no separator), but at least
         // some should have nested paths with separators
-        var nestedPaths = withPaths.Where(r => r.FullPath!.Contains("\\")).ToArray();
+        var nestedPaths = withPaths.Where(r => r.FullPath!.Contains('\\')).ToArray();
         Assert.IsTrue(nestedPaths.Length > 0 || withPaths.Length > 0,
             "Expected resolved paths to be populated");
     }
@@ -294,9 +294,9 @@ public class MftVolumeTests
                 // Native paths include drive letter prefix; manual paths use empty drive letter
                 var nativePath = nativeRecord.FullPath;
                 // Both should produce the same relative structure
-                Assert.IsTrue(manualPath.EndsWith(record.FileName),
+                Assert.IsTrue(manualPath.EndsWith(record.FileName, StringComparison.Ordinal),
                     $"Manual path '{manualPath}' should end with '{record.FileName}'");
-                Assert.IsTrue(nativePath.EndsWith(record.FileName),
+                Assert.IsTrue(nativePath.EndsWith(record.FileName, StringComparison.Ordinal),
                     $"Native path '{nativePath}' should end with '{record.FileName}'");
                 resolved++;
             }

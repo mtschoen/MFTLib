@@ -1,33 +1,75 @@
-# aislop — AI-slop quality gate (https://github.com/scanaislop/aislop)
+# aislop quality gate config - https://github.com/scanaislop/aislop
 #
-# STATUS: ready-but-gated. As of 2026-05-29 aislop (latest 0.9.6) does NOT
-# support C# — it covers TS/JS, Python, Go, Rust, Ruby, PHP, Java. MFTLib is
-# C# + C++:
-#   * C#  (MFTLib, TestProgram, Benchmark, MFTLib.Tests) — covered ONCE aislop's
-#         C# engine ships.
-#   * C++ (MFTLibNative) — NEVER covered by aislop; clang-tidy + cppcheck remain
-#         its quality gate and that does not change.
+# `aislop ci` produces a whole-repo score (0-100); the Gitea Actions gate
+# (.gitea/workflows/aislop.yml) fails the build when the score is below
+# failBelow. The C# engine lives in the personal fork github.com/mtschoen/aislop
+# (the public npm aislop is Python-only); CI installs its prebuilt @schoen/aislop
+# tarball from the Gitea npm registry via `npm ci`, pinned by content (sha512
+# integrity) in package.json + package-lock.json.
+# This config follows the conventional C# baseline (csharp.yml),
+# mirroring git-wizard.
 #
-# Until a C#-capable aislop version lands, aislop scans 0 relevant files here and
-# false-greens at a meaningless 100. So the gate is deliberately NOT active:
-# the CI step is left disabled and the per-edit hook is NOT installed. This file
-# is staged so the gate can be flipped on in one step when C# support arrives.
+# MFTLib is C# + C++. The C++ tree (MFTLibNative) is NOT scored here: it has its
+# own quality gate (clang-tidy + cppcheck via CMake). Two mechanisms keep it out:
+#   * lint.csharp.jbProjects scopes jb inspectcode to the four C# projects, so
+#     jb does not surface C++ (Cpp*) findings from the shared solution.
+#   * the exclude block below keeps the C++ tree and build output out of the
+#     file-scanning engines (ai-slop, code-quality, format).
 #
-# FLIP-ON (when a C#-capable aislop version ships — pin THAT version, never @latest):
-#   1. Re-baseline the floor:  npx aislop@<csharp-ver> ci .   # read .score, set failBelow below
-#   2. Per-edit hook (repo-local, pins its own version):
-#        npx aislop@<csharp-ver> hook install --claude --project
-#   3. CI gate: enable the disabled `aislop` step in .gitea/workflows/test.yml
-#      (use the CLI `npx --yes aislop@<csharp-ver> ci .`, NOT the GitHub composite action).
+# The repo is held at 0 findings (score 100), so failBelow is 100: any new
+# finding (a narrative comment, a swallowed exception, an oversized function)
+# red-lights the gate. Lower it only with a documented reason.
+
+version: 1
+
+engines:
+  format: true
+  lint: true
+  code-quality: true
+  ai-slop: true
+  architecture: false
+  security: true
+
+lint:
+  csharp:
+    jb: true
+    roslynator: true
+    jbSeverityFloor: WARNING
+    jbExcludeTypes: [InconsistentNaming]
+    # Scope jb inspectcode to the C# projects: the shared MFTLib.sln also lists
+    # the C++ MFTLibNative.vcxproj, whose Cpp* findings belong to the native
+    # clang-tidy/cppcheck gate, not this C# one.
+    jbProjects: "MFTLib;MFTLib.Tests;TestProgram;Benchmark"
+
+quality:
+  maxFunctionLoc: 80
+  maxFileLoc: 400
+  maxNesting: 5
+  maxParams: 6
+
+security:
+  audit: false
+  auditTimeout: 30000
+
+scoring:
+  weights:
+    format: 0.5
+    lint: 1.0
+    code-quality: 1.5
+    ai-slop: 1.0
+    architecture: 1.0
+    security: 2.5
+  thresholds:
+    good: 75
+    ok: 50
 
 ci:
-  # Intended floor (the fleet baseline used by git-wizard). RE-MEASURE against the
-  # real C# score before enabling — clean up first, then gate; never ratchet up
-  # from a false-positive-dominated baseline.
-  failBelow: 80
+  failBelow: 100
+  format: json
 
 # aislop scores the whole repo. Keep build output, generated sources, and the
-# C++ tree (never covered) out of the scan.
+# C++ tree (scored separately by clang-tidy/cppcheck) out of the file-scanning
+# engines.
 exclude:
   - "**/bin/**"
   - "**/obj/**"
