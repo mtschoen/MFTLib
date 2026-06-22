@@ -37,6 +37,7 @@ using VCN = LARGE_INTEGER;
 using PVCN = VCN*;
 using UPDATE_SEQUENCE_NUMBER = USHORT;
 using PUPDATE_SEQUENCE_NUMBER = UPDATE_SEQUENCE_NUMBER*;
+// NOLINTNEXTLINE(modernize-avoid-c-arrays): on-disk NTFS update-sequence-array layout type
 using UPDATE_SEQUENCE_ARRAY = UPDATE_SEQUENCE_NUMBER[1];
 
 constexpr uint32_t FILE_RECORD_SIZE = 1024;
