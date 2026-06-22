@@ -392,3 +392,6 @@ coverage*.xml
 native-coverage.cobertura.xml
 
 .maintenance.json
+
+# SDD scratch (subagent-driven-development ledger/briefs)
+.superpowers/

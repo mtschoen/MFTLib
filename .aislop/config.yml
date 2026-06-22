@@ -9,12 +9,12 @@
 # This config follows the conventional C# baseline (csharp.yml),
 # mirroring git-wizard.
 #
-# MFTLib is C# + C++. The C++ tree (MFTLibNative) is NOT scored here: it has its
-# own quality gate (clang-tidy + cppcheck via CMake). Two mechanisms keep it out:
-#   * lint.csharp.jbProjects scopes jb inspectcode to the four C# projects, so
-#     jb does not surface C++ (Cpp*) findings from the shared solution.
-#   * the exclude block below keeps the C++ tree and build output out of the
-#     file-scanning engines (ai-slop, code-quality, format).
+# MFTLib is C# + C++, and BOTH trees are scored by this gate. The native tree
+# (MFTLibNative) runs cppcheck + clang-tidy + clang-format + ai-slop AND jb
+# inspectcode (ReSharper C++, lint.cpp.jb) at a SUGGESTION floor - the full
+# inspection tier, nothing suppressed. lint.csharp.jbProjects + lint.cpp.jbProjects
+# scope the single inspectcode pass to the C# and C++ projects respectively; the
+# exclude block keeps only build output out of the file-scanning engines.
 #
 # The repo is held at 0 findings (score 100), so failBelow is 100: any new
 # finding (a narrative comment, a swallowed exception, an oversized function)
@@ -36,10 +36,15 @@ lint:
     roslynator: true
     jbSeverityFloor: WARNING
     jbExcludeTypes: [InconsistentNaming]
-    # Scope jb inspectcode to the C# projects: the shared MFTLib.sln also lists
-    # the C++ MFTLibNative.vcxproj, whose Cpp* findings belong to the native
-    # clang-tidy/cppcheck gate, not this C# one.
     jbProjects: "MFTLib;MFTLib.Tests;TestProgram;Benchmark"
+  cpp:
+    # The native tree is now scored by this gate (no longer excluded). It runs
+    # cppcheck + clang-tidy + clang-format + ai-slop AND jb inspectcode
+    # (ReSharper C++). Floor is SUGGESTION (full-tier sweep): every real
+    # inspection must be fixed, nothing suppressed.
+    jb: true
+    jbSeverityFloor: SUGGESTION
+    jbProjects: "MFTLibNative"
 
 quality:
   maxFunctionLoc: 80
@@ -67,9 +72,8 @@ ci:
   failBelow: 100
   format: json
 
-# aislop scores the whole repo. Keep build output, generated sources, and the
-# C++ tree (scored separately by clang-tidy/cppcheck) out of the file-scanning
-# engines.
+# aislop scores the whole repo (C# and the native C++ tree). Keep only build
+# output and generated sources out of the file-scanning engines.
 exclude:
   - "**/bin/**"
   - "**/obj/**"
@@ -79,4 +83,4 @@ exclude:
   - "build/**"
   - "**/*.Designer.cs"
   - "**/*.g.cs"
-  - "MFTLibNative/**"
+  - "MFTLibNative/build/**"
