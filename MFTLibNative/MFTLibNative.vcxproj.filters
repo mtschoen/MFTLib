@@ -45,6 +45,9 @@
     <ClInclude Include="core\platform.h">
       <Filter>Source Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="mft\mft_internal.h">
+      <Filter>Source Files\mft</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -63,6 +66,12 @@
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="mft\mft_parse.cpp">
+      <Filter>Source Files\mft</Filter>
+    </ClCompile>
+    <ClCompile Include="mft\mft_parse_core.cpp">
+      <Filter>Source Files\mft</Filter>
+    </ClCompile>
+    <ClCompile Include="mft\mft_records.cpp">
       <Filter>Source Files\mft</Filter>
     </ClCompile>
     <ClCompile Include="mft\mft_synthetic.cpp">

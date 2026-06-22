@@ -180,6 +180,7 @@ xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)Benchmark\bin\$(Platform)
     <ClInclude Include="pch.h" />
     <ClInclude Include="core\ntfs_io.h" />
     <ClInclude Include="core\platform.h" />
+    <ClInclude Include="mft\mft_internal.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
@@ -187,6 +188,8 @@ xcopy /Y "$(TargetDir)MFTLibNative.pdb" "$(SolutionDir)Benchmark\bin\$(Platform)
     <ClCompile Include="core\ntfs_io.cpp" />
     <ClCompile Include="core\platform_win32.cpp" />
     <ClCompile Include="mft\mft_parse.cpp" />
+    <ClCompile Include="mft\mft_parse_core.cpp" />
+    <ClCompile Include="mft\mft_records.cpp" />
     <ClCompile Include="mft\mft_synthetic.cpp" />
     <ClCompile Include="usn\usn_journal.cpp" />
     <ClCompile Include="pch.cpp">
