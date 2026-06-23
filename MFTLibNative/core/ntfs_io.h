@@ -4,6 +4,8 @@
 #include "../ntfs.h"
 #include "../framework.h"
 
+namespace mftlib::ntfs {
+
 struct DataRun {
     int64_t clusterOffset;
     uint64_t clusterCount;
@@ -22,3 +24,5 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr,
 bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
                    uint64_t recordNumber, uint8_t* buffer);
 #endif
+
+}  // namespace mftlib::ntfs

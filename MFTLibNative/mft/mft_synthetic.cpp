@@ -1,5 +1,6 @@
 #include "pch.h"
 
+#include <array>
 #include <cstring>
 #include <string>
 #include <thread>
@@ -16,12 +17,12 @@
 
 namespace {
 
-constexpr const wchar_t* fileNames[] = {
+constexpr std::array<const wchar_t*, 16> fileNames = {
     L"README.md",    L"index.html", L"main.cpp",   L"package.json", L"Makefile",  L"config.yaml",
     L"data.bin",     L"icon.png",   L"setup.py",   L"app.js",       L"style.css", L"test.go",
     L"build.gradle", L"Cargo.toml", L"Program.cs", L"pom.xml",
 };
-constexpr const wchar_t* dirNames[] = {
+constexpr std::array<const wchar_t*, 16> dirNames = {
     L"src", L"bin",     L"obj",    L"node_modules", L".git",   L"build", L"docs", L"tests",
     L"lib", L"include", L"assets", L"scripts",      L"config", L"data",  L"temp", L"cache",
 };
@@ -156,11 +157,11 @@ void BuildSyntheticRecord(uint8_t* record, uint64_t recordIndex, uint64_t parent
         dataAttr->FormCode = 1;
         dataAttr->NameLength = 0;
         dataAttr->Form.Nonresident.LowestVcn.QuadPart = 0;
-        dataAttr->Form.Nonresident.HighestVcn.QuadPart = (allocSize / 4096) - 1;
+        dataAttr->Form.Nonresident.HighestVcn.QuadPart = static_cast<LONGLONG>((allocSize / 4096) - 1);
         dataAttr->Form.Nonresident.MappingPairsOffset = 0x48;
-        dataAttr->Form.Nonresident.AllocatedLength = allocSize;
-        dataAttr->Form.Nonresident.FileSize = fileSize;
-        dataAttr->Form.Nonresident.ValidDataLength = fileSize;
+        dataAttr->Form.Nonresident.AllocatedLength = static_cast<LONGLONG>(allocSize);
+        dataAttr->Form.Nonresident.FileSize = static_cast<LONGLONG>(fileSize);
+        dataAttr->Form.Nonresident.ValidDataLength = static_cast<LONGLONG>(fileSize);
         uint64_t clusterCount = allocSize / 4096;
         uint64_t clusterOffset = recordIndex * 64;
         auto* runPtr = reinterpret_cast<uint8_t*>(dataAttr) + 0x48;

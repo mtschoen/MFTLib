@@ -14,6 +14,8 @@
 #include "../core/platform.h"
 #include "mft_internal.h"
 
+using namespace mftlib::ntfs;
+
 MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, const wchar_t* filter,
                              uint32_t matchFlags, uint32_t bufferSizeRecords) {
     auto wallStart = SteadyClock::now();

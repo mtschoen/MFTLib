@@ -13,6 +13,8 @@
 #include "../core/platform.h"
 #include "mft_internal.h"
 
+using namespace mftlib::ntfs;
+
 namespace {
 
 #ifdef _WIN32
