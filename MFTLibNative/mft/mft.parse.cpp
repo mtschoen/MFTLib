@@ -1,3 +1,8 @@
+// Part of the mft component. Included by mft.cpp; do not compile directly.
+#ifndef AISLOP_TU_FRAGMENT
+#error "mft.parse.cpp is a fragment included by mft.cpp; do not compile it directly"
+#endif
+
 #include "pch.h"
 
 #include <cstdlib>
@@ -9,9 +14,8 @@
 #include "../ntfs.h"
 #include "../mft_api.h"
 #include "../internal.h"
-#include "../core/ntfs_io.h"
 #include "../core/platform.h"
-#include "mft_internal.h"
+#include "mft.internal.h"
 
 using namespace mftlib::ntfs;
 

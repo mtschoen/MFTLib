@@ -63,6 +63,8 @@ bool ShouldFailPlatformRead() {
 bool ShouldFailPlatformWrite() { return g_failPlatformWrite != 0; }
 
 #ifdef _WIN32
+// Cross-component test seam used by USN code and exported test hooks; keep external.
+// ReSharper disable once CppClangTidyMiscUseInternalLinkage
 bool ShouldFailUsnIo(DWORD& outError) {
     if (g_usnIoFailCountdown <= 0) {
         return false;

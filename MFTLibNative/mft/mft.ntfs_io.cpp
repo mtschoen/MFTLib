@@ -1,3 +1,8 @@
+// Part of the mft component. Included by mft.cpp; do not compile directly.
+#ifndef AISLOP_TU_FRAGMENT
+#error "mft.ntfs_io.cpp is a fragment included by mft.cpp; do not compile it directly"
+#endif
+
 #include "pch.h"
 
 #include <vector>
@@ -5,9 +10,10 @@
 #include "../framework.h"
 #include "../ntfs.h"
 #include "../internal.h"
-#include "ntfs_io.h"
+#include "mft.internal.h"
 
 namespace mftlib::ntfs {
+namespace {
 
 #ifdef _WIN32
 BOOL Read(HANDLE handle, void* buffer, uint64_t from, DWORD count, PDWORD bytesRead) {
@@ -20,7 +26,6 @@ BOOL Read(HANDLE handle, void* buffer, uint64_t from, DWORD count, PDWORD bytesR
 }
 #endif  // _WIN32
 
-namespace {
 bool ApplyFixupInternal(uint8_t* record, uint32_t recordSize) {
     auto* header = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
     uint16_t usaOffset = header->MultiSectorHeader.UpdateSequenceArrayOffset;
@@ -49,7 +54,6 @@ bool ApplyFixupInternal(uint8_t* record, uint32_t recordSize) {
     }
     return true;
 }
-}  // namespace
 
 bool ApplyFixup(uint8_t* record, uint32_t recordSize) { return ApplyFixupInternal(record, recordSize); }
 
@@ -180,4 +184,5 @@ PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type
     return nullptr;
 }
 
+}  // namespace
 }  // namespace mftlib::ntfs

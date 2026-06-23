@@ -1,3 +1,8 @@
+// Part of the mft component. Included by mft.cpp; do not compile directly.
+#ifndef AISLOP_TU_FRAGMENT
+#error "mft.records.cpp is a fragment included by mft.cpp; do not compile it directly"
+#endif
+
 #include "pch.h"
 
 #include <cstdint>
@@ -8,7 +13,7 @@
 #include "../ntfs.h"
 #include "../mft_api.h"
 #include "../internal.h"
-#include "mft_internal.h"
+#include "mft.internal.h"
 
 namespace {
 

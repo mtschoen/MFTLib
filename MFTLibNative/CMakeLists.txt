@@ -16,8 +16,7 @@ endif()
 
 set(SOURCES
     core/test_hooks.cpp
-    core/ntfs_io.cpp
-    mft/mft_parse.cpp
+    mft/mft.cpp
     mft/mft_synthetic.cpp
 )
 
