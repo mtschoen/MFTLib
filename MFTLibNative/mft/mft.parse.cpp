@@ -1,6 +1,6 @@
 // Part of the mft component. Included by mft.cpp; do not compile directly.
 #ifndef AISLOP_TU_FRAGMENT
-#error "mft.parse.cpp is a fragment included by mft.cpp; do not compile it directly"
+    #error "mft.parse.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
 #include <cstdlib>
@@ -49,7 +49,8 @@ uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
     DWORD readBytes;
     auto ioStart = SteadyClock::now();
     if (Read(volumeCtx->volumeHandle, targetBuffer,
-             (static_cast<uint64_t>(run.clusterOffset) * volumeCtx->bytesPerCluster) + volumeCtx->positionInBlock,
+             VolumeOffset{(static_cast<uint64_t>(run.clusterOffset) * volumeCtx->bytesPerCluster) +
+                          volumeCtx->positionInBlock},
              static_cast<DWORD>(filesToLoad * FILE_RECORD_SIZE), &readBytes) == 0) {
         return 0;
     }
@@ -155,7 +156,7 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
 
     NTFS_BPB bpb;
     DWORD bytesRead;
-    if ((Read(volumeHandle, &bpb, 0, 512, &bytesRead) == 0) || bytesRead != 512) {
+    if ((Read(volumeHandle, &bpb, VolumeOffset{0}, 512, &bytesRead) == 0) || bytesRead != 512) {
         SetErrorMessage(result->errorMessage, L"Failed to read boot sector. Error: %lu", GetLastError());
         return result;
     }
@@ -167,7 +168,8 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
     uint32_t bytesPerCluster = bpb.bytesPerSector * bpb.sectorsPerCluster;
 
     uint8_t record0[FILE_RECORD_SIZE];
-    if ((Read(volumeHandle, record0, bpb.mftStart * bytesPerCluster, FILE_RECORD_SIZE, &bytesRead) == 0) ||
+    if ((Read(volumeHandle, record0, VolumeOffset{bpb.mftStart * bytesPerCluster}, FILE_RECORD_SIZE, &bytesRead) ==
+         0) ||
         bytesRead != FILE_RECORD_SIZE) {
         SetErrorMessage(result->errorMessage, L"Failed to read MFT record 0");
         return result;
@@ -231,7 +233,7 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
 
             uint8_t extRecord[FILE_RECORD_SIZE];
             for (auto recNum : extensionRecords) {
-                if (!ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, recNum, extRecord)) {
+                if (!ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, extRecord, recNum)) {
                     continue;
                 }
                 auto* extHdr = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(extRecord);

@@ -17,16 +17,22 @@ struct DataRun {
     uint64_t clusterCount;
 };
 
+// Strong type for a byte offset into the raw volume, so it cannot be transposed
+// with the adjacent byte-count argument of Read().
+struct VolumeOffset {
+    uint64_t value;
+};
+
 namespace {
 bool ApplyFixup(uint8_t* record, uint32_t recordSize);
 std::vector<DataRun> ParseDataRuns(PATTRIBUTE_RECORD_HEADER attr);
 PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type);
 #ifdef _WIN32
-BOOL Read(HANDLE handle, void* buffer, uint64_t from, DWORD count, PDWORD bytesRead);
+BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead);
 uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr, uint32_t bytesPerCluster,
                              uint64_t* outSize);
-bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
-                   uint64_t recordNumber, uint8_t* buffer);
+bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster, uint8_t* buffer,
+                   uint64_t recordNumber);
 #endif
 }  // namespace
 

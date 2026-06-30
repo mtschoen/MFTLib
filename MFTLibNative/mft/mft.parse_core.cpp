@@ -1,6 +1,6 @@
 // Part of the mft component. Included by mft.cpp; do not compile directly.
 #ifndef AISLOP_TU_FRAGMENT
-#error "mft.parse_core.cpp is a fragment included by mft.cpp; do not compile it directly"
+    #error "mft.parse_core.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
 #include <algorithm>
