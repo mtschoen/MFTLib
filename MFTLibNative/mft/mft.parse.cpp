@@ -3,6 +3,7 @@
     #error "mft.parse.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
+#include <array>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -58,6 +59,87 @@ uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
     volumeCtx->positionInBlock += filesToLoad * FILE_RECORD_SIZE;
     volumeCtx->filesRemaining -= filesToLoad;
     return filesToLoad;
+}
+
+// Parse record 0's $ATTRIBUTE_LIST entries into a de-duplicated list of the
+// extension record numbers they reference.
+std::vector<uint64_t> CollectExtensionRecordNumbers(uint8_t* attrListData, uint64_t attrListSize) {
+    std::vector<uint64_t> extensionRecords;
+    uint64_t offset = 0;
+    while (offset + sizeof(ATTRIBUTE_LIST_ENTRY) <= attrListSize) {
+        auto* entry = reinterpret_cast<PATTRIBUTE_LIST_ENTRY>(attrListData + offset);
+        if (entry->RecordLength == 0) {
+            break;
+        }
+        uint64_t segNum = static_cast<uint64_t>(entry->SegmentReference.SegmentNumberLowPart) |
+                          (static_cast<uint64_t>(entry->SegmentReference.SegmentNumberHighPart) << 32);
+        if (segNum != 0) {
+            bool found = false;
+            for (auto existing : extensionRecords) {
+                if (existing == segNum) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                extensionRecords.push_back(segNum);
+            }
+        }
+        offset += entry->RecordLength;
+    }
+    return extensionRecords;
+}
+
+// Append the $DATA runs of one already-read extension record to mftRuns.
+void AppendRecordDataRuns(uint8_t* extRecord, std::vector<DataRun>& mftRuns) {
+    auto* extHdr = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(extRecord);
+    if (extHdr->MultiSectorHeader.Magic != 0x454C4946) {
+        return;
+    }
+    auto* extAttr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(extRecord + extHdr->FirstAttributeOffset);
+    while (extAttr->TypeCode != ATTRIBUTE_TYPE_CODE::EndMarker) {
+        if (extAttr->RecordLength == 0) {
+            break;
+        }
+        if (extAttr->TypeCode == Data) {
+            auto additionalRuns = ParseDataRuns(extAttr);
+            for (auto& additionalRun : additionalRuns) {
+                mftRuns.push_back(additionalRun);
+            }
+        }
+        extAttr =
+            reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(extAttr) + extAttr->RecordLength);
+    }
+}
+
+// Follow record 0's $ATTRIBUTE_LIST (when present) to its extension records and
+// append their $DATA runs to mftRuns, completing the $MFT's run list.
+void MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrListAttr, uint32_t bytesPerCluster,
+                            std::vector<DataRun>& mftRuns) {
+    uint8_t* attrListData;
+    uint64_t attrListSize = 0;
+    if (attrListAttr->FormCode == 1) {
+        attrListData = ReadNonResidentData(volumeHandle, attrListAttr, bytesPerCluster, &attrListSize);
+    } else {
+        attrListSize = attrListAttr->Form.Resident.ValueLength;
+        attrListData = static_cast<uint8_t*>(malloc(static_cast<size_t>(attrListSize)));
+        if (attrListData != nullptr) {
+            memcpy(attrListData, reinterpret_cast<uint8_t*>(attrListAttr) + attrListAttr->Form.Resident.ValueOffset,
+                   static_cast<size_t>(attrListSize));
+        }
+    }
+    if (attrListData == nullptr) {
+        return;
+    }
+
+    std::vector<uint64_t> extensionRecords = CollectExtensionRecordNumbers(attrListData, attrListSize);
+    std::array<uint8_t, FILE_RECORD_SIZE> extRecord{};
+    for (auto recNum : extensionRecords) {
+        if (ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, extRecord.data(), recNum)) {
+            AppendRecordDataRuns(extRecord.data(), mftRuns);
+        }
+    }
+    free(attrListData);
 }
 #endif  // _WIN32
 
@@ -194,72 +276,7 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
 
     auto* attrListAttr = FindAttribute(record0, AttributeList);
     if (attrListAttr != nullptr) {
-        uint8_t* attrListData;
-        uint64_t attrListSize = 0;
-
-        if (attrListAttr->FormCode == 1) {
-            attrListData = ReadNonResidentData(volumeHandle, attrListAttr, bytesPerCluster, &attrListSize);
-        } else {
-            attrListSize = attrListAttr->Form.Resident.ValueLength;
-            attrListData = static_cast<uint8_t*>(malloc(static_cast<size_t>(attrListSize)));
-            if (attrListData != nullptr) {
-                memcpy(attrListData, reinterpret_cast<uint8_t*>(attrListAttr) + attrListAttr->Form.Resident.ValueOffset,
-                       static_cast<size_t>(attrListSize));
-            }
-        }
-
-        if (attrListData != nullptr) {
-            std::vector<uint64_t> extensionRecords;
-            uint64_t offset = 0;
-            while (offset + sizeof(ATTRIBUTE_LIST_ENTRY) <= attrListSize) {
-                auto* entry = reinterpret_cast<PATTRIBUTE_LIST_ENTRY>(attrListData + offset);
-                if (entry->RecordLength == 0) {
-                    break;
-                }
-                uint64_t segNum = static_cast<uint64_t>(entry->SegmentReference.SegmentNumberLowPart) |
-                                  (static_cast<uint64_t>(entry->SegmentReference.SegmentNumberHighPart) << 32);
-                if (segNum != 0) {
-                    bool found = false;
-                    for (auto existing : extensionRecords) {
-                        if (existing == segNum) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        extensionRecords.push_back(segNum);
-                    }
-                }
-                offset += entry->RecordLength;
-            }
-
-            uint8_t extRecord[FILE_RECORD_SIZE];
-            for (auto recNum : extensionRecords) {
-                if (!ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, extRecord, recNum)) {
-                    continue;
-                }
-                auto* extHdr = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(extRecord);
-                if (extHdr->MultiSectorHeader.Magic != 0x454C4946) {
-                    continue;
-                }
-
-                auto* extAttr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(extRecord + extHdr->FirstAttributeOffset);
-                while (extAttr->TypeCode != ATTRIBUTE_TYPE_CODE::EndMarker) {
-                    if (extAttr->RecordLength == 0) {
-                        break;
-                    }
-                    if (extAttr->TypeCode == Data) {
-                        auto additionalRuns = ParseDataRuns(extAttr);
-                        for (auto& additionalRun : additionalRuns) {
-                            mftRuns.push_back(additionalRun);
-                        }
-                    }
-                    extAttr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(extAttr) +
-                                                                         extAttr->RecordLength);
-                }
-            }
-            free(attrListData);
-        }
+        MergeExtensionDataRuns(volumeHandle, attrListAttr, bytesPerCluster, mftRuns);
     }
 
     uint64_t totalMftBytes = 0;
