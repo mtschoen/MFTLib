@@ -1,53 +1,57 @@
-MFTLib test report - 2026-06-22
+MFTLib test report - 2026-06-29
 ===========================================
 
-Status:   PASS (managed gate held; native aislop gate in progress)
-Mode:     close-the-gap (native C++ tree brought under the whole-repo aislop gate)
-Tests:    all passing (34 admin + non-admin via run-coverage.ps1, UAC run)
-Git:      e301bd9 + working tree (branch feat/aislop-whole-repo-100)
+Status:   PASS (managed gate 100/100; native C++ tree clang-tidy-clean)
+Mode:     close-the-gap (native aislop burn-down + component amalgamation finished)
+Tests:    265 passed, 34 skipped (admin), 0 failed (non-elevated run-coverage.ps1)
+Git:      branch feat/aislop-whole-repo-100 (commit 3997095 + working tree)
 
-Managed coverage: 100% line, 100% branch, 100% method, 100% full-method
-  MFTLib      - 100% line, 100% branch, 100% method
-  TestProgram - 100% line, 100% branch, 100% method
-  Benchmark   - 100% line, 100% branch, 100% method
-  Totals: 633/633 lines, 196/196 branches, 116/116 methods
-  0 exclusion annotations
-  (Measured this run: all native refactors are exercised by the managed suite,
-   incl. admin USN-journal + path-resolution tests; behavior preserved.)
+Managed coverage (run-coverage.ps1 -NonInteractive): 100% line, 100% branch, 100% method
+  MFTLib      - 100%   TestProgram - 100%   Benchmark - 100%
+  Totals: 633/633 lines, 196/196 branches, 116/116 methods, 0 exclusion annotations
 
-Native coverage: not re-measured this session (native changes are pure
-  behavior-preserving refactors). Burndown baseline ~97.25% line / 100% branch
-  (uncovered = error/null-guard paths). Re-run scripts/native-coverage.ps1
-  (non-elevated) before the final native gate close.
+Native coverage (scripts/native-coverage.ps1, non-elevated):
+  MFTLibNative - 97.2% line, 100% branch.
+  The ~2.8% uncovered line gap is admin-only code (USN journal + raw-volume
+  path-resolution helpers) that runs only under the elevated test set. Re-run
+  run-coverage.ps1 WITH UAC elevation before the final native gate to close it.
 
-Lint:
-  C# (aislop v0.12.3, roslynator + jb inspectcode): 0 findings, score 100/100.
-    1 per-case suppression (CA1711 on public [Flags] MatchFlags); CA1707 disabled
-    for MFTLib.Tests via .editorconfig. Held this session (C# untouched).
-  C++ (aislop whole-repo gate: clang-tidy + cppcheck + jb + ai-slop): 99 findings
-    remaining, score 9/100 (down from 152 / score 7 at session start).
-    Per-case suppressions: NOLINT(modernize-avoid-c-arrays) on 8 C-ABI/on-disk
-      header sites (mft_api.h interop structs, ntfs.h USA typedef, internal.h
-      SetErrorMessage array-ref param) - justified domain FPs.
-    Remaining 99 = coverage-sensitive (casts ~46, conversions ~10, swappable-
-      params ~11, manual-delete 2, .cpp c-array conversions 7, complexity/file
-      splits 6) + jb-only FPs (3 cross-TU internal-linkage, ~6 unused-include
-      where the symbol is used directly). See .superpowers/sdd/progress.md.
+Native C++ lint (the burn-down result):
+  Direct clang-tidy (clang-tidy <file> -p build/lint, WarningsAsErrors:"*") reports
+  0 findings across the whole MFTLibNative tree - down from 34 at the start of this
+  session. clang-format --dry-run --Werror clean. The amalgamation (component-as-TU)
+  builds green (MSBuild Release|x64). What was cleared, by bucket:
+    - 7 modernize-avoid-c-arrays -> std::array (+ extRecord once it left extern-C)
+    - 4 bugprone-suspicious-include -> NOLINT on the owner's fragment #includes
+    - 14 bugprone-easily-swappable-parameters -> VolumeOffset/FileOffset strong
+      types, FilterSpec/SliceRange/ChunkSpan/ParseState/SyntheticRecordSpec/
+      BatchParams/RecordCount param bundles, ReadMFTRecord reorder; 2 C-ABI export
+      boundaries took a justified per-site NOLINT
+    - 2 bugprone-suspicious-realloc-usage (real leak-on-OOM bugs) -> std::vector
+      slices + a temp-pointer merge realloc; covered by a new failure-injection test
+    - 5 readability-function-cognitive-complexity -> ParseMFTImpl (130->ok),
+      ParseMFTRecords (78->ok), ProcessRecordSlice/Batch, GenerateBatch decomposed
+    - readability trivials (uppercase-suffix, identifier-length)
+  cppcheck --enable=all surfaces only its pre-existing style tier (constVariablePointer,
+  knownConditionTrueFalse, etc.) which the aislop gate does not score.
 
-Changes this run (branch feat/aislop-whole-repo-100, native C++ only):
-  - Cleared 53 coverage-neutral findings across 3 green-build commits
-    (7a8de15 mft_parse 30, d9d171d mft_synthetic+usn_journal 15, e301bd9
-    header c-array NOLINTs 8): anonymous-namespace consolidation, const-ref/
-    const-ptr params, short-identifier renames, too-wide-scope fixes, and the
-    pre-approved C-ABI c-array suppressions.
+GATE CAVEAT (important): the pinned @schoen/aislop 0.12.3 in package.json STILL HAS the
+clang-tidy WarningsAsErrors parser bug, so `aislop ci .` silently drops every clang-tidy
+finding and reports score 100 even when findings exist. The parser fix lives in the
+aislop fork (commit e7f5303) but was never republished. Until @schoen/aislop is rebuilt
+and the pin bumped (deferred), CI cannot actually enforce the native clang-tidy surface -
+trust direct clang-tidy, not the gate, for the C++ tree.
 
-Managed coverage command:
-  .\scripts\run-coverage.ps1                  # full run with admin tests (UAC prompt)
+STILL PENDING (attended / outward - left for the maintainer):
+  - Elevated managed coverage: run-coverage.ps1 (approve UAC) to verify the admin
+    paths green under the new structure and confirm native line coverage closes to 100%.
+  - Republish @schoen/aislop with the parser fix + bump package.json/lockfile, so CI
+    enforces the native clang-tidy surface instead of silently passing.
+  - Push branch feat/aislop-whole-repo-100 + open the claude-code PR.
+
+Commands:
+  .\scripts\run-coverage.ps1                  # full managed run incl. admin tests (UAC)
   .\scripts\run-coverage.ps1 -NonInteractive  # skip admin tests (CI / headless)
-
-Native coverage command:
-  .\scripts\native-coverage.ps1
-
-aislop gate:
-  aislop ci .                                 # local (uses the pinned global binary)
-  .gitea/workflows/aislop.yml                 # CI (Windows runner, fork v0.12.3)
+  .\scripts\native-coverage.ps1               # native line/branch coverage (non-elevated)
+  cmake -S MFTLibNative -B build/lint -G Ninja -DCMAKE_CXX_COMPILER=clang-cl \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON    # regenerate compile_commands for clang-tidy
