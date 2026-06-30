@@ -37,17 +37,22 @@ Native C++ lint (the burn-down result):
 
 GATE CAVEAT (important): the pinned @schoen/aislop 0.12.3 in package.json STILL HAS the
 clang-tidy WarningsAsErrors parser bug, so `aislop ci .` silently drops every clang-tidy
-finding and reports score 100 even when findings exist. The parser fix lives in the
-aislop fork (commit e7f5303) but was never republished. Until @schoen/aislop is rebuilt
-and the pin bumped (deferred), CI cannot actually enforce the native clang-tidy surface -
-trust direct clang-tidy, not the gate, for the C++ tree.
+finding and reports score 100 even when findings exist. The parser fix (commit e7f5303) +
+the component tooling already live on the aislop fork's schoen/main branch. Plan is to PIN
+THE GATE TO THAT BRANCH (a git dependency on schoen/main), not republish a version - see the
+handoff for the approach and the known Windows-CI build obstacle. Until the pin moves to the
+branch, CI cannot actually enforce the native clang-tidy surface - trust direct clang-tidy,
+not the gate, for the C++ tree.
 
 STILL PENDING (attended / outward - left for the maintainer):
   - Elevated managed coverage: run-coverage.ps1 (approve UAC) to verify the admin
     paths green under the new structure and confirm native line coverage closes to 100%.
-  - Republish @schoen/aislop with the parser fix + bump package.json/lockfile, so CI
-    enforces the native clang-tidy surface instead of silently passing.
+  - Pin the gate to the aislop fork's schoen/main BRANCH (git dep), not a republished
+    version, so CI enforces the native clang-tidy surface instead of silently passing.
+    (Known obstacle: aislop's postinstall build under the Windows act_runner - see handoff.)
+  - Finish the jb inspectcode (ReSharper C++) sweep - not re-run after this refactor.
   - Push branch feat/aislop-whole-repo-100 + open the claude-code PR.
+  See .superpowers/sdd/2026-06-29-burndown-complete-handoff.md for the full next-steps detail.
 
 Commands:
   .\scripts\run-coverage.ps1                  # full managed run incl. admin tests (UAC)
