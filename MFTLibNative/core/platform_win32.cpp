@@ -61,13 +61,13 @@ int64_t size_of(const File* file) {
     return sizeInfo.QuadPart;
 }
 
-int64_t pread_at(const File* file, void* buf, size_t count, int64_t offset) {
+int64_t pread_at(const File* file, void* buf, size_t count, FileOffset offset) {
     if (file == nullptr) {
         return -1;
     }
     OVERLAPPED overlapped{};
-    overlapped.Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
-    overlapped.OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
+    overlapped.Offset = static_cast<DWORD>(offset.value & 0xFFFFFFFF);
+    overlapped.OffsetHigh = static_cast<DWORD>((offset.value >> 32) & 0xFFFFFFFF);
     DWORD bytesRead = 0;
     BOOL readOk = ReadFile(file->h, buf, static_cast<DWORD>(count), &bytesRead, &overlapped);
     if (ShouldFailPlatformRead()) {
@@ -83,13 +83,13 @@ int64_t pread_at(const File* file, void* buf, size_t count, int64_t offset) {
     return bytesRead;
 }
 
-int64_t pwrite_at(const File* file, const void* buf, size_t count, int64_t offset) {
+int64_t pwrite_at(const File* file, const void* buf, size_t count, FileOffset offset) {
     if (file == nullptr) {
         return -1;
     }
     OVERLAPPED overlapped{};
-    overlapped.Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
-    overlapped.OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
+    overlapped.Offset = static_cast<DWORD>(offset.value & 0xFFFFFFFF);
+    overlapped.OffsetHigh = static_cast<DWORD>((offset.value >> 32) & 0xFFFFFFFF);
     DWORD bytesWritten = 0;
     BOOL writeOk = WriteFile(file->h, buf, static_cast<DWORD>(count), &bytesWritten, &overlapped);
     if (ShouldFailPlatformWrite()) {

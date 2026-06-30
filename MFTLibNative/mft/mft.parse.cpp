@@ -81,7 +81,8 @@ uint64_t FileReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
     if (ShouldFailRead()) {
         return 0;
     }
-    int64_t bytesRead = mftlib::platform::pread_at(fileCtx->file, targetBuffer, byteCount, fileCtx->fileOffset);
+    int64_t bytesRead = mftlib::platform::pread_at(fileCtx->file, targetBuffer, byteCount,
+                                                   mftlib::platform::FileOffset{fileCtx->fileOffset});
     if (bytesRead <= 0) {
         return 0;
     }
