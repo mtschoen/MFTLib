@@ -3,8 +3,6 @@
 #error "mft.records.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
-#include "pch.h"
-
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>

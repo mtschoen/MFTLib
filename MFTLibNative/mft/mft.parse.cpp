@@ -3,8 +3,6 @@
 #error "mft.parse.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
-#include "pch.h"
-
 #include <cstdlib>
 #include <cstring>
 #include <string>

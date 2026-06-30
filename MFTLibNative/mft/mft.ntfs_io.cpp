@@ -3,8 +3,6 @@
 #error "mft.ntfs_io.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
-#include "pch.h"
-
 #include <vector>
 
 #include "../framework.h"
