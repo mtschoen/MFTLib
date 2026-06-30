@@ -19,8 +19,8 @@
 
 using namespace mftlib::ntfs;
 
-MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, const wchar_t* filter,
-                             uint32_t matchFlags, uint32_t bufferSizeRecords) {
+MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
+                             uint32_t bufferSizeRecords) {
     auto wallStart = SteadyClock::now();
     double ioMs = 0;
     double fixupMs = 0;
@@ -33,8 +33,8 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
 
     result->totalRecords = totalRecords;
 
-    uint16_t filterLen = (filter != nullptr) ? static_cast<uint16_t>(wcslen(filter)) : 0;
-    bool resolvePaths = (matchFlags & 4) != 0;
+    filter.length = (filter.text != nullptr) ? static_cast<uint16_t>(wcslen(filter.text)) : 0;
+    bool resolvePaths = (filter.flags & 4) != 0;
 
     PathLookup lookup = {};
     if (resolvePaths) {
@@ -64,7 +64,7 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
         return result;
     }
 
-    uint64_t capacity = (filter != nullptr) ? 1024 : totalRecords / 4;
+    uint64_t capacity = (filter.text != nullptr) ? 1024 : totalRecords / 4;
     capacity = std::max<uint64_t>(capacity, 1024);
     result->entries = ShouldFailAlloc()
                           ? nullptr
@@ -110,12 +110,12 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
                     }
                     actualThreads++;
 
-                    uint64_t initCap = (filter != nullptr) ? 64 : (tEnd - tStart) / 4;
+                    uint64_t initCap = (filter.text != nullptr) ? 64 : (tEnd - tStart) / 4;
                     initCap = std::max<uint64_t>(initCap, 64);
                     slices[ti].init(initCap);
 
-                    workers.emplace_back([buffer, tStart, tEnd, ti, &slices, &threadFixupMs, filter, filterLen,
-                                          matchFlags, &lookup, resolvePaths, totalRecords, recordIndex]() {
+                    workers.emplace_back([buffer, tStart, tEnd, ti, &slices, &threadFixupMs, filter, &lookup,
+                                          resolvePaths, totalRecords, recordIndex]() {
                         auto fStart = SteadyClock::now();
                         for (uint64_t i = tStart; i < tEnd; i++) {
                             auto* recPtr = buffer + (FILE_RECORD_SIZE * i);
@@ -126,8 +126,8 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
                         }
                         threadFixupMs[ti] = ElapsedMs(fStart, SteadyClock::now());
 
-                        ProcessRecordSlice(buffer, tStart, tEnd, recordIndex, &slices[ti], filter, filterLen,
-                                           matchFlags, resolvePaths ? &lookup : nullptr, totalRecords);
+                        ProcessRecordSlice(buffer, SliceRange{tStart, tEnd}, recordIndex, &slices[ti], filter,
+                                           resolvePaths ? &lookup : nullptr, totalRecords);
                     });
                 }
                 for (auto& worker : workers) {
@@ -146,19 +146,39 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
 
                 for (unsigned ti = 0; ti < actualThreads; ti++) {
                     auto& slice = slices[ti];
-                    if (slice.count > 0) {
-                        if (usedCount + slice.count > capacity) {
-                            while (usedCount + slice.count > capacity) {
-                                capacity *= 2;
-                            }
-                            result->entries = static_cast<MftFileEntry*>(
-                                realloc(result->entries, static_cast<size_t>(capacity) * sizeof(MftFileEntry)));
-                        }
-                        memcpy(result->entries + usedCount, slice.entries,
-                               static_cast<size_t>(slice.count) * sizeof(MftFileEntry));
-                        usedCount += slice.count;
+                    uint64_t sliceCount = slice.entries.size();
+                    if (sliceCount == 0) {
+                        continue;
                     }
-                    slice.cleanup();
+                    if (usedCount + sliceCount > capacity) {
+                        uint64_t newCapacity = capacity;
+                        while (usedCount + sliceCount > newCapacity) {
+                            newCapacity *= 2;
+                        }
+                        auto* grown =
+                            ShouldFailAlloc()
+                                ? nullptr
+                                : static_cast<MftFileEntry*>(realloc(
+                                      result->entries, static_cast<size_t>(newCapacity) * sizeof(MftFileEntry)));
+                        if (grown == nullptr) {
+                            // realloc failed; the original buffer is still valid. Stop merging,
+                            // report what we have, and tear down the in-flight read before returning.
+                            SetErrorMessage(result->errorMessage, L"Failed to grow entry array");
+                            result->usedRecords = usedCount;
+                            mftlib::platform::big_free(buf[0], bufSize);
+                            mftlib::platform::big_free(buf[1], bufSize);
+                            if (resolvePaths) {
+                                lookup.cleanup();
+                            }
+                            ioThread.join();
+                            return result;
+                        }
+                        result->entries = grown;
+                        capacity = newCapacity;
+                    }
+                    memcpy(result->entries + usedCount, slice.entries.data(),
+                           static_cast<size_t>(sliceCount) * sizeof(MftFileEntry));
+                    usedCount += sliceCount;
                 }
             }
         } else {
@@ -173,8 +193,8 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
             fixupMs += ElapsedMs(fixupStart, SteadyClock::now());
 
             auto parseStart = SteadyClock::now();
-            ProcessRecordBatch(buffer, currentChunkSize, recordIndex, result, usedCount, capacity, filter, filterLen,
-                               matchFlags, resolvePaths ? &lookup : nullptr, totalRecords);
+            ProcessRecordBatch(buffer, currentChunkSize, recordIndex, result, usedCount, capacity, filter,
+                               resolvePaths ? &lookup : nullptr, totalRecords);
             parseMs += ElapsedMs(parseStart, SteadyClock::now());
             if (result->errorMessage[0] != L'\0') {
                 ioThread.join();

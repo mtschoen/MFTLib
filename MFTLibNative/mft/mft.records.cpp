@@ -16,21 +16,20 @@
 
 namespace {
 
-bool FileNameMatches(const WCHAR* name, uint8_t nameLen, const wchar_t* filter, uint16_t filterLen,
-                     uint32_t matchFlags) {
+bool FileNameMatches(const WCHAR* name, uint8_t nameLen, const FilterSpec& filter) {
 #ifdef _WIN32
-    if ((matchFlags & 1) != 0U) {
-        if (nameLen != filterLen) {
+    if ((filter.flags & 1) != 0U) {
+        if (nameLen != filter.length) {
             return false;
         }
-        return _wcsnicmp(name, filter, nameLen) == 0;
+        return _wcsnicmp(name, filter.text, nameLen) == 0;
     }
-    if ((matchFlags & 2) != 0U) {
-        if (filterLen > nameLen) {
+    if ((filter.flags & 2) != 0U) {
+        if (filter.length > nameLen) {
             return false;
         }
-        for (uint16_t i = 0; i <= nameLen - filterLen; i++) {
-            if (_wcsnicmp(name + i, filter, filterLen) == 0) {
+        for (uint16_t i = 0; i <= nameLen - filter.length; i++) {
+            if (_wcsnicmp(name + i, filter.text, filter.length) == 0) {
                 return true;
             }
         }
@@ -40,8 +39,6 @@ bool FileNameMatches(const WCHAR* name, uint8_t nameLen, const wchar_t* filter, 
     (void)name;
     (void)nameLen;
     (void)filter;
-    (void)filterLen;
-    (void)matchFlags;
 #endif
     return false;
 }
@@ -79,6 +76,85 @@ void CopyNtfsName(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src, uint16_t
     if (out < dstCapacity) {
         dst[out] = L'\0';
     }
+}
+
+// Walk a record's attributes, accumulating the StandardInformation file
+// attributes into *siAttributes (*sawStandardInformation set if seen), and stop
+// at the first resident, non-DOS FileName attribute. Returns that FileName
+// attribute, or nullptr if the record has none.
+PFILE_NAME FindNamedAttribute(PFILE_RECORD_SEGMENT_HEADER rec, uint32_t* siAttributes, bool* sawStandardInformation) {
+    *siAttributes = 0;
+    *sawStandardInformation = false;
+    auto* attr =
+        reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(rec) + rec->FirstAttributeOffset);
+    while (reinterpret_cast<uint8_t*>(attr) - reinterpret_cast<uint8_t*>(rec) < FILE_RECORD_SIZE) {
+        if (attr->TypeCode == EndMarker || attr->RecordLength == 0) {
+            break;
+        }
+        if (attr->TypeCode == StandardInformation && attr->FormCode == 0) {
+            auto* siValue = reinterpret_cast<uint8_t*>(attr) + attr->Form.Resident.ValueOffset;
+            *siAttributes = *reinterpret_cast<uint32_t*>(siValue + 32);
+            *sawStandardInformation = true;
+        } else if (attr->TypeCode == FileName && attr->FormCode == 0) {
+            auto* nameAttr =
+                reinterpret_cast<PFILE_NAME>(reinterpret_cast<uint8_t*>(attr) + attr->Form.Resident.ValueOffset);
+            if (nameAttr->Flags != 2) {
+                return nameAttr;
+            }
+        }
+        attr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(attr) + attr->RecordLength);
+    }
+    return nullptr;
+}
+
+// Scan one file record. If it is an in-use, non-extension record with a non-DOS
+// FileName that passes the filter, fill *outEntry and return true. Side effect:
+// stores the name into the path-lookup table when one is provided. Shared by
+// ProcessRecordSlice (worker threads) and ProcessRecordBatch.
+bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const FilterSpec& filter, PathLookup* lookup,
+                        uint64_t totalRecords, MftFileEntry* outEntry) {
+    auto* rec = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recPtr);
+
+    if (rec->MultiSectorHeader.Magic != 0x454C4946) {
+        return false;
+    }
+    if ((rec->Flags & 0x0001) == 0) {
+        return false;
+    }
+
+    uint64_t baseRef = static_cast<uint64_t>(rec->BaseFileRecordSegment.SegmentNumberLowPart) |
+                       (static_cast<uint64_t>(rec->BaseFileRecordSegment.SegmentNumberHighPart) << 32);
+    if (baseRef != 0) {
+        return false;
+    }
+
+    uint32_t siAttributes = 0;
+    bool sawStandardInformation = false;
+    auto* nameAttr = FindNamedAttribute(rec, &siAttributes, &sawStandardInformation);
+    if (nameAttr == nullptr) {
+        return false;
+    }
+
+    uint64_t parent = static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberLowPart) |
+                      (static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberHighPart) << 32);
+
+    if ((lookup != nullptr) && recordIndex < totalRecords) {
+        lookup->storeName(recordIndex, parent, nameAttr->FileName, nameAttr->FileNameLength);
+    }
+
+    if ((filter.text != nullptr) && !FileNameMatches(nameAttr->FileName, nameAttr->FileNameLength, filter)) {
+        return false;
+    }
+
+    memset(outEntry, 0, sizeof(MftFileEntry));
+    outEntry->recordNumber = recordIndex;
+    outEntry->parentRecordNumber = parent;
+    outEntry->flags = rec->Flags;
+    outEntry->fileNameLength = nameAttr->FileNameLength;
+    outEntry->fileAttributes = sawStandardInformation ? siAttributes : nameAttr->FileAttributes;
+    // FileNameLength is UCHAR (max 255) which fits in fileName[260]; no clamping needed.
+    CopyNtfsName(outEntry->fileName, 260, nameAttr->FileName, nameAttr->FileNameLength);
+    return true;
 }
 
 }  // namespace
@@ -137,161 +213,41 @@ uint16_t ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t to
     return pos;
 }
 
-void ProcessRecordSlice(uint8_t* buffer, uint64_t startIdx, uint64_t endIdx, uint64_t recordBase, SliceResult* slice,
-                        const wchar_t* filter, uint16_t filterLen, uint32_t matchFlags, PathLookup* lookup,
-                        uint64_t totalRecords) {
-    for (uint64_t i = startIdx; i < endIdx; i++) {
-        uint64_t recordIndex = recordBase + i;
-        auto* recPtr = buffer + (FILE_RECORD_SIZE * i);
-        auto* rec = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recPtr);
-
-        if (rec->MultiSectorHeader.Magic != 0x454C4946) {
-            continue;
-        }
-        if ((rec->Flags & 0x0001) == 0) {
-            continue;
-        }
-
-        uint64_t baseRef = static_cast<uint64_t>(rec->BaseFileRecordSegment.SegmentNumberLowPart) |
-                           (static_cast<uint64_t>(rec->BaseFileRecordSegment.SegmentNumberHighPart) << 32);
-        if (baseRef != 0) {
-            continue;
-        }
-
-        auto* attr =
-            reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(rec) + rec->FirstAttributeOffset);
-        uint32_t siAttributes = 0;
-        bool sawStandardInformation = false;
-        while (reinterpret_cast<uint8_t*>(attr) - reinterpret_cast<uint8_t*>(rec) < FILE_RECORD_SIZE) {
-            if (attr->TypeCode == EndMarker || attr->RecordLength == 0) {
-                break;
-            }
-
-            if (attr->TypeCode == StandardInformation && attr->FormCode == 0) {
-                auto* siValue = reinterpret_cast<uint8_t*>(attr) + attr->Form.Resident.ValueOffset;
-                siAttributes = *reinterpret_cast<uint32_t*>(siValue + 32);
-                sawStandardInformation = true;
-            } else if (attr->TypeCode == FileName && attr->FormCode == 0) {
-                auto* nameAttr =
-                    reinterpret_cast<PFILE_NAME>(reinterpret_cast<uint8_t*>(attr) + attr->Form.Resident.ValueOffset);
-                if (nameAttr->Flags != 2) {
-                    uint64_t parent = static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberLowPart) |
-                                      (static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberHighPart) << 32);
-
-                    if ((lookup != nullptr) && recordIndex < totalRecords) {
-                        lookup->storeName(recordIndex, parent, nameAttr->FileName, nameAttr->FileNameLength);
-                    }
-
-                    if ((filter != nullptr) &&
-                        !FileNameMatches(nameAttr->FileName, nameAttr->FileNameLength, filter, filterLen, matchFlags)) {
-                        break;
-                    }
-
-                    if (slice->count >= slice->capacity) {
-                        slice->capacity *= 2;
-                        slice->entries = static_cast<MftFileEntry*>(
-                            realloc(slice->entries, static_cast<size_t>(slice->capacity) * sizeof(MftFileEntry)));
-                    }
-
-                    auto& entry = slice->entries[slice->count];
-                    memset(&entry, 0, sizeof(MftFileEntry));
-                    entry.recordNumber = recordIndex;
-                    entry.parentRecordNumber = parent;
-                    entry.flags = rec->Flags;
-                    entry.fileNameLength = nameAttr->FileNameLength;
-                    entry.fileAttributes = sawStandardInformation ? siAttributes : nameAttr->FileAttributes;
-                    // FileNameLength is UCHAR (max 255) which fits in fileName[260]; no clamping needed.
-                    CopyNtfsName(entry.fileName, 260, nameAttr->FileName, nameAttr->FileNameLength);
-
-                    slice->count++;
-                    break;
-                }
-            }
-            attr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(attr) + attr->RecordLength);
+void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
+                        const FilterSpec& filter, PathLookup* lookup, uint64_t totalRecords) {
+    for (uint64_t i = range.start; i < range.end; i++) {
+        MftFileEntry entry;
+        if (ScanRecordForEntry(buffer + (FILE_RECORD_SIZE * i), recordBase + i, filter, lookup, totalRecords, &entry)) {
+            slice->entries.push_back(entry);
         }
     }
 }
 
 void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, MftParseResult* result,
-                        uint64_t& usedCount, uint64_t& capacity, const wchar_t* filter, uint16_t filterLen,
-                        uint32_t matchFlags, PathLookup* lookup, uint64_t totalRecords) {
+                        uint64_t& usedCount, uint64_t& capacity, const FilterSpec& filter, PathLookup* lookup,
+                        uint64_t totalRecords) {
     for (uint64_t i = 0; i < filesToLoad; i++, recordIndex++) {
-        auto* recPtr = buffer + (FILE_RECORD_SIZE * i);
-        auto* rec = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recPtr);
-
-        if (rec->MultiSectorHeader.Magic != 0x454C4946) {
-            continue;
-        }
-        if ((rec->Flags & 0x0001) == 0) {
+        MftFileEntry entry;
+        if (!ScanRecordForEntry(buffer + (FILE_RECORD_SIZE * i), recordIndex, filter, lookup, totalRecords, &entry)) {
             continue;
         }
 
-        uint64_t baseRef = static_cast<uint64_t>(rec->BaseFileRecordSegment.SegmentNumberLowPart) |
-                           (static_cast<uint64_t>(rec->BaseFileRecordSegment.SegmentNumberHighPart) << 32);
-        if (baseRef != 0) {
-            continue;
-        }
-
-        auto* attr =
-            reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(rec) + rec->FirstAttributeOffset);
-        uint32_t siAttributes = 0;
-        bool sawStandardInformation = false;
-        while (reinterpret_cast<uint8_t*>(attr) - reinterpret_cast<uint8_t*>(rec) < FILE_RECORD_SIZE) {
-            if (attr->TypeCode == EndMarker || attr->RecordLength == 0) {
-                break;
+        if (usedCount >= capacity) {
+            uint64_t newCapacity = capacity * 2;
+            auto* grown = ShouldFailAlloc()
+                              ? nullptr
+                              : static_cast<MftFileEntry*>(
+                                    realloc(result->entries, static_cast<size_t>(newCapacity) * sizeof(MftFileEntry)));
+            if (grown == nullptr) {
+                SetErrorMessage(result->errorMessage, L"Failed to grow entry array");
+                result->usedRecords = usedCount;
+                return;
             }
-
-            if (attr->TypeCode == StandardInformation && attr->FormCode == 0) {
-                auto* siValue = reinterpret_cast<uint8_t*>(attr) + attr->Form.Resident.ValueOffset;
-                siAttributes = *reinterpret_cast<uint32_t*>(siValue + 32);
-                sawStandardInformation = true;
-            } else if (attr->TypeCode == FileName && attr->FormCode == 0) {
-                auto* nameAttr =
-                    reinterpret_cast<PFILE_NAME>(reinterpret_cast<uint8_t*>(attr) + attr->Form.Resident.ValueOffset);
-                if (nameAttr->Flags != 2) {
-                    uint64_t parent = static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberLowPart) |
-                                      (static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberHighPart) << 32);
-
-                    if ((lookup != nullptr) && recordIndex < totalRecords) {
-                        lookup->storeName(recordIndex, parent, nameAttr->FileName, nameAttr->FileNameLength);
-                    }
-
-                    if ((filter != nullptr) &&
-                        !FileNameMatches(nameAttr->FileName, nameAttr->FileNameLength, filter, filterLen, matchFlags)) {
-                        break;
-                    }
-
-                    if (usedCount >= capacity) {
-                        uint64_t newCapacity = capacity * 2;
-                        auto* grown =
-                            ShouldFailAlloc()
-                                ? nullptr
-                                : static_cast<MftFileEntry*>(realloc(
-                                      result->entries, static_cast<size_t>(newCapacity) * sizeof(MftFileEntry)));
-                        if (grown == nullptr) {
-                            SetErrorMessage(result->errorMessage, L"Failed to grow entry array");
-                            result->usedRecords = usedCount;
-                            return;
-                        }
-                        capacity = newCapacity;
-                        result->entries = grown;
-                    }
-
-                    auto& entry = result->entries[usedCount];
-                    memset(&entry, 0, sizeof(MftFileEntry));
-                    entry.recordNumber = recordIndex;
-                    entry.parentRecordNumber = parent;
-                    entry.flags = rec->Flags;
-                    entry.fileNameLength = nameAttr->FileNameLength;
-                    entry.fileAttributes = sawStandardInformation ? siAttributes : nameAttr->FileAttributes;
-                    // FileNameLength is UCHAR (max 255) which fits in fileName[260]; no clamping needed.
-                    CopyNtfsName(entry.fileName, 260, nameAttr->FileName, nameAttr->FileNameLength);
-
-                    usedCount++;
-                    break;
-                }
-            }
-            attr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(attr) + attr->RecordLength);
+            capacity = newCapacity;
+            result->entries = grown;
         }
+
+        result->entries[usedCount] = entry;
+        usedCount++;
     }
 }

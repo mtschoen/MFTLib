@@ -38,6 +38,20 @@ bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uin
 
 }  // namespace mftlib::ntfs
 
+// Bundles the filename-filter parameters so they travel as a single argument
+// (and cannot be transposed) through the record-parsing path.
+struct FilterSpec {
+    const wchar_t* text;  // null = no filter (accept every named record)
+    uint16_t length;      // wchar_t units in text
+    uint32_t flags;       // match bitfield: 1=exact, 2=substring, 4=resolve paths
+};
+
+// Half-open record range [start, end) within a chunk buffer.
+struct SliceRange {
+    uint64_t start;
+    uint64_t end;
+};
+
 struct PathLookup {
     uint64_t* parents;
     uint8_t* nameLens;
@@ -88,29 +102,23 @@ struct PathLookup {
     }
 };
 
+// Per-worker accumulator. Uses a std::vector so growth is exception-safe (no
+// manual realloc to leak on failure); the merge step copies entries.data() out.
 struct SliceResult {
-    MftFileEntry* entries;
-    uint64_t count;
-    uint64_t capacity;
+    std::vector<MftFileEntry> entries;
 
-    void init(uint64_t cap) {
-        entries = static_cast<MftFileEntry*>(malloc(static_cast<size_t>(cap) * sizeof(MftFileEntry)));
-        count = 0;
-        capacity = cap;
-    }
-    void cleanup() const { free(entries); }
+    void init(uint64_t cap) { entries.reserve(static_cast<size_t>(cap)); }
 };
 
 uint16_t ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalRecords, wchar_t* pathBuf,
                      uint16_t pathBufSize);
-void ProcessRecordSlice(uint8_t* buffer, uint64_t startIdx, uint64_t endIdx, uint64_t recordBase, SliceResult* slice,
-                        const wchar_t* filter, uint16_t filterLen, uint32_t matchFlags, PathLookup* lookup,
-                        uint64_t totalRecords);
+void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
+                        const FilterSpec& filter, PathLookup* lookup, uint64_t totalRecords);
 void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, MftParseResult* result,
-                        uint64_t& usedCount, uint64_t& capacity, const wchar_t* filter, uint16_t filterLen,
-                        uint32_t matchFlags, PathLookup* lookup, uint64_t totalRecords);
+                        uint64_t& usedCount, uint64_t& capacity, const FilterSpec& filter, PathLookup* lookup,
+                        uint64_t totalRecords);
 
 using ReadChunkFn = uint64_t (*)(void* context, uint8_t* targetBuffer, double& ioMs);
 
-MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, const wchar_t* filter,
-                             uint32_t matchFlags, uint32_t bufferSizeRecords);
+MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
+                             uint32_t bufferSizeRecords);

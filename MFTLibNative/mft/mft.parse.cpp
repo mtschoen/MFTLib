@@ -125,7 +125,8 @@ MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filte
 
     uint64_t totalRecords = static_cast<uint64_t>(fileSize) / FILE_RECORD_SIZE;
     FileReadContext ctx = {file, totalRecords, bufferSizeRecords, 0};
-    auto* result = ParseMFTImpl(FileReadChunk, &ctx, totalRecords, filter, matchFlags, bufferSizeRecords);
+    auto* result =
+        ParseMFTImpl(FileReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords);
     mftlib::platform::close_file(file);
     return result;
 }
@@ -276,9 +277,11 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
     ctx.bufferSizeRecords = bufferSizeRecords;
 
     free(result);
-    return ParseMFTImpl(VolumeReadChunk, &ctx, totalRecords, filter, matchFlags, bufferSizeRecords);
+    return ParseMFTImpl(VolumeReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords);
 }
 
+// C-ABI export; (filePath, filter) order is fixed by the C# P/Invoke signature.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* filter, uint32_t matchFlags,
                                         uint32_t bufferSizeRecords) {
     int u8len =
