@@ -4,6 +4,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cstring>
 #include <thread>
@@ -46,7 +47,7 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
     unsigned numThreads = EffectiveThreadCount();
 
     const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * FILE_RECORD_SIZE;
-    uint8_t* buf[2] = {};
+    std::array<uint8_t*, 2> buf = {};
     buf[0] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
     buf[1] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
     if ((buf[0] == nullptr) || (buf[1] == nullptr)) {

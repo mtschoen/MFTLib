@@ -3,6 +3,7 @@
 #error "mft.records.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -88,10 +89,10 @@ uint16_t ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t to
         const uint8_t* nameBytes;
         uint8_t len;
     };
-    Component stack[128] = {};
+    std::array<Component, 128> stack = {};
     int depth = 0;
     uint64_t current = recordIndex;
-    uint64_t visited[128] = {};
+    std::array<uint64_t, 128> visited = {};
     int visitCount = 0;
 
     while (current != 5 && current < totalRecords && depth < 128) {

@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include <algorithm>
+#include <array>
 #include <thread>
 
 #include "../internal.h"
@@ -18,8 +19,8 @@ int g_failPlatformWrite = 0;
 DWORD g_usnIoFailError = 0;
 int g_usnIoFailCountdown = 0;
 // Ring queue of synthetic IOCTL success responses (buffers owned by the caller).
-const uint8_t* g_usnIoData[8] = {};
-uint32_t g_usnIoSize[8] = {};
+std::array<const uint8_t*, 8> g_usnIoData = {};
+std::array<uint32_t, 8> g_usnIoSize = {};
 int g_usnIoHead = 0;
 int g_usnIoCount = 0;
 int g_usnOverlappedAbort = 0;
@@ -27,12 +28,12 @@ int g_usnOverlappedAbort = 0;
 }  // namespace
 
 unsigned EffectiveThreadCount() {
-    unsigned n = std::thread::hardware_concurrency();
-    n = std::max<unsigned int>(n, 1);
-    if (g_maxThreads > 0 && g_maxThreads < n) {
-        n = g_maxThreads;
+    unsigned threadCount = std::thread::hardware_concurrency();
+    threadCount = std::max<unsigned int>(threadCount, 1);
+    if (g_maxThreads > 0 && g_maxThreads < threadCount) {
+        threadCount = g_maxThreads;
     }
-    return n;
+    return threadCount;
 }
 
 bool ShouldFailAlloc() {
@@ -85,7 +86,7 @@ bool UsnIoInjectSuccess(void* outBuffer, unsigned long outBufferSize, unsigned l
     g_usnIoHead = (g_usnIoHead + 1) % 8;
     g_usnIoCount--;
     unsigned long copyLen = size < outBufferSize ? size : outBufferSize;
-    if ((data != nullptr) && (copyLen != 0u)) {
+    if ((data != nullptr) && (copyLen != 0U)) {
         memcpy(outBuffer, data, copyLen);
     }
     if (bytesReturned != nullptr) {
@@ -113,6 +114,8 @@ EXPORT void SetFailPathConversion(int fail) { g_failPathConversion = fail; }
 EXPORT void SetFailPlatformRead(int countdown) { g_failPlatformReadCountdown = countdown; }
 EXPORT void SetFailPlatformWrite(int fail) { g_failPlatformWrite = fail; }
 #ifdef _WIN32
+// C-ABI test hook; (error, countdown) order is fixed by the C# P/Invoke harness.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 EXPORT void SetUsnIoFailError(DWORD error, int countdown) {
     g_usnIoFailError = error;
     g_usnIoFailCountdown = countdown;
