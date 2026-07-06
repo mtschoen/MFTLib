@@ -1,14 +1,18 @@
-MFTLib test report - 2026-06-29
+MFTLib test report - 2026-07-06
 ===========================================
 
 Status:   PASS (managed gate 100/100; native C++ tree clang-tidy-clean)
-Mode:     close-the-gap (native aislop burn-down + component amalgamation finished)
-Tests:    265 passed, 34 skipped (admin), 0 failed (non-elevated run-coverage.ps1)
-Git:      branch feat/aislop-whole-repo-100 (commit 3997095 + working tree)
+Mode:     0.3.0 release prep (VolumeBroker subsystem ported in from file-wizard)
+Tests:    347 passed, 0 failed (non-elevated run-coverage.ps1; admin suites skipped)
+Git:      branch feat/volume-broker (commit fd0b750, on top of feat/aislop-whole-repo-100)
 
 Managed coverage (run-coverage.ps1 -NonInteractive): 100% line, 100% branch, 100% method
   MFTLib      - 100%   TestProgram - 100%   Benchmark - 100%
-  Totals: 633/633 lines, 196/196 branches, 116/116 methods, 0 exclusion annotations
+  Totals: 1427/1427 lines, 378/378 branches, 219/219 methods, 0 exclusion annotations
+  (Growth from the 2026-06-29 totals is the VolumeBroker port: JournalBrokerHost/Client,
+   BrokerProtocol, ScanPayload, ElevatedEntryPoint/BrokerLauncher, BrokerDiagnostics,
+   Mmf seams - all brought in at the same 100% bar with MSTest ports of the
+   file-wizard suites. MFTLib.0.3.0.nupkg pack verified clean at this commit.)
 
 Native coverage (scripts/native-coverage.ps1, non-elevated):
   MFTLibNative - 97.2% line, 100% branch.
@@ -51,8 +55,16 @@ STILL PENDING (attended / outward - left for the maintainer):
     version, so CI enforces the native clang-tidy surface instead of silently passing.
     (Known obstacle: aislop's postinstall build under the Windows act_runner - see handoff.)
   - Finish the jb inspectcode (ReSharper C++) sweep - not re-run after this refactor.
-  - Push branch feat/aislop-whole-repo-100 + open the claude-code PR.
-  See .superpowers/sdd/2026-06-29-burndown-complete-handoff.md for the full next-steps detail.
+    The GLOBAL aislop 0.12.3 binary now counts these (2026-07-06: score 68/100, 10
+    findings, all Cpp* rules in MFTLibNative - 7x CppUnusedIncludeDirective, 1x
+    CppUnnamedNamespaceInHeaderFile, 1x function-too-long + rounding), so `aislop ci .`
+    is red at baseline against failBelow:100. Predates the VolumeBroker work, which
+    adds zero findings (verified against the bare parent-branch tip).
+  - Push branches feat/aislop-whole-repo-100 + feat/volume-broker + open the
+    claude-code PRs. file-wizard's submodule pin (d55f5a1) and git-wizard's vendored
+    DLLs both reference fd0b750, so the push must land on BOTH MFTLib remotes.
+  See .superpowers/sdd/2026-06-29-burndown-complete-handoff.md and
+  docs/handoff-release-0.3.0.md for the full next-steps detail.
 
 Commands:
   .\scripts\run-coverage.ps1                  # full managed run incl. admin tests (UAC)

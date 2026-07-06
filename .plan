@@ -5,6 +5,11 @@ Code-complete. Three APIs:
 - `MftVolume.ReadUsnJournal(cursor)` — batch catch-up read
 - `MftVolume.WatchUsnJournal(cursor, cancellationToken)` — live IAsyncEnumerable event stream
 - `FileAttributes` sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback
+- **[ADDED 2026-07-06]** VolumeBroker subsystem (extracted from file-wizard, branch
+  `feat/volume-broker`): JournalBrokerHost/Client, BrokerProtocol, ScanPayload/ScanRecord,
+  ElevatedEntryPoint `--broker` + BrokerLauncher, BrokerDiagnostics — single-UAC elevated
+  scanning + live USN watch for non-elevated consumers. Consumers wired: file-wizard
+  (submodule pin) and git-wizard (`--watch`, vendored DLLs).
 
 ### 0.3.0 NuGet publish checklist (blockers — currently gated on file-wizard finishing the USN cross-drive rename/move work)
 
@@ -12,7 +17,7 @@ Surfaced in the 2026-05-28 pre-publish audit; none are code — all are release 
 - **[DONE 2026-05-29]** **CHANGELOG.md** 0.3.0 section added: USN journal trio + `WatchUsnJournalWithCursor`, `IElevationProvider`, `UsnJournalEntry.Create`, `$STANDARD_INFORMATION`-sourced `FileAttributes`, parallel path resolution, name-pool exhaustion surfacing.
 - **[DONE 2026-05-29]** **README.md** intro + Features updated to mention USN; added a "Tracking changes with the USN journal" section with `QueryUsnJournal`/`ReadUsnJournal`/`WatchUsnJournalWithCursor` examples.
 - **[DONE 2026-05-29]** **MFTLib.csproj:30** stale "GitHub Actions pipeline" TODO replaced with an accurate note; `ContinuousIntegrationBuild` stays unconditionally `true` for deterministic packs.
-- **[TODO — deliberately held]** **Tag + push `v0.3.0`.** SourceLink (`PublishRepositoryUrl=true` + `SourceLink.GitHub`) resolves against github.com/mtschoen/MFTLib, so the exact packed commit AND the tag must be pushed to the GitHub mirror before `-t:Pack`, or source links 404. Held until file-wizard's USN cross-drive rename/move work settles (we may still need more changes before shipping).
+- **[TODO — deliberately held]** **Tag + push `v0.3.0`.** SourceLink (`PublishRepositoryUrl=true` + `SourceLink.GitHub`) resolves against github.com/mtschoen/MFTLib, so the exact packed commit AND the tag must be pushed to the GitHub mirror before `-t:Pack`, or source links 404. Update 2026-07-06: no longer gated on file-wizard (its journal-broker work is done and the VolumeBroker extraction landed at `feat/volume-broker` fd0b750, pack-verified); now held only on the maintainer's interactive validation + publish steps — runbook: `docs/handoff-release-0.3.0.md`.
 - Already confirmed fine: 0.2.0 IS on NuGet; github.com/mtschoen/MFTLib exists (public); LICENSE.txt + README are packaged.
 
 ## Native C++ Cleanup (mft/mft_parse.cpp)
@@ -30,8 +35,10 @@ Surfaced in the 2026-05-28 pre-publish audit; none are code — all are release 
 
 ## Review Follow-Ups
 
-- Decide whether `MFTLib` should expose a higher-level scan-result contract for app-to-helper transport.
-  Address by evaluating whether downstream apps should keep custom text formats for elevated scans or share a library-owned record serializer.
+- ~~Decide whether `MFTLib` should expose a higher-level scan-result contract for app-to-helper transport.~~
+  **Done 2026-07-06** — resolved by the VolumeBroker extraction: `ScanPayload`/`ScanRecord`
+  (packed binary MMF payload) + `BrokerProtocol` are the library-owned transport, and the
+  downstream custom text formats were retired (file-wizard's legacy helpers deleted).
 
 - Optional: make benchmark environment failures explicit instead of silently printing `Unknown`.
   Address by logging the WMI/CIM exception message or HRESULT in the benchmark header when system info queries fail.
