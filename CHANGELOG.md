@@ -13,6 +13,13 @@
 - `UsnJournalEntry.Create(...)` — public factory to reconstruct an entry from already-decoded values (e.g. journal data serialized to disk and rebuilt in another process)
 - `MftRecord.FileAttributes` now sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback
 - Added public `IElevationProvider` interface (with `ElevationUtilities.DefaultProvider`) so consumers can substitute elevation behavior in their own tests
+- **VolumeBroker subsystem** — an elevated broker host/client for running MFT scans and USN journal watches through a single UAC session, so a non-elevated caller never needs more than one elevation prompt per process lifetime:
+  - `JournalBrokerHost` (elevated side) arms the journal cursor before scanning each drive, scans, and serves catch-up + live-watch requests over a pipe; `JournalBrokerHost.CreateDefault()` wires it to real `MftVolume` access
+  - `JournalBrokerClient` (non-elevated side) owns the pipe and per-drive page-file-backed `MemoryMappedFile`s; `ArmScanAndCatchUpAsync` drives the cold scan, `SendStartWatchAsync`/`CreateBatchSource`/`StopLiveWatchAsync` drive the live watch, and `BrokerDied` signals broker death exactly once
+  - `BrokerProtocol` — binary frame codec for the pipe (`BrokerFrameKind`, `BrokerFrame`) carrying scan requests, cursors, journal batches, and errors
+  - `ScanPayload`/`ScanRecord` — packed binary cold-scan payload written into the shared MMF, read back without a disk round-trip
+  - `ElevatedEntryPoint.TryHandle` dispatches the `--broker` (`--pipe`, `--once`, `--diag`) elevated child mode; `BrokerLauncher.Launch` starts it via a non-waiting `runas` relaunch
+  - Opt-in `BrokerDiagnostics` frame/event tracing via `MFTLIB_BROKER_DIAG=1` or `BrokerDiagnostics.Enable(role)`, writing to `BrokerDiagnostics.LogDirectory` (consumers point this at their own app-data directory)
 
 ### Improvements
 
@@ -23,6 +30,7 @@
 
 - 100% native coverage achieved without admin via synthetic seams
 - Added USN journal test suites (synthetic, live, and admin-elevated)
+- Added VolumeBroker test suites (protocol/payload round-trips, host and client pipe-loop behavior, elevated-entry dispatch, broker-death detection), keeping the repo at 100% managed line/branch/method coverage
 
 ## 0.2.0
 

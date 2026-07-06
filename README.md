@@ -82,6 +82,31 @@ await foreach (var (entries, latest) in volume.WatchUsnJournalWithCursor(cursor,
 
 `WatchUsnJournal(cursor, token)` is the same stream without the per-batch cursor if you don't need to persist progress.
 
+## Elevated broker (one UAC prompt per session)
+
+MFT scans and USN journal access need Administrator privileges. Rather than elevate the whole
+application, a consumer can run the raw-volume work in a single elevated **broker** child process
+and keep its own UI/CLI process non-elevated:
+
+- The non-elevated side builds a named pipe, launches the current executable in `--broker` mode
+  via `BrokerLauncher.Launch` (a `runas`-elevated relaunch, not waited on), and wraps the connected
+  pipe in a `JournalBrokerClient` — see `JournalBrokerClient.SpawnAndConnectAsync`.
+- The elevated child dispatches `--broker` through `ElevatedEntryPoint.TryHandle`, which hands off
+  to `DefaultElevatedEntryRunner.RunBroker`. That runs a `JournalBrokerHost` (`CreateDefault()` wires
+  it to real `MftVolume` access) that serves the session until told to shut down, then exits.
+- `JournalBrokerClient.ArmScanAndCatchUpAsync(drives)` requests a cold MFT scan per drive: the
+  client pre-creates a page-file-backed `MemoryMappedFile`, the broker arms the journal cursor,
+  scans, and writes the packed scan payload into that map; the client reads it back with no disk
+  round-trip.
+- `SendStartWatchAsync` / `CreateBatchSource` / `StopLiveWatchAsync` drive a live USN journal watch
+  over the same pipe and broker process — no second UAC prompt. `BrokerDied` fires once if the pipe
+  drops.
+
+Because the broker process is launched once and reused for both the cold scan and the live watch,
+a consumer app only ever prompts for elevation once per session. Set `MFTLIB_BROKER_DIAG=1` (or
+call `BrokerDiagnostics.Enable(role)` from the elevated child, since `--diag` propagates it across
+the `runas` launch) to get frame-level tracing written to `BrokerDiagnostics.LogDirectory`.
+
 ## Building from source
 
 Requires Visual Studio 2022 with C++ workload. Always build with MSBuild (not `dotnet build`) since the native C++ DLL cannot be built by the .NET CLI:
