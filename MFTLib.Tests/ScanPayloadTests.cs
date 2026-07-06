@@ -63,7 +63,7 @@ public class ScanPayloadTests
     public void ScanPayload_ReadCount_WrongMagic_Throws()
     {
         var bytes = new byte[32];
-        // Write a bad magic value (not "FWSC")
+        // Write a bad magic value (not "MLSC")
         bytes[0] = 0xDE;
         bytes[1] = 0xAD;
         bytes[2] = 0xBE;

@@ -552,6 +552,57 @@ public class JournalBrokerClientTests
     }
 
     [TestMethod]
+    public async Task CreateBatchSource_CancelledBetweenFrames_CompletesAllLiveChannels()
+    {
+        // Two-drive variant of the test above: exercises CompleteAllLiveChannels'
+        // loop over multiple channels (not just a single one) when the demux's
+        // while-loop exits via observed cancellation rather than an exception.
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        // Not a `using var`: the token is captured by CancelAfterReadsStream's callback
+        // below, so it is disposed explicitly at the end instead - safe because that
+        // Dispose() runs only after the demux has finished (awaited below).
+        var cts = new CancellationTokenSource();
+        // Cancel right after the 4th ReadAsync on the client's pipe completes (the
+        // header+body of each of the two JournalBatch frames written below), landing
+        // the cancellation between while-loop iterations once both frames are in.
+        // aislop-ignore-next-line AccessToDisposedClosure
+        var wrapped = new CancelAfterReadsStream(clientSide, threshold: 4, () => cts.Cancel());
+        var client = new JournalBrokerClient(
+            pipe: wrapped,
+            mmfReader: new NullMmfReader(),
+            createDriveMmf: (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
+
+        var entryC = UsnJournalEntry.Create(1, 5, 10, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "a");
+        var entryD = UsnJournalEntry.Create(2, 5, 20, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "b");
+        var response = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 110L), new[] { entryC });
+        BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(7UL, 210L), new[] { entryD });
+        await serverSide.WriteAsync(response.WrittenMemory);
+        await serverSide.FlushAsync();
+
+        await client.SendStartWatchAsync(
+            new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 100L), ["D"] = new(7UL, 200L) }, cts.Token);
+
+        var batchSource = client.CreateBatchSource();
+        var receivedC = new List<(UsnJournalEntry[], UsnJournalCursor)>();
+        var receivedD = new List<(UsnJournalEntry[], UsnJournalCursor)>();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        await foreach (var batch in batchSource("C:\\", default, timeout.Token))
+            receivedC.Add(batch);
+        await foreach (var batch in batchSource("D:\\", default, timeout.Token))
+            receivedD.Add(batch);
+
+        // Both drives' channels were completed by the same cancellation-observed
+        // loop exit, not just the one the earlier single-drive test covers.
+        Assert.AreEqual(1, receivedC.Count);
+        Assert.AreEqual(1, receivedD.Count);
+
+        await client.DisposeAsync();
+        cts.Dispose();
+    }
+
+    [TestMethod]
     [SupportedOSPlatform("windows")]
     public async Task SpawnAndConnectAsync_DiagEnvVarSet_AppendsDiagFlag()
     {

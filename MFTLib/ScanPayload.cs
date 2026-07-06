@@ -16,7 +16,7 @@ public readonly record struct ScanRecord(
 /// </summary>
 public static class ScanPayload
 {
-    const uint Magic = 0x4657_5343; // "FWSC"
+    const uint Magic = 0x4D4C_5343; // "MLSC"
     const int Version = 1;
     const int HeaderSize = 4 + 4 + 4 + 8 + 8; // magic, version, count, tableLen, heapLen
     const int RecordStride = 8 + 8 + 8 + 8 + 4 + 4 + 4 + 4 + 4 + 4; // see field order below

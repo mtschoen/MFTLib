@@ -73,4 +73,16 @@ public class BrokerDiagnosticsTests
 
         BrokerDiagnostics.Log("should-not-throw");
     }
+
+    [TestMethod]
+    public void LogFrame_WhenEnabled_AppendsFrameTraceLine()
+    {
+        Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
+        BrokerDiagnostics.LogFrame("read", kind: 6, length: 42);
+
+        var path = Path.Combine(_temporaryRoot, "broker-diagnostics.log");
+        Assert.IsTrue(File.Exists(path));
+        var line = File.ReadAllText(path);
+        StringAssert.Contains(line, "frame read kind=6 len=42 t=");
+    }
 }
