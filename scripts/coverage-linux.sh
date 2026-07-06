@@ -64,10 +64,14 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     #   MftResultTests, MftVolumeTests, NativeCoverageTests, UsnJournalSyntheticTests
     #   (UsnJournalSyntheticTests P/Invokes the USN test hooks + usn_journal exports,
     #    all #ifdef _WIN32, so they don't exist in libMFTLibNative.so)
-    # Plus 3 individual tests that need Windows-side platform behavior:
+    # Plus individual tests that need Windows-side platform behavior:
     #   ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse
     #   ElevationUtilitiesTests.TryRunElevated_ProcessExitsZero_ReturnsTrue
     #   MockVolumeTests.GetVolumeHandle_InvalidVolume_ThrowsIOException
+    #   JournalBrokerHostTests.RealMmfWriter_WritesPayload_UiCanReadItBack (real named MMF)
+    #   JournalBrokerClientTests.ArmScanAndCatchUpAsync_ReturnsRecords_ArmedCursor_AndCatchUpEntries (real named MMF)
+    #   DefaultElevatedEntryRunnerTests.RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilShutdown_ExitsWithCode0 (real named pipe)
+    #   JournalBrokerClientTests.SpawnAndConnectAsync_EndToEnd_UsesRealPipeAndRealMmfSeams (real named pipe + real named MMF)
     # Coverlet only writes output when the run is green, so failing tests must be filtered.
     FILTER='FullyQualifiedName!~MftResultTests'
     FILTER+='&FullyQualifiedName!~MftVolumeTests'
@@ -76,6 +80,10 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.ElevationUtilitiesTests.TryRunElevated_ProcessExitsZero_ReturnsTrue'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.MockVolumeTests.GetVolumeHandle_InvalidVolume_ThrowsIOException'
+    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerHostTests.RealMmfWriter_WritesPayload_UiCanReadItBack'
+    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerClientTests.ArmScanAndCatchUpAsync_ReturnsRecords_ArmedCursor_AndCatchUpEntries'
+    FILTER+='&FullyQualifiedName!=MFTLib.Tests.DefaultElevatedEntryRunnerTests.RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilShutdown_ExitsWithCode0'
+    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerClientTests.SpawnAndConnectAsync_EndToEnd_UsesRealPipeAndRealMmfSeams'
 
     echo
     echo "==> [managed] dotnet test with coverlet"
