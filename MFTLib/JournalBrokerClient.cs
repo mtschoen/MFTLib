@@ -240,10 +240,6 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
         // broken, closed, or mid-frame. We must not throw from DisposeAsync.
         try
         {
-            // False positive: the complexity engine appears to mis-measure this
-            // partial class's methods across the two split files (JournalBrokerClient.cs
-            // and JournalBrokerClient.LiveWatch.cs); DisposeAsync itself is ~40 lines.
-            // aislop-ignore-next-line complexity/function-too-long
             await WriteFrameAsync(BrokerProtocol.WriteShutdown, CancellationToken.None)
                 .ConfigureAwait(false);
         }
