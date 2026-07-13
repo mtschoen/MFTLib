@@ -229,7 +229,7 @@ EXPORT void FreeMftResult(MftParseResult* result) {
 #ifdef _WIN32
 EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags,
                                        uint32_t bufferSizeRecords) {
-    auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
+    auto* result = ShouldFailAlloc() ? nullptr : static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
     if (result == nullptr) {
         return nullptr;
     }

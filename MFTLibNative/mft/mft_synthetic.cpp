@@ -63,9 +63,6 @@ void ApplyUSAProtection(uint8_t* record, uint16_t usn) {
     uint16_t sectorCount = usaSize - 1;
     for (uint16_t i = 0; i < sectorCount; i++) {
         uint32_t sectorEnd = ((i + 1) * 512) - 2;
-        if (sectorEnd + 2 > FILE_RECORD_SIZE) {
-            break;
-        }
         auto* sectorLastWord = reinterpret_cast<uint16_t*>(record + sectorEnd);
         usa[i + 1] = *sectorLastWord;
         *sectorLastWord = usn;
@@ -333,6 +330,7 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
 
         if (hasWritePending) {
             writeThread.join();
+            hasWritePending = false;
             if (!writeOk) {
                 break;
             }
@@ -370,6 +368,9 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
 extern "C" {
 #ifdef _WIN32
 EXPORT bool GenerateSyntheticMFT(const wchar_t* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
+    if (ShouldFailPathConversion()) {
+        return false;
+    }
     int u8len = WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
     if (u8len <= 0) {
         return false;

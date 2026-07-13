@@ -17,6 +17,7 @@ static class MFTLibNative
     static extern void NativeFreeMftResult(IntPtr result);
 
     [DllImport(LibraryName, EntryPoint = "GenerateSyntheticMFT", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.I1)]
     static extern bool NativeGenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords);
 
     [DllImport(LibraryName, EntryPoint = "ParseMFTFromFile", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]

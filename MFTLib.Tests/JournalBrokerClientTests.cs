@@ -52,13 +52,14 @@ public class JournalBrokerClientTests
         var (clientSide, serverSide) = DuplexStream.CreatePair();
 
         // The "broker" task: read the ArmAndScan frame from the server side, then
-        // write back Cursor -> ScanReady -> JournalBatch in response.
+        // write back Heartbeat -> Cursor -> ScanReady -> JournalBatch in response.
         var brokerTask = Task.Run(async () =>
         {
             // Read and discard the ArmAndScan request frame.
             await ReadOneFrameAsync(serverSide);
 
             var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteHeartbeat(response);
             BrokerProtocol.WriteCursor(response, "C", armedCursor);
             BrokerProtocol.WriteScanReady(response, mapName, records.Length, byteLength);
             BrokerProtocol.WriteJournalBatch(response, "C", advancedCursor,

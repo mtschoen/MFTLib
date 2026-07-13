@@ -7,6 +7,8 @@
 #include <handleapi.h>
 #include <stringapiset.h>
 
+#include <algorithm>
+#include <cassert>
 #include <string>
 
 namespace mftlib::platform {
@@ -17,15 +19,10 @@ struct File {
 
 namespace {
 std::wstring utf8_to_wide(const char* utf8) {
-    if (utf8 == nullptr) {
-        return {};
-    }
-    int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
-    if (wlen <= 0) {
-        return {};
-    }
-    std::wstring wide(static_cast<size_t>(wlen - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide.data(), wlen);
+    if (utf8 == nullptr) return {};
+    int wideLength = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
+    std::wstring wide(static_cast<size_t>((std::max)(wideLength - 1, 0)), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide.data(), wideLength);
     return wide;
 }
 }  // namespace
@@ -51,20 +48,16 @@ File* open_write(const char* path_utf8) {
 }
 
 int64_t size_of(const File* file) {
-    if (file == nullptr) {
-        return -1;
-    }
+    assert(file != nullptr);
     LARGE_INTEGER sizeInfo{};
-    if (GetFileSizeEx(file->h, &sizeInfo) == 0) {
+    if (ShouldFailFileSize() || GetFileSizeEx(file->h, &sizeInfo) == 0) {
         return -1;
     }
     return sizeInfo.QuadPart;
 }
 
 int64_t pread_at(const File* file, void* buf, size_t count, FileOffset offset) {
-    if (file == nullptr) {
-        return -1;
-    }
+    assert(file != nullptr);
     OVERLAPPED overlapped{};
     overlapped.Offset = static_cast<DWORD>(offset.value & 0xFFFFFFFF);
     overlapped.OffsetHigh = static_cast<DWORD>((offset.value >> 32) & 0xFFFFFFFF);
@@ -84,9 +77,7 @@ int64_t pread_at(const File* file, void* buf, size_t count, FileOffset offset) {
 }
 
 int64_t pwrite_at(const File* file, const void* buf, size_t count, FileOffset offset) {
-    if (file == nullptr) {
-        return -1;
-    }
+    assert(file != nullptr);
     OVERLAPPED overlapped{};
     overlapped.Offset = static_cast<DWORD>(offset.value & 0xFFFFFFFF);
     overlapped.OffsetHigh = static_cast<DWORD>((offset.value >> 32) & 0xFFFFFFFF);
@@ -102,13 +93,11 @@ int64_t pwrite_at(const File* file, const void* buf, size_t count, FileOffset of
 }
 
 void close_file(File* file) {
-    std::unique_ptr<File> owned(file);
-    if (owned == nullptr) {
+    if (file == nullptr || file->h == INVALID_HANDLE_VALUE) {
         return;
     }
-    if (owned->h != INVALID_HANDLE_VALUE) {
-        CloseHandle(owned->h);
-    }
+    std::unique_ptr<File> owned(file);
+    CloseHandle(owned->h);
 }
 
 void* big_alloc(size_t bytes) { return VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); }

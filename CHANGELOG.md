@@ -30,6 +30,8 @@
 - Self-elevation now returns `false` without attempting UAC when no interactive desktop is available (for example, CI or a Session 0 service)
 - Reorganized managed sources by MFT, journal, broker, elevation, interop, and internal responsibilities; split scan, journal, broker connection, transport, and session behavior into focused partials without changing the public API
 - Reworked the README and added a broker integration guide covering installation, API selection, memory lifetime, race-free scan/catch-up, live watch, rescans, recovery, and deployment
+- Fixed native `bool` marshaling for synthetic generation so conversion failures reliably propagate to managed callers
+- Fixed synthetic generator teardown after an asynchronous write failure so the completed writer is joined exactly once
 
 ### Tests
 

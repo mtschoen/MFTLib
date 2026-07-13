@@ -108,7 +108,7 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr,
     }
     uint64_t allocSize = max(totalClusterBytes, fileSize);
 
-    auto* buffer = static_cast<uint8_t*>(malloc(static_cast<size_t>(allocSize)));
+    auto* buffer = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(malloc(static_cast<size_t>(allocSize)));
     if (buffer == nullptr) {
         return nullptr;
     }

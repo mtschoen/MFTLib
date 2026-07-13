@@ -129,8 +129,11 @@ void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, D
     if (count == 0) {
         return;
     }
-    result->entries = static_cast<UsnJournalEntry*>(VirtualAlloc(
-        nullptr, static_cast<size_t>(count) * sizeof(UsnJournalEntry), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    result->entries =
+        ShouldFailAlloc()
+            ? nullptr
+            : static_cast<UsnJournalEntry*>(VirtualAlloc(nullptr, static_cast<size_t>(count) * sizeof(UsnJournalEntry),
+                                                         MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     if (result->entries == nullptr) {
         return;
     }
@@ -139,9 +142,6 @@ void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, D
     const uint8_t* recordPtr = readBuffer + sizeof(int64_t);
     for (uint64_t i = 0; i < count && recordPtr + sizeof(USN_RECORD_V2) <= endPtr; i++) {
         const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPtr);
-        if (usnRecord->RecordLength == 0) {
-            break;
-        }
         auto& entry = result->entries[i];
         uint16_t nameLenChars = CopyUsnRecordToEntry(entry, usnRecord);
         entry.fileNameLength = min(nameLenChars, static_cast<uint16_t>(259));

@@ -9,6 +9,7 @@ namespace MFTLib.Tests;
 /// single-threaded fallback, allocation failures, Read failures, error branches.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 public class NativeCoverageTests
 {
     [TestCleanup]
@@ -137,6 +138,41 @@ public class NativeCoverageTests
     }
 
     [TestMethod]
+    public void ParseFromFile_DeepHierarchy_TruncatesAtPathBufferBoundary()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MftVolume.GenerateSyntheticMFT(path, 5000, 256);
+            var data = File.ReadAllBytes(path);
+            var chain = new List<(ulong RecordNumber, int NameLength)>();
+            ulong parentRecord = 5;
+            for (var recordNumber = 6; recordNumber < 5000 && chain.Count < 128; recordNumber++)
+            {
+                if (!TrySetParentRecord(data, recordNumber, parentRecord, out var nameLength) || nameLength < 8)
+                    continue;
+                chain.Add(((ulong)recordNumber, nameLength));
+                parentRecord = (ulong)recordNumber;
+            }
+            Assert.AreEqual(128, chain.Count);
+            var expectedLength = chain.Sum(item => item.NameLength) + chain.Count - 1;
+            Assert.IsTrue(expectedLength >= 1024);
+            File.WriteAllBytes(path, data);
+
+            var records = MftVolume.ParseMFTFromFile(path, null, MatchFlags.ResolvePaths, out _);
+            var deepest = records.Single(record => record.RecordNumber == chain[^1].RecordNumber);
+            Assert.IsNotNull(deepest.FullPath);
+            Assert.IsTrue(deepest.FullPath.Length < expectedLength);
+            Assert.IsTrue(deepest.FullPath.Length < 1024);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [TestMethod]
     public void ParseFromFile_NamePoolExhausted_ReportsTruncation()
     {
         // Shrink the path-name pool so names can't fit, forcing the exhaustion path
@@ -156,6 +192,35 @@ public class NativeCoverageTests
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
                 Assert.IsTrue(result.ErrorMessage.Contains("exhausted"),
                     $"Expected pool-exhaustion message, got: {result.ErrorMessage}");
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void ParseFromFile_PathEntryAllocFail_LeavesPathsEmpty()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MftVolume.GenerateSyntheticMFT(path, 100, 256);
+            MFTLibNative.NativeSetAllocFailCountdown(6);
+
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.ResolvePaths, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsTrue(result.UsedRecords > 0);
+                Assert.AreEqual(IntPtr.Zero, result.PathEntries);
             }
             finally
             {
@@ -271,7 +336,9 @@ public class NativeCoverageTests
     }
 
     [TestMethod]
-    public void ParseFromFile_AllocFailOnBuffers_ReturnsErrorMessage()
+    [DataRow(MatchFlags.None, 2)]
+    [DataRow(MatchFlags.ResolvePaths, 3)]
+    public void ParseFromFile_AllocFailOnBuffers_ReturnsErrorMessage(MatchFlags matchFlags, int allocationToFail)
     {
         var path = Path.GetTempFileName();
         try
@@ -279,9 +346,8 @@ public class NativeCoverageTests
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
-            // Fail the VirtualAlloc for I/O buffers (alloc #2 without paths)
-            MFTLibNative.NativeSetAllocFailCountdown(2);
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, matchFlags, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -301,7 +367,9 @@ public class NativeCoverageTests
     }
 
     [TestMethod]
-    public void ParseFromFile_AllocFailOnEntries_ReturnsErrorMessage()
+    [DataRow(MatchFlags.None, 4)]
+    [DataRow(MatchFlags.ResolvePaths, 5)]
+    public void ParseFromFile_AllocFailOnEntries_ReturnsErrorMessage(MatchFlags matchFlags, int allocationToFail)
     {
         var path = Path.GetTempFileName();
         try
@@ -309,9 +377,8 @@ public class NativeCoverageTests
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
-            // Fail alloc #4 (malloc for entries — after calloc, VirtualAlloc x2)
-            MFTLibNative.NativeSetAllocFailCountdown(4);
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, matchFlags, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -331,7 +398,9 @@ public class NativeCoverageTests
     }
 
     [TestMethod]
-    public void ParseFromFile_AllocFailOnMergeGrow_ReturnsErrorMessage()
+    [DataRow(MatchFlags.None, 5)]
+    [DataRow(MatchFlags.ResolvePaths, 6)]
+    public void ParseFromFile_AllocFailOnMergeGrow_ReturnsErrorMessage(MatchFlags matchFlags, int allocationToFail)
     {
         var path = Path.GetTempFileName();
         try
@@ -343,10 +412,8 @@ public class NativeCoverageTests
             // the multi-threaded merge path, exercising its realloc-failure handler.
             MftVolume.GenerateSyntheticMFT(path, 4000, 8192);
 
-            // Allocs in order: result calloc (#1), two I/O buffers (#2, #3),
-            // entry array malloc (#4); the first merge-grow realloc is #5.
-            MFTLibNative.NativeSetAllocFailCountdown(5);
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 8192);
+            MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, matchFlags, 8192);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -366,15 +433,47 @@ public class NativeCoverageTests
     }
 
     [TestMethod]
-    public void GenerateSyntheticMFT_AllocFail_ReturnsFalse()
+    [DataRow(1)]
+    [DataRow(2)]
+    public void GenerateSyntheticMFT_AllocFail_ReturnsFalse(int allocationToFail)
     {
         var path = Path.GetTempFileName();
         try
         {
             File.Delete(path);
-            MFTLibNative.NativeSetAllocFailCountdown(1);
+            MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
             var success = MFTLibNative.GenerateSyntheticMFT(path, 10, 256);
             Assert.IsFalse(success);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void GenerateSyntheticMFT_NullPath_Throws()
+    {
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            MftVolume.GenerateSyntheticMFT(null!, 10, 256));
+    }
+
+    [TestMethod]
+    public void GenerateSyntheticMFT_InvalidDirectory_ReturnsFalse()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "missing", "fixture.mft");
+        Assert.IsFalse(MFTLibNative.GenerateSyntheticMFT(path, 10, 256));
+    }
+
+    [TestMethod]
+    public void GenerateSyntheticMFT_PathConversionFailure_ReturnsFalse()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MFTLibNative.NativeSetFailPathConversion(1);
+            Assert.IsFalse(MFTLibNative.GenerateSyntheticMFT(path, 10, 256));
         }
         finally
         {
@@ -415,6 +514,14 @@ public class NativeCoverageTests
     }
 
     // --- ParseMFTRecords error paths (via raw handle) ---
+
+    [TestMethod]
+    public void ParseMFTRecords_AllocFailOnResult_ReturnsNull()
+    {
+        MFTLibNative.NativeSetAllocFailCountdown(1);
+        var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(new IntPtr(-1), null, 0, 256);
+        Assert.AreEqual(IntPtr.Zero, resultPointer);
+    }
 
     [TestMethod]
     public void ParseMFTRecords_InvalidHandle_ReturnsErrorMessage()
@@ -559,6 +666,54 @@ public class NativeCoverageTests
         }
     }
 
+    [TestMethod]
+    public void ParseFromFile_InUseFlagCleared_SkipsRecord()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MftVolume.GenerateSyntheticMFT(path, 20, 256);
+            var data = File.ReadAllBytes(path);
+            var recordOffset = 10 * 1024;
+            data[recordOffset + 0x16] = 0;
+            data[recordOffset + 0x17] = 0;
+            File.WriteAllBytes(path, data);
+
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            MFTLibNative.FreeMftResult(resultPointer);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void ParseFromFile_OversizedUsaStopsAtRecordBoundary()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MftVolume.GenerateSyntheticMFT(path, 20, 256);
+            var data = File.ReadAllBytes(path);
+            var recordOffset = 10 * 1024;
+            data[recordOffset + 6] = 4;
+            data[recordOffset + 7] = 0;
+            File.WriteAllBytes(path, data);
+
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            MFTLibNative.FreeMftResult(resultPointer);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
     // --- FindAttribute null return ---
 
     [TestMethod]
@@ -672,6 +827,37 @@ public class NativeCoverageTests
                 Assert.IsTrue(
                     errorMessage!.Contains("Data attribute") || errorMessage.Contains("magic"),
                     $"Unexpected error: {errorMessage}");
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void ParseMFTRecords_ZeroLengthAttribute_ReturnsMissingDataError()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var data = BuildSyntheticNtfs();
+            WriteFileRecord(data, 4096);
+            data[4096 + 0x38] = 0x10;
+            File.WriteAllBytes(path, data);
+
+            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsTrue(result.ErrorMessage.Contains("Data attribute"));
             }
             finally
             {
@@ -881,7 +1067,9 @@ public class NativeCoverageTests
     // --- ReadNonResidentData success path ---
 
     [TestMethod]
-    public void ParseMFTRecords_NonResidentAttributeList_Succeeds()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ParseMFTRecords_NonResidentAttributeList_Succeeds(bool failAttributeListAllocation)
     {
         // Non-resident AttributeList with data runs pointing to valid data in the file.
         // Exercises ReadNonResidentData success path (lines 142-145, 147).
@@ -918,6 +1106,8 @@ public class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (failAttributeListAllocation)
+                MFTLibNative.NativeSetAllocFailCountdown(2);
             var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -930,6 +1120,81 @@ public class NativeCoverageTests
             {
                 MFTLibNative.FreeMftResult(resultPointer);
             }
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void ParseMFTRecords_DuplicateExtensionReferences_AreDeduplicated()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var data = BuildSyntheticNtfs();
+            WriteFileRecord(data, 4096);
+            var dataAttribute = 4096 + 0x38;
+            var dataLength = WriteNonResidentDataAttribute(
+                data, dataAttribute, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
+            var attributeList = dataAttribute + dataLength;
+            var attributeListLength = WriteResidentAttributeList(data, attributeList, 1, 2, 1);
+            WriteEndMarker(data, attributeList + attributeListLength);
+
+            WriteFileRecord(data, 5120, usn: 2);
+            WriteEndMarker(data, 5120 + 0x38);
+            File.WriteAllBytes(path, data);
+
+            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            MFTLibNative.FreeMftResult(resultPointer);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    [DataRow(2)]
+    public void ParseMFTRecords_MalformedExtensionRecord_IsIgnored(int malformedKind)
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var data = BuildSyntheticNtfs();
+            WriteFileRecord(data, 4096);
+            var dataAttribute = 4096 + 0x38;
+            var dataLength = WriteNonResidentDataAttribute(
+                data, dataAttribute, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
+            var attributeList = dataAttribute + dataLength;
+            var attributeListLength = WriteResidentAttributeList(data, attributeList, 1);
+            WriteEndMarker(data, attributeList + attributeListLength);
+
+            const int extensionRecord = 5120;
+            if (malformedKind != 0)
+            {
+                WriteFileRecord(data, extensionRecord, usn: 2);
+                var extensionAttribute = extensionRecord + 0x38;
+                data[extensionAttribute] = 0x80;
+                if (malformedKind == 2)
+                {
+                    data[extensionAttribute + 4] = 0x18;
+                    WriteEndMarker(data, extensionAttribute + 0x18);
+                }
+            }
+            File.WriteAllBytes(path, data);
+
+            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            MFTLibNative.FreeMftResult(resultPointer);
         }
         finally
         {
@@ -959,7 +1224,7 @@ public class NativeCoverageTests
 
             // Attribute 2: AttributeList (resident) with one entry pointing to segment 1
             var a2 = a1 + a1Len;
-            var a2Len = WriteResidentAttributeList(data, a2, segmentNumber: 1);
+            var a2Len = WriteResidentAttributeList(data, a2, 1);
 
             // End marker
             WriteEndMarker(data, a2 + a2Len);
@@ -1012,7 +1277,7 @@ public class NativeCoverageTests
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
 
             var a2 = a1 + a1Len;
-            var a2Len = WriteResidentAttributeList(data, a2, segmentNumber: 9999);
+            var a2Len = WriteResidentAttributeList(data, a2, 9999);
 
             WriteEndMarker(data, a2 + a2Len);
 
@@ -1056,7 +1321,7 @@ public class NativeCoverageTests
             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
 
             var a2 = a1 + a1Len;
-            var a2Len = WriteResidentAttributeList(data, a2, segmentNumber: 1);
+            var a2Len = WriteResidentAttributeList(data, a2, 1);
 
             WriteEndMarker(data, a2 + a2Len);
             WriteFileRecord(data, 5120, usn: 0x0002);
@@ -1234,13 +1499,14 @@ public class NativeCoverageTests
     [TestMethod]
     public void GenerateSyntheticMFT_PlatformWriteFail_ReturnsFalse()
     {
-        // Forces pwrite_at's WriteFile-failure branch during generation.
+        // More than one buffer makes the generator observe the failed asynchronous
+        // write before scheduling the final batch.
         var path = Path.GetTempFileName();
         try
         {
             File.Delete(path);
             MFTLibNative.NativeSetFailPlatformWrite(1);
-            var success = MFTLibNative.GenerateSyntheticMFT(path, 100, 256);
+            var success = MFTLibNative.GenerateSyntheticMFT(path, 600, 256);
             Assert.IsFalse(success, "Generation should report failure when the write fails");
         }
         finally
@@ -1250,6 +1516,38 @@ public class NativeCoverageTests
     }
 
     // --- Helpers for building synthetic NTFS data ---
+
+    static bool TrySetParentRecord(byte[] data, int recordNumber, ulong parentRecord, out int nameLength)
+    {
+        const int recordSize = 1024;
+        var recordOffset = recordNumber * recordSize;
+        nameLength = 0;
+        if (BitConverter.ToUInt32(data, recordOffset) != 0x454C4946 ||
+            (BitConverter.ToUInt16(data, recordOffset + 0x16) & 1) == 0 ||
+            (BitConverter.ToUInt64(data, recordOffset + 0x20) & 0x0000FFFFFFFFFFFFUL) != 0)
+            return false;
+
+        var attributeOffset = recordOffset + BitConverter.ToUInt16(data, recordOffset + 0x14);
+        while (attributeOffset + 24 < recordOffset + recordSize)
+        {
+            var attributeType = BitConverter.ToUInt32(data, attributeOffset);
+            if (attributeType == uint.MaxValue)
+                return false;
+            var attributeLength = BitConverter.ToUInt32(data, attributeOffset + 4);
+            if (attributeLength == 0)
+                return false;
+            if (attributeType == 0x30 && data[attributeOffset + 8] == 0)
+            {
+                var valueOffset = BitConverter.ToUInt16(data, attributeOffset + 0x14);
+                var value = attributeOffset + valueOffset;
+                nameLength = data[value + 64];
+                BitConverter.GetBytes(parentRecord).CopyTo(data, value);
+                return true;
+            }
+            attributeOffset += checked((int)attributeLength);
+        }
+        return false;
+    }
 
     static byte[] BuildSyntheticNtfs(int fileSize = 2 * 1024 * 1024)
     {
@@ -1300,35 +1598,29 @@ public class NativeCoverageTests
         return 0x48;
     }
 
-    static int WriteResidentAttributeList(byte[] data, int offset, uint segmentNumber)
+    static int WriteResidentAttributeList(byte[] data, int offset, params uint[] segmentNumbers)
     {
-        // ATTRIBUTE_LIST_ENTRY is 26 bytes minimum (with 1-char name)
-        // We use 28 bytes (no name, padded)
-        int entrySize = 28;
-        const int valueOffset = 0x18; // header is 24 bytes for resident attribute
+        const int entrySize = 28;
+        const int valueOffset = 0x18;
 
-        data[offset] = 0x20; // TypeCode = AttributeList
-        data[offset + 8] = 0x00; // FormCode = resident
-        // ValueLength
-        data[offset + 0x10] = (byte)(entrySize & 0xFF);
-        data[offset + 0x11] = (byte)((entrySize >> 8) & 0xFF);
-        // ValueOffset
+        data[offset] = 0x20;
+        data[offset + 8] = 0x00;
+        var valueLength = entrySize * segmentNumbers.Length;
+        data[offset + 0x10] = (byte)(valueLength & 0xFF);
+        data[offset + 0x11] = (byte)((valueLength >> 8) & 0xFF);
         data[offset + 0x14] = valueOffset;
 
-        // Write the ATTRIBUTE_LIST_ENTRY at valueOffset
-        var entry = offset + valueOffset;
-        data[entry] = 0x80; // AttributeTypeCode = Data
-        data[entry + 4] = (byte)(entrySize & 0xFF); // RecordLength
-        data[entry + 5] = (byte)((entrySize >> 8) & 0xFF);
-        // SegmentReference at offset 16 within entry
-        data[entry + 16] = (byte)(segmentNumber & 0xFF);
-        data[entry + 17] = (byte)((segmentNumber >> 8) & 0xFF);
-        data[entry + 18] = (byte)((segmentNumber >> 16) & 0xFF);
-        data[entry + 19] = (byte)((segmentNumber >> 24) & 0xFF);
+        for (var index = 0; index < segmentNumbers.Length; index++)
+        {
+            var segmentNumber = segmentNumbers[index];
+            var entry = offset + valueOffset + (index * entrySize);
+            data[entry] = 0x80;
+            data[entry + 4] = entrySize;
+            data[entry + 5] = 0;
+            BitConverter.GetBytes(segmentNumber).CopyTo(data, entry + 16);
+        }
 
-        var totalLength = valueOffset + entrySize;
-        // Round up to multiple of 8
-        totalLength = (totalLength + 7) & ~7;
+        var totalLength = (valueOffset + valueLength + 7) & ~7;
         data[offset + 4] = (byte)(totalLength & 0xFF);
         data[offset + 5] = (byte)((totalLength >> 8) & 0xFF);
         return totalLength;

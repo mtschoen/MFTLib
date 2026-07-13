@@ -163,7 +163,9 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
 void ResolveAllPaths(uint64_t totalRecords, PathLookup& lookup, unsigned numThreads, ParseState& state) {
     MftParseResult* result = state.entries.result;
     uint64_t usedCount = state.entries.usedCount;
-    result->pathEntries = static_cast<MftPathEntry*>(calloc(static_cast<size_t>(usedCount), sizeof(MftPathEntry)));
+    result->pathEntries =
+        ShouldFailAlloc() ? nullptr
+                          : static_cast<MftPathEntry*>(calloc(static_cast<size_t>(usedCount), sizeof(MftPathEntry)));
     if (result->pathEntries == nullptr) {
         return;
     }
