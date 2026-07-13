@@ -9,7 +9,7 @@
   - `ReadUsnJournal(cursor)` — batch catch-up read; returns `(UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor)`. Throws `InvalidOperationException` if the journal was recreated or entries were overwritten (caller should fall back to a full rescan)
   - `WatchUsnJournal(cursor, cancellationToken)` — live `IAsyncEnumerable<UsnJournalEntry[]>` event stream; blocks on the kernel (zero CPU) until changes arrive, unblocks via `CancelIoEx` on cancellation
   - `WatchUsnJournalWithCursor(cursor, cancellationToken)` — same as above but yields `(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)` so callers can persist progress without a separate `QueryUsnJournal` IOCTL
-- `UsnJournalEntry` exposes `RecordNumber` / `ParentRecordNumber` (48-bit MFT segment indices matching `MftRecord`), `Usn`, `Timestamp`, `Reason`, `FileAttributes`, `FileName`, plus `IsCreate` / `IsDelete` / `IsRename` / `IsClose` reason helpers
+- `UsnJournalEntry` exposes `RecordNumber` / `ParentRecordNumber` (48-bit Master File Table (MFT) segment indices matching `MftRecord`), `Usn`, `Timestamp`, `Reason`, `FileAttributes`, `FileName`, plus `IsCreate` / `IsDelete` / `IsRename` / `IsClose` reason helpers
 - `UsnJournalEntry.Create(...)` — public factory to reconstruct an entry from already-decoded values (e.g. journal data serialized to disk and rebuilt in another process)
 - `MftRecord.FileAttributes` now sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback
 - Added public `IElevationProvider` interface (with `ElevationUtilities.DefaultProvider`) so consumers can substitute elevation behavior in their own tests
@@ -20,11 +20,16 @@
   - `ScanPayload`/`ScanRecord` — packed binary cold-scan payload written into the shared MMF, read back without a disk round-trip
   - `ElevatedEntryPoint.TryHandle` dispatches the `--broker` (`--pipe`, `--once`, `--diag`) elevated child mode; `BrokerLauncher.Launch` starts it via a non-waiting `runas` relaunch
   - Opt-in `BrokerDiagnostics` frame/event tracing via `MFTLIB_BROKER_DIAG=1` or `BrokerDiagnostics.Enable(role)`, writing to `BrokerDiagnostics.LogDirectory` (consumers point this at their own app-data directory)
+  - Live watches can be stopped and restarted on the same client for rescans without launching another elevated process
+  - Duplicate live-watch starts are rejected client-side and ignored safely by the host, preventing multiple readers or writers from desynchronizing the shared pipe
 
 ### Improvements
 
 - Native path resolution now parallelizes across worker threads (same fan-out as fixup+parse) when `numThreads > 1`, with a serial fallback
 - Path name-pool exhaustion is now surfaced via the native `errorMessage` ("Path name pool exhausted; N names dropped, some paths truncated") instead of silently truncating
+- Self-elevation now returns `false` without attempting UAC when no interactive desktop is available (for example, CI or a Session 0 service)
+- Reorganized managed sources by MFT, journal, broker, elevation, interop, and internal responsibilities; split scan, journal, broker connection, transport, and session behavior into focused partials without changing the public API
+- Reworked the README and added a broker integration guide covering installation, API selection, memory lifetime, race-free scan/catch-up, live watch, rescans, recovery, and deployment
 
 ### Tests
 

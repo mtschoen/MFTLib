@@ -13,11 +13,11 @@
     <PackageId>MFTLib</PackageId>
     <Version>0.3.0</Version>
     <Authors>Matt Schoen</Authors>
-    <Description>Fast NTFS MFT (Master File Table) enumeration and USN journal library for Windows. Parses MFT records via raw volume access with native C++ I/O, multi-threaded parsing, and double-buffered reads. Supports filename filtering, path resolution, configurable buffer sizes, and incremental change detection via the USN change journal.</Description>
+    <Description>Fast NTFS file indexing and change tracking for .NET 8 on Windows x64. Reads the Master File Table (MFT) through a native C++ core, resolves paths, filters filenames, follows the USN journal, and can isolate elevated volume access in one reusable broker process.</Description>
     <PackageProjectUrl>https://github.com/mtschoen/MFTLib</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mtschoen/MFTLib</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>ntfs;mft;filesystem;windows;file-enumeration</PackageTags>
+    <PackageTags>ntfs;mft;usn-journal;filesystem;windows;file-indexing;file-enumeration</PackageTags>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
