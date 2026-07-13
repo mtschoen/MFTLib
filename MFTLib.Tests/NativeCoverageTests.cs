@@ -331,6 +331,41 @@ public class NativeCoverageTests
     }
 
     [TestMethod]
+    public void ParseFromFile_AllocFailOnMergeGrow_ReturnsErrorMessage()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            // Enough in-use records that the merged entry array must grow past its
+            // initial 1024 capacity. With a buffer >= the record count the whole MFT
+            // is one chunk, so on a multi-core host the worker slices are combined by
+            // the multi-threaded merge path, exercising its realloc-failure handler.
+            MftVolume.GenerateSyntheticMFT(path, 4000, 8192);
+
+            // Allocs in order: result calloc (#1), two I/O buffers (#2, #3),
+            // entry array malloc (#4); the first merge-grow realloc is #5.
+            MFTLibNative.NativeSetAllocFailCountdown(5);
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 8192);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                var errorMessage = result.ErrorMessage;
+                Assert.IsTrue(errorMessage!.Contains("grow entry array"));
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [TestMethod]
     public void GenerateSyntheticMFT_AllocFail_ReturnsFalse()
     {
         var path = Path.GetTempFileName();

@@ -1,0 +1,377 @@
+using System.Buffers;
+using System.Buffers.Binary;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+
+namespace MFTLib;
+
+/// <summary>
+/// Elevated-side broker logic: per drive, arm the journal cursor BEFORE
+/// scanning (so changes during the scan are replayed by catch-up, closing the
+/// cold-start gap), then scan. Volume access is injected so the core is
+/// testable without real elevation; <see cref="CreateDefault"/> wires the real
+/// MFTLib seams.
+/// </summary>
+public sealed class JournalBrokerHost
+{
+    readonly UsnJournalCursorQuery _queryCursor;
+    readonly DriveScanSource _scanDrive;
+    readonly UsnJournalCatchUpSource _readJournal;
+    readonly JournalBatchSource? _watchDrive;
+
+    public JournalBrokerHost(
+        UsnJournalCursorQuery queryCursor,
+        DriveScanSource scanDrive,
+        UsnJournalCatchUpSource readJournal,
+        JournalBatchSource? watchDrive = null)
+    {
+        _queryCursor = queryCursor;
+        _scanDrive = scanDrive;
+        _readJournal = readJournal;
+        _watchDrive = watchDrive;
+    }
+
+    /// <summary>
+    /// Arm the journal cursor, then scan. The cursor is captured strictly before
+    /// the scan begins so any file changes that race the scan are caught by the
+    /// subsequent catch-up read instead of being silently missed.
+    /// </summary>
+    public (UsnJournalCursor Cursor, ScanRecord[] Records) ArmAndScan(string driveLetter)
+    {
+        var cursor = _queryCursor(driveLetter); // strictly before the scan
+        var records = _scanDrive(driveLetter);
+        return (cursor, records);
+    }
+
+    public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) CatchUp(string driveLetter, UsnJournalCursor since)
+        => _readJournal(driveLetter, since);
+
+    /// <summary>
+    /// Serve a broker session over <paramref name="stream"/> (the pipe). Reads
+    /// request frames in a loop. On <see cref="BrokerFrameKind.ArmAndScan"/>, for
+    /// each drive: arm the cursor, emit a <c>Cursor</c> frame, write the scan
+    /// payload into the caller-created map via <paramref name="mmfWriter"/>, emit
+    /// <c>ScanReady</c>, run catch-up, emit a <c>JournalBatch</c>. Per-drive
+    /// failures emit an <c>Error</c> frame and continue (non-fatal contract).
+    /// Returns on <c>Shutdown</c>, on EOF, or after one arm-and-scan when
+    /// <paramref name="oneShot"/> is set (a single-UAC CLI-style path).
+    /// </summary>
+    public async Task ServeAsync(Stream stream, IMmfWriter mmfWriter, bool oneShot, CancellationToken cancellationToken)
+    {
+        // The pipe is shared by concurrent watch tasks; guard writes so frames
+        // never interleave on the wire.
+        var writeLock = new SemaphoreSlim(1, 1);
+        // The current watch generation: its CTS and the per-drive tasks it owns. A
+        // StartWatch creates a generation; an EndWatch (or loop end) tears it down.
+        // Held in a container (rather than reassigned locals) so the local async
+        // function below captures a stable reference instead of a modified closure
+        // (ref params are illegal in async methods).
+        var watch = new WatchGeneration();
+
+        // Cancel the current watch generation, await its tasks to quiescence, and
+        // clear it. StreamWatchAsync catches OperationCanceledException internally
+        // and always returns normally, so Task.WhenAll here cannot fault.
+        async Task StopWatchGenerationAsync()
+        {
+            if (watch.Cancellation == null)
+                return;
+            await watch.Cancellation.CancelAsync().ConfigureAwait(false);
+            await Task.WhenAll(watch.Tasks).ConfigureAwait(false);
+            watch.Tasks.Clear();
+            watch.Cancellation.Dispose();
+            watch.Cancellation = null;
+        }
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var frame = await ReadFrameAsync(stream, cancellationToken).ConfigureAwait(false);
+                if (frame == null)
+                    return; // EOF / pipe closed
+
+                switch (frame.Value.Kind)
+                {
+                    case BrokerFrameKind.ArmAndScan:
+                        if (frame.Value.DrivesSpec is { } drivesSpec)
+                            await HandleArmAndScanAsync(stream, mmfWriter, drivesSpec, writeLock, cancellationToken)
+                                .ConfigureAwait(false);
+                        if (oneShot)
+                            return;
+                        break;
+
+                    case BrokerFrameKind.StartWatch:
+                        if (frame.Value.DrivesSpec is { } watchSpec)
+                        {
+                            // Idempotent: if a watch generation is already live (no EndWatch
+                            // arrived to retire it), a second StartWatch is a duplicate. DO NOT
+                            // restart it - tearing the running generation down mid-write races
+                            // its in-flight frames against the new generation's and desyncs the
+                            // caller's single-reader demux (observed as "Unknown frame kind" on a
+                            // warm start). A real restart always sends EndWatch first, which
+                            // clears watch.Cancellation back to null.
+                            if (watch.Cancellation != null)
+                            {
+                                BrokerDiagnostics.Log(
+                                    "StartWatch ignored: a watch generation is already running " +
+                                    "(duplicate StartWatch without an intervening EndWatch).");
+                                break;
+                            }
+                            watch.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            watch.Tasks.AddRange(StartWatchTasks(stream, watchSpec, writeLock, watch.Cancellation.Token));
+                        }
+                        break;
+
+                    case BrokerFrameKind.EndWatch:
+                        await StopWatchGenerationAsync().ConfigureAwait(false);
+                        await WriteFrameAsync(stream, writeLock, BrokerProtocol.WriteEndWatchAck, cancellationToken)
+                            .ConfigureAwait(false);
+                        break;
+
+                    case BrokerFrameKind.Shutdown:
+                        return;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is the normal shutdown signal for a live watch session.
+        }
+        finally
+        {
+            await StopWatchGenerationAsync().ConfigureAwait(false);
+        }
+    }
+
+    List<Task> StartWatchTasks(Stream stream, string watchSpec, SemaphoreSlim writeLock, CancellationToken cancellationToken)
+    {
+        var tasks = new List<Task>();
+        foreach (var request in ParseScanSpec(watchSpec)) // watch tokens omit the map name
+            tasks.Add(StreamWatchAsync(stream, request.Letter,
+                new UsnJournalCursor(request.JournalId, request.NextUsn), writeLock, cancellationToken));
+        return tasks;
+    }
+
+    async Task StreamWatchAsync(Stream stream, string drive, UsnJournalCursor since,
+        SemaphoreSlim writeLock, CancellationToken cancellationToken)
+    {
+        if (_watchDrive == null)
+        {
+            await WriteFrameAsync(stream, writeLock,
+                writer => BrokerProtocol.WriteError(writer, drive, "Broker has no watch source"), cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            // A (0,0) cursor means the caller had no cached cursor for this drive (a warm
+            // start with an unknown cursor). Resolve the current cursor and watch from
+            // now so the live watch still works; only the pre-launch gap is lost.
+            var effectiveSince = since.JournalId == 0 ? _queryCursor(drive) : since;
+
+            // No `.WithCancellation(cancellationToken)` here: cancellationToken is
+            // already passed as the explicit third argument above, which the
+            // production implementation's `[EnumeratorCancellation]` parameter binds
+            // directly - adding it again on the same token is redundant.
+            await foreach (var (entries, cursor) in _watchDrive(drive, effectiveSince, cancellationToken)
+                .ConfigureAwait(false))
+            {
+                await WriteFrameAsync(stream, writeLock,
+                    writer => BrokerProtocol.WriteJournalBatch(writer, drive, cursor, entries), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal stop: the session was cancelled.
+        }
+        // Surface a genuine watch failure (journal wrapped mid-stream, volume
+        // closed) to the caller as a per-drive Error instead of tearing down the
+        // session; other drives keep watching. Cancellation is handled above.
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            await WriteFrameAsync(stream, writeLock,
+                writer => BrokerProtocol.WriteError(writer, drive, exception.Message), CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+    }
+
+    async Task HandleArmAndScanAsync(Stream stream, IMmfWriter mmfWriter, string drivesSpec,
+        SemaphoreSlim writeLock, CancellationToken cancellationToken)
+    {
+        foreach (var request in ParseScanSpec(drivesSpec))
+        {
+            try
+            {
+                var (cursor, records) = ArmAndScan(request.Letter);
+                await WriteFrameAsync(stream, writeLock,
+                    writer => BrokerProtocol.WriteCursor(writer, request.Letter, cursor), cancellationToken)
+                    .ConfigureAwait(false);
+
+                var byteLength = mmfWriter.Write(request.MmfName, records);
+                await WriteFrameAsync(stream, writeLock,
+                    writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, records.Length, byteLength), cancellationToken)
+                    .ConfigureAwait(false);
+
+                var (entries, updated) = CatchUp(request.Letter, cursor);
+                await WriteFrameAsync(stream, writeLock,
+                    writer => BrokerProtocol.WriteJournalBatch(writer, request.Letter, updated, entries), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            // Deliberate per-drive boundary: any failure on one drive (journal
+            // wrapped, volume open denied, scan IO error) is reported as an Error
+            // frame and the remaining drives still proceed - matching the existing
+            // non-fatal per-drive journal contract. A throw here would abort the
+            // whole session, losing the other drives' scans. Cancellation is not a
+            // per-drive error: let it propagate to end the session cleanly.
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                await WriteFrameAsync(stream, writeLock,
+                    writer => BrokerProtocol.WriteError(writer, request.Letter, exception.Message), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+    }
+
+    // A per-drive arm-and-scan request: bare drive letter, the resume cursor
+    // (unused for arm-and-scan, which queries fresh), and the caller-created map name.
+    readonly record struct ScanDriveRequest(string Letter, ulong JournalId, long NextUsn, string MmfName);
+
+    // Holds the live watch generation's CTS and per-drive tasks. A StartWatch creates
+    // one, an EndWatch (or session end) tears it down; see ServeAsync.
+    sealed class WatchGeneration
+    {
+        public CancellationTokenSource? Cancellation;
+        public readonly List<Task> Tasks = new();
+    }
+
+    // Spec tokens are comma-joined "letter:journalId:nextUsn:mmfName". The watch
+    // spec omits the map name (three fields); MmfName is then empty.
+    static IEnumerable<ScanDriveRequest> ParseScanSpec(string spec)
+    {
+        foreach (var token in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = token.Split(':');
+            yield return new ScanDriveRequest(
+                parts[0],
+                ulong.Parse(parts[1], CultureInfo.InvariantCulture),
+                long.Parse(parts[2], CultureInfo.InvariantCulture),
+                parts.Length > 3 ? parts[3] : string.Empty);
+        }
+    }
+
+    static async Task WriteFrameAsync(Stream stream, SemaphoreSlim writeLock,
+        Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        write(buffer);
+        if (buffer.WrittenCount >= 5)
+            BrokerDiagnostics.LogFrame("write", buffer.WrittenSpan[4], buffer.WrittenCount - 4);
+        await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await stream.WriteAsync(buffer.WrittenMemory, cancellationToken).ConfigureAwait(false);
+            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            writeLock.Release();
+        }
+    }
+
+    static async Task<BrokerFrame?> ReadFrameAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        var header = new byte[4];
+        if (!await ReadExactAsync(stream, header, cancellationToken).ConfigureAwait(false))
+            return null; // clean EOF before any byte
+
+        var totalLength = BinaryPrimitives.ReadInt32LittleEndian(header);
+        var frameBytes = new byte[4 + totalLength];
+        header.CopyTo(frameBytes.AsMemory());
+        if (!await ReadExactAsync(stream, frameBytes.AsMemory(4, totalLength), cancellationToken).ConfigureAwait(false))
+            throw new EndOfStreamException("Truncated broker frame on pipe");
+
+        if (totalLength >= 1)
+            BrokerDiagnostics.LogFrame("read", frameBytes[4], totalLength);
+        return BrokerProtocol.ReadFrame(frameBytes, out _);
+    }
+
+    // Fill buffer fully. Returns false on a clean EOF before any byte was read;
+    // throws if the stream ends partway through (a corrupt/truncated frame).
+    static async Task<bool> ReadExactAsync(Stream stream, Memory<byte> buffer, CancellationToken cancellationToken)
+    {
+        var read = 0;
+        while (read < buffer.Length)
+        {
+            var count = await stream.ReadAsync(buffer[read..], cancellationToken).ConfigureAwait(false);
+            if (count == 0)
+            {
+                if (read == 0)
+                    return false;
+                throw new EndOfStreamException("Truncated broker frame on pipe");
+            }
+            read += count;
+        }
+        return true;
+    }
+
+    public static JournalBrokerHost CreateDefault() => new(
+        queryCursor: QueryCursor,
+        scanDrive: ScanDrive,
+        readJournal: ReadJournal,
+        watchDrive: WatchAndDisposeAsync);
+
+    static UsnJournalCursor QueryCursor(string drive)
+    {
+        using var volume = MftVolume.Open(Bare(drive));
+        return volume.QueryUsnJournal();
+    }
+
+    static ScanRecord[] ScanDrive(string drive)
+    {
+        using var volume = MftVolume.Open(Bare(drive));
+        return ToScanRecords(volume.ReadAllRecords(resolvePaths: true));
+    }
+
+    static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(string drive, UsnJournalCursor since)
+    {
+        using var volume = MftVolume.Open(Bare(drive));
+        return volume.ReadUsnJournal(since);
+    }
+
+    static string Bare(string drive) => drive.TrimEnd(':', '\\', '/');
+
+    // Open the volume, stream cursor-tagged batches until cancelled, and dispose
+    // the volume when the watch ends (mirrors the in-process WatchAndDispose).
+    static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchAndDisposeAsync(
+        string drive, UsnJournalCursor since, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var volume = MftVolume.Open(Bare(drive));
+        // No .WithCancellation(): WatchUsnJournalWithCursor already takes the token
+        // directly and honors it internally.
+        await foreach (var batch in volume.WatchUsnJournalWithCursor(since, cancellationToken).ConfigureAwait(false))
+        {
+            yield return batch;
+        }
+    }
+
+    // MftRecord does not carry Size or LastWriteTime on the current MFTLib surface
+    // (the in-process MFT scan likewise records Size = 0); ScanRecord keeps those
+    // fields for forward compatibility and they are zero from the MFT path. Skip
+    // free and path-less records to mirror the direct-scan filter.
+    static ScanRecord[] ToScanRecords(MftRecord[] records)
+    {
+        var result = new List<ScanRecord>(records.Length);
+        foreach (var record in records)
+        {
+            if (!record.InUse || string.IsNullOrEmpty(record.FullPath))
+                continue;
+            result.Add(new ScanRecord(
+                record.RecordNumber, record.ParentRecordNumber, Size: 0,
+                LastWriteTicks: 0, (uint)record.FileAttributes, record.IsDirectory,
+                record.FileName, record.FullPath));
+        }
+        return result.ToArray();
+    }
+}

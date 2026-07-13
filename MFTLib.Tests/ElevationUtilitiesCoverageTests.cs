@@ -36,6 +36,7 @@ public class ElevationUtilitiesCoverageTests
         // Uses a non-dotnet exe path so the dotnet check passes,
         // then mocks StartProcess to return a process that exits with code 0.
         ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
+        ElevationUtilities.IsUserInteractive = () => true;
         ElevationUtilities.StartProcess = _ =>
         {
             var psi = new ProcessStartInfo(
@@ -57,6 +58,7 @@ public class ElevationUtilitiesCoverageTests
     {
         // Exercises the exit code check at line 87 of TryRunElevated for non-zero exit codes.
         ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
+        ElevationUtilities.IsUserInteractive = () => true;
         ElevationUtilities.StartProcess = _ =>
         {
             var psi = new ProcessStartInfo(
@@ -80,6 +82,7 @@ public class ElevationUtilitiesCoverageTests
         // Starts a process that takes longer than the timeout, so WaitForExit returns false,
         // then Kill() is called and the method returns false.
         ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
+        ElevationUtilities.IsUserInteractive = () => true;
         ElevationUtilities.StartProcess = _ =>
         {
             // On Linux, sleep 60 should exceed the 100ms timeout

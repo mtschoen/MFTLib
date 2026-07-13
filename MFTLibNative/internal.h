@@ -2,12 +2,8 @@
 
 #include <chrono>
 #include <cassert>
-#include <cstdarg>
 #include <cstdio>
-#include <cwchar>
 #include <cstdint>
-
-#include "core/platform.h"
 
 #ifdef _WIN32
     #define EXPORT __declspec(dllexport)
@@ -26,6 +22,7 @@ static inline double ElapsedMs(TimePoint start, TimePoint end) {
 // truncates and always null-terminates; asserts in debug builds when the
 // message didn't fit. Buffer size is deduced from the array reference.
 template <size_t N, typename... Args>
+// NOLINTNEXTLINE(modernize-avoid-c-arrays): array-reference parameter deduces the fixed C-ABI buffer size
 inline void SetErrorMessage(wchar_t (&buffer)[N], const wchar_t* format, Args... arguments) {
 #ifdef _WIN32
     int written = _snwprintf_s(buffer, N, _TRUNCATE, format, arguments...);

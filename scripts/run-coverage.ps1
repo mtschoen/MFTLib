@@ -84,7 +84,8 @@ if ($NonInteractive) {
         -p:CollectCoverage=true `
         -p:CoverletOutputFormat=cobertura `
         "-p:CoverletOutput=$coberturaFile" `
-        --verbosity quiet
+        --verbosity quiet `
+        --logger "console;verbosity=normal"
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Tests failed." -ForegroundColor Red

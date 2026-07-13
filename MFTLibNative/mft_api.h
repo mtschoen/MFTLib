@@ -3,6 +3,9 @@
 
 #pragma pack(push, 1)
 
+// NOLINTBEGIN(modernize-avoid-c-arrays): fixed-size, packed C-ABI structs
+// marshalled blittably by the C# P/Invoke layer; std::array is a class type and
+// would break the interop layout contract.
 struct MftFileEntry {
     uint64_t recordNumber;
     uint64_t parentRecordNumber;
@@ -66,4 +69,5 @@ struct UsnJournalResult {
     wchar_t errorMessage[256];
 };
 
+// NOLINTEND(modernize-avoid-c-arrays)
 #pragma pack(pop)

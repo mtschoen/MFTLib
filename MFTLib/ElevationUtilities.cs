@@ -19,11 +19,13 @@ public static class ElevationUtilities
     internal static Func<bool> IsWindows = () => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
     internal static Func<string?> GetProcessPathFunc = () => Environment.ProcessPath;
     internal static Func<ProcessStartInfo, Process?> StartProcess = Process.Start;
+    internal static Func<bool> IsUserInteractive = () => Environment.UserInteractive;
     internal static void ResetToDefaults()
     {
         IsWindows = () => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
         GetProcessPathFunc = () => Environment.ProcessPath;
         StartProcess = Process.Start;
+        IsUserInteractive = () => Environment.UserInteractive;
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Interoperability", "CA1416", Justification = "Guarded by IsWindows() runtime check")]
@@ -56,8 +58,9 @@ public static class ElevationUtilities
     /// <summary>
     /// Launch an elevated copy of this executable with the given arguments and wait
     /// for it to exit. Returns false if the process path is unavailable, the user
-    /// declines UAC, the child process returns a non-zero exit code, or the timeout
-    /// elapses (in which case the child is killed).
+    /// declines UAC, the child process returns a non-zero exit code, the timeout
+    /// elapses (in which case the child is killed), or there is no interactive
+    /// session to host a UAC consent prompt (e.g. a Session 0 service host).
     /// </summary>
     public static bool TryRunElevated(string arguments, int timeoutMs = 60000)
     {
@@ -66,6 +69,12 @@ public static class ElevationUtilities
             return false;
 
         if (Path.GetFileNameWithoutExtension(exePath).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // ShellExecuteEx with the "runas" verb needs an interactive desktop to show
+        // the UAC consent dialog. Without one (Session 0 services, CI runners) it
+        // fails unpredictably instead of cleanly declining, so bail out up front.
+        if (!IsUserInteractive())
             return false;
 
         try

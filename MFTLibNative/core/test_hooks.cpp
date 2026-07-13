@@ -1,36 +1,39 @@
 #include "pch.h"
 
 #include <algorithm>
+#include <array>
 #include <thread>
 
 #include "../internal.h"
 
-static unsigned g_maxThreads = 0;
-static int g_allocFailCountdown = 0;
-static int g_readFailCountdown = 0;
-static uint64_t g_namePoolCapacityOverride = 0;
-static int g_failFileSize = 0;
-static int g_failPathConversion = 0;
-static int g_failPlatformReadCountdown = 0;
-static int g_failPlatformWrite = 0;
+namespace {
+unsigned g_maxThreads = 0;
+int g_allocFailCountdown = 0;
+int g_readFailCountdown = 0;
+uint64_t g_namePoolCapacityOverride = 0;
+int g_failFileSize = 0;
+int g_failPathConversion = 0;
+int g_failPlatformReadCountdown = 0;
+int g_failPlatformWrite = 0;
 #ifdef _WIN32
-static DWORD g_usnIoFailError = 0;
-static int g_usnIoFailCountdown = 0;
+DWORD g_usnIoFailError = 0;
+int g_usnIoFailCountdown = 0;
 // Ring queue of synthetic IOCTL success responses (buffers owned by the caller).
-static const uint8_t* g_usnIoData[8] = {};
-static uint32_t g_usnIoSize[8] = {};
-static int g_usnIoHead = 0;
-static int g_usnIoCount = 0;
-static int g_usnOverlappedAbort = 0;
+std::array<const uint8_t*, 8> g_usnIoData = {};
+std::array<uint32_t, 8> g_usnIoSize = {};
+int g_usnIoHead = 0;
+int g_usnIoCount = 0;
+int g_usnOverlappedAbort = 0;
 #endif
+}  // namespace
 
 unsigned EffectiveThreadCount() {
-    unsigned n = std::thread::hardware_concurrency();
-    n = std::max<unsigned int>(n, 1);
-    if (g_maxThreads > 0 && g_maxThreads < n) {
-        n = g_maxThreads;
+    unsigned threadCount = std::thread::hardware_concurrency();
+    threadCount = std::max<unsigned int>(threadCount, 1);
+    if (g_maxThreads > 0 && g_maxThreads < threadCount) {
+        threadCount = g_maxThreads;
     }
-    return n;
+    return threadCount;
 }
 
 bool ShouldFailAlloc() {
@@ -61,6 +64,8 @@ bool ShouldFailPlatformRead() {
 bool ShouldFailPlatformWrite() { return g_failPlatformWrite != 0; }
 
 #ifdef _WIN32
+// Cross-component test seam used by USN code and exported test hooks; keep external.
+// ReSharper disable once CppClangTidyMiscUseInternalLinkage
 bool ShouldFailUsnIo(DWORD& outError) {
     if (g_usnIoFailCountdown <= 0) {
         return false;
@@ -81,7 +86,7 @@ bool UsnIoInjectSuccess(void* outBuffer, unsigned long outBufferSize, unsigned l
     g_usnIoHead = (g_usnIoHead + 1) % 8;
     g_usnIoCount--;
     unsigned long copyLen = size < outBufferSize ? size : outBufferSize;
-    if ((data != nullptr) && (copyLen != 0u)) {
+    if ((data != nullptr) && (copyLen != 0U)) {
         memcpy(outBuffer, data, copyLen);
     }
     if (bytesReturned != nullptr) {
@@ -109,6 +114,8 @@ EXPORT void SetFailPathConversion(int fail) { g_failPathConversion = fail; }
 EXPORT void SetFailPlatformRead(int countdown) { g_failPlatformReadCountdown = countdown; }
 EXPORT void SetFailPlatformWrite(int fail) { g_failPlatformWrite = fail; }
 #ifdef _WIN32
+// C-ABI test hook; (error, countdown) order is fixed by the C# P/Invoke harness.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 EXPORT void SetUsnIoFailError(DWORD error, int countdown) {
     g_usnIoFailError = error;
     g_usnIoFailCountdown = countdown;

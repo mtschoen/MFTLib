@@ -141,7 +141,7 @@ public class BenchmarkRunnerTests
 
         var logLines = new List<string>();
         var output = new StringBuilder();
-        _runner.RunScenario("Test Scenario", null, MatchFlags.None, "fake.mft", 3, 100, logLines.Add, output);
+        _runner.RunScenario(new BenchmarkScenario("Test Scenario", null, MatchFlags.None), "fake.mft", 3, 100, logLines.Add, output);
 
         Assert.AreEqual(3, callCount);
         Assert.IsTrue(logLines.Any(line => line.Contains("Test Scenario")));
@@ -157,7 +157,7 @@ public class BenchmarkRunnerTests
 
         var logLines = new List<string>();
         var output = new StringBuilder();
-        _runner.RunScenario("Single", null, MatchFlags.None, "fake.mft", 1, 1000, logLines.Add, output);
+        _runner.RunScenario(new BenchmarkScenario("Single", null, MatchFlags.None), "fake.mft", 1, 1000, logLines.Add, output);
 
         Assert.IsTrue(logLines.Any(line => line.Contains("42")));
     }
@@ -231,7 +231,7 @@ public class BenchmarkRunnerTests
     {
         var logLines = new List<string>();
         var output = new StringBuilder();
-        _runner.RunScenario("Format Test", "test", MatchFlags.ExactMatch, "fake.mft", 1, 5000, logLines.Add, output);
+        _runner.RunScenario(new BenchmarkScenario("Format Test", "test", MatchFlags.ExactMatch), "fake.mft", 1, 5000, logLines.Add, output);
 
         var allOutput = string.Join("\n", logLines);
         Assert.IsTrue(allOutput.Contains("I/O:"));
@@ -248,7 +248,7 @@ public class BenchmarkRunnerTests
 
         var logLines = new List<string>();
         var output = new StringBuilder();
-        _runner.RunScenario("Failing", null, MatchFlags.None, "fake.mft", 3, 100, logLines.Add, output);
+        _runner.RunScenario(new BenchmarkScenario("Failing", null, MatchFlags.None), "fake.mft", 3, 100, logLines.Add, output);
 
         var allOutput = string.Join("\n", logLines);
         Assert.IsTrue(allOutput.Contains("All iterations failed"));
@@ -268,7 +268,7 @@ public class BenchmarkRunnerTests
 
         var logLines = new List<string>();
         var output = new StringBuilder();
-        _runner.RunScenario("Partial", null, MatchFlags.None, "fake.mft", 3, 100, logLines.Add, output);
+        _runner.RunScenario(new BenchmarkScenario("Partial", null, MatchFlags.None), "fake.mft", 3, 100, logLines.Add, output);
 
         var outputText = output.ToString();
         Assert.IsTrue(outputText.Contains("FAILED:"));

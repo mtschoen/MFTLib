@@ -24,6 +24,9 @@ public readonly struct UsnJournalEntry
     public bool IsDelete => (Reason & UsnReason.FileDelete) != 0;
     public bool IsRename => (Reason & (UsnReason.RenameOldName | UsnReason.RenameNewName)) != 0;
 
+    // The 7 parameters mirror the kernel USN_RECORD_V2 layout 1:1; regrouping them into a
+    // carrier type would obscure that mapping and ripple into the marshaling/codec paths.
+    // aislop-ignore-next-line complexity/too-many-params
     internal UsnJournalEntry(ulong recordNumber, ulong parentRecordNumber,
         long usn, long fileTimeTimestamp, uint reason, uint fileAttributes, string fileName)
     {

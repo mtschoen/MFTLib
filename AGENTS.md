@@ -77,6 +77,7 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
     - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`.
     - **ElevationUtilities**: Shared logic for detecting and ensuring Administrative privileges.
+    - **VolumeBroker**: `JournalBrokerHost`/`JournalBrokerClient` run elevated MFT scans and USN journal watches through one elevated child process over a named pipe (control/journal frames) plus a page-file-backed `MemoryMappedFile` (cold-scan payload) - one UAC prompt per consumer session. `ElevatedEntryPoint`/`BrokerLauncher` dispatch and launch the `--broker` child mode; `BrokerDiagnostics` provides opt-in frame tracing.
 - **TestProgram** (C# Console App) - CLI that reads MFT metadata for specified drives. Automatically self-elevates.
 - **Benchmark** (C# Console App) - Performance benchmark using synthetic MFT generation.
 - **MFTLib.Tests** (C# xUnit) - Unit tests for record mapping and path resolution.
@@ -117,15 +118,14 @@ includes the native `MFTLibNative.vcxproj`, which only loads/builds under
 MSBuild + MSVC, and both jb inspectcode and roslynator load the full solution.
 `lint.csharp.jbProjects` in `.aislop/config.yml` scopes jb inspection to the four
 C# projects so the C++ tree stays on its own clang-tidy/cppcheck gate. The
-workflow installs the prebuilt `@schoen/aislop` tarball (mirror of the C# fork)
-from the Gitea npm registry with `npm ci` and runs it with `npx --no-install`;
-the version is pinned by content (sha512 integrity) in `package.json` +
-`package-lock.json`, and the `@schoen` scope to registry mapping lives in the
-committed `.npmrc`. To bump aislop, change the version in `package.json` and
-refresh the lockfile (`npm install --package-lock-only`). It deliberately does
-NOT use `actions/setup-node` and does NOT clone+build the fork on the runner -
-both fail on the host-mode act_runner (setup-node's 7zr extraction dies with exit
-code 2; the fork's tsdown/postinstall build is POSIX-only). The build step also
+workflow installs `aislop` as a git dependency pinned to a specific commit of
+the `github.com/mtschoen/aislop` fork (git+ssh URL in `package.json`, resolution
+locked in `package-lock.json`) with `npm ci` - which builds it on install - and
+runs it with `npx --no-install`. The former `@schoen/aislop` Gitea-registry
+tarball route is retired. To bump aislop, change the pinned commit in
+`package.json` and refresh the lockfile (`npm install --package-lock-only`). It
+deliberately does NOT use `actions/setup-node` (its 7zr extraction dies with
+exit code 2 on the host-mode act_runner). The build step also
 mirrors `run-coverage.ps1`'s 64-bit-amd64-MSBuild recipe (the checkout path is
 WOW64-virtualized away from 32-bit MSBuild). See the traps in
 `~/local-ci/docs/project-ci-setup.md`. For the gate to block merges, add

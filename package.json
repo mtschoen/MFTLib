@@ -2,8 +2,8 @@
   "name": "mftlib-ci-tooling",
   "version": "0.0.0",
   "private": true,
-  "description": "CI-only tooling for MFTLib (not shipped). Pins the C#-capable @schoen/aislop quality gate to an integrity hash via package-lock.json so CI runs an immutable, content-verified build of the tool. See .gitea/workflows/aislop.yml.",
+  "description": "CI-only tooling for MFTLib (not shipped). Pins the C#-capable aislop quality gate to a commit of the github.com/mtschoen/aislop fork (git dependency, built on install); the @schoen/aislop registry publish route is retired. See .gitea/workflows/aislop.yml.",
   "devDependencies": {
-    "@schoen/aislop": "0.12.3"
+    "aislop": "git+ssh://git@github.com/mtschoen/aislop.git#58baba50e6f61a8808bbd2b897bd134e841904ee"
   }
 }

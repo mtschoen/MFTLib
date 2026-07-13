@@ -8,6 +8,9 @@ namespace Benchmark;
 
 #pragma warning disable CA1416 // Validate platform compatibility — Benchmark is Windows-only
 
+// One benchmark scenario: a display name plus the filter/match-flags it exercises.
+internal readonly record struct BenchmarkScenario(string Name, string? Filter, MatchFlags MatchFlags);
+
 internal class BenchmarkRunner
 {
     internal SystemInfo SystemInfo = new();
@@ -70,17 +73,17 @@ internal class BenchmarkRunner
         Log();
 
         // Benchmark scenarios
-        var scenarios = new (string Name, string? Filter, MatchFlags MatchFlags)[]
+        var scenarios = new BenchmarkScenario[]
         {
-            ("Unfiltered (all records)", null, MatchFlags.None),
-            ("Filtered: exact \".git\"", ".git", MatchFlags.ExactMatch),
-            ("Filtered: contains \"config\"", "config", MatchFlags.Contains),
-            ("Filtered: exact \".git\" + paths", ".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths),
+            new("Unfiltered (all records)", null, MatchFlags.None),
+            new("Filtered: exact \".git\"", ".git", MatchFlags.ExactMatch),
+            new("Filtered: contains \"config\"", "config", MatchFlags.Contains),
+            new("Filtered: exact \".git\" + paths", ".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths),
         };
 
-        foreach (var (scenarioName, filter, matchFlags) in scenarios)
+        foreach (var scenario in scenarios)
         {
-            RunScenario(scenarioName, filter, matchFlags, mftPath, iterations, recordCount, Log, output);
+            RunScenario(scenario, mftPath, iterations, recordCount, Log, output);
         }
 
         // Cleanup
@@ -95,10 +98,10 @@ internal class BenchmarkRunner
         return 0;
     }
 
-    internal void RunScenario(string scenarioName, string? filter, MatchFlags matchFlags,
+    internal void RunScenario(BenchmarkScenario scenario,
         string mftPath, int iterations, ulong recordCount, Action<string> log, StringBuilder output)
     {
-        log($"--- {scenarioName} ---");
+        log($"--- {scenario.Name} ---");
 
         var allTimings = new List<MftParseTimings>();
         var allWallClocks = new List<double>();
@@ -110,7 +113,7 @@ internal class BenchmarkRunner
             try
             {
                 var stopwatch = Stopwatch.StartNew();
-                var (records, timings) = ParseFromFile(mftPath, filter, matchFlags);
+                var (records, timings) = ParseFromFile(mftPath, scenario.Filter, scenario.MatchFlags);
                 stopwatch.Stop();
 
                 allTimings.Add(timings);

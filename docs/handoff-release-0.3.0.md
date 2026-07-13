@@ -1,103 +1,113 @@
 # Handoff: MFTLib 0.3.0 Release
 
+Rewritten 2026-07-06 (the previous version predated the VolumeBroker extraction and
+listed long-since-landed commits; CHANGELOG.md is now the authoritative "what's in
+0.3.0" - this doc is only the release runbook).
+
 ## Status
 
-Code-complete. Version already set to 0.3.0 in `MFTLib/MFTLib.csproj`. All features implemented and tested. Waiting on real-world validation via file-wizard before publishing.
+Code-complete and pack-verified on branch **`feat/volume-broker` (fd0b750)**, which sits
+on `feat/aislop-whole-repo-100` (28 commits ahead of `main`). NOT published; `v0.3.0`
+not tagged. `MFTLib.0.3.0.nupkg` + `.snupkg` build clean via
+`MSBuild MFTLib\MFTLib.csproj -t:Pack -p:Configuration=Release -p:Platform=x64` and the
+package contents were verified (broker types in `lib/net8.0/MFTLib.dll`,
+`runtimes/win-x64/native/MFTLibNative.dll`, `build`/`buildTransitive` targets,
+LICENSE + README).
 
-## Pre-release checklist
+0.3.0 now includes the **VolumeBroker subsystem** extracted from file-wizard (see
+CHANGELOG.md). Both downstream consumers are wired and green against fd0b750:
 
-### 1. file-wizard end-to-end validation
+- **file-wizard** `feat/journal-broker-smoothing` @ d55f5a1 - consumes the broker from
+  the `external/MFTLib` submodule pinned to fd0b750 (521/522 tests green).
+- **git-wizard** `feat/journal-watch` - re-vendored `lib/MFTLib/` DLLs built from
+  fd0b750; new `--watch` journal-watch feature filters live USN batches to tracked
+  repos.
 
-Run file-wizard with the new MFTLib on a real machine:
-- First run: full MFT scan, verify USN cursor is saved in cache
-- Make some filesystem changes (create, delete, rename files)
-- Second run: verify cache loads, USN delta is applied (not full rescan), changes appear in index
-- Check the MAUI UI shows correct file listings after delta application
+Verification at fd0b750: 347 tests, 100% managed line/branch/method coverage
+(run-coverage.ps1 -NonInteractive), zero new aislop findings (see TEST-REPORT.md for
+the pre-existing native jb-inspectcode caveat).
 
-file-wizard review findings were all addressed (see `file-wizard/docs/reviews/2026-04-12-usn-integration-review.md` — can be deleted, findings were fixed). Key fixes:
-- Bug 1: Per-drive journal fallback (don't nuke all drives)
-- Bug 2: Always save cursor even on empty results
+## Release checklist (in order)
 
-### 2. Update TEST-REPORT.md
+### 1. Push the branches (unblocks downstream CI)
 
-Current report says 237 tests. Actual count is now **270 tests** (212 non-admin, 58 admin-required). Run the full coverage suite and update:
-
-```powershell
-.\scripts\run-coverage.ps1                  # managed coverage (non-admin)
-.\scripts\run-coverage.ps1 -NonInteractive  # or this for CI
-```
-
-### 3. Push and dry run
+`feat/volume-broker` exists only locally. file-wizard's submodule pin resolves against
+**both** MFTLib remotes (GitHub for local clones, Gitea for the CI runner), so push the
+branch (and its parent) to both:
 
 ```bash
-git push --force-with-lease  # still have the earlier force-push history
+git push origin feat/aislop-whole-repo-100 feat/volume-broker
+git push gitea  feat/aislop-whole-repo-100 feat/volume-broker
 ```
+
+Then merge to `main` (claude-code PRs per the Gitea identity convention; branch
+protection wants the windows + linux CI checks green).
+
+### 2. Interactive validations (human at keyboard - UAC prompts)
+
+- **MFTLib elevated coverage**: `.\scripts\run-coverage.ps1` (approve UAC) - admin
+  suites + native line coverage close to 100%. Note the known admin-run exit hang
+  (.plan "Test Infrastructure") - if it wedges after tests pass, the results are
+  still valid.
+- **file-wizard on-hardware broker smoke** (plan Task 12 Step 3 / Task 16 Step 1):
+  CLI scan with ONE UAC prompt; MAUI session with one UAC, live change visible in the
+  feed; Shift+Rescan reuses the broker (no second UAC).
+- **git-wizard watch smoke**: `git-wizard --watch` (one UAC), touch a file inside a
+  tracked repo, see the `changed: <repo>` line.
+
+### 3. Release dry run
 
 ```powershell
-.\scripts\release.ps1  # dry run: build, test, pack NuGet
+.\scripts\release.ps1        # clean tree + no v0.3.0 tag required; runs coverage WITH UAC, then packs
 ```
 
-The release script runs coverage internally, so it validates the 100% managed gate.
-
-### 4. Publish
+### 4. Publish (the deliberate stopping point - not automated)
 
 ```powershell
-.\scripts\release.ps1 -Publish  # tag v0.3.0, push to NuGet, create GitHub release
+.\scripts\release.ps1 -Publish
 ```
 
-This requires:
-- `C:\Users\mtsch\nugetkey` file with the NuGet API key
-- `CHANGELOG.md` in repo root (the release script passes it to `gh release create --notes-file`). **This file doesn't exist yet** — either create it or modify the release script to use inline notes.
-- `gh` CLI authenticated for GitHub release creation
+Requires: `C:\Users\mtsch\nugetkey`, `gh` authenticated, CHANGELOG.md (exists).
+This pushes the nupkg to nuget.org, tags `v0.3.0`, pushes the tag to origin (GitHub -
+required for SourceLink), and creates the GitHub release with CHANGELOG notes.
+The exact packed commit must be on the GitHub mirror before packing/tagging
+(SourceLink resolves against github.com/mtschoen/MFTLib) - step 1 covers that as long
+as the release is packed from a pushed commit.
 
-## What's in 0.3.0
+### 5. Post-publish consumer flips
 
-### New features
-- **USN journal batch read:** `MftVolume.QueryUsnJournal()` + `ReadUsnJournal(cursor)` for incremental change detection since last scan
-- **USN journal live watch:** `MftVolume.WatchUsnJournal(cursor, cancellationToken)` — `IAsyncEnumerable` that yields batches as filesystem changes arrive, zero CPU when idle
-- **FileAttributes from $STANDARD_INFORMATION:** Accurate cloud placeholder flags (`Offline`, `RecallOnDataAccess`, `RecallOnOpen`) that were invisible from `$FILE_NAME`
+**file-wizard - retire the submodule** (AGENTS.md "Retiring the submodule" has the
+authoritative steps): remove the `external/MFTLib` submodule and its two
+`file-wizard.sln` entries, delete `Directory.Build.targets` (central MFTLib
+`<Reference>` + native-DLL copy + `BlockLocalMFTLibOnPublish` guard), and add to
+`FileWizard/FileWizard.csproj`:
 
-### Improvements
-- Native C++ split into `core/`, `mft/`, `usn/` folder structure
-- Benchmark error handling (per-iteration catch, no crash on failure)
-- Native DLL copy fixed (was targeting `net8.0-windows` instead of `net8.0`)
-- Test struct sizes use authoritative `MftResult` constants instead of magic numbers
-- 48-bit segment index encoding documented on `RecordNumber`/`ParentRecordNumber`
-- Comparison benchmarks (BenchCompare, BenchCompareLive) extracted to separate repo at `C:\Users\mtsch\source\repos\MFTBenchCompare`
-
-### Coverage
-- Managed: 100% line, 100% branch, 100% method
-- Native: 98.8% line, 100% branch (12 lines of unreachable overlapped I/O code)
-
-### Test count
-- 270 total (212 non-admin, 58 admin-required)
-
-## Unpushed commits
-
-```
-5e5cd3c Add native USN journal test hooks and coverage tests
-279612d Restore 100% managed test coverage for all projects
-d322d28 Split dllmain.cpp into core/, mft/, usn/ folders with logical file structure
-a1a10bd Remove completed plan documents
-f25b649 Bump version to 0.3.0 for USN journal release
-9e52bb0 Document 48-bit segment index encoding on RecordNumber and ParentRecordNumber
-b4a1d48 Add InternalsVisibleTo for FileWizardTests
-253f6c7 Add unit tests for WatchUsnJournal IAsyncEnumerable API
-b5728f2 Add live integration test for WatchUsnJournal
-caf0d0e Add MftVolume.WatchUsnJournal IAsyncEnumerable API with CancelIoEx cancellation
-63a77d4 Add native WatchUsnJournalBatch and CancelUsnJournalWatch exports
-eaff627 Add live USN journal integration tests (admin-required)
-60eeab4 Add USN journal unit tests with mocked native calls
-061180e Wire USN journal P/Invoke and add MftVolume.QueryUsnJournal/ReadUsnJournal API
-3bb7631 Add managed USN journal types: UsnReason, UsnJournalEntry, UsnJournalCursor, interop structs
-a144b98 Add native USN journal structs, QueryUsnJournal and ReadUsnJournal exports
-29941e9 Fix native DLL copy for Benchmark and add error handling to benchmark runner
-688bfe5 Fix test struct sizes and update FileAttributes source comments
-7022700 Read FileAttributes from $STANDARD_INFORMATION instead of $FILE_NAME
+```xml
+<PackageReference Include="MFTLib" Version="0.3.0" />
 ```
 
-## Known issues
+(flows transitively; buildTransitive targets place the native DLL). CI then drops its
+VS-MSBuild step and builds everything with `dotnet`.
 
-- `CHANGELOG.md` doesn't exist — release script will fail at `gh release create --notes-file`
-- Native coverage has 12 unreachable lines (see `docs/handoff-native-coverage-100.md`)
-- file-wizard is still using a local project reference to MFTLib, not the NuGet package — switch after publishing
+**git-wizard - retire the vendored bridge**: follow the checklist in
+`git-wizard/lib/MFTLib/README.md` verbatim (PackageReference in
+`GitWizard/GitWizard.csproj`, delete `lib/MFTLib/` + repo-root
+`Directory.Build.targets`, re-enable the `release.yml` `pull_request:` trigger,
+re-confirm CI + required checks). The `.gitattributes` CRLF block stays.
+
+## Known issues (pre-existing, decide before or after publish)
+
+- `aislop ci .` is red at baseline (68/100 vs failBelow:100): 10 jb-inspectcode Cpp*
+  findings in MFTLibNative from the unfinished ReSharper-C++ sweep, plus the pinned CI
+  aislop's clang-tidy parser bug (silently passes). Both predate 0.3.0 work; the broker
+  diff adds zero findings. Detail: TEST-REPORT.md.
+- Admin test runs can hang on exit after passing (see .plan "Test Infrastructure" and
+  `reference_native_coverage_hang.md`).
+- **`BrokerFrame` decomposition — RESOLVED (2026-07-11).** The 9-parameter
+  positional constructor was eliminated: `BrokerFrame` keeps its single wire
+  storage shape but is now built only through per-kind static factories
+  (`BrokerFrame.ScanReady`/`.ArmedCursor`/`.JournalBatch`/`.Error`/…) with
+  `private init` properties, so the aislop `too-many-params` finding is gone
+  (gate back to 100/100) and invalid per-kind field combinations are
+  unconstructible. Pure refactor: on-wire bytes are unchanged (pinned by the
+  golden wire-byte tests in `BrokerProtocolTests`).

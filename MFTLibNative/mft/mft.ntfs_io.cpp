@@ -1,24 +1,29 @@
-#include "pch.h"
+// Part of the mft component. Included by mft.cpp; do not compile directly.
+#ifndef AISLOP_TU_FRAGMENT
+    #error "mft.ntfs_io.cpp is a fragment included by mft.cpp; do not compile it directly"
+#endif
 
 #include <vector>
 
 #include "../framework.h"
 #include "../ntfs.h"
 #include "../internal.h"
-#include "ntfs_io.h"
+#include "mft.internal.h"
+
+namespace mftlib::ntfs::detail {
 
 #ifdef _WIN32
-BOOL Read(HANDLE handle, void* buffer, uint64_t from, DWORD count, PDWORD bytesRead) {
+BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead) {
     if (ShouldFailRead()) {
         return FALSE;
     }
-    LONG high = from >> 32;
-    SetFilePointer(handle, from & 0xFFFFFFFF, &high, FILE_BEGIN);
+    auto high = static_cast<LONG>(from.value >> 32);
+    SetFilePointer(handle, static_cast<LONG>(from.value & 0xFFFFFFFF), &high, FILE_BEGIN);
     return ReadFile(handle, buffer, count, bytesRead, nullptr);
 }
 #endif  // _WIN32
 
-static bool ApplyFixupInternal(uint8_t* record, uint32_t recordSize) {
+bool ApplyFixupInternal(uint8_t* record, uint32_t recordSize) {
     auto* header = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
     uint16_t usaOffset = header->MultiSectorHeader.UpdateSequenceArrayOffset;
     uint16_t usaSize = header->MultiSectorHeader.UpdateSequenceArraySize;
@@ -71,17 +76,17 @@ std::vector<DataRun> ParseDataRuns(PATTRIBUTE_RECORD_HEADER attr) {
             length |= static_cast<uint64_t>(*runPtr++) << (i * 8);
         }
 
-        int64_t offset = 0;
+        uint64_t offsetBits = 0;
         for (int i = 0; i < header->offsetFieldBytes && runPtr < endPtr; i++) {
-            offset |= static_cast<uint64_t>(*runPtr++) << (i * 8);
+            offsetBits |= static_cast<uint64_t>(*runPtr++) << (i * 8);
         }
 
-        if (header->offsetFieldBytes > 0 &&
-            ((offset & (static_cast<int64_t>(1) << (header->offsetFieldBytes * 8 - 1))) != 0)) {
+        if (header->offsetFieldBytes > 0 && ((offsetBits & (1ULL << ((header->offsetFieldBytes * 8) - 1))) != 0)) {
             for (int i = header->offsetFieldBytes; i < 8; i++) {
-                offset |= static_cast<int64_t>(0xFF) << (i * 8);
+                offsetBits |= 0xFFULL << (i * 8);
             }
         }
+        auto offset = static_cast<int64_t>(offsetBits);
 
         prevCluster += offset;
         runs.push_back({prevCluster, length});
@@ -116,7 +121,7 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr,
             auto chunkSize = static_cast<DWORD> min((uint64_t)0x10000000, runBytes - runOffset);
             DWORD bytesRead;
             if (Read(volumeHandle, buffer + bufferOffset,
-                     (static_cast<uint64_t>(run.clusterOffset) * bytesPerCluster) + runOffset, chunkSize,
+                     VolumeOffset{(static_cast<uint64_t>(run.clusterOffset) * bytesPerCluster) + runOffset}, chunkSize,
                      &bytesRead) == 0) {
                 free(buffer);
                 *outSize = 0;
@@ -130,19 +135,19 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr,
     return buffer;
 }
 
-bool ReadMFTRecord(HANDLE volumeHandle, std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster, uint64_t recordNumber,
-                   uint8_t* buffer) {
+bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster, uint8_t* buffer,
+                   uint64_t recordNumber) {
     uint64_t byteOffset = recordNumber * FILE_RECORD_SIZE;
     uint64_t currentOffset = 0;
 
-    for (auto& run : mftRuns) {
+    for (const auto& run : mftRuns) {
         uint64_t runBytes = run.clusterCount * bytesPerCluster;
 
         if (byteOffset >= currentOffset && byteOffset < currentOffset + runBytes) {
             uint64_t diskOffset =
                 (static_cast<uint64_t>(run.clusterOffset) * bytesPerCluster) + (byteOffset - currentOffset);
             DWORD bytesRead;
-            if ((Read(volumeHandle, buffer, diskOffset, FILE_RECORD_SIZE, &bytesRead) == 0) ||
+            if ((Read(volumeHandle, buffer, VolumeOffset{diskOffset}, FILE_RECORD_SIZE, &bytesRead) == 0) ||
                 bytesRead != FILE_RECORD_SIZE) {
                 return false;
             }
@@ -174,3 +179,5 @@ PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type
 
     return nullptr;
 }
+
+}  // namespace mftlib::ntfs::detail

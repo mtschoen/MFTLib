@@ -56,6 +56,7 @@ public class ElevationProviderTests
     {
         var isPosix = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
         ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
+        ElevationUtilities.IsUserInteractive = () => true;
         ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo(
             isPosix ? "true" : "cmd.exe",
             isPosix ? string.Empty : "/c exit 0"
