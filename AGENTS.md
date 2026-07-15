@@ -55,7 +55,7 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 .\scripts\run-coverage.ps1 -NonInteractive  # skip admin tests (CI / headless)
 ```
 
-**Native (C++):** Microsoft.CodeCoverage.Console via `.claude/scripts/native-coverage.ps1`:
+**Native (C++):** Microsoft.CodeCoverage.Console via `scripts/native-coverage.ps1`:
 ```powershell
 .\scripts\native-coverage.ps1           # cobertura XML output
 .\scripts\native-coverage.ps1 -HtmlReport  # also generate HTML

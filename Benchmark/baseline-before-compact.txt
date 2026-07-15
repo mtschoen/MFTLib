@@ -1,0 +1,89 @@
+Git: cc448806276c35b1e6034fe38b30042882133273
+Peak working set: 1366192128
+Peak private bytes: 1820147712
+System Info
+====================================
+  Build:       Release
+  OS:          Microsoft Windows 11 Pro (10.0.26200.0)
+  CPU:         AMD Ryzen 9 7950X3D 16-Core Processor
+  Threads:     32
+  RAM:         64 GB
+  Disk:        Samsung SSD 990 PRO 4TB
+  .NET:        .NET 8.0.27
+  Date:        2026-07-14 17:20:43
+
+MFT Benchmark
+  Records: 1,000,000
+  Iterations: 5
+
+Generating synthetic MFT... done in 0.8s (0.95 GB)
+
+--- Unfiltered (all records) ---
+  Iteration 1/5... 515ms (749,599 records)
+  Iteration 2/5... 501ms (749,599 records)
+  Iteration 3/5... 432ms (749,599 records)
+  Iteration 4/5... 499ms (749,599 records)
+  Iteration 5/5... 451ms (749,599 records)
+  Results (median of 5 successful iterations):
+    Records:           749,599
+    I/O:                 255.7ms
+    Fixup:                 4.3ms
+    Parse:                64.9ms
+    Marshal:              54.3ms
+    Compute:             123.5ms  (fixup + parse + marshal)
+    Wall clock:          499.2ms
+    Throughput:      8,095,920 records/sec (compute)
+                     2,003,299 records/sec (wall clock)
+
+--- Filtered: exact ".git" ---
+  Iteration 1/5... 224ms (9,407 records)
+  Iteration 2/5... 222ms (9,407 records)
+  Iteration 3/5... 212ms (9,407 records)
+  Iteration 4/5... 214ms (9,407 records)
+  Iteration 5/5... 201ms (9,407 records)
+  Results (median of 5 successful iterations):
+    Records:             9,407
+    I/O:                 193.9ms
+    Fixup:                 2.7ms
+    Parse:                12.9ms
+    Marshal:               0.5ms
+    Compute:              16.0ms  (fixup + parse + marshal)
+    Wall clock:          213.6ms
+    Throughput:     62,360,857 records/sec (compute)
+                     4,681,269 records/sec (wall clock)
+
+--- Filtered: contains "config" ---
+  Iteration 1/5... 214ms (46,958 records)
+  Iteration 2/5... 222ms (46,958 records)
+  Iteration 3/5... 203ms (46,958 records)
+  Iteration 4/5... 205ms (46,958 records)
+  Iteration 5/5... 209ms (46,958 records)
+  Results (median of 5 successful iterations):
+    Records:            46,958
+    I/O:                 182.2ms
+    Fixup:                 3.0ms
+    Parse:                17.1ms
+    Marshal:               4.3ms
+    Compute:              24.4ms  (fixup + parse + marshal)
+    Wall clock:          209.2ms
+    Throughput:     40,900,297 records/sec (compute)
+                     4,779,461 records/sec (wall clock)
+
+--- Filtered: exact ".git" + paths ---
+  Iteration 1/5... 214ms (9,407 records)
+  Iteration 2/5... 214ms (9,407 records)
+  Iteration 3/5... 217ms (9,407 records)
+  Iteration 4/5... 210ms (9,407 records)
+  Iteration 5/5... 208ms (9,407 records)
+  Results (median of 5 successful iterations):
+    Records:             9,407
+    I/O:                 180.3ms
+    Fixup:                 1.5ms
+    Parse:                37.1ms
+    Marshal:               1.4ms
+    Compute:              40.1ms  (fixup + parse + marshal)
+    Wall clock:          213.8ms
+    Throughput:     24,960,998 records/sec (compute)
+                     4,678,258 records/sec (wall clock)
+
+Synthetic MFT file cleaned up.

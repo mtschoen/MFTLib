@@ -11,14 +11,20 @@ Code-complete. Three APIs:
   scanning + live USN watch for non-elevated consumers. Consumers wired: file-wizard
   (submodule pin) and git-wizard (`--watch`, vendored DLLs).
 
-### 0.3.0 NuGet publish checklist (blockers — currently gated on file-wizard finishing the USN cross-drive rename/move work)
+### 0.3.0 NuGet publish checklist
 
-Surfaced in the 2026-05-28 pre-publish audit; none are code — all are release packaging:
+The file-wizard journal work is complete. Publication is currently blocked by
+the plan burndown, including restoration of the fresh attended native coverage
+result from 99.8% line coverage to 100%.
 - **[DONE 2026-05-29]** **CHANGELOG.md** 0.3.0 section added: USN journal trio + `WatchUsnJournalWithCursor`, `IElevationProvider`, `UsnJournalEntry.Create`, `$STANDARD_INFORMATION`-sourced `FileAttributes`, parallel path resolution, name-pool exhaustion surfacing.
 - **[DONE 2026-05-29]** **README.md** intro + Features updated to mention USN; added a "Tracking changes with the USN journal" section with `QueryUsnJournal`/`ReadUsnJournal`/`WatchUsnJournalWithCursor` examples.
 - **[DONE 2026-05-29]** **MFTLib.csproj:30** stale "GitHub Actions pipeline" TODO replaced with an accurate note; `ContinuousIntegrationBuild` stays unconditionally `true` for deterministic packs.
 - **[TODO — deliberately held]** **Tag + push `v0.3.0`.** SourceLink (`PublishRepositoryUrl=true` + `SourceLink.GitHub`) resolves against github.com/mtschoen/MFTLib, so the exact packed commit AND the tag must be pushed to the GitHub mirror before `-t:Pack`, or source links 404. Update 2026-07-06: no longer gated on file-wizard (its journal-broker work is done and the VolumeBroker extraction landed at `feat/volume-broker` fd0b750, pack-verified); now held only on the maintainer's interactive validation + publish steps — runbook: `docs/handoff-release-0.3.0.md`.
 - Already confirmed fine: 0.2.0 IS on NuGet; github.com/mtschoen/MFTLib exists (public); LICENSE.txt + README are packaged.
+- **[OPEN 2026-07-14]** Cover `MFTLibNative/core/platform_win32.cpp:54`
+  (`size_of`) and line 97 (`close_file`) without exclusions or threshold
+  changes, then rerun attended native coverage. Fresh evidence: 417/417 tests,
+  1275/1277 lines (99.8%), 100% branches.
 
 ## Native C++ Cleanup (mft/mft_parse.cpp)
 

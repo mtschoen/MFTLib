@@ -1,10 +1,10 @@
-MFTLib test report - 2026-07-13
+MFTLib test report - 2026-07-14
 ===========================================
 
-Status:   PASS
+Status:   FAIL
 Mode:     maintain
 Tests:    417 passed, 0 failed (383 non-admin + 34 elevated NTFS/USN)
-Git:      feat/volume-broker at c4690c1 plus the coverage and correctness changes in this commit
+Git:      cc448806276c35b1e6034fe38b30042882133273 (`origin/main`)
 
 Managed coverage (`scripts/run-coverage.ps1`, full attended run):
   Line:   1399/1399 (100%)
@@ -14,9 +14,16 @@ Managed coverage (`scripts/run-coverage.ps1`, full attended run):
   Exclusion annotations: 0
 
 Native coverage (`scripts/native-coverage.ps1`):
-  Line:   1275/1275 (100%)
+  Line:   1275/1277 (99.8%)
   Branch: 100%
+  Gap:    `MFTLibNative/core/platform_win32.cpp:54` (`size_of`) and line 97 (`close_file`)
   Exclusion annotations: 0
+
+Linux coverage (`scripts/coverage-linux.sh`):
+  Tests:  8 native smoke tests + 208 managed tests passed; 34 Windows-only tests skipped
+  Native: 62.9% line (546/868), 37.1% branch (238/641)
+  Managed: 95.73% line (1392/1454), 95.34% branch (307/322)
+  Note:   Linux percentages are measured evidence; the Linux job has no fail-under threshold.
 
 Lint and quality:
   `aislop ci .` 0.13.1: score 100/100, 0 findings across 66 supported files
@@ -32,13 +39,14 @@ Release validation performed:
   - Full Release|x64 solution build
   - 383 non-admin tests with merged managed coverage
   - 34 elevated tests against real NTFS MFT and USN journal APIs
-  - Native Debug|x64 instrumentation with 100% line and branch coverage
+  - Native Debug|x64 instrumentation with 99.8% line and 100% branch coverage
   - VolumeBroker named-pipe/MMF end-to-end tests, including broker death and live-watch teardown
   - Synthetic generator conversion and asynchronous write-failure regressions
   - Deep native path truncation, malformed attribute/extension, and USN short/zero-record cases
   - `aislop ci .` whole-repository quality gate
 
 Remaining outward checks:
+  - Restore native line coverage to 100% without exclusions or threshold changes
   - Gitea Windows and Linux PR jobs on the pushed branch
   - file-wizard broker smoke and MAUI single-UAC/live-watch validation against merged MFTLib main
   - git-wizard `--watch` smoke against merged MFTLib main

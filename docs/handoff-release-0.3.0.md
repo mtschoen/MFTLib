@@ -1,17 +1,17 @@
 # Handoff: MFTLib 0.3.0 Release
 
-Updated 2026-07-13. `CHANGELOG.md` is the authoritative description of 0.3.0;
+Updated 2026-07-14. `CHANGELOG.md` is the authoritative description of 0.3.0;
 this document tracks the remaining release sequence.
 
 ## Status
 
-Gitea PR #19 (VolumeBroker and release validation) and PR #20 (source
-organization and 0.3 documentation) are merged to `main` at `159d963`.
+Gitea PR #19 (VolumeBroker and release validation), PR #20 (source
+organization and 0.3 documentation), and PR #21 (native coverage follow-up)
+are merged to `main` at `cc44880`.
 The public `MFTLib` namespace and API remain intact while source files are grouped
 by MFT, journal, broker, elevation, interop, and internal responsibilities.
 
-The follow-up `fix/native-coverage-100` branch closes the remaining native coverage
-gap and fixes two synthetic-generator defects found while exercising those paths:
+The merged native-coverage follow-up fixes two synthetic-generator defects:
 
 - native C++ `bool` results are marshaled as one-byte values, so early conversion
   failures reliably propagate to managed callers;
@@ -23,7 +23,8 @@ Validation on the integrated tree:
 - 383 non-admin tests passed;
 - 34 attended administrator tests passed against real NTFS and USN APIs;
 - managed coverage is 100% line, branch, and method;
-- native coverage is 100% line and branch;
+- a fresh attended rerun passed all 417 tests and measured native coverage at
+  99.8% line and 100% branch;
 - `aislop ci .` is 100/100 with zero findings;
 - `MFTLib.0.3.0.nupkg` and `.snupkg` pack successfully with the managed DLL,
   native runtime DLL, build targets, README, and license.
@@ -33,11 +34,14 @@ still need final validation against the merged MFTLib commit before publication.
 
 ## Release checklist
 
-### 1. Merge the coverage follow-up and synchronize mirrors
+### 1. Restore the native coverage gate
 
-Merge `fix/native-coverage-100` to Gitea `main` after its Windows, Linux, and
-quality-gate jobs pass. Then mirror the exact merged history to GitHub so SourceLink
-can resolve the commit that will be packed:
+Cover `MFTLibNative/core/platform_win32.cpp:54` (`size_of`) and line 97
+(`close_file`) without exclusions or threshold changes. Rerun the attended
+native gate and require 100% line and branch coverage before release work.
+
+After the closeout work is committed, mirror the exact validated history to
+GitHub so SourceLink can resolve the commit that will be packed:
 
 ```bash
 git switch main
@@ -54,8 +58,8 @@ git push origin main
   `git-wizard --watch`, change a file inside a tracked repository, and verify the
   corresponding `changed:` notification.
 
-The MFTLib attended coverage run itself is complete and does not need repeating
-unless MFTLib changes again.
+The attended coverage run must be repeated after the two-line gap is closed and
+after any subsequent MFTLib production change.
 
 ### 3. Release dry run
 
