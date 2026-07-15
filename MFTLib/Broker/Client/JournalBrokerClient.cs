@@ -69,17 +69,23 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// For each drive: pre-create its MMF, send one <c>ArmAndScan</c> frame carrying
-    /// the spec token <c>letter:journalId:nextUsn:mmfName</c> (journalId and nextUsn
-    /// are 0 for a cold arm), then consume response frames until every requested drive
-    /// has delivered either a complete scan (Cursor + ScanReady + JournalBatch) or an
-    /// Error. Returns a <see cref="BrokerScanResult"/> aggregating all per-drive data.
+    /// For each drive: pre-create its MMF, request a full cold scan, then consume response
+    /// frames until every requested drive has delivered either a complete scan (Cursor +
+    /// ScanReady + JournalBatch) or an Error.
+    /// </summary>
+    public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
+        IReadOnlyList<string> drives, CancellationToken cancellationToken = default) =>
+        ArmScanAndCatchUpAsync(drives, BrokerScanProfile.Full, cancellationToken);
+
+    /// <summary>
+    /// Arms, scans, and catches up each drive using the requested cold-scan record profile.
     /// </summary>
     public async Task<BrokerScanResult> ArmScanAndCatchUpAsync(
-        IReadOnlyList<string> drives, CancellationToken cancellationToken = default)
+        IReadOnlyList<string> drives, BrokerScanProfile profile,
+        CancellationToken cancellationToken = default)
     {
         var mmfNamesByDrive = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var drivesSpec = PrepareDriveScan(drives, mmfNamesByDrive);
+        var drivesSpec = PrepareDriveScan(drives, profile, mmfNamesByDrive);
 
         // Send the ArmAndScan frame.
         await WriteFrameAsync(
@@ -111,7 +117,9 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
     // comma-joined drivesSpec (letter:journalId:nextUsn:mmfName tokens) for the
     // ArmAndScan frame. Cold arm: journalId and nextUsn are 0, so the broker
     // queries the real cursor.
-    string PrepareDriveScan(IReadOnlyList<string> drives, Dictionary<string, string> mmfNamesByDrive)
+    string PrepareDriveScan(
+        IReadOnlyList<string> drives, BrokerScanProfile profile,
+        Dictionary<string, string> mmfNamesByDrive)
     {
         var specTokens = new List<string>(drives.Count);
         foreach (var drive in drives)
@@ -121,7 +129,7 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
             lock (_mmfLifetimesLock)
                 _mmfLifetimes.Add(lifetime);
             mmfNamesByDrive[letter] = mmfName;
-            specTokens.Add(FormattableString.Invariant($"{letter}:0:0:{mmfName}"));
+            specTokens.Add(FormattableString.Invariant($"{letter}:0:0:{mmfName}:{(int)profile}"));
         }
         return string.Join(",", specTokens);
     }

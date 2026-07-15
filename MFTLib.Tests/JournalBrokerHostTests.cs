@@ -80,6 +80,30 @@ public class JournalBrokerHostTests
     }
 
     [TestMethod]
+    public async Task ServeOnce_ReducedProfile_WritesDirectoriesAndGitPointersOnly()
+    {
+        var records = new[]
+        {
+            new ScanRecord(100, 5, 0, 0, 0x10, true, "repo", @"C:\repo"),
+            new ScanRecord(101, 100, 0, 0, 0x20, false, ".git", @"C:\repo\.git"),
+            new ScanRecord(102, 100, 0, 0, 0x20, false, "file.txt", @"C:\repo\file.txt"),
+        };
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var host = MakeFakeHost(records, Array.Empty<UsnJournalEntry>());
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(request,
+            $"C:0:0:mftlib-scan-C:{(int)BrokerScanProfile.DirectoryIndexWithGitPointers}");
+        await clientSide.WriteAsync(request.WrittenMemory);
+        await clientSide.FlushAsync();
+
+        var writer = new RecordingMmfWriter();
+        await host.ServeAsync(serverSide, writer, oneShot: true, CancellationToken.None);
+
+        Assert.AreEqual(2, writer.LastPayloadRecordCount);
+    }
+
+    [TestMethod]
     public async Task ServeOnce_DriveFailure_EmitsErrorFrameAndContinues()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
