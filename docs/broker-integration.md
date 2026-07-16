@@ -78,11 +78,14 @@ foreach (var (drive, error) in result.Errors)
 foreach (var record in result.Records)
     Console.WriteLine(record.Path);
 
-// Consumers that only need directory path resolution plus .git pointer files can
-// request a smaller snapshot on very large volumes while preserving arm/catch-up order:
+// Consumers that only need directory path resolution plus a handful of named files can
+// request a smaller snapshot on very large volumes while preserving arm/catch-up order.
+// keepFileNames is matched case-insensitively; pass whatever marker file names your
+// application cares about (for example ".git"):
 var indexResult = await broker.ArmScanAndCatchUpAsync(
     new[] { "C", "D" },
-    BrokerScanProfile.DirectoryIndexWithGitPointers,
+    BrokerScanProfile.DirectoryIndex,
+    keepFileNames: new[] { ".git" },
     cancellationToken);
 
 foreach (var (drive, entries) in result.CatchUpEntries)
@@ -103,9 +106,10 @@ The result contains:
 | `Errors` | Per-drive failures; one failed drive does not abort the others |
 
 The overload without a `BrokerScanProfile` returns the complete MFT inventory. The
-`DirectoryIndexWithGitPointers` profile retains every directory plus non-directory records
-named `.git`; use it for journal path indexing and Git worktree discovery when a full packed
-snapshot could exceed the single-MMF payload limit.
+`DirectoryIndex` profile retains every directory plus any non-directory records whose
+name matches `keepFileNames` (case-insensitive); use it for journal path indexing plus a
+small set of caller-named marker files when a full packed snapshot could exceed the
+single-MMF payload limit. `keepFileNames` is ignored under `Full`.
 
 `ScanRecord.Size` and `ScanRecord.LastWriteTicks` are currently zero because those
 fields are reserved for a future MFT surface. Use `Name`, `Path`, `Attributes`,

@@ -80,27 +80,71 @@ public class JournalBrokerHostTests
     }
 
     [TestMethod]
-    public async Task ServeOnce_ReducedProfile_WritesDirectoriesAndGitPointersOnly()
+    public async Task ServeOnce_DirectoryIndexProfile_KeepFileNameMatch_KeepsTheNamedFile()
     {
-        var records = new[]
-        {
-            new ScanRecord(100, 5, 0, 0, 0x10, true, "repo", @"C:\repo"),
-            new ScanRecord(101, 100, 0, 0, 0x20, false, ".git", @"C:\repo\.git"),
-            new ScanRecord(102, 100, 0, 0, 0x20, false, "file.txt", @"C:\repo\file.txt"),
-        };
+        var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, KeepFileNamesGit);
+
+        Assert.AreEqual(2, writer.LastPayloadRecordCount); // repo (directory) + .git (named match)
+    }
+
+    [TestMethod]
+    public async Task ServeOnce_DirectoryIndexProfile_KeepFileNameMatch_IsCaseInsensitive()
+    {
+        var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, KeepFileNamesGitUppercase);
+
+        Assert.AreEqual(2, writer.LastPayloadRecordCount); // repo (directory) + .git (matched despite case)
+    }
+
+    [TestMethod]
+    public async Task ServeOnce_DirectoryIndexProfile_NonMatchingFiles_AreDropped()
+    {
+        var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, KeepFileNamesNonMatching);
+
+        Assert.AreEqual(1, writer.LastPayloadRecordCount); // repo (directory) only
+    }
+
+    [TestMethod]
+    public async Task ServeOnce_DirectoryIndexProfile_NullKeepFileNames_YieldsDirectoriesOnly()
+    {
+        var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, keepFileNames: null);
+
+        Assert.AreEqual(1, writer.LastPayloadRecordCount); // repo (directory) only
+    }
+
+    [TestMethod]
+    public async Task ServeOnce_DirectoryIndexProfile_EmptyKeepFileNames_YieldsDirectoriesOnly()
+    {
+        var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, keepFileNames: Array.Empty<string>());
+
+        Assert.AreEqual(1, writer.LastPayloadRecordCount); // repo (directory) only
+    }
+
+    static readonly string[] KeepFileNamesGit = { ".git" };
+    static readonly string[] KeepFileNamesGitUppercase = { ".GIT" };
+    static readonly string[] KeepFileNamesNonMatching = { "other.txt" };
+
+    static readonly ScanRecord[] DirectoryIndexSampleRecords =
+    {
+        new(100, 5, 0, 0, 0x10, true, "repo", @"C:\repo"),
+        new(101, 100, 0, 0, 0x20, false, ".git", @"C:\repo\.git"),
+        new(102, 100, 0, 0, 0x20, false, "file.txt", @"C:\repo\file.txt"),
+    };
+
+    static async Task<RecordingMmfWriter> ServeDirectoryIndexAsync(
+        ScanRecord[] records, IReadOnlyCollection<string>? keepFileNames)
+    {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var host = MakeFakeHost(records, Array.Empty<UsnJournalEntry>());
 
         var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteArmAndScan(request,
-            $"C:0:0:mftlib-scan-C:{(int)BrokerScanProfile.DirectoryIndexWithGitPointers}");
+            $"C:0:0:mftlib-scan-C:{(int)BrokerScanProfile.DirectoryIndex}", keepFileNames);
         await clientSide.WriteAsync(request.WrittenMemory);
         await clientSide.FlushAsync();
 
         var writer = new RecordingMmfWriter();
         await host.ServeAsync(serverSide, writer, oneShot: true, CancellationToken.None);
-
-        Assert.AreEqual(2, writer.LastPayloadRecordCount);
+        return writer;
     }
 
     [TestMethod]
@@ -123,7 +167,7 @@ public class JournalBrokerHostTests
     public void ApplyScanProfile_UnknownProfile_ThrowsInvalidDataException()
     {
         var exception = Assert.ThrowsException<InvalidDataException>(
-            () => JournalBrokerHost.ApplyScanProfile(Array.Empty<ScanRecord>(), (BrokerScanProfile)99));
+            () => JournalBrokerHost.ApplyScanProfile(Array.Empty<ScanRecord>(), (BrokerScanProfile)99, Array.Empty<string>()));
         StringAssert.Contains(exception.Message, "99");
     }
 

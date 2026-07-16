@@ -75,21 +75,32 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
     /// </summary>
     public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
         IReadOnlyList<string> drives, CancellationToken cancellationToken = default) =>
-        ArmScanAndCatchUpAsync(drives, BrokerScanProfile.Full, cancellationToken);
+        ArmScanAndCatchUpAsync(drives, BrokerScanProfile.Full, keepFileNames: null, cancellationToken);
 
     /// <summary>
     /// Arms, scans, and catches up each drive using the requested cold-scan record profile.
     /// </summary>
+    public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
+        IReadOnlyList<string> drives, BrokerScanProfile profile,
+        CancellationToken cancellationToken = default) =>
+        ArmScanAndCatchUpAsync(drives, profile, keepFileNames: null, cancellationToken);
+
+    /// <summary>
+    /// Arms, scans, and catches up each drive using the requested cold-scan record profile.
+    /// <paramref name="keepFileNames"/> is only consulted under <see cref="BrokerScanProfile.DirectoryIndex"/>;
+    /// it names non-directory files (matched case-insensitively) to keep alongside every
+    /// directory record - for example a name your application treats as a marker file.
+    /// </summary>
     public async Task<BrokerScanResult> ArmScanAndCatchUpAsync(
         IReadOnlyList<string> drives, BrokerScanProfile profile,
-        CancellationToken cancellationToken = default)
+        IReadOnlyCollection<string>? keepFileNames, CancellationToken cancellationToken = default)
     {
         var mmfNamesByDrive = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var drivesSpec = PrepareDriveScan(drives, profile, mmfNamesByDrive);
 
         // Send the ArmAndScan frame.
         await WriteFrameAsync(
-            writer => BrokerProtocol.WriteArmAndScan(writer, drivesSpec),
+            writer => BrokerProtocol.WriteArmAndScan(writer, drivesSpec, keepFileNames),
             cancellationToken).ConfigureAwait(false);
 
         // Fold each broker response into the collector until every drive reports in.

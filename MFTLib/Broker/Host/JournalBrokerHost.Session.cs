@@ -50,7 +50,8 @@ public sealed partial class JournalBrokerHost
                 {
                     case BrokerFrameKind.ArmAndScan:
                         if (frame.Value.DrivesSpec is { } drivesSpec)
-                            await HandleArmAndScanAsync(stream, mmfWriter, drivesSpec, writeLock, cancellationToken)
+                            await HandleArmAndScanAsync(stream, mmfWriter, drivesSpec, frame.Value.KeepFileNames,
+                                writeLock, cancellationToken)
                                 .ConfigureAwait(false);
                         if (oneShot)
                             return;

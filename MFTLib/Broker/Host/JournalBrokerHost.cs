@@ -101,14 +101,14 @@ public sealed partial class JournalBrokerHost
     }
 
     async Task HandleArmAndScanAsync(Stream stream, IMmfWriter mmfWriter, string drivesSpec,
-        SemaphoreSlim writeLock, CancellationToken cancellationToken)
+        IReadOnlyList<string> keepFileNames, SemaphoreSlim writeLock, CancellationToken cancellationToken)
     {
         foreach (var request in ParseScanSpec(drivesSpec))
         {
             try
             {
                 var (cursor, records) = ArmAndScan(request.Letter);
-                records = ApplyScanProfile(records, request.Profile);
+                records = ApplyScanProfile(records, request.Profile, keepFileNames);
                 await WriteFrameAsync(stream, writeLock,
                     writer => BrokerProtocol.WriteCursor(writer, request.Letter, cursor), cancellationToken)
                     .ConfigureAwait(false);
@@ -181,15 +181,24 @@ public sealed partial class JournalBrokerHost
     // internal: ParseScanProfile already rejects undefined values before a request
     // reaches here, so the default arm is unreachable from the wire path; it exists
     // as an exhaustiveness guard for future profile values and is tested directly.
-    internal static ScanRecord[] ApplyScanProfile(ScanRecord[] records, BrokerScanProfile profile) =>
+    // keepFileNames is ignored under Full (the complete inventory already includes
+    // every file); under DirectoryIndex it names non-directory files to keep
+    // alongside every directory, matched case-insensitively against NTFS's default
+    // case-insensitive name comparison.
+    internal static ScanRecord[] ApplyScanProfile(
+        ScanRecord[] records, BrokerScanProfile profile, IReadOnlyCollection<string> keepFileNames) =>
         profile switch
         {
             BrokerScanProfile.Full => records,
-            BrokerScanProfile.DirectoryIndexWithGitPointers => records
-                .Where(record => record.IsDirectory || record.Name == ".git")
-                .ToArray(),
+            BrokerScanProfile.DirectoryIndex => FilterDirectoryIndex(records, keepFileNames),
             _ => throw new InvalidDataException($"Unknown broker scan profile: {profile}"),
         };
+
+    static ScanRecord[] FilterDirectoryIndex(ScanRecord[] records, IReadOnlyCollection<string> keepFileNames)
+    {
+        var keepSet = new HashSet<string>(keepFileNames, StringComparer.OrdinalIgnoreCase);
+        return records.Where(record => record.IsDirectory || keepSet.Contains(record.Name)).ToArray();
+    }
 
     static async Task WriteFrameAsync(Stream stream, SemaphoreSlim writeLock,
         Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken)
