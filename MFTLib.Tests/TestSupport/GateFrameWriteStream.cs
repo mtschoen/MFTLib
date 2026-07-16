@@ -10,13 +10,19 @@ public sealed class GateFrameWriteStream : Stream
 {
     readonly Stream _inner;
     readonly byte _gatedKind;
+    readonly int _gatedOccurrence;
+    int _occurrenceCount;
     readonly TaskCompletionSource _gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public GateFrameWriteStream(Stream inner, BrokerFrameKind gatedKind)
+    // occurrence selects which send of gatedKind to gate (1-based); a frame kind sent
+    // more than once (e.g. ArmAndScan on both the initial scan and a rescan) can gate
+    // just the later send while earlier ones pass straight through.
+    public GateFrameWriteStream(Stream inner, BrokerFrameKind gatedKind, int occurrence = 1)
     {
         _inner = inner;
         _gatedKind = (byte)gatedKind;
+        _gatedOccurrence = occurrence;
     }
 
     // Completes once the gated frame's write call has started (and is blocked).
@@ -34,7 +40,8 @@ public sealed class GateFrameWriteStream : Stream
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        if (buffer.Length >= 5 && buffer.Span[4] == _gatedKind)
+        if (buffer.Length >= 5 && buffer.Span[4] == _gatedKind
+            && Interlocked.Increment(ref _occurrenceCount) == _gatedOccurrence)
         {
             _entered.TrySetResult();
             await _gate.Task.ConfigureAwait(false);

@@ -21,9 +21,13 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
 
     readonly JournalBrokerClient _client;
     readonly object _stateLock = new();
-    readonly IReadOnlyList<string> _drives;
-    readonly BrokerScanProfile _profile;
-    readonly IReadOnlyCollection<string>? _keepFileNames;
+
+    // Drives/profile/keepFileNames the session was started or last rescanned with;
+    // guarded by _stateLock like the rest of the mutable state below. RescanAsync
+    // overloads that omit an argument read these to repeat the prior scan.
+    IReadOnlyList<string> _drives;
+    BrokerScanProfile _profile;
+    IReadOnlyCollection<string>? _keepFileNames;
 
     JournalBrokerSessionState _state;
     BrokerScanResult _latestScan;
@@ -34,6 +38,18 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     // Cached by StartWatchAsync (Task 3), consumed by WatchDriveAsync, cleared by
     // StopWatchAsync. Null whenever the session has never started a watch.
     JournalBatchSource? _batchSource;
+    // True while a RescanAsync or StartWatchAsync call has passed its Parked check
+    // but not yet finished. Both operations drive the pipe (ArmScanAndCatchUpAsync
+    // foreground-reads it; SendStartWatchAsync spawns the demux reader) while State
+    // is still Parked, so checking State alone lets two such calls both pass before
+    // either transitions State away from Parked - this flag closes that gap. Set
+    // and checked in the same lock section as the Parked check; cleared via
+    // try/finally so every exit path (success, terminal-state throw, client-call
+    // exception, cancellation) releases it. StartWatchAsync clears it in the same
+    // lock section that commits State = Watching, so State == Watching always
+    // implies this is false - StopWatchAsync (Watching-gated) therefore never races
+    // a Parked-gated operation and does not need to check it.
+    bool _operationInFlight;
 
     JournalBrokerScanSession(JournalBrokerClient client, IReadOnlyList<string> drives, BrokerScanProfile profile,
         IReadOnlyCollection<string>? keepFileNames)
@@ -105,10 +121,16 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     }
 
     /// <summary>Drives the session was started or last rescanned with.</summary>
-    internal IReadOnlyList<string> Drives => _drives;
+    internal IReadOnlyList<string> Drives
+    {
+        get { lock (_stateLock) return _drives; }
+    }
 
     /// <summary>Scan profile the session was started or last rescanned with.</summary>
-    internal BrokerScanProfile Profile => _profile;
+    internal BrokerScanProfile Profile
+    {
+        get { lock (_stateLock) return _profile; }
+    }
 
     /// <summary>
     /// Spawn one elevated broker (single UAC prompt via <paramref name="launchBroker"/>),
@@ -187,6 +209,83 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
         {
             reason = _faultReason;
             return _isFaulted;
+        }
+    }
+
+    /// <summary>
+    /// Rescan the same drives, profile, and <c>keepFileNames</c> the session was
+    /// started or last rescanned with, on the same elevated broker (no second UAC
+    /// prompt), replacing <see cref="LatestScan"/>. Legal only in
+    /// <see cref="JournalBrokerSessionState.Parked"/>; call <see cref="StopWatchAsync"/>
+    /// first if watching. Throws <see cref="InvalidOperationException"/> if the broker
+    /// dies during the rescan.
+    /// </summary>
+    public Task RescanAsync(CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<string> drives;
+        BrokerScanProfile profile;
+        IReadOnlyCollection<string>? keepFileNames;
+        lock (_stateLock)
+        {
+            drives = _drives;
+            profile = _profile;
+            keepFileNames = _keepFileNames;
+        }
+        return RescanAsync(drives, profile, keepFileNames, cancellationToken);
+    }
+
+    /// <summary>Rescan a different set of drives (same profile and keepFileNames) on the same broker.</summary>
+    public Task RescanAsync(IReadOnlyList<string> drives, CancellationToken cancellationToken = default)
+    {
+        BrokerScanProfile profile;
+        IReadOnlyCollection<string>? keepFileNames;
+        lock (_stateLock)
+        {
+            profile = _profile;
+            keepFileNames = _keepFileNames;
+        }
+        return RescanAsync(drives, profile, keepFileNames, cancellationToken);
+    }
+
+    /// <summary>Rescan a different set of drives with a different profile and keepFileNames on the same broker.</summary>
+    public async Task RescanAsync(
+        IReadOnlyList<string> drives,
+        BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames = null,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureOperable();
+        lock (_stateLock)
+        {
+            if (_state != JournalBrokerSessionState.Parked)
+                throw new InvalidOperationException("Live watch is active; call StopWatchAsync before rescanning");
+            if (_operationInFlight)
+                throw new InvalidOperationException("Another session operation is in progress");
+            _operationInFlight = true;
+        }
+
+        try
+        {
+            var result = await _client.ArmScanAndCatchUpAsync(drives, profile, keepFileNames, cancellationToken)
+                .ConfigureAwait(false);
+
+            // A Dispose or broker-death fault can land while the await above was in
+            // flight; recheck under the lock and only commit the new scan if the
+            // session is still operable, so a terminal state already recorded
+            // elsewhere is never overwritten by a stale or incomplete rescan result.
+            lock (_stateLock)
+            {
+                EnsureOperableLocked();
+                _latestScan = result;
+                _drives = drives;
+                _profile = profile;
+                _keepFileNames = keepFileNames;
+            }
+        }
+        finally
+        {
+            lock (_stateLock)
+                _operationInFlight = false;
         }
     }
 

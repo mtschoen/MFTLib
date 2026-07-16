@@ -9,6 +9,7 @@ namespace MFTLib.Tests;
 public class JournalBrokerScanSessionTests
 {
     static readonly string[] DriveC = { "C:\\" };
+    static readonly string[] DriveD = { "D:\\" };
     static readonly string[] DrivesCAndD = { "C:\\", "D:\\" };
 
     [TestMethod]
@@ -912,6 +913,433 @@ public class JournalBrokerScanSessionTests
         await session.DisposeAsync();
 
         Assert.AreEqual(JournalBrokerSessionState.Disposed, session.State);
+    }
+
+    [TestMethod]
+    public async Task StopThenRescanThenStartWatch_ReusesOneBroker()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var connectCount = 0;
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ =>
+            {
+                connectCount++;
+                return Task.FromResult(client);
+            },
+            DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        var receivedKinds = new List<BrokerFrameKind>();
+        var stopTask = Task.Run(async () =>
+        {
+            receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // StartWatch
+            receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // EndWatch
+            var ack = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteEndWatchAck(ack);
+            await serverSide.WriteAsync(ack.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+        await session.StartWatchAsync();
+        await session.StopWatchAsync();
+        await stopTask;
+
+        var rescanTask = RespondToArmAndScanAsync(serverSide, "C");
+        await session.RescanAsync();
+        await rescanTask;
+
+        var restartFrameTask = ReadOneFrameAsync(serverSide);
+        await session.StartWatchAsync();
+        var restartFrame = await restartFrameTask;
+
+        CollectionAssert.AreEqual(
+            new[] { BrokerFrameKind.StartWatch, BrokerFrameKind.EndWatch }, receivedKinds);
+        Assert.AreEqual(BrokerFrameKind.StartWatch, restartFrame.Kind);
+        Assert.AreEqual(1, connectCount);
+        Assert.AreEqual(JournalBrokerSessionState.Watching, session.State);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task Rescan_WhileWatching_Throws()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        var watchFrameTask = ReadOneFrameAsync(serverSide);
+        await session.StartWatchAsync();
+        await watchFrameTask;
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => session.RescanAsync());
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task Rescan_NoArgs_ReusesInitialDrivesAndProfile()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var keepFileNames = new[] { "note.txt" };
+
+        var scanTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 0L), Array.Empty<UsnJournalEntry>());
+            BrokerProtocol.WriteCursor(response, "D", new UsnJournalCursor(9UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-D", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(9UL, 0L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DrivesCAndD, BrokerScanProfile.DirectoryIndex, keepFileNames,
+            CancellationToken.None);
+        await scanTask;
+
+        var rescanFrameTask = ReadOneFrameAsync(serverSide);
+        var rescanTask = Task.Run(async () =>
+        {
+            var frame = await rescanFrameTask;
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 0L), Array.Empty<UsnJournalEntry>());
+            BrokerProtocol.WriteCursor(response, "D", new UsnJournalCursor(9UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-D", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(9UL, 0L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+            return frame;
+        });
+
+        await session.RescanAsync();
+        var rescanFrame = await rescanTask;
+
+        StringAssert.Contains(rescanFrame.DrivesSpec, $"C:0:0:mftlib-null-C:{(int)BrokerScanProfile.DirectoryIndex}");
+        StringAssert.Contains(rescanFrame.DrivesSpec, $"D:0:0:mftlib-null-D:{(int)BrokerScanProfile.DirectoryIndex}");
+        CollectionAssert.AreEqual(keepFileNames, rescanFrame.KeepFileNames.ToArray());
+        CollectionAssert.AreEqual(DrivesCAndD, session.Drives.ToArray());
+        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, session.Profile);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task Rescan_WithNewDrives_UpdatesStoredDrivesAndProfileForNextNoArgRescan()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        var firstRescanTask = RespondToArmAndScanAsync(serverSide, "D");
+        await session.RescanAsync(DriveD, BrokerScanProfile.DirectoryIndex);
+        await firstRescanTask;
+
+        var secondRescanFrameTask = ReadOneFrameAsync(serverSide);
+        var secondRescanTask = Task.Run(async () =>
+        {
+            var frame = await secondRescanFrameTask;
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "D", new UsnJournalCursor(9UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-D", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(9UL, 0L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+            return frame;
+        });
+
+        await session.RescanAsync();
+        var secondRescanFrame = await secondRescanTask;
+
+        StringAssert.Contains(secondRescanFrame.DrivesSpec, $"D:0:0:mftlib-null-D:{(int)BrokerScanProfile.DirectoryIndex}");
+        CollectionAssert.AreEqual(DriveD, session.Drives.ToArray());
+        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, session.Profile);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task Rescan_WithDrivesOnly_KeepsStoredProfileAndKeepFileNames()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var keepFileNames = new[] { "note.txt" };
+
+        var scanTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 0L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.DirectoryIndex, keepFileNames,
+            CancellationToken.None);
+        await scanTask;
+
+        var rescanFrameTask = ReadOneFrameAsync(serverSide);
+        var rescanTask = Task.Run(async () =>
+        {
+            var frame = await rescanFrameTask;
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "D", new UsnJournalCursor(9UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-D", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(9UL, 0L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+            return frame;
+        });
+
+        await session.RescanAsync(DriveD, CancellationToken.None);
+        var rescanFrame = await rescanTask;
+
+        StringAssert.Contains(rescanFrame.DrivesSpec, $"D:0:0:mftlib-null-D:{(int)BrokerScanProfile.DirectoryIndex}");
+        CollectionAssert.AreEqual(keepFileNames, rescanFrame.KeepFileNames.ToArray());
+        CollectionAssert.AreEqual(DriveD, session.Drives.ToArray());
+        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, session.Profile);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task Rescan_BrokerDiesDuringScan_Throws()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        var rescanTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide); // ArmAndScan request
+            serverSide.Dispose(); // EOF before any drive responds
+        });
+
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => session.RescanAsync());
+        await rescanTask;
+
+        StringAssert.Contains(exception.Message, "Pipe EOF");
+        Assert.IsTrue(session.IsFaulted);
+        Assert.AreEqual(JournalBrokerSessionState.Faulted, session.State);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task Rescan_Cancelled_Throws()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Assert.ThrowsExceptionAsync<OperationCanceledException> requires an exact
+        // type match, but the concrete exception the BCL throws for an already-
+        // cancelled token (SemaphoreSlim.WaitAsync) is the subtype TaskCanceledException.
+        try
+        {
+            await session.RescanAsync(cts.Token);
+            Assert.Fail("Expected an OperationCanceledException");
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected.
+        }
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task Rescan_FaultedDuringHandshake_ThrowsInvalidOperation_DoesNotOverwriteLatestScan()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var gate = new GateFrameWriteStream(clientSide, BrokerFrameKind.ArmAndScan, occurrence: 2);
+        var client = MakeMinimalFakeClient(gate);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+        var originalScan = session.LatestScan;
+
+        var rescanTask = session.RescanAsync();
+        await gate.Entered; // the rescan's ArmAndScan write is now blocked mid-flight
+
+        RaiseBrokerDied(client, "broker crashed mid-rescan");
+        Assert.AreEqual(JournalBrokerSessionState.Faulted, session.State);
+
+        serverSide.Dispose(); // let the rescan's read loop observe EOF once unblocked
+        gate.Release();
+
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => rescanTask);
+        Assert.AreEqual("broker crashed mid-rescan", exception.Message);
+        Assert.AreSame(originalScan, session.LatestScan);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task Rescan_DisposedDuringHandshake_ThrowsObjectDisposed_DoesNotOverwriteLatestScan()
+    {
+        // Unlike StartWatch/StopWatch (a write, then a separately-owned background
+        // reader), ArmScanAndCatchUpAsync reads synchronously after its own write, so
+        // a real concurrent DisposeAsync here would race its own pipe teardown against
+        // this call's foreground read non-deterministically. Force the Disposed state
+        // directly (same reflection approach as WatchDrive_BatchSourceInvariantBroken)
+        // to exercise the lock-recheck invariant without a flaky transport race.
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var gate = new GateFrameWriteStream(clientSide, BrokerFrameKind.ArmAndScan, occurrence: 2);
+        var client = MakeMinimalFakeClient(gate);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+        var originalScan = session.LatestScan;
+
+        var rescanTask = session.RescanAsync();
+        await gate.Entered; // the rescan's ArmAndScan write is now blocked mid-flight
+
+        var rescanBrokerTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var stateField = typeof(JournalBrokerScanSession).GetField("_state", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        stateField.SetValue(session, JournalBrokerSessionState.Disposed);
+
+        gate.Release();
+        await rescanBrokerTask;
+
+        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => rescanTask);
+        Assert.AreSame(originalScan, session.LatestScan);
+        Assert.AreEqual(JournalBrokerSessionState.Disposed, session.State);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task StartWatch_WhileRescanInFlight_ThrowsWithoutTouchingPipe()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var gate = new GateFrameWriteStream(clientSide, BrokerFrameKind.ArmAndScan, occurrence: 2);
+        var client = MakeMinimalFakeClient(gate);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        var rescanTask = session.RescanAsync();
+        await gate.Entered; // rescan's ArmAndScan write is blocked mid-flight; State is still Parked
+
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => session.StartWatchAsync());
+        StringAssert.Contains(exception.Message, "Another session operation is in progress");
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+
+        var rescanBrokerTask = RespondToArmAndScanAsync(serverSide, "C");
+        gate.Release();
+        await rescanBrokerTask;
+        await rescanTask;
+
+        // Flag cleared once the rescan finished: StartWatchAsync now succeeds, and
+        // the frame it sends is the first (and only) StartWatch frame on the wire -
+        // proof the blocked attempt above never touched the pipe.
+        var watchFrameTask = ReadOneFrameAsync(serverSide);
+        await session.StartWatchAsync();
+        var watchFrame = await watchFrameTask;
+        Assert.AreEqual(BrokerFrameKind.StartWatch, watchFrame.Kind);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task Rescan_WhileStartWatchInFlight_ThrowsWithoutTouchingPipe()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var gate = new GateFrameWriteStream(clientSide, BrokerFrameKind.StartWatch);
+        var client = MakeMinimalFakeClient(gate);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        var startWatchTask = session.StartWatchAsync();
+        await gate.Entered; // StartWatch write is blocked mid-flight; State is still Parked
+
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => session.RescanAsync());
+        StringAssert.Contains(exception.Message, "Another session operation is in progress");
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+
+        var watchFrameTask = ReadOneFrameAsync(serverSide);
+        gate.Release();
+        var watchFrame = await watchFrameTask;
+        await startWatchTask;
+
+        Assert.AreEqual(BrokerFrameKind.StartWatch, watchFrame.Kind);
+        Assert.AreEqual(JournalBrokerSessionState.Watching, session.State);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task Rescan_ConcurrentDoubleCall_ExactlyOneProceeds()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var gate = new GateFrameWriteStream(clientSide, BrokerFrameKind.ArmAndScan, occurrence: 2);
+        var client = MakeMinimalFakeClient(gate);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        var firstRescanTask = session.RescanAsync();
+        await gate.Entered; // first rescan's ArmAndScan write is blocked mid-flight
+
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => session.RescanAsync());
+        StringAssert.Contains(exception.Message, "Another session operation is in progress");
+
+        var firstRescanBrokerTask = RespondToArmAndScanAsync(serverSide, "C");
+        gate.Release();
+        await firstRescanBrokerTask;
+        await firstRescanTask;
+
+        // Flag cleared once the first rescan finished: a subsequent rescan succeeds.
+        var secondRescanBrokerTask = RespondToArmAndScanAsync(serverSide, "C");
+        await session.RescanAsync();
+        await secondRescanBrokerTask;
+
+        await session.DisposeAsync();
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

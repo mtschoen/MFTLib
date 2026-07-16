@@ -20,24 +20,42 @@ public sealed partial class JournalBrokerScanSession
         {
             if (_state != JournalBrokerSessionState.Parked)
                 throw new InvalidOperationException("Live watch has already been started for this session");
+            if (_operationInFlight)
+                throw new InvalidOperationException("Another session operation is in progress");
+            _operationInFlight = true;
         }
 
-        var advancedCursors = LatestScan.AdvancedCursors;
-        if (advancedCursors.Count == 0)
-            throw new InvalidOperationException("No drive armed successfully; nothing to watch");
-
-        await _client.SendStartWatchAsync(advancedCursors, cancellationToken).ConfigureAwait(false);
-        var batchSource = _client.CreateBatchSource();
-
-        // A Dispose or broker-death fault can land while the await above was in
-        // flight; recheck under the lock and only commit Watching if the session is
-        // still operable, so a terminal state already recorded elsewhere is never
-        // resurrected back to a live one.
-        lock (_stateLock)
+        // Cleared inside the commit lock below on the success path (together with
+        // State = Watching, so State == Watching never overlaps a still-true flag);
+        // the finally only needs to clear it itself for a throw before that point.
+        var committed = false;
+        try
         {
-            EnsureOperableLocked();
-            _batchSource = batchSource;
-            _state = JournalBrokerSessionState.Watching;
+            var advancedCursors = LatestScan.AdvancedCursors;
+            if (advancedCursors.Count == 0)
+                throw new InvalidOperationException("No drive armed successfully; nothing to watch");
+
+            await _client.SendStartWatchAsync(advancedCursors, cancellationToken).ConfigureAwait(false);
+            var batchSource = _client.CreateBatchSource();
+
+            // A Dispose or broker-death fault can land while the await above was in
+            // flight; recheck under the lock and only commit Watching if the session is
+            // still operable, so a terminal state already recorded elsewhere is never
+            // resurrected back to a live one.
+            lock (_stateLock)
+            {
+                EnsureOperableLocked();
+                _batchSource = batchSource;
+                _state = JournalBrokerSessionState.Watching;
+                _operationInFlight = false;
+                committed = true;
+            }
+        }
+        finally
+        {
+            if (!committed)
+                lock (_stateLock)
+                    _operationInFlight = false;
         }
     }
 
@@ -94,6 +112,10 @@ public sealed partial class JournalBrokerScanSession
         if (!isWatching)
             return;
 
+        // No _operationInFlight check needed here: StartWatchAsync only commits
+        // State = Watching in the same lock section that clears the flag (see its
+        // declaration), so State == Watching already implies no Rescan/StartWatch
+        // call is in flight - this call cannot be racing one of them for the pipe.
         await _client.StopLiveWatchAsync().ConfigureAwait(false);
 
         // See StartWatchAsync: recheck under the lock so a Dispose or fault that

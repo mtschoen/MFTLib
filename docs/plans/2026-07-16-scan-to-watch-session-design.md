@@ -287,6 +287,18 @@ The state field is guarded by a single lock so transitions and the fault latch c
 race; this replaces the ad-hoc mutable fields scattered across the client's three partials
 (investigation Risk notes) with one central owner.
 
+`RescanAsync` and `StartWatchAsync` both drive the pipe while `State` is still `Parked`
+(`ArmScanAndCatchUpAsync` foreground-reads it; `SendStartWatchAsync` spawns the demux
+reader), so checking `State == Parked` alone would let two such calls both pass before
+either transitions `State` away from `Parked`, racing on the single-pipe-reader invariant
+(2.5, plan Q7/Q8). An internal `_operationInFlight` flag, set and checked in the same
+lock section as the `Parked` check and cleared via `try`/`finally`, closes this: a second
+concurrent `RescanAsync`/`StartWatchAsync` throws `InvalidOperationException("Another
+session operation is in progress")` instead of touching the pipe. `StartWatchAsync`
+clears the flag in the same lock section that commits `State = Watching`, so
+`State == Watching` always implies the flag is `false` - `StopWatchAsync` (gated on
+`Watching`) can therefore never race a `Parked`-gated operation and does not check it.
+
 ### 2.3 Ownership and disposal semantics
 
 - The session owns exactly one `JournalBrokerClient`, held in a `private readonly` field
