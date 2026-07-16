@@ -10,7 +10,7 @@ namespace MFTLib;
 /// of the underlying client; the client is never exposed, which prevents the discovery
 /// layer and the watch layer from both disposing it.
 /// </summary>
-public sealed class JournalBrokerScanSession : IAsyncDisposable
+public sealed partial class JournalBrokerScanSession : IAsyncDisposable
 {
     static readonly BrokerScanResult EmptyScanResult = new(
         records: Array.Empty<ScanRecord>(),
@@ -31,6 +31,9 @@ public sealed class JournalBrokerScanSession : IAsyncDisposable
     string? _faultReason;
     Action<string>? _faultedHandlers;
     int _disposed;
+    // Cached by StartWatchAsync (Task 3), consumed by WatchDriveAsync, cleared by
+    // StopWatchAsync. Null whenever the session has never started a watch.
+    JournalBatchSource? _batchSource;
 
     JournalBrokerScanSession(JournalBrokerClient client, IReadOnlyList<string> drives, BrokerScanProfile profile,
         IReadOnlyCollection<string>? keepFileNames)
@@ -210,11 +213,20 @@ public sealed class JournalBrokerScanSession : IAsyncDisposable
     internal void EnsureOperable()
     {
         lock (_stateLock)
-        {
-            ObjectDisposedException.ThrowIf(_state == JournalBrokerSessionState.Disposed, this);
-            if (_state == JournalBrokerSessionState.Faulted)
-                throw new InvalidOperationException(_faultReason);
-        }
+            EnsureOperableLocked();
+    }
+
+    // Same check as EnsureOperable, for a caller that already holds _stateLock (lock
+    // re-entry on the same thread is safe but this avoids the confusing double-enter).
+    // Watch.cs uses this to recheck for a terminal state that raced ahead of it during
+    // an awaited client call, in the same critical section that would otherwise commit
+    // a live-state transition - so Disposed/Faulted is never resurrected back to
+    // Watching/Parked (mirrors OnBrokerDied never overwriting Disposed below).
+    void EnsureOperableLocked()
+    {
+        ObjectDisposedException.ThrowIf(_state == JournalBrokerSessionState.Disposed, this);
+        if (_state == JournalBrokerSessionState.Faulted)
+            throw new InvalidOperationException(_faultReason);
     }
 
     void OnBrokerDied(string reason)
