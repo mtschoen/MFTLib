@@ -72,6 +72,7 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     #   JournalBrokerClientTests.ArmScanAndCatchUpAsync_ReturnsRecords_ArmedCursor_AndCatchUpEntries (real named MMF)
     #   DefaultElevatedEntryRunnerTests.RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilShutdown_ExitsWithCode0 (real named pipe)
     #   JournalBrokerClientTests.SpawnAndConnectAsync_EndToEnd_UsesRealPipeAndRealMmfSeams (real named pipe + real named MMF)
+    #   JournalBrokerScanSessionTests.PublicStartAsync_InProcessBroker_EndToEnd (real named pipe + real named MMF)
     # Coverlet only writes output when the run is green, so failing tests must be filtered.
     FILTER='FullyQualifiedName!~MftResultTests'
     FILTER+='&FullyQualifiedName!~MftVolumeTests'
@@ -84,6 +85,7 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerClientTests.ArmScanAndCatchUpAsync_ReturnsRecords_ArmedCursor_AndCatchUpEntries'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.DefaultElevatedEntryRunnerTests.RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilShutdown_ExitsWithCode0'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerClientTests.SpawnAndConnectAsync_EndToEnd_UsesRealPipeAndRealMmfSeams'
+    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerScanSessionTests.PublicStartAsync_InProcessBroker_EndToEnd'
 
     echo
     echo "==> [managed] dotnet test with coverlet"
