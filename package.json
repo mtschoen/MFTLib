@@ -4,6 +4,6 @@
   "private": true,
   "description": "CI-only tooling for MFTLib (not shipped). Pins the C#-capable aislop quality gate to a commit of the github.com/mtschoen/aislop fork (git dependency, built on install); the @schoen/aislop registry publish route is retired. See .gitea/workflows/aislop.yml.",
   "devDependencies": {
-    "aislop": "git+ssh://git@github.com/mtschoen/aislop.git#58baba50e6f61a8808bbd2b897bd134e841904ee"
+    "aislop": "git+ssh://git@github.com/mtschoen/aislop.git#6736600f4da37ce21f29362e42b07cb5ee892c96"
   }
 }
