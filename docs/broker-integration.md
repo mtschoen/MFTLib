@@ -201,6 +201,28 @@ Once faulted, every session operation except queries and `DisposeAsync` throws
 `InvalidOperationException` carrying `FaultReason`. Recovery is `DisposeAsync` followed by
 a fresh `StartAsync`.
 
+Broker death surfaces on two channels at once: the `Faulted` event (with the
+`IsFaulted`/`FaultReason` latch) fires, and every in-flight `WatchDriveAsync` enumerable
+throws `InvalidOperationException`. These are redundant by design - either alone is enough
+to detect the death - but a consumer running one watch task per drive under a
+`Task.WhenAll` will still see that `WhenAll` throw, so handle both surfaces in one place
+rather than letting the per-drive exception escape as an unobserved fault. Catch a
+broker-death `InvalidOperationException` (and the normal `OperationCanceledException` on a
+cancelled shutdown) around the aggregate await and route both through the same teardown
+the `Faulted` handler runs:
+
+```csharp
+try
+{
+    await Task.WhenAll(watchTasks);
+}
+catch (Exception exception) when (exception is OperationCanceledException || session.IsFaulted)
+{
+    // Broker died (or the watch was cancelled): the Faulted latch already holds the
+    // reason. Stop consuming, mark watches inactive, and reconnect if the user chooses.
+}
+```
+
 ## Low-level primitive: JournalBrokerClient
 
 `JournalBrokerScanSession` is built on `JournalBrokerClient` and is the recommended entry

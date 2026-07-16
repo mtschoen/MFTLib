@@ -1590,7 +1590,12 @@ public class JournalBrokerScanSessionTests
     public async Task StartFromCursors_RescanAfterWarmStart_PopulatesLatestScanAndRewatchesFromScan()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
+        var scanRecord = new ScanRecord(RecordNumber: 5, ParentRecordNumber: 5, Size: 0,
+            LastWriteTicks: 0, Attributes: 0x10, IsDirectory: true, Name: "C:", Path: "C:\\");
+        var client = new JournalBrokerClient(
+            pipe: clientSide,
+            mmfReader: new FakeMmfReader(new[] { scanRecord }),
+            createDriveMmf: (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
         var keepFileNames = new[] { "note.txt" };
 
         var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 200L) };
@@ -1609,7 +1614,7 @@ public class JournalBrokerScanSessionTests
             var frame = await rescanFrameTask;
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(9UL, 350L));
-            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 0, 0);
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 1, 1);
             BrokerProtocol.WriteJournalBatch(response, "C", advancedCursor, Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
@@ -1622,7 +1627,8 @@ public class JournalBrokerScanSessionTests
         StringAssert.Contains(rescanFrame.DrivesSpec, $"C:0:0:mftlib-null-C:{(int)BrokerScanProfile.DirectoryIndex}");
         CollectionAssert.AreEqual(keepFileNames, rescanFrame.KeepFileNames.ToArray());
         Assert.IsNotNull(session.LatestScan);
-        Assert.AreEqual(advancedCursor, session.LatestScan!.AdvancedCursors["C"]);
+        Assert.AreEqual(1, session.LatestScan!.Records.Count);
+        Assert.AreEqual(advancedCursor, session.LatestScan.AdvancedCursors["C"]);
 
         // The subsequent watch resumes from the rescan's advanced cursor, not the
         // original warm-start cursor.
