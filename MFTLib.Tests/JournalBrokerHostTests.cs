@@ -104,6 +104,30 @@ public class JournalBrokerHostTests
     }
 
     [TestMethod]
+    public async Task ServeOnce_UnknownProfileToken_ThrowsInvalidDataException()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var host = MakeFakeHost(records: new[] { SampleRecord() }, catchUp: Array.Empty<UsnJournalEntry>());
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-scan-C:99");
+        await clientSide.WriteAsync(request.WrittenMemory);
+        await clientSide.FlushAsync();
+
+        var exception = await Assert.ThrowsExceptionAsync<InvalidDataException>(
+            () => host.ServeAsync(serverSide, new RecordingMmfWriter(), oneShot: true, CancellationToken.None));
+        StringAssert.Contains(exception.Message, "99");
+    }
+
+    [TestMethod]
+    public void ApplyScanProfile_UnknownProfile_ThrowsInvalidDataException()
+    {
+        var exception = Assert.ThrowsException<InvalidDataException>(
+            () => JournalBrokerHost.ApplyScanProfile(Array.Empty<ScanRecord>(), (BrokerScanProfile)99));
+        StringAssert.Contains(exception.Message, "99");
+    }
+
+    [TestMethod]
     public async Task ServeOnce_DriveFailure_EmitsErrorFrameAndContinues()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();

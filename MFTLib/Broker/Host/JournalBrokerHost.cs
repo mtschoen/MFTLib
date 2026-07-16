@@ -178,7 +178,10 @@ public sealed partial class JournalBrokerHost
         return profile;
     }
 
-    static ScanRecord[] ApplyScanProfile(ScanRecord[] records, BrokerScanProfile profile) =>
+    // internal: ParseScanProfile already rejects undefined values before a request
+    // reaches here, so the default arm is unreachable from the wire path; it exists
+    // as an exhaustiveness guard for future profile values and is tested directly.
+    internal static ScanRecord[] ApplyScanProfile(ScanRecord[] records, BrokerScanProfile profile) =>
         profile switch
         {
             BrokerScanProfile.Full => records,
