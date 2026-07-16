@@ -22,6 +22,8 @@
   - Opt-in `BrokerDiagnostics` frame/event tracing via `MFTLIB_BROKER_DIAG=1` or `BrokerDiagnostics.Enable(role)`, writing to `BrokerDiagnostics.LogDirectory` (consumers point this at their own app-data directory)
   - Live watches can be stopped and restarted on the same client for rescans without launching another elevated process
   - Duplicate live-watch starts are rejected client-side and ignored safely by the host, preventing multiple readers or writers from desynchronizing the shared pipe
+  - `JournalBrokerScanSession` — an owned scan-to-watch session (`IAsyncDisposable`) that wraps one connected `JournalBrokerClient` and its latest `BrokerScanResult` so discovery and live watching share one elevated process and one pipe: `StartAsync` spawns, arms, and scans, parking on `LatestScan`; `StartWatchAsync`/`WatchDriveAsync`/`StopWatchAsync` drive live watching sourced from the scan's own advanced cursors (no consumer-facing cursor parameter, so a volume/cursor mismatch is not representable); `RescanAsync` overloads reuse or replace the stored drives/profile/`keepFileNames` on the same broker; `IsFaulted`/`FaultReason`/`Faulted` latch broker death exactly once and fire immediately for a late subscriber; `DisposeAsync` is idempotent and disposes the owned client exactly once. `JournalBrokerClient` remains available unchanged as the low-level primitive for already-elevated callers
+  - Fixed a live-watch bug where a journal-invalidation `Error` frame for one drive was silently dropped instead of faulting that drive's batch source; the affected drive's `IAsyncEnumerable` now throws `InvalidOperationException` while other drives keep streaming
 
 ### Improvements
 
@@ -38,6 +40,7 @@
 - 100% native coverage achieved without admin via synthetic seams
 - Added USN journal test suites (synthetic, live, and admin-elevated)
 - Added VolumeBroker test suites (protocol/payload round-trips, host and client pipe-loop behavior, elevated-entry dispatch, broker-death detection), keeping the repo at 100% managed line/branch/method coverage
+- Added `JournalBrokerScanSession` test suite (deterministic, non-admin, fake client over an in-memory duplex stream plus one in-process end-to-end broker path) covering discovery handoff, single-disposer ownership, fault latching and late-subscriber delivery, the watch/rescan/restart state machine, and cancellation at every stage, keeping the repo at 100% managed line/branch/method coverage
 
 ## 0.2.0
 
