@@ -29,6 +29,7 @@ public readonly record struct BrokerFrame
     public long ByteLength { get; private init; }
     public string? Message { get; private init; }
     public string? DrivesSpec { get; private init; }
+    public IReadOnlyList<string> KeepFileNames { get; private init; }
 
     // Cursor/JournalBatch/Error frames always carry a real (possibly empty, never
     // null) drive string: BrokerProtocol.ReadFrame decodes it via a length-prefixed
@@ -48,11 +49,12 @@ public readonly record struct BrokerFrame
     // The Cursor-kind factory is named ArmedCursor to avoid colliding with the
     // Cursor property.
 
-    public static BrokerFrame ArmAndScan(string drivesSpec) => new()
+    public static BrokerFrame ArmAndScan(string drivesSpec, IReadOnlyList<string>? keepFileNames = null) => new()
     {
         Kind = BrokerFrameKind.ArmAndScan,
         Entries = Array.Empty<UsnJournalEntry>(),
         DrivesSpec = drivesSpec,
+        KeepFileNames = keepFileNames ?? Array.Empty<string>(),
     };
 
     public static BrokerFrame StartWatch(string drivesSpec) => new()
@@ -60,30 +62,35 @@ public readonly record struct BrokerFrame
         Kind = BrokerFrameKind.StartWatch,
         Entries = Array.Empty<UsnJournalEntry>(),
         DrivesSpec = drivesSpec,
+        KeepFileNames = Array.Empty<string>(),
     };
 
     public static BrokerFrame Shutdown() => new()
     {
         Kind = BrokerFrameKind.Shutdown,
         Entries = Array.Empty<UsnJournalEntry>(),
+        KeepFileNames = Array.Empty<string>(),
     };
 
     public static BrokerFrame Heartbeat() => new()
     {
         Kind = BrokerFrameKind.Heartbeat,
         Entries = Array.Empty<UsnJournalEntry>(),
+        KeepFileNames = Array.Empty<string>(),
     };
 
     public static BrokerFrame EndWatch() => new()
     {
         Kind = BrokerFrameKind.EndWatch,
         Entries = Array.Empty<UsnJournalEntry>(),
+        KeepFileNames = Array.Empty<string>(),
     };
 
     public static BrokerFrame EndWatchAck() => new()
     {
         Kind = BrokerFrameKind.EndWatchAck,
         Entries = Array.Empty<UsnJournalEntry>(),
+        KeepFileNames = Array.Empty<string>(),
     };
 
     public static BrokerFrame ScanReady(string mmfName, long recordCount, long byteLength) => new()
@@ -93,6 +100,7 @@ public readonly record struct BrokerFrame
         MmfName = mmfName,
         RecordCount = recordCount,
         ByteLength = byteLength,
+        KeepFileNames = Array.Empty<string>(),
     };
 
     public static BrokerFrame ArmedCursor(string drive, UsnJournalCursor cursor) => new()
@@ -101,6 +109,7 @@ public readonly record struct BrokerFrame
         Entries = Array.Empty<UsnJournalEntry>(),
         Drive = drive,
         Cursor = cursor,
+        KeepFileNames = Array.Empty<string>(),
     };
 
     public static BrokerFrame JournalBatch(string drive, UsnJournalCursor cursor, UsnJournalEntry[] entries) => new()
@@ -109,6 +118,7 @@ public readonly record struct BrokerFrame
         Entries = entries,
         Drive = drive,
         Cursor = cursor,
+        KeepFileNames = Array.Empty<string>(),
     };
 
     public static BrokerFrame Error(string drive, string message) => new()
@@ -116,6 +126,7 @@ public readonly record struct BrokerFrame
         Kind = BrokerFrameKind.Error,
         Entries = Array.Empty<UsnJournalEntry>(),
         Drive = drive,
+        KeepFileNames = Array.Empty<string>(),
         Message = message,
     };
 }
@@ -170,8 +181,31 @@ public static class BrokerProtocol
 
     // Control frame write methods
 
-    public static void WriteArmAndScan(IBufferWriter<byte> writer, string drivesSpec)
-        => WriteFrameWithString(writer, BrokerFrameKind.ArmAndScan, drivesSpec);
+    public static void WriteArmAndScan(IBufferWriter<byte> writer, string drivesSpec,
+        IReadOnlyCollection<string>? keepFileNames = null)
+    {
+        var specBytes = Encoding.Unicode.GetBytes(drivesSpec);
+        var nameBytes = (keepFileNames ?? Array.Empty<string>())
+            .Select(Encoding.Unicode.GetBytes).ToArray();
+        var namesLength = nameBytes.Sum(bytes => 4 + bytes.Length);
+
+        // payload: [specLen int32][specBytes][nameCount int32][per name: nameLen int32][nameBytes]
+        var payloadLength = 4 + specBytes.Length + 4 + namesLength;
+        var totalLength = 1 + payloadLength;
+        var span = writer.GetSpan(4 + totalLength);
+        var offset = 0;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength); offset += 4;
+        span[offset] = (byte)BrokerFrameKind.ArmAndScan; offset += 1;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], specBytes.Length); offset += 4;
+        specBytes.CopyTo(span[offset..]); offset += specBytes.Length;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], nameBytes.Length); offset += 4;
+        foreach (var bytes in nameBytes)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(span[offset..], bytes.Length); offset += 4;
+            bytes.CopyTo(span[offset..]); offset += bytes.Length;
+        }
+        writer.Advance(offset);
+    }
 
     public static void WriteStartWatch(IBufferWriter<byte> writer, string drivesSpec)
         => WriteFrameWithString(writer, BrokerFrameKind.StartWatch, drivesSpec);
@@ -274,7 +308,7 @@ public static class BrokerProtocol
 
         return kind switch
         {
-            BrokerFrameKind.ArmAndScan => BrokerFrame.ArmAndScan(ReadString(payload, 0, out _)),
+            BrokerFrameKind.ArmAndScan => ReadArmAndScanFrame(payload),
             BrokerFrameKind.StartWatch => BrokerFrame.StartWatch(ReadString(payload, 0, out _)),
             BrokerFrameKind.Shutdown => BrokerFrame.Shutdown(),
             BrokerFrameKind.Heartbeat => BrokerFrame.Heartbeat(),
@@ -320,6 +354,16 @@ public static class BrokerProtocol
         var value = Encoding.Unicode.GetString(span.Slice(offset, length)); offset += length;
         end = offset;
         return value;
+    }
+
+    static BrokerFrame ReadArmAndScanFrame(ReadOnlySpan<byte> payload)
+    {
+        var drivesSpec = ReadString(payload, 0, out var offset);
+        var nameCount = BinaryPrimitives.ReadInt32LittleEndian(payload[offset..]); offset += 4;
+        var keepFileNames = new string[nameCount];
+        for (var i = 0; i < nameCount; i++)
+            keepFileNames[i] = ReadString(payload, offset, out offset);
+        return BrokerFrame.ArmAndScan(drivesSpec, keepFileNames);
     }
 
     static BrokerFrame ReadScanReadyFrame(ReadOnlySpan<byte> payload)

@@ -101,13 +101,14 @@ public sealed partial class JournalBrokerHost
     }
 
     async Task HandleArmAndScanAsync(Stream stream, IMmfWriter mmfWriter, string drivesSpec,
-        SemaphoreSlim writeLock, CancellationToken cancellationToken)
+        IReadOnlyList<string> keepFileNames, SemaphoreSlim writeLock, CancellationToken cancellationToken)
     {
         foreach (var request in ParseScanSpec(drivesSpec))
         {
             try
             {
                 var (cursor, records) = ArmAndScan(request.Letter);
+                records = ApplyScanProfile(records, request.Profile, keepFileNames);
                 await WriteFrameAsync(stream, writeLock,
                     writer => BrokerProtocol.WriteCursor(writer, request.Letter, cursor), cancellationToken)
                     .ConfigureAwait(false);
@@ -138,8 +139,10 @@ public sealed partial class JournalBrokerHost
     }
 
     // A per-drive arm-and-scan request: bare drive letter, the resume cursor
-    // (unused for arm-and-scan, which queries fresh), and the caller-created map name.
-    readonly record struct ScanDriveRequest(string Letter, ulong JournalId, long NextUsn, string MmfName);
+    // (unused for arm-and-scan, which queries fresh), the caller-created map name,
+    // and an optional cold-scan record profile.
+    readonly record struct ScanDriveRequest(
+        string Letter, ulong JournalId, long NextUsn, string MmfName, BrokerScanProfile Profile);
 
     // Holds the live watch generation's CTS and per-drive tasks. A StartWatch creates
     // one, an EndWatch (or session end) tears it down; see ServeAsync.
@@ -160,8 +163,41 @@ public sealed partial class JournalBrokerHost
                 parts[0],
                 ulong.Parse(parts[1], CultureInfo.InvariantCulture),
                 long.Parse(parts[2], CultureInfo.InvariantCulture),
-                parts.Length > 3 ? parts[3] : string.Empty);
+                parts.Length > 3 ? parts[3] : string.Empty,
+                parts.Length > 4
+                    ? ParseScanProfile(parts[4])
+                    : BrokerScanProfile.Full);
         }
+    }
+
+    static BrokerScanProfile ParseScanProfile(string value)
+    {
+        var profile = (BrokerScanProfile)int.Parse(value, CultureInfo.InvariantCulture);
+        if (!Enum.IsDefined(profile))
+            throw new InvalidDataException($"Unknown broker scan profile: {value}");
+        return profile;
+    }
+
+    // internal: ParseScanProfile already rejects undefined values before a request
+    // reaches here, so the default arm is unreachable from the wire path; it exists
+    // as an exhaustiveness guard for future profile values and is tested directly.
+    // keepFileNames is ignored under Full (the complete inventory already includes
+    // every file); under DirectoryIndex it names non-directory files to keep
+    // alongside every directory, matched case-insensitively against NTFS's default
+    // case-insensitive name comparison.
+    internal static ScanRecord[] ApplyScanProfile(
+        ScanRecord[] records, BrokerScanProfile profile, IReadOnlyCollection<string> keepFileNames) =>
+        profile switch
+        {
+            BrokerScanProfile.Full => records,
+            BrokerScanProfile.DirectoryIndex => FilterDirectoryIndex(records, keepFileNames),
+            _ => throw new InvalidDataException($"Unknown broker scan profile: {profile}"),
+        };
+
+    static ScanRecord[] FilterDirectoryIndex(ScanRecord[] records, IReadOnlyCollection<string> keepFileNames)
+    {
+        var keepSet = new HashSet<string>(keepFileNames, StringComparer.OrdinalIgnoreCase);
+        return records.Where(record => record.IsDirectory || keepSet.Contains(record.Name)).ToArray();
     }
 
     static async Task WriteFrameAsync(Stream stream, SemaphoreSlim writeLock,

@@ -34,7 +34,8 @@ public sealed partial class JournalBrokerClient
     /// the live-watch demux: a single background reader takes ownership of the pipe and
     /// routes each incoming <see cref="BrokerFrameKind.JournalBatch"/> frame into its
     /// drive's channel. Call this exactly once, after
-    /// <see cref="ArmScanAndCatchUpAsync"/> has drained the cold-scan frames; the
+    /// <see cref="ArmScanAndCatchUpAsync(IReadOnlyList{string}, BrokerScanProfile, CancellationToken)"/>
+    /// has drained the cold-scan frames; the
     /// per-drive delegates from <see cref="CreateBatchSource"/> then read those channels.
     /// </summary>
     public async Task SendStartWatchAsync(

@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -6,6 +7,10 @@ namespace MFTLib.Tests;
 [TestClass]
 public class BrokerProtocolTests
 {
+    static readonly string[] KeepFileNamesGitAndNonAscii = { ".git", "repört" };
+    static readonly string[] KeepFileNamesGit = { ".git" };
+    static readonly string[] KeepFileNamesSingleLetter = { "a" };
+
     [TestMethod]
     public void JournalEntry_RoundTrips_AllFields()
     {
@@ -85,6 +90,20 @@ public class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
         Assert.AreEqual("C:0:0,D:7:42", frame.DrivesSpec);
+        Assert.AreEqual(0, frame.KeepFileNames.Count);
+        Assert.AreEqual(buffer.WrittenCount, consumed);
+    }
+
+    [TestMethod]
+    public void ArmAndScanFrame_RoundTrips_KeepFileNames()
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(buffer, "C:0:0", KeepFileNamesGitAndNonAscii); // non-ASCII to prove UTF-16
+        var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
+
+        Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
+        Assert.AreEqual("C:0:0", frame.DrivesSpec);
+        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, (ICollection)frame.KeepFileNames);
         Assert.AreEqual(buffer.WrittenCount, consumed);
     }
 
@@ -233,10 +252,28 @@ public class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_StringFrames()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C"),
-            new byte[] { 0x07, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00, 0x00, 0x00, 0x43, 0x00 });
+        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C"), new byte[]
+        {
+            0x0B, 0x00, 0x00, 0x00,             // totalLength = 11
+            0x01,                               // kind = ArmAndScan
+            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drivesSpec "C"
+            0x00, 0x00, 0x00, 0x00,             // keepFileNames count = 0
+        });
         AssertWireBytes(w => BrokerProtocol.WriteStartWatch(w, "C"),
             new byte[] { 0x07, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00, 0x43, 0x00 });
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_ArmAndScanFrame_WithKeepFileNames()
+    {
+        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C", KeepFileNamesSingleLetter), new byte[]
+        {
+            0x11, 0x00, 0x00, 0x00,             // totalLength = 17
+            0x01,                               // kind = ArmAndScan
+            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drivesSpec "C"
+            0x01, 0x00, 0x00, 0x00,             // keepFileNames count = 1
+            0x02, 0x00, 0x00, 0x00, 0x61, 0x00, // keepFileNames[0] "a"
+        });
     }
 
     [TestMethod]
@@ -306,9 +343,18 @@ public class BrokerProtocolTests
         var frame = BrokerFrame.ArmAndScan("C:0:0,D:7:42");
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
         Assert.AreEqual("C:0:0,D:7:42", frame.DrivesSpec);
+        Assert.AreEqual(0, frame.KeepFileNames.Count);
         Assert.IsNotNull(frame.Entries);
         Assert.AreEqual(0, frame.Entries.Length);
         Assert.IsNull(frame.Drive);
+    }
+
+    [TestMethod]
+    public void Factory_ArmAndScan_PopulatesKeepFileNames()
+    {
+        var frame = BrokerFrame.ArmAndScan("C:0:0", KeepFileNamesGit);
+        Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
+        CollectionAssert.AreEqual(KeepFileNamesGit, (ICollection)frame.KeepFileNames);
     }
 
     [TestMethod]

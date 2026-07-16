@@ -13,6 +13,7 @@ public class JournalBrokerClientTests
 {
     static readonly string[] DriveC = { "C:\\" };
     static readonly string[] DriveD = { "D:\\" };
+    static readonly string[] KeepFileNamesGit = { ".git" };
 
     // ---------------------------------------------------------------------------
     // Happy-path: full ArmScanAndCatchUp round-trip
@@ -118,6 +119,63 @@ public class JournalBrokerClientTests
         Assert.IsTrue(result.Errors.ContainsKey("D"));
         Assert.AreEqual("journal wrapped", result.Errors["D"]);
         Assert.IsFalse(result.ArmedCursors.ContainsKey("D"));
+
+        await client.DisposeAsync();
+    }
+
+    // ---------------------------------------------------------------------------
+    // ArmScanAndCatchUpAsync(profile, keepFileNames): the wire frame carries both
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_ProfileOverload_WithoutKeepFileNames_SendsEmptyList()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+
+        var brokerTask = Task.Run(async () =>
+        {
+            var request = await ReadOneFrameAsync(serverSide);
+            Assert.AreEqual(BrokerFrameKind.ArmAndScan, request.Kind);
+            Assert.AreEqual(0, request.KeepFileNames.Count);
+
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteError(response, "D", "journal wrapped");
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var client = MakeMinimalFakeClient(clientSide);
+        var result = await client.ArmScanAndCatchUpAsync(DriveD, BrokerScanProfile.Full, CancellationToken.None);
+        await brokerTask;
+
+        Assert.IsTrue(result.Errors.ContainsKey("D"));
+
+        await client.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_WithKeepFileNames_SendsThemOnTheWire()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+
+        var brokerTask = Task.Run(async () =>
+        {
+            var request = await ReadOneFrameAsync(serverSide);
+            Assert.AreEqual(BrokerFrameKind.ArmAndScan, request.Kind);
+            CollectionAssert.Contains((System.Collections.ICollection)request.KeepFileNames, ".git");
+
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteError(response, "D", "journal wrapped");
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var client = MakeMinimalFakeClient(clientSide);
+        var result = await client.ArmScanAndCatchUpAsync(
+            DriveD, BrokerScanProfile.DirectoryIndex, keepFileNames: KeepFileNamesGit);
+        await brokerTask;
+
+        Assert.IsTrue(result.Errors.ContainsKey("D"));
 
         await client.DisposeAsync();
     }

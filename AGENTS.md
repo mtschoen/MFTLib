@@ -67,7 +67,7 @@ The native DLL must be built Debug|x64 (linked with `/PROFILE`) for instrumentat
 
 Gitea Actions workflow at `.gitea/workflows/test.yml` runs `windows` + `linux` jobs on every PR and on push to `main`. Both run their respective coverage scripts (`scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`). Branch protection on `main` requires both `(pull_request)` checks to pass before merge.
 
-For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .NET version mismatch, PS7 + dotnet test comma-splitting, etc.), read `~/local-ci/docs/project-ci-setup.md` before modifying the workflow.
+For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .NET version mismatch, PS7 + dotnet test comma-splitting, etc.), read `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md` before modifying the workflow. Runner-account environment needs (pwsh on PATH, `DOTNET_INSTALL_DIR`) are fixed at the runner service level - do not add per-workflow bootstrap steps for them.
 
 ## Architecture
 
@@ -128,7 +128,7 @@ deliberately does NOT use `actions/setup-node` (its 7zr extraction dies with
 exit code 2 on the host-mode act_runner). The build step also
 mirrors `run-coverage.ps1`'s 64-bit-amd64-MSBuild recipe (the checkout path is
 WOW64-virtualized away from 32-bit MSBuild). See the traps in
-`~/local-ci/docs/project-ci-setup.md`. For the gate to block merges, add
+`~/schoen-lab/packages/local_ci/docs/project-ci-setup.md`. For the gate to block merges, add
 `aislop / quality-gate (pull_request)` to the branch-protection required checks
 on `main`.
 
