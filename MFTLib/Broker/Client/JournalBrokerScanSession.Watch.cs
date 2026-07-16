@@ -6,16 +6,18 @@ namespace MFTLib;
 public sealed partial class JournalBrokerScanSession
 {
     /// <summary>
-    /// Begin live watching every successfully armed drive in <see cref="LatestScan"/>,
-    /// resuming from its advanced cursor. Legal only in
+    /// Begin live watching every drive in the session's watch cursor set - a scanned
+    /// session's successfully armed drives (from <see cref="LatestScan"/>), or a warm
+    /// session's supplied cursors - resuming each from its cursor. Legal only in
     /// <see cref="JournalBrokerSessionState.Parked"/>. Throws
-    /// <see cref="InvalidOperationException"/> if already watching or if no drive
-    /// armed successfully. The consumer never supplies cursors, so a volume or cursor
-    /// mismatch is not representable.
+    /// <see cref="InvalidOperationException"/> if already watching or if there is nothing
+    /// to watch. On the scanned path the consumer never supplies cursors, so a volume or
+    /// cursor mismatch is not representable.
     /// </summary>
     public async Task StartWatchAsync(CancellationToken cancellationToken = default)
     {
         EnsureOperable();
+        IReadOnlyDictionary<string, UsnJournalCursor> watchCursors;
         lock (_stateLock)
         {
             if (_state != JournalBrokerSessionState.Parked)
@@ -23,6 +25,7 @@ public sealed partial class JournalBrokerScanSession
             if (_operationInFlight)
                 throw new InvalidOperationException("Another session operation is in progress");
             _operationInFlight = true;
+            watchCursors = _watchCursors;
         }
 
         // Cleared inside the commit lock below on the success path (together with
@@ -32,14 +35,13 @@ public sealed partial class JournalBrokerScanSession
         var transmissionStarted = false;
         try
         {
-            var advancedCursors = LatestScan.AdvancedCursors;
-            if (advancedCursors.Count == 0)
-                throw new InvalidOperationException("No drive armed successfully; nothing to watch");
+            if (watchCursors.Count == 0)
+                throw new InvalidOperationException("No drives to watch");
 
             try
             {
                 await _client.SendStartWatchAsync(
-                    advancedCursors,
+                    watchCursors,
                     () => transmissionStarted = true, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (transmissionStarted)
@@ -74,10 +76,11 @@ public sealed partial class JournalBrokerScanSession
     }
 
     /// <summary>
-    /// Yield live journal batches for one armed drive, resuming from its advanced cursor.
-    /// Legal only in <see cref="JournalBrokerSessionState.Watching"/>. Throws
-    /// <see cref="ArgumentException"/> if <paramref name="driveLetter"/> was not
-    /// successfully armed in <see cref="LatestScan"/>. The enumerable faults with
+    /// Yield live journal batches for one watched drive, resuming from its watch cursor
+    /// (a scanned session's advanced cursor, or a warm session's supplied cursor). Legal
+    /// only in <see cref="JournalBrokerSessionState.Watching"/>. Throws
+    /// <see cref="ArgumentException"/> if <paramref name="driveLetter"/> is not among the
+    /// session's watch cursors. The enumerable faults with
     /// <see cref="InvalidOperationException"/> if that drive's journal is invalidated
     /// mid-watch or the broker dies. One consumer per drive.
     /// </summary>
@@ -96,8 +99,8 @@ public sealed partial class JournalBrokerScanSession
         {
             if (_state != JournalBrokerSessionState.Watching)
                 throw new InvalidOperationException("Not currently watching; call StartWatchAsync first");
-            if (!_latestScan.AdvancedCursors.TryGetValue(driveLetter, out cursor))
-                throw new ArgumentException($"Drive '{driveLetter}' was not successfully armed", nameof(driveLetter));
+            if (!_watchCursors.TryGetValue(driveLetter, out cursor))
+                throw new ArgumentException($"Drive '{driveLetter}' is not being watched", nameof(driveLetter));
             // StartWatchAsync always sets _batchSource together with State = Watching
             // under this same lock, so a null here means that invariant broke rather
             // than something a caller can act on - a clear diagnostic beats a silent

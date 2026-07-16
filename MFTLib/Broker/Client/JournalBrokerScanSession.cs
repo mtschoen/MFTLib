@@ -12,12 +12,8 @@ namespace MFTLib;
 /// </summary>
 public sealed partial class JournalBrokerScanSession : IAsyncDisposable
 {
-    static readonly BrokerScanResult EmptyScanResult = new(
-        records: Array.Empty<ScanRecord>(),
-        armedCursors: new Dictionary<string, UsnJournalCursor>(),
-        advancedCursors: new Dictionary<string, UsnJournalCursor>(),
-        catchUpEntries: new Dictionary<string, UsnJournalEntry[]>(),
-        errors: new Dictionary<string, string>());
+    static readonly IReadOnlyDictionary<string, UsnJournalCursor> EmptyCursors =
+        new Dictionary<string, UsnJournalCursor>();
 
     readonly JournalBrokerClient _client;
     readonly object _stateLock = new();
@@ -30,7 +26,11 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     IReadOnlyCollection<string>? _keepFileNames;
 
     JournalBrokerSessionState _state;
-    BrokerScanResult _latestScan;
+    BrokerScanResult? _latestScan;
+    // Cursor source for StartWatchAsync/WatchDriveAsync. For a scanned session this is the
+    // latest scan's advanced cursors; for a warm session (StartFromCursorsAsync) it is the
+    // caller-supplied baseline until the first RescanAsync replaces it. Guarded by _stateLock.
+    IReadOnlyDictionary<string, UsnJournalCursor> _watchCursors;
     bool _isFaulted;
     string? _faultReason;
     Action<string>? _faultedHandlers;
@@ -56,16 +56,16 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     Task? _stopTask;
 
     JournalBrokerScanSession(JournalBrokerClient client, IReadOnlyList<string> drives, BrokerScanProfile profile,
-        IReadOnlyCollection<string>? keepFileNames)
+        IReadOnlyCollection<string>? keepFileNames, IReadOnlyDictionary<string, UsnJournalCursor> watchCursors)
     {
         _client = client;
         _drives = drives;
         _profile = profile;
         _keepFileNames = keepFileNames;
-        // Placeholder until the internal StartAsync seam replaces it with the real
-        // scan result (it either sets this and Parked, or disposes and throws) -
-        // never observed by a caller since the session escapes only on that path.
-        _latestScan = EmptyScanResult;
+        // Null until a scan populates it. The StartAsync seam overwrites _latestScan and
+        // _watchCursors with the initial scan result before the session escapes; a warm
+        // session (StartFromCursorsAsync) leaves _latestScan null until the first RescanAsync.
+        _watchCursors = watchCursors;
         _client.BrokerDied += OnBrokerDied;
     }
 
@@ -76,11 +76,13 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// The most recent scan result. Set by the initial scan and replaced by each
-    /// rescan. Immutable between rescans; exposes per-drive records, armed and
-    /// advanced cursors, catch-up entries, and per-drive errors.
+    /// The most recent scan result, or null on a warm session
+    /// (<see cref="StartFromCursorsAsync(Func{string,bool},IReadOnlyDictionary{string,UsnJournalCursor},CancellationToken)"/>)
+    /// that has not yet rescanned. Set by the initial scan and replaced by each rescan.
+    /// Immutable between rescans; exposes per-drive records, armed and advanced cursors,
+    /// catch-up entries, and per-drive errors.
     /// </summary>
-    public BrokerScanResult LatestScan
+    public BrokerScanResult? LatestScan
     {
         get { lock (_stateLock) return _latestScan; }
     }
@@ -178,7 +180,7 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         var client = await connectAsync(cancellationToken).ConfigureAwait(false);
-        var session = new JournalBrokerScanSession(client, drives, profile, keepFileNames);
+        var session = new JournalBrokerScanSession(client, drives, profile, keepFileNames, EmptyCursors);
         try
         {
             var result = await client.ArmScanAndCatchUpAsync(drives, profile, keepFileNames, cancellationToken)
@@ -188,6 +190,7 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
                 if (!session._isFaulted)
                 {
                     session._latestScan = result;
+                    session._watchCursors = result.AdvancedCursors;
                     session._state = JournalBrokerSessionState.Parked;
                 }
             }
@@ -205,6 +208,67 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
         }
 
         return session;
+    }
+
+    /// <summary>
+    /// Spawn one elevated broker (single UAC prompt via <paramref name="launchBroker"/>)
+    /// and return a session parked on <paramref name="cursorsByDrive"/> without scanning -
+    /// a warm start for a consumer that already holds a cached inventory and only needs to
+    /// resume watching. <see cref="StartWatchAsync"/> watches from these cursors; a cursor
+    /// with <c>JournalId</c> 0 means "watch from the drive's current position". No scan runs
+    /// until the first <see cref="RescanAsync()"/>, so <see cref="LatestScan"/> is null until
+    /// then. <see cref="BrokerScanProfile.Full"/> and no keep-file names apply to a later
+    /// <see cref="RescanAsync()"/>; use the overload below to set them.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public static Task<JournalBrokerScanSession> StartFromCursorsAsync(
+        Func<string, bool> launchBroker,
+        IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
+        CancellationToken cancellationToken = default) =>
+        StartFromCursorsAsync(launchBroker, cursorsByDrive, BrokerScanProfile.Full, cancellationToken: cancellationToken);
+
+    /// <summary>
+    /// As <see cref="StartFromCursorsAsync(Func{string,bool},IReadOnlyDictionary{string,UsnJournalCursor},CancellationToken)"/>
+    /// but with the explicit <paramref name="profile"/> and optional
+    /// <paramref name="keepFileNames"/> a later <see cref="RescanAsync()"/> uses.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public static Task<JournalBrokerScanSession> StartFromCursorsAsync(
+        Func<string, bool> launchBroker,
+        IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
+        BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames = null,
+        CancellationToken cancellationToken = default) =>
+        StartFromCursorsAsync(
+            ct => JournalBrokerClient.SpawnAndConnectAsync(launchBroker, ct),
+            cursorsByDrive, profile, keepFileNames, cancellationToken);
+
+    // Warm-start seam mirroring the internal StartAsync seam: connect the same way, but park
+    // directly on the caller's cursors with no arm-and-scan. Tests inject a fake client built
+    // over an in-memory duplex stream.
+    internal static async Task<JournalBrokerScanSession> StartFromCursorsAsync(
+        Func<CancellationToken, Task<JournalBrokerClient>> connectAsync,
+        IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
+        BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames = null,
+        CancellationToken cancellationToken = default)
+    {
+        var watchCursors = NormalizeCursors(cursorsByDrive);
+        var client = await connectAsync(cancellationToken).ConfigureAwait(false);
+        // Drives default for a later no-argument RescanAsync: the warm-start volumes.
+        return new JournalBrokerScanSession(
+            client, watchCursors.Keys.ToArray(), profile, keepFileNames, watchCursors);
+    }
+
+    // Re-key the caller's cursors by bare drive letter (case-insensitive) so the watch spec
+    // and the per-drive WatchDriveAsync lookup agree with the scan path's keying.
+    static IReadOnlyDictionary<string, UsnJournalCursor> NormalizeCursors(
+        IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive)
+    {
+        var normalized = new Dictionary<string, UsnJournalCursor>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in cursorsByDrive)
+            normalized[JournalBrokerClient.NormalizeDriveLetter(pair.Key)] = pair.Value;
+        return normalized;
     }
 
     bool TryGetFaultReason(out string? reason)
@@ -295,6 +359,7 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
             {
                 EnsureOperableLocked();
                 _latestScan = result;
+                _watchCursors = result.AdvancedCursors;
                 _drives = drives;
                 _profile = profile;
                 _keepFileNames = keepFileNames;

@@ -106,7 +106,7 @@ public sealed partial class JournalBrokerClient
 
     // Normalize a drive path ("C:\\", "C:", "C") to the bare single letter ("C").
     // The broker spec tokens and frame Drive fields use the bare letter.
-    static string NormalizeDriveLetter(string drive) =>
+    internal static string NormalizeDriveLetter(string drive) =>
         drive.TrimEnd(':', '\\', '/');
 
     // Fill buffer fully. Returns false on clean EOF before any byte; throws on truncated data.

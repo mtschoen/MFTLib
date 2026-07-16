@@ -110,7 +110,9 @@ await using var indexSession = await JournalBrokerScanSession.StartAsync(
     cancellationToken);
 ```
 
-`LatestScan` (a `BrokerScanResult`) contains:
+`LatestScan` (a `BrokerScanResult?`) is always populated after `StartAsync` and after any
+`RescanAsync`; it is `null` only on a warm session that has not yet rescanned (see Warm
+start below). It contains:
 
 | Property | Meaning |
 | --- | --- |
@@ -129,6 +131,39 @@ snapshot could exceed the single-MMF payload limit. `keepFileNames` is ignored u
 `ScanRecord.Size` and `ScanRecord.LastWriteTicks` are currently zero because those
 fields are reserved for a future MFT surface. Use `Name`, `Path`, `Attributes`,
 `IsDirectory`, `RecordNumber`, and `ParentRecordNumber` today.
+
+### Warm start: resume watching from persisted cursors without a scan
+
+A consumer that already holds its own cached inventory and a persisted resume cursor per
+drive can skip the cold scan entirely and go straight to watching, letting the kernel
+replay the gap since the persisted cursor. `StartFromCursorsAsync` spawns the same
+elevated broker (one UAC prompt) but performs no arm-and-scan; the session parks on the
+supplied cursors, and `StartWatchAsync` resumes each drive from them:
+
+```csharp
+IReadOnlyDictionary<string, UsnJournalCursor> persisted = LoadPersistedCursors();
+
+await using var session = await JournalBrokerScanSession.StartFromCursorsAsync(
+    BrokerLauncher.Launch,
+    persisted,
+    cancellationToken);
+
+await session.StartWatchAsync(cancellationToken);
+foreach (var drive in persisted.Keys)
+    _ = ConsumeDriveAsync(drive); // one WatchDriveAsync consumer per drive, as in section 2
+```
+
+A cursor whose `JournalId` is 0 is the "watch from current position" sentinel: the broker
+resolves the drive's current cursor and watches from now, losing only the pre-launch gap
+for that drive. Use it for a drive you want to watch but have no persisted cursor for.
+
+Because no scan ran, `LatestScan` is `null` until the first `RescanAsync`. A warm session
+still rescans on the same broker (no second UAC prompt) using the `profile` and
+`keepFileNames` passed to `StartFromCursorsAsync` (the overload with those parameters); after
+a rescan, `LatestScan` is populated and a subsequent `StartWatchAsync` resumes from the fresh
+advanced cursors instead of the originally supplied ones. All other lifecycle guarantees -
+fault latching, terminal-state checks, single-flight operation discipline, and idempotent
+disposal - are identical to a scanned session.
 
 ## 3. Stop watching, rescan, and restart
 
