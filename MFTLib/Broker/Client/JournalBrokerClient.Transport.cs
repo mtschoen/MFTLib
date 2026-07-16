@@ -79,7 +79,13 @@ public sealed partial class JournalBrokerClient
         return BrokerProtocol.ReadFrame(frameBytes, out _);
     }
 
-    async Task WriteFrameAsync(Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken)
+    Task WriteFrameAsync(Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken) =>
+        WriteFrameAsync(write, transmissionStarted: null, cancellationToken);
+
+    async Task WriteFrameAsync(
+        Action<ArrayBufferWriter<byte>> write,
+        Action? transmissionStarted,
+        CancellationToken cancellationToken)
     {
         var buffer = new ArrayBufferWriter<byte>();
         write(buffer);
@@ -88,6 +94,7 @@ public sealed partial class JournalBrokerClient
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            transmissionStarted?.Invoke();
             await _pipe.WriteAsync(buffer.WrittenMemory, cancellationToken).ConfigureAwait(false);
             await _pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
         }

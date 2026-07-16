@@ -1,51 +1,39 @@
-MFTLib test report - 2026-07-13
+MFTLib test report - 2026-07-16
 ===========================================
 
-Status:   PASS
-Mode:     maintain
-Tests:    417 passed, 0 failed (383 non-admin + 34 elevated NTFS/USN)
-Git:      feat/volume-broker at c4690c1 plus the coverage and correctness changes in this commit
+Status:   PASS (Linux CI-equivalent verification)
+Tests:    271 managed passed, 34 platform tests skipped; 8 native smoke tests passed
+Git:      feat/scan-to-watch-session-api at 54486b3 plus the changes in this commit
 
-Managed coverage (`scripts/run-coverage.ps1`, full attended run):
-  Line:   1399/1399 (100%)
-  Branch: 380/380 (100%)
-  Method: 235/235 (100%)
-  Modules: MFTLib 100%, TestProgram 100%, Benchmark 100%
-  Exclusion annotations: 0
+Managed coverage (`bash scripts/coverage-linux.sh`):
+  Line:   1736/1782 (97.41%)
+  Branch: 382/391 (97.69%)
+  Method: 97.76%
+  Touched broker client/session classes: 100% line and branch coverage
+  Exclusion annotations added by this change: 0
 
-Native coverage (`scripts/native-coverage.ps1`):
-  Line:   1275/1275 (100%)
-  Branch: 100%
-  Exclusion annotations: 0
+Native coverage (`bash scripts/coverage-linux.sh`):
+  Line:   547/868 (63.0%)
+  Branch: 242/641 (37.8%)
+  Functions: 56/84 (66.7%)
+  Exclusion annotations added by this change: 0
 
-Lint and quality:
-  `aislop ci .` 0.13.1: score 100/100, 0 findings across 66 supported files
-  Formatting: 0 findings
-  Static analysis: 0 findings
-  Code quality: 0 findings
-  AI-slop: 0 findings
-  Security: 0 findings
-  Existing explicit suppressions: 10 C++ NOLINT lines, 3 C# warning/suppression lines
-  Documented exceptions: 0
+The Linux script intentionally omits Windows-only named-pipe, named-MMF, raw-volume,
+and elevated tests. Those platform exclusions account for the managed gap; the native
+Linux smoke suite is a portability gate rather than the repository's full Windows
+native coverage suite. The last attended Windows report (2026-07-13) recorded 100%
+managed and native coverage. This worktree cannot run MSBuild/UAC verification, so the
+Windows CI jobs remain the authoritative current check for those paths.
 
-Release validation performed:
-  - Full Release|x64 solution build
-  - 383 non-admin tests with merged managed coverage
-  - 34 elevated tests against real NTFS MFT and USN journal APIs
-  - Native Debug|x64 instrumentation with 100% line and branch coverage
-  - VolumeBroker named-pipe/MMF end-to-end tests, including broker death and live-watch teardown
-  - Synthetic generator conversion and asynchronous write-failure regressions
-  - Deep native path truncation, malformed attribute/extension, and USN short/zero-record cases
-  - `aislop ci .` whole-repository quality gate
-
-Remaining outward checks:
-  - Gitea Windows and Linux PR jobs on the pushed branch
-  - file-wizard broker smoke and MAUI single-UAC/live-watch validation against merged MFTLib main
-  - git-wizard `--watch` smoke against merged MFTLib main
-  - final package dry run before publishing 0.3.0
+Quality:
+  - `git diff --check`: clean
+  - Focused concurrency/cancellation regressions: 20 repeated passes
+  - `aislop scan .` on Linux: 0 lint/security errors; the repository-wide CRLF
+    `.editorconfig` rule flags all 79 tracked C# files because this Linux checkout stores
+    them with LF. The same finding is present on untouched files and is resolved by the
+    Windows CI checkout used by the authoritative aislop gate.
 
 Commands:
-  `.\scripts\run-coverage.ps1`
-  `.\scripts\run-coverage.ps1 -NonInteractive`
-  `.\scripts\native-coverage.ps1`
+  `bash scripts/coverage-linux.sh`
+  `aislop scan .`
   `aislop ci .`

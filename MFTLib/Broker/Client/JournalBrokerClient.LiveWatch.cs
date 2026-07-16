@@ -38,9 +38,21 @@ public sealed partial class JournalBrokerClient
     /// has drained the cold-scan frames; the
     /// per-drive delegates from <see cref="CreateBatchSource"/> then read those channels.
     /// </summary>
-    public async Task SendStartWatchAsync(
+    public Task SendStartWatchAsync(
         IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        SendStartWatchCoreAsync(cursorsByDrive, transmissionStarted: null, cancellationToken);
+
+    internal Task SendStartWatchAsync(
+        IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
+        Action transmissionStarted,
+        CancellationToken cancellationToken) =>
+        SendStartWatchCoreAsync(cursorsByDrive, transmissionStarted, cancellationToken);
+
+    async Task SendStartWatchCoreAsync(
+        IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
+        Action? transmissionStarted,
+        CancellationToken cancellationToken)
     {
         // Reserve the start atomically up front: two concurrent callers (a double
         // scan-complete tick) must not both send StartWatch + start a demux loop.
@@ -52,9 +64,22 @@ public sealed partial class JournalBrokerClient
             $"{NormalizeDriveLetter(pair.Key)}:{pair.Value.JournalId}:{pair.Value.NextUsn}"));
         var watchSpec = string.Join(",", specTokens);
 
-        await WriteFrameAsync(
-            writer => BrokerProtocol.WriteStartWatch(writer, watchSpec), cancellationToken)
-            .ConfigureAwait(false);
+        var writeStarted = false;
+        try
+        {
+            await WriteFrameAsync(
+                writer => BrokerProtocol.WriteStartWatch(writer, watchSpec),
+                () =>
+                {
+                    writeStarted = true;
+                    transmissionStarted?.Invoke();
+                }, cancellationToken).ConfigureAwait(false);
+        }
+        catch when (!writeStarted)
+        {
+            Interlocked.Exchange(ref _watchStartGuard, 0);
+            throw;
+        }
 
         // Own a CTS for the demux so DisposeAsync can cancel the blocking pipe read
         // (disposing the pipe alone does not reliably unblock a pending ReadAsync).
@@ -183,7 +208,10 @@ public sealed partial class JournalBrokerClient
                     CompleteAllLiveChannels(error: null);
                     return; // clean stop: the watch was ended at the client's request
                 }
-                // Heartbeat / Error / other frame kinds are not routed to a drive stream.
+                else if (value.Kind == BrokerFrameKind.Error)
+                    FaultLiveChannel(NormalizeDriveLetter(value.RequireDrive()),
+                        new InvalidOperationException(value.RequireMessage()));
+                // Heartbeat / other frame kinds are not routed to a drive stream.
             }
 
             // The loop can also exit because cancellation was observed at the top of
@@ -219,6 +247,23 @@ public sealed partial class JournalBrokerClient
                 _liveChannels[normalizedDrive] = channel;
             }
             return channel;
+        }
+    }
+
+    // Completes a single drive's channel with error, creating it first if no
+    // subscriber has registered it yet - so a subscriber that calls CreateBatchSource
+    // after this drive's Error frame arrived still gets an already-faulted channel
+    // instead of awaiting a batch forever. Other drives are unaffected.
+    void FaultLiveChannel(string normalizedDrive, Exception error)
+    {
+        lock (_liveChannelsLock)
+        {
+            if (!_liveChannels.TryGetValue(normalizedDrive, out var channel))
+            {
+                channel = Channel.CreateUnbounded<(UsnJournalEntry[], UsnJournalCursor)>();
+                _liveChannels[normalizedDrive] = channel;
+            }
+            channel.Writer.TryComplete(error);
         }
     }
 

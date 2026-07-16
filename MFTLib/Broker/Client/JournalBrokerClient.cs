@@ -91,9 +91,21 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
     /// it names non-directory files (matched case-insensitively) to keep alongside every
     /// directory record - for example a name your application treats as a marker file.
     /// </summary>
-    public async Task<BrokerScanResult> ArmScanAndCatchUpAsync(
+    public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
         IReadOnlyList<string> drives, BrokerScanProfile profile,
-        IReadOnlyCollection<string>? keepFileNames, CancellationToken cancellationToken = default)
+        IReadOnlyCollection<string>? keepFileNames, CancellationToken cancellationToken = default) =>
+        ArmScanAndCatchUpCoreAsync(drives, profile, keepFileNames, transmissionStarted: null, cancellationToken);
+
+    internal Task<BrokerScanResult> ArmScanAndCatchUpAsync(
+        IReadOnlyList<string> drives, BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames, Action transmissionStarted,
+        CancellationToken cancellationToken) =>
+        ArmScanAndCatchUpCoreAsync(drives, profile, keepFileNames, transmissionStarted, cancellationToken);
+
+    async Task<BrokerScanResult> ArmScanAndCatchUpCoreAsync(
+        IReadOnlyList<string> drives, BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames, Action? transmissionStarted,
+        CancellationToken cancellationToken)
     {
         var mmfNamesByDrive = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var drivesSpec = PrepareDriveScan(drives, profile, mmfNamesByDrive);
@@ -101,7 +113,7 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
         // Send the ArmAndScan frame.
         await WriteFrameAsync(
             writer => BrokerProtocol.WriteArmAndScan(writer, drivesSpec, keepFileNames),
-            cancellationToken).ConfigureAwait(false);
+            transmissionStarted, cancellationToken).ConfigureAwait(false);
 
         // Fold each broker response into the collector until every drive reports in.
         var collector = new ScanCollector(

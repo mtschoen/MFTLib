@@ -68,7 +68,7 @@ Or add a package reference:
 | Scenario | Recommended API |
 | --- | --- |
 | Elevated CLI or service; simplest integration | `MftVolume` directly |
-| Non-elevated desktop/CLI app; one UAC prompt | `JournalBrokerClient` |
+| Non-elevated desktop/CLI app; one UAC prompt | `JournalBrokerScanSession` (owned scan-to-watch session; `JournalBrokerClient` remains available as the low-level primitive) |
 | One-time filename lookup | `MftVolume.FindByName` |
 | Full in-memory index | `MftVolume.ReadAllRecords` |
 | Process records while native memory is alive | `MftVolume.StreamRecords` |
@@ -249,7 +249,10 @@ var scan = await broker.ArmScanAndCatchUpAsync(
     cancellationToken);
 ```
 
-See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
+`JournalBrokerScanSession` wraps this same client into one owned scan-to-watch object
+(`StartAsync` through discovery, live watch, rescan, and disposal) so scan results can
+never outlive the client that produced them; prefer it unless your process is already
+elevated. See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
 for startup dispatch, result handling, live watch, rescans, recovery, and diagnostics.
 
 ## Errors and recovery
