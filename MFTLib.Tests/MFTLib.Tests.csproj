@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
+    <ProjectReference Include="..\MFTLibTestExtensions\MFTLibTestExtensions.csproj" />
   </ItemGroup>
 
   <!-- Windows: pull in the native vcxproj plus TestProgram and Benchmark consumers. -->
@@ -36,7 +37,7 @@
        This sidesteps the PS7 + dotnet CLI + MSBuild comma-splitting issue that
        prevented passing -p:Include on the command line. -->
   <PropertyGroup Condition="'$(CollectCoverage)' == 'true'">
-    <Include>[MFTLib]*,[TestProgram]*,[Benchmark]*</Include>
+    <Include>[MFTLib]*,[TestProgram]*,[Benchmark]*,[MFTLibTestExtensions]*</Include>
   </PropertyGroup>
 
   <!-- Linux: copy CMake-built libMFTLibNative.so into the test bin directory. -->

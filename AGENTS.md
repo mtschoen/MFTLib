@@ -81,6 +81,7 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
 - **TestProgram** (C# Console App) - CLI that reads MFT metadata for specified drives. Automatically self-elevates.
 - **Benchmark** (C# Console App) - Performance benchmark using synthetic MFT generation.
 - **MFTLib.Tests** (C# xUnit) - Unit tests for record mapping and path resolution.
+- **MFTLibTestExtensions** (C# Library) - Public, consumer-facing test harness (`ScanSessionTestHarness`) over MFTLib's internal `JournalBrokerScanSession` construction seams, so consumer test assemblies can build a session over a fake client without MFTLib friend-listing them. Ships as the separate `MFTLib.TestExtensions` NuGet package at publish time; never folded into the `MFTLib` package.
 
 ### Native error messages
 
