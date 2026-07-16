@@ -183,7 +183,10 @@ public sealed partial class JournalBrokerClient
                     CompleteAllLiveChannels(error: null);
                     return; // clean stop: the watch was ended at the client's request
                 }
-                // Heartbeat / Error / other frame kinds are not routed to a drive stream.
+                else if (value.Kind == BrokerFrameKind.Error)
+                    FaultLiveChannel(NormalizeDriveLetter(value.RequireDrive()),
+                        new InvalidOperationException(value.RequireMessage()));
+                // Heartbeat / other frame kinds are not routed to a drive stream.
             }
 
             // The loop can also exit because cancellation was observed at the top of
@@ -219,6 +222,23 @@ public sealed partial class JournalBrokerClient
                 _liveChannels[normalizedDrive] = channel;
             }
             return channel;
+        }
+    }
+
+    // Completes a single drive's channel with error, creating it first if no
+    // subscriber has registered it yet - so a subscriber that calls CreateBatchSource
+    // after this drive's Error frame arrived still gets an already-faulted channel
+    // instead of awaiting a batch forever. Other drives are unaffected.
+    void FaultLiveChannel(string normalizedDrive, Exception error)
+    {
+        lock (_liveChannelsLock)
+        {
+            if (!_liveChannels.TryGetValue(normalizedDrive, out var channel))
+            {
+                channel = Channel.CreateUnbounded<(UsnJournalEntry[], UsnJournalCursor)>();
+                _liveChannels[normalizedDrive] = channel;
+            }
+            channel.Writer.TryComplete(error);
         }
     }
 
