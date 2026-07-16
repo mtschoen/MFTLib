@@ -157,30 +157,34 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
 
     /// <summary>
     /// As <see cref="StartAsync(System.Func{string,bool},System.Collections.Generic.IReadOnlyList{string},System.Threading.CancellationToken)"/>
-    /// but with an explicit <paramref name="profile"/>.
+    /// but with an explicit <paramref name="profile"/> and, under
+    /// <see cref="BrokerScanProfile.DirectoryIndex"/>, an optional set of non-directory
+    /// <paramref name="keepFileNames"/> to keep alongside every directory record.
     /// </summary>
     public static Task<JournalBrokerScanSession> StartAsync(
         Func<string, bool> launchBroker,
         IReadOnlyList<string> drives,
         BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Rescan the same drives and profile the session was started with, on the same
-    /// elevated broker (no second UAC prompt), replacing <see cref="LatestScan"/>. Legal
-    /// only in <see cref="JournalBrokerSessionState.Parked"/>; call
-    /// <see cref="StopWatchAsync"/> first if watching. Throws
+    /// Rescan the same drives, profile, and <c>keepFileNames</c> the session was started
+    /// with, on the same elevated broker (no second UAC prompt), replacing
+    /// <see cref="LatestScan"/>. Legal only in <see cref="JournalBrokerSessionState.Parked"/>;
+    /// call <see cref="StopWatchAsync"/> first if watching. Throws
     /// <see cref="System.InvalidOperationException"/> if the broker dies during the rescan.
     /// </summary>
     public Task RescanAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Rescan a different set of drives (same profile) on the same broker.</summary>
+    /// <summary>Rescan a different set of drives (same profile and keepFileNames) on the same broker.</summary>
     public Task RescanAsync(IReadOnlyList<string> drives, CancellationToken cancellationToken = default);
 
-    /// <summary>Rescan a different set of drives with a different profile on the same broker.</summary>
+    /// <summary>Rescan a different set of drives with a different profile and keepFileNames on the same broker.</summary>
     public Task RescanAsync(
         IReadOnlyList<string> drives,
         BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -235,7 +239,8 @@ internal static Task<JournalBrokerScanSession> StartAsync(
     Func<CancellationToken, Task<JournalBrokerClient>> connectAsync,
     IReadOnlyList<string> drives,
     BrokerScanProfile profile,
-    CancellationToken cancellationToken);
+    IReadOnlyCollection<string>? keepFileNames = null,
+    CancellationToken cancellationToken = default);
 ```
 
 Note that `StartWatchAsync`, `WatchDriveAsync`, and the cursor sourcing are fully internal
@@ -434,14 +439,17 @@ Foundation for journal-invalidation behavior; independent of the session.
   `MFTLib/Broker/Client/JournalBrokerScanSession.cs` (factory, `State`, `LatestScan`,
   `IsFaulted`, `FaultReason`, `Faulted` event, `DisposeAsync`; no watch/rescan yet).
 - Signatures: the enum; `State`, `LatestScan`, `IsFaulted`, `FaultReason`, `Faulted`; both
-  public `StartAsync` overloads; the internal `StartAsync(connectAsync, drives, profile,
-  ct)` seam; `DisposeAsync`. Store `_drives` and `_profile` for later rescan.
+  public `StartAsync` overloads (the profile-taking overload also carries an optional
+  `keepFileNames`); the internal `StartAsync(connectAsync, drives, profile, keepFileNames,
+  ct)` seam; `DisposeAsync`. Store `_drives`, `_profile`, and `_keepFileNames` for later
+  rescan.
 - Factory: public overloads delegate to the internal seam with
   `connectAsync = ct => JournalBrokerClient.SpawnAndConnectAsync(launchBroker, ct)` (the
-  no-profile overload passes `BrokerScanProfile.Full`). The internal seam connects, wires
-  the `BrokerDied` handler, calls `ArmScanAndCatchUpAsync`, and - if `IsFaulted` - disposes
-  and throws `InvalidOperationException(FaultReason)`; otherwise stores `LatestScan` and
-  sets `State = Parked`.
+  no-profile overload passes `BrokerScanProfile.Full` and no `keepFileNames`). The internal
+  seam connects, wires the `BrokerDied` handler, calls
+  `ArmScanAndCatchUpAsync(drives, profile, keepFileNames, ct)`, and - if `IsFaulted` -
+  disposes and throws `InvalidOperationException(FaultReason)`; otherwise stores
+  `LatestScan` and sets `State = Parked`.
 - Tests first (new `MFTLib.Tests/JournalBrokerScanSessionTests.cs`), using a fake client
   built with the existing `MakeFakeClient`/`DuplexStream`/`NullMmfReader` helpers, passed
   through the internal `StartAsync` seam:
@@ -511,10 +519,12 @@ Foundation for journal-invalidation behavior; independent of the session.
 
 - Files: `MFTLib/Broker/Client/JournalBrokerScanSession.cs` (add the three `RescanAsync`
   overloads and the `Parked`-only guard).
-- Signatures: `RescanAsync(ct)`, `RescanAsync(drives, ct)`, `RescanAsync(drives, profile, ct)`.
-  The no-argument overload reuses stored `_drives`/`_profile`; the others update them.
-  Each validates `Parked` (else `InvalidOperationException` guiding to `StopWatchAsync`),
-  calls `_client.ArmScanAndCatchUpAsync(...)`, replaces `LatestScan`, and throws
+- Signatures: `RescanAsync(ct)`, `RescanAsync(drives, ct)`, `RescanAsync(drives, profile,
+  keepFileNames, ct)`. The no-argument overload reuses stored `_drives`/`_profile`/
+  `_keepFileNames`; the others update `_drives`/`_profile` (and `_keepFileNames` where
+  supplied). Each validates `Parked` (else `InvalidOperationException` guiding to
+  `StopWatchAsync`), calls `_client.ArmScanAndCatchUpAsync(_drives, _profile,
+  _keepFileNames, ct)`, replaces `LatestScan`, and throws
   `InvalidOperationException(FaultReason)` if the broker died during the rescan.
 - Tests first (append):
   - `StopThenRescanThenStartWatch_ReusesOneBroker` - full stop/rescan/restart on one fake

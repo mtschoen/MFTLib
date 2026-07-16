@@ -23,6 +23,7 @@ public sealed class JournalBrokerScanSession : IAsyncDisposable
     readonly object _stateLock = new();
     readonly IReadOnlyList<string> _drives;
     readonly BrokerScanProfile _profile;
+    readonly IReadOnlyCollection<string>? _keepFileNames;
 
     JournalBrokerSessionState _state;
     BrokerScanResult _latestScan;
@@ -31,11 +32,13 @@ public sealed class JournalBrokerScanSession : IAsyncDisposable
     Action<string>? _faultedHandlers;
     int _disposed;
 
-    JournalBrokerScanSession(JournalBrokerClient client, IReadOnlyList<string> drives, BrokerScanProfile profile)
+    JournalBrokerScanSession(JournalBrokerClient client, IReadOnlyList<string> drives, BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames)
     {
         _client = client;
         _drives = drives;
         _profile = profile;
+        _keepFileNames = keepFileNames;
         // Placeholder until the internal StartAsync seam replaces it with the real
         // scan result (it either sets this and Parked, or disposes and throws) -
         // never observed by a caller since the session escapes only on that path.
@@ -116,21 +119,24 @@ public sealed class JournalBrokerScanSession : IAsyncDisposable
         Func<string, bool> launchBroker,
         IReadOnlyList<string> drives,
         CancellationToken cancellationToken = default) =>
-        StartAsync(launchBroker, drives, BrokerScanProfile.Full, cancellationToken);
+        StartAsync(launchBroker, drives, BrokerScanProfile.Full, cancellationToken: cancellationToken);
 
     /// <summary>
     /// As <see cref="StartAsync(Func{string,bool},IReadOnlyList{string},CancellationToken)"/>
-    /// but with an explicit <paramref name="profile"/>.
+    /// but with an explicit <paramref name="profile"/> and, under
+    /// <see cref="BrokerScanProfile.DirectoryIndex"/>, an optional set of non-directory
+    /// <paramref name="keepFileNames"/> to keep alongside every directory record.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static Task<JournalBrokerScanSession> StartAsync(
         Func<string, bool> launchBroker,
         IReadOnlyList<string> drives,
         BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames = null,
         CancellationToken cancellationToken = default) =>
         StartAsync(
             ct => JournalBrokerClient.SpawnAndConnectAsync(launchBroker, ct),
-            drives, profile, cancellationToken);
+            drives, profile, keepFileNames, cancellationToken);
 
     // The public overloads above delegate here with connectAsync = ct =>
     // JournalBrokerClient.SpawnAndConnectAsync(launchBroker, ct). Tests inject a fake
@@ -139,13 +145,15 @@ public sealed class JournalBrokerScanSession : IAsyncDisposable
         Func<CancellationToken, Task<JournalBrokerClient>> connectAsync,
         IReadOnlyList<string> drives,
         BrokerScanProfile profile,
-        CancellationToken cancellationToken)
+        IReadOnlyCollection<string>? keepFileNames = null,
+        CancellationToken cancellationToken = default)
     {
         var client = await connectAsync(cancellationToken).ConfigureAwait(false);
-        var session = new JournalBrokerScanSession(client, drives, profile);
+        var session = new JournalBrokerScanSession(client, drives, profile, keepFileNames);
         try
         {
-            var result = await client.ArmScanAndCatchUpAsync(drives, profile, cancellationToken).ConfigureAwait(false);
+            var result = await client.ArmScanAndCatchUpAsync(drives, profile, keepFileNames, cancellationToken)
+                .ConfigureAwait(false);
             lock (session._stateLock)
             {
                 if (!session._isFaulted)

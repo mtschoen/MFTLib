@@ -42,7 +42,7 @@ public class JournalBrokerScanSessionTests
         });
 
         var session = await JournalBrokerScanSession.StartAsync(
-            _ => Task.FromResult(client), DrivesCAndD, BrokerScanProfile.Full, CancellationToken.None);
+            _ => Task.FromResult(client), DrivesCAndD, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
@@ -55,6 +55,64 @@ public class JournalBrokerScanSessionTests
         Assert.IsNull(session.FaultReason);
         CollectionAssert.AreEqual(DrivesCAndD, session.Drives.ToArray());
         Assert.AreEqual(BrokerScanProfile.Full, session.Profile);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task StartAsync_WithKeepFileNames_ForwardsNamesToArmAndScanFrame()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var keepFileNames = new[] { "note.txt", "README.md" };
+
+        BrokerFrame armAndScanFrame = default;
+        var brokerTask = Task.Run(async () =>
+        {
+            armAndScanFrame = await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 0L),
+                Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.DirectoryIndex, keepFileNames,
+            CancellationToken.None);
+        await brokerTask;
+
+        CollectionAssert.AreEqual(keepFileNames, armAndScanFrame.KeepFileNames.ToArray());
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task StartAsync_WithoutKeepFileNames_SendsEmptyNameList()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+
+        BrokerFrame armAndScanFrame = default;
+        var brokerTask = Task.Run(async () =>
+        {
+            armAndScanFrame = await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 0L),
+                Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await brokerTask;
+
+        Assert.AreEqual(0, armAndScanFrame.KeepFileNames.Count);
 
         await session.DisposeAsync();
     }
@@ -74,7 +132,7 @@ public class JournalBrokerScanSessionTests
                 connectCount++;
                 return Task.FromResult(client);
             },
-            DriveC, BrokerScanProfile.Full, CancellationToken.None);
+            DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         Assert.AreEqual(1, connectCount);
@@ -97,7 +155,7 @@ public class JournalBrokerScanSessionTests
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => JournalBrokerScanSession.StartAsync(
-                _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, CancellationToken.None));
+                _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None));
         await brokerTask;
 
         StringAssert.Contains(exception.Message, "Pipe EOF");
@@ -119,7 +177,7 @@ public class JournalBrokerScanSessionTests
         try
         {
             await JournalBrokerScanSession.StartAsync(
-                _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cts.Token);
+                _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: cts.Token);
             Assert.Fail("Expected an OperationCanceledException");
         }
         catch (OperationCanceledException)
@@ -136,7 +194,7 @@ public class JournalBrokerScanSessionTests
         var brokerTask = RespondToArmAndScanAsync(serverSide, "C");
 
         var session = await JournalBrokerScanSession.StartAsync(
-            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, CancellationToken.None);
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         var readTask = ReadOneFrameAsync(serverSide);
@@ -154,7 +212,7 @@ public class JournalBrokerScanSessionTests
         var brokerTask = RespondToArmAndScanAsync(serverSide, "C");
 
         var session = await JournalBrokerScanSession.StartAsync(
-            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, CancellationToken.None);
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         var shutdownFrames = new List<BrokerFrameKind>();
@@ -186,7 +244,7 @@ public class JournalBrokerScanSessionTests
         var brokerTask = RespondToArmAndScanAsync(serverSide, "C");
 
         var session = await JournalBrokerScanSession.StartAsync(
-            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, CancellationToken.None);
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         await session.DisposeAsync();
@@ -202,7 +260,7 @@ public class JournalBrokerScanSessionTests
         var brokerTask = RespondToArmAndScanAsync(serverSide, "C");
 
         var session = await JournalBrokerScanSession.StartAsync(
-            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, CancellationToken.None);
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         RaiseBrokerDied(client, "broker crashed");
@@ -222,7 +280,7 @@ public class JournalBrokerScanSessionTests
         var brokerTask = RespondToArmAndScanAsync(serverSide, "C");
 
         var session = await JournalBrokerScanSession.StartAsync(
-            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, CancellationToken.None);
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         RaiseBrokerDied(client, "broker crashed");
@@ -243,7 +301,7 @@ public class JournalBrokerScanSessionTests
         var brokerTask = RespondToArmAndScanAsync(serverSide, "C");
 
         var session = await JournalBrokerScanSession.StartAsync(
-            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, CancellationToken.None);
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         string? observedReason = null;
@@ -265,7 +323,7 @@ public class JournalBrokerScanSessionTests
         var brokerTask = RespondToArmAndScanAsync(serverSide, "C");
 
         var session = await JournalBrokerScanSession.StartAsync(
-            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, CancellationToken.None);
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         session.EnsureOperable(); // must not throw while Parked
@@ -281,7 +339,7 @@ public class JournalBrokerScanSessionTests
         var brokerTask = RespondToArmAndScanAsync(serverSide, "C");
 
         var session = await JournalBrokerScanSession.StartAsync(
-            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, CancellationToken.None);
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         var invocationCount = 0;
@@ -304,7 +362,7 @@ public class JournalBrokerScanSessionTests
         var brokerTask = RespondToArmAndScanAsync(serverSide, "C");
 
         var session = await JournalBrokerScanSession.StartAsync(
-            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, CancellationToken.None);
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         RaiseBrokerDied(client, "broker crashed");
@@ -323,7 +381,7 @@ public class JournalBrokerScanSessionTests
         var brokerTask = RespondToArmAndScanAsync(serverSide, "C");
 
         var session = await JournalBrokerScanSession.StartAsync(
-            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, CancellationToken.None);
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
         await brokerTask;
 
         RaiseBrokerDied(client, "first reason");
