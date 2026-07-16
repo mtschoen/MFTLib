@@ -47,14 +47,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Ensure pwsh on PATH
-        # The gitea-runner service PATH lacks the pinned portable pwsh (the
-        # deployed act_runner.xml predates the PATH env line in the local_ci
-        # template), so `shell: pwsh` steps fail with "Cannot find: pwsh in
-        # PATH". Stage it per-job from a default-shell step, mirroring
-        # schoen-lab ci.yml's ensure-pwsh -AddToGitHubPath pattern.
+        # Two windows-latest runners serve this fleet: the chonkers host runner
+        # (non-admin gitea-runner account, whose service PATH lacks pwsh but has
+        # the pinned portable copy staged in hostedtoolcache) and the legacy VM
+        # runner (SYSTEM account, pwsh already on PATH, nothing staged). Stage
+        # the pinned copy when present, else require a resolvable system pwsh,
+        # mirroring schoen-lab ci.yml's ensure-pwsh -AddToGitHubPath pattern.
         run: |
-          if (-not (Test-Path 'C:\hostedtoolcache\pwsh-7.4.17\pwsh.exe')) { throw 'pinned pwsh missing; run local_ci runner/windows/ensure-pwsh.ps1' }
-          Add-Content -Path $env:GITHUB_PATH -Value 'C:\hostedtoolcache\pwsh-7.4.17'
+          if (Test-Path 'C:\hostedtoolcache\pwsh-7.4.17\pwsh.exe') {
+            Add-Content -Path $env:GITHUB_PATH -Value 'C:\hostedtoolcache\pwsh-7.4.17'
+          } elseif (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
+            throw 'pwsh unavailable: no system pwsh and no pinned portable copy; run local_ci runner/windows/ensure-pwsh.ps1'
+          }
 
       # No actions/setup-node: on host-mode act_runner its 7zr.exe Node extraction
       # dies with exit code 2 (actions/setup-node#1147, "Trap 1" in local-ci
