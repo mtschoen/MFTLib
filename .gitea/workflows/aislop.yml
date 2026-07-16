@@ -34,6 +34,10 @@ env:
   # Harmless now that Gitea serves a Let's Encrypt cert (Node falls back to its
   # bundle if the file is missing).
   NODE_EXTRA_CA_CERTS: C:\actions-runner\mkcert-ca.pem
+  # The runner service runs as the non-admin gitea-runner account, which cannot
+  # write setup-dotnet's default install root (C:\Program Files\dotnet).
+  # C:\hostedtoolcache is the runner-writable persistent tool cache.
+  DOTNET_INSTALL_DIR: C:\hostedtoolcache\dotnet
 
 jobs:
   quality-gate:

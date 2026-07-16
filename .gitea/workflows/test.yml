@@ -13,6 +13,12 @@ jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 30
+    env:
+      # The runner service runs as the non-admin gitea-runner account, which
+      # cannot write setup-dotnet's default install root (C:\Program Files\dotnet).
+      # C:\hostedtoolcache is the runner-writable persistent tool cache
+      # (see local_ci project-ci-setup.md); the SDK install survives across runs.
+      DOTNET_INSTALL_DIR: C:\hostedtoolcache\dotnet
     steps:
       - uses: actions/checkout@v4
 
