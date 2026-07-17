@@ -47,7 +47,7 @@ public class JournalBrokerScanSessionTests
         await brokerTask;
 
         Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
-        Assert.AreEqual(1, session.LatestScan.Records.Count);
+        Assert.AreEqual(1, session.LatestScan!.Records.Count);
         Assert.AreEqual(armedCursor, session.LatestScan.ArmedCursors["C"]);
         Assert.AreEqual(advancedCursor, session.LatestScan.AdvancedCursors["C"]);
         Assert.AreEqual(1, session.LatestScan.CatchUpEntries["C"].Length);
@@ -422,7 +422,7 @@ public class JournalBrokerScanSessionTests
         var session = await JournalBrokerScanSession.StartAsync(launchBroker, DriveC, cts.Token);
 
         Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
-        Assert.AreEqual(0, session.LatestScan.Records.Count);
+        Assert.AreEqual(0, session.LatestScan!.Records.Count);
         Assert.IsTrue(session.LatestScan.ArmedCursors.ContainsKey("C"));
 
         await brokerTask!.WaitAsync(cts.Token);
@@ -1493,7 +1493,283 @@ public class JournalBrokerScanSessionTests
         await session.DisposeAsync();
     }
 
+    // ── Warm start (StartFromCursorsAsync) ────────────────────────────────────
+
+    [TestMethod]
+    public async Task StartFromCursors_ParksWithoutScanning_LatestScanNull()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var connectCount = 0;
+
+        var cursors = new Dictionary<string, UsnJournalCursor> { ["C:\\"] = new(7UL, 200L) };
+        var session = await JournalBrokerScanSession.StartFromCursorsAsync(
+            _ =>
+            {
+                connectCount++;
+                return Task.FromResult(client);
+            },
+            cursors, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.IsNull(session.LatestScan);
+        Assert.AreEqual(1, connectCount);
+        CollectionAssert.AreEqual(new[] { "C" }, session.Drives.ToArray());
+        Assert.IsFalse(session.IsFaulted);
+
+        // No ArmAndScan was sent: the first frame the broker sees is the StartWatch.
+        var watchFrameTask = ReadOneFrameAsync(serverSide);
+        await session.StartWatchAsync();
+        var watchFrame = await watchFrameTask;
+        Assert.AreEqual(BrokerFrameKind.StartWatch, watchFrame.Kind);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task StartFromCursors_WatchesFromSuppliedCursors_EventsFlow()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+
+        var suppliedCursor = new UsnJournalCursor(7UL, 200L);
+        var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = suppliedCursor };
+        var session = await JournalBrokerScanSession.StartFromCursorsAsync(
+            _ => Task.FromResult(client), cursors, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+
+        var watchFrameTask = ReadOneFrameAsync(serverSide);
+        await session.StartWatchAsync();
+        var watchFrame = await watchFrameTask;
+
+        Assert.AreEqual(BrokerFrameKind.StartWatch, watchFrame.Kind);
+        // The watch spec resumes from the supplied cursor, not a sentinel.
+        StringAssert.Contains(watchFrame.DrivesSpec, "C:7:200");
+
+        var liveCursor = new UsnJournalCursor(7UL, 260L);
+        var entry = UsnJournalEntry.Create(
+            1, 5, 210, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "warm.txt");
+        var response = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteJournalBatch(response, "C", liveCursor, new[] { entry });
+        BrokerProtocol.WriteEndWatchAck(response);
+        await serverSide.WriteAsync(response.WrittenMemory);
+        await serverSide.FlushAsync();
+
+        var received = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await foreach (var batch in session.WatchDriveAsync("C", timeout.Token))
+            received.Add(batch);
+
+        Assert.AreEqual(1, received.Count);
+        Assert.AreEqual(liveCursor, received[0].Cursor);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task StartFromCursors_SentinelCursor_WatchesFromCurrent()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+
+        // A (0,0) cursor is the "watch from current" sentinel the host resolves.
+        var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(0UL, 0L) };
+        var session = await JournalBrokerScanSession.StartFromCursorsAsync(
+            _ => Task.FromResult(client), cursors, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+
+        var watchFrameTask = ReadOneFrameAsync(serverSide);
+        await session.StartWatchAsync();
+        var watchFrame = await watchFrameTask;
+
+        Assert.AreEqual(BrokerFrameKind.StartWatch, watchFrame.Kind);
+        StringAssert.Contains(watchFrame.DrivesSpec, "C:0:0");
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task StartFromCursors_RescanAfterWarmStart_PopulatesLatestScanAndRewatchesFromScan()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var scanRecord = new ScanRecord(RecordNumber: 5, ParentRecordNumber: 5, Size: 0,
+            LastWriteTicks: 0, Attributes: 0x10, IsDirectory: true, Name: "C:", Path: "C:\\");
+        var client = new JournalBrokerClient(
+            pipe: clientSide,
+            mmfReader: new FakeMmfReader(new[] { scanRecord }),
+            createDriveMmf: (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
+        var keepFileNames = new[] { "note.txt" };
+
+        var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 200L) };
+        var session = await JournalBrokerScanSession.StartFromCursorsAsync(
+            _ => Task.FromResult(client), cursors, BrokerScanProfile.DirectoryIndex, keepFileNames,
+            CancellationToken.None);
+
+        Assert.IsNull(session.LatestScan);
+
+        // Rescan arms and scans on the same broker with the warm-start profile and
+        // keepFileNames; the drives default to the warm-start volumes.
+        var advancedCursor = new UsnJournalCursor(9UL, 400L);
+        var rescanFrameTask = ReadOneFrameAsync(serverSide);
+        var rescanTask = Task.Run(async () =>
+        {
+            var frame = await rescanFrameTask;
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(9UL, 350L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 1, 1);
+            BrokerProtocol.WriteJournalBatch(response, "C", advancedCursor, Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+            return frame;
+        });
+
+        await session.RescanAsync();
+        var rescanFrame = await rescanTask;
+
+        StringAssert.Contains(rescanFrame.DrivesSpec, $"C:0:0:mftlib-null-C:{(int)BrokerScanProfile.DirectoryIndex}");
+        CollectionAssert.AreEqual(keepFileNames, rescanFrame.KeepFileNames.ToArray());
+        Assert.IsNotNull(session.LatestScan);
+        Assert.AreEqual(1, session.LatestScan!.Records.Count);
+        Assert.AreEqual(advancedCursor, session.LatestScan.AdvancedCursors["C"]);
+
+        // The subsequent watch resumes from the rescan's advanced cursor, not the
+        // original warm-start cursor.
+        var watchFrameTask = ReadOneFrameAsync(serverSide);
+        await session.StartWatchAsync();
+        var watchFrame = await watchFrameTask;
+        StringAssert.Contains(watchFrame.DrivesSpec, "C:9:400");
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task StartFromCursors_BrokerDiesWhileParked_LatchesFaultAndBlocksWatch()
+    {
+        var (clientSide, _) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+
+        var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 200L) };
+        var session = await JournalBrokerScanSession.StartFromCursorsAsync(
+            _ => Task.FromResult(client), cursors, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+
+        RaiseBrokerDied(client, "broker crashed while parked");
+
+        Assert.IsTrue(session.IsFaulted);
+        Assert.AreEqual(JournalBrokerSessionState.Faulted, session.State);
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => session.StartWatchAsync());
+        Assert.AreEqual("broker crashed while parked", exception.Message);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task StartFromCursors_DisposeWhileParked_SendsSingleShutdownFrame()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+
+        var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 200L) };
+        var session = await JournalBrokerScanSession.StartFromCursorsAsync(
+            _ => Task.FromResult(client), cursors, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+
+        var readTask = ReadOneFrameAsync(serverSide);
+        await session.DisposeAsync();
+        var shutdownFrame = await readTask;
+
+        Assert.AreEqual(BrokerFrameKind.Shutdown, shutdownFrame.Kind);
+    }
+
+    [TestMethod]
+    public async Task StartFromCursors_StartWatchMidTransmissionCancellation_MakesSessionTerminal()
+    {
+        var (clientSide, _) = DuplexStream.CreatePair();
+        var gate = new GateFrameWriteStream(clientSide, BrokerFrameKind.StartWatch);
+        var client = MakeMinimalFakeClient(gate);
+
+        var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 200L) };
+        var session = await JournalBrokerScanSession.StartFromCursorsAsync(
+            _ => Task.FromResult(client), cursors, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+
+        using var cts = new CancellationTokenSource();
+        var startTask = session.StartWatchAsync(cts.Token);
+        await gate.Entered;
+        cts.Cancel();
+        gate.Release();
+
+        try
+        {
+            await startTask;
+            Assert.Fail("Expected an OperationCanceledException");
+        }
+        catch (OperationCanceledException)
+        {
+            // The frame write started, so cancellation leaves its transmission ambiguous.
+        }
+
+        try
+        {
+            await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => session.StartWatchAsync());
+            Assert.AreEqual(JournalBrokerSessionState.Disposed, session.State);
+        }
+        finally
+        {
+            await session.DisposeAsync();
+        }
+    }
+
+    [TestMethod]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public async Task PublicStartFromCursors_InProcessBroker_EndToEnd()
+    {
+        var liveBatch = (
+            new[] { UsnJournalEntry.Create(1, 5, 210, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "warm.txt") },
+            new UsnJournalCursor(7UL, 260L));
+
+        Task? brokerTask = null;
+        var launchBroker = new Func<string, bool>(args =>
+        {
+            var parts = args.Split(' ');
+            var pipeName = parts[Array.IndexOf(parts, "--pipe") + 1];
+            brokerTask = Task.Run(async () =>
+            {
+                using var pipe = new System.IO.Pipes.NamedPipeClientStream(
+                    ".", pipeName, System.IO.Pipes.PipeDirection.InOut, System.IO.Pipes.PipeOptions.Asynchronous);
+                await pipe.ConnectAsync(5000);
+
+                var fakeHost = new JournalBrokerHost(
+                    queryCursor: _ => new UsnJournalCursor(7UL, 200L),
+                    scanDrive: _ => Array.Empty<ScanRecord>(),
+                    readJournal: (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
+                    watchDrive: (_, _, _) => OneBatchAsync(liveBatch));
+
+                await fakeHost.ServeAsync(pipe, new RealMmfWriter(), oneShot: false, CancellationToken.None);
+            });
+            return true;
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 200L) };
+        var session = await JournalBrokerScanSession.StartFromCursorsAsync(launchBroker, cursors, cts.Token);
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.IsNull(session.LatestScan);
+
+        await session.StartWatchAsync(cts.Token);
+        await using var batches = session.WatchDriveAsync("C", cts.Token).GetAsyncEnumerator();
+        Assert.IsTrue(await batches.MoveNextAsync());
+        Assert.AreEqual("warm.txt", batches.Current.Entries.Single().FileName);
+
+        await session.DisposeAsync();
+        await brokerTask!.WaitAsync(cts.Token);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> OneBatchAsync(
+        (UsnJournalEntry[] Entries, UsnJournalCursor Cursor) batch)
+    {
+        yield return batch;
+        await Task.CompletedTask;
+    }
+
 
     static JournalBrokerClient MakeMinimalFakeClient(Stream pipe) =>
         new(pipe,
