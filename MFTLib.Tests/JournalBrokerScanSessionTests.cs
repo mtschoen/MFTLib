@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 
 namespace MFTLib.Tests;
 
@@ -1761,6 +1762,66 @@ public class JournalBrokerScanSessionTests
         await brokerTask!.WaitAsync(cts.Token);
     }
 
+    // ── Test-extensions harness (ScanSessionTestHarness) ─────────────────────
+    // These go through the public MFTLibTestExtensions surface a consumer would use,
+    // proving the thin wrappers forward to the same internal seams the tests above hit.
+
+    [TestMethod]
+    public async Task Harness_StartScannedAsync_ForwardsArgumentsAndParksOnScan()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var keepFileNames = new[] { "note.txt" };
+
+        BrokerFrame armAndScanFrame = default;
+        var brokerTask = Task.Run(async () =>
+        {
+            armAndScanFrame = await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 0L),
+                Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var session = await ScanSessionTestHarness.StartScannedAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.DirectoryIndex, keepFileNames,
+            CancellationToken.None);
+        await brokerTask;
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.IsNotNull(session.LatestScan);
+        CollectionAssert.AreEqual(keepFileNames, armAndScanFrame.KeepFileNames.ToArray());
+        CollectionAssert.AreEqual(DriveC, session.Drives.ToArray());
+        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, session.Profile);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task Harness_StartFromCursorsAsync_ParksWithoutScanning()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+
+        var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 200L) };
+        var session = await ScanSessionTestHarness.StartFromCursorsAsync(
+            _ => Task.FromResult(client), cursors, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.IsNull(session.LatestScan);
+        CollectionAssert.AreEqual(new[] { "C" }, session.Drives.ToArray());
+
+        // No ArmAndScan was sent: the first frame the broker sees is the StartWatch.
+        var watchFrameTask = ReadOneFrameAsync(serverSide);
+        await session.StartWatchAsync();
+        var watchFrame = await watchFrameTask;
+        Assert.AreEqual(BrokerFrameKind.StartWatch, watchFrame.Kind);
+
+        await session.DisposeAsync();
+    }
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> OneBatchAsync(

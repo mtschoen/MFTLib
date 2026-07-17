@@ -223,6 +223,37 @@ catch (Exception exception) when (exception is OperationCanceledException || ses
 }
 ```
 
+## Testing your integration
+
+You can unit-test the wiring your discovery layer passes into a session - the drives,
+`BrokerScanProfile`, and keep-file names - without launching an elevated broker and
+without MFTLib friend-listing your test assembly. Reference the **`MFTLib.TestExtensions`**
+package from your test project and build a session over a fake `JournalBrokerClient`
+constructed on an in-memory duplex stream:
+
+```csharp
+using MFTLibTestExtensions;
+
+// Build a client over one end of an in-memory duplex stream; drive the broker side
+// (serverSide) from the test to answer the frames the session sends.
+var (clientSide, serverSide) = /* your duplex-stream pair */;
+var client = new JournalBrokerClient(
+    pipe: clientSide,
+    mmfReader: /* fake IMmfReader returning canned ScanRecords */,
+    createDriveMmf: (letter, _) => ($"mftlib-null-{letter}", /* no-op IDisposable */));
+
+var session = await ScanSessionTestHarness.StartScannedAsync(
+    _ => Task.FromResult(client), drives, BrokerScanProfile.DirectoryIndex, keepFileNames);
+```
+
+`ScanSessionTestHarness.StartScannedAsync` and `StartFromCursorsAsync` mirror the shipping
+`JournalBrokerScanSession.StartAsync` / `StartFromCursorsAsync`, differing only in that you
+inject the client factory directly instead of going through the elevated
+`SpawnAndConnectAsync` path. The factory must yield a **fresh** client per call - the
+session takes exclusive ownership and disposes it. From there, assert on the frames your
+test reads off `serverSide` (arm-and-scan drives spec, keep-file names, watch cursors) and
+on the session's `Drives` / `Profile` / `LatestScan`. Your test assembly needs no
+`InternalsVisibleTo` from MFTLib.
 ## Low-level primitive: JournalBrokerClient
 
 `JournalBrokerScanSession` is built on `JournalBrokerClient` and is the recommended entry

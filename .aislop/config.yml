@@ -36,7 +36,7 @@ lint:
     roslynator: true
     jbSeverityFloor: WARNING
     jbExcludeTypes: [InconsistentNaming]
-    jbProjects: "MFTLib;MFTLib.Tests;TestProgram;Benchmark"
+    jbProjects: "MFTLib;MFTLib.Tests;TestProgram;Benchmark;MFTLibTestExtensions"
   cpp:
     # The native tree is now scored by this gate (no longer excluded). It runs
     # cppcheck + clang-tidy + clang-format + ai-slop AND jb inspectcode

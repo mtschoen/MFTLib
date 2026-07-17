@@ -37,7 +37,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="MFTLib.Tests" />
-    <InternalsVisibleTo Include="FileWizardTests" />
+    <InternalsVisibleTo Include="MFTLibTestExtensions" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">

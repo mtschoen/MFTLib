@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Public, consumer-facing test-harness surface over MFTLib's internal session
+       construction seams. Consumers reference this from their own test assemblies so
+       they can build a JournalBrokerScanSession over a fake in-memory client without
+       MFTLib friend-listing their test assembly by name.
+
+       IsPackable is false for now: at NuGet-publish time this ships as a separate
+       MFTLib.TestExtensions package, never folded into the MFTLib package. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <Platforms>x64;x86</Platforms>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
+  </ItemGroup>
+
+</Project>
