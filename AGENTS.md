@@ -122,8 +122,7 @@ C# projects so the C++ tree stays on its own clang-tidy/cppcheck gate. The
 workflow installs `aislop` as a git dependency pinned to a specific commit of
 the `github.com/mtschoen/aislop` fork (git+ssh URL in `package.json`, resolution
 locked in `package-lock.json`) with `npm ci` - which builds it on install - and
-runs it with `npx --no-install`. The former `@schoen/aislop` Gitea-registry
-tarball route is retired. To bump aislop, change the pinned commit in
+runs it with `npx --no-install`. To bump aislop, change the pinned commit in
 `package.json` and refresh the lockfile (`npm install --package-lock-only`). It
 deliberately does NOT use `actions/setup-node` (its 7zr extraction dies with
 exit code 2 on the host-mode act_runner). The build step also

@@ -189,25 +189,26 @@ projdash did exactly this in three stacked PRs: #113 (autofix sweep), #115 (real
 
 ## AI-slop gate (aislop)
 
-**Status: ready-but-gated (C# only).** aislop (https://github.com/scanaislop/aislop) is a
-language-agnostic AI-slop quality gate — deterministic, 40+ rules, scored 0-100.
-**C# support is in progress (not shipped yet, no version pinned as of
-2026-05-29).** Set it up now; **flip it on once aislop's C# engine lands.** Until
-then aislop false-greens on C# (scores a meaningless 100) — do NOT enable the
-gate yet; the per-language linters above (Roslyn/Roslynator + `dotnet format`,
-and jbinspect where used) remain the real gate.
+**Status: ENABLED (C# only).** aislop (https://github.com/scanaislop/aislop) is a
+language-agnostic AI-slop quality gate - deterministic, 40+ rules, scored 0-100.
+The C# engine ships only in the fork github.com/mtschoen/aislop (`schoen/main`);
+the public npm `aislop` has no C# engine and false-greens on C# (scores a
+meaningless 100) - never use it here.
 
-aislop will cover the **C# on landing**, but **never the C++** (unsupported) —
-the C++ relies on clang-tidy/cppcheck as the quality gate and that does not change.
+aislop covers the C# but never the C++ (unsupported) - the C++ tree relies on
+clang-tidy/cppcheck as its quality gate.
 
-When C# support ships:
+The live gate:
+- **PR/CI gate (③):** `.gitea/workflows/aislop.yml` (Windows runner). The fork
+  is pinned as a git dependency at a specific commit in package.json +
+  package-lock.json, installed with `npm ci` (builds on install), and run with
+  `npx --no-install` - scores the WHOLE repo (gate = "don't-regress the
+  whole-repo score"; no diff mode). Bump the pinned commit deliberately and
+  re-validate; a newer ruleset can surface new findings.
 - **Per-edit (① on-save):** `aislop hook install --claude --project` (pin the binary
-  version; never `@latest` — it network-checks every edit).
-- **PR/CI gate (③):** `npx --yes aislop@<C#-capable version> ci .` — scores the
-  WHOLE repo (gate = "don't-regress the whole-repo score"; no diff mode). On
-  Gitea use the npx CLI, NOT the GitHub composite action `scanaislop/aislop@vX`.
-- **Config `.aislop/config.yml`:** `ci.failBelow` (git-wizard's baseline is 80),
-  `exclude` (e.g. `obj/`, `bin/`, generated `*.g.cs`/`*.Designer.cs`), whole-engine
-  toggles. No per-rule config in 0.9.4 — clean up first, then gate.
+  version; never `@latest` - it network-checks every edit).
+- **Config `.aislop/config.yml`:** `ci.failBelow` (100), `lint.csharp.jbProjects`
+  scoping jb inspection to the C# projects, `exclude` (e.g. `obj/`, `bin/`,
+  generated `*.g.cs`/`*.Designer.cs`), whole-engine toggles.
 
 Full detail: `C:\Users\mtsch\.claude\notes\idioms_linters.md` (AI-slop gate section).

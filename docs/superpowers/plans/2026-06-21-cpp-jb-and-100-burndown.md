@@ -4,7 +4,7 @@
 
 **Goal:** Bring MFTLib's whole repository (managed C# *and* native C++) under the aislop quality gate at a genuine 100/100 with real inspections - no suppressions, no relaxed thresholds, no excluded trees - by (A) teaching aislop to run JetBrains InspectCode (ReSharper C++) over the native project and (B) burning down every resulting real finding.
 
-**Architecture:** Two coordinated phases across two repositories. **Phase A** (in `~/aislop`, branch `feat/cpp-support` -> merge to `schoen/main`, then publish a new `@schoen/aislop` tarball) adds a C++ jb lint path: InspectCode already emits the same `<Issue TypeId File Line>` XML for C++ as for C#, so the work is scoping inspectcode to include the `.vcxproj`, auto-labelling C++ issues, deduping jb's clang-tidy-backed findings against aislop's own clang-tidy, and a config toggle. **Phase B** (in `~/MFTLib`, a feature branch off `main`) drops the `MFTLibNative/**` exclusion, wires `compile_commands.json` generation into CI, and burns the native-tree findings (cppcheck + clang-tidy + ai-slop + complexity + jb-cpp) down to zero, holding 100% managed + native coverage throughout.
+**Architecture:** Two coordinated phases across two repositories. **Phase A** (in `~/aislop`, branch `feat/cpp-support` -> merge to `schoen/main`, then bump MFTLib's CI git pin) adds a C++ jb lint path: InspectCode already emits the same `<Issue TypeId File Line>` XML for C++ as for C#, so the work is scoping inspectcode to include the `.vcxproj`, auto-labelling C++ issues, deduping jb's clang-tidy-backed findings against aislop's own clang-tidy, and a config toggle. **Phase B** (in `~/MFTLib`, a feature branch off `main`) drops the `MFTLibNative/**` exclusion, wires `compile_commands.json` generation into CI, and burns the native-tree findings (cppcheck + clang-tidy + ai-slop + complexity + jb-cpp) down to zero, holding 100% managed + native coverage throughout.
 
 **Tech Stack:** aislop is TypeScript (Node ESM), vitest, zod/v4 config. External tools, all PATH-resolved and presence-gated: `jb` (JetBrains.ReSharper.GlobalTools 2026.1, installed at `~/.dotnet/tools/jb`), `cppcheck` 2.19, `clang-tidy`/`clang-format` (LLVM 22). MFTLib is C# (.NET 8, x64) + native C++ (MSBuild + MSVC, `MFTLibNative.vcxproj`), CMake lint target generates `build/lint/compile_commands.json`.
 
@@ -15,7 +15,7 @@
 - **Build with MSBuild `-p:Platform=x64`**, build the `.sln` (never `dotnet build`, never an individual `.csproj`). See AGENTS.md.
 - **No em-dashes** in any generated content (code, comments, commit messages, docs). ASCII only.
 - **No machine-specific hard-coded paths** in committed code or CI.
-- aislop changes are measured with the **locally-built dev binary** (`node ~/aislop/dist/cli.js`) during development, but the **CI gate uses the published `@schoen/aislop` tarball** - Phase A is not "done" until the tarball is republished and the pin in `MFTLib/package.json` + lockfile is bumped (Task B1).
+- aislop changes are measured with the **locally-built dev binary** (`node ~/aislop/dist/cli.js`) during development, but the **CI gate uses the commit-pinned git dependency** - Phase A is not "done" until the pin in `MFTLib/package.json` + lockfile is bumped (Task B1).
 - jb identity / Gitea writes: act as `claude-code` (see `~/.claude/CLAUDE.md`).
 
 ## Decisions (made up front; reversible - flag if you disagree)
@@ -132,18 +132,16 @@ Work in `~/MFTLib` on a feature branch off `main` (e.g. `feat/aislop-whole-repo-
 - [ ] Run the **authoritative** whole-repo inventory with the dev binary: `node ~/aislop/dist/cli.js scan . --json > /tmp/inventory.json` from the repo root; record per-rule counts (this supersedes the spike baseline). Confirm C# side still scores clean (no regression from un-scoping jb).
 - [ ] Commit - `chore: un-exclude MFTLibNative from aislop, enable jb C++ (gate will be red until burn-down)`.
 
-### Task B1: Publish updated @schoen/aislop tarball + bump CI pin
+### Task B1: Bump the CI aislop git pin
 
-The fixes from this session and Phase A only reach CI via the published tarball.
+The fixes from this session and Phase A only reach CI via the pinned commit.
 
 **Files:**
-- `~/aislop` packaging (the `@schoen/aislop` tarball build/publish flow to the Gitea npm registry)
-- Modify: `MFTLib/package.json` + `MFTLib/package-lock.json` (version + sha512 integrity), per AGENTS.md "To bump aislop"
+- Modify: `MFTLib/package.json` + `MFTLib/package-lock.json` (pinned commit), per AGENTS.md "To bump aislop"
 
-- [ ] Build + publish the new `@schoen/aislop` tarball (mirror of `schoen/main`) to the Gitea npm registry.
-- [ ] Bump the version in `MFTLib/package.json`; refresh the lockfile (`npm install --package-lock-only`).
+- [ ] Bump the pinned commit in `MFTLib/package.json`; refresh the lockfile (`npm install --package-lock-only`).
 - [ ] Verify CI's aislop workflow installs the new version and the C++ tools (`cppcheck`/`clang-tidy`/`clang-format`/`jb`) are present on the windows runner; add a `compile_commands.json` generation step to `.gitea/workflows/aislop.yml` before the aislop step (CMake lint configure). Read `~/local-ci/docs/project-ci-setup.md` first.
-- [ ] Commit - `ci(aislop): bump @schoen/aislop, generate compile_commands for C++ gate`.
+- [ ] Commit - `ci(aislop): bump aislop pin, generate compile_commands for C++ gate`.
 
 ### Task B2: Trivial / mechanical findings (dead code, unused includes, dead store)
 

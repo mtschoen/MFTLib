@@ -13,13 +13,9 @@ name: aislop
 # public npm `aislop` scores just Python). It is pinned as a git dependency at a
 # specific fork commit in package.json + package-lock.json and installed with
 # `npm ci` (which builds it on install), then run with `npx --no-install` so CI
-# only ever executes the locked build. The former @schoen/aislop Gitea-registry
-# tarball route is retired (burning internal version numbers was confusing and
-# risked publishing them somewhere real); its historical reason - the fork's
-# build failing under host-mode act_runner ("Trap 2" in local-ci
-# project-ci-setup.md) - no longer reproduces on Windows npm. Bump the pinned
-# commit in package.json (and refresh the lockfile) deliberately and
-# re-validate; a newer ruleset can surface new findings.
+# only ever executes the locked build. Bump the pinned commit in package.json
+# (and refresh the lockfile) deliberately and re-validate; a newer ruleset can
+# surface new findings.
 on:
   pull_request:
   push:
