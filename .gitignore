@@ -378,13 +378,6 @@ FodyWeavers.xsd
 .claude/*
 !.claude/settings.json
 
-# aislop runtime artifacts (keep only .aislop/config.yml)
-.aislop/*
-!.aislop/config.yml
-# nested aislop runtime artifacts (the hook writes .aislop/ next to scanned subprojects, e.g. MFTLibNative/.aislop/)
-**/.aislop/*
-!**/.aislop/config.yml
-
 # Test output
 out.txt
 
@@ -398,3 +391,8 @@ native-coverage.cobertura.xml
 
 # SDD scratch (subagent-driven-development ledger/briefs)
 .superpowers/
+
+# aislop runtime artifacts (session/history logs, caches, baselines).
+# Unanchored so nested project directories are covered too.
+**/.aislop/*
+!**/.aislop/config.yml
