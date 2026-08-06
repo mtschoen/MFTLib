@@ -83,18 +83,7 @@ public class ElevationUtilitiesCoverageTests
         // then Kill() is called and the method returns false.
         ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
         ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ =>
-        {
-            // On Linux, sleep 60 should exceed the 100ms timeout
-            var psi = new ProcessStartInfo(
-                RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    ? "sleep" : "cmd.exe",
-                RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    ? "60" : "/c ping -n 30 127.0.0.1 >nul"
-            )
-            { CreateNoWindow = true, UseShellExecute = false };
-            return Process.Start(psi);
-        };
+        ElevationUtilities.StartProcess = _ => Process.Start(ElevationUtilitiesTests.LongRunningProcessStartInfo());
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", timeoutMs: 100));
     }
 }

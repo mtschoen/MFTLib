@@ -118,7 +118,7 @@ public class ElevationUtilitiesTests
     {
         ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
         ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 30 127.0.0.1 >nul") { CreateNoWindow = true });
+        ElevationUtilities.StartProcess = _ => Process.Start(LongRunningProcessStartInfo());
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", timeoutMs: 100));
     }
 
@@ -149,4 +149,22 @@ public class ElevationUtilitiesTests
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
+    /// <summary>
+    /// A process that outlives a short timeout and that <see cref="Process.Kill()"/> fully
+    /// terminates. Deliberately not wrapped in <c>cmd.exe /c</c>: Kill() ends only the process
+    /// it is handed, so a wrapper leaves the real sleeper orphaned holding the inherited stdio
+    /// handles, which fails the CI step with "WaitDelay expired before I/O complete". Output is
+    /// redirected for the same reason.
+    /// </summary>
+    internal static ProcessStartInfo LongRunningProcessStartInfo()
+    {
+        var isPosix = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
+        return new ProcessStartInfo(isPosix ? "sleep" : "ping.exe", isPosix ? "60" : "-n 30 127.0.0.1")
+        {
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+    }
 }
