@@ -54,8 +54,8 @@ jobs:
       - name: Install C# lint engines (roslynator + jb / ReSharper CLT)
         shell: pwsh
         run: |
-          dotnet tool install -g roslynator.dotnet.cli --version 0.12.0
-          dotnet tool install -g JetBrains.ReSharper.GlobalTools --version 2026.2.0
+          dotnet tool update -g roslynator.dotnet.cli --version 0.12.0 --allow-downgrade
+          dotnet tool update -g JetBrains.ReSharper.GlobalTools --version 2026.2.0 --allow-downgrade
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Build MFTLib solution (native + managed; jb/roslynator load it)
