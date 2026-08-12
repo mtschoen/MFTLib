@@ -9,6 +9,7 @@ namespace MFTLib.Tests;
 [TestClass]
 public class JournalBrokerScanSessionTests
 {
+    static readonly string[] BareDriveC = { "C" };
     static readonly string[] DriveC = { "C:\\" };
     static readonly string[] DriveD = { "D:\\" };
     static readonly string[] DrivesCAndD = { "C:\\", "D:\\" };
@@ -1515,7 +1516,7 @@ public class JournalBrokerScanSessionTests
         Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
         Assert.IsNull(session.LatestScan);
         Assert.AreEqual(1, connectCount);
-        CollectionAssert.AreEqual(new[] { "C" }, session.Drives.ToArray());
+        CollectionAssert.AreEqual(BareDriveC, session.Drives.ToArray());
         Assert.IsFalse(session.IsFaulted);
 
         // No ArmAndScan was sent: the first frame the broker sees is the StartWatch.
@@ -1812,7 +1813,7 @@ public class JournalBrokerScanSessionTests
 
         Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
         Assert.IsNull(session.LatestScan);
-        CollectionAssert.AreEqual(new[] { "C" }, session.Drives.ToArray());
+        CollectionAssert.AreEqual(BareDriveC, session.Drives.ToArray());
 
         // No ArmAndScan was sent: the first frame the broker sees is the StartWatch.
         var watchFrameTask = ReadOneFrameAsync(serverSide);

@@ -19,7 +19,9 @@ struct File {
 
 namespace {
 std::wstring utf8_to_wide(const char* utf8) {
-    if (utf8 == nullptr) return {};
+    if (utf8 == nullptr) {
+        return {};
+    }
     int wideLength = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
     std::wstring wide(static_cast<size_t>((std::max)(wideLength - 1, 0)), L'\0');
     MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide.data(), wideLength);

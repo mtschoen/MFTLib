@@ -32,6 +32,10 @@ engines:
 
 lint:
   csharp:
+    # Required opt-in since aislop 0.14.1: jb/roslynator evaluate MSBuild
+    # projects, and the trust gate silently skips them without this flag.
+    # This repo is first-party code, so project evaluation is trusted.
+    projectEvaluation: true
     jb: true
     roslynator: true
     jbSeverityFloor: WARNING

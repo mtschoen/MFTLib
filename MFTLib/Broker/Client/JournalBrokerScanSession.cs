@@ -216,9 +216,9 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     /// a warm start for a consumer that already holds a cached inventory and only needs to
     /// resume watching. <see cref="StartWatchAsync"/> watches from these cursors; a cursor
     /// with <c>JournalId</c> 0 means "watch from the drive's current position". No scan runs
-    /// until the first <see cref="RescanAsync()"/>, so <see cref="LatestScan"/> is null until
+    /// until the first <see cref="RescanAsync(CancellationToken)"/>, so <see cref="LatestScan"/> is null until
     /// then. <see cref="BrokerScanProfile.Full"/> and no keep-file names apply to a later
-    /// <see cref="RescanAsync()"/>; use the overload below to set them.
+    /// <see cref="RescanAsync(CancellationToken)"/>; use the overload below to set them.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static Task<JournalBrokerScanSession> StartFromCursorsAsync(
@@ -230,7 +230,7 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     /// <summary>
     /// As <see cref="StartFromCursorsAsync(Func{string,bool},IReadOnlyDictionary{string,UsnJournalCursor},CancellationToken)"/>
     /// but with the explicit <paramref name="profile"/> and optional
-    /// <paramref name="keepFileNames"/> a later <see cref="RescanAsync()"/> uses.
+    /// <paramref name="keepFileNames"/> a later <see cref="RescanAsync(CancellationToken)"/> uses.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static Task<JournalBrokerScanSession> StartFromCursorsAsync(
@@ -262,7 +262,7 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
 
     // Re-key the caller's cursors by bare drive letter (case-insensitive) so the watch spec
     // and the per-drive WatchDriveAsync lookup agree with the scan path's keying.
-    static IReadOnlyDictionary<string, UsnJournalCursor> NormalizeCursors(
+    static Dictionary<string, UsnJournalCursor> NormalizeCursors(
         IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive)
     {
         var normalized = new Dictionary<string, UsnJournalCursor>(StringComparer.OrdinalIgnoreCase);
