@@ -108,5 +108,18 @@ jobs:
           $result = Get-Content $report -Raw | ConvertFrom-Json
           $files = if ($result.summary.files) { $result.summary.files } else { 0 }
           Write-Host "aislop score $($result.score) over $files files"
+          # Diagnostic: dump engine sub-scores and top findings when score < 100
+          if ($result.engines) {
+            Write-Host "Engine scores:"
+            $result.engines.PSObject.Properties | ForEach-Object {
+              Write-Host "  $($_.Name): score=$($_.Value.score) findings=$($_.Value.findings)"
+            }
+          }
+          if ($result.score -lt 100 -and $result.findings) {
+            Write-Host "Top findings (first 20):"
+            $result.findings | Select-Object -First 20 | ForEach-Object {
+              Write-Host "  [$($_.severity)] $($_.file):$($_.line) - $($_.rule): $($_.message)"
+            }
+          }
           if ($files -lt 10) { Write-Error "aislop only scanned $files files - the C# engine did not run"; exit 1 }
           if ($gateExit -ne 0) { Write-Error "aislop score below failBelow"; exit 1 }
