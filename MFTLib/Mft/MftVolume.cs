@@ -5,18 +5,30 @@ namespace MFTLib;
 
 public sealed partial class MftVolume : IDisposable
 {
-    readonly SafeFileHandle _volumeHandle;
-    readonly string _driveLetter;
     readonly uint _bufferSizeRecords;
+    readonly string _driveLetter;
+    readonly SafeFileHandle _volumeHandle;
     bool _disposed;
-
-    internal SafeFileHandle GetVolumeHandleForTest() => _volumeHandle;
 
     MftVolume(SafeFileHandle volumeHandle, string driveLetter, uint bufferSizeRecords)
     {
         _volumeHandle = volumeHandle;
         _driveLetter = driveLetter;
         _bufferSizeRecords = bufferSizeRecords;
+    }
+
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            _volumeHandle.Dispose();
+            _disposed = true;
+        }
+    }
+
+    internal SafeFileHandle GetVolumeHandleForTest()
+    {
+        return _volumeHandle;
     }
 
     public static MftVolume Open(string volumePath, uint bufferSizeRecords = 262144)
@@ -29,13 +41,19 @@ public sealed partial class MftVolume : IDisposable
         return new MftVolume(handle, driveLetter, bufferSizeRecords);
     }
 
-    public MftRecord[] ReadAllRecords() => ReadAllRecords(resolvePaths: false, out _);
+    public MftRecord[] ReadAllRecords()
+    {
+        return ReadAllRecords(false, out _);
+    }
 
-    public MftRecord[] ReadAllRecords(bool resolvePaths) => ReadAllRecords(resolvePaths, out _);
+    public MftRecord[] ReadAllRecords(bool resolvePaths)
+    {
+        return ReadAllRecords(resolvePaths, out _);
+    }
 
     public MftRecord[] ReadAllRecords(out MftParseTimings timings)
     {
-        return ReadAllRecords(resolvePaths: false, out timings);
+        return ReadAllRecords(false, out timings);
     }
 
     public MftRecord[] ReadAllRecords(bool resolvePaths, out MftParseTimings timings)
@@ -45,7 +63,9 @@ public sealed partial class MftVolume : IDisposable
     }
 
     public MftRecord[] FindByName(string name, MatchFlags matchFlags = MatchFlags.ExactMatch)
-        => FindByName(name, matchFlags, out _);
+    {
+        return FindByName(name, matchFlags, out _);
+    }
 
     public MftRecord[] FindByName(string name, MatchFlags matchFlags, out MftParseTimings timings)
     {
@@ -59,19 +79,21 @@ public sealed partial class MftVolume : IDisposable
         var resultPtr = MFTLibNative.ParseMFTRecords(_volumeHandle, filter, matchFlags, _bufferSizeRecords);
 
         if (resultPtr == IntPtr.Zero)
+        {
             throw new InvalidOperationException("ParseMFTRecords returned null");
+        }
 
         return new MftResult(resultPtr, _driveLetter, 0);
     }
 
     public IEnumerable<string> FindDirectories(string name)
     {
-        return FindRecords(name, isDirectory: true);
+        return FindRecords(name, true);
     }
 
     public IEnumerable<string> FindFiles(string name)
     {
-        return FindRecords(name, isDirectory: false);
+        return FindRecords(name, false);
     }
 
     public IEnumerable<string> FindRecords(string name, bool? isDirectory = null)
@@ -81,7 +103,9 @@ public sealed partial class MftVolume : IDisposable
         foreach (var record in result)
         {
             if (isDirectory.HasValue && record.IsDirectory != isDirectory.Value)
+            {
                 continue;
+            }
 
             yield return record.FullPath ?? record.FileName;
         }
@@ -90,18 +114,25 @@ public sealed partial class MftVolume : IDisposable
     public static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords = 262144)
     {
         if (!MFTLibNative.GenerateSyntheticMFT(filePath, recordCount, bufferSizeRecords))
+        {
             throw new InvalidOperationException("Failed to generate synthetic MFT file");
+        }
     }
 
     public static MftRecord[] ParseMFTFromFile(string filePath, out MftParseTimings timings)
-        => ParseMFTFromFile(filePath, null, MatchFlags.None, out timings);
+    {
+        return ParseMFTFromFile(filePath, null, MatchFlags.None, out timings);
+    }
 
-    public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags, out MftParseTimings timings, uint bufferSizeRecords = 262144)
+    public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags,
+        out MftParseTimings timings, uint bufferSizeRecords = 262144)
     {
         var resultPtr = MFTLibNative.ParseMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords);
 
         if (resultPtr == IntPtr.Zero)
+        {
             throw new InvalidOperationException("ParseMFTFromFile returned null");
+        }
 
         using var result = new MftResult(resultPtr, string.Empty, 0);
         return MaterializeWithTimings(result, out timings);
@@ -118,18 +149,21 @@ public sealed partial class MftVolume : IDisposable
 
     internal static string ExtractDriveLetter(string normalizedPath)
     {
-        if (normalizedPath.Length != 6) return string.Empty;
-        if (!normalizedPath.StartsWith(@"\\.\", StringComparison.Ordinal)) return string.Empty;
-        if (normalizedPath[5] != ':') return string.Empty;
-        return normalizedPath[4].ToString();
-    }
-
-    public void Dispose()
-    {
-        if (!_disposed)
+        if (normalizedPath.Length != 6)
         {
-            _volumeHandle.Dispose();
-            _disposed = true;
+            return string.Empty;
         }
+
+        if (!normalizedPath.StartsWith(@"\\.\", StringComparison.Ordinal))
+        {
+            return string.Empty;
+        }
+
+        if (normalizedPath[5] != ':')
+        {
+            return string.Empty;
+        }
+
+        return normalizedPath[4].ToString();
     }
 }

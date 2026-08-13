@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MFTLib.Interop;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests;
 
@@ -50,7 +51,7 @@ public class NativeMockTests
     [TestMethod]
     public void StreamRecords_NullReturn_ThrowsInvalidOperation()
     {
-        FileUtilities.GetVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), ownsHandle: false);
+        FileUtilities.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
         MFTLibNative.ParseMFTRecords = (_, _, _, _) => IntPtr.Zero;
 
         using var volume = MftVolume.Open("C");
@@ -61,7 +62,7 @@ public class NativeMockTests
     [TestMethod]
     public unsafe void FindRecords_NullFullPath_FallsBackToFileName()
     {
-        FileUtilities.GetVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), ownsHandle: false);
+        FileUtilities.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
 
         // Build a synthetic MftParseResult with one entry (no path data)
         var entrySize = MftResult.NativeEntrySize;
@@ -84,7 +85,7 @@ public class NativeMockTests
             TotalRecords = 1,
             UsedRecords = 1,
             Entries = (IntPtr)entryBuf,
-            PathEntries = IntPtr.Zero,
+            PathEntries = IntPtr.Zero
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());

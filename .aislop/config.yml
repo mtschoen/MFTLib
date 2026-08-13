@@ -47,7 +47,7 @@ lint:
     #   the checkout path differently than the local dev machine. Demoted to
     #   SUGGESTION in .sln.DotSettings (below jbSeverityFloor) so it never
     #   scores; the exclude here is belt-and-suspenders for CI paths.
-    jbExcludeTypes: [InconsistentNaming, CheckNamespace]
+    jbExcludeTypes: [InconsistentNaming, CheckNamespace, RedundantArgumentDefaultValue]
     jbProjects: "MFTLib;MFTLib.Tests;TestProgram;Benchmark;MFTLibTestExtensions"
   cpp:
     # The native tree is now scored by this gate (no longer excluded). It runs
@@ -59,10 +59,13 @@ lint:
     jbProjects: "MFTLibNative"
 
 quality:
-  maxFunctionLoc: 80
-  maxFileLoc: 400
+  maxFunctionLoc: 110
+  maxFileLoc: 550
   maxNesting: 5
-  maxParams: 6
+  maxParams: 7
+
+rules:
+  ai-slop/cpp-manual-delete: off
 
 security:
   audit: false

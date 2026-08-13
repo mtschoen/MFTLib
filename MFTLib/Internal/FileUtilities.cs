@@ -1,16 +1,11 @@
-using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib;
 
 static class FileUtilities
 {
-    // ReSharper disable InconsistentNaming
-    const uint GENERIC_READ = 0x80000000;
-    const uint OPEN_EXISTING = 3;
-    const uint FILE_SHARE_READ = 0x00000001;
-    const uint FILE_SHARE_WRITE = 0x00000002;
-    // ReSharper restore InconsistentNaming
+    internal static Func<string, SafeFileHandle> GetVolumeHandle = NativeGetVolumeHandle;
 
     static SafeFileHandle NativeGetVolumeHandle(string volume)
     {
@@ -31,10 +26,16 @@ static class FileUtilities
         return volumeHandle;
     }
 
-    internal static Func<string, SafeFileHandle> GetVolumeHandle = NativeGetVolumeHandle;
-
     internal static void ResetToDefaults()
     {
         GetVolumeHandle = NativeGetVolumeHandle;
     }
+
+    // ReSharper disable InconsistentNaming
+    const uint GENERIC_READ = 0x80000000;
+    const uint OPEN_EXISTING = 3;
+    const uint FILE_SHARE_READ = 0x00000001;
+
+    const uint FILE_SHARE_WRITE = 0x00000002;
+    // ReSharper restore InconsistentNaming
 }

@@ -4,17 +4,15 @@ using System.Runtime.Versioning;
 namespace MFTLib;
 
 /// <summary>
-/// Production <see cref="IElevatedEntryRunner"/>. The broker mode does its work and
-/// then terminates the elevated child via <see cref="System.Environment.Exit"/>,
-/// since an elevated child exists only to perform one mode.
+///     Production <see cref="IElevatedEntryRunner" />. The broker mode does its work and
+///     then terminates the elevated child via <see cref="System.Environment.Exit" />,
+///     since an elevated child exists only to perform one mode.
 /// </summary>
 public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
 {
     // Exiting the process cannot be exercised from an in-process unit test (it would
     // kill the test host), so tests inject a fake. Production always uses Environment.Exit.
     internal static Action<int> ExitProcess = Environment.Exit;
-
-    internal static void ResetToDefaults() => ExitProcess = Environment.Exit;
 
     [SupportedOSPlatform("windows")]
     public void RunBroker(string? pipeName, bool oneShot)
@@ -43,5 +41,10 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
             .GetAwaiter().GetResult();
 
         ExitProcess(0);
+    }
+
+    internal static void ResetToDefaults()
+    {
+        ExitProcess = Environment.Exit;
     }
 }

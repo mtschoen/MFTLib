@@ -5,24 +5,6 @@ namespace MFTLib.Tests;
 [TestClass]
 public class ElevatedEntryPointTests
 {
-    // Records which runner method was invoked and with what arguments, so the
-    // dispatch can be tested without spawning a real elevated process, pipe, or scan.
-    sealed class RecordingRunner : IElevatedEntryRunner
-    {
-        public int BrokerCalls { get; private set; }
-        public string? BrokerPipe { get; private set; }
-        public bool BrokerOnce { get; private set; }
-
-        public void RunBroker(string? pipeName, bool oneShot)
-        {
-            BrokerCalls++;
-            BrokerPipe = pipeName;
-            BrokerOnce = oneShot;
-        }
-
-        public int TotalCalls => BrokerCalls;
-    }
-
     static readonly string[] BrokerWithOnceArgs = { "--broker", "--pipe", "mftlib-pipe-123", "--once" };
     static readonly string[] BrokerWithoutOnceArgs = { "--broker", "--pipe", "p" };
     static readonly string[] LeadingExecutablePathArgs = { @"C:\apps\SomeApp.exe", "--broker", "--pipe", "p" };
@@ -79,7 +61,10 @@ public class ElevatedEntryPointTests
     }
 
     [TestCleanup]
-    public void Cleanup() => BrokerDiagnostics.ResetToDefaults();
+    public void Cleanup()
+    {
+        BrokerDiagnostics.ResetToDefaults();
+    }
 
     [TestMethod]
     public void TryHandle_BrokerModeWithDiagFlag_EnablesDiagnostics()
@@ -103,7 +88,7 @@ public class ElevatedEntryPointTests
         finally
         {
             BrokerDiagnostics.LogDirectory = originalDirectory;
-            Directory.Delete(tempDir, recursive: true);
+            Directory.Delete(tempDir, true);
         }
     }
 
@@ -127,5 +112,23 @@ public class ElevatedEntryPointTests
 
         Assert.IsTrue(handled);
         Assert.IsNull(runner.BrokerPipe);
+    }
+
+    // Records which runner method was invoked and with what arguments, so the
+    // dispatch can be tested without spawning a real elevated process, pipe, or scan.
+    sealed class RecordingRunner : IElevatedEntryRunner
+    {
+        public int BrokerCalls { get; private set; }
+        public string? BrokerPipe { get; private set; }
+        public bool BrokerOnce { get; private set; }
+
+        public int TotalCalls => BrokerCalls;
+
+        public void RunBroker(string? pipeName, bool oneShot)
+        {
+            BrokerCalls++;
+            BrokerPipe = pipeName;
+            BrokerOnce = oneShot;
+        }
     }
 }

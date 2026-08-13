@@ -1,17 +1,19 @@
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Microsoft.Win32.SafeHandles;
 using MFTLib.Interop;
 using MFTLib.Tests.TestSupport;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests;
 
 /// <summary>
-/// Exercises the real production delegates <see cref="JournalBrokerHost.CreateDefault"/>
-/// wires up (MftVolume-backed query/scan/catch-up/watch), using the same non-admin
-/// native-mock technique as MockVolumeTests / UsnJournalTests, instead of the fake
-/// delegates JournalBrokerHostTests injects directly.
+///     Exercises the real production delegates <see cref="JournalBrokerHost.CreateDefault" />
+///     wires up (MftVolume-backed query/scan/catch-up/watch), using the same non-admin
+///     native-mock technique as MockVolumeTests / UsnJournalTests, instead of the fake
+///     delegates JournalBrokerHostTests injects directly.
 /// </summary>
 [TestClass]
 public class JournalBrokerHostRealSeamsTests
@@ -23,7 +25,10 @@ public class JournalBrokerHostRealSeamsTests
         FileUtilities.ResetToDefaults();
     }
 
-    static SafeFileHandle FakeHandle() => new(new IntPtr(1), ownsHandle: false);
+    static SafeFileHandle FakeHandle()
+    {
+        return new SafeFileHandle(new IntPtr(1), false);
+    }
 
     // Three path-entry records: [0] kept (in use, real path), [1] skipped (not in
     // use), [2] skipped (in use but an empty path) - covers both operands of
@@ -61,7 +66,7 @@ public class JournalBrokerHostRealSeamsTests
             TotalRecords = 3,
             UsedRecords = 3,
             Entries = IntPtr.Zero,
-            PathEntries = entryBuf,
+            PathEntries = entryBuf
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
@@ -84,7 +89,11 @@ public class JournalBrokerHostRealSeamsTests
         MFTLibNative.FreeMftResult = ptr =>
         {
             var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
-            if (parsed.PathEntries != IntPtr.Zero) Marshal.FreeHGlobal(parsed.PathEntries);
+            if (parsed.PathEntries != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(parsed.PathEntries);
+            }
+
             Marshal.FreeHGlobal(ptr);
         };
 
@@ -104,7 +113,7 @@ public class JournalBrokerHostRealSeamsTests
             EntryCount = 0,
             Entries = IntPtr.Zero,
             NextUsn = 5100,
-            JournalId = 0xABCD,
+            JournalId = 0xABCD
         };
         var readPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
         Marshal.StructureToPtr(readResult, readPtr, false);
@@ -127,7 +136,7 @@ public class JournalBrokerHostRealSeamsTests
             callCount++;
             return callCount == 1
                 ? BuildEmptyWatchResult(journalId, startUsn)
-                : BuildSingleEntryWatchResult(journalId, startUsn + 100, "watched.txt", reason: 0x100 /* FileCreate */);
+                : BuildSingleEntryWatchResult(journalId, startUsn + 100, "watched.txt", 0x100 /* FileCreate */);
         };
         MFTLibNative.CancelUsnJournalWatch = _ => true;
         MFTLibNative.FreeUsnJournalResult = ptr => Marshal.FreeHGlobal(ptr);
@@ -138,13 +147,13 @@ public class JournalBrokerHostRealSeamsTests
         // A non-zero JournalId means the host uses this cursor directly instead of
         // calling queryCursor (which would need MFTLibNative.QueryUsnJournal mocked
         // too) - keeps this test focused on the watch seam.
-        var request = new System.Buffers.ArrayBufferWriter<byte>();
+        var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteStartWatch(request, "C:7:100");
         await clientSide.WriteAsync(request.WrittenMemory);
         await clientSide.FlushAsync();
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), oneShot: false, cts.Token);
+        var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
 
         var frame = await ReadOneFrameAsync(clientSide);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
@@ -179,14 +188,14 @@ public class JournalBrokerHostRealSeamsTests
         var host = JournalBrokerHost.CreateDefault();
         var (clientSide, serverSide) = DuplexStream.CreatePair();
 
-        var request = new System.Buffers.ArrayBufferWriter<byte>();
+        var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteStartWatch(request, "C:7:100");
         await clientSide.WriteAsync(request.WrittenMemory);
         await clientSide.FlushAsync();
 
         // ServeAsync's own token is the same source: once the watch ends cleanly,
         // the outer serve loop unwinds too (its blocked read gets cancelled).
-        await host.ServeAsync(serverSide, new RecordingMmfWriter(), oneShot: false, cts.Token);
+        await host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
         cts.Dispose();
     }
 
@@ -197,7 +206,7 @@ public class JournalBrokerHostRealSeamsTests
             EntryCount = 0,
             Entries = IntPtr.Zero,
             NextUsn = nextUsn,
-            JournalId = journalId,
+            JournalId = journalId
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
         Marshal.StructureToPtr(nativeResult, resultPtr, false);
@@ -225,7 +234,7 @@ public class JournalBrokerHostRealSeamsTests
             EntryCount = 1,
             Entries = entriesPtr,
             NextUsn = nextUsn,
-            JournalId = journalId,
+            JournalId = journalId
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
         Marshal.StructureToPtr(nativeResult, resultPtr, false);
@@ -236,7 +245,7 @@ public class JournalBrokerHostRealSeamsTests
     {
         var header = new byte[4];
         await stream.ReadExactlyAsync(header);
-        var totalLength = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(header);
+        var totalLength = BinaryPrimitives.ReadInt32LittleEndian(header);
         var frameBytes = new byte[4 + totalLength];
         header.CopyTo(frameBytes.AsMemory());
         await stream.ReadExactlyAsync(frameBytes.AsMemory(4, totalLength));

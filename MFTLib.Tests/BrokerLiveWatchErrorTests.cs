@@ -1,12 +1,12 @@
 using System.Buffers;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MFTLib.Tests.TestSupport;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
 /// <summary>
-/// Verifies that an Error frame arriving during live watch faults only the affected
-/// drive's channel, leaving other drives streaming and leaving Heartbeat unrouted.
+///     Verifies that an Error frame arriving during live watch faults only the affected
+///     drive's channel, leaving other drives streaming and leaving Heartbeat unrouted.
 /// </summary>
 [TestClass]
 public class BrokerLiveWatchErrorTests
@@ -28,7 +28,9 @@ public class BrokerLiveWatchErrorTests
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in batchSource("C:\\", default, cts.Token)) { }
+            await foreach (var _ in batchSource("C:\\", default, cts.Token))
+            {
+            }
         });
         Assert.AreEqual("journal wrapped", exception.Message);
 
@@ -58,12 +60,16 @@ public class BrokerLiveWatchErrorTests
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in batchSource("D:\\", default, cts.Token)) { }
+            await foreach (var _ in batchSource("D:\\", default, cts.Token))
+            {
+            }
         });
 
         var received = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
         await foreach (var batch in batchSource("C:\\", default, cts.Token))
+        {
             received.Add(batch);
+        }
 
         Assert.AreEqual(1, received.Count);
         Assert.AreEqual(cursor, received[0].Cursor);
@@ -92,7 +98,9 @@ public class BrokerLiveWatchErrorTests
         var batchSource = client.CreateBatchSource();
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in batchSource("C:\\", default, cts.Token)) { }
+            await foreach (var _ in batchSource("C:\\", default, cts.Token))
+            {
+            }
         });
         Assert.AreEqual("journal wrapped", exception.Message);
 
@@ -101,22 +109,32 @@ public class BrokerLiveWatchErrorTests
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    static JournalBrokerClient MakeMinimalFakeClient(Stream pipe) =>
-        new(pipe,
-            mmfReader: new NullMmfReader(),
-            createDriveMmf: (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
+    static JournalBrokerClient MakeMinimalFakeClient(Stream pipe)
+    {
+        return new JournalBrokerClient(pipe,
+            new NullMmfReader(),
+            (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
+    }
 
-    static Dictionary<string, UsnJournalCursor> WatchCursors(params string[] drives) =>
-        drives.ToDictionary(d => d, _ => new UsnJournalCursor(7UL, 0L), StringComparer.OrdinalIgnoreCase);
+    static Dictionary<string, UsnJournalCursor> WatchCursors(params string[] drives)
+    {
+        return drives.ToDictionary(d => d, _ => new UsnJournalCursor(7UL, 0L), StringComparer.OrdinalIgnoreCase);
+    }
 
     sealed class NullMmfReader : IMmfReader
     {
-        public ScanRecord[] Read(string mmfName, long byteLength) => Array.Empty<ScanRecord>();
+        public ScanRecord[] Read(string mmfName, long byteLength)
+        {
+            return Array.Empty<ScanRecord>();
+        }
     }
 
     sealed class NoOpDisposable : IDisposable
     {
         public static readonly NoOpDisposable Instance = new();
-        public void Dispose() { }
+
+        public void Dispose()
+        {
+        }
     }
 }

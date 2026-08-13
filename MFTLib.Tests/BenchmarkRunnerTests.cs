@@ -1,16 +1,17 @@
 using System.Text;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Benchmark;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
 [TestClass]
 public class BenchmarkRunnerTests
 {
-    BenchmarkRunner _runner = null!;
+    static readonly string[] EntryPointArgs = ["10", "1"];
     List<string> _consoleLines = null!;
     List<string> _consoleWrites = null!;
     List<string> _deletedFiles = null!;
+    BenchmarkRunner _runner = null!;
     List<(string Path, string Content)> _writtenFiles = null!;
 
     [TestInitialize]
@@ -28,7 +29,7 @@ public class BenchmarkRunnerTests
                 GetBuildConfiguration = () => "Release",
                 GetWmiValue = (_, _) => "MockValue",
                 GetInstalledMemoryGB = () => 32,
-                GetDiskModel = _ => "MockDisk",
+                GetDiskModel = _ => "MockDisk"
             },
             GenerateSynthetic = (_, _, _) => { },
             ParseFromFile = (_, _, _) => ([], default),
@@ -36,7 +37,7 @@ public class BenchmarkRunnerTests
             GetFileInfo = _ => new FileInfo(typeof(BenchmarkRunnerTests).Assembly.Location),
             WriteAllText = (path, content) => _writtenFiles.Add((path, content)),
             WriteLineToConsole = line => _consoleLines.Add(line),
-            WriteToConsole = value => _consoleWrites.Add(value),
+            WriteToConsole = value => _consoleWrites.Add(value)
         };
     }
 
@@ -141,7 +142,8 @@ public class BenchmarkRunnerTests
 
         var logLines = new List<string>();
         var output = new StringBuilder();
-        _runner.RunScenario(new BenchmarkScenario("Test Scenario", null, MatchFlags.None), "fake.mft", 3, 100, logLines.Add, output);
+        _runner.RunScenario(new BenchmarkScenario("Test Scenario", null, MatchFlags.None), "fake.mft", 3, 100,
+            logLines.Add, output);
 
         Assert.AreEqual(3, callCount);
         Assert.IsTrue(logLines.Any(line => line.Contains("Test Scenario")));
@@ -157,7 +159,8 @@ public class BenchmarkRunnerTests
 
         var logLines = new List<string>();
         var output = new StringBuilder();
-        _runner.RunScenario(new BenchmarkScenario("Single", null, MatchFlags.None), "fake.mft", 1, 1000, logLines.Add, output);
+        _runner.RunScenario(new BenchmarkScenario("Single", null, MatchFlags.None), "fake.mft", 1, 1000, logLines.Add,
+            output);
 
         Assert.IsTrue(logLines.Any(line => line.Contains("42")));
     }
@@ -179,17 +182,18 @@ public class BenchmarkRunnerTests
         finally
         {
             if (File.Exists(temporaryPath))
+            {
                 File.Delete(temporaryPath);
+            }
         }
     }
-
-    static readonly string[] EntryPointArgs = ["10", "1"];
 
     [TestMethod]
     public void Benchmark_EntryPoint_Executes()
     {
         var entryPoint = typeof(BenchmarkRunner).Assembly.EntryPoint!;
-        var baselinePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Benchmark", "baseline.txt"));
+        var baselinePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+            "Benchmark", "baseline.txt"));
         var backup = File.Exists(baselinePath) ? File.ReadAllText(baselinePath) : null;
         try
         {
@@ -199,7 +203,9 @@ public class BenchmarkRunnerTests
         finally
         {
             if (backup != null)
+            {
                 File.WriteAllText(baselinePath, backup);
+            }
         }
     }
 
@@ -211,7 +217,7 @@ public class BenchmarkRunnerTests
         {
             var runner = new BenchmarkRunner
             {
-                WriteAllText = (_, content) => File.WriteAllText(temporaryBaseline, content),
+                WriteAllText = (_, content) => File.WriteAllText(temporaryBaseline, content)
             };
             var exitCode = runner.Run(["10", "1"]);
             Assert.AreEqual(0, exitCode);
@@ -222,7 +228,9 @@ public class BenchmarkRunnerTests
         finally
         {
             if (File.Exists(temporaryBaseline))
+            {
                 File.Delete(temporaryBaseline);
+            }
         }
     }
 
@@ -231,7 +239,8 @@ public class BenchmarkRunnerTests
     {
         var logLines = new List<string>();
         var output = new StringBuilder();
-        _runner.RunScenario(new BenchmarkScenario("Format Test", "test", MatchFlags.ExactMatch), "fake.mft", 1, 5000, logLines.Add, output);
+        _runner.RunScenario(new BenchmarkScenario("Format Test", "test", MatchFlags.ExactMatch), "fake.mft", 1, 5000,
+            logLines.Add, output);
 
         var allOutput = string.Join("\n", logLines);
         Assert.IsTrue(allOutput.Contains("I/O:"));
@@ -248,7 +257,8 @@ public class BenchmarkRunnerTests
 
         var logLines = new List<string>();
         var output = new StringBuilder();
-        _runner.RunScenario(new BenchmarkScenario("Failing", null, MatchFlags.None), "fake.mft", 3, 100, logLines.Add, output);
+        _runner.RunScenario(new BenchmarkScenario("Failing", null, MatchFlags.None), "fake.mft", 3, 100, logLines.Add,
+            output);
 
         var allOutput = string.Join("\n", logLines);
         Assert.IsTrue(allOutput.Contains("All iterations failed"));
@@ -262,13 +272,18 @@ public class BenchmarkRunnerTests
         _runner.ParseFromFile = (_, _, _) =>
         {
             callCount++;
-            if (callCount == 2) throw new InvalidOperationException("boom");
+            if (callCount == 2)
+            {
+                throw new InvalidOperationException("boom");
+            }
+
             return (new MftRecord[10], default);
         };
 
         var logLines = new List<string>();
         var output = new StringBuilder();
-        _runner.RunScenario(new BenchmarkScenario("Partial", null, MatchFlags.None), "fake.mft", 3, 100, logLines.Add, output);
+        _runner.RunScenario(new BenchmarkScenario("Partial", null, MatchFlags.None), "fake.mft", 3, 100, logLines.Add,
+            output);
 
         var outputText = output.ToString();
         Assert.IsTrue(outputText.Contains("FAILED:"));

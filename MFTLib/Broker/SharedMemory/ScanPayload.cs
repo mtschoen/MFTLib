@@ -4,15 +4,20 @@ using System.Text;
 namespace MFTLib;
 
 public readonly record struct ScanRecord(
-    ulong RecordNumber, ulong ParentRecordNumber, ulong Size,
-    long LastWriteTicks, uint Attributes, bool IsDirectory,
-    string Name, string Path);
+    ulong RecordNumber,
+    ulong ParentRecordNumber,
+    ulong Size,
+    long LastWriteTicks,
+    uint Attributes,
+    bool IsDirectory,
+    string Name,
+    string Path);
 
 /// <summary>
-/// Packed binary scan payload for the shared-memory cold-scan handoff:
-/// [header][fixed-stride record table][UTF-16 string heap]. The UI reads the
-/// table by offset and slices names/paths from the heap, mirroring MFTLib's
-/// lazy-materialization design. Replaces the text-on-disk scan round-trip.
+///     Packed binary scan payload for the shared-memory cold-scan handoff:
+///     [header][fixed-stride record table][UTF-16 string heap]. The UI reads the
+///     table by offset and slices names/paths from the heap, mirroring MFTLib's
+///     lazy-materialization design. Replaces the text-on-disk scan round-trip.
 /// </summary>
 public static class ScanPayload
 {
@@ -25,13 +30,16 @@ public static class ScanPayload
     {
         long heap = 0;
         foreach (var record in records)
+        {
             heap += Encoding.Unicode.GetByteCount(record.Name) + Encoding.Unicode.GetByteCount(record.Path);
+        }
+
         return HeaderSize + (long)records.Count * RecordStride + heap;
     }
 
     public static void Write(Span<byte> destination, IReadOnlyList<ScanRecord> records)
     {
-        long tableLen = (long)records.Count * RecordStride;
+        var tableLen = (long)records.Count * RecordStride;
         var heapStart = HeaderSize + (int)tableLen;
         var heapCursor = heapStart;
 
@@ -56,10 +64,12 @@ public static class ScanPayload
             var pathBytes = Encoding.Unicode.GetBytes(record.Path);
             BinaryPrimitives.WriteInt32LittleEndian(row[40..], heapCursor);
             BinaryPrimitives.WriteInt32LittleEndian(row[44..], nameBytes.Length);
-            nameBytes.CopyTo(destination[heapCursor..]); heapCursor += nameBytes.Length;
+            nameBytes.CopyTo(destination[heapCursor..]);
+            heapCursor += nameBytes.Length;
             BinaryPrimitives.WriteInt32LittleEndian(row[48..], heapCursor);
             BinaryPrimitives.WriteInt32LittleEndian(row[52..], pathBytes.Length);
-            pathBytes.CopyTo(destination[heapCursor..]); heapCursor += pathBytes.Length;
+            pathBytes.CopyTo(destination[heapCursor..]);
+            heapCursor += pathBytes.Length;
         }
 
         BinaryPrimitives.WriteInt64LittleEndian(destination[20..], heapCursor - heapStart);
@@ -68,7 +78,10 @@ public static class ScanPayload
     public static int ReadCount(ReadOnlySpan<byte> source)
     {
         if (BinaryPrimitives.ReadUInt32LittleEndian(source) != Magic)
+        {
             throw new InvalidDataException("Scan payload magic mismatch");
+        }
+
         return BinaryPrimitives.ReadInt32LittleEndian(source[8..]);
     }
 

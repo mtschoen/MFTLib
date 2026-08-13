@@ -1,10 +1,12 @@
-using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib;
 
 static class Kernel32
 {
+    internal static Func<string, uint, uint, IntPtr, uint, uint, IntPtr, SafeFileHandle> CreateFile = NativeCreateFile;
+
     [DllImport("kernel32.dll", EntryPoint = "CreateFile", SetLastError = true, CharSet = CharSet.Unicode)]
     static extern SafeFileHandle NativeCreateFile(
         string lpFileName,
@@ -14,8 +16,6 @@ static class Kernel32
         uint dwCreationDisposition,
         uint dwFlagsAndAttributes,
         IntPtr hTemplateFile);
-
-    internal static Func<string, uint, uint, IntPtr, uint, uint, IntPtr, SafeFileHandle> CreateFile = NativeCreateFile;
 
     internal static void ResetToDefaults()
     {

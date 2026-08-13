@@ -6,8 +6,8 @@ namespace MFTLib;
 public sealed partial class JournalBrokerClient
 {
     /// <summary>
-    /// Send a <c>Shutdown</c> frame (best-effort), wind down the live-watch demux,
-    /// dispose all MMF lifetimes, and close the pipe.
+    ///     Send a <c>Shutdown</c> frame (best-effort), wind down the live-watch demux,
+    ///     dispose all MMF lifetimes, and close the pipe.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
@@ -28,12 +28,16 @@ public sealed partial class JournalBrokerClient
         // Cancel the demux so its blocking pipe read unwinds, then await it before
         // disposing the pipe (cancelling the read is what reliably unblocks it).
         if (_demuxCts != null)
+        {
             await _demuxCts.CancelAsync().ConfigureAwait(false);
+        }
 
         // DemuxLoopAsync catches everything internally (broker death and cancellation
         // alike) and never lets an exception escape, so awaiting it here cannot fault.
         if (_demuxTask != null)
+        {
             await _demuxTask.ConfigureAwait(false);
+        }
 
         _demuxCts?.Dispose();
         await _pipe.DisposeAsync().ConfigureAwait(false);
@@ -46,7 +50,9 @@ public sealed partial class JournalBrokerClient
         }
 
         foreach (var lifetime in lifetimes)
+        {
             lifetime.Dispose();
+        }
 
         _writeLock.Dispose();
     }
@@ -55,7 +61,9 @@ public sealed partial class JournalBrokerClient
     void SignalBrokerDeath(string reason)
     {
         if (Interlocked.Exchange(ref _brokerDeathSignaled, 1) == 0)
+        {
             BrokerDied?.Invoke(reason);
+        }
     }
 
     // Shared frame-reading helper. Returns null on clean EOF.
@@ -72,15 +80,22 @@ public sealed partial class JournalBrokerClient
         var frameBytes = new byte[4 + totalLength];
         header.CopyTo(frameBytes.AsMemory());
         if (!await ReadExactAsync(_pipe, frameBytes.AsMemory(4, totalLength), cancellationToken).ConfigureAwait(false))
+        {
             throw new EndOfStreamException("Truncated broker frame on pipe");
+        }
 
         if (totalLength >= 1)
+        {
             BrokerDiagnostics.LogFrame("read", frameBytes[4], totalLength);
+        }
+
         return BrokerProtocol.ReadFrame(frameBytes, out _);
     }
 
-    Task WriteFrameAsync(Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken) =>
-        WriteFrameAsync(write, transmissionStarted: null, cancellationToken);
+    Task WriteFrameAsync(Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken)
+    {
+        return WriteFrameAsync(write, null, cancellationToken);
+    }
 
     async Task WriteFrameAsync(
         Action<ArrayBufferWriter<byte>> write,
@@ -90,7 +105,10 @@ public sealed partial class JournalBrokerClient
         var buffer = new ArrayBufferWriter<byte>();
         write(buffer);
         if (buffer.WrittenCount >= 5)
+        {
             BrokerDiagnostics.LogFrame("write", buffer.WrittenSpan[4], buffer.WrittenCount - 4);
+        }
+
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -106,8 +124,10 @@ public sealed partial class JournalBrokerClient
 
     // Normalize a drive path ("C:\\", "C:", "C") to the bare single letter ("C").
     // The broker spec tokens and frame Drive fields use the bare letter.
-    internal static string NormalizeDriveLetter(string drive) =>
-        drive.TrimEnd(':', '\\', '/');
+    internal static string NormalizeDriveLetter(string drive)
+    {
+        return drive.TrimEnd(':', '\\', '/');
+    }
 
     // Fill buffer fully. Returns false on clean EOF before any byte; throws on truncated data.
     static async Task<bool> ReadExactAsync(Stream stream, Memory<byte> buffer, CancellationToken cancellationToken)
@@ -119,11 +139,16 @@ public sealed partial class JournalBrokerClient
             if (count == 0)
             {
                 if (read == 0)
+                {
                     return false;
+                }
+
                 throw new EndOfStreamException("Truncated broker frame on pipe");
             }
+
             read += count;
         }
+
         return true;
     }
 }

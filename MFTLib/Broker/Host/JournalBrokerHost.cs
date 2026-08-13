@@ -6,17 +6,17 @@ using System.Runtime.CompilerServices;
 namespace MFTLib;
 
 /// <summary>
-/// Elevated-side broker logic: per drive, arm the journal cursor BEFORE
-/// scanning (so changes during the scan are replayed by catch-up, closing the
-/// cold-start gap), then scan. Volume access is injected so the core is
-/// testable without real elevation; <see cref="CreateDefault"/> wires the real
-/// MFTLib seams.
+///     Elevated-side broker logic: per drive, arm the journal cursor BEFORE
+///     scanning (so changes during the scan are replayed by catch-up, closing the
+///     cold-start gap), then scan. Volume access is injected so the core is
+///     testable without real elevation; <see cref="CreateDefault" /> wires the real
+///     MFTLib seams.
 /// </summary>
 public sealed partial class JournalBrokerHost
 {
     readonly UsnJournalCursorQuery _queryCursor;
-    readonly DriveScanSource _scanDrive;
     readonly UsnJournalCatchUpSource _readJournal;
+    readonly DriveScanSource _scanDrive;
     readonly JournalBatchSource? _watchDrive;
 
     public JournalBrokerHost(
@@ -32,9 +32,9 @@ public sealed partial class JournalBrokerHost
     }
 
     /// <summary>
-    /// Arm the journal cursor, then scan. The cursor is captured strictly before
-    /// the scan begins so any file changes that race the scan are caught by the
-    /// subsequent catch-up read instead of being silently missed.
+    ///     Arm the journal cursor, then scan. The cursor is captured strictly before
+    ///     the scan begins so any file changes that race the scan are caught by the
+    ///     subsequent catch-up read instead of being silently missed.
     /// </summary>
     public (UsnJournalCursor Cursor, ScanRecord[] Records) ArmAndScan(string driveLetter)
     {
@@ -44,14 +44,20 @@ public sealed partial class JournalBrokerHost
     }
 
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) CatchUp(string driveLetter, UsnJournalCursor since)
-        => _readJournal(driveLetter, since);
+    {
+        return _readJournal(driveLetter, since);
+    }
 
-    List<Task> StartWatchTasks(Stream stream, string watchSpec, SemaphoreSlim writeLock, CancellationToken cancellationToken)
+    List<Task> StartWatchTasks(Stream stream, string watchSpec, SemaphoreSlim writeLock,
+        CancellationToken cancellationToken)
     {
         var tasks = new List<Task>();
         foreach (var request in ParseScanSpec(watchSpec)) // watch tokens omit the map name
+        {
             tasks.Add(StreamWatchAsync(stream, request.Letter,
                 new UsnJournalCursor(request.JournalId, request.NextUsn), writeLock, cancellationToken));
+        }
+
         return tasks;
     }
 
@@ -61,7 +67,7 @@ public sealed partial class JournalBrokerHost
         if (_watchDrive == null)
         {
             await WriteFrameAsync(stream, writeLock,
-                writer => BrokerProtocol.WriteError(writer, drive, "Broker has no watch source"), cancellationToken)
+                    writer => BrokerProtocol.WriteError(writer, drive, "Broker has no watch source"), cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
@@ -78,10 +84,10 @@ public sealed partial class JournalBrokerHost
             // production implementation's `[EnumeratorCancellation]` parameter binds
             // directly - adding it again on the same token is redundant.
             await foreach (var (entries, cursor) in _watchDrive(drive, effectiveSince, cancellationToken)
-                .ConfigureAwait(false))
+                               .ConfigureAwait(false))
             {
                 await WriteFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteJournalBatch(writer, drive, cursor, entries), cancellationToken)
+                        writer => BrokerProtocol.WriteJournalBatch(writer, drive, cursor, entries), cancellationToken)
                     .ConfigureAwait(false);
             }
         }
@@ -95,7 +101,7 @@ public sealed partial class JournalBrokerHost
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             await WriteFrameAsync(stream, writeLock,
-                writer => BrokerProtocol.WriteError(writer, drive, exception.Message), CancellationToken.None)
+                    writer => BrokerProtocol.WriteError(writer, drive, exception.Message), CancellationToken.None)
                 .ConfigureAwait(false);
         }
     }
@@ -110,17 +116,19 @@ public sealed partial class JournalBrokerHost
                 var (cursor, records) = ArmAndScan(request.Letter);
                 records = ApplyScanProfile(records, request.Profile, keepFileNames);
                 await WriteFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteCursor(writer, request.Letter, cursor), cancellationToken)
+                        writer => BrokerProtocol.WriteCursor(writer, request.Letter, cursor), cancellationToken)
                     .ConfigureAwait(false);
 
                 var byteLength = mmfWriter.Write(request.MmfName, records);
                 await WriteFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, records.Length, byteLength), cancellationToken)
+                        writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, records.Length, byteLength),
+                        cancellationToken)
                     .ConfigureAwait(false);
 
                 var (entries, updated) = CatchUp(request.Letter, cursor);
                 await WriteFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteJournalBatch(writer, request.Letter, updated, entries), cancellationToken)
+                        writer => BrokerProtocol.WriteJournalBatch(writer, request.Letter, updated, entries),
+                        cancellationToken)
                     .ConfigureAwait(false);
             }
             // Deliberate per-drive boundary: any failure on one drive (journal
@@ -132,24 +140,11 @@ public sealed partial class JournalBrokerHost
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 await WriteFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteError(writer, request.Letter, exception.Message), cancellationToken)
+                        writer => BrokerProtocol.WriteError(writer, request.Letter, exception.Message),
+                        cancellationToken)
                     .ConfigureAwait(false);
             }
         }
-    }
-
-    // A per-drive arm-and-scan request: bare drive letter, the resume cursor
-    // (unused for arm-and-scan, which queries fresh), the caller-created map name,
-    // and an optional cold-scan record profile.
-    readonly record struct ScanDriveRequest(
-        string Letter, ulong JournalId, long NextUsn, string MmfName, BrokerScanProfile Profile);
-
-    // Holds the live watch generation's CTS and per-drive tasks. A StartWatch creates
-    // one, an EndWatch (or session end) tears it down; see ServeAsync.
-    sealed class WatchGeneration
-    {
-        public CancellationTokenSource? Cancellation;
-        public readonly List<Task> Tasks = new();
     }
 
     // Spec tokens are comma-joined "letter:journalId:nextUsn:mmfName". The watch
@@ -174,7 +169,10 @@ public sealed partial class JournalBrokerHost
     {
         var profile = (BrokerScanProfile)int.Parse(value, CultureInfo.InvariantCulture);
         if (!Enum.IsDefined(profile))
+        {
             throw new InvalidDataException($"Unknown broker scan profile: {value}");
+        }
+
         return profile;
     }
 
@@ -186,13 +184,15 @@ public sealed partial class JournalBrokerHost
     // alongside every directory, matched case-insensitively against NTFS's default
     // case-insensitive name comparison.
     internal static ScanRecord[] ApplyScanProfile(
-        ScanRecord[] records, BrokerScanProfile profile, IReadOnlyCollection<string> keepFileNames) =>
-        profile switch
+        ScanRecord[] records, BrokerScanProfile profile, IReadOnlyCollection<string> keepFileNames)
+    {
+        return profile switch
         {
             BrokerScanProfile.Full => records,
             BrokerScanProfile.DirectoryIndex => FilterDirectoryIndex(records, keepFileNames),
-            _ => throw new InvalidDataException($"Unknown broker scan profile: {profile}"),
+            _ => throw new InvalidDataException($"Unknown broker scan profile: {profile}")
         };
+    }
 
     static ScanRecord[] FilterDirectoryIndex(ScanRecord[] records, IReadOnlyCollection<string> keepFileNames)
     {
@@ -206,7 +206,10 @@ public sealed partial class JournalBrokerHost
         var buffer = new ArrayBufferWriter<byte>();
         write(buffer);
         if (buffer.WrittenCount >= 5)
+        {
             BrokerDiagnostics.LogFrame("write", buffer.WrittenSpan[4], buffer.WrittenCount - 4);
+        }
+
         await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -223,16 +226,23 @@ public sealed partial class JournalBrokerHost
     {
         var header = new byte[4];
         if (!await ReadExactAsync(stream, header, cancellationToken).ConfigureAwait(false))
+        {
             return null; // clean EOF before any byte
+        }
 
         var totalLength = BinaryPrimitives.ReadInt32LittleEndian(header);
         var frameBytes = new byte[4 + totalLength];
         header.CopyTo(frameBytes.AsMemory());
         if (!await ReadExactAsync(stream, frameBytes.AsMemory(4, totalLength), cancellationToken).ConfigureAwait(false))
+        {
             throw new EndOfStreamException("Truncated broker frame on pipe");
+        }
 
         if (totalLength >= 1)
+        {
             BrokerDiagnostics.LogFrame("read", frameBytes[4], totalLength);
+        }
+
         return BrokerProtocol.ReadFrame(frameBytes, out _);
     }
 
@@ -247,19 +257,27 @@ public sealed partial class JournalBrokerHost
             if (count == 0)
             {
                 if (read == 0)
+                {
                     return false;
+                }
+
                 throw new EndOfStreamException("Truncated broker frame on pipe");
             }
+
             read += count;
         }
+
         return true;
     }
 
-    public static JournalBrokerHost CreateDefault() => new(
-        queryCursor: QueryCursor,
-        scanDrive: ScanDrive,
-        readJournal: ReadJournal,
-        watchDrive: WatchAndDisposeAsync);
+    public static JournalBrokerHost CreateDefault()
+    {
+        return new JournalBrokerHost(
+            QueryCursor,
+            ScanDrive,
+            ReadJournal,
+            WatchAndDisposeAsync);
+    }
 
     static UsnJournalCursor QueryCursor(string drive)
     {
@@ -270,7 +288,7 @@ public sealed partial class JournalBrokerHost
     static ScanRecord[] ScanDrive(string drive)
     {
         using var volume = MftVolume.Open(Bare(drive));
-        return ToScanRecords(volume.ReadAllRecords(resolvePaths: true));
+        return ToScanRecords(volume.ReadAllRecords(true));
     }
 
     static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(string drive, UsnJournalCursor since)
@@ -279,7 +297,10 @@ public sealed partial class JournalBrokerHost
         return volume.ReadUsnJournal(since);
     }
 
-    static string Bare(string drive) => drive.TrimEnd(':', '\\', '/');
+    static string Bare(string drive)
+    {
+        return drive.TrimEnd(':', '\\', '/');
+    }
 
     // Open the volume, stream cursor-tagged batches until cancelled, and dispose
     // the volume when the watch ends (mirrors the in-process WatchAndDispose).
@@ -305,12 +326,34 @@ public sealed partial class JournalBrokerHost
         foreach (var record in records)
         {
             if (!record.InUse || string.IsNullOrEmpty(record.FullPath))
+            {
                 continue;
+            }
+
             result.Add(new ScanRecord(
-                record.RecordNumber, record.ParentRecordNumber, Size: 0,
-                LastWriteTicks: 0, (uint)record.FileAttributes, record.IsDirectory,
+                record.RecordNumber, record.ParentRecordNumber, 0,
+                0, (uint)record.FileAttributes, record.IsDirectory,
                 record.FileName, record.FullPath));
         }
+
         return result.ToArray();
+    }
+
+    // A per-drive arm-and-scan request: bare drive letter, the resume cursor
+    // (unused for arm-and-scan, which queries fresh), the caller-created map name,
+    // and an optional cold-scan record profile.
+    readonly record struct ScanDriveRequest(
+        string Letter,
+        ulong JournalId,
+        long NextUsn,
+        string MmfName,
+        BrokerScanProfile Profile);
+
+    // Holds the live watch generation's CTS and per-drive tasks. A StartWatch creates
+    // one, an EndWatch (or session end) tears it down; see ServeAsync.
+    sealed class WatchGeneration
+    {
+        public readonly List<Task> Tasks = new();
+        public CancellationTokenSource? Cancellation;
     }
 }

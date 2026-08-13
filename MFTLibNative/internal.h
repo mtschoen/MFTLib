@@ -6,9 +6,9 @@
 #include <cstdint>
 
 #ifdef _WIN32
-    #define EXPORT __declspec(dllexport)
+#define EXPORT __declspec(dllexport)
 #else
-    #define EXPORT __attribute__((visibility("default")))
+#define EXPORT __attribute__((visibility("default")))
 #endif
 
 using SteadyClock = std::chrono::steady_clock;
@@ -23,13 +23,13 @@ static inline double ElapsedMs(TimePoint start, TimePoint end) {
 // message didn't fit. Buffer size is deduced from the array reference.
 template <size_t N, typename... Args>
 // NOLINTNEXTLINE(modernize-avoid-c-arrays): array-reference parameter deduces the fixed C-ABI buffer size
-inline void SetErrorMessage(wchar_t (&buffer)[N], const wchar_t* format, Args... arguments) {
-#ifdef _WIN32
+void SetErrorMessage(wchar_t (&buffer)[N], const wchar_t* format, Args... arguments) {
+    #ifdef _WIN32
     int written = _snwprintf_s(buffer, N, _TRUNCATE, format, arguments...);
-#else
+    #else
     int written = std::swprintf(buffer, N, format, arguments...);
     if (written < 0 || static_cast<size_t>(written) >= N) buffer[N - 1] = L'\0';
-#endif
+    #endif
     assert(written >= 0 && "error message truncated");
 }
 

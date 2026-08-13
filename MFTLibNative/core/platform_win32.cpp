@@ -12,7 +12,6 @@
 #include <string>
 
 namespace mftlib::platform {
-
 struct File {
     HANDLE h;
 };
@@ -27,7 +26,7 @@ std::wstring utf8_to_wide(const char* utf8) {
     MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide.data(), wideLength);
     return wide;
 }
-}  // namespace
+} // namespace
 
 File* open_read(const char* path_utf8) {
     auto wide = utf8_to_wide(path_utf8);
@@ -111,5 +110,4 @@ void big_free(void* ptr, size_t /*bytes*/) {
 }
 
 uint32_t last_error() { return static_cast<uint32_t>(GetLastError()); }
-
-}  // namespace mftlib::platform
+} // namespace mftlib::platform

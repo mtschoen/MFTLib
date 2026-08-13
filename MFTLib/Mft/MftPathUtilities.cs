@@ -2,7 +2,8 @@ namespace MFTLib;
 
 public static class MftPathUtilities
 {
-    public static string ResolvePath(ulong recordNumber, IReadOnlyDictionary<ulong, MftRecord> lookup, string driveLetter)
+    public static string ResolvePath(ulong recordNumber, IReadOnlyDictionary<ulong, MftRecord> lookup,
+        string driveLetter)
     {
         var parts = new List<string>();
         var current = recordNumber;

@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
+using MFTLib.Interop;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
-using MFTLib.Interop;
 
 namespace MFTLib.Tests;
 
@@ -15,7 +15,10 @@ public class UsnJournalTests
         FileUtilities.ResetToDefaults();
     }
 
-    static SafeFileHandle FakeHandle() => new(new IntPtr(1), ownsHandle: false);
+    static SafeFileHandle FakeHandle()
+    {
+        return new SafeFileHandle(new IntPtr(1), false);
+    }
 
     [TestMethod]
     public void QueryUsnJournal_ReturnsValidCursor()
@@ -28,7 +31,7 @@ public class UsnJournalTests
             LowestValidUsn = 100,
             MaxUsn = long.MaxValue,
             MaximumSize = 32 * 1024 * 1024,
-            AllocationDelta = 4 * 1024 * 1024,
+            AllocationDelta = 4 * 1024 * 1024
         };
 
         var infoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
@@ -50,7 +53,7 @@ public class UsnJournalTests
     {
         var info = new UsnJournalInfoNative
         {
-            ErrorMessage = "FSCTL_QUERY_USN_JOURNAL failed: error 5",
+            ErrorMessage = "FSCTL_QUERY_USN_JOURNAL failed: error 5"
         };
 
         var infoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
@@ -92,12 +95,12 @@ public class UsnJournalTests
 
         // Entry 0: file create
         var ptr = (byte*)entriesPtr;
-        *(ulong*)ptr = 100;                 // recordNumber
-        *(ulong*)(ptr + 8) = 5;            // parentRecordNumber
-        *(long*)(ptr + 16) = 1000;         // usn
-        *(long*)(ptr + 24) = 0;            // timestamp (0 = DateTime.MinValue)
-        *(uint*)(ptr + 32) = 0x00000100;   // reason = FileCreate
-        *(uint*)(ptr + 36) = 0x20;         // fileAttributes = Archive
+        *(ulong*)ptr = 100; // recordNumber
+        *(ulong*)(ptr + 8) = 5; // parentRecordNumber
+        *(long*)(ptr + 16) = 1000; // usn
+        *(long*)(ptr + 24) = 0; // timestamp (0 = DateTime.MinValue)
+        *(uint*)(ptr + 32) = 0x00000100; // reason = FileCreate
+        *(uint*)(ptr + 36) = 0x20; // fileAttributes = Archive
         var name0 = "newfile.txt";
         *(ushort*)(ptr + 40) = (ushort)name0.Length;
         name0.AsSpan().CopyTo(new Span<char>(ptr + 42, name0.Length));
@@ -108,7 +111,7 @@ public class UsnJournalTests
         *(ulong*)(ptr + 8) = 5;
         *(long*)(ptr + 16) = 2000;
         *(long*)(ptr + 24) = 0;
-        *(uint*)(ptr + 32) = 0x00000200;   // reason = FileDelete
+        *(uint*)(ptr + 32) = 0x00000200; // reason = FileDelete
         *(uint*)(ptr + 36) = 0;
         var name1 = "deleted.txt";
         *(ushort*)(ptr + 40) = (ushort)name1.Length;
@@ -119,7 +122,7 @@ public class UsnJournalTests
             EntryCount = 2,
             Entries = entriesPtr,
             NextUsn = 3000,
-            JournalId = 0xABCD,
+            JournalId = 0xABCD
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
@@ -156,7 +159,7 @@ public class UsnJournalTests
             EntryCount = 0,
             Entries = IntPtr.Zero,
             NextUsn = 500,
-            JournalId = 0xABCD,
+            JournalId = 0xABCD
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
@@ -178,7 +181,7 @@ public class UsnJournalTests
     {
         var nativeResult = new UsnJournalResultNative
         {
-            ErrorMessage = "Requested USN has been overwritten",
+            ErrorMessage = "Requested USN has been overwritten"
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
@@ -293,9 +296,9 @@ public class UsnJournalTests
     {
         var timestamp = new DateTime(2021, 6, 15, 12, 30, 0, DateTimeKind.Utc);
         var entry = UsnJournalEntry.Create(
-            recordNumber: 77, parentRecordNumber: 5, usn: 9000, timestamp: timestamp,
-            reason: UsnReason.FileCreate | UsnReason.Close,
-            fileAttributes: FileAttributes.Archive, fileName: "reconstructed.txt");
+            77, 5, 9000, timestamp,
+            UsnReason.FileCreate | UsnReason.Close,
+            FileAttributes.Archive, "reconstructed.txt");
 
         Assert.AreEqual(77UL, entry.RecordNumber);
         Assert.AreEqual(5UL, entry.ParentRecordNumber);
@@ -328,6 +331,7 @@ public class UsnJournalTests
             {
                 return BuildSingleEntryWatchResult(journalId, startUsn + 100, "created.txt", 0x00000100);
             }
+
             return BuildEmptyWatchResult(journalId, startUsn);
         };
         MFTLibNative.CancelUsnJournalWatch = _ => true;
@@ -338,7 +342,8 @@ public class UsnJournalTests
         using var cancellationTokenSource = new CancellationTokenSource();
         var batches = new List<UsnJournalEntry[]>();
 
-        await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+        await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500),
+                           cancellationTokenSource.Token))
         {
             batches.Add(batch);
             cancellationTokenSource.Cancel();
@@ -356,7 +361,7 @@ public class UsnJournalTests
         {
             var nativeResult = new UsnJournalResultNative
             {
-                ErrorMessage = "USN journal is not active",
+                ErrorMessage = "USN journal is not active"
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
             Marshal.StructureToPtr(nativeResult, resultPtr, false);
@@ -371,7 +376,8 @@ public class UsnJournalTests
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+            await foreach (var _ in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500),
+                               cancellationTokenSource.Token))
             {
             }
         });
@@ -389,7 +395,8 @@ public class UsnJournalTests
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+            await foreach (var _ in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500),
+                               cancellationTokenSource.Token))
             {
             }
         });
@@ -420,7 +427,8 @@ public class UsnJournalTests
         using var volume = MftVolume.Open("C");
         var batches = new List<UsnJournalEntry[]>();
 
-        await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+        await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500),
+                           cancellationTokenSource.Token))
         {
             batches.Add(batch);
         }
@@ -456,7 +464,8 @@ public class UsnJournalTests
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+            await foreach (var _ in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500),
+                               cancellationTokenSource.Token))
             {
             }
         });
@@ -481,7 +490,8 @@ public class UsnJournalTests
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+            await foreach (var _ in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500),
+                               cancellationTokenSource.Token))
             {
             }
         });
@@ -507,7 +517,8 @@ public class UsnJournalTests
         using var cancellationTokenSource = new CancellationTokenSource();
         var batches = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
 
-        await foreach (var batch in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+        await foreach (var batch in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500),
+                           cancellationTokenSource.Token))
         {
             batches.Add(batch);
             cancellationTokenSource.Cancel();
@@ -540,7 +551,8 @@ public class UsnJournalTests
         using var volume = MftVolume.Open("C");
         var batches = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
 
-        await foreach (var batch in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500), cancellationTokenSource.Token))
+        await foreach (var batch in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500),
+                           cancellationTokenSource.Token))
         {
             batches.Add(batch);
         }
@@ -557,12 +569,12 @@ public class UsnJournalTests
         new Span<byte>((void*)entriesPtr, entrySize).Clear();
 
         var ptr = (byte*)entriesPtr;
-        *(ulong*)ptr = 42;                  // recordNumber
-        *(ulong*)(ptr + 8) = 5;            // parentRecordNumber
+        *(ulong*)ptr = 42; // recordNumber
+        *(ulong*)(ptr + 8) = 5; // parentRecordNumber
         *(long*)(ptr + 16) = nextUsn - 50; // usn
-        *(long*)(ptr + 24) = 0;            // timestamp
-        *(uint*)(ptr + 32) = reason;        // reason
-        *(uint*)(ptr + 36) = 0x20;         // fileAttributes = Archive
+        *(long*)(ptr + 24) = 0; // timestamp
+        *(uint*)(ptr + 32) = reason; // reason
+        *(uint*)(ptr + 36) = 0x20; // fileAttributes = Archive
         *(ushort*)(ptr + 40) = (ushort)fileName.Length;
         fileName.AsSpan().CopyTo(new Span<char>(ptr + 42, fileName.Length));
 
@@ -571,7 +583,7 @@ public class UsnJournalTests
             EntryCount = 1,
             Entries = entriesPtr,
             NextUsn = nextUsn,
-            JournalId = journalId,
+            JournalId = journalId
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
@@ -586,7 +598,7 @@ public class UsnJournalTests
             EntryCount = 0,
             Entries = IntPtr.Zero,
             NextUsn = nextUsn,
-            JournalId = journalId,
+            JournalId = journalId
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());

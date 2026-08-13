@@ -25,7 +25,7 @@ int g_usnIoHead = 0;
 int g_usnIoCount = 0;
 int g_usnOverlappedAbort = 0;
 #endif
-}  // namespace
+} // namespace
 
 unsigned EffectiveThreadCount() {
     unsigned threadCount = std::thread::hardware_concurrency();
@@ -61,6 +61,7 @@ bool ShouldFailPlatformRead() {
     }
     return --g_failPlatformReadCountdown == 0;
 }
+
 bool ShouldFailPlatformWrite() { return g_failPlatformWrite != 0; }
 
 #ifdef _WIN32
@@ -120,6 +121,7 @@ EXPORT void SetUsnIoFailError(DWORD error, int countdown) {
     g_usnIoFailError = error;
     g_usnIoFailCountdown = countdown;
 }
+
 // Enqueue one synthetic IOCTL success buffer. The caller owns the buffer and
 // must keep it alive until the matching native call consumes it.
 EXPORT void SetUsnIoSuccess(const uint8_t* data, uint32_t size) {
@@ -130,6 +132,7 @@ EXPORT void SetUsnIoSuccess(const uint8_t* data, uint32_t size) {
         g_usnIoCount++;
     }
 }
+
 EXPORT void SetUsnOverlappedAbort() { g_usnOverlappedAbort = 1; }
 EXPORT void ResetTestState() {
     g_maxThreads = 0;

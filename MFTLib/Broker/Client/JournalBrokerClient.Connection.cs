@@ -7,12 +7,12 @@ namespace MFTLib;
 public sealed partial class JournalBrokerClient
 {
     /// <summary>
-    /// Build the named pipe, launch the elevated broker against it, wait for the broker
-    /// to connect, and return a ready client wired to the real MMF reader and a
-    /// page-file-backed per-drive MMF creator. <paramref name="launchBroker"/> receives
-    /// the broker command line (e.g. "--broker --pipe NAME") and returns whether the
-    /// launch started (false if the user declined the UAC prompt). Production passes
-    /// <see cref="BrokerLauncher.Launch"/>; tests pass a fake.
+    ///     Build the named pipe, launch the elevated broker against it, wait for the broker
+    ///     to connect, and return a ready client wired to the real MMF reader and a
+    ///     page-file-backed per-drive MMF creator. <paramref name="launchBroker" /> receives
+    ///     the broker command line (e.g. "--broker --pipe NAME") and returns whether the
+    ///     launch started (false if the user declined the UAC prompt). Production passes
+    ///     <see cref="BrokerLauncher.Launch" />; tests pass a fake.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static async Task<JournalBrokerClient> SpawnAndConnectAsync(
@@ -20,17 +20,20 @@ public sealed partial class JournalBrokerClient
     {
         var pipeName = "mftlib-broker-" + Guid.NewGuid().ToString("N");
         var server = new NamedPipeServerStream(
-            pipeName, PipeDirection.InOut, maxNumberOfServerInstances: 1,
+            pipeName, PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         try
         {
             // Propagate the diagnostics flag to the elevated child explicitly: a runas
             // launch does not reliably inherit the MFTLIB_BROKER_DIAG env var.
             var diagFlag = Environment.GetEnvironmentVariable("MFTLIB_BROKER_DIAG") == "1"
-                ? " --diag" : string.Empty;
+                ? " --diag"
+                : string.Empty;
             if (!launchBroker(FormattableString.Invariant($"--broker --pipe {pipeName}{diagFlag}")))
+            {
                 throw new InvalidOperationException(
                     "Failed to launch the elevated broker (the UAC prompt was declined?)");
+            }
 
             await server.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
             return new JournalBrokerClient(server, new RealMmfReader(), CreateRealDriveMmf);
@@ -52,5 +55,4 @@ public sealed partial class JournalBrokerClient
         var map = MemoryMappedFile.CreateNew(name, capacity);
         return (name, map);
     }
-
 }

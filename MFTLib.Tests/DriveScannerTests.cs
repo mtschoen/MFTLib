@@ -1,7 +1,8 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.Win32.SafeHandles;
+using TestProgram;
 
 namespace MFTLib.Tests;
 
@@ -20,21 +21,21 @@ public class DriveScannerTests
     [TestMethod]
     public void FormatArguments_EmptyArray_ReturnsEmptyString()
     {
-        var result = TestProgram.DriveScanner.FormatArguments([]);
+        var result = DriveScanner.FormatArguments([]);
         Assert.AreEqual(string.Empty, result);
     }
 
     [TestMethod]
     public void FormatArguments_NoSpaces_ReturnsUnquoted()
     {
-        var result = TestProgram.DriveScanner.FormatArguments(["C", "D"]);
+        var result = DriveScanner.FormatArguments(["C", "D"]);
         Assert.AreEqual("C D", result);
     }
 
     [TestMethod]
     public void FormatArguments_WithSpaces_QuotesArguments()
     {
-        var result = TestProgram.DriveScanner.FormatArguments(["Program Files", "C"]);
+        var result = DriveScanner.FormatArguments(["Program Files", "C"]);
         Assert.AreEqual("\"Program Files\" C", result);
     }
 
@@ -44,12 +45,12 @@ public class DriveScannerTests
     public void Run_NotElevated_SelfElevateSucceeds_ReturnsZero()
     {
         var lines = new List<string>();
-        var scanner = new TestProgram.DriveScanner
+        var scanner = new DriveScanner
         {
             IsElevated = () => false,
             CanSelfElevate = () => true,
             TryRunElevated = _ => true,
-            WriteLine = lines.Add,
+            WriteLine = lines.Add
         };
 
         var result = scanner.Run([]);
@@ -60,12 +61,12 @@ public class DriveScannerTests
     public void Run_NotElevated_CannotSelfElevate_PrintsFailureAndReturnsOne()
     {
         var lines = new List<string>();
-        var scanner = new TestProgram.DriveScanner
+        var scanner = new DriveScanner
         {
             IsElevated = () => false,
             CanSelfElevate = () => false,
             GetProcessPath = () => "/some/path",
-            WriteLine = lines.Add,
+            WriteLine = lines.Add
         };
 
         var result = scanner.Run(["C"]);
@@ -77,13 +78,13 @@ public class DriveScannerTests
     public void Run_NotElevated_CanSelfElevateButFails_PrintsFailureAndReturnsOne()
     {
         var lines = new List<string>();
-        var scanner = new TestProgram.DriveScanner
+        var scanner = new DriveScanner
         {
             IsElevated = () => false,
             CanSelfElevate = () => true,
             TryRunElevated = _ => false,
             GetProcessPath = () => "/some/path",
-            WriteLine = lines.Add,
+            WriteLine = lines.Add
         };
 
         var result = scanner.Run(["C"]);
@@ -98,7 +99,7 @@ public class DriveScannerTests
     {
         var scannedDrives = new List<string>();
         var lines = new List<string>();
-        var scanner = new TestProgram.DriveScanner
+        var scanner = new DriveScanner
         {
             IsElevated = () => true,
             AcrtIobFunc = _ => IntPtr.Zero,
@@ -108,7 +109,7 @@ public class DriveScannerTests
                 scannedDrives.Add(letter);
                 throw new IOException("Mock: drive not available");
             },
-            WriteLine = lines.Add,
+            WriteLine = lines.Add
         };
 
         scanner.Run([]);
@@ -120,7 +121,7 @@ public class DriveScannerTests
     {
         var scannedDrives = new List<string>();
         var lines = new List<string>();
-        var scanner = new TestProgram.DriveScanner
+        var scanner = new DriveScanner
         {
             IsElevated = () => true,
             AcrtIobFunc = _ => IntPtr.Zero,
@@ -130,7 +131,7 @@ public class DriveScannerTests
                 scannedDrives.Add(letter);
                 throw new IOException("Mock: drive not available");
             },
-            WriteLine = lines.Add,
+            WriteLine = lines.Add
         };
 
         scanner.Run(["C", "D"]);
@@ -144,13 +145,21 @@ public class DriveScannerTests
     {
         uint capturedIndex = 0;
         string? redirectedPath = null;
-        var scanner = new TestProgram.DriveScanner
+        var scanner = new DriveScanner
         {
             IsElevated = () => true,
-            AcrtIobFunc = index => { capturedIndex = index; return new IntPtr(42); },
-            WFreopen = (path, _, _) => { redirectedPath = path; return IntPtr.Zero; },
+            AcrtIobFunc = index =>
+            {
+                capturedIndex = index;
+                return new IntPtr(42);
+            },
+            WFreopen = (path, _, _) =>
+            {
+                redirectedPath = path;
+                return IntPtr.Zero;
+            },
             OpenVolume = _ => throw new IOException("Mock"),
-            WriteLine = _ => { },
+            WriteLine = _ => { }
         };
 
         scanner.Run(["T"]);
@@ -165,10 +174,10 @@ public class DriveScannerTests
     public void ScanDrive_VolumeOpenError_PrintsErrorMessage()
     {
         var lines = new List<string>();
-        var scanner = new TestProgram.DriveScanner
+        var scanner = new DriveScanner
         {
             OpenVolume = _ => throw new IOException("Access denied"),
-            WriteLine = lines.Add,
+            WriteLine = lines.Add
         };
 
         scanner.ScanDrive("C");
@@ -181,10 +190,14 @@ public class DriveScannerTests
     {
         var openedLetters = new List<string>();
         var lines = new List<string>();
-        var scanner = new TestProgram.DriveScanner
+        var scanner = new DriveScanner
         {
-            OpenVolume = letter => { openedLetters.Add(letter); throw new IOException("Mock"); },
-            WriteLine = lines.Add,
+            OpenVolume = letter =>
+            {
+                openedLetters.Add(letter);
+                throw new IOException("Mock");
+            },
+            WriteLine = lines.Add
         };
 
         scanner.ScanDrive("C:");
@@ -195,16 +208,16 @@ public class DriveScannerTests
     [TestMethod]
     public void ScanDrive_ZeroRecords_PrintsFoundZeroDirectories()
     {
-        var (resultPtr, cleanupAction) = BuildMftParseResult(recordCount: 0);
-        FileUtilities.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
+        var (resultPtr, cleanupAction) = BuildMftParseResult(0);
+        FileUtilities.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
         MFTLibNative.ParseMFTRecords = (_, _, _, _) => resultPtr;
         MFTLibNative.FreeMftResult = cleanupAction;
 
         var lines = new List<string>();
-        var scanner = new TestProgram.DriveScanner
+        var scanner = new DriveScanner
         {
             OpenVolume = letter => MftVolume.Open(letter),
-            WriteLine = lines.Add,
+            WriteLine = lines.Add
         };
 
         scanner.ScanDrive("T");
@@ -215,16 +228,16 @@ public class DriveScannerTests
     [TestMethod]
     public void ScanDrive_WithDirectoryRecord_PrintsDirectoryPath()
     {
-        var (resultPtr, cleanupAction) = BuildMftParseResult(recordCount: 1, includeDirectory: true);
-        FileUtilities.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), ownsHandle: false);
+        var (resultPtr, cleanupAction) = BuildMftParseResult(1, true);
+        FileUtilities.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
         MFTLibNative.ParseMFTRecords = (_, _, _, _) => resultPtr;
         MFTLibNative.FreeMftResult = cleanupAction;
 
         var lines = new List<string>();
-        var scanner = new TestProgram.DriveScanner
+        var scanner = new DriveScanner
         {
             OpenVolume = letter => MftVolume.Open(letter),
-            WriteLine = lines.Add,
+            WriteLine = lines.Add
         };
 
         scanner.ScanDrive("T");
@@ -237,7 +250,7 @@ public class DriveScannerTests
     [TestMethod]
     public void TestProgram_EntryPoint_RunsAndExits()
     {
-        var entryPoint = typeof(TestProgram.DriveScanner).Assembly.EntryPoint!;
+        var entryPoint = typeof(DriveScanner).Assembly.EntryPoint!;
         var exitCode = entryPoint.Invoke(null, [Array.Empty<string>()]);
         // Non-elevated: prints failure message and returns 1
         // Elevated: scans default drive G and returns 0
@@ -246,7 +259,8 @@ public class DriveScannerTests
 
     // --- Helpers ---
 
-    static unsafe (IntPtr resultPtr, Action<IntPtr> cleanup) BuildMftParseResult(ulong recordCount, bool includeDirectory = false)
+    static unsafe (IntPtr resultPtr, Action<IntPtr> cleanup) BuildMftParseResult(ulong recordCount,
+        bool includeDirectory = false)
     {
         var pathEntrySize = MftResult.NativePathEntrySize;
 
@@ -267,7 +281,9 @@ public class DriveScannerTests
                 *(ushort*)(entryPtr + 18) = (ushort)path.Length;
                 var pathChars = (char*)(entryPtr + MftResult.NativeStringOffset);
                 for (var i = 0; i < path.Length; i++)
+                {
                     pathChars[i] = path[i];
+                }
             }
         }
 
@@ -276,17 +292,21 @@ public class DriveScannerTests
             TotalRecords = recordCount,
             UsedRecords = recordCount,
             Entries = IntPtr.Zero,
-            PathEntries = entriesPtr,
+            PathEntries = entriesPtr
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
 
         var capturedEntriesPtr = entriesPtr;
+
         void CleanupAllocations(IntPtr pointer)
         {
             if (capturedEntriesPtr != IntPtr.Zero)
+            {
                 Marshal.FreeHGlobal(capturedEntriesPtr);
+            }
+
             Marshal.FreeHGlobal(pointer);
         }
 

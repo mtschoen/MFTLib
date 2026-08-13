@@ -18,7 +18,9 @@ public class MftResultTests
     public void Cleanup()
     {
         if (_tempMftPath != null && File.Exists(_tempMftPath))
+        {
             File.Delete(_tempMftPath);
+        }
     }
 
     [TestMethod]
@@ -73,5 +75,4 @@ public class MftResultTests
                 $"FileName '{record.FileName}' doesn't match end of FullPath '{record.FullPath}'");
         }
     }
-
 }
