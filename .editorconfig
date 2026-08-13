@@ -72,3 +72,9 @@ dotnet_naming_rule.locals_must_be_camel.severity = warning
 dotnet_naming_symbols.locals.applicable_kinds = parameter, local
 
 dotnet_naming_style.camel_case.capitalization = camel_case
+
+# ReSharper inspection overrides
+# ClassCannotBeInstantiated: known false positive on partial classes whose
+# private constructor + static factory method live in a different partial file.
+# https://www.jetbrains.com/help/resharper/ClassCannotBeInstantiated.html
+resharper_class_cannot_be_instantiated_highlighting = none

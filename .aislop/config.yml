@@ -43,9 +43,7 @@ lint:
     # CheckNamespace: the project uses a flat 'MFTLib' namespace by design;
     #   jb inspectcode fires on CI because it resolves default namespace from
     #   the checkout path differently than the local dev machine.
-    # ClassCannotBeInstantiated: false positive on partial classes whose
-    #   constructor lives in another file.
-    jbExcludeTypes: [InconsistentNaming, CheckNamespace, ClassCannotBeInstantiated]
+    jbExcludeTypes: [InconsistentNaming, CheckNamespace]
     jbProjects: "MFTLib;MFTLib.Tests;TestProgram;Benchmark;MFTLibTestExtensions"
   cpp:
     # The native tree is now scored by this gate (no longer excluded). It runs
