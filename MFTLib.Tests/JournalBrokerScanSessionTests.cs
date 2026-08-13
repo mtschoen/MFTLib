@@ -784,6 +784,40 @@ public class JournalBrokerScanSessionTests
     }
 
     [TestMethod]
+    public async Task StopWatch_WhenClientStopCompletesSynchronously_AwaitsCapturedTask()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        var startWatchFrameTask = ReadOneFrameAsync(serverSide);
+        await session.StartWatchAsync();
+        Assert.AreEqual(BrokerFrameKind.StartWatch, (await startWatchFrameTask).Kind);
+
+        // Complete the client demux before stopping so StopLiveWatchAsync takes only
+        // synchronous completion paths. StopWatchAsync must retain the task even when
+        // StopWatchCoreAsync clears the shared field before returning to its caller.
+        var ack = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteEndWatchAck(ack);
+        await serverSide.WriteAsync(ack.WrittenMemory);
+        await serverSide.FlushAsync();
+        var demuxTaskField = typeof(JournalBrokerClient).GetField(
+            "_demuxTask", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        await (Task)demuxTaskField.GetValue(client)!;
+
+        await session.StopWatchAsync();
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.AreEqual(BrokerFrameKind.EndWatch, (await ReadOneFrameAsync(serverSide)).Kind);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
     public async Task StopWatch_ConcurrentCalls_SendOneEndWatch_AndRestartReceivesBatches()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();

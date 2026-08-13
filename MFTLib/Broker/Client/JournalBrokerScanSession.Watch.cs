@@ -131,10 +131,14 @@ public sealed partial class JournalBrokerScanSession
             if (_stopTask == null)
             {
                 var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                _stopTask = completion.Task;
+                stopTask = completion.Task;
+                _stopTask = stopTask;
                 _ = StopWatchCoreAsync(completion);
             }
-            stopTask = _stopTask;
+            else
+            {
+                stopTask = _stopTask;
+            }
         }
 
         await stopTask.ConfigureAwait(false);
