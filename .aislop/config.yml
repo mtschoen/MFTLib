@@ -39,10 +39,14 @@ lint:
     jb: true
     roslynator: true
     jbSeverityFloor: WARNING
-    # InconsistentNaming: naming convention differences are handled elsewhere.
+    # TODO: Remove InconsistentNaming once the naming cleanup sweep renames
+    #   49 mutable static delegate fields from PascalCase to _camelCase and
+    #   4 ERROR_* constants from SCREAMING_CASE to PascalCase.
     # CheckNamespace: the project uses a flat 'MFTLib' namespace by design;
     #   jb inspectcode fires on CI because it resolves default namespace from
-    #   the checkout path differently than the local dev machine.
+    #   the checkout path differently than the local dev machine. Demoted to
+    #   SUGGESTION in .sln.DotSettings (below jbSeverityFloor) so it never
+    #   scores; the exclude here is belt-and-suspenders for CI paths.
     jbExcludeTypes: [InconsistentNaming, CheckNamespace]
     jbProjects: "MFTLib;MFTLib.Tests;TestProgram;Benchmark;MFTLibTestExtensions"
   cpp:
