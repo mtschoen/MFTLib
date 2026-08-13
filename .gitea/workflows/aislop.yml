@@ -10,12 +10,9 @@ name: aislop
 # tree stays on its own clang-tidy/cppcheck gate.
 #
 # The C# engine lives ONLY in the personal fork github.com/mtschoen/aislop (the
-# public npm `aislop` scores just Python). It is pinned as a git dependency at a
-# specific fork commit in package.json + package-lock.json and installed with
-# `npm ci` (which builds it on install), then run with `npx --no-install` so CI
-# only ever executes the locked build. Bump the pinned commit in package.json
-# (and refresh the lockfile) deliberately and re-validate; a newer ruleset can
-# surface new findings.
+# public npm `aislop` scores just Python). package.json tracks the fork's main
+# branch; `npm install` resolves the latest commit each run and builds it on
+# install, then `npx --no-install` executes that build.
 on:
   pull_request:
   push:
@@ -23,8 +20,6 @@ on:
   workflow_dispatch:
 
 env:
-  # The aislop version is pinned in package.json + package-lock.json (content-hashed
-  # via the lockfile's sha512 integrity), installed with `npm ci`. Bump there.
   # Node ignores the Windows cert store, so npm pulls over the Gitea registry need
   # the mkcert CA staged on the runner to keep TLS verification ON (local-ci #33).
   # Harmless now that Gitea serves a Let's Encrypt cert (Node falls back to its
@@ -84,23 +79,23 @@ jobs:
           & $msbuild $sln -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -v:minimal -nologo
           if ($LASTEXITCODE -ne 0) { Write-Error "msbuild failed"; exit 1 }
 
-      - name: Install pinned aislop (npm ci, integrity-verified)
+      - name: Install aislop (latest fork main)
         shell: pwsh
         run: |
           # Run from the real checkout path (node is 64-bit so it sees the System32
-          # workspace fine; cwd just defaults to the virtualized temp dir). `npm ci`
-          # installs exactly package-lock.json and fails on any integrity mismatch.
+          # workspace fine; cwd just defaults to the virtualized temp dir).
+          # `npm install` resolves the latest commit on the fork's main branch.
           Set-Location $env:GITHUB_WORKSPACE
-          npm ci --no-audit --no-fund
-          if ($LASTEXITCODE -ne 0) { Write-Error "npm ci failed"; exit 1 }
+          npm install --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { Write-Error "npm install failed"; exit 1 }
 
       - name: aislop quality gate
         # Sanity-fail if the C# engine did not actually analyze the .cs tree (avoid a
         # silent Python-only pass): require a healthy file count alongside the score gate.
         shell: pwsh
         run: |
-          # --no-install: run only the locally installed, lockfile-pinned aislop; never
-          # silently fetch a different build. .aislop/config.yml resolves from cwd.
+          # --no-install: run only the locally installed aislop; never silently
+          # fetch a different build. .aislop/config.yml resolves from cwd.
           Set-Location $env:GITHUB_WORKSPACE
           $report = "$env:RUNNER_TEMP\aislop-report.json"
           npx --no-install aislop ci . --json > $report
@@ -108,15 +103,5 @@ jobs:
           $result = Get-Content $report -Raw | ConvertFrom-Json
           $files = if ($result.summary.files) { $result.summary.files } else { 0 }
           Write-Host "aislop score $($result.score) over $files files"
-          # Diagnostic: dump the raw aislop report JSON
-          Write-Host "--- Report top-level keys ---"
-          $result.PSObject.Properties | ForEach-Object { Write-Host "  $($_.Name) = $($_.Value.GetType().Name)" }
-          Write-Host "--- Raw report (truncated) ---"
-          $raw = Get-Content $report -Raw
-          $chunkSize = 4000
-          for ($i = 0; $i -lt [Math]::Min($raw.Length, 12000); $i += $chunkSize) {
-            $end = [Math]::Min($i + $chunkSize, $raw.Length)
-            Write-Host $raw.Substring($i, $end - $i)
-          }
           if ($files -lt 10) { Write-Error "aislop only scanned $files files - the C# engine did not run"; exit 1 }
           if ($gateExit -ne 0) { Write-Error "aislop score below failBelow"; exit 1 }

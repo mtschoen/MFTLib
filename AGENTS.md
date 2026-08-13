@@ -119,15 +119,13 @@ includes the native `MFTLibNative.vcxproj`, which only loads/builds under
 MSBuild + MSVC, and both jb inspectcode and roslynator load the full solution.
 `lint.csharp.jbProjects` in `.aislop/config.yml` scopes jb inspection to the four
 C# projects so the C++ tree stays on its own clang-tidy/cppcheck gate. The
-workflow installs `aislop` as a git dependency pinned to a specific commit of
-the `github.com/mtschoen/aislop` fork (git+ssh URL in `package.json`, resolution
-locked in `package-lock.json`) with `npm ci` - which builds it on install - and
-runs it with `npx --no-install`. To bump aislop, change the pinned commit in
-`package.json` and refresh the lockfile (`npm install --package-lock-only`). It
-deliberately does NOT use `actions/setup-node` (its 7zr extraction dies with
-exit code 2 on the host-mode act_runner). The build step also
-mirrors `run-coverage.ps1`'s 64-bit-amd64-MSBuild recipe (the checkout path is
-WOW64-virtualized away from 32-bit MSBuild). See the traps in
+workflow installs `aislop` from the `main` branch of the
+`github.com/mtschoen/aislop` fork (git+ssh URL in `package.json`) with
+`npm install` - which resolves the latest commit and builds it on install - and
+runs it with `npx --no-install`. It deliberately does NOT use `actions/setup-node`
+(its 7zr extraction dies with exit code 2 on the host-mode act_runner). The
+build step also mirrors `run-coverage.ps1`'s 64-bit-amd64-MSBuild recipe (the
+checkout path is WOW64-virtualized away from 32-bit MSBuild). See the traps in
 `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md`. For the gate to block merges, add
 `aislop / quality-gate (pull_request)` to the branch-protection required checks
 on `main`.
