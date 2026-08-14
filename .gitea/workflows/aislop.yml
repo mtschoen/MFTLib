@@ -36,7 +36,10 @@ jobs:
       # No actions/setup-node: on host-mode act_runner its 7zr.exe Node extraction
       # dies with exit code 2 (actions/setup-node#1147, "Trap 1" in local-ci
       # project-ci-setup.md). The Windows runner host has Node LTS on the machine
-      # PATH (>= aislop's node>=20 floor); npx uses it directly.
+      # PATH; npx uses it directly. That node must satisfy tsdown's build floor
+      # (node ^22.18 || >=24.11), because `npm install` builds the fork via its
+      # "prepare": "tsdown" script; below that, tsdown dies on
+      # Promise.withResolvers. Not aislop's runtime floor, which is still node 18.
 
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
