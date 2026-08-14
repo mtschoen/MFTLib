@@ -14,12 +14,16 @@ public class BrokerProtocolTests
     [TestMethod]
     public void JournalEntry_RoundTrips_AllFields()
     {
-        var entry = UsnJournalEntry.Create(
-            recordNumber: 42, parentRecordNumber: 7, usn: 123456,
-            timestamp: new DateTime(2026, 6, 20, 1, 2, 3, DateTimeKind.Utc),
-            reason: UsnReason.FileCreate | UsnReason.Close,
-            fileAttributes: FileAttributes.Archive,
-            fileName: "repört.txt"); // non-ASCII to prove UTF-16
+        var entry = UsnJournalEntry.Create(new UsnJournalEntryOptions
+        {
+            RecordNumber = 42,
+            ParentRecordNumber = 7,
+            Usn = 123456,
+            Timestamp = new DateTime(2026, 6, 20, 1, 2, 3, DateTimeKind.Utc),
+            Reason = UsnReason.FileCreate | UsnReason.Close,
+            FileAttributes = FileAttributes.Archive,
+            FileName = "repört.txt",
+        }); // non-ASCII to prove UTF-16
 
         var buffer = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteEntry(buffer, entry);
@@ -40,8 +44,8 @@ public class BrokerProtocolTests
     {
         var entries = new[]
         {
-            UsnJournalEntry.Create(1, 5, 10, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "a"),
-            UsnJournalEntry.Create(2, 5, 20, DateTime.UnixEpoch, UsnReason.FileDelete | UsnReason.Close, FileAttributes.Normal, "b"),
+            JournalEntryFactory.Create(1, 10, "a"),
+            JournalEntryFactory.Create(2, 20, "b", UsnReason.FileDelete | UsnReason.Close),
         };
         var cursor = new UsnJournalCursor(99UL, 20L);
 
@@ -405,7 +409,7 @@ public class BrokerProtocolTests
         var cursor = new UsnJournalCursor(7UL, 110L);
         var entries = new[]
         {
-            UsnJournalEntry.Create(1, 5, 10, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "a"),
+            JournalEntryFactory.Create(1, 10, "a"),
         };
         var frame = BrokerFrame.JournalBatch("C", cursor, entries);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);

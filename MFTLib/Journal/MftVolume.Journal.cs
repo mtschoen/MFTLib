@@ -85,8 +85,16 @@ public sealed partial class MftVolume
             var fileNameLength = *(ushort*)(ptr + 40);
             var fileName = new string((char*)(ptr + 42), 0, fileNameLength);
 
-            entries[i] = new UsnJournalEntry(recordNumber, parentRecordNumber,
-                usn, timestamp, reason, fileAttributes, fileName);
+            entries[i] = new UsnJournalEntry(new NativeUsnJournalEntryData
+            {
+                RecordNumber = recordNumber,
+                ParentRecordNumber = parentRecordNumber,
+                Usn = usn,
+                FileTimeTimestamp = timestamp,
+                Reason = reason,
+                FileAttributes = fileAttributes,
+                FileName = fileName,
+            });
         }
 
         return entries;

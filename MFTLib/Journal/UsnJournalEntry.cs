@@ -1,5 +1,16 @@
 namespace MFTLib;
 
+readonly record struct NativeUsnJournalEntryData
+{
+    public required ulong RecordNumber { get; init; }
+    public required ulong ParentRecordNumber { get; init; }
+    public required long Usn { get; init; }
+    public required long FileTimeTimestamp { get; init; }
+    public required uint Reason { get; init; }
+    public required uint FileAttributes { get; init; }
+    public required string FileName { get; init; }
+}
+
 public readonly struct UsnJournalEntry
 {
     /// <summary>
@@ -24,33 +35,28 @@ public readonly struct UsnJournalEntry
     public bool IsDelete => (Reason & UsnReason.FileDelete) != 0;
     public bool IsRename => (Reason & (UsnReason.RenameOldName | UsnReason.RenameNewName)) != 0;
 
-    // The 7 parameters mirror the kernel USN_RECORD_V2 layout 1:1; regrouping them into a
-    // carrier type would obscure that mapping and ripple into the marshaling/codec paths.
-    // aislop-ignore-next-line complexity/too-many-params
-    internal UsnJournalEntry(ulong recordNumber, ulong parentRecordNumber,
-        long usn, long fileTimeTimestamp, uint reason, uint fileAttributes, string fileName)
+    internal UsnJournalEntry(NativeUsnJournalEntryData data)
     {
-        RecordNumber = recordNumber;
-        ParentRecordNumber = parentRecordNumber;
-        Usn = usn;
-        Timestamp = fileTimeTimestamp > 0
-            ? DateTime.FromFileTimeUtc(fileTimeTimestamp)
+        RecordNumber = data.RecordNumber;
+        ParentRecordNumber = data.ParentRecordNumber;
+        Usn = data.Usn;
+        Timestamp = data.FileTimeTimestamp > 0
+            ? DateTime.FromFileTimeUtc(data.FileTimeTimestamp)
             : DateTime.MinValue;
-        Reason = (UsnReason)reason;
-        FileAttributes = (FileAttributes)fileAttributes;
-        FileName = fileName;
+        Reason = (UsnReason)data.Reason;
+        FileAttributes = (FileAttributes)data.FileAttributes;
+        FileName = data.FileName;
     }
 
-    UsnJournalEntry(ulong recordNumber, ulong parentRecordNumber,
-        long usn, DateTime timestamp, UsnReason reason, FileAttributes fileAttributes, string fileName)
+    UsnJournalEntry(UsnJournalEntryOptions options)
     {
-        RecordNumber = recordNumber;
-        ParentRecordNumber = parentRecordNumber;
-        Usn = usn;
-        Timestamp = timestamp;
-        Reason = reason;
-        FileAttributes = fileAttributes;
-        FileName = fileName;
+        RecordNumber = options.RecordNumber;
+        ParentRecordNumber = options.ParentRecordNumber;
+        Usn = options.Usn;
+        Timestamp = options.Timestamp;
+        Reason = options.Reason;
+        FileAttributes = options.FileAttributes;
+        FileName = options.FileName;
     }
 
     /// <summary>
@@ -58,9 +64,7 @@ public readonly struct UsnJournalEntry
     /// produce entries outside the native marshaling path (e.g. a tool that
     /// serializes journal data to disk and reconstructs it in another process).
     /// </summary>
-    public static UsnJournalEntry Create(ulong recordNumber, ulong parentRecordNumber,
-        long usn, DateTime timestamp, UsnReason reason, FileAttributes fileAttributes, string fileName)
-        => new UsnJournalEntry(recordNumber, parentRecordNumber, usn, timestamp, reason, fileAttributes, fileName);
+    public static UsnJournalEntry Create(UsnJournalEntryOptions options) => new(options);
 
     public override string ToString() => $"[{Reason}] {FileName} (record {RecordNumber})";
 }

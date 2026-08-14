@@ -2,6 +2,10 @@
 
 ## 0.3.0
 
+### Breaking Changes
+
+- Replaced the pre-release seven-argument `UsnJournalEntry.Create(...)` signature with `Create(UsnJournalEntryOptions)`; callers building against 0.3.0 previews must migrate to an object initializer
+
 ### Features
 
 - **USN journal support** on `MftVolume`:
@@ -10,7 +14,7 @@
   - `WatchUsnJournal(cursor, cancellationToken)` — live `IAsyncEnumerable<UsnJournalEntry[]>` event stream; blocks on the kernel (zero CPU) until changes arrive, unblocks via `CancelIoEx` on cancellation
   - `WatchUsnJournalWithCursor(cursor, cancellationToken)` — same as above but yields `(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)` so callers can persist progress without a separate `QueryUsnJournal` IOCTL
 - `UsnJournalEntry` exposes `RecordNumber` / `ParentRecordNumber` (48-bit Master File Table (MFT) segment indices matching `MftRecord`), `Usn`, `Timestamp`, `Reason`, `FileAttributes`, `FileName`, plus `IsCreate` / `IsDelete` / `IsRename` / `IsClose` reason helpers
-- `UsnJournalEntry.Create(...)` — public factory to reconstruct an entry from already-decoded values (e.g. journal data serialized to disk and rebuilt in another process)
+- `UsnJournalEntry.Create(UsnJournalEntryOptions)` - public factory with a property-based value carrier for reconstructing an entry from already-decoded values (e.g. journal data serialized to disk and rebuilt in another process)
 - `MftRecord.FileAttributes` now sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback
 - Added public `IElevationProvider` interface (with `ElevationUtilities.DefaultProvider`) so consumers can substitute elevation behavior in their own tests
 - **VolumeBroker subsystem** — an elevated broker host/client for running MFT scans and USN journal watches through a single UAC session, so a non-elevated caller never needs more than one elevation prompt per process lifetime:

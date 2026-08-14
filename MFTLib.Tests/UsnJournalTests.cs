@@ -212,24 +212,24 @@ public class UsnJournalTests
     [TestMethod]
     public void UsnJournalEntry_ReasonHelpers_Work()
     {
-        var create = new UsnJournalEntry(1, 5, 100, 0, (uint)UsnReason.FileCreate, 0, "test.txt");
+        var create = JournalEntryFactory.Create(1, 100, "test.txt", UsnReason.FileCreate);
         Assert.IsTrue(create.IsCreate);
         Assert.IsFalse(create.IsDelete);
         Assert.IsFalse(create.IsClose);
         Assert.IsFalse(create.IsRename);
 
-        var delete = new UsnJournalEntry(1, 5, 200, 0, (uint)(UsnReason.FileDelete | UsnReason.Close), 0, "gone.txt");
+        var delete = JournalEntryFactory.Create(1, 200, "gone.txt", UsnReason.FileDelete | UsnReason.Close);
         Assert.IsTrue(delete.IsDelete);
         Assert.IsTrue(delete.IsClose);
 
-        var rename = new UsnJournalEntry(1, 5, 300, 0, (uint)UsnReason.RenameNewName, 0, "renamed.txt");
+        var rename = JournalEntryFactory.Create(1, 300, "renamed.txt", UsnReason.RenameNewName);
         Assert.IsTrue(rename.IsRename);
     }
 
     [TestMethod]
     public void UsnJournalEntry_ToString_IncludesReasonAndName()
     {
-        var entry = new UsnJournalEntry(42, 5, 100, 0, (uint)UsnReason.FileCreate, 0, "test.txt");
+        var entry = JournalEntryFactory.Create(42, 100, "test.txt", UsnReason.FileCreate);
         var text = entry.ToString();
         Assert.IsTrue(text.Contains("FileCreate"));
         Assert.IsTrue(text.Contains("test.txt"));
@@ -273,7 +273,16 @@ public class UsnJournalTests
     {
         // 2020-01-01 00:00:00 UTC as FILETIME
         var filetime = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc).ToFileTimeUtc();
-        var entry = new UsnJournalEntry(1, 5, 100, filetime, (uint)UsnReason.FileCreate, 0x20, "timestamped.txt");
+        var entry = new UsnJournalEntry(new NativeUsnJournalEntryData
+        {
+            RecordNumber = 1,
+            ParentRecordNumber = 5,
+            Usn = 100,
+            FileTimeTimestamp = filetime,
+            Reason = (uint)UsnReason.FileCreate,
+            FileAttributes = 0x20,
+            FileName = "timestamped.txt",
+        });
 
         Assert.AreEqual(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc), entry.Timestamp);
         Assert.AreEqual(100L, entry.Usn);
@@ -284,7 +293,16 @@ public class UsnJournalTests
     [TestMethod]
     public void UsnJournalEntry_ZeroTimestamp_ReturnsMinValue()
     {
-        var entry = new UsnJournalEntry(1, 5, 100, 0, (uint)UsnReason.FileCreate, 0, "test.txt");
+        var entry = new UsnJournalEntry(new NativeUsnJournalEntryData
+        {
+            RecordNumber = 1,
+            ParentRecordNumber = 5,
+            Usn = 100,
+            FileTimeTimestamp = 0,
+            Reason = (uint)UsnReason.FileCreate,
+            FileAttributes = 0,
+            FileName = "test.txt",
+        });
         Assert.AreEqual(DateTime.MinValue, entry.Timestamp);
     }
 
@@ -292,10 +310,16 @@ public class UsnJournalTests
     public void UsnJournalEntry_Create_RoundTripsDecodedValues()
     {
         var timestamp = new DateTime(2021, 6, 15, 12, 30, 0, DateTimeKind.Utc);
-        var entry = UsnJournalEntry.Create(
-            recordNumber: 77, parentRecordNumber: 5, usn: 9000, timestamp: timestamp,
-            reason: UsnReason.FileCreate | UsnReason.Close,
-            fileAttributes: FileAttributes.Archive, fileName: "reconstructed.txt");
+        var entry = UsnJournalEntry.Create(new UsnJournalEntryOptions
+        {
+            RecordNumber = 77,
+            ParentRecordNumber = 5,
+            Usn = 9000,
+            Timestamp = timestamp,
+            Reason = UsnReason.FileCreate | UsnReason.Close,
+            FileAttributes = FileAttributes.Archive,
+            FileName = "reconstructed.txt",
+        });
 
         Assert.AreEqual(77UL, entry.RecordNumber);
         Assert.AreEqual(5UL, entry.ParentRecordNumber);

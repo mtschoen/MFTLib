@@ -46,9 +46,8 @@ public class JournalBrokerClientTests
 
         var armedCursor = new UsnJournalCursor(7UL, 100L);
         var advancedCursor = new UsnJournalCursor(7UL, 200L);
-        var catchUpEntry = UsnJournalEntry.Create(
-            100, 5, 150, DateTime.UnixEpoch, UsnReason.FileCreate | UsnReason.Close,
-            FileAttributes.Normal, "nöte.txt");
+        var catchUpEntry = JournalEntryFactory.Create(
+            100, 150, "nöte.txt", UsnReason.FileCreate | UsnReason.Close);
 
         var (clientSide, serverSide) = DuplexStream.CreatePair();
 
@@ -212,8 +211,7 @@ public class JournalBrokerClientTests
 
         var cursor1 = new UsnJournalCursor(7UL, 110L);
         var cursor2 = new UsnJournalCursor(7UL, 120L);
-        var entry = UsnJournalEntry.Create(
-            1, 5, 110, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "f.txt");
+        var entry = JournalEntryFactory.Create(1, 110, "f.txt");
 
         // Write two JournalBatch frames from the "broker" side and then close.
         var brokerTask = Task.Run(async () =>
@@ -312,8 +310,7 @@ public class JournalBrokerClientTests
         var client = MakeMinimalFakeClient(clientSide);
 
         var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 100L) };
-        var strayEntry = UsnJournalEntry.Create(
-            1, 5, 110, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "stray.txt");
+        var strayEntry = JournalEntryFactory.Create(1, 110, "stray.txt");
 
         // Broker side: after reading EndWatch, write a stray JournalBatch (a live
         // frame the host emitted before it noticed the stop) BEFORE the ack. The
@@ -587,7 +584,7 @@ public class JournalBrokerClientTests
             mmfReader: new NullMmfReader(),
             createDriveMmf: (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
 
-        var entry = UsnJournalEntry.Create(1, 5, 10, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "a");
+        var entry = JournalEntryFactory.Create(1, 10, "a");
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 110L), new[] { entry });
         await serverSide.WriteAsync(response.WrittenMemory);
@@ -631,8 +628,8 @@ public class JournalBrokerClientTests
             mmfReader: new NullMmfReader(),
             createDriveMmf: (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
 
-        var entryC = UsnJournalEntry.Create(1, 5, 10, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "a");
-        var entryD = UsnJournalEntry.Create(2, 5, 20, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "b");
+        var entryC = JournalEntryFactory.Create(1, 10, "a");
+        var entryD = JournalEntryFactory.Create(2, 20, "b");
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 110L), new[] { entryC });
         BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(7UL, 210L), new[] { entryD });

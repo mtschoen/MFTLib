@@ -22,9 +22,8 @@ public class JournalBrokerScanSessionTests
             LastWriteTicks: 0, Attributes: 0x10, IsDirectory: true, Name: "C:", Path: "C:\\");
         var armedCursor = new UsnJournalCursor(7UL, 100L);
         var advancedCursor = new UsnJournalCursor(7UL, 200L);
-        var catchUpEntry = UsnJournalEntry.Create(
-            100, 5, 150, DateTime.UnixEpoch, UsnReason.FileCreate | UsnReason.Close,
-            FileAttributes.Normal, "note.txt");
+        var catchUpEntry = JournalEntryFactory.Create(
+            100, 150, "note.txt", UsnReason.FileCreate | UsnReason.Close);
 
         var client = new JournalBrokerClient(
             pipe: clientSide,
@@ -518,8 +517,7 @@ public class JournalBrokerScanSessionTests
         await watchFrameTask;
 
         var cursor = new UsnJournalCursor(7UL, 210L);
-        var entry = UsnJournalEntry.Create(
-            1, 5, 110, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "f.txt");
+        var entry = JournalEntryFactory.Create(1, 110, "f.txt");
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteJournalBatch(response, "C", cursor, new[] { entry });
         BrokerProtocol.WriteEndWatchAck(response);
@@ -689,7 +687,7 @@ public class JournalBrokerScanSessionTests
         await session.StartWatchAsync(cts.Token);
         await watchFrameTask;
 
-        var entry = UsnJournalEntry.Create(1, 5, 10, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "a");
+        var entry = JournalEntryFactory.Create(1, 10, "a");
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 110L), new[] { entry });
         await serverSide.WriteAsync(response.WrittenMemory);
@@ -847,8 +845,7 @@ public class JournalBrokerScanSessionTests
 
             Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
 
-            var entry = UsnJournalEntry.Create(
-                1, 5, 110, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "after-restart.txt");
+            var entry = JournalEntryFactory.Create(1, 110, "after-restart.txt");
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteJournalBatch(
                 response, "C", new UsnJournalCursor(7UL, 110L), new[] { entry });
@@ -1582,8 +1579,7 @@ public class JournalBrokerScanSessionTests
         StringAssert.Contains(watchFrame.DrivesSpec, "C:7:200");
 
         var liveCursor = new UsnJournalCursor(7UL, 260L);
-        var entry = UsnJournalEntry.Create(
-            1, 5, 210, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "warm.txt");
+        var entry = JournalEntryFactory.Create(1, 210, "warm.txt");
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteJournalBatch(response, "C", liveCursor, new[] { entry });
         BrokerProtocol.WriteEndWatchAck(response);
@@ -1756,7 +1752,7 @@ public class JournalBrokerScanSessionTests
     public async Task PublicStartFromCursors_InProcessBroker_EndToEnd()
     {
         var liveBatch = (
-            new[] { UsnJournalEntry.Create(1, 5, 210, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "warm.txt") },
+            new[] { JournalEntryFactory.Create(1, 210, "warm.txt") },
             new UsnJournalCursor(7UL, 260L));
 
         Task? brokerTask = null;

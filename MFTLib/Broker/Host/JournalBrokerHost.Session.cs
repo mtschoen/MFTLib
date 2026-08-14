@@ -17,78 +17,11 @@ public sealed partial class JournalBrokerHost
         // The pipe is shared by concurrent watch tasks; guard writes so frames
         // never interleave on the wire.
         var writeLock = new SemaphoreSlim(1, 1);
-        // The current watch generation: its CTS and the per-drive tasks it owns. A
-        // StartWatch creates a generation; an EndWatch (or loop end) tears it down.
-        // Held in a container (rather than reassigned locals) so the local async
-        // function below captures a stable reference instead of a modified closure
-        // (ref params are illegal in async methods).
         var watch = new WatchGeneration();
-
-        // Cancel the current watch generation, await its tasks to quiescence, and
-        // clear it. StreamWatchAsync catches OperationCanceledException internally
-        // and always returns normally, so Task.WhenAll here cannot fault.
-        async Task StopWatchGenerationAsync()
-        {
-            if (watch.Cancellation == null)
-                return;
-            await watch.Cancellation.CancelAsync().ConfigureAwait(false);
-            await Task.WhenAll(watch.Tasks).ConfigureAwait(false);
-            watch.Tasks.Clear();
-            watch.Cancellation.Dispose();
-            watch.Cancellation = null;
-        }
-
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                var frame = await ReadFrameAsync(stream, cancellationToken).ConfigureAwait(false);
-                if (frame == null)
-                    return; // EOF / pipe closed
-
-                switch (frame.Value.Kind)
-                {
-                    case BrokerFrameKind.ArmAndScan:
-                        if (frame.Value.DrivesSpec is { } drivesSpec)
-                            await HandleArmAndScanAsync(stream, mmfWriter, drivesSpec, frame.Value.KeepFileNames,
-                                writeLock, cancellationToken)
-                                .ConfigureAwait(false);
-                        if (oneShot)
-                            return;
-                        break;
-
-                    case BrokerFrameKind.StartWatch:
-                        if (frame.Value.DrivesSpec is { } watchSpec)
-                        {
-                            // Idempotent: if a watch generation is already live (no EndWatch
-                            // arrived to retire it), a second StartWatch is a duplicate. DO NOT
-                            // restart it - tearing the running generation down mid-write races
-                            // its in-flight frames against the new generation's and desyncs the
-                            // caller's single-reader demux (observed as "Unknown frame kind" on a
-                            // warm start). A real restart always sends EndWatch first, which
-                            // clears watch.Cancellation back to null.
-                            if (watch.Cancellation != null)
-                            {
-                                BrokerDiagnostics.Log(
-                                    "StartWatch ignored: a watch generation is already running " +
-                                    "(duplicate StartWatch without an intervening EndWatch).");
-                                break;
-                            }
-                            watch.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                            watch.Tasks.AddRange(StartWatchTasks(stream, watchSpec, writeLock, watch.Cancellation.Token));
-                        }
-                        break;
-
-                    case BrokerFrameKind.EndWatch:
-                        await StopWatchGenerationAsync().ConfigureAwait(false);
-                        await WriteFrameAsync(stream, writeLock, BrokerProtocol.WriteEndWatchAck, cancellationToken)
-                            .ConfigureAwait(false);
-                        break;
-
-                    case BrokerFrameKind.Shutdown:
-                        return;
-                }
-            }
+            await ServeFramesAsync(stream, mmfWriter, oneShot, writeLock, watch, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -96,8 +29,88 @@ public sealed partial class JournalBrokerHost
         }
         finally
         {
-            await StopWatchGenerationAsync().ConfigureAwait(false);
+            await StopWatchGenerationAsync(watch).ConfigureAwait(false);
         }
     }
 
+    async Task ServeFramesAsync(
+        Stream stream,
+        IMmfWriter mmfWriter,
+        bool oneShot,
+        SemaphoreSlim writeLock,
+        WatchGeneration watch,
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var frame = await ReadFrameAsync(stream, cancellationToken).ConfigureAwait(false);
+            if (frame == null)
+                return;
+
+            switch (frame.Value.Kind)
+            {
+                case BrokerFrameKind.ArmAndScan:
+                    if (frame.Value.DrivesSpec is { } drivesSpec)
+                        await HandleArmAndScanAsync(stream, mmfWriter, drivesSpec, frame.Value.KeepFileNames,
+                            writeLock, cancellationToken).ConfigureAwait(false);
+                    if (oneShot)
+                        return;
+                    break;
+
+                case BrokerFrameKind.StartWatch:
+                    if (frame.Value.DrivesSpec is { } watchSpec)
+                        StartWatch(stream, writeLock, watch, watchSpec, cancellationToken);
+                    break;
+
+                case BrokerFrameKind.EndWatch:
+                    await StopWatchGenerationAsync(watch).ConfigureAwait(false);
+                    await WriteFrameAsync(stream, writeLock, BrokerProtocol.WriteEndWatchAck, cancellationToken)
+                        .ConfigureAwait(false);
+                    break;
+
+                case BrokerFrameKind.Shutdown:
+                    return;
+            }
+        }
+    }
+
+    void StartWatch(
+        Stream stream,
+        SemaphoreSlim writeLock,
+        WatchGeneration watch,
+        string watchSpec,
+        CancellationToken cancellationToken)
+    {
+        // Idempotent: if a watch generation is already live (no EndWatch
+        // arrived to retire it), a second StartWatch is a duplicate. DO NOT
+        // restart it - tearing the running generation down mid-write races
+        // its in-flight frames against the new generation's and desyncs the
+        // caller's single-reader demux (observed as "Unknown frame kind" on a
+        // warm start). A real restart always sends EndWatch first, which
+        // clears watch.Cancellation back to null.
+        if (watch.Cancellation != null)
+        {
+            BrokerDiagnostics.Log(
+                "StartWatch ignored: a watch generation is already running " +
+                "(duplicate StartWatch without an intervening EndWatch).");
+            return;
+        }
+
+        watch.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        watch.Tasks.AddRange(StartWatchTasks(stream, watchSpec, writeLock, watch.Cancellation.Token));
+    }
+
+    // Cancel the current watch generation, await its tasks to quiescence, and
+    // clear it. StreamWatchAsync catches OperationCanceledException internally
+    // and always returns normally, so Task.WhenAll here cannot fault.
+    static async Task StopWatchGenerationAsync(WatchGeneration watch)
+    {
+        if (watch.Cancellation == null)
+            return;
+        await watch.Cancellation.CancelAsync().ConfigureAwait(false);
+        await Task.WhenAll(watch.Tasks).ConfigureAwait(false);
+        watch.Tasks.Clear();
+        watch.Cancellation.Dispose();
+        watch.Cancellation = null;
+    }
 }

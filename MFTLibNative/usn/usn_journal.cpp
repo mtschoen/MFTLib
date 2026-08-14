@@ -182,8 +182,7 @@ EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
     return info;
 }
 
-// aislop-ignore-next-line cpp-manual-delete -- C-ABI free; ownership crosses P/Invoke, no RAII scope
-EXPORT void FreeUsnJournalInfo(const UsnJournalInfo* info) { delete info; }
+EXPORT void FreeUsnJournalInfo(const UsnJournalInfo* info) { std::unique_ptr<const UsnJournalInfo> owned(info); }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
 EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId) {
@@ -278,12 +277,9 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
 }
 
 EXPORT void FreeUsnJournalResult(const UsnJournalResult* result) {
-    if (result != nullptr) {
-        if (result->entries != nullptr) {
-            VirtualFree(result->entries, 0, MEM_RELEASE);
-        }
-        // aislop-ignore-next-line cpp-manual-delete -- C-ABI free; ownership crosses P/Invoke, no RAII scope
-        delete result;
+    std::unique_ptr<const UsnJournalResult> owned(result);
+    if (owned != nullptr && owned->entries != nullptr) {
+        VirtualFree(owned->entries, 0, MEM_RELEASE);
     }
 }
 

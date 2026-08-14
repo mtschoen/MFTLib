@@ -46,8 +46,7 @@ public class BrokerLiveWatchErrorTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
         var cursor = new UsnJournalCursor(7UL, 210L);
-        var entry = UsnJournalEntry.Create(
-            1, 5, 110, DateTime.UnixEpoch, UsnReason.Close, FileAttributes.Normal, "f.txt");
+        var entry = JournalEntryFactory.Create(1, 110, "f.txt");
 
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteError(response, "D", "journal wrapped");
