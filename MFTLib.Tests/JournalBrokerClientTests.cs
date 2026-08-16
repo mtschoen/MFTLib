@@ -591,7 +591,7 @@ public class JournalBrokerClientTests
         // the cancellation exactly between while-loop iterations - a plain boolean
         // check - instead of racing an already-blocked read (which would throw
         // instead of falling out of the loop normally).
-        // aislop-ignore-next-line AccessToDisposedClosure
+        // aislop-ignore-next-line AccessToDisposedClosure -- cts is disposed only after the demux has finished (awaited below), so this closure never touches a disposed instance
         var wrapped = new CancelAfterReadsStream(clientSide, 2, () => cts.Cancel());
         var client = new JournalBrokerClient(
             wrapped,
@@ -637,7 +637,7 @@ public class JournalBrokerClientTests
         // Cancel right after the 4th ReadAsync on the client's pipe completes (the
         // header+body of each of the two JournalBatch frames written below), landing
         // the cancellation between while-loop iterations once both frames are in.
-        // aislop-ignore-next-line AccessToDisposedClosure
+        // aislop-ignore-next-line AccessToDisposedClosure -- cts is disposed only after the demux has finished (awaited below), so this closure never touches a disposed instance
         var wrapped = new CancelAfterReadsStream(clientSide, 4, () => cts.Cancel());
         var client = new JournalBrokerClient(
             wrapped,

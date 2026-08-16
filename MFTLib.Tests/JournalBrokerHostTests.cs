@@ -593,7 +593,7 @@ public class JournalBrokerHostTests
         // Required so the compiler emits the iterator state machine for
         // IAsyncEnumerable; the throw above is unconditional and intentional (a test
         // double for a watch source that fails immediately).
-        // aislop-ignore-next-line HeuristicUnreachableCode
+        // aislop-ignore-next-line HeuristicUnreachableCode -- unreachable but required so the compiler emits the iterator state machine for IAsyncEnumerable
         yield break;
 #pragma warning restore CS0162
     }

@@ -178,7 +178,7 @@ public class JournalBrokerHostRealSeamsTests
             // empty batch. MftVolume.WatchUsnJournalWithCursor treats "empty batch +
             // already cancelled" as a clean `yield break`, distinct from a cancelled
             // Task.Run throwing OperationCanceledException.
-            // aislop-ignore-next-line AccessToDisposedClosure
+            // aislop-ignore-next-line AccessToDisposedClosure -- cts is disposed only after ServeAsync (which invokes this mock synchronously) completes, so this closure never touches a disposed instance
             cts.Cancel();
             return BuildEmptyWatchResult(journalId, startUsn);
         };

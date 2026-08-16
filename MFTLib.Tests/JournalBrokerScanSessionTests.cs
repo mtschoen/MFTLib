@@ -687,7 +687,7 @@ public class JournalBrokerScanSessionTests
         // right after the demux reads the header+body of the one live JournalBatch frame
         // written below (the 8th ReadAsync call), landing the cancellation between
         // while-loop iterations instead of racing an already-blocked read.
-        // aislop-ignore-next-line AccessToDisposedClosure
+        // aislop-ignore-next-line AccessToDisposedClosure -- cts is disposed only after the demux has finished (awaited via DisposeAsync), so this closure never touches a disposed instance
         var wrapped = new CancelAfterReadsStream(clientSide, 8, () => cts.Cancel());
         var client = MakeMinimalFakeClient(wrapped);
         var scanTask = RespondToArmAndScanAsync(serverSide, "C");

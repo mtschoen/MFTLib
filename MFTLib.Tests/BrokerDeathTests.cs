@@ -45,7 +45,7 @@ public class BrokerDeathTests
         // Act: close the broker side so the client reads EOF.
         var enumerateTask = Task.Run(async () =>
         {
-            // aislop-ignore-next-line AccessToDisposedClosure
+            // aislop-ignore-next-line AccessToDisposedClosure -- cts is disposed only after enumerateTask is awaited to completion below, so this closure never reads it post-dispose
             await foreach (var _ in batchSource("C:\\", default, cts.Token))
             {
             }

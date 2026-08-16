@@ -37,7 +37,7 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
         // ServeAsync continuation runs on a thread-pool thread, not this one.
         JournalBrokerHost.CreateDefault()
             .ServeAsync(stream, new RealMmfWriter(), oneShot, CancellationToken.None)
-            // aislop-ignore-next-line csharp-sync-over-async
+            // aislop-ignore-next-line csharp-sync-over-async -- a console entry point has no SynchronizationContext to resume onto, so GetAwaiter().GetResult() cannot deadlock here
             .GetAwaiter().GetResult();
 
         ExitProcess(0);

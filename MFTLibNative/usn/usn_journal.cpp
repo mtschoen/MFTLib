@@ -181,7 +181,6 @@ EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
     return info;
 }
 
-// aislop-ignore-next-line cpp-manual-delete -- C-ABI free; ownership crosses P/Invoke, no RAII scope
 EXPORT void FreeUsnJournalInfo(const UsnJournalInfo* info) { delete info; }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
@@ -282,7 +281,6 @@ EXPORT void FreeUsnJournalResult(const UsnJournalResult* result) {
         if (result->entries != nullptr) {
             VirtualFree(result->entries, 0, MEM_RELEASE);
         }
-        // aislop-ignore-next-line cpp-manual-delete -- C-ABI free; ownership crosses P/Invoke, no RAII scope
         delete result;
     }
 }
