@@ -9,20 +9,22 @@ namespace Benchmark;
 #pragma warning disable CA1416 // Validate platform compatibility — Benchmark is Windows-only
 
 // One benchmark scenario: a display name plus the filter/match-flags it exercises.
-internal readonly record struct BenchmarkScenario(string Name, string? Filter, MatchFlags MatchFlags);
+readonly record struct BenchmarkScenario(string Name, string? Filter, MatchFlags MatchFlags);
 
-internal class BenchmarkRunner
+class BenchmarkRunner
 {
-    internal SystemInfo SystemInfo = new();
+    internal Action<string> DeleteFile = File.Delete;
     internal Action<string, ulong, uint> GenerateSynthetic = MftVolume.GenerateSyntheticMFT;
+    internal Func<string, FileInfo> GetFileInfo = path => new FileInfo(path);
+
     internal Func<string, string?, MatchFlags, (MftRecord[] Records, MftParseTimings Timings)> ParseFromFile =
         (path, filter, flags) =>
         {
             var records = MftVolume.ParseMFTFromFile(path, filter, flags, out var timings);
             return (records, timings);
         };
-    internal Action<string> DeleteFile = File.Delete;
-    internal Func<string, FileInfo> GetFileInfo = path => new FileInfo(path);
+
+    internal SystemInfo SystemInfo = new();
     internal Action<string, string> WriteAllText = File.WriteAllText;
     internal Action<string> WriteLineToConsole = Console.WriteLine;
     internal Action<string> WriteToConsole = value => Console.Write(value);
@@ -30,8 +32,12 @@ internal class BenchmarkRunner
     internal int Run(string[] arguments)
     {
         const ulong defaultRecordCount = 8_000_000;
-        var recordCount = arguments.Length > 0 && ulong.TryParse(arguments[0], out var parsedRecordCount) ? parsedRecordCount : defaultRecordCount;
-        var iterations = arguments.Length > 1 && int.TryParse(arguments[1], out var parsedIterations) ? parsedIterations : 3;
+        var recordCount = arguments.Length > 0 && ulong.TryParse(arguments[0], out var parsedRecordCount)
+            ? parsedRecordCount
+            : defaultRecordCount;
+        var iterations = arguments.Length > 1 && int.TryParse(arguments[1], out var parsedIterations)
+            ? parsedIterations
+            : 3;
 
         var mftPath = Path.Combine(AppContext.BaseDirectory, "synthetic.mft");
         var output = new StringBuilder();
@@ -46,7 +52,8 @@ internal class BenchmarkRunner
         Log("System Info");
         Log("====================================");
         Log($"  Build:       {SystemInfo.GetBuildConfiguration()}");
-        Log($"  OS:          {SystemInfo.GetWmiValue("Win32_OperatingSystem", "Caption")} ({Environment.OSVersion.Version})");
+        Log(
+            $"  OS:          {SystemInfo.GetWmiValue("Win32_OperatingSystem", "Caption")} ({Environment.OSVersion.Version})");
         Log($"  CPU:         {SystemInfo.GetWmiValue("Win32_Processor", "Name")}");
         Log($"  Threads:     {Environment.ProcessorCount}");
         Log($"  RAM:         {SystemInfo.GetInstalledMemoryGB()} GB");
@@ -67,7 +74,8 @@ internal class BenchmarkRunner
         generationStopwatch.Stop();
 
         var fileInfo = GetFileInfo(mftPath);
-        var generationLine = $"done in {generationStopwatch.Elapsed.TotalSeconds:F1}s ({fileInfo.Length / 1024.0 / 1024 / 1024:F2} GB)";
+        var generationLine =
+            $"done in {generationStopwatch.Elapsed.TotalSeconds:F1}s ({fileInfo.Length / 1024.0 / 1024 / 1024:F2} GB)";
         WriteLineToConsole(generationLine);
         output.Append(CultureInfo.InvariantCulture, $"Generating synthetic MFT... {generationLine}").AppendLine();
         Log();
@@ -78,7 +86,7 @@ internal class BenchmarkRunner
             new("Unfiltered (all records)", null, MatchFlags.None),
             new("Filtered: exact \".git\"", ".git", MatchFlags.ExactMatch),
             new("Filtered: contains \"config\"", "config", MatchFlags.Contains),
-            new("Filtered: exact \".git\" + paths", ".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths),
+            new("Filtered: exact \".git\" + paths", ".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths)
         };
 
         foreach (var scenario in scenarios)
@@ -91,7 +99,8 @@ internal class BenchmarkRunner
         Log("Synthetic MFT file cleaned up.");
 
         // Save baseline
-        var baselinePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Benchmark", "baseline.txt"));
+        var baselinePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+            "Benchmark", "baseline.txt"));
         WriteAllText(baselinePath, output.ToString());
         Log($"Baseline saved to {baselinePath}");
 
@@ -122,13 +131,15 @@ internal class BenchmarkRunner
 
                 var iterationLine = $"{stopwatch.Elapsed.TotalMilliseconds:F0}ms ({records.Length:N0} records)";
                 WriteLineToConsole(iterationLine);
-                output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {iterationLine}").AppendLine();
+                output.Append(CultureInfo.InvariantCulture,
+                    $"  Iteration {iteration + 1}/{iterations}... {iterationLine}").AppendLine();
             }
             catch (Exception exception)
             {
                 var failLine = $"FAILED: {exception.GetType().Name}: {exception.Message}";
                 WriteLineToConsole(failLine);
-                output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {failLine}").AppendLine();
+                output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {failLine}")
+                    .AppendLine();
             }
         }
 

@@ -4,7 +4,10 @@ static class MFTUtilities
 {
     public static string GetVolumePath(string input)
     {
-        if (string.IsNullOrEmpty(input)) throw new ArgumentNullException(nameof(input));
+        if (string.IsNullOrEmpty(input))
+        {
+            throw new ArgumentNullException(nameof(input));
+        }
 
         // Volume GUID format: \\?\Volume{guid}\
         if (input.StartsWith(@"\\?\Volume{", StringComparison.OrdinalIgnoreCase))

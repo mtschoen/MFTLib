@@ -4,8 +4,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 /// <summary>
-/// Tests that require admin elevation to open raw volume handles.
-/// Run via: scripts/run-admin-tests.ps1
+///     Tests that require admin elevation to open raw volume handles.
+///     Run via: scripts/run-admin-tests.ps1
 /// </summary>
 [TestClass]
 [TestCategory("RequiresAdmin")]
@@ -14,7 +14,9 @@ public class MftVolumeAdminTests
     static void RequireElevation()
     {
         if (!ElevationUtilities.IsElevated())
+        {
             Assert.Inconclusive("Requires admin elevation. Run scripts/run-admin-tests.ps1");
+        }
     }
 
     [TestMethod]
@@ -45,7 +47,7 @@ public class MftVolumeAdminTests
     public void Open_WithCustomBufferSize_Succeeds()
     {
         RequireElevation();
-        using var volume = MftVolume.Open("C", bufferSizeRecords: 65536);
+        using var volume = MftVolume.Open("C", 65536);
         var records = volume.ReadAllRecords();
         Assert.IsTrue(records.Length > 0);
     }
@@ -78,7 +80,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAllRecords(resolvePaths: true);
+        var records = volume.ReadAllRecords(true);
 
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
         Assert.IsTrue(withPaths.Length > 0, "Expected some records with resolved paths");
@@ -89,7 +91,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAllRecords(resolvePaths: true, out var timings);
+        var records = volume.ReadAllRecords(true, out var timings);
 
         Assert.IsTrue(timings.TotalRecords > 0);
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
@@ -110,7 +112,9 @@ public class MftVolumeAdminTests
 
         // If bootmgr doesn't exist, try a Windows system file
         if (records.Length == 0)
+        {
             records = volume.FindByName("ntldr");
+        }
 
         // At minimum, we verified the call didn't throw
         Assert.IsNotNull(records);
@@ -154,10 +158,15 @@ public class MftVolumeAdminTests
                 $"Record '{record.FileName}' doesn't match substring '.dll'");
 
             if (firstWithPath == null && record.FullPath != null)
+            {
                 firstWithPath = record.Materialize();
+            }
 
             count++;
-            if (count >= 100) break;
+            if (count >= 100)
+            {
+                break;
+            }
         }
 
         Assert.IsTrue(count > 0, "Expected substring filter to find .dll files");
@@ -174,7 +183,11 @@ public class MftVolumeAdminTests
         using var result = volume.StreamRecords("explorer.exe");
 
         var count = 0;
-        foreach (var _ in result) count++;
+        foreach (var _ in result)
+        {
+            count++;
+        }
+
         Assert.AreEqual(0, count, "Expected no results when filter is set but no match bits");
     }
 
@@ -213,7 +226,10 @@ public class MftVolumeAdminTests
         foreach (var unused in result)
         {
             count++;
-            if (count >= 100) break; // Don't enumerate everything
+            if (count >= 100)
+            {
+                break; // Don't enumerate everything
+            }
         }
 
         Assert.IsTrue(count >= 100, "Expected at least 100 records on C:");
@@ -307,7 +323,9 @@ public class MftVolumeAdminTests
 
         Assert.ThrowsException<ObjectDisposedException>(() =>
         {
-            foreach (var _ in result) { }
+            foreach (var _ in result)
+            {
+            }
         });
     }
 
@@ -387,6 +405,7 @@ public class MftVolumeAdminTests
             Assert.IsInstanceOfType<MftRecord>(item);
             count++;
         }
+
         Assert.IsTrue(count > 0, "Expected at least one record via non-generic enumerator");
     }
 }

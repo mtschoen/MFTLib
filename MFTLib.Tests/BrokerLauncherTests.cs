@@ -9,7 +9,10 @@ namespace MFTLib.Tests;
 public class BrokerLauncherTests
 {
     [TestCleanup]
-    public void Cleanup() => BrokerLauncher.ResetToDefaults();
+    public void Cleanup()
+    {
+        BrokerLauncher.ResetToDefaults();
+    }
 
     [TestMethod]
     [SupportedOSPlatform("windows")]

@@ -3,10 +3,10 @@ using System.IO.Pipelines;
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
-/// An in-memory, full-duplex stream pair backed by two <see cref="Pipe"/>s, so
-/// broker pipe-loop tests can drive <c>ServeAsync</c> over real async stream IO
-/// without a named pipe. Writes on one side become reads on the other. Disposing
-/// a side completes its write pipe, surfacing EOF to the peer's reader.
+///     An in-memory, full-duplex stream pair backed by two <see cref="Pipe" />s, so
+///     broker pipe-loop tests can drive <c>ServeAsync</c> over real async stream IO
+///     without a named pipe. Writes on one side become reads on the other. Disposing
+///     a side completes its write pipe, surfacing EOF to the peer's reader.
 /// </summary>
 public sealed class DuplexStream : Stream
 {
@@ -19,6 +19,17 @@ public sealed class DuplexStream : Stream
         _write = write;
     }
 
+    public override bool CanRead => true;
+    public override bool CanWrite => true;
+    public override bool CanSeek => false;
+    public override long Length => throw new NotSupportedException();
+
+    public override long Position
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+
     public static (DuplexStream Client, DuplexStream Server) CreatePair()
     {
         var clientToServer = new Pipe();
@@ -28,27 +39,45 @@ public sealed class DuplexStream : Stream
         return (client, server);
     }
 
-    public override bool CanRead => true;
-    public override bool CanWrite => true;
-    public override bool CanSeek => false;
-    public override long Length => throw new NotSupportedException();
-    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+    public override void Flush()
+    {
+        _write.Flush();
+    }
 
-    public override void Flush() => _write.Flush();
-    public override Task FlushAsync(CancellationToken cancellationToken) => _write.FlushAsync(cancellationToken);
+    public override Task FlushAsync(CancellationToken cancellationToken)
+    {
+        return _write.FlushAsync(cancellationToken);
+    }
 
-    public override int Read(byte[] buffer, int offset, int count) => _read.Read(buffer, offset, count);
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        return _read.Read(buffer, offset, count);
+    }
 
     public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-        => _read.ReadAsync(buffer, cancellationToken);
+    {
+        return _read.ReadAsync(buffer, cancellationToken);
+    }
 
-    public override void Write(byte[] buffer, int offset, int count) => _write.Write(buffer, offset, count);
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+        _write.Write(buffer, offset, count);
+    }
 
     public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
-        => _write.WriteAsync(buffer, cancellationToken);
+    {
+        return _write.WriteAsync(buffer, cancellationToken);
+    }
 
-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-    public override void SetLength(long value) => throw new NotSupportedException();
+    public override long Seek(long offset, SeekOrigin origin)
+    {
+        throw new NotSupportedException();
+    }
+
+    public override void SetLength(long value)
+    {
+        throw new NotSupportedException();
+    }
 
     protected override void Dispose(bool disposing)
     {
@@ -57,6 +86,7 @@ public sealed class DuplexStream : Stream
             _read.Dispose();
             _write.Dispose();
         }
+
         base.Dispose(disposing);
     }
 }

@@ -4,9 +4,9 @@ using System.Runtime.Versioning;
 namespace MFTLib;
 
 /// <summary>
-/// Production <see cref="IMmfWriter"/>: opens the UI-created, page-file-backed
-/// map by name and writes the packed <see cref="ScanPayload"/> into it. Named
-/// memory-mapped files are a Windows facility; the broker only runs on Windows.
+///     Production <see cref="IMmfWriter" />: opens the UI-created, page-file-backed
+///     map by name and writes the packed <see cref="ScanPayload" /> into it. Named
+///     memory-mapped files are a Windows facility; the broker only runs on Windows.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class RealMmfWriter : IMmfWriter

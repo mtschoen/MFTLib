@@ -1,28 +1,29 @@
 namespace MFTLib;
 
 /// <summary>
-/// UI-side client for the elevated journal broker. Owns the pipe (server end:
-/// the non-elevated caller creates it and passes the name to the broker) and the
-/// per-drive page-file-backed MMFs (caller pre-creates; broker opens and writes).
-/// All external seams are injected so the class is fully testable without a
-/// real child process, real named pipe, or real named MMF.
+///     UI-side client for the elevated journal broker. Owns the pipe (server end:
+///     the non-elevated caller creates it and passes the name to the broker) and the
+///     per-drive page-file-backed MMFs (caller pre-creates; broker opens and writes).
+///     All external seams are injected so the class is fully testable without a
+///     real child process, real named pipe, or real named MMF.
 /// </summary>
 public sealed partial class JournalBrokerClient : IAsyncDisposable
 {
     /// <summary>
-    /// Default capacity for a per-drive MMF: generous enough for tens of millions
-    /// of records (~2 GiB). The broker writes only the exact bytes it needs; the
-    /// caller reads back exactly that many via the <c>ScanReady</c> byte-length field.
+    ///     Default capacity for a per-drive MMF: generous enough for tens of millions
+    ///     of records (~2 GiB). The broker writes only the exact bytes it needs; the
+    ///     caller reads back exactly that many via the <c>ScanReady</c> byte-length field.
     /// </summary>
     public const long DefaultMmfCapacity = 2L * 1024 * 1024 * 1024; // 2 GiB
 
-    readonly Stream _pipe;
-    readonly IMmfReader _mmfReader;
     readonly Func<string, long, (string Name, IDisposable Lifetime)> _createDriveMmf;
 
     // Lifetimes of MMFs pre-created per ArmScanAndCatchUpAsync call. Disposed on DisposeAsync.
     readonly List<IDisposable> _mmfLifetimes = new();
     readonly object _mmfLifetimesLock = new();
+    readonly IMmfReader _mmfReader;
+
+    readonly Stream _pipe;
 
     // Pipe write mutex: only ArmScanAndCatchUpAsync and DisposeAsync write to the pipe,
     // and DisposeAsync waits for ArmScanAndCatchUpAsync to finish before writing Shutdown.
@@ -33,30 +34,23 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
     int _brokerDeathSignaled;
 
     /// <summary>
-    /// Fired when the pipe EOF or IO error is detected (broker died or was killed).
-    /// Fires at most once per client lifetime regardless of how many concurrent
-    /// readers detect the same death.
-    /// </summary>
-    public event Action<string>? BrokerDied;
-
-    /// <summary>
-    /// Construct a client over an already-connected pipe and its supporting seams.
+    ///     Construct a client over an already-connected pipe and its supporting seams.
     /// </summary>
     /// <param name="pipe">
-    /// The connected pipe stream. In production a <c>NamedPipeServerStream</c> that
-    /// the caller created and the broker connected to. Tests pass an in-memory
-    /// duplex stream.
+    ///     The connected pipe stream. In production a <c>NamedPipeServerStream</c> that
+    ///     the caller created and the broker connected to. Tests pass an in-memory
+    ///     duplex stream.
     /// </param>
     /// <param name="mmfReader">Seam for reading the cold-scan MMF after the broker writes it.</param>
     /// <param name="createDriveMmf">
-    /// Seam for pre-creating a per-drive page-file-backed MMF before sending
-    /// <c>ArmAndScan</c>. Receives the drive letter and capacity; returns the map
-    /// name and a lifetime handle (disposed on <see cref="DisposeAsync"/>).
+    ///     Seam for pre-creating a per-drive page-file-backed MMF before sending
+    ///     <c>ArmAndScan</c>. Receives the drive letter and capacity; returns the map
+    ///     name and a lifetime handle (disposed on <see cref="DisposeAsync" />).
     /// </param>
     /// <remarks>
-    /// The pipe must already be connected. Production code builds the pipe, launches
-    /// the elevated broker, and waits for the connection via
-    /// <see cref="SpawnAndConnectAsync"/>; tests pass a connected in-memory duplex stream.
+    ///     The pipe must already be connected. Production code builds the pipe, launches
+    ///     the elevated broker, and waits for the connection via
+    ///     <see cref="SpawnAndConnectAsync" />; tests pass a connected in-memory duplex stream.
     /// </remarks>
     public JournalBrokerClient(
         Stream pipe,
@@ -69,38 +63,53 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// For each drive: pre-create its MMF, request a full cold scan, then consume response
-    /// frames until every requested drive has delivered either a complete scan (Cursor +
-    /// ScanReady + JournalBatch) or an Error.
+    ///     Fired when the pipe EOF or IO error is detected (broker died or was killed).
+    ///     Fires at most once per client lifetime regardless of how many concurrent
+    ///     readers detect the same death.
     /// </summary>
-    public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
-        IReadOnlyList<string> drives, CancellationToken cancellationToken = default) =>
-        ArmScanAndCatchUpAsync(drives, BrokerScanProfile.Full, keepFileNames: null, cancellationToken);
+    public event Action<string>? BrokerDied;
 
     /// <summary>
-    /// Arms, scans, and catches up each drive using the requested cold-scan record profile.
+    ///     For each drive: pre-create its MMF, request a full cold scan, then consume response
+    ///     frames until every requested drive has delivered either a complete scan (Cursor +
+    ///     ScanReady + JournalBatch) or an Error.
+    /// </summary>
+    public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
+        IReadOnlyList<string> drives, CancellationToken cancellationToken = default)
+    {
+        return ArmScanAndCatchUpAsync(drives, BrokerScanProfile.Full, null, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Arms, scans, and catches up each drive using the requested cold-scan record profile.
     /// </summary>
     public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
         IReadOnlyList<string> drives, BrokerScanProfile profile,
-        CancellationToken cancellationToken = default) =>
-        ArmScanAndCatchUpAsync(drives, profile, keepFileNames: null, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        return ArmScanAndCatchUpAsync(drives, profile, null, cancellationToken);
+    }
 
     /// <summary>
-    /// Arms, scans, and catches up each drive using the requested cold-scan record profile.
-    /// <paramref name="keepFileNames"/> is only consulted under <see cref="BrokerScanProfile.DirectoryIndex"/>;
-    /// it names non-directory files (matched case-insensitively) to keep alongside every
-    /// directory record - for example a name your application treats as a marker file.
+    ///     Arms, scans, and catches up each drive using the requested cold-scan record profile.
+    ///     <paramref name="keepFileNames" /> is only consulted under <see cref="BrokerScanProfile.DirectoryIndex" />;
+    ///     it names non-directory files (matched case-insensitively) to keep alongside every
+    ///     directory record - for example a name your application treats as a marker file.
     /// </summary>
     public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
         IReadOnlyList<string> drives, BrokerScanProfile profile,
-        IReadOnlyCollection<string>? keepFileNames, CancellationToken cancellationToken = default) =>
-        ArmScanAndCatchUpCoreAsync(drives, profile, keepFileNames, transmissionStarted: null, cancellationToken);
+        IReadOnlyCollection<string>? keepFileNames, CancellationToken cancellationToken = default)
+    {
+        return ArmScanAndCatchUpCoreAsync(drives, profile, keepFileNames, null, cancellationToken);
+    }
 
     internal Task<BrokerScanResult> ArmScanAndCatchUpAsync(
         IReadOnlyList<string> drives, BrokerScanProfile profile,
         IReadOnlyCollection<string>? keepFileNames, Action transmissionStarted,
-        CancellationToken cancellationToken) =>
-        ArmScanAndCatchUpCoreAsync(drives, profile, keepFileNames, transmissionStarted, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        return ArmScanAndCatchUpCoreAsync(drives, profile, keepFileNames, transmissionStarted, cancellationToken);
+    }
 
     async Task<BrokerScanResult> ArmScanAndCatchUpCoreAsync(
         IReadOnlyList<string> drives, BrokerScanProfile profile,
@@ -150,10 +159,14 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
             var letter = NormalizeDriveLetter(drive);
             var (mmfName, lifetime) = _createDriveMmf(letter, DefaultMmfCapacity);
             lock (_mmfLifetimesLock)
+            {
                 _mmfLifetimes.Add(lifetime);
+            }
+
             mmfNamesByDrive[letter] = mmfName;
             specTokens.Add(FormattableString.Invariant($"{letter}:0:0:{mmfName}:{(int)profile}"));
         }
+
         return string.Join(",", specTokens);
     }
 
@@ -163,14 +176,14 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
     // ToResult once IsComplete reports true.
     sealed class ScanCollector
     {
-        readonly IMmfReader _mmfReader;
-        readonly IReadOnlyDictionary<string, string> _mmfNamesByDrive;
-        readonly HashSet<string> _remaining;
-        readonly List<ScanRecord> _records = new();
-        readonly Dictionary<string, UsnJournalCursor> _armedCursors = new(StringComparer.OrdinalIgnoreCase);
         readonly Dictionary<string, UsnJournalCursor> _advancedCursors = new(StringComparer.OrdinalIgnoreCase);
+        readonly Dictionary<string, UsnJournalCursor> _armedCursors = new(StringComparer.OrdinalIgnoreCase);
         readonly Dictionary<string, UsnJournalEntry[]> _catchUpEntries = new(StringComparer.OrdinalIgnoreCase);
         readonly Dictionary<string, string> _errors = new(StringComparer.OrdinalIgnoreCase);
+        readonly IReadOnlyDictionary<string, string> _mmfNamesByDrive;
+        readonly IMmfReader _mmfReader;
+        readonly List<ScanRecord> _records = new();
+        readonly HashSet<string> _remaining;
 
         public ScanCollector(IMmfReader mmfReader, IReadOnlyDictionary<string, string> mmfNamesByDrive,
             IEnumerable<string> drives)
@@ -198,7 +211,10 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
                             .FirstOrDefault(pair => string.Equals(pair.Value, mmfName, StringComparison.Ordinal))
                             .Key;
                         if (matchedDrive != null)
+                        {
                             _records.AddRange(_mmfReader.Read(mmfName, frame.ByteLength));
+                        }
+
                         break;
                     }
 
@@ -225,9 +241,10 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
             }
         }
 
-        public BrokerScanResult ToResult() =>
-            new(records: _records, armedCursors: _armedCursors, advancedCursors: _advancedCursors,
-                catchUpEntries: _catchUpEntries, errors: _errors);
+        public BrokerScanResult ToResult()
+        {
+            return new BrokerScanResult(_records, _armedCursors, _advancedCursors,
+                _catchUpEntries, _errors);
+        }
     }
-
 }

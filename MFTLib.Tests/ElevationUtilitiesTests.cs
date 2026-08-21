@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -8,7 +9,10 @@ namespace MFTLib.Tests;
 public class ElevationUtilitiesTests
 {
     [TestCleanup]
-    public void Cleanup() => ElevationUtilities.ResetToDefaults();
+    public void Cleanup()
+    {
+        ElevationUtilities.ResetToDefaults();
+    }
 
     [TestMethod]
     public void IsElevated_ReturnsBool()
@@ -96,9 +100,11 @@ public class ElevationUtilitiesTests
         // Use cross-platform command: 'true' on POSIX, 'cmd /c exit 0' on Windows
         ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo(
                 RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    ? "true" : "cmd.exe",
+                    ? "true"
+                    : "cmd.exe",
                 RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    ? string.Empty : "/c exit 0"
+                    ? string.Empty
+                    : "/c exit 0"
             )
         { CreateNoWindow = true });
         Assert.IsTrue(ElevationUtilities.TryRunElevated("--test"));
@@ -109,7 +115,8 @@ public class ElevationUtilitiesTests
     {
         ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
         ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 1") { CreateNoWindow = true });
+        ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 1")
+        { CreateNoWindow = true });
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
@@ -119,7 +126,7 @@ public class ElevationUtilitiesTests
         ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
         ElevationUtilities.IsUserInteractive = () => true;
         ElevationUtilities.StartProcess = _ => Process.Start(LongRunningProcessStartInfo());
-        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", timeoutMs: 100));
+        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", 100));
     }
 
     [TestMethod]
@@ -127,7 +134,7 @@ public class ElevationUtilitiesTests
     {
         ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
         ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ => throw new System.ComponentModel.Win32Exception(1223);
+        ElevationUtilities.StartProcess = _ => throw new Win32Exception(1223);
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
@@ -150,15 +157,16 @@ public class ElevationUtilitiesTests
     }
 
     /// <summary>
-    /// A process that outlives a short timeout and that <see cref="Process.Kill()"/> fully
-    /// terminates. Deliberately not wrapped in <c>cmd.exe /c</c>: Kill() ends only the process
-    /// it is handed, so a wrapper leaves the real sleeper orphaned holding the inherited stdio
-    /// handles, which fails the CI step with "WaitDelay expired before I/O complete". Output is
-    /// redirected for the same reason.
+    ///     A process that outlives a short timeout and that <see cref="Process.Kill()" /> fully
+    ///     terminates. Deliberately not wrapped in <c>cmd.exe /c</c>: Kill() ends only the process
+    ///     it is handed, so a wrapper leaves the real sleeper orphaned holding the inherited stdio
+    ///     handles, which fails the CI step with "WaitDelay expired before I/O complete". Output is
+    ///     redirected for the same reason.
     /// </summary>
     internal static ProcessStartInfo LongRunningProcessStartInfo()
     {
-        var isPosix = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
+        var isPosix = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ||
+                      RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
         return new ProcessStartInfo(isPosix ? "sleep" : "ping.exe", isPosix ? "60" : "-n 30 127.0.0.1")
         {
             CreateNoWindow = true,

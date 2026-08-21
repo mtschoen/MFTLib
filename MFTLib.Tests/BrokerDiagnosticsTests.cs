@@ -5,8 +5,8 @@ namespace MFTLib.Tests;
 [TestClass]
 public class BrokerDiagnosticsTests
 {
-    string _temporaryRoot = null!;
     string _originalLogDirectory = null!;
+    string _temporaryRoot = null!;
 
     [TestInitialize]
     public void Setup()
@@ -25,9 +25,16 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.ResetToDefaults();
         // Best-effort cleanup only: a locked file or already-missing directory must
         // not fail the test.
-        try { Directory.Delete(_temporaryRoot, recursive: true); }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        try
+        {
+            Directory.Delete(_temporaryRoot, true);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     [TestMethod]
@@ -78,7 +85,7 @@ public class BrokerDiagnosticsTests
     public void LogFrame_WhenEnabled_AppendsFrameTraceLine()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
-        BrokerDiagnostics.LogFrame("read", kind: 6, length: 42);
+        BrokerDiagnostics.LogFrame("read", 6, 42);
 
         var path = Path.Combine(_temporaryRoot, "broker-diagnostics.log");
         Assert.IsTrue(File.Exists(path));

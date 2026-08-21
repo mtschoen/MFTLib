@@ -4,17 +4,17 @@ using MFTLib;
 
 namespace TestProgram;
 
-internal class DriveScanner
+class DriveScanner
 {
-    internal Func<bool> IsElevated = ElevationUtilities.IsElevated;
-    internal Func<bool> CanSelfElevate = ElevationUtilities.CanSelfElevate;
-    internal Func<string, bool> TryRunElevated = arguments => ElevationUtilities.TryRunElevated(arguments);
-    internal Func<string?> GetProcessPath = ElevationUtilities.GetProcessPath;
     internal Func<uint, IntPtr> AcrtIobFunc = AcrtIobFuncNative;
-    internal Func<string, string, IntPtr, IntPtr> WFreopen = WFreopenNative;
+    internal Func<bool> CanSelfElevate = ElevationUtilities.CanSelfElevate;
+    internal Func<string?> GetProcessPath = ElevationUtilities.GetProcessPath;
+    internal Func<bool> IsElevated = ElevationUtilities.IsElevated;
     internal Func<string, MftVolume> OpenVolume = letter => MftVolume.Open(letter);
-    internal Action<string> WriteLine = Console.WriteLine;
+    internal Func<string, bool> TryRunElevated = arguments => ElevationUtilities.TryRunElevated(arguments);
+    internal Func<string, string, IntPtr, IntPtr> WFreopen = WFreopenNative;
     internal Action<string> Write = Console.Write;
+    internal Action<string> WriteLine = Console.WriteLine;
 
     internal static string FormatArguments(string[] arguments)
     {
@@ -28,7 +28,9 @@ internal class DriveScanner
             var formattedArguments = FormatArguments(arguments);
             WriteLine("Not running as administrator. Attempting to self-elevate...");
             if (CanSelfElevate() && TryRunElevated(formattedArguments))
+            {
                 return 0;
+            }
 
             PrintElevationFailure(arguments);
             return 1;
@@ -103,7 +105,8 @@ internal class DriveScanner
         WFreopen(logPath, "w", stdout);
     }
 
-    [DllImport("ucrtbase.dll", EntryPoint = "_wfreopen", CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+    [DllImport("ucrtbase.dll", EntryPoint = "_wfreopen", CharSet = CharSet.Unicode,
+        CallingConvention = CallingConvention.Cdecl)]
     static extern IntPtr WFreopenNative(string path, string mode, IntPtr stream);
 
     [DllImport("ucrtbase.dll", EntryPoint = "__acrt_iob_func", CallingConvention = CallingConvention.Cdecl)]

@@ -12,7 +12,6 @@
 #include <string>
 
 namespace mftlib::platform {
-
 struct File {
     HANDLE h;
 };
@@ -111,5 +110,4 @@ void big_free(void* ptr, size_t /*bytes*/) {
 }
 
 uint32_t last_error() { return static_cast<uint32_t>(GetLastError()); }
-
 }  // namespace mftlib::platform

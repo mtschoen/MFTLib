@@ -1,5 +1,6 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Management;
 using Benchmark;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
@@ -80,11 +81,15 @@ public class SystemInfoTests
 
     [TestMethod]
     public void WmiString_NullValue_ReturnsUnknown()
-        => Assert.AreEqual("Unknown", SystemInfo.WmiString(null));
+    {
+        Assert.AreEqual("Unknown", SystemInfo.WmiString(null));
+    }
 
     [TestMethod]
     public void WmiString_TrimsValue()
-        => Assert.AreEqual("disk", SystemInfo.WmiString("  disk  "));
+    {
+        Assert.AreEqual("disk", SystemInfo.WmiString("  disk  "));
+    }
 
     // --- ComputeInstalledMemoryGB ---
 
@@ -163,7 +168,11 @@ public class SystemInfoTests
     {
         var queriedDrive = "";
         var systemInfo = new SystemInfo();
-        systemInfo.QueryPartitionIds = drive => { queriedDrive = drive; return []; };
+        systemInfo.QueryPartitionIds = drive =>
+        {
+            queriedDrive = drive;
+            return [];
+        };
 
         systemInfo.GetDiskModel("");
         Assert.AreEqual("C", queriedDrive);
@@ -174,7 +183,11 @@ public class SystemInfoTests
     {
         var queriedDrive = "";
         var systemInfo = new SystemInfo();
-        systemInfo.QueryPartitionIds = drive => { queriedDrive = drive; return []; };
+        systemInfo.QueryPartitionIds = drive =>
+        {
+            queriedDrive = drive;
+            return [];
+        };
 
         // Relative path — GetPathRoot returns ""
         systemInfo.GetDiskModel("relative/path");
@@ -206,7 +219,7 @@ public class SystemInfoTests
             var partitions = SystemInfo.DefaultQueryPartitionIds("Z").ToList();
             Assert.AreEqual(0, partitions.Count);
         }
-        catch (System.Management.ManagementException)
+        catch (ManagementException)
         {
             // WMI throws "Not found" under elevated context for invalid drives
         }

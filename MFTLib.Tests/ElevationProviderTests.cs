@@ -5,23 +5,30 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 /// <summary>
-/// Covers the public <see cref="IElevationProvider"/> surface and
-/// <see cref="ElevationUtilities.DefaultProvider"/>'s delegation to the statics,
-/// driven through the existing internal Func seams.
+///     Covers the public <see cref="IElevationProvider" /> surface and
+///     <see cref="ElevationUtilities.DefaultProvider" />'s delegation to the statics,
+///     driven through the existing internal Func seams.
 /// </summary>
 [TestClass]
 public class ElevationProviderTests
 {
     [TestCleanup]
-    public void Cleanup() => ElevationUtilities.ResetToDefaults();
+    public void Cleanup()
+    {
+        ElevationUtilities.ResetToDefaults();
+    }
 
     [TestMethod]
     public void DefaultProvider_IsSingleton()
-        => Assert.AreSame(ElevationUtilities.DefaultProvider, ElevationUtilities.DefaultProvider);
+    {
+        Assert.AreSame(ElevationUtilities.DefaultProvider, ElevationUtilities.DefaultProvider);
+    }
 
     [TestMethod]
     public void DefaultProvider_IsElevationProvider()
-        => Assert.IsInstanceOfType<IElevationProvider>(ElevationUtilities.DefaultProvider);
+    {
+        Assert.IsInstanceOfType<IElevationProvider>(ElevationUtilities.DefaultProvider);
+    }
 
     [TestMethod]
     public void DefaultProvider_IsElevated_DelegatesToStatic()
@@ -54,13 +61,14 @@ public class ElevationProviderTests
     [TestMethod]
     public void DefaultProvider_TryRunElevated_ProcessExitsZero_ReturnsTrue()
     {
-        var isPosix = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
+        var isPosix = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ||
+                      RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
         ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
         ElevationUtilities.IsUserInteractive = () => true;
         ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo(
-            isPosix ? "true" : "cmd.exe",
-            isPosix ? string.Empty : "/c exit 0"
-        )
+                isPosix ? "true" : "cmd.exe",
+                isPosix ? string.Empty : "/c exit 0"
+            )
         { CreateNoWindow = true, UseShellExecute = false });
         Assert.IsTrue(ElevationUtilities.DefaultProvider.TryRunElevated("--test"));
     }

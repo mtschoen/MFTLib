@@ -1,27 +1,38 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using MFTLib.Interop;
 
 namespace MFTLib;
 
 public sealed partial class MftVolume
 {
+    // Native UsnJournalEntry layout (pack 1):
+    //   recordNumber(8) + parentRecordNumber(8) + usn(8) + timestamp(8) +
+    //   reason(4) + fileAttributes(4) + fileNameLength(2) + fileName(260*2=520)
+    //   = 562 bytes
+    internal const int NativeUsnEntrySize = 562;
+
     /// <summary>
-    /// Query the USN journal to get the current cursor position.
-    /// Capture this before a full MFT scan, then read from it after the scan, to
-    /// include changes that occurred while the scan was running.
+    ///     Query the USN journal to get the current cursor position.
+    ///     Capture this before a full MFT scan, then read from it after the scan, to
+    ///     include changes that occurred while the scan was running.
     /// </summary>
     public UsnJournalCursor QueryUsnJournal()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var infoPtr = MFTLibNative.QueryUsnJournal(_volumeHandle);
         if (infoPtr == IntPtr.Zero)
+        {
             throw new InvalidOperationException("QueryUsnJournal returned null");
+        }
 
         try
         {
-            var info = Marshal.PtrToStructure<Interop.UsnJournalInfoNative>(infoPtr);
+            var info = Marshal.PtrToStructure<UsnJournalInfoNative>(infoPtr);
             if (!string.IsNullOrEmpty(info.ErrorMessage))
+            {
                 throw new InvalidOperationException(info.ErrorMessage);
+            }
 
             return new UsnJournalCursor(info.JournalId, info.NextUsn);
         }
@@ -32,23 +43,27 @@ public sealed partial class MftVolume
     }
 
     /// <summary>
-    /// Read USN journal entries since the given cursor.
-    /// Returns entries and an updated cursor for the next call.
-    /// Throws InvalidOperationException if the journal was recreated or entries
-    /// were overwritten — caller should fall back to a full MFT rescan.
+    ///     Read USN journal entries since the given cursor.
+    ///     Returns entries and an updated cursor for the next call.
+    ///     Throws InvalidOperationException if the journal was recreated or entries
+    ///     were overwritten — caller should fall back to a full MFT rescan.
     /// </summary>
     public (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor) ReadUsnJournal(UsnJournalCursor since)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var resultPtr = MFTLibNative.ReadUsnJournal(_volumeHandle, since.NextUsn, since.JournalId);
         if (resultPtr == IntPtr.Zero)
+        {
             throw new InvalidOperationException("ReadUsnJournal returned null");
+        }
 
         try
         {
-            var result = Marshal.PtrToStructure<Interop.UsnJournalResultNative>(resultPtr);
+            var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
             if (!string.IsNullOrEmpty(result.ErrorMessage))
+            {
                 throw new InvalidOperationException(result.ErrorMessage);
+            }
 
             var entries = MarshalUsnEntries(result);
             var updatedCursor = new UsnJournalCursor(result.JournalId, result.NextUsn);
@@ -60,16 +75,14 @@ public sealed partial class MftVolume
         }
     }
 
-    // Native UsnJournalEntry layout (pack 1):
-    //   recordNumber(8) + parentRecordNumber(8) + usn(8) + timestamp(8) +
-    //   reason(4) + fileAttributes(4) + fileNameLength(2) + fileName(260*2=520)
-    //   = 562 bytes
-    internal const int NativeUsnEntrySize = 562;
-
-    static unsafe UsnJournalEntry[] MarshalUsnEntries(Interop.UsnJournalResultNative result)
+    static unsafe UsnJournalEntry[] MarshalUsnEntries(UsnJournalResultNative result)
     {
         var count = (int)result.EntryCount;
-        if (count == 0) return [];
+        if (count == 0)
+        {
+            return [];
+        }
+
         var entries = new UsnJournalEntry[count];
         var basePtr = (byte*)result.Entries;
 
@@ -93,7 +106,7 @@ public sealed partial class MftVolume
                 FileTimeTimestamp = timestamp,
                 Reason = reason,
                 FileAttributes = fileAttributes,
-                FileName = fileName,
+                FileName = fileName
             });
         }
 
@@ -101,9 +114,9 @@ public sealed partial class MftVolume
     }
 
     /// <summary>
-    /// Yields batches of USN journal entries as filesystem changes arrive.
-    /// Blocks on the kernel (zero CPU) until new entries appear.
-    /// Cancel the token to stop watching — unblocks the kernel wait via CancelIoEx.
+    ///     Yields batches of USN journal entries as filesystem changes arrive.
+    ///     Blocks on the kernel (zero CPU) until new entries appear.
+    ///     Cancel the token to stop watching — unblocks the kernel wait via CancelIoEx.
     /// </summary>
     public async IAsyncEnumerable<UsnJournalEntry[]> WatchUsnJournal(
         UsnJournalCursor since,
@@ -126,14 +139,18 @@ public sealed partial class MftVolume
                 cancellationToken).ConfigureAwait(false);
 
             if (resultPtr == IntPtr.Zero)
+            {
                 throw new InvalidOperationException("WatchUsnJournalBatch returned null");
+            }
 
             UsnJournalEntry[] entries;
             try
             {
-                var result = Marshal.PtrToStructure<Interop.UsnJournalResultNative>(resultPtr);
+                var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
                 if (!string.IsNullOrEmpty(result.ErrorMessage))
+                {
                     throw new InvalidOperationException(result.ErrorMessage);
+                }
 
                 entries = MarshalUsnEntries(result);
                 nextUsn = result.NextUsn;
@@ -146,7 +163,10 @@ public sealed partial class MftVolume
             if (entries.Length == 0)
             {
                 if (cancellationToken.IsCancellationRequested)
+                {
                     yield break;
+                }
+
                 continue;
             }
 
@@ -155,9 +175,9 @@ public sealed partial class MftVolume
     }
 
     /// <summary>
-    /// Like <see cref="WatchUsnJournal"/> but yields the post-batch cursor
-    /// alongside each batch, so callers can persist progress without a
-    /// separate <see cref="QueryUsnJournal"/> IOCTL.
+    ///     Like <see cref="WatchUsnJournal" /> but yields the post-batch cursor
+    ///     alongside each batch, so callers can persist progress without a
+    ///     separate <see cref="QueryUsnJournal" /> IOCTL.
     /// </summary>
     public async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchUsnJournalWithCursor(
         UsnJournalCursor since,
@@ -180,15 +200,19 @@ public sealed partial class MftVolume
                 cancellationToken).ConfigureAwait(false);
 
             if (resultPtr == IntPtr.Zero)
+            {
                 throw new InvalidOperationException("WatchUsnJournalBatch returned null");
+            }
 
             UsnJournalEntry[] entries;
             UsnJournalCursor cursor;
             try
             {
-                var result = Marshal.PtrToStructure<Interop.UsnJournalResultNative>(resultPtr);
+                var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
                 if (!string.IsNullOrEmpty(result.ErrorMessage))
+                {
                     throw new InvalidOperationException(result.ErrorMessage);
+                }
 
                 entries = MarshalUsnEntries(result);
                 nextUsn = result.NextUsn;
@@ -202,12 +226,14 @@ public sealed partial class MftVolume
             if (entries.Length == 0)
             {
                 if (cancellationToken.IsCancellationRequested)
+                {
                     yield break;
+                }
+
                 continue;
             }
 
             yield return (entries, cursor);
         }
     }
-
 }

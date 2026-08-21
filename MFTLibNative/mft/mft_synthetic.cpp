@@ -17,7 +17,6 @@
 #endif
 
 namespace {
-
 constexpr std::array<const wchar_t*, 16> fileNames = {
     L"README.md",    L"index.html", L"main.cpp",   L"package.json", L"Makefile",  L"config.yaml",
     L"data.bin",     L"icon.png",   L"setup.py",   L"app.js",       L"style.css", L"test.go",
@@ -340,7 +339,7 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
         uint8_t* writeBuf = buffer;
         int64_t curOffset = writeOffset;
         writeThread = std::thread([hFile, writeBuf, writeSize, curOffset, &writeOk]() {
-            auto byteCount = static_cast<size_t>(writeSize * FILE_RECORD_SIZE);
+            auto byteCount = writeSize * FILE_RECORD_SIZE;
             int64_t written =
                 mftlib::platform::pwrite_at(hFile, writeBuf, byteCount, mftlib::platform::FileOffset{curOffset});
             writeOk = (written == static_cast<int64_t>(byteCount));
@@ -362,7 +361,6 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
     mftlib::platform::close_file(hFile);
     return writeOk;
 }
-
 }  // namespace
 
 extern "C" {

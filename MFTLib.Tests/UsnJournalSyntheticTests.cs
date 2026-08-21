@@ -1,24 +1,31 @@
 using System.Runtime.InteropServices;
+using System.Text;
+using MFTLib.Interop;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
-using MFTLib.Interop;
 
 namespace MFTLib.Tests;
 
 /// <summary>
-/// Covers usn_journal.cpp WITHOUT admin, by injecting synthetic IOCTL responses
-/// and failures through the native test seams (SetUsnIoSuccess / SetUsnIoFailError
-/// / SetUsnOverlappedAbort). The native code parses our buffers exactly as it would
-/// real kernel output, so the success, record-parse, grow, error, and watch/cancel
-/// paths are all exercised with no elevated volume handle.
-///
-/// These replace the old RequiresAdmin USN tests that opened the live C: volume.
-/// The genuinely-live integration smoke lives in UsnJournalLiveTests (LiveVolume).
+///     Covers usn_journal.cpp WITHOUT admin, by injecting synthetic IOCTL responses
+///     and failures through the native test seams (SetUsnIoSuccess / SetUsnIoFailError
+///     / SetUsnOverlappedAbort). The native code parses our buffers exactly as it would
+///     real kernel output, so the success, record-parse, grow, error, and watch/cancel
+///     paths are all exercised with no elevated volume handle.
+///     These replace the old RequiresAdmin USN tests that opened the live C: volume.
+///     The genuinely-live integration smoke lives in UsnJournalLiveTests (LiveVolume).
 /// </summary>
 [TestClass]
 [DoNotParallelize]
 public class UsnJournalSyntheticTests
 {
+    // Win32 error constants (mirror the native error branches).
+    const uint ERROR_HANDLE_EOF = 38;
+    const uint ERROR_JOURNAL_DELETE_IN_PROGRESS = 1178;
+    const uint ERROR_JOURNAL_NOT_ACTIVE = 1179;
+    const uint ERROR_JOURNAL_ENTRY_DELETED = 1181;
+
+    static readonly UsnJournalCursor Cursor = new(0xABCD, 500);
     readonly List<IntPtr> _buffers = [];
 
     [TestCleanup]
@@ -27,21 +34,23 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeResetTestState();
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
-        foreach (var b in _buffers) Marshal.FreeHGlobal(b);
+        foreach (var b in _buffers)
+        {
+            Marshal.FreeHGlobal(b);
+        }
+
         _buffers.Clear();
     }
 
-    static SafeFileHandle FakeHandle() => new(new IntPtr(1), ownsHandle: false);
+    static SafeFileHandle FakeHandle()
+    {
+        return new SafeFileHandle(new IntPtr(1), false);
+    }
 
-    static readonly UsnJournalCursor Cursor = new(0xABCD, 500);
-
-    // Win32 error constants (mirror the native error branches).
-    const uint ERROR_HANDLE_EOF = 38;
-    const uint ERROR_JOURNAL_DELETE_IN_PROGRESS = 1178;
-    const uint ERROR_JOURNAL_NOT_ACTIVE = 1179;
-    const uint ERROR_JOURNAL_ENTRY_DELETED = 1181;
-
-    static void UseFakeHandle() => FileUtilities.GetVolumeHandle = _ => FakeHandle();
+    static void UseFakeHandle()
+    {
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+    }
 
     // Queues a synthetic IOCTL success buffer; keeps it alive until cleanup.
     unsafe void QueueSuccess(byte[] data)
@@ -59,8 +68,14 @@ public class UsnJournalSyntheticTests
     {
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
-        w.Write(journalId); w.Write(firstUsn); w.Write(nextUsn); w.Write(lowestValid);
-        w.Write(maxUsn); w.Write(maxSize); w.Write(allocDelta); w.Write(0UL); // V1 pad
+        w.Write(journalId);
+        w.Write(firstUsn);
+        w.Write(nextUsn);
+        w.Write(lowestValid);
+        w.Write(maxUsn);
+        w.Write(maxSize);
+        w.Write(allocDelta);
+        w.Write(0UL); // V1 pad
         return ms.ToArray();
     }
 
@@ -72,7 +87,11 @@ public class UsnJournalSyntheticTests
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
         w.Write(nextUsn);
-        foreach (var e in entries) WriteRecord(w, e.rec, e.parent, e.usn, e.reason, e.name);
+        foreach (var e in entries)
+        {
+            WriteRecord(w, e.rec, e.parent, e.usn, e.reason, e.name);
+        }
+
         return ms.ToArray();
     }
 
@@ -85,24 +104,27 @@ public class UsnJournalSyntheticTests
 
     static void WriteRecord(BinaryWriter w, ulong rec, ulong parent, long usn, uint reason, string name)
     {
-        var nameBytes = System.Text.Encoding.Unicode.GetBytes(name);
+        var nameBytes = Encoding.Unicode.GetBytes(name);
         const int fixedLen = 60; // USN_RECORD_V2 header up to FileName[]
         var recordLen = (fixedLen + nameBytes.Length + 7) & ~7; // 8-byte align
-        w.Write((uint)recordLen);          // RecordLength
-        w.Write((ushort)2);                // MajorVersion
-        w.Write((ushort)0);                // MinorVersion
-        w.Write(rec);                      // FileReferenceNumber
-        w.Write(parent);                   // ParentFileReferenceNumber
-        w.Write(usn);                      // Usn
-        w.Write(0L);                       // TimeStamp
-        w.Write(reason);                   // Reason
-        w.Write(0u);                       // SourceInfo
-        w.Write(0u);                       // SecurityId
-        w.Write(0u);                       // FileAttributes
+        w.Write((uint)recordLen); // RecordLength
+        w.Write((ushort)2); // MajorVersion
+        w.Write((ushort)0); // MinorVersion
+        w.Write(rec); // FileReferenceNumber
+        w.Write(parent); // ParentFileReferenceNumber
+        w.Write(usn); // Usn
+        w.Write(0L); // TimeStamp
+        w.Write(reason); // Reason
+        w.Write(0u); // SourceInfo
+        w.Write(0u); // SecurityId
+        w.Write(0u); // FileAttributes
         w.Write((ushort)nameBytes.Length); // FileNameLength (bytes)
-        w.Write((ushort)fixedLen);         // FileNameOffset
+        w.Write((ushort)fixedLen); // FileNameOffset
         w.Write(nameBytes);
-        for (var i = 0; i < recordLen - (fixedLen + nameBytes.Length); i++) w.Write((byte)0);
+        for (var i = 0; i < recordLen - (fixedLen + nameBytes.Length); i++)
+        {
+            w.Write((byte)0);
+        }
     }
 
     // --- QueryUsnJournal ---
@@ -111,7 +133,7 @@ public class UsnJournalSyntheticTests
     public void QueryUsnJournal_SyntheticSuccess_ReturnsCursor()
     {
         UseFakeHandle();
-        QueueSuccess(BuildQueryBuffer(journalId: 0xABCD, nextUsn: 5000));
+        QueueSuccess(BuildQueryBuffer());
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
         Assert.AreEqual(0xABCDUL, cursor.JournalId);
@@ -185,8 +207,8 @@ public class UsnJournalSyntheticTests
         UseFakeHandle();
         // >1024 records total across buffers (each IOCTL ≤64KB) triggers the
         // entry-array grow path. Two buffers of 700 short-named records = 1400.
-        QueueSuccess(BuildManyRecords(startUsn: 1000, nextUsn: 2000, count: 700));
-        QueueSuccess(BuildManyRecords(startUsn: 2000, nextUsn: 3000, count: 700));
+        QueueSuccess(BuildManyRecords(1000, 2000, 700));
+        QueueSuccess(BuildManyRecords(2000, 3000, 700));
         QueueSuccess(BuildReadBuffer(3000)); // terminate
 
         using var volume = MftVolume.Open("C");
@@ -200,7 +222,10 @@ public class UsnJournalSyntheticTests
         using var w = new BinaryWriter(ms);
         w.Write(nextUsn);
         for (var i = 0; i < count; i++)
+        {
             WriteRecord(w, (ulong)(i + 1), 5, startUsn + i, 0x00000100u, "f");
+        }
+
         return ms.ToArray();
     }
 
@@ -235,8 +260,8 @@ public class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         // Provide >1024 records so the grow path is reached, then fail the grow alloc.
-        QueueSuccess(BuildManyRecords(startUsn: 1000, nextUsn: 2000, count: 700));
-        QueueSuccess(BuildManyRecords(startUsn: 2000, nextUsn: 3000, count: 700));
+        QueueSuccess(BuildManyRecords(1000, 2000, 700));
+        QueueSuccess(BuildManyRecords(2000, 3000, 700));
         MFTLibNative.NativeSetAllocFailCountdown(3); // readBuffer, entryArray, then grow → fail
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
@@ -354,7 +379,8 @@ public class UsnJournalSyntheticTests
         UseFakeHandle();
         QueueSuccess(BuildReadBuffer(2500, (300, 5, 2400, 0x00000100u, "watched.txt")));
         using var volume = MftVolume.Open("C");
-        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+        var resultPtr =
+            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.FreeUsnJournalResult(resultPtr);
         Assert.AreEqual(1UL, result.EntryCount);
@@ -370,7 +396,8 @@ public class UsnJournalSyntheticTests
         UseFakeHandle();
         MFTLibNative.NativeSetUsnIoFailError(997 /*ERROR_IO_PENDING*/, 1);
         using var volume = MftVolume.Open("C");
-        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+        var resultPtr =
+            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         Assert.AreNotEqual(IntPtr.Zero, resultPtr);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.FreeUsnJournalResult(resultPtr);
@@ -410,7 +437,8 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeSetUsnIoFailError(997 /*ERROR_IO_PENDING*/, 1);
         MFTLibNative.NativeSetUsnOverlappedAbort();
         using var volume = MftVolume.Open("C");
-        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+        var resultPtr =
+            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.FreeUsnJournalResult(resultPtr);
         Assert.AreEqual(0UL, result.EntryCount);
@@ -437,7 +465,8 @@ public class UsnJournalSyntheticTests
         UseFakeHandle();
         MFTLibNative.NativeSetAllocFailCountdown(1); // fail read buffer alloc
         using var volume = MftVolume.Open("C");
-        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+        var resultPtr =
+            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.FreeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("allocate"));
@@ -449,7 +478,8 @@ public class UsnJournalSyntheticTests
         UseFakeHandle();
         MFTLibNative.NativeSetAllocFailCountdown(2); // skip read buffer, fail CreateEvent
         using var volume = MftVolume.Open("C");
-        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+        var resultPtr =
+            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.FreeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("event") || result.ErrorMessage.Contains("Error"));
@@ -476,7 +506,8 @@ public class UsnJournalSyntheticTests
         UseFakeHandle();
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
         using var volume = MftVolume.Open("C");
-        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+        var resultPtr =
+            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.FreeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("not active"));
@@ -488,7 +519,8 @@ public class UsnJournalSyntheticTests
         UseFakeHandle();
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
         using var volume = MftVolume.Open("C");
-        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+        var resultPtr =
+            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.FreeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("deletion"));
@@ -500,7 +532,8 @@ public class UsnJournalSyntheticTests
         UseFakeHandle();
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
         using var volume = MftVolume.Open("C");
-        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+        var resultPtr =
+            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.FreeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("rescan"));
@@ -512,7 +545,8 @@ public class UsnJournalSyntheticTests
         UseFakeHandle();
         MFTLibNative.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 1);
         using var volume = MftVolume.Open("C");
-        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+        var resultPtr =
+            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.FreeUsnJournalResult(resultPtr);
         Assert.AreEqual(0UL, result.EntryCount);
@@ -525,7 +559,8 @@ public class UsnJournalSyntheticTests
         UseFakeHandle();
         MFTLibNative.NativeSetUsnIoFailError(5, 1);
         using var volume = MftVolume.Open("C");
-        var resultPtr = MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+        var resultPtr =
+            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative.FreeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("Error: 5"));

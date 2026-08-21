@@ -7,7 +7,7 @@ struct MftParseResult
 {
     public ulong TotalRecords;
     public ulong UsedRecords;
-    public IntPtr Entries;  // MftFileEntry*, owned by native side
+    public IntPtr Entries; // MftFileEntry*, owned by native side
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
     public string ErrorMessage;

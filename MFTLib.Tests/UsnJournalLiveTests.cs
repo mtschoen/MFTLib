@@ -5,13 +5,20 @@ namespace MFTLib.Tests;
 [TestClass]
 public class UsnJournalLiveTests
 {
-    static bool IsAdmin() => ElevationUtilities.IsElevated();
+    static bool IsAdmin()
+    {
+        return ElevationUtilities.IsElevated();
+    }
 
     [TestMethod]
     [TestCategory("RequiresAdmin")]
     public void QueryUsnJournal_OnRealVolume_ReturnsCursor()
     {
-        if (!IsAdmin()) { Assert.Inconclusive("Requires admin"); return; }
+        if (!IsAdmin())
+        {
+            Assert.Inconclusive("Requires admin");
+            return;
+        }
 
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
@@ -24,7 +31,11 @@ public class UsnJournalLiveTests
     [TestCategory("RequiresAdmin")]
     public void ReadUsnJournal_AfterTempFileCreate_ContainsEntry()
     {
-        if (!IsAdmin()) { Assert.Inconclusive("Requires admin"); return; }
+        if (!IsAdmin())
+        {
+            Assert.Inconclusive("Requires admin");
+            return;
+        }
 
         using var volume = MftVolume.Open("C");
 
@@ -58,7 +69,11 @@ public class UsnJournalLiveTests
     [TestCategory("RequiresAdmin")]
     public void ReadUsnJournal_CurrentPosition_ReturnsEmptyOrFew()
     {
-        if (!IsAdmin()) { Assert.Inconclusive("Requires admin"); return; }
+        if (!IsAdmin())
+        {
+            Assert.Inconclusive("Requires admin");
+            return;
+        }
 
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
@@ -74,7 +89,11 @@ public class UsnJournalLiveTests
     [TestCategory("RequiresAdmin")]
     public async Task WatchUsnJournal_DetectsNewFile()
     {
-        if (!IsAdmin()) { Assert.Inconclusive("Requires admin"); return; }
+        if (!IsAdmin())
+        {
+            Assert.Inconclusive("Requires admin");
+            return;
+        }
 
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
@@ -92,7 +111,9 @@ public class UsnJournalLiveTests
             {
                 batches.Add(batch);
                 if (batch.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase)))
+                {
                     break;
+                }
             }
         });
 

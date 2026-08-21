@@ -9,7 +9,10 @@ namespace MFTLib.Tests;
 public class DefaultElevatedEntryRunnerTests
 {
     [TestCleanup]
-    public void Cleanup() => DefaultElevatedEntryRunner.ResetToDefaults();
+    public void Cleanup()
+    {
+        DefaultElevatedEntryRunner.ResetToDefaults();
+    }
 
     [TestMethod]
     [SupportedOSPlatform("windows")]
@@ -18,7 +21,7 @@ public class DefaultElevatedEntryRunnerTests
         int? exitCode = null;
         DefaultElevatedEntryRunner.ExitProcess = code => exitCode = code;
 
-        new DefaultElevatedEntryRunner().RunBroker(null, oneShot: false);
+        new DefaultElevatedEntryRunner().RunBroker(null, false);
 
         Assert.AreEqual(1, exitCode);
     }
@@ -37,7 +40,7 @@ public class DefaultElevatedEntryRunnerTests
         // RunBroker blocks synchronously (.GetAwaiter().GetResult()) for the whole
         // session, so drive it from a background thread while this thread plays the
         // non-elevated caller's side of the real named pipe.
-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(pipeName, oneShot: false));
+        var runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(pipeName, false));
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await server.WaitForConnectionAsync(cts.Token);

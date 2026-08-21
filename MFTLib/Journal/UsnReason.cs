@@ -26,5 +26,5 @@ public enum UsnReason : uint
     StreamChange = 0x00200000,
     TransactedChange = 0x00400000,
     IntegrityChange = 0x00800000,
-    Close = 0x80000000,
+    Close = 0x80000000
 }

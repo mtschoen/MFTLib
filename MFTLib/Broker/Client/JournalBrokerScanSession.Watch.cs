@@ -6,13 +6,13 @@ namespace MFTLib;
 public sealed partial class JournalBrokerScanSession
 {
     /// <summary>
-    /// Begin live watching every drive in the session's watch cursor set - a scanned
-    /// session's successfully armed drives (from <see cref="LatestScan"/>), or a warm
-    /// session's supplied cursors - resuming each from its cursor. Legal only in
-    /// <see cref="JournalBrokerSessionState.Parked"/>. Throws
-    /// <see cref="InvalidOperationException"/> if already watching or if there is nothing
-    /// to watch. On the scanned path the consumer never supplies cursors, so a volume or
-    /// cursor mismatch is not representable.
+    ///     Begin live watching every drive in the session's watch cursor set - a scanned
+    ///     session's successfully armed drives (from <see cref="LatestScan" />), or a warm
+    ///     session's supplied cursors - resuming each from its cursor. Legal only in
+    ///     <see cref="JournalBrokerSessionState.Parked" />. Throws
+    ///     <see cref="InvalidOperationException" /> if already watching or if there is nothing
+    ///     to watch. On the scanned path the consumer never supplies cursors, so a volume or
+    ///     cursor mismatch is not representable.
     /// </summary>
     public async Task StartWatchAsync(CancellationToken cancellationToken = default)
     {
@@ -21,9 +21,15 @@ public sealed partial class JournalBrokerScanSession
         lock (_stateLock)
         {
             if (_state != JournalBrokerSessionState.Parked)
+            {
                 throw new InvalidOperationException("Live watch has already been started for this session");
+            }
+
             if (_operationInFlight)
+            {
                 throw new InvalidOperationException("Another session operation is in progress");
+            }
+
             _operationInFlight = true;
             watchCursors = _watchCursors;
         }
@@ -36,7 +42,9 @@ public sealed partial class JournalBrokerScanSession
         try
         {
             if (watchCursors.Count == 0)
+            {
                 throw new InvalidOperationException("No drives to watch");
+            }
 
             try
             {
@@ -52,6 +60,7 @@ public sealed partial class JournalBrokerScanSession
                 await DisposeAsync().ConfigureAwait(false);
                 throw;
             }
+
             var batchSource = _client.CreateBatchSource();
 
             // A Dispose or broker-death fault can land while the await above was in
@@ -70,19 +79,23 @@ public sealed partial class JournalBrokerScanSession
         finally
         {
             if (!committed)
+            {
                 lock (_stateLock)
+                {
                     _operationInFlight = false;
+                }
+            }
         }
     }
 
     /// <summary>
-    /// Yield live journal batches for one watched drive, resuming from its watch cursor
-    /// (a scanned session's advanced cursor, or a warm session's supplied cursor). Legal
-    /// only in <see cref="JournalBrokerSessionState.Watching"/>. Throws
-    /// <see cref="ArgumentException"/> if <paramref name="driveLetter"/> is not among the
-    /// session's watch cursors. The enumerable faults with
-    /// <see cref="InvalidOperationException"/> if that drive's journal is invalidated
-    /// mid-watch or the broker dies. One consumer per drive.
+    ///     Yield live journal batches for one watched drive, resuming from its watch cursor
+    ///     (a scanned session's advanced cursor, or a warm session's supplied cursor). Legal
+    ///     only in <see cref="JournalBrokerSessionState.Watching" />. Throws
+    ///     <see cref="ArgumentException" /> if <paramref name="driveLetter" /> is not among the
+    ///     session's watch cursors. The enumerable faults with
+    ///     <see cref="InvalidOperationException" /> if that drive's journal is invalidated
+    ///     mid-watch or the broker dies. One consumer per drive.
     /// </summary>
     public IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchDriveAsync(
         string driveLetter, CancellationToken cancellationToken = default)
@@ -98,27 +111,33 @@ public sealed partial class JournalBrokerScanSession
         lock (_stateLock)
         {
             if (_state != JournalBrokerSessionState.Watching)
+            {
                 throw new InvalidOperationException("Not currently watching; call StartWatchAsync first");
+            }
+
             if (!_watchCursors.TryGetValue(driveLetter, out cursor))
+            {
                 throw new ArgumentException($"Drive '{driveLetter}' is not being watched", nameof(driveLetter));
+            }
+
             // StartWatchAsync always sets _batchSource together with State = Watching
             // under this same lock, so a null here means that invariant broke rather
             // than something a caller can act on - a clear diagnostic beats a silent
             // null-forgiving `!` (same rationale as BrokerFrame.RequireDrive/Message).
             batchSource = _batchSource
-                ?? throw new InvalidOperationException("Watching state has no cached batch source");
+                          ?? throw new InvalidOperationException("Watching state has no cached batch source");
         }
 
         return batchSource(driveLetter, cursor, cancellationToken);
     }
 
     /// <summary>
-    /// Stop live watching and return the session to
-    /// <see cref="JournalBrokerSessionState.Parked"/>, keeping the elevated process
-    /// alive for a subsequent rescan or <see cref="StartWatchAsync"/>.
-    /// No-op if already parked. Takes no cancellation token, mirroring
-    /// <see cref="JournalBrokerClient.StopLiveWatchAsync"/>, which bounds itself with
-    /// its own ack timeout.
+    ///     Stop live watching and return the session to
+    ///     <see cref="JournalBrokerSessionState.Parked" />, keeping the elevated process
+    ///     alive for a subsequent rescan or <see cref="StartWatchAsync" />.
+    ///     No-op if already parked. Takes no cancellation token, mirroring
+    ///     <see cref="JournalBrokerClient.StopLiveWatchAsync" />, which bounds itself with
+    ///     its own ack timeout.
     /// </summary>
     public async Task StopWatchAsync()
     {
@@ -127,7 +146,10 @@ public sealed partial class JournalBrokerScanSession
         {
             EnsureOperableLocked();
             if (_state != JournalBrokerSessionState.Watching)
+            {
                 return;
+            }
+
             if (_stopTask == null)
             {
                 var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -168,11 +190,17 @@ public sealed partial class JournalBrokerScanSession
         }
 
         lock (_stateLock)
+        {
             _stopTask = null;
+        }
 
         if (error == null)
+        {
             completion.SetResult();
+        }
         else
+        {
             completion.SetException(error);
+        }
     }
 }

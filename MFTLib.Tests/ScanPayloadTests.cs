@@ -10,12 +10,12 @@ public class ScanPayloadTests
     {
         var records = new[]
         {
-            new ScanRecord(RecordNumber: 5, ParentRecordNumber: 5, Size: 0,
-                LastWriteTicks: 0, Attributes: 0x10, IsDirectory: true,
-                Name: "C:", Path: "C:\\"),
-            new ScanRecord(RecordNumber: 100, ParentRecordNumber: 5, Size: 2048,
-                LastWriteTicks: 638_000_000_000_000_000, Attributes: 0x20, IsDirectory: false,
-                Name: "nöte.txt", Path: "C:\\nöte.txt"),
+            new ScanRecord(5, 5, 0,
+                0, 0x10, true,
+                "C:", "C:\\"),
+            new ScanRecord(100, 5, 2048,
+                638_000_000_000_000_000, 0x20, false,
+                "nöte.txt", "C:\\nöte.txt")
         };
 
         var bytes = new byte[ScanPayload.ComputeSize(records)];
@@ -44,12 +44,12 @@ public class ScanPayloadTests
         // "ab" = 2 chars UTF-16 = 4 bytes name; "X:\ab" = 5 chars = 10 bytes path
         var records = new[]
         {
-            new ScanRecord(RecordNumber: 1, ParentRecordNumber: 0, Size: 512,
-                LastWriteTicks: 100, Attributes: 0x20, IsDirectory: false,
-                Name: "ab", Path: "X:\\ab"),
+            new ScanRecord(1, 0, 512,
+                100, 0x20, false,
+                "ab", "X:\\ab")
         };
 
-        long computedSize = ScanPayload.ComputeSize(records);
+        var computedSize = ScanPayload.ComputeSize(records);
         var bytes = new byte[computedSize];
         ScanPayload.Write(bytes, records);
 

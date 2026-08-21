@@ -12,7 +12,6 @@
 #include "../internal.h"
 
 namespace mftlib::ntfs {
-
 struct DataRun {
     int64_t clusterOffset;
     uint64_t clusterCount;
@@ -40,7 +39,6 @@ bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uin
                    uint64_t recordNumber);
 #endif
 }  // namespace detail
-
 }  // namespace mftlib::ntfs
 
 // Bundles the filename-filter parameters so they travel as a single argument
@@ -72,14 +70,14 @@ struct PathLookup {
     std::atomic<uint64_t> namesDropped;
 
     bool init(uint64_t totalRecords) {
-        parents = static_cast<uint64_t*>(calloc(static_cast<size_t>(totalRecords), sizeof(uint64_t)));
-        nameLens = static_cast<uint8_t*>(calloc(static_cast<size_t>(totalRecords), sizeof(uint8_t)));
-        nameOffsets = static_cast<uint32_t*>(calloc(static_cast<size_t>(totalRecords), sizeof(uint32_t)));
+        parents = static_cast<uint64_t*>(calloc(totalRecords, sizeof(uint64_t)));
+        nameLens = static_cast<uint8_t*>(calloc(totalRecords, sizeof(uint8_t)));
+        nameOffsets = static_cast<uint32_t*>(calloc(totalRecords, sizeof(uint32_t)));
         // Each name entry can be up to 255 WCHAR units = 510 bytes; use 32 bytes avg * 2 for bytes.
         // A test hook can shrink the pool to exercise the exhaustion path.
         uint64_t capacityOverride = NamePoolCapacityOverride();
         namePoolCapacity = (capacityOverride != 0U) ? capacityOverride : totalRecords * 64;  // bytes
-        namePool = static_cast<uint8_t*>(malloc(static_cast<size_t>(namePoolCapacity)));
+        namePool = static_cast<uint8_t*>(malloc(namePoolCapacity));
         namePoolUsed = 0;
         namesDropped = 0;
         return (parents != nullptr) && (nameLens != nullptr) && (nameOffsets != nullptr) && (namePool != nullptr);
@@ -95,7 +93,7 @@ struct PathLookup {
             return;
         }
         nameOffsets[recordIndex] = static_cast<uint32_t>(offset);
-        memcpy(namePool + offset, name, static_cast<size_t>(byteCount));
+        memcpy(namePool + offset, name, byteCount);
         nameLens[recordIndex] = nameLen;
     }
 
@@ -112,7 +110,7 @@ struct PathLookup {
 struct SliceResult {
     std::vector<MftFileEntry> entries;
 
-    void init(uint64_t cap) { entries.reserve(static_cast<size_t>(cap)); }
+    void init(uint64_t cap) { entries.reserve(cap); }
 };
 
 // Read-only inputs that steer record scanning: the name filter, the optional

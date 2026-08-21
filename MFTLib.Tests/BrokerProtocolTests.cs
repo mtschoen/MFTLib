@@ -22,7 +22,7 @@ public class BrokerProtocolTests
             Timestamp = new DateTime(2026, 6, 20, 1, 2, 3, DateTimeKind.Utc),
             Reason = UsnReason.FileCreate | UsnReason.Close,
             FileAttributes = FileAttributes.Archive,
-            FileName = "repört.txt",
+            FileName = "repört.txt"
         }); // non-ASCII to prove UTF-16
 
         var buffer = new ArrayBufferWriter<byte>();
@@ -45,7 +45,7 @@ public class BrokerProtocolTests
         var entries = new[]
         {
             JournalEntryFactory.Create(1, 10, "a"),
-            JournalEntryFactory.Create(2, 20, "b", UsnReason.FileDelete | UsnReason.Close),
+            JournalEntryFactory.Create(2, 20, "b", UsnReason.FileDelete | UsnReason.Close)
         };
         var cursor = new UsnJournalCursor(99UL, 20L);
 
@@ -64,7 +64,7 @@ public class BrokerProtocolTests
     public void ScanReadyFrame_RoundTrips_MmfHandshake()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteScanReady(buffer, mmfName: "mftlib-scan-123", recordCount: 8_000_000, byteLength: 900_000_000);
+        BrokerProtocol.WriteScanReady(buffer, "mftlib-scan-123", 8_000_000, 900_000_000);
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _);
 
         Assert.AreEqual(BrokerFrameKind.ScanReady, frame.Kind);
@@ -258,10 +258,10 @@ public class BrokerProtocolTests
     {
         AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C"), new byte[]
         {
-            0x0B, 0x00, 0x00, 0x00,             // totalLength = 11
-            0x01,                               // kind = ArmAndScan
+            0x0B, 0x00, 0x00, 0x00, // totalLength = 11
+            0x01, // kind = ArmAndScan
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drivesSpec "C"
-            0x00, 0x00, 0x00, 0x00,             // keepFileNames count = 0
+            0x00, 0x00, 0x00, 0x00 // keepFileNames count = 0
         });
         AssertWireBytes(w => BrokerProtocol.WriteStartWatch(w, "C"),
             new byte[] { 0x07, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00, 0x43, 0x00 });
@@ -272,24 +272,24 @@ public class BrokerProtocolTests
     {
         AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C", KeepFileNamesSingleLetter), new byte[]
         {
-            0x11, 0x00, 0x00, 0x00,             // totalLength = 17
-            0x01,                               // kind = ArmAndScan
+            0x11, 0x00, 0x00, 0x00, // totalLength = 17
+            0x01, // kind = ArmAndScan
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drivesSpec "C"
-            0x01, 0x00, 0x00, 0x00,             // keepFileNames count = 1
-            0x02, 0x00, 0x00, 0x00, 0x61, 0x00, // keepFileNames[0] "a"
+            0x01, 0x00, 0x00, 0x00, // keepFileNames count = 1
+            0x02, 0x00, 0x00, 0x00, 0x61, 0x00 // keepFileNames[0] "a"
         });
     }
 
     [TestMethod]
     public void WireBytes_Golden_ScanReadyFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteScanReady(w, "m", recordCount: 1, byteLength: 2), new byte[]
+        AssertWireBytes(w => BrokerProtocol.WriteScanReady(w, "m", 1, 2), new byte[]
         {
-            0x17, 0x00, 0x00, 0x00,             // totalLength = 23
-            0x04,                               // kind = ScanReady
+            0x17, 0x00, 0x00, 0x00, // totalLength = 23
+            0x04, // kind = ScanReady
             0x02, 0x00, 0x00, 0x00, 0x6D, 0x00, // mmfName "m"
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordCount = 1
-            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // byteLength = 2
+            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // byteLength = 2
         });
     }
 
@@ -298,11 +298,11 @@ public class BrokerProtocolTests
     {
         AssertWireBytes(w => BrokerProtocol.WriteCursor(w, "C", new UsnJournalCursor(1UL, 2L)), new byte[]
         {
-            0x17, 0x00, 0x00, 0x00,             // totalLength = 23
-            0x05,                               // kind = Cursor
+            0x17, 0x00, 0x00, 0x00, // totalLength = 23
+            0x05, // kind = Cursor
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // journalId = 1
-            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // nextUsn = 2
+            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // nextUsn = 2
         });
     }
 
@@ -311,10 +311,10 @@ public class BrokerProtocolTests
     {
         AssertWireBytes(w => BrokerProtocol.WriteError(w, "C", "D"), new byte[]
         {
-            0x0D, 0x00, 0x00, 0x00,             // totalLength = 13
-            0x07,                               // kind = Error
+            0x0D, 0x00, 0x00, 0x00, // totalLength = 13
+            0x07, // kind = Error
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
-            0x02, 0x00, 0x00, 0x00, 0x44, 0x00, // message "D"
+            0x02, 0x00, 0x00, 0x00, 0x44, 0x00 // message "D"
         });
     }
 
@@ -322,15 +322,16 @@ public class BrokerProtocolTests
     public void WireBytes_Golden_JournalBatchFrame_EmptyEntries()
     {
         AssertWireBytes(
-            w => BrokerProtocol.WriteJournalBatch(w, "C", new UsnJournalCursor(1UL, 2L), Array.Empty<UsnJournalEntry>()),
+            w => BrokerProtocol.WriteJournalBatch(w, "C", new UsnJournalCursor(1UL, 2L),
+                Array.Empty<UsnJournalEntry>()),
             new byte[]
             {
-                0x1B, 0x00, 0x00, 0x00,             // totalLength = 27
-                0x06,                               // kind = JournalBatch
+                0x1B, 0x00, 0x00, 0x00, // totalLength = 27
+                0x06, // kind = JournalBatch
                 0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
                 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // journalId = 1
                 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // nextUsn = 2
-                0x00, 0x00, 0x00, 0x00,             // entryCount = 0
+                0x00, 0x00, 0x00, 0x00 // entryCount = 0
             });
     }
 
@@ -384,7 +385,7 @@ public class BrokerProtocolTests
     [TestMethod]
     public void Factory_ScanReady_PopulatesMmfHandshake()
     {
-        var frame = BrokerFrame.ScanReady("mftlib-scan-1", recordCount: 8_000_000, byteLength: 900_000_000);
+        var frame = BrokerFrame.ScanReady("mftlib-scan-1", 8_000_000, 900_000_000);
         Assert.AreEqual(BrokerFrameKind.ScanReady, frame.Kind);
         Assert.AreEqual("mftlib-scan-1", frame.MmfName);
         Assert.AreEqual(8_000_000, frame.RecordCount);
@@ -409,7 +410,7 @@ public class BrokerProtocolTests
         var cursor = new UsnJournalCursor(7UL, 110L);
         var entries = new[]
         {
-            JournalEntryFactory.Create(1, 10, "a"),
+            JournalEntryFactory.Create(1, 10, "a")
         };
         var frame = BrokerFrame.JournalBatch("C", cursor, entries);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);

@@ -1,16 +1,18 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MFTLib.Tests.TestSupport;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
 /// <summary>
-/// Verifies broker-death detection:
-/// <list type="bullet">
-///   <item>BrokerDied fires exactly once when the pipe drops.</item>
-///   <item>The batch source throws InvalidOperationException (not yield-break) so
-///     a journal watcher can flip the drive inactive.</item>
-///   <item>A second EOF / repeated death does not re-fire BrokerDied.</item>
-/// </list>
+///     Verifies broker-death detection:
+///     <list type="bullet">
+///         <item>BrokerDied fires exactly once when the pipe drops.</item>
+///         <item>
+///             The batch source throws InvalidOperationException (not yield-break) so
+///             a journal watcher can flip the drive inactive.
+///         </item>
+///         <item>A second EOF / repeated death does not re-fire BrokerDied.</item>
+///     </list>
 /// </summary>
 [TestClass]
 public class BrokerDeathTests
@@ -23,7 +25,13 @@ public class BrokerDeathTests
         var client = MakeMinimalFakeClient(clientSide);
 
         var deathMessages = new List<string>();
-        client.BrokerDied += message => { lock (deathMessages) deathMessages.Add(message); };
+        client.BrokerDied += message =>
+        {
+            lock (deathMessages)
+            {
+                deathMessages.Add(message);
+            }
+        };
 
         // Start the live-watch demux (single pipe reader) before subscribing per drive.
         await client.SendStartWatchAsync(WatchCursors("C"));
@@ -37,8 +45,10 @@ public class BrokerDeathTests
         // Act: close the broker side so the client reads EOF.
         var enumerateTask = Task.Run(async () =>
         {
-            // aislop-ignore-next-line AccessToDisposedClosure
-            await foreach (var _ in batchSource("C:\\", default, cts.Token)) { }
+            // aislop-ignore-next-line AccessToDisposedClosure -- cts is disposed only after enumerateTask is awaited to completion below, so this closure never reads it post-dispose
+            await foreach (var _ in batchSource("C:\\", default, cts.Token))
+            {
+            }
         }, cts.Token);
 
         // Give the enumerate task a moment to start before closing the pipe.
@@ -46,8 +56,7 @@ public class BrokerDeathTests
         serverSide.Dispose();
 
         // Assert: the enumerate task must throw InvalidOperationException (not complete normally).
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => enumerateTask);
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => enumerateTask);
         StringAssert.Contains(exception.Message.ToLowerInvariant(), "broker pipe closed");
 
         // BrokerDied must have fired exactly once.
@@ -79,11 +88,15 @@ public class BrokerDeathTests
         // hands it an already-completed channel) rather than awaiting a batch forever.
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in batchSource("C:\\", default, cts.Token)) { }
+            await foreach (var _ in batchSource("C:\\", default, cts.Token))
+            {
+            }
         });
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in batchSource("D:\\", default, cts.Token)) { }
+            await foreach (var _ in batchSource("D:\\", default, cts.Token))
+            {
+            }
         });
 
         // BrokerDied fires at most once regardless of how many subscribers see death.
@@ -94,23 +107,33 @@ public class BrokerDeathTests
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    static JournalBrokerClient MakeMinimalFakeClient(Stream pipe) =>
-        new(pipe,
-            mmfReader: new NullMmfReader(),
-            createDriveMmf: (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
+    static JournalBrokerClient MakeMinimalFakeClient(Stream pipe)
+    {
+        return new JournalBrokerClient(pipe,
+            new NullMmfReader(),
+            (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
+    }
 
     // Cursor map for SendStartWatchAsync in the death tests (values are not asserted).
-    static Dictionary<string, UsnJournalCursor> WatchCursors(params string[] drives) =>
-        drives.ToDictionary(d => d, _ => new UsnJournalCursor(7UL, 0L), StringComparer.OrdinalIgnoreCase);
+    static Dictionary<string, UsnJournalCursor> WatchCursors(params string[] drives)
+    {
+        return drives.ToDictionary(d => d, _ => new UsnJournalCursor(7UL, 0L), StringComparer.OrdinalIgnoreCase);
+    }
 
     sealed class NullMmfReader : IMmfReader
     {
-        public ScanRecord[] Read(string mmfName, long byteLength) => Array.Empty<ScanRecord>();
+        public ScanRecord[] Read(string mmfName, long byteLength)
+        {
+            return Array.Empty<ScanRecord>();
+        }
     }
 
     sealed class NoOpDisposable : IDisposable
     {
         public static readonly NoOpDisposable Instance = new();
-        public void Dispose() { }
+
+        public void Dispose()
+        {
+        }
     }
 }

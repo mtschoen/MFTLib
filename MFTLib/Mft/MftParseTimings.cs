@@ -9,7 +9,8 @@ public readonly struct MftParseTimings
     public double NativeTotalMs { get; }
     public double MarshalMs { get; }
 
-    internal MftParseTimings(ulong totalRecords, double ioMs, double fixupMs, double parseMs, double nativeTotalMs, double marshalMs)
+    internal MftParseTimings(ulong totalRecords, double ioMs, double fixupMs, double parseMs, double nativeTotalMs,
+        double marshalMs)
     {
         TotalRecords = totalRecords;
         NativeIoMs = ioMs;
@@ -19,8 +20,11 @@ public readonly struct MftParseTimings
         MarshalMs = marshalMs;
     }
 
-    public override string ToString() =>
-        $"Native: {NativeTotalMs:F1}ms (IO: {NativeIoMs:F1}ms, Fixup: {NativeFixupMs:F1}ms, Parse: {NativeParseMs:F1}ms), Marshal: {MarshalMs:F1}ms, Total records: {TotalRecords:N0}";
+    public override string ToString()
+    {
+        return
+            $"Native: {NativeTotalMs:F1}ms (IO: {NativeIoMs:F1}ms, Fixup: {NativeFixupMs:F1}ms, Parse: {NativeParseMs:F1}ms), Marshal: {MarshalMs:F1}ms, Total records: {TotalRecords:N0}";
+    }
 
     internal MftParseTimings WithMarshalMs(double marshalMs)
     {

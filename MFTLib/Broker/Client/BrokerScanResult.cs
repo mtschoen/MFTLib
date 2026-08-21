@@ -1,13 +1,29 @@
 namespace MFTLib;
 
 /// <summary>
-/// Aggregated result of <see cref="JournalBrokerClient.ArmScanAndCatchUpAsync(IReadOnlyList{string}, BrokerScanProfile, CancellationToken)"/>:
-/// per-drive scan records ingested from the MMF, the armed cursor (captured before
-/// the scan began), the advanced cursor after catch-up, the catch-up journal
-/// entries, and any per-drive error messages.
+///     Aggregated result of
+///     <see cref="JournalBrokerClient.ArmScanAndCatchUpAsync(IReadOnlyList{string}, BrokerScanProfile, CancellationToken)" />
+///     :
+///     per-drive scan records ingested from the MMF, the armed cursor (captured before
+///     the scan began), the advanced cursor after catch-up, the catch-up journal
+///     entries, and any per-drive error messages.
 /// </summary>
 public sealed class BrokerScanResult
 {
+    public BrokerScanResult(
+        IReadOnlyList<ScanRecord> records,
+        IReadOnlyDictionary<string, UsnJournalCursor> armedCursors,
+        IReadOnlyDictionary<string, UsnJournalCursor> advancedCursors,
+        IReadOnlyDictionary<string, UsnJournalEntry[]> catchUpEntries,
+        IReadOnlyDictionary<string, string> errors)
+    {
+        Records = records;
+        ArmedCursors = armedCursors;
+        AdvancedCursors = advancedCursors;
+        CatchUpEntries = catchUpEntries;
+        Errors = errors;
+    }
+
     /// <summary>All scan records across all drives, in drive-response order.</summary>
     public IReadOnlyList<ScanRecord> Records { get; }
 
@@ -22,18 +38,4 @@ public sealed class BrokerScanResult
 
     /// <summary>Per-drive error messages for drives that the broker could not scan.</summary>
     public IReadOnlyDictionary<string, string> Errors { get; }
-
-    public BrokerScanResult(
-        IReadOnlyList<ScanRecord> records,
-        IReadOnlyDictionary<string, UsnJournalCursor> armedCursors,
-        IReadOnlyDictionary<string, UsnJournalCursor> advancedCursors,
-        IReadOnlyDictionary<string, UsnJournalEntry[]> catchUpEntries,
-        IReadOnlyDictionary<string, string> errors)
-    {
-        Records = records;
-        ArmedCursors = armedCursors;
-        AdvancedCursors = advancedCursors;
-        CatchUpEntries = catchUpEntries;
-        Errors = errors;
-    }
 }
