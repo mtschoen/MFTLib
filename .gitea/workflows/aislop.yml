@@ -107,4 +107,20 @@ jobs:
           $files = if ($result.summary.files) { $result.summary.files } else { 0 }
           Write-Host "aislop score $($result.score) over $files files"
           if ($files -lt 10) { Write-Error "aislop only scanned $files files - the C# engine did not run"; exit 1 }
-          if ($gateExit -ne 0) { Write-Error "aislop score below failBelow"; exit 1 }
+          if ($gateExit -ne 0) {
+              $diagnostics = if ($result.diagnostics) { @($result.diagnostics) } else { @() }
+              $scoring = @($diagnostics | Where-Object { $_.scoreImpact.multiplier -gt 0 })
+              $reportOnly = $diagnostics.Count - $scoring.Count
+              if ($scoring.Count -eq 0) {
+                  Write-Host "aislop score below failBelow, but no score-affecting findings were reported ($reportOnly report-only findings not shown)"
+              } else {
+                  Write-Host "::group::aislop score-affecting findings ($($scoring.Count); $reportOnly report-only findings not shown)"
+                  foreach ($d in $scoring) {
+                      Write-Host ("[{0}/{1}] {2}" -f $d.engine, $d.severity, $d.rule)
+                      Write-Host ("    {0}:{1}  {2}" -f $d.filePath, $d.line, $d.message)
+                  }
+                  Write-Host "::endgroup::"
+              }
+              Write-Error "aislop score below failBelow"
+              exit 1
+          }
