@@ -13,19 +13,18 @@
 #include "../core/platform.h"
 
 #ifdef _WIN32
-    #include <stringapiset.h>
+#include <stringapiset.h>
 #endif
 
 namespace {
-
 constexpr std::array<const wchar_t*, 16> fileNames = {
-    L"README.md",    L"index.html", L"main.cpp",   L"package.json", L"Makefile",  L"config.yaml",
-    L"data.bin",     L"icon.png",   L"setup.py",   L"app.js",       L"style.css", L"test.go",
+    L"README.md", L"index.html", L"main.cpp", L"package.json", L"Makefile", L"config.yaml",
+    L"data.bin", L"icon.png", L"setup.py", L"app.js", L"style.css", L"test.go",
     L"build.gradle", L"Cargo.toml", L"Program.cs", L"pom.xml",
 };
 constexpr std::array<const wchar_t*, 16> dirNames = {
-    L"src", L"bin",     L"obj",    L"node_modules", L".git",   L"build", L"docs", L"tests",
-    L"lib", L"include", L"assets", L"scripts",      L"config", L"data",  L"temp", L"cache",
+    L"src", L"bin", L"obj", L"node_modules", L".git", L"build", L"docs", L"tests",
+    L"lib", L"include", L"assets", L"scripts", L"config", L"data", L"temp", L"cache",
 };
 constexpr int numFileNames = 16;
 constexpr int numDirNames = 16;
@@ -340,7 +339,7 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
         uint8_t* writeBuf = buffer;
         int64_t curOffset = writeOffset;
         writeThread = std::thread([hFile, writeBuf, writeSize, curOffset, &writeOk]() {
-            auto byteCount = static_cast<size_t>(writeSize * FILE_RECORD_SIZE);
+            auto byteCount = writeSize * FILE_RECORD_SIZE;
             int64_t written =
                 mftlib::platform::pwrite_at(hFile, writeBuf, byteCount, mftlib::platform::FileOffset{curOffset});
             writeOk = (written == static_cast<int64_t>(byteCount));
@@ -362,8 +361,7 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
     mftlib::platform::close_file(hFile);
     return writeOk;
 }
-
-}  // namespace
+} // namespace
 
 extern "C" {
 #ifdef _WIN32

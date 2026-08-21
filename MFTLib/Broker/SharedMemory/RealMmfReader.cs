@@ -4,10 +4,10 @@ using System.Runtime.Versioning;
 namespace MFTLib;
 
 /// <summary>
-/// Production <see cref="IMmfReader"/>: opens the UI-pre-created, page-file-backed
-/// map by name and reads exactly the bytes the broker wrote (as reported in the
-/// <c>ScanReady</c> frame). Mirrors <see cref="RealMmfWriter"/> in reverse.
-/// Named memory-mapped files are a Windows facility; the client only uses them on Windows.
+///     Production <see cref="IMmfReader" />: opens the UI-pre-created, page-file-backed
+///     map by name and reads exactly the bytes the broker wrote (as reported in the
+///     <c>ScanReady</c> frame). Mirrors <see cref="RealMmfWriter" /> in reverse.
+///     Named memory-mapped files are a Windows facility; the client only uses them on Windows.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class RealMmfReader : IMmfReader

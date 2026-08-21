@@ -1,12 +1,12 @@
 using System.Runtime.InteropServices;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MFTLib.Interop;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
 /// <summary>
-/// Tests targeting native C++ code paths that are otherwise uncovered:
-/// single-threaded fallback, allocation failures, Read failures, error branches.
+///     Tests targeting native C++ code paths that are otherwise uncovered:
+///     single-threaded fallback, allocation failures, Read failures, error branches.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -46,7 +46,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -74,7 +77,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -103,7 +109,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -133,7 +142,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -151,10 +163,14 @@ public class NativeCoverageTests
             for (var recordNumber = 6; recordNumber < 5000 && chain.Count < 128; recordNumber++)
             {
                 if (!TrySetParentRecord(data, recordNumber, parentRecord, out var nameLength) || nameLength < 8)
+                {
                     continue;
+                }
+
                 chain.Add(((ulong)recordNumber, nameLength));
                 parentRecord = (ulong)recordNumber;
             }
+
             Assert.AreEqual(128, chain.Count);
             var expectedLength = chain.Sum(item => item.NameLength) + chain.Count - 1;
             Assert.IsTrue(expectedLength >= 1024);
@@ -168,7 +184,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -200,7 +219,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -229,7 +251,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -259,7 +284,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -301,7 +329,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -331,7 +362,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -362,7 +396,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -393,7 +430,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -428,7 +468,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -447,7 +490,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -477,7 +523,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -509,7 +558,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -566,7 +618,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -597,7 +652,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -662,7 +720,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -686,7 +747,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -710,7 +774,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -730,7 +797,8 @@ public class NativeCoverageTests
             data[5] = (byte)'F';
             data[6] = (byte)'S';
             // Set bytes per sector = 512
-            data[0x0B] = 0x00; data[0x0C] = 0x02;
+            data[0x0B] = 0x00;
+            data[0x0C] = 0x02;
             // Set sectors per cluster = 8
             data[0x0D] = 0x08;
             // Set MFT start cluster = 0 (just after boot sector area — first cluster)
@@ -760,7 +828,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -774,8 +845,12 @@ public class NativeCoverageTests
         {
             var data = new byte[1024 * 1024];
             // NTFS BPB
-            data[3] = (byte)'N'; data[4] = (byte)'T'; data[5] = (byte)'F'; data[6] = (byte)'S';
-            data[0x0B] = 0x00; data[0x0C] = 0x02; // bytes per sector = 512
+            data[3] = (byte)'N';
+            data[4] = (byte)'T';
+            data[5] = (byte)'F';
+            data[6] = (byte)'S';
+            data[0x0B] = 0x00;
+            data[0x0C] = 0x02; // bytes per sector = 512
             data[0x0D] = 0x08; // sectors per cluster = 8
             data[0x30] = 0x01; // MFT at cluster 1 = byte 4096
 
@@ -799,8 +874,10 @@ public class NativeCoverageTests
 
             // Place EndMarker attribute at offset 56 (no attributes before it)
             var attrOffset = recordOffset + 0x38;
-            data[attrOffset + 0] = 0xFF; data[attrOffset + 1] = 0xFF;
-            data[attrOffset + 2] = 0xFF; data[attrOffset + 3] = 0xFF;
+            data[attrOffset + 0] = 0xFF;
+            data[attrOffset + 1] = 0xFF;
+            data[attrOffset + 2] = 0xFF;
+            data[attrOffset + 3] = 0xFF;
 
             // USA: write matching USN at sector ends
             var usn = (ushort)0x0001;
@@ -835,7 +912,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -866,7 +946,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -888,8 +971,12 @@ public class NativeCoverageTests
         try
         {
             var data = new byte[1024 * 1024];
-            data[3] = (byte)'N'; data[4] = (byte)'T'; data[5] = (byte)'F'; data[6] = (byte)'S';
-            data[0x0B] = 0x00; data[0x0C] = 0x02;
+            data[3] = (byte)'N';
+            data[4] = (byte)'T';
+            data[5] = (byte)'F';
+            data[6] = (byte)'S';
+            data[0x0B] = 0x00;
+            data[0x0C] = 0x02;
             data[0x0D] = 0x08;
             data[0x30] = 0x01;
             File.WriteAllBytes(path, data);
@@ -911,7 +998,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -929,7 +1019,7 @@ public class NativeCoverageTests
             WriteFileRecord(data, 4096);
 
             var a1 = 4096 + 0x38;
-            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
+            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             // Resident AttributeList with empty value (no extension records)
             var a2 = a1 + a1Len;
@@ -959,7 +1049,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -996,7 +1089,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1030,7 +1126,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1060,7 +1159,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1081,7 +1183,7 @@ public class NativeCoverageTests
 
             // Attribute 1: Data (non-resident) → clusters 1..256 (1MB)
             var a1 = 4096 + 0x38;
-            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
+            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             // Attribute 2: Non-resident AttributeList with data at cluster 260
             // The data at cluster 260 is all zeros → empty/invalid entries → no extensions
@@ -1097,7 +1199,8 @@ public class NativeCoverageTests
             Array.Copy(attrListSize, 0, data, a2 + 0x38, 8); // ValidDataLength
             // Data run: cluster 260, 1 cluster — within our 2MB file (260*4096 = 1,064,960 < 2MB)
             data[a2 + 0x40] = 0x12; // 2-byte length, 1-byte offset
-            data[a2 + 0x41] = 0x01; data[a2 + 0x42] = 0x00; // 1 cluster
+            data[a2 + 0x41] = 0x01;
+            data[a2 + 0x42] = 0x00; // 1 cluster
             data[a2 + 0x43] = 0x80; // cluster 128 (offset 524,288 — within 2MB)
             data[a2 + 0x44] = 0x00; // terminator
 
@@ -1107,7 +1210,10 @@ public class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             if (failAttributeListAllocation)
+            {
                 MFTLibNative.NativeSetAllocFailCountdown(2);
+            }
+
             var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -1123,7 +1229,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1137,12 +1246,12 @@ public class NativeCoverageTests
             WriteFileRecord(data, 4096);
             var dataAttribute = 4096 + 0x38;
             var dataLength = WriteNonResidentDataAttribute(
-                data, dataAttribute, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
+                data, dataAttribute, 1024L * 1024, 1, 256);
             var attributeList = dataAttribute + dataLength;
             var attributeListLength = WriteResidentAttributeList(data, attributeList, 1, 2, 1);
             WriteEndMarker(data, attributeList + attributeListLength);
 
-            WriteFileRecord(data, 5120, usn: 2);
+            WriteFileRecord(data, 5120, 2);
             WriteEndMarker(data, 5120 + 0x38);
             File.WriteAllBytes(path, data);
 
@@ -1154,7 +1263,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1171,7 +1283,7 @@ public class NativeCoverageTests
             WriteFileRecord(data, 4096);
             var dataAttribute = 4096 + 0x38;
             var dataLength = WriteNonResidentDataAttribute(
-                data, dataAttribute, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
+                data, dataAttribute, 1024L * 1024, 1, 256);
             var attributeList = dataAttribute + dataLength;
             var attributeListLength = WriteResidentAttributeList(data, attributeList, 1);
             WriteEndMarker(data, attributeList + attributeListLength);
@@ -1179,7 +1291,7 @@ public class NativeCoverageTests
             const int extensionRecord = 5120;
             if (malformedKind != 0)
             {
-                WriteFileRecord(data, extensionRecord, usn: 2);
+                WriteFileRecord(data, extensionRecord, 2);
                 var extensionAttribute = extensionRecord + 0x38;
                 data[extensionAttribute] = 0x80;
                 if (malformedKind == 2)
@@ -1188,6 +1300,7 @@ public class NativeCoverageTests
                     WriteEndMarker(data, extensionAttribute + 0x18);
                 }
             }
+
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -1198,7 +1311,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1220,7 +1336,7 @@ public class NativeCoverageTests
 
             // Attribute 1: Data (non-resident) → clusters 1..256 (1MB)
             var a1 = 4096 + 0x38;
-            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
+            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             // Attribute 2: AttributeList (resident) with one entry pointing to segment 1
             var a2 = a1 + a1Len;
@@ -1230,11 +1346,11 @@ public class NativeCoverageTests
             WriteEndMarker(data, a2 + a2Len);
 
             // --- Record 1 at offset 5120 (4096 + 1024) ---
-            WriteFileRecord(data, 5120, usn: 0x0002);
+            WriteFileRecord(data, 5120, 0x0002);
 
             // Extension record Data attribute → cluster 300, 1 cluster (4KB = 4 records)
             var ext1 = 5120 + 0x38;
-            var ext1Len = WriteNonResidentDataAttribute(data, ext1, 4096, clusterOffset: 300, clusterCount: 1);
+            var ext1Len = WriteNonResidentDataAttribute(data, ext1, 4096, 300, 1);
             WriteEndMarker(data, ext1 + ext1Len);
 
             File.WriteAllBytes(path, data);
@@ -1256,7 +1372,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1274,7 +1393,7 @@ public class NativeCoverageTests
             WriteFileRecord(data, 4096);
 
             var a1 = 4096 + 0x38;
-            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
+            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             var a2 = a1 + a1Len;
             var a2Len = WriteResidentAttributeList(data, a2, 9999);
@@ -1300,7 +1419,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1318,13 +1440,13 @@ public class NativeCoverageTests
             WriteFileRecord(data, 4096);
 
             var a1 = 4096 + 0x38;
-            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
+            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             var a2 = a1 + a1Len;
             var a2Len = WriteResidentAttributeList(data, a2, 1);
 
             WriteEndMarker(data, a2 + a2Len);
-            WriteFileRecord(data, 5120, usn: 0x0002);
+            WriteFileRecord(data, 5120, 0x0002);
             var ext1 = 5120 + 0x38;
             WriteEndMarker(data, ext1); // Just end marker — no Data attribute on extension record
 
@@ -1347,7 +1469,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1366,7 +1491,7 @@ public class NativeCoverageTests
 
             // Just a Data attribute, no AttributeList → straight to VolumeReadChunk
             var a1 = 4096 + 0x38;
-            WriteNonResidentDataAttribute(data, a1, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
+            WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
             WriteEndMarker(data, a1 + 0x48);
 
             File.WriteAllBytes(path, data);
@@ -1388,7 +1513,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1407,7 +1535,7 @@ public class NativeCoverageTests
 
             // Attribute 1: Data (non-resident) → clusters 1..256
             var a1 = 4096 + 0x38;
-            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, clusterOffset: 1, clusterCount: 256);
+            var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
 
             // Attribute 2: Non-resident AttributeList (FormCode=1)
             var a2 = a1 + a1Len;
@@ -1452,7 +1580,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1492,7 +1623,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1511,7 +1645,10 @@ public class NativeCoverageTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 
@@ -1525,17 +1662,25 @@ public class NativeCoverageTests
         if (BitConverter.ToUInt32(data, recordOffset) != 0x454C4946 ||
             (BitConverter.ToUInt16(data, recordOffset + 0x16) & 1) == 0 ||
             (BitConverter.ToUInt64(data, recordOffset + 0x20) & 0x0000FFFFFFFFFFFFUL) != 0)
+        {
             return false;
+        }
 
         var attributeOffset = recordOffset + BitConverter.ToUInt16(data, recordOffset + 0x14);
         while (attributeOffset + 24 < recordOffset + recordSize)
         {
             var attributeType = BitConverter.ToUInt32(data, attributeOffset);
             if (attributeType == uint.MaxValue)
+            {
                 return false;
+            }
+
             var attributeLength = BitConverter.ToUInt32(data, attributeOffset + 4);
             if (attributeLength == 0)
+            {
                 return false;
+            }
+
             if (attributeType == 0x30 && data[attributeOffset + 8] == 0)
             {
                 var valueOffset = BitConverter.ToUInt16(data, attributeOffset + 0x14);
@@ -1544,16 +1689,22 @@ public class NativeCoverageTests
                 BitConverter.GetBytes(parentRecord).CopyTo(data, value);
                 return true;
             }
+
             attributeOffset += checked((int)attributeLength);
         }
+
         return false;
     }
 
     static byte[] BuildSyntheticNtfs(int fileSize = 2 * 1024 * 1024)
     {
         var data = new byte[fileSize];
-        data[3] = (byte)'N'; data[4] = (byte)'T'; data[5] = (byte)'F'; data[6] = (byte)'S';
-        data[0x0B] = 0x00; data[0x0C] = 0x02; // bytesPerSector = 512
+        data[3] = (byte)'N';
+        data[4] = (byte)'T';
+        data[5] = (byte)'F';
+        data[6] = (byte)'S';
+        data[0x0B] = 0x00;
+        data[0x0C] = 0x02; // bytesPerSector = 512
         data[0x0D] = 0x08; // sectorsPerCluster = 8 (4096 bytes/cluster)
         data[0x30] = 0x01; // mftStart = cluster 1 (offset 4096)
         return data;
@@ -1562,24 +1713,36 @@ public class NativeCoverageTests
     static void WriteFileRecord(byte[] data, int offset, ushort usn = 0x0001)
     {
         // Magic "FILE"
-        data[offset] = 0x46; data[offset + 1] = 0x49; data[offset + 2] = 0x4C; data[offset + 3] = 0x45;
+        data[offset] = 0x46;
+        data[offset + 1] = 0x49;
+        data[offset + 2] = 0x4C;
+        data[offset + 3] = 0x45;
         // USA offset = 48, USA size = 3
-        data[offset + 4] = 0x30; data[offset + 5] = 0x00;
-        data[offset + 6] = 0x03; data[offset + 7] = 0x00;
+        data[offset + 4] = 0x30;
+        data[offset + 5] = 0x00;
+        data[offset + 6] = 0x03;
+        data[offset + 7] = 0x00;
         // First attribute offset = 56 (0x38)
-        data[offset + 0x14] = 0x38; data[offset + 0x15] = 0x00;
+        data[offset + 0x14] = 0x38;
+        data[offset + 0x15] = 0x00;
         // Flags = in use
         data[offset + 0x16] = 0x01;
         // USA entries
-        data[offset + 48] = (byte)(usn & 0xFF); data[offset + 49] = (byte)(usn >> 8);
-        data[offset + 50] = 0x00; data[offset + 51] = 0x00; // original sector 0 end bytes
-        data[offset + 52] = 0x00; data[offset + 53] = 0x00; // original sector 1 end bytes
+        data[offset + 48] = (byte)(usn & 0xFF);
+        data[offset + 49] = (byte)(usn >> 8);
+        data[offset + 50] = 0x00;
+        data[offset + 51] = 0x00; // original sector 0 end bytes
+        data[offset + 52] = 0x00;
+        data[offset + 53] = 0x00; // original sector 1 end bytes
         // Write USN at sector boundaries
-        data[offset + 510] = (byte)(usn & 0xFF); data[offset + 511] = (byte)(usn >> 8);
-        data[offset + 1022] = (byte)(usn & 0xFF); data[offset + 1023] = (byte)(usn >> 8);
+        data[offset + 510] = (byte)(usn & 0xFF);
+        data[offset + 511] = (byte)(usn >> 8);
+        data[offset + 1022] = (byte)(usn & 0xFF);
+        data[offset + 1023] = (byte)(usn >> 8);
     }
 
-    static int WriteNonResidentDataAttribute(byte[] data, int offset, long fileSize, int clusterOffset, int clusterCount)
+    static int WriteNonResidentDataAttribute(byte[] data, int offset, long fileSize, int clusterOffset,
+        int clusterCount)
     {
         data[offset] = 0x80; // TypeCode = Data
         data[offset + 4] = 0x48; // RecordLength = 72
@@ -1613,7 +1776,7 @@ public class NativeCoverageTests
         for (var index = 0; index < segmentNumbers.Length; index++)
         {
             var segmentNumber = segmentNumbers[index];
-            var entry = offset + valueOffset + (index * entrySize);
+            var entry = offset + valueOffset + index * entrySize;
             data[entry] = 0x80;
             data[entry + 4] = entrySize;
             data[entry + 5] = 0;
@@ -1628,7 +1791,9 @@ public class NativeCoverageTests
 
     static void WriteEndMarker(byte[] data, int offset)
     {
-        data[offset] = 0xFF; data[offset + 1] = 0xFF;
-        data[offset + 2] = 0xFF; data[offset + 3] = 0xFF;
+        data[offset] = 0xFF;
+        data[offset + 1] = 0xFF;
+        data[offset + 2] = 0xFF;
+        data[offset + 3] = 0xFF;
     }
 }

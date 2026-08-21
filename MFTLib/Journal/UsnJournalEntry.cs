@@ -14,16 +14,17 @@ readonly record struct NativeUsnJournalEntryData
 public readonly struct UsnJournalEntry
 {
     /// <summary>
-    /// MFT segment index (48-bit, sequence number stripped). Matches MftRecord.RecordNumber.
-    /// Safe to use as a dictionary key across MFT scans and USN journal reads on the same volume.
+    ///     MFT segment index (48-bit, sequence number stripped). Matches MftRecord.RecordNumber.
+    ///     Safe to use as a dictionary key across MFT scans and USN journal reads on the same volume.
     /// </summary>
     public ulong RecordNumber { get; }
 
     /// <summary>
-    /// Parent directory's MFT segment index (48-bit, sequence number stripped). Matches MftRecord.ParentRecordNumber.
-    /// The NTFS root directory is segment 5 (its parent is also 5).
+    ///     Parent directory's MFT segment index (48-bit, sequence number stripped). Matches MftRecord.ParentRecordNumber.
+    ///     The NTFS root directory is segment 5 (its parent is also 5).
     /// </summary>
     public ulong ParentRecordNumber { get; }
+
     public long Usn { get; }
     public DateTime Timestamp { get; }
     public UsnReason Reason { get; }
@@ -60,11 +61,14 @@ public readonly struct UsnJournalEntry
     }
 
     /// <summary>
-    /// Construct a USN journal entry from already-decoded values. For callers that
-    /// produce entries outside the native marshaling path (e.g. a tool that
-    /// serializes journal data to disk and reconstructs it in another process).
+    ///     Construct a USN journal entry from already-decoded values. For callers that
+    ///     produce entries outside the native marshaling path (e.g. a tool that
+    ///     serializes journal data to disk and reconstructs it in another process).
     /// </summary>
     public static UsnJournalEntry Create(UsnJournalEntryOptions options) => new(options);
 
-    public override string ToString() => $"[{Reason}] {FileName} (record {RecordNumber})";
+    public override string ToString()
+    {
+        return $"[{Reason}] {FileName} (record {RecordNumber})";
+    }
 }

@@ -69,5 +69,4 @@ public class MFTUtilitiesTests
     {
         MFTUtilities.GetVolumePath("not-a-volume");
     }
-
 }

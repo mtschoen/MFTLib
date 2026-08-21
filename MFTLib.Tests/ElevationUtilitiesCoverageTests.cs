@@ -5,15 +5,18 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 /// <summary>
-/// Additional ElevationUtilities tests targeting uncovered code paths on Linux.
-/// These exercises TryRunElevated branches that may not be hit by the
-/// cross-platform tests in ElevationUtilitiesTests.
+///     Additional ElevationUtilities tests targeting uncovered code paths on Linux.
+///     These exercises TryRunElevated branches that may not be hit by the
+///     cross-platform tests in ElevationUtilitiesTests.
 /// </summary>
 [TestClass]
 public class ElevationUtilitiesCoverageTests
 {
     [TestCleanup]
-    public void Cleanup() => ElevationUtilities.ResetToDefaults();
+    public void Cleanup()
+    {
+        ElevationUtilities.ResetToDefaults();
+    }
 
     // --- TryRunElevated: dotnet check path (line 64) ---
 
@@ -40,12 +43,14 @@ public class ElevationUtilitiesCoverageTests
         ElevationUtilities.StartProcess = _ =>
         {
             var psi = new ProcessStartInfo(
-                RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    ? "true" : "cmd.exe",
-                RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    ? string.Empty : "/c exit 0"
-            )
-            { CreateNoWindow = true, UseShellExecute = false };
+                    RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                        ? "true"
+                        : "cmd.exe",
+                    RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                        ? string.Empty
+                        : "/c exit 0"
+                )
+                { CreateNoWindow = true, UseShellExecute = false };
             return Process.Start(psi);
         };
         Assert.IsTrue(ElevationUtilities.TryRunElevated("--test"));
@@ -62,12 +67,14 @@ public class ElevationUtilitiesCoverageTests
         ElevationUtilities.StartProcess = _ =>
         {
             var psi = new ProcessStartInfo(
-                RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    ? "false" : "cmd.exe",
-                RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    ? string.Empty : "/c exit 1"
-            )
-            { CreateNoWindow = true, UseShellExecute = false };
+                    RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                        ? "false"
+                        : "cmd.exe",
+                    RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                        ? string.Empty
+                        : "/c exit 1"
+                )
+                { CreateNoWindow = true, UseShellExecute = false };
             return Process.Start(psi);
         };
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
@@ -84,6 +91,6 @@ public class ElevationUtilitiesCoverageTests
         ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
         ElevationUtilities.IsUserInteractive = () => true;
         ElevationUtilities.StartProcess = _ => Process.Start(ElevationUtilitiesTests.LongRunningProcessStartInfo());
-        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", timeoutMs: 100));
+        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", 100));
     }
 }

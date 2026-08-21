@@ -1,2 +1,4 @@
-var scanner = new TestProgram.DriveScanner();
+using TestProgram;
+
+var scanner = new DriveScanner();
 return scanner.Run(args);

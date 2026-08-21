@@ -5,11 +5,11 @@ using System.Runtime.Versioning;
 namespace MFTLib;
 
 /// <summary>
-/// Launches the elevated journal broker: relaunches the current executable in
-/// <c>--broker</c> mode under a UAC elevation prompt. The launch is fire-and-forget
-/// (NOT waited on) - the broker is a long-lived process that the caller talks to over
-/// a pipe, so waiting for it to exit (as <c>ElevationUtilities.TryRunElevated</c> does)
-/// would be wrong here.
+///     Launches the elevated journal broker: relaunches the current executable in
+///     <c>--broker</c> mode under a UAC elevation prompt. The launch is fire-and-forget
+///     (NOT waited on) - the broker is a long-lived process that the caller talks to over
+///     a pipe, so waiting for it to exit (as <c>ElevationUtilities.TryRunElevated</c> does)
+///     would be wrong here.
 /// </summary>
 public static class BrokerLauncher
 {
@@ -26,14 +26,15 @@ public static class BrokerLauncher
     }
 
     /// <summary>
-    /// Start the broker with <paramref name="brokerArgs"/> (e.g. "--broker --pipe NAME").
-    /// Returns true if the process started, false if the user declined the UAC prompt.
+    ///     Start the broker with <paramref name="brokerArgs" /> (e.g. "--broker --pipe NAME").
+    ///     Returns true if the process started, false if the user declined the UAC prompt.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static bool Launch(string brokerArgs)
     {
         var exePath = GetProcessPathFunc()
-            ?? throw new InvalidOperationException("Cannot determine the current executable path to launch the broker");
+                      ?? throw new InvalidOperationException(
+                          "Cannot determine the current executable path to launch the broker");
 
         var startInfo = new ProcessStartInfo(exePath, brokerArgs)
         {
@@ -41,7 +42,7 @@ public static class BrokerLauncher
             // the elevated child runs without a window of its own.
             UseShellExecute = true,
             Verb = "runas",
-            WindowStyle = ProcessWindowStyle.Hidden,
+            WindowStyle = ProcessWindowStyle.Hidden
         };
 
         try

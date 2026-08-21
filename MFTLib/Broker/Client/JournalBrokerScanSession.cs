@@ -1,12 +1,12 @@
 namespace MFTLib;
 
 /// <summary>
-/// An owned scan-to-watch session over one elevated journal broker. Wraps a single
-/// connected <see cref="JournalBrokerClient"/> and its most recent
-/// <see cref="BrokerScanResult"/> so that discovery and live watching share one elevated
-/// process (one UAC prompt) and one pipe. The session is the sole owner and sole disposer
-/// of the underlying client; the client is never exposed, which prevents the discovery
-/// layer and the watch layer from both disposing it.
+///     An owned scan-to-watch session over one elevated journal broker. Wraps a single
+///     connected <see cref="JournalBrokerClient" /> and its most recent
+///     <see cref="BrokerScanResult" /> so that discovery and live watching share one elevated
+///     process (one UAC prompt) and one pipe. The session is the sole owner and sole disposer
+///     of the underlying client; the client is never exposed, which prevents the discovery
+///     layer and the watch layer from both disposing it.
 /// </summary>
 public sealed partial class JournalBrokerScanSession : IAsyncDisposable
 {
@@ -14,28 +14,25 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
         new Dictionary<string, UsnJournalCursor>();
 
     readonly JournalBrokerClient _client;
+
     readonly object _stateLock = new();
+
+    // Cached by StartWatchAsync (Task 3), consumed by WatchDriveAsync, cleared by
+    // StopWatchAsync. Null whenever the session has never started a watch.
+    JournalBatchSource? _batchSource;
+    int _disposed;
 
     // Drives/profile/keepFileNames the session was started or last rescanned with;
     // guarded by _stateLock like the rest of the mutable state below. RescanAsync
     // overloads that omit an argument read these to repeat the prior scan.
     IReadOnlyList<string> _drives;
-    BrokerScanProfile _profile;
-    IReadOnlyCollection<string>? _keepFileNames;
-
-    JournalBrokerSessionState _state;
-    BrokerScanResult? _latestScan;
-    // Cursor source for StartWatchAsync/WatchDriveAsync. For a scanned session this is the
-    // latest scan's advanced cursors; for a warm session (StartFromCursorsAsync) it is the
-    // caller-supplied baseline until the first RescanAsync replaces it. Guarded by _stateLock.
-    IReadOnlyDictionary<string, UsnJournalCursor> _watchCursors;
-    bool _isFaulted;
     string? _faultReason;
     Action<string>? _faultedHandlers;
-    int _disposed;
-    // Cached by StartWatchAsync (Task 3), consumed by WatchDriveAsync, cleared by
-    // StopWatchAsync. Null whenever the session has never started a watch.
-    JournalBatchSource? _batchSource;
+    bool _isFaulted;
+    IReadOnlyCollection<string>? _keepFileNames;
+
+    BrokerScanResult? _latestScan;
+
     // True while a RescanAsync or StartWatchAsync call has passed its Parked check
     // but not yet finished. Both operations drive the pipe (ArmScanAndCatchUpAsync
     // foreground-reads it; SendStartWatchAsync spawns the demux reader) while State
@@ -48,10 +45,19 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     // implies this is false - StopWatchAsync (Watching-gated) therefore never races
     // a Parked-gated operation. Concurrent stop callers share _stopTask below.
     bool _operationInFlight;
+    BrokerScanProfile _profile;
+
+    JournalBrokerSessionState _state;
+
     // One shared stop handshake while Watching. Concurrent callers receive the same
     // task, so exactly one EndWatch frame is sent and no acknowledgement can remain
     // unread for a subsequent watch demux.
     Task? _stopTask;
+
+    // Cursor source for StartWatchAsync/WatchDriveAsync. For a scanned session this is the
+    // latest scan's advanced cursors; for a warm session (StartFromCursorsAsync) it is the
+    // caller-supplied baseline until the first RescanAsync replaces it. Guarded by _stateLock.
+    IReadOnlyDictionary<string, UsnJournalCursor> _watchCursors;
 
     JournalBrokerScanSession(JournalBrokerClient client, IReadOnlyList<string> drives, BrokerScanProfile profile,
         IReadOnlyCollection<string>? keepFileNames, IReadOnlyDictionary<string, UsnJournalCursor> watchCursors)
@@ -70,37 +76,107 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     /// <summary>Current lifecycle state. Safe to read at any time, including after fault or disposal.</summary>
     public JournalBrokerSessionState State
     {
-        get { lock (_stateLock) return _state; }
+        get
+        {
+            lock (_stateLock)
+            {
+                return _state;
+            }
+        }
     }
 
     /// <summary>
-    /// The most recent scan result, or null on a warm session
-    /// (<see cref="StartFromCursorsAsync(Func{string,bool},IReadOnlyDictionary{string,UsnJournalCursor},CancellationToken)"/>)
-    /// that has not yet rescanned. Set by the initial scan and replaced by each rescan.
-    /// Immutable between rescans; exposes per-drive records, armed and advanced cursors,
-    /// catch-up entries, and per-drive errors.
+    ///     The most recent scan result, or null on a warm session
+    ///     (
+    ///     <see cref="StartFromCursorsAsync(Func{string,bool},IReadOnlyDictionary{string,UsnJournalCursor},CancellationToken)" />
+    ///     )
+    ///     that has not yet rescanned. Set by the initial scan and replaced by each rescan.
+    ///     Immutable between rescans; exposes per-drive records, armed and advanced cursors,
+    ///     catch-up entries, and per-drive errors.
     /// </summary>
     public BrokerScanResult? LatestScan
     {
-        get { lock (_stateLock) return _latestScan; }
+        get
+        {
+            lock (_stateLock)
+            {
+                return _latestScan;
+            }
+        }
     }
 
     /// <summary>True once the broker has died. Never reverts.</summary>
     public bool IsFaulted
     {
-        get { lock (_stateLock) return _isFaulted; }
+        get
+        {
+            lock (_stateLock)
+            {
+                return _isFaulted;
+            }
+        }
     }
 
-    /// <summary>The reason the broker died, or null while <see cref="IsFaulted"/> is false.</summary>
+    /// <summary>The reason the broker died, or null while <see cref="IsFaulted" /> is false.</summary>
     public string? FaultReason
     {
-        get { lock (_stateLock) return _faultReason; }
+        get
+        {
+            lock (_stateLock)
+            {
+                return _faultReason;
+            }
+        }
+    }
+
+    /// <summary>Drives the session was started or last rescanned with.</summary>
+    internal IReadOnlyList<string> Drives
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _drives;
+            }
+        }
+    }
+
+    /// <summary>Scan profile the session was started or last rescanned with.</summary>
+    internal BrokerScanProfile Profile
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _profile;
+            }
+        }
     }
 
     /// <summary>
-    /// Raised once when the broker dies. If a handler is added after death already
-    /// occurred, it is invoked immediately with <see cref="FaultReason"/>, so a consumer
-    /// that attaches after discovery cannot miss a death that happened while parked.
+    ///     Dispose the session: stop any live watch, send the broker <c>Shutdown</c>, close
+    ///     the pipe, and release memory maps. Idempotent - the underlying client is disposed
+    ///     exactly once no matter how many times this is called.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        lock (_stateLock)
+        {
+            _state = JournalBrokerSessionState.Disposed;
+        }
+
+        await _client.DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    ///     Raised once when the broker dies. If a handler is added after death already
+    ///     occurred, it is invoked immediately with <see cref="FaultReason" />, so a consumer
+    ///     that attaches after discovery cannot miss a death that happened while parked.
     /// </summary>
     public event Action<string>? Faulted
     {
@@ -110,30 +186,27 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
             lock (_stateLock)
             {
                 if (_isFaulted)
+                {
                     lateReason = _faultReason;
+                }
                 else
+                {
                     _faultedHandlers += value;
+                }
             }
+
             if (lateReason != null)
+            {
                 value?.Invoke(lateReason);
+            }
         }
         remove
         {
             lock (_stateLock)
+            {
                 _faultedHandlers -= value;
+            }
         }
-    }
-
-    /// <summary>Drives the session was started or last rescanned with.</summary>
-    internal IReadOnlyList<string> Drives
-    {
-        get { lock (_stateLock) return _drives; }
-    }
-
-    /// <summary>Scan profile the session was started or last rescanned with.</summary>
-    internal BrokerScanProfile Profile
-    {
-        get { lock (_stateLock) return _profile; }
     }
 
     /// <summary>
@@ -155,6 +228,7 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
             profile = _profile;
             keepFileNames = _keepFileNames;
         }
+
         return RescanAsync(drives, profile, keepFileNames, cancellationToken);
     }
 
@@ -168,6 +242,7 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
             profile = _profile;
             keepFileNames = _keepFileNames;
         }
+
         return RescanAsync(drives, profile, keepFileNames, cancellationToken);
     }
 
@@ -182,9 +257,15 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
         lock (_stateLock)
         {
             if (_state != JournalBrokerSessionState.Parked)
+            {
                 throw new InvalidOperationException("Live watch is active; call StopWatchAsync before rescanning");
+            }
+
             if (_operationInFlight)
+            {
                 throw new InvalidOperationException("Another session operation is in progress");
+            }
+
             _operationInFlight = true;
         }
 
@@ -224,24 +305,10 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
         finally
         {
             lock (_stateLock)
+            {
                 _operationInFlight = false;
+            }
         }
-    }
-
-    /// <summary>
-    /// Dispose the session: stop any live watch, send the broker <c>Shutdown</c>, close
-    /// the pipe, and release memory maps. Idempotent - the underlying client is disposed
-    /// exactly once no matter how many times this is called.
-    /// </summary>
-    public async ValueTask DisposeAsync()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            return;
-
-        lock (_stateLock)
-            _state = JournalBrokerSessionState.Disposed;
-
-        await _client.DisposeAsync().ConfigureAwait(false);
     }
 
     // Throws if the session cannot currently accept a state-changing operation:
@@ -251,7 +318,9 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     internal void EnsureOperable()
     {
         lock (_stateLock)
+        {
             EnsureOperableLocked();
+        }
     }
 
     // Same check as EnsureOperable, for a caller that already holds _stateLock (lock
@@ -264,7 +333,9 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_state == JournalBrokerSessionState.Disposed, this);
         if (_state == JournalBrokerSessionState.Faulted)
+        {
             throw new InvalidOperationException(_faultReason);
+        }
     }
 
     void OnBrokerDied(string reason)
@@ -273,13 +344,20 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
         lock (_stateLock)
         {
             if (_isFaulted)
+            {
                 return;
+            }
+
             _isFaulted = true;
             _faultReason = reason;
             if (_state != JournalBrokerSessionState.Disposed)
+            {
                 _state = JournalBrokerSessionState.Faulted;
+            }
+
             handlers = _faultedHandlers;
         }
+
         handlers?.Invoke(reason);
     }
 }

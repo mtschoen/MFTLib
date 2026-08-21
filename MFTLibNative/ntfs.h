@@ -9,7 +9,6 @@
 // Wrapping them in extern "C" both states that intent and makes clang-tidy skip
 // modernize-avoid-c-arrays here (it ignores extern "C" shared-header code).
 extern "C" {
-
 #ifndef _WIN32
 using ULONG = uint32_t;
 using USHORT = uint16_t;
@@ -21,6 +20,7 @@ union LARGE_INTEGER {
         uint32_t LowPart;
         int32_t HighPart;
     };
+
     int64_t QuadPart;
 };
 using PVOID = void*;
@@ -82,12 +82,14 @@ using ATTRIBUTE_RECORD_HEADER = struct AttributeRecordHeaderLayout {
     USHORT NameOffset;
     USHORT Flags;
     USHORT Instance;
+
     union {
         struct {
             ULONG ValueLength;
             USHORT ValueOffset;
             UCHAR Reserved[2];
         } Resident;
+
         struct {
             VCN LowestVcn;
             VCN HighestVcn;
@@ -124,8 +126,8 @@ using FILE_NAME = struct FileNameLayout {
     uint64_t ReadTime;
     uint64_t AllocatedSize;
     uint64_t FileSize;
-    uint32_t FileAttributes;   // e.g. FILE_ATTRIBUTE_DIRECTORY
-    uint32_t ReparsePointTag;  // or EA size
+    uint32_t FileAttributes; // e.g. FILE_ATTRIBUTE_DIRECTORY
+    uint32_t ReparsePointTag; // or EA size
     UCHAR FileNameLength;
     UCHAR Flags;
     WCHAR FileName[1];
@@ -138,6 +140,7 @@ using MULTI_SECTOR_HEADER = struct MultiSectorHeaderLayout {
         UCHAR Signature[4];
         UINT Magic;
     };
+
     USHORT UpdateSequenceArrayOffset;
     USHORT UpdateSequenceArraySize;
 };
@@ -190,5 +193,4 @@ struct NTFS_BPB {
     uint16_t bootSignature;
 };
 #pragma pack(pop)
-
-}  // extern "C"
+} // extern "C"

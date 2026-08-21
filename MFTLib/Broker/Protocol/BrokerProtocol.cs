@@ -5,14 +5,13 @@ using System.Text;
 namespace MFTLib;
 
 /// <summary>
-/// Binary frame codec for broker to UI IPC. Fixed-width little-endian numeric fields
-/// followed by a length-prefixed UTF-16 filename. No pipes, no text parsing - replaces
-/// the pipe-delimited helper serializers.
-///
-/// Every frame: [totalLength int32][kind byte][payload]
-/// totalLength counts the kind byte plus payload bytes.
-/// ReadFrame sets out consumed to the full frame length including the 4-byte length prefix.
-/// Strings are length-prefixed UTF-16.
+///     Binary frame codec for broker to UI IPC. Fixed-width little-endian numeric fields
+///     followed by a length-prefixed UTF-16 filename. No pipes, no text parsing - replaces
+///     the pipe-delimited helper serializers.
+///     Every frame: [totalLength int32][kind byte][payload]
+///     totalLength counts the kind byte plus payload bytes.
+///     ReadFrame sets out consumed to the full frame length including the 4-byte length prefix.
+///     Strings are length-prefixed UTF-16.
 /// </summary>
 public static class BrokerProtocol
 {
@@ -23,28 +22,44 @@ public static class BrokerProtocol
         var nameBytes = Encoding.Unicode.GetBytes(entry.FileName);
         var span = writer.GetSpan(8 + 8 + 8 + 8 + 4 + 4 + 4 + nameBytes.Length);
         var offset = 0;
-        BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], entry.RecordNumber); offset += 8;
-        BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], entry.ParentRecordNumber); offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], entry.Usn); offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], entry.Timestamp.Ticks); offset += 8;
-        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], (uint)entry.Reason); offset += 4;
-        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], (uint)entry.FileAttributes); offset += 4;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], nameBytes.Length); offset += 4;
-        nameBytes.CopyTo(span[offset..]); offset += nameBytes.Length;
+        BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], entry.RecordNumber);
+        offset += 8;
+        BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], entry.ParentRecordNumber);
+        offset += 8;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], entry.Usn);
+        offset += 8;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], entry.Timestamp.Ticks);
+        offset += 8;
+        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], (uint)entry.Reason);
+        offset += 4;
+        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], (uint)entry.FileAttributes);
+        offset += 4;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], nameBytes.Length);
+        offset += 4;
+        nameBytes.CopyTo(span[offset..]);
+        offset += nameBytes.Length;
         writer.Advance(offset);
     }
 
     public static UsnJournalEntry ReadEntry(ReadOnlySpan<byte> span, out int consumed)
     {
         var offset = 0;
-        var recordNumber = BinaryPrimitives.ReadUInt64LittleEndian(span[offset..]); offset += 8;
-        var parentRecordNumber = BinaryPrimitives.ReadUInt64LittleEndian(span[offset..]); offset += 8;
-        var usn = BinaryPrimitives.ReadInt64LittleEndian(span[offset..]); offset += 8;
-        var ticks = BinaryPrimitives.ReadInt64LittleEndian(span[offset..]); offset += 8;
-        var reason = BinaryPrimitives.ReadUInt32LittleEndian(span[offset..]); offset += 4;
-        var attributes = BinaryPrimitives.ReadUInt32LittleEndian(span[offset..]); offset += 4;
-        var nameLength = BinaryPrimitives.ReadInt32LittleEndian(span[offset..]); offset += 4;
-        var fileName = Encoding.Unicode.GetString(span.Slice(offset, nameLength)); offset += nameLength;
+        var recordNumber = BinaryPrimitives.ReadUInt64LittleEndian(span[offset..]);
+        offset += 8;
+        var parentRecordNumber = BinaryPrimitives.ReadUInt64LittleEndian(span[offset..]);
+        offset += 8;
+        var usn = BinaryPrimitives.ReadInt64LittleEndian(span[offset..]);
+        offset += 8;
+        var ticks = BinaryPrimitives.ReadInt64LittleEndian(span[offset..]);
+        offset += 8;
+        var reason = BinaryPrimitives.ReadUInt32LittleEndian(span[offset..]);
+        offset += 4;
+        var attributes = BinaryPrimitives.ReadUInt32LittleEndian(span[offset..]);
+        offset += 4;
+        var nameLength = BinaryPrimitives.ReadInt32LittleEndian(span[offset..]);
+        offset += 4;
+        var fileName = Encoding.Unicode.GetString(span.Slice(offset, nameLength));
+        offset += nameLength;
         consumed = offset;
         return UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
@@ -73,33 +88,51 @@ public static class BrokerProtocol
         var totalLength = 1 + payloadLength;
         var span = writer.GetSpan(4 + totalLength);
         var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength); offset += 4;
-        span[offset] = (byte)BrokerFrameKind.ArmAndScan; offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], specBytes.Length); offset += 4;
-        specBytes.CopyTo(span[offset..]); offset += specBytes.Length;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], nameBytes.Length); offset += 4;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)BrokerFrameKind.ArmAndScan;
+        offset += 1;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], specBytes.Length);
+        offset += 4;
+        specBytes.CopyTo(span[offset..]);
+        offset += specBytes.Length;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], nameBytes.Length);
+        offset += 4;
         foreach (var bytes in nameBytes)
         {
-            BinaryPrimitives.WriteInt32LittleEndian(span[offset..], bytes.Length); offset += 4;
-            bytes.CopyTo(span[offset..]); offset += bytes.Length;
+            BinaryPrimitives.WriteInt32LittleEndian(span[offset..], bytes.Length);
+            offset += 4;
+            bytes.CopyTo(span[offset..]);
+            offset += bytes.Length;
         }
+
         writer.Advance(offset);
     }
 
     public static void WriteStartWatch(IBufferWriter<byte> writer, string drivesSpec)
-        => WriteFrameWithString(writer, BrokerFrameKind.StartWatch, drivesSpec);
+    {
+        WriteFrameWithString(writer, BrokerFrameKind.StartWatch, drivesSpec);
+    }
 
     public static void WriteShutdown(IBufferWriter<byte> writer)
-        => WriteFrameNoPayload(writer, BrokerFrameKind.Shutdown);
+    {
+        WriteFrameNoPayload(writer, BrokerFrameKind.Shutdown);
+    }
 
     public static void WriteHeartbeat(IBufferWriter<byte> writer)
-        => WriteFrameNoPayload(writer, BrokerFrameKind.Heartbeat);
+    {
+        WriteFrameNoPayload(writer, BrokerFrameKind.Heartbeat);
+    }
 
     public static void WriteEndWatch(IBufferWriter<byte> writer)
-        => WriteFrameNoPayload(writer, BrokerFrameKind.EndWatch);
+    {
+        WriteFrameNoPayload(writer, BrokerFrameKind.EndWatch);
+    }
 
     public static void WriteEndWatchAck(IBufferWriter<byte> writer)
-        => WriteFrameNoPayload(writer, BrokerFrameKind.EndWatchAck);
+    {
+        WriteFrameNoPayload(writer, BrokerFrameKind.EndWatchAck);
+    }
 
     public static void WriteScanReady(IBufferWriter<byte> writer, string mmfName, long recordCount, long byteLength)
     {
@@ -109,12 +142,18 @@ public static class BrokerProtocol
         var totalLength = 1 + payloadLength; // kind byte + payload
         var span = writer.GetSpan(4 + totalLength);
         var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength); offset += 4;
-        span[offset] = (byte)BrokerFrameKind.ScanReady; offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], nameBytes.Length); offset += 4;
-        nameBytes.CopyTo(span[offset..]); offset += nameBytes.Length;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], recordCount); offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], byteLength); offset += 8;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)BrokerFrameKind.ScanReady;
+        offset += 1;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], nameBytes.Length);
+        offset += 4;
+        nameBytes.CopyTo(span[offset..]);
+        offset += nameBytes.Length;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], recordCount);
+        offset += 8;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], byteLength);
+        offset += 8;
         writer.Advance(offset);
     }
 
@@ -126,37 +165,54 @@ public static class BrokerProtocol
         var totalLength = 1 + payloadLength;
         var span = writer.GetSpan(4 + totalLength);
         var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength); offset += 4;
-        span[offset] = (byte)BrokerFrameKind.Cursor; offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length); offset += 4;
-        driveBytes.CopyTo(span[offset..]); offset += driveBytes.Length;
-        BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], cursor.JournalId); offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], cursor.NextUsn); offset += 8;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)BrokerFrameKind.Cursor;
+        offset += 1;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
+        offset += 4;
+        driveBytes.CopyTo(span[offset..]);
+        offset += driveBytes.Length;
+        BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], cursor.JournalId);
+        offset += 8;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], cursor.NextUsn);
+        offset += 8;
         writer.Advance(offset);
     }
 
-    public static void WriteJournalBatch(IBufferWriter<byte> writer, string drive, UsnJournalCursor cursor, UsnJournalEntry[] entries)
+    public static void WriteJournalBatch(IBufferWriter<byte> writer, string drive, UsnJournalCursor cursor,
+        UsnJournalEntry[] entries)
     {
         // We cannot compute the total size ahead of time without serializing entries first,
         // so serialize to a temp buffer then write the length prefix.
         var driveBytes = Encoding.Unicode.GetBytes(drive);
         var entryBuffer = new ArrayBufferWriter<byte>();
         foreach (var entry in entries)
+        {
             WriteEntry(entryBuffer, entry);
+        }
 
         // payload: [driveLen int32][driveBytes][journalId ulong][nextUsn long][entryCount int32][entryBytes]
         var payloadLength = 4 + driveBytes.Length + 8 + 8 + 4 + entryBuffer.WrittenCount;
         var totalLength = 1 + payloadLength;
         var span = writer.GetSpan(4 + totalLength);
         var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength); offset += 4;
-        span[offset] = (byte)BrokerFrameKind.JournalBatch; offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length); offset += 4;
-        driveBytes.CopyTo(span[offset..]); offset += driveBytes.Length;
-        BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], cursor.JournalId); offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], cursor.NextUsn); offset += 8;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], entries.Length); offset += 4;
-        entryBuffer.WrittenSpan.CopyTo(span[offset..]); offset += entryBuffer.WrittenCount;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)BrokerFrameKind.JournalBatch;
+        offset += 1;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
+        offset += 4;
+        driveBytes.CopyTo(span[offset..]);
+        offset += driveBytes.Length;
+        BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], cursor.JournalId);
+        offset += 8;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], cursor.NextUsn);
+        offset += 8;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], entries.Length);
+        offset += 4;
+        entryBuffer.WrittenSpan.CopyTo(span[offset..]);
+        offset += entryBuffer.WrittenCount;
         writer.Advance(offset);
     }
 
@@ -169,12 +225,18 @@ public static class BrokerProtocol
         var totalLength = 1 + payloadLength;
         var span = writer.GetSpan(4 + totalLength);
         var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength); offset += 4;
-        span[offset] = (byte)BrokerFrameKind.Error; offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length); offset += 4;
-        driveBytes.CopyTo(span[offset..]); offset += driveBytes.Length;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], messageBytes.Length); offset += 4;
-        messageBytes.CopyTo(span[offset..]); offset += messageBytes.Length;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)BrokerFrameKind.Error;
+        offset += 1;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
+        offset += 4;
+        driveBytes.CopyTo(span[offset..]);
+        offset += driveBytes.Length;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], messageBytes.Length);
+        offset += 4;
+        messageBytes.CopyTo(span[offset..]);
+        offset += messageBytes.Length;
         writer.Advance(offset);
     }
 
@@ -197,7 +259,7 @@ public static class BrokerProtocol
             BrokerFrameKind.Cursor => ReadCursorFrame(payload),
             BrokerFrameKind.JournalBatch => ReadJournalBatchFrame(payload),
             BrokerFrameKind.Error => ReadErrorFrame(payload),
-            _ => throw new InvalidDataException($"Unknown frame kind: {kind}"),
+            _ => throw new InvalidDataException($"Unknown frame kind: {kind}")
         };
     }
 
@@ -220,17 +282,23 @@ public static class BrokerProtocol
         var totalLength = 1 + payloadLength;
         var span = writer.GetSpan(4 + totalLength);
         var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength); offset += 4;
-        span[offset] = (byte)kind; offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], valueBytes.Length); offset += 4;
-        valueBytes.CopyTo(span[offset..]); offset += valueBytes.Length;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)kind;
+        offset += 1;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], valueBytes.Length);
+        offset += 4;
+        valueBytes.CopyTo(span[offset..]);
+        offset += valueBytes.Length;
         writer.Advance(offset);
     }
 
     static string ReadString(ReadOnlySpan<byte> span, int offset, out int end)
     {
-        var length = BinaryPrimitives.ReadInt32LittleEndian(span[offset..]); offset += 4;
-        var value = Encoding.Unicode.GetString(span.Slice(offset, length)); offset += length;
+        var length = BinaryPrimitives.ReadInt32LittleEndian(span[offset..]);
+        offset += 4;
+        var value = Encoding.Unicode.GetString(span.Slice(offset, length));
+        offset += length;
         end = offset;
         return value;
     }
@@ -238,17 +306,22 @@ public static class BrokerProtocol
     static BrokerFrame ReadArmAndScanFrame(ReadOnlySpan<byte> payload)
     {
         var drivesSpec = ReadString(payload, 0, out var offset);
-        var nameCount = BinaryPrimitives.ReadInt32LittleEndian(payload[offset..]); offset += 4;
+        var nameCount = BinaryPrimitives.ReadInt32LittleEndian(payload[offset..]);
+        offset += 4;
         var keepFileNames = new string[nameCount];
         for (var i = 0; i < nameCount; i++)
+        {
             keepFileNames[i] = ReadString(payload, offset, out offset);
+        }
+
         return BrokerFrame.ArmAndScan(drivesSpec, keepFileNames);
     }
 
     static BrokerFrame ReadScanReadyFrame(ReadOnlySpan<byte> payload)
     {
         var mmfName = ReadString(payload, 0, out var offset);
-        var recordCount = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]); offset += 8;
+        var recordCount = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        offset += 8;
         var byteLength = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
         return BrokerFrame.ScanReady(mmfName, recordCount, byteLength);
     }
@@ -256,7 +329,8 @@ public static class BrokerProtocol
     static BrokerFrame ReadCursorFrame(ReadOnlySpan<byte> payload)
     {
         var drive = ReadString(payload, 0, out var offset);
-        var journalId = BinaryPrimitives.ReadUInt64LittleEndian(payload[offset..]); offset += 8;
+        var journalId = BinaryPrimitives.ReadUInt64LittleEndian(payload[offset..]);
+        offset += 8;
         var nextUsn = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
         return BrokerFrame.ArmedCursor(drive, new UsnJournalCursor(journalId, nextUsn));
     }
@@ -264,15 +338,19 @@ public static class BrokerProtocol
     static BrokerFrame ReadJournalBatchFrame(ReadOnlySpan<byte> payload)
     {
         var drive = ReadString(payload, 0, out var offset);
-        var journalId = BinaryPrimitives.ReadUInt64LittleEndian(payload[offset..]); offset += 8;
-        var nextUsn = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]); offset += 8;
-        var entryCount = BinaryPrimitives.ReadInt32LittleEndian(payload[offset..]); offset += 4;
+        var journalId = BinaryPrimitives.ReadUInt64LittleEndian(payload[offset..]);
+        offset += 8;
+        var nextUsn = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        offset += 8;
+        var entryCount = BinaryPrimitives.ReadInt32LittleEndian(payload[offset..]);
+        offset += 4;
         var entries = new UsnJournalEntry[entryCount];
         for (var i = 0; i < entryCount; i++)
         {
             entries[i] = ReadEntry(payload[offset..], out var entryConsumed);
             offset += entryConsumed;
         }
+
         return BrokerFrame.JournalBatch(drive, new UsnJournalCursor(journalId, nextUsn), entries);
     }
 

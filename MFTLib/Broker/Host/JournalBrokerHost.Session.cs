@@ -3,14 +3,14 @@ namespace MFTLib;
 public sealed partial class JournalBrokerHost
 {
     /// <summary>
-    /// Serve a broker session over <paramref name="stream"/> (the pipe). Reads
-    /// request frames in a loop. On <see cref="BrokerFrameKind.ArmAndScan"/>, for
-    /// each drive: arm the cursor, emit a <c>Cursor</c> frame, write the scan
-    /// payload into the caller-created map via <paramref name="mmfWriter"/>, emit
-    /// <c>ScanReady</c>, run catch-up, emit a <c>JournalBatch</c>. Per-drive
-    /// failures emit an <c>Error</c> frame and continue (non-fatal contract).
-    /// Returns on <c>Shutdown</c>, on EOF, or after one arm-and-scan when
-    /// <paramref name="oneShot"/> is set (a single-UAC CLI-style path).
+    ///     Serve a broker session over <paramref name="stream" /> (the pipe). Reads
+    ///     request frames in a loop. On <see cref="BrokerFrameKind.ArmAndScan" />, for
+    ///     each drive: arm the cursor, emit a <c>Cursor</c> frame, write the scan
+    ///     payload into the caller-created map via <paramref name="mmfWriter" />, emit
+    ///     <c>ScanReady</c>, run catch-up, emit a <c>JournalBatch</c>. Per-drive
+    ///     failures emit an <c>Error</c> frame and continue (non-fatal contract).
+    ///     Returns on <c>Shutdown</c>, on EOF, or after one arm-and-scan when
+    ///     <paramref name="oneShot" /> is set (a single-UAC CLI-style path).
     /// </summary>
     public async Task ServeAsync(Stream stream, IMmfWriter mmfWriter, bool oneShot, CancellationToken cancellationToken)
     {
