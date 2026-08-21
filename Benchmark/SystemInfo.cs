@@ -3,7 +3,7 @@ using System.Management;
 
 namespace Benchmark;
 
-#pragma warning disable CA1416 // Validate platform compatibility — Benchmark is Windows-only
+#pragma warning disable CA1416 // Validate platform compatibility - Benchmark is Windows-only
 
 class SystemInfo
 {
