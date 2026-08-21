@@ -44,41 +44,6 @@ bool FileNameMatches(const WCHAR* name, uint8_t nameLen, const FilterSpec& filte
     return false;
 }
 
-// Copy NTFS WCHAR units (UTF-16, char16_t) to wchar_t, combining surrogate pairs on Linux.
-// Returns the number of wchar_t codepoints written.
-uint16_t CopyNtfsNameUnits(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src, uint16_t srcLen) {
-    uint16_t out = 0;
-    for (uint16_t i = 0; i < srcLen && out < dstCapacity; i++) {
-        uint16_t unit;
-        memcpy(&unit, src + i, sizeof(WCHAR));
-#ifndef _WIN32
-        if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < srcLen) {
-            uint16_t low;
-            memcpy(&low, src + i + 1, sizeof(WCHAR));
-            if (low >= 0xDC00 && low <= 0xDFFF) {
-                uint32_t codepoint = 0x10000U + (static_cast<uint32_t>(unit - 0xD800) << 10) + (low - 0xDC00);
-                dst[out++] = static_cast<wchar_t>(codepoint);
-                i++;
-                continue;
-            }
-        }
-#endif
-        dst[out++] = static_cast<wchar_t>(unit);
-    }
-    return out;
-}
-
-// Copy a NTFS WCHAR name (UTF-16, char16_t units) into a wchar_t buffer.
-// On Windows (wchar_t==uint16_t) this is a direct unit copy.
-// On Linux (wchar_t==uint32_t) surrogate pairs are combined into a single codepoint.
-// Always null-terminates if there's room (callers pass dstCapacity > srcLen in practice).
-void CopyNtfsName(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src, uint16_t srcLen) {
-    uint16_t out = CopyNtfsNameUnits(dst, dstCapacity, src, srcLen);
-    if (out < dstCapacity) {
-        dst[out] = L'\0';
-    }
-}
-
 bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, uint32_t* siAttributes,
                                    bool* sawStandardInformation) {
     constexpr size_t kResidentHeaderSize = 0x18;
@@ -158,9 +123,8 @@ PFILE_NAME FindNamedAttribute(PFILE_RECORD_SEGMENT_HEADER rec, ParseGeometry geo
 
 // Scan one file record. If it is an in-use, non-extension record with a non-DOS
 // FileName that passes the filter, fill *outEntry and return true. Side effect:
-// stores the name into the path-lookup table when one is provided. Shared by
-// ProcessRecordSlice (worker threads) and ProcessRecordBatch.
-bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext& scan, MftFileEntry* outEntry) {
+// stores the name into the path-lookup table when one is provided.
+bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext& scan, ParsedEntry* outEntry) {
     auto* rec = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recPtr);
 
     if (rec->MultiSectorHeader.Magic != 0x454C4946) {
@@ -194,23 +158,21 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
         return false;
     }
 
-    memset(outEntry, 0, sizeof(MftFileEntry));
     outEntry->recordNumber = recordIndex;
     outEntry->parentRecordNumber = parent;
     outEntry->flags = rec->Flags;
-    outEntry->fileNameLength = nameAttr->FileNameLength;
     outEntry->fileAttributes = sawStandardInformation ? siAttributes : nameAttr->FileAttributes;
-    // FileNameLength is UCHAR (max 255) which fits in fileName[260]; no clamping needed.
-    CopyNtfsName(outEntry->fileName, 260, nameAttr->FileName, nameAttr->FileNameLength);
+    outEntry->name = nameAttr->FileName;
+    outEntry->nameLength = nameAttr->FileNameLength;
     return true;
 }
 
 }  // namespace
 
-uint16_t ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalRecords, wchar_t* pathBuf,
-                     uint16_t pathBufSize) {
+bool ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalRecords, std::vector<uint16_t>& path) {
+    path.clear();
     struct Component {
-        const uint8_t* nameBytes;
+        const uint16_t* nameUnits;
         uint8_t len;
     };
     std::array<Component, 128> stack = {};
@@ -228,68 +190,150 @@ uint16_t ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t to
         if (lookup.nameLens[current] == 0) {
             break;
         }
-        stack[depth].nameBytes = lookup.namePool + lookup.nameOffsets[current];
+        stack[depth].nameUnits = reinterpret_cast<const uint16_t*>(lookup.namePool + lookup.nameOffsets[current]);
         stack[depth].len = lookup.nameLens[current];
         depth++;
         current = lookup.parents[current];
     }
 
-    uint16_t pos = 0;
-    for (int i = depth - 1; i >= 0; i--) {
-        if (pos + stack[i].len + 1 >= pathBufSize) {
-            break;
-        }
-        if (pos > 0) {
-            pathBuf[pos++] = L'\\';
-        }
-        const uint8_t* src = stack[i].nameBytes;
-        uint8_t len = stack[i].len;
-        // Copy with surrogate-pair combining; Clamp to remaining buffer space.
-        auto remaining = static_cast<uint16_t>(pathBufSize - pos);
-        uint16_t written = CopyNtfsNameUnits(pathBuf + pos, remaining, reinterpret_cast<const WCHAR*>(src),
-                                             static_cast<uint16_t>(len));
-        pos += written;
+    if (depth == 0) {
+        return true;
     }
-    pathBuf[pos] = L'\0';
-    return pos;
+
+    auto totalUnits = static_cast<uint64_t>(depth - 1);
+    for (int i = 0; i < depth; i++) {
+        totalUnits += stack[i].len;
+    }
+
+    if (totalUnits > MAX_NTFS_PATH_UNITS) {
+        return false;
+    }
+
+    path.resize(static_cast<size_t>(totalUnits));
+    size_t pos = 0;
+    for (int i = depth - 1; i >= 0; i--) {
+        if (pos > 0) {
+            path[pos++] = static_cast<uint16_t>(L'\\');
+        }
+        const uint16_t* src = stack[i].nameUnits;
+        uint8_t len = stack[i].len;
+        memcpy(path.data() + pos, src, static_cast<size_t>(len) * sizeof(uint16_t));
+        pos += len;
+    }
+    return true;
+}
+
+namespace {
+
+bool EnsureEntryCapacity(CompactOutput& output, uint64_t sliceEntryCount, wchar_t* errorMessage) {
+    if (output.entryCount + sliceEntryCount <= output.entryCapacity) {
+        return true;
+    }
+    uint64_t newCapacity = output.entryCapacity == 0 ? 1024 : output.entryCapacity;
+    while (output.entryCount + sliceEntryCount > newCapacity) {
+        if (newCapacity > UINT64_MAX / 2) {
+            SetErrorMessageBuffer(errorMessage, 256, L"Entry array capacity overflow");
+            return false;
+        }
+        newCapacity *= 2;
+    }
+    if (newCapacity > SIZE_MAX / sizeof(MftCompactEntry)) {
+        SetErrorMessageBuffer(errorMessage, 256, L"Entry array capacity overflow");
+        return false;
+    }
+    auto* grown = ShouldFailAlloc() ? nullptr
+                                    : static_cast<MftCompactEntry*>(realloc(
+                                          output.entries, static_cast<size_t>(newCapacity) * sizeof(MftCompactEntry)));
+    if (grown == nullptr) {
+        SetErrorMessageBuffer(errorMessage, 256, L"Failed to grow entry array");
+        return false;
+    }
+    output.entries = grown;
+    output.entryCapacity = newCapacity;
+    return true;
+}
+
+bool EnsureStringCapacity(CompactOutput& output, uint64_t sliceStringUnits, wchar_t* errorMessage) {
+    if (output.stringUnits + sliceStringUnits <= output.stringCapacity) {
+        return true;
+    }
+    uint64_t newCapacity = output.stringCapacity == 0 ? 1024 : output.stringCapacity;
+    while (output.stringUnits + sliceStringUnits > newCapacity) {
+        if (newCapacity > UINT64_MAX / 2) {
+            SetErrorMessageBuffer(errorMessage, 256, L"String pool capacity overflow");
+            return false;
+        }
+        newCapacity *= 2;
+    }
+    if (newCapacity > SIZE_MAX / sizeof(uint16_t)) {
+        SetErrorMessageBuffer(errorMessage, 256, L"String pool capacity overflow");
+        return false;
+    }
+    auto* grown =
+        ShouldFailAlloc()
+            ? nullptr
+            : static_cast<uint16_t*>(realloc(output.strings, static_cast<size_t>(newCapacity) * sizeof(uint16_t)));
+    if (grown == nullptr) {
+        SetErrorMessageBuffer(errorMessage, 256, L"Failed to grow string pool");
+        return false;
+    }
+    output.strings = grown;
+    output.stringCapacity = newCapacity;
+    return true;
+}
+
+}  // namespace
+
+bool AppendSlice(CompactOutput& output, const SliceResult& slice, wchar_t* errorMessage) {
+    if (slice.entries.empty()) {
+        return true;
+    }
+
+    uint64_t sliceEntryCount = slice.entries.size();
+    uint64_t sliceStringUnits = slice.strings.size();
+
+    if (!EnsureEntryCapacity(output, sliceEntryCount, errorMessage)) {
+        return false;
+    }
+
+    if (sliceStringUnits > 0 && !EnsureStringCapacity(output, sliceStringUnits, errorMessage)) {
+        return false;
+    }
+
+    uint64_t baseOffset = output.stringUnits;
+    if (sliceStringUnits > 0) {
+        memcpy(output.strings + output.stringUnits, slice.strings.data(),
+               static_cast<size_t>(sliceStringUnits) * sizeof(uint16_t));
+        output.stringUnits += sliceStringUnits;
+    }
+
+    for (const auto& compact : slice.entries) {
+        MftCompactEntry patched = compact;
+        patched.stringOffset += baseOffset;
+        output.entries[output.entryCount++] = patched;
+    }
+
+    return true;
 }
 
 void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
                         const ScanContext& scan) {
     for (uint64_t i = range.start; i < range.end; i++) {
-        MftFileEntry entry;
+        ParsedEntry entry{};
         if (ScanRecordForEntry(buffer + (static_cast<size_t>(scan.geometry.recordSize) * i), recordBase + i, scan,
                                &entry)) {
-            slice->entries.push_back(entry);
+            slice->append(entry);
         }
     }
 }
 
-void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, EntryBuffer& entries,
+void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, SliceResult& batchSlice,
                         const ScanContext& scan) {
     for (uint64_t i = 0; i < filesToLoad; i++, recordIndex++) {
-        MftFileEntry entry;
-        if (!ScanRecordForEntry(buffer + (static_cast<size_t>(scan.geometry.recordSize) * i), recordIndex, scan,
-                                &entry)) {
-            continue;
+        ParsedEntry entry{};
+        if (ScanRecordForEntry(buffer + (static_cast<size_t>(scan.geometry.recordSize) * i), recordIndex, scan,
+                               &entry)) {
+            batchSlice.append(entry);
         }
-
-        if (entries.usedCount >= entries.capacity) {
-            uint64_t newCapacity = entries.capacity * 2;
-            auto* grown = ShouldFailAlloc()
-                              ? nullptr
-                              : static_cast<MftFileEntry*>(realloc(
-                                    entries.result->entries, static_cast<size_t>(newCapacity) * sizeof(MftFileEntry)));
-            if (grown == nullptr) {
-                SetErrorMessage(entries.result->errorMessage, L"Failed to grow entry array");
-                entries.result->usedRecords = entries.usedCount;
-                return;
-            }
-            entries.capacity = newCapacity;
-            entries.result->entries = grown;
-        }
-
-        entries.result->entries[entries.usedCount] = entry;
-        entries.usedCount++;
     }
 }

@@ -33,6 +33,10 @@
 
 ### Improvements
 
+- Versioned Compact Native ABI (version 2): replaced fixed 536/2072-byte entry buffers with 32-byte packed `MftCompactEntry` and separate string pools (`MftParseResult`), reducing native parse and path-resolution memory footprint
+- Native path resolution now supports variable-length paths up to 32767 UTF-16 units without truncation at 1024-character boundaries
+- Graceful allocation-failure fallback in path resolution: out-of-memory during path resolution preserves raw parsed file entries and filenames without raising errors
+- Added native and managed ABI compatibility checks via `GetMftNativeAbiVersion()` and `EnsureCompatibleNativeAbi()`
 - Native path resolution now parallelizes across worker threads (same fan-out as fixup+parse) when `numThreads > 1`, with a serial fallback
 - Path name-pool exhaustion is now surfaced via the native `errorMessage` ("Path name pool exhausted; N names dropped, some paths truncated") instead of silently truncating
 - Self-elevation now returns `false` without attempting UAC when no interactive desktop is available (for example, CI or a Session 0 service)

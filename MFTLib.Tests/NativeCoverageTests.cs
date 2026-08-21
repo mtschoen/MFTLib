@@ -150,7 +150,7 @@ public class NativeCoverageTests
     }
 
     [TestMethod]
-    public void ParseFromFile_DeepHierarchy_TruncatesAtPathBufferBoundary()
+    public void ParseFromFile_DeepHierarchy_ResolvesLongPathBeyond1024Units()
     {
         var path = Path.GetTempFileName();
         try
@@ -179,8 +179,8 @@ public class NativeCoverageTests
             var records = MftVolume.ParseMFTFromFile(path, null, MatchFlags.ResolvePaths, out _);
             var deepest = records.Single(record => record.RecordNumber == chain[^1].RecordNumber);
             Assert.IsNotNull(deepest.FullPath);
-            Assert.IsTrue(deepest.FullPath.Length < expectedLength);
-            Assert.IsTrue(deepest.FullPath.Length < 1024);
+            Assert.AreEqual(expectedLength, deepest.FullPath.Length);
+            Assert.IsTrue(deepest.FullPath.Length >= 1024);
         }
         finally
         {
@@ -234,7 +234,7 @@ public class NativeCoverageTests
         {
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 100, 256);
-            MFTLibNative.NativeSetAllocFailCountdown(6);
+            MFTLibNative.NativeSetAllocFailCountdown(7);
 
             var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -440,6 +440,40 @@ public class NativeCoverageTests
     [TestMethod]
     [DataRow(MatchFlags.None, 5)]
     [DataRow(MatchFlags.ResolvePaths, 6)]
+    public void ParseFromFile_AllocFailOnStrings_ReturnsErrorMessage(MatchFlags matchFlags, int allocationToFail)
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MftVolume.GenerateSyntheticMFT(path, 10, 256);
+
+            MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, matchFlags, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                var errorMessage = result.ErrorMessage;
+                Assert.IsTrue(errorMessage!.Contains("string pool"));
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [TestMethod]
+    [DataRow(MatchFlags.None, 6)]
+    [DataRow(MatchFlags.ResolvePaths, 7)]
     public void ParseFromFile_AllocFailOnMergeGrow_ReturnsErrorMessage(MatchFlags matchFlags, int allocationToFail)
     {
         var path = Path.GetTempFileName();
@@ -1071,8 +1105,8 @@ public class NativeCoverageTests
             MFTLibNative.NativeSetMaxThreads(1);
 
             // Alloc countdown: 1=result calloc, 2=VirtualAlloc buf0, 3=VirtualAlloc buf1,
-            // 4=entries malloc, 5=realloc when capacity exceeded
-            MFTLibNative.NativeSetAllocFailCountdown(5);
+            // 4=entries malloc, 5=strings malloc, 6=realloc when capacity exceeded
+            MFTLibNative.NativeSetAllocFailCountdown(6);
 
             var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);

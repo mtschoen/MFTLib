@@ -7,14 +7,7 @@ namespace MFTLib;
 
 public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 {
-    // Layouts mirror mft_api.h (pack(1)):
-    //   MftFileEntry:  8+8+2+2+4 header, 260 wchar_t fileName → 24 + 520 = 544 bytes
-    //   MftPathEntry:  8+8+2+2+4 header, 1024 wchar_t path    → 24 + 2048 = 2072 bytes
-    internal const int NativeEntrySize = 544;
-    internal const int NativePathEntrySize = 2072;
-    internal const int NativeStringOffset = 24; // offset of fileName/path after fileAttributes
-
-    internal static int ParallelThreshold = 500_000;
+    internal static int ParallelThreshold { get; set; } = 500_000;
     readonly char _driveLetter;
     readonly MftParseResult _result;
     bool _disposed;
@@ -31,6 +24,22 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
             MFTLibNative.FreeMftResult(resultPtr);
             _resultPtr = IntPtr.Zero;
             throw new InvalidOperationException(_result.ErrorMessage);
+        }
+
+        if (_result.AbiVersion != MFTLibNative.ExpectedMftNativeAbiVersion)
+        {
+            MFTLibNative.FreeMftResult(resultPtr);
+            _resultPtr = IntPtr.Zero;
+            throw new InvalidOperationException(
+                $"MFTLib managed/native ABI mismatch: managed expects {MFTLibNative.ExpectedMftNativeAbiVersion}, native reports {_result.AbiVersion}.");
+        }
+
+        if (_result.EntryStride != MFTLibNative.NativeCompactEntrySize)
+        {
+            MFTLibNative.FreeMftResult(resultPtr);
+            _resultPtr = IntPtr.Zero;
+            throw new InvalidOperationException(
+                $"MFTLib managed/native ABI mismatch: managed expects stride {MFTLibNative.NativeCompactEntrySize}, native reports {_result.EntryStride}.");
         }
 
         Timings = new MftParseTimings(
@@ -59,11 +68,21 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     public IEnumerator<MftRecord> GetEnumerator()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        return EnumerateRecords();
+    }
 
+    IEnumerator<MftRecord> EnumerateRecords()
+    {
         for (ulong i = 0; i < _result.UsedRecords; i++)
         {
-            yield return _result.PathEntries != IntPtr.Zero ? GetPathEntry(i) : GetEntry(i);
+            yield return GetEntry(i);
         }
+    }
+
+    unsafe MftRecord GetEntry(ulong index)
+    {
+        var active = GetActiveTableAndPool();
+        return GetCompactEntry(active.Table, active.Pool, active.PoolUnits, index, active.IsPath, _driveLetter);
     }
 
     IEnumerator IEnumerable.GetEnumerator()
@@ -77,67 +96,61 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         var count = _result.UsedRecords;
         var records = new MftRecord[count];
 
-        byte* basePtr;
-        EntryReader getEntry;
-        if (_result.PathEntries != IntPtr.Zero)
-        {
-            basePtr = (byte*)_result.PathEntries;
-            getEntry = GetPathEntryUnsafe;
-        }
-        else
-        {
-            basePtr = (byte*)_result.Entries;
-            getEntry = GetEntryUnsafe;
-        }
+        var active = GetActiveTableAndPool();
+        var driveLetter = _driveLetter;
 
         if (count >= (ulong)ParallelThreshold)
         {
-            Parallel.For(0L, (long)count, i => records[i] = getEntry(basePtr, (ulong)i).Materialize());
+            Parallel.For(0L, (long)count, i => records[i] = GetCompactEntry(active.Table, active.Pool, active.PoolUnits, (ulong)i, active.IsPath, driveLetter).Materialize());
         }
         else
         {
             for (ulong i = 0; i < count; i++)
             {
-                records[i] = getEntry(basePtr, i).Materialize();
+                records[i] = GetCompactEntry(active.Table, active.Pool, active.PoolUnits, i, active.IsPath, driveLetter).Materialize();
             }
         }
 
         return records;
     }
 
-    unsafe MftRecord GetEntry(ulong index)
+    readonly unsafe struct ActivePool(byte* table, ushort* pool, ulong poolUnits, bool isPath)
     {
-        return GetEntryUnsafe((byte*)_result.Entries, index);
+        public readonly byte* Table = table;
+        public readonly ushort* Pool = pool;
+        public readonly ulong PoolUnits = poolUnits;
+        public readonly bool IsPath = isPath;
     }
 
-    unsafe MftRecord GetEntryUnsafe(byte* basePtr, ulong index)
+    unsafe ActivePool GetActiveTableAndPool()
     {
-        var ptr = basePtr + index * NativeEntrySize;
-        var recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
-        var parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
-        var flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
-        var nameLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
-        var fileAttributes = (FileAttributes)Unsafe.ReadUnaligned<uint>(ptr + 20);
-        return new MftRecord(recordNumber, parentRecordNumber, flags, fileAttributes,
-            new NativeStrings((IntPtr)(ptr + NativeStringOffset), nameLength, IntPtr.Zero, 0), _driveLetter);
+        if (_result.PathEntries != IntPtr.Zero && _result.PathStrings != IntPtr.Zero)
+        {
+            return new ActivePool((byte*)_result.PathEntries, (ushort*)_result.PathStrings, _result.PathStringUnits, true);
+        }
+        return new ActivePool((byte*)_result.Entries, (ushort*)_result.EntryStrings, _result.EntryStringUnits, false);
     }
 
-    unsafe MftRecord GetPathEntry(ulong index)
+    static unsafe MftRecord GetCompactEntry(
+        byte* table, ushort* pool, ulong poolUnits, ulong index, bool isPath, char driveLetter)
     {
-        return GetPathEntryUnsafe((byte*)_result.PathEntries, index);
-    }
+        var row = table + checked((nuint)index * MFTLibNative.NativeCompactEntrySize);
+        var recordNumber = Unsafe.ReadUnaligned<ulong>(row);
+        var parentRecordNumber = Unsafe.ReadUnaligned<ulong>(row + 8);
+        var stringOffset = Unsafe.ReadUnaligned<ulong>(row + 16);
+        var fileAttributes = (FileAttributes)Unsafe.ReadUnaligned<uint>(row + 24);
+        var flags = Unsafe.ReadUnaligned<ushort>(row + 28);
+        var stringLength = Unsafe.ReadUnaligned<ushort>(row + 30);
 
-    unsafe MftRecord GetPathEntryUnsafe(byte* basePtr, ulong index)
-    {
-        var ptr = basePtr + index * NativePathEntrySize;
-        var recordNumber = Unsafe.ReadUnaligned<ulong>(ptr);
-        var parentRecordNumber = Unsafe.ReadUnaligned<ulong>(ptr + 8);
-        var flags = Unsafe.ReadUnaligned<ushort>(ptr + 16);
-        var pathLength = Unsafe.ReadUnaligned<ushort>(ptr + 18);
-        var fileAttributes = (FileAttributes)Unsafe.ReadUnaligned<uint>(ptr + 20);
-        return new MftRecord(recordNumber, parentRecordNumber, flags, fileAttributes,
-            new NativeStrings(IntPtr.Zero, 0, (IntPtr)(ptr + NativeStringOffset), pathLength), _driveLetter);
-    }
+        if (stringOffset > poolUnits || stringLength > poolUnits - stringOffset)
+        {
+            throw new InvalidDataException("Native MFT string offset is outside its pool");
+        }
 
-    unsafe delegate MftRecord EntryReader(byte* basePtr, ulong index);
+        var pointer = stringLength == 0 ? IntPtr.Zero : (IntPtr)(pool + stringOffset);
+        var strings = isPath
+            ? new NativeStrings(IntPtr.Zero, 0, pointer, stringLength)
+            : new NativeStrings(pointer, stringLength, IntPtr.Zero, 0);
+        return new MftRecord(recordNumber, parentRecordNumber, flags, fileAttributes, strings, driveLetter);
+    }
 }

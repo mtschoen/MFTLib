@@ -1,4 +1,4 @@
-// mft-cli.cpp — small Linux CLI over libMFTLibNative.so for dumping and
+// mft-cli.cpp - small Linux CLI over libMFTLibNative.so for dumping and
 // searching parsed $MFT files.
 //
 // Usage:
@@ -35,8 +35,47 @@ void print_usage(const char* prog) {
                  prog, static_cast<unsigned long long>(kDumpSampleCount), prog);
 }
 
-// Encode a wchar_t buffer (codepoints, possibly zero-padded after the name)
-// as UTF-8 for printing/comparison. Handles full Unicode range.
+namespace {
+
+void append_utf8_codepoint(std::string& out, uint32_t codePoint) {
+    if (codePoint < 0x80) {
+        out.push_back(static_cast<char>(codePoint));
+    } else if (codePoint < 0x800) {
+        out.push_back(static_cast<char>(0xC0 | (codePoint >> 6)));
+        out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    } else if (codePoint < 0x10000) {
+        out.push_back(static_cast<char>(0xE0 | (codePoint >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    } else if (codePoint <= 0x10FFFF) {
+        out.push_back(static_cast<char>(0xF0 | (codePoint >> 18)));
+        out.push_back(static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    } else {
+        out.push_back('?');
+    }
+}
+
+}  // namespace
+
+std::string utf16_to_utf8(const uint16_t* utf16Units, size_t unitCount) {
+    std::string out;
+    out.reserve(unitCount);
+    for (size_t i = 0; i < unitCount; i++) {
+        uint32_t codePoint = utf16Units[i];
+        if (codePoint >= 0xD800 && codePoint <= 0xDBFF && i + 1 < unitCount) {
+            uint32_t low = utf16Units[i + 1];
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                codePoint = 0x10000U + ((codePoint - 0xD800) << 10) + (low - 0xDC00);
+                i++;
+            }
+        }
+        append_utf8_codepoint(out, codePoint);
+    }
+    return out;
+}
+
 std::string wide_to_utf8(const wchar_t* wideStr, size_t maxLen) {
     std::string out;
     out.reserve(maxLen);
@@ -78,7 +117,7 @@ bool icontains_ascii(const std::string& haystack, const std::string& needle) {
 
 const char* type_marker(uint16_t flags) { return ((flags & 0x2) != 0) ? "/" : ""; }
 
-void print_entry(const MftFileEntry& entry, const std::string& name) {
+void print_entry(const MftCompactEntry& entry, const std::string& name) {
     std::printf("rec=%-8llu parent=%-8llu flags=0x%04x attr=0x%08x %s%s\n",
                 static_cast<unsigned long long>(entry.recordNumber),
                 static_cast<unsigned long long>(entry.parentRecordNumber), static_cast<unsigned>(entry.flags),
@@ -88,12 +127,14 @@ void print_entry(const MftFileEntry& entry, const std::string& name) {
 int do_dump(const MftParseResult* parseResult) {
     uint64_t shown = 0;
     std::printf("First %llu filenames:\n", static_cast<unsigned long long>(kDumpSampleCount));
+    const auto* pool = parseResult->pathStrings != nullptr ? parseResult->pathStrings : parseResult->entryStrings;
+    const auto* entries = parseResult->pathEntries != nullptr ? parseResult->pathEntries : parseResult->entries;
     for (uint64_t i = 0; i < parseResult->usedRecords && shown < kDumpSampleCount; i++) {
-        const auto& entry = parseResult->entries[i];
-        if (entry.fileNameLength == 0) {
+        const auto& entry = entries[i];
+        if (entry.stringLength == 0 || pool == nullptr) {
             continue;
         }
-        std::string name = wide_to_utf8(entry.fileName, entry.fileNameLength);
+        std::string name = utf16_to_utf8(pool + entry.stringOffset, entry.stringLength);
         print_entry(entry, name);
         shown++;
     }
@@ -102,12 +143,14 @@ int do_dump(const MftParseResult* parseResult) {
 
 int do_search(const MftParseResult* parseResult, const std::string& pattern) {
     uint64_t hits = 0;
+    const auto* pool = parseResult->pathStrings != nullptr ? parseResult->pathStrings : parseResult->entryStrings;
+    const auto* entries = parseResult->pathEntries != nullptr ? parseResult->pathEntries : parseResult->entries;
     for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
-        const auto& entry = parseResult->entries[i];
-        if (entry.fileNameLength == 0) {
+        const auto& entry = entries[i];
+        if (entry.stringLength == 0 || pool == nullptr) {
             continue;
         }
-        std::string name = wide_to_utf8(entry.fileName, entry.fileNameLength);
+        std::string name = utf16_to_utf8(pool + entry.stringOffset, entry.stringLength);
         if (icontains_ascii(name, pattern)) {
             print_entry(entry, name);
             hits++;

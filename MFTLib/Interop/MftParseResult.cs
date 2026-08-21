@@ -7,7 +7,7 @@ struct MftParseResult
 {
     public ulong TotalRecords;
     public ulong UsedRecords;
-    public IntPtr Entries; // MftFileEntry*, owned by native side
+    public IntPtr Entries; // MftCompactEntry*, owned by native side
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
     public string ErrorMessage;
@@ -18,5 +18,11 @@ struct MftParseResult
     public double ParseTimeMs;
     public double TotalTimeMs;
 
-    public IntPtr PathEntries; // MftPathEntry*, set when path resolution is requested
+    public IntPtr PathEntries; // MftCompactEntry*, set when path resolution is requested
+    public IntPtr EntryStrings; // ushort*
+    public ulong EntryStringUnits;
+    public IntPtr PathStrings; // ushort*
+    public ulong PathStringUnits;
+    public uint AbiVersion;
+    public uint EntryStride;
 }

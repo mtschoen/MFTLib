@@ -27,7 +27,12 @@ public class NativeMockTests
     [TestMethod]
     public void ParseMFTFromFile_NativeErrorMessage_ThrowsWithMessage()
     {
-        var errorResult = new MftParseResult { ErrorMessage = "Volume is not NTFS" };
+        var errorResult = new MftParseResult
+        {
+            ErrorMessage = "Volume is not NTFS",
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = MFTLibNative.NativeCompactEntrySize
+        };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(errorResult, resultPtr, false);
 
@@ -64,20 +69,21 @@ public class NativeMockTests
     {
         FileUtilities.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
 
-        // Build a synthetic MftParseResult with one entry (no path data)
-        var entrySize = MftResult.NativeEntrySize;
+        // Build a synthetic MftParseResult with one compact entry and string pool
+        var entrySize = (int)MFTLibNative.NativeCompactEntrySize;
         var entryBuf = stackalloc byte[entrySize];
         new Span<byte>(entryBuf, entrySize).Clear();
 
-        // recordNumber = 100, parentRecordNumber = 5, flags = 1 (InUse)
+        var stringChars = stackalloc char[4];
+        "test".AsSpan().CopyTo(new Span<char>(stringChars, 4));
+
+        // recordNumber = 100, parentRecordNumber = 5, stringOffset = 0, flags = 1 (InUse), stringLength = 4
         *(ulong*)entryBuf = 100;
         *(ulong*)(entryBuf + 8) = 5;
-        *(ushort*)(entryBuf + 16) = 1;
-
-        // nameLength = 4 chars, name = "test"
-        *(ushort*)(entryBuf + 18) = 4;
-        var nameSpan = new Span<char>(entryBuf + MftResult.NativeStringOffset, 4);
-        "test".AsSpan().CopyTo(nameSpan);
+        *(ulong*)(entryBuf + 16) = 0;
+        *(uint*)(entryBuf + 24) = 0;
+        *(ushort*)(entryBuf + 28) = 1;
+        *(ushort*)(entryBuf + 30) = 4;
 
         // Build MftParseResult with PathEntries = IntPtr.Zero (no paths)
         var result = new MftParseResult
@@ -85,7 +91,13 @@ public class NativeMockTests
             TotalRecords = 1,
             UsedRecords = 1,
             Entries = (IntPtr)entryBuf,
-            PathEntries = IntPtr.Zero
+            EntryStrings = (IntPtr)stringChars,
+            EntryStringUnits = 4,
+            PathEntries = IntPtr.Zero,
+            PathStrings = IntPtr.Zero,
+            PathStringUnits = 0,
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = MFTLibNative.NativeCompactEntrySize
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());

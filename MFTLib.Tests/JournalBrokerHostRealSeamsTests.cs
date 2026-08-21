@@ -35,38 +35,51 @@ public class JournalBrokerHostRealSeamsTests
     // ToScanRecords' `!record.InUse || string.IsNullOrEmpty(record.FullPath)` filter.
     static unsafe IntPtr BuildThreePathRecordsResult()
     {
-        var stride = MftResult.NativePathEntrySize;
-        var entryBuf = Marshal.AllocHGlobal(stride * 3);
-        new Span<byte>((void*)entryBuf, stride * 3).Clear();
+        var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
+        var entryBuf = Marshal.AllocHGlobal((int)stride * 3);
+        new Span<byte>((void*)entryBuf, (int)stride * 3).Clear();
+
+        var keptPath = "dir\\file0.txt";
+        var skipPath = "dir\\skip.txt";
+        var totalUnits = keptPath.Length + skipPath.Length;
+        var stringBuf = Marshal.AllocHGlobal(totalUnits * sizeof(char));
+        var stringSpan = new Span<char>((void*)stringBuf, totalUnits);
+        keptPath.AsSpan().CopyTo(stringSpan);
+        skipPath.AsSpan().CopyTo(stringSpan.Slice(keptPath.Length));
 
         var kept = (byte*)entryBuf;
         Unsafe.WriteUnaligned(kept, 100UL);
         Unsafe.WriteUnaligned(kept + 8, 5UL);
-        Unsafe.WriteUnaligned(kept + 16, (ushort)1); // InUse, not directory
-        var keptPath = "dir\\file0.txt";
-        Unsafe.WriteUnaligned(kept + 18, (ushort)keptPath.Length);
-        keptPath.AsSpan().CopyTo(new Span<char>(kept + MftResult.NativeStringOffset, keptPath.Length));
+        Unsafe.WriteUnaligned(kept + 16, 0UL); // stringOffset
+        Unsafe.WriteUnaligned(kept + 24, (uint)FileAttributes.Normal);
+        Unsafe.WriteUnaligned(kept + 28, (ushort)1); // InUse, not directory
+        Unsafe.WriteUnaligned(kept + 30, (ushort)keptPath.Length);
 
         var notInUse = (byte*)entryBuf + stride;
         Unsafe.WriteUnaligned(notInUse, 101UL);
         Unsafe.WriteUnaligned(notInUse + 8, 5UL);
-        Unsafe.WriteUnaligned(notInUse + 16, (ushort)0); // not in use
-        var skipPath = "dir\\skip.txt";
-        Unsafe.WriteUnaligned(notInUse + 18, (ushort)skipPath.Length);
-        skipPath.AsSpan().CopyTo(new Span<char>(notInUse + MftResult.NativeStringOffset, skipPath.Length));
+        Unsafe.WriteUnaligned(notInUse + 16, (ulong)keptPath.Length); // stringOffset
+        Unsafe.WriteUnaligned(notInUse + 24, (uint)FileAttributes.Normal);
+        Unsafe.WriteUnaligned(notInUse + 28, (ushort)0); // not in use
+        Unsafe.WriteUnaligned(notInUse + 30, (ushort)skipPath.Length);
 
         var emptyPath = (byte*)entryBuf + 2 * stride;
         Unsafe.WriteUnaligned(emptyPath, 102UL);
         Unsafe.WriteUnaligned(emptyPath + 8, 5UL);
-        Unsafe.WriteUnaligned(emptyPath + 16, (ushort)1); // in use, but zero-length path
-        Unsafe.WriteUnaligned(emptyPath + 18, (ushort)0);
+        Unsafe.WriteUnaligned(emptyPath + 16, (ulong)totalUnits); // stringOffset
+        Unsafe.WriteUnaligned(emptyPath + 24, (uint)FileAttributes.Normal);
+        Unsafe.WriteUnaligned(emptyPath + 28, (ushort)1); // in use, but zero-length path
+        Unsafe.WriteUnaligned(emptyPath + 30, (ushort)0);
 
         var result = new MftParseResult
         {
             TotalRecords = 3,
             UsedRecords = 3,
-            Entries = IntPtr.Zero,
-            PathEntries = entryBuf
+            PathEntries = entryBuf,
+            PathStrings = stringBuf,
+            PathStringUnits = (ulong)totalUnits,
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = MFTLibNative.NativeCompactEntrySize
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
@@ -92,6 +105,10 @@ public class JournalBrokerHostRealSeamsTests
             if (parsed.PathEntries != IntPtr.Zero)
             {
                 Marshal.FreeHGlobal(parsed.PathEntries);
+            }
+            if (parsed.PathStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(parsed.PathStrings);
             }
 
             Marshal.FreeHGlobal(ptr);

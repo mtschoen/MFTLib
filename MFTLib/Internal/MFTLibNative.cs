@@ -9,8 +9,12 @@ static class MFTLibNative
     //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
+    internal const uint ExpectedMftNativeAbiVersion = 2;
+    internal const uint NativeCompactEntrySize = 32;
+
     // Swappable function pointers - default to the native P/Invoke implementations.
     // Tests or platforms without the native library can replace these.
+    internal static Func<uint> GetMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
     internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr> ParseMFTRecords = NativeParseMFTRecords;
     internal static Action<IntPtr> FreeMftResult = NativeFreeMftResult;
     internal static Func<string, ulong, uint, bool> GenerateSyntheticMFT = NativeGenerateSyntheticMFT;
@@ -24,6 +28,9 @@ static class MFTLibNative
     internal static Func<SafeHandle, bool> CancelUsnJournalWatch = NativeCancelUsnJournalWatch;
 
     // P/Invoke declarations (private - all access goes through the Func fields)
+    [DllImport(LibraryName, EntryPoint = "GetMftNativeAbiVersion", CallingConvention = CallingConvention.Cdecl)]
+    static extern uint NativeGetMftNativeAbiVersion();
+
     [DllImport(LibraryName, EntryPoint = "ParseMFTRecords", CallingConvention = CallingConvention.Cdecl,
         CharSet = CharSet.Unicode)]
     static extern IntPtr NativeParseMFTRecords(SafeHandle volumeHandle, string? filter, MatchFlags matchFlags,
@@ -113,11 +120,22 @@ static class MFTLibNative
     [return: MarshalAs(UnmanagedType.Bool)]
     static extern bool NativeCancelUsnJournalWatch(SafeHandle volumeHandle);
 
+    internal static void EnsureCompatibleNativeAbi()
+    {
+        var actual = GetMftNativeAbiVersion();
+        if (actual != ExpectedMftNativeAbiVersion)
+        {
+            throw new InvalidOperationException(
+                $"MFTLib managed/native ABI mismatch: managed expects {ExpectedMftNativeAbiVersion}, native reports {actual}.");
+        }
+    }
+
     /// <summary>
     ///     Reset all function pointers to their native P/Invoke defaults.
     /// </summary>
     internal static void ResetToDefaults()
     {
+        GetMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
         ParseMFTRecords = NativeParseMFTRecords;
         FreeMftResult = NativeFreeMftResult;
         GenerateSyntheticMFT = NativeGenerateSyntheticMFT;

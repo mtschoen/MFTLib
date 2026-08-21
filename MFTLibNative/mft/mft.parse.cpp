@@ -22,6 +22,23 @@ using namespace mftlib::ntfs::detail;
 
 namespace {
 
+MftParseResult* CreateEmptyResult() {
+    auto* result = ShouldFailAlloc() ? nullptr : static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
+    if (result != nullptr) {
+        result->abiVersion = MFT_NATIVE_ABI_VERSION;
+        result->entryStride = sizeof(MftCompactEntry);
+    }
+    return result;
+}
+
+MftParseResult* CreateErrorResult(const wchar_t* message) {
+    auto* result = CreateEmptyResult();
+    if (result != nullptr && message != nullptr) {
+        SetErrorMessage(result->errorMessage, message);
+    }
+    return result;
+}
+
 std::optional<ParseGeometry> DetectRecordSizeFromHeader(const uint8_t* header, size_t headerLength) {
     if (headerLength < 0x20 || memcmp(header, "FILE", 4) != 0) {
         return std::nullopt;
@@ -122,9 +139,7 @@ void AppendRecordDataRuns(uint8_t* extRecord, std::vector<DataRun>& mftRuns) {
         }
         if (extAttr->TypeCode == Data) {
             auto additionalRuns = ParseDataRuns(extAttr);
-            for (const auto& additionalRun : additionalRuns) {
-                mftRuns.push_back(additionalRun);
-            }
+            mftRuns.insert(mftRuns.end(), additionalRuns.begin(), additionalRuns.end());
         }
         extAttr =
             reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(extAttr) + extAttr->RecordLength);
@@ -204,17 +219,13 @@ MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filte
                                      uint32_t bufferSizeRecords) {
 #ifndef _WIN32
     if (filter != nullptr) {
-        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
-        if (result != nullptr) {
-            SetErrorMessage(result->errorMessage, L"Filter not supported on Linux yet");
-        }
-        return result;
+        return CreateErrorResult(L"Filter not supported on Linux yet");
     }
 #endif
 
     auto* file = mftlib::platform::open_read(path_utf8);
     if (file == nullptr) {
-        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
+        auto* result = CreateEmptyResult();
         if (result != nullptr) {
             SetErrorMessage(result->errorMessage, L"Failed to open file. Error: %lu",
                             static_cast<unsigned long>(mftlib::platform::last_error()));
@@ -225,17 +236,12 @@ MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filte
     int64_t fileSize = ShouldFailFileSize() ? -1 : mftlib::platform::size_of(file);
     if (fileSize < 0) {
         mftlib::platform::close_file(file);
-        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
-        if (result != nullptr) {
-            SetErrorMessage(result->errorMessage, L"Failed to get file size");
-        }
-        return result;
+        return CreateErrorResult(L"Failed to get file size");
     }
 
     if (fileSize == 0) {
         mftlib::platform::close_file(file);
-        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
-        return result;
+        return CreateEmptyResult();
     }
 
     std::array<uint8_t, 0x20> header{};
@@ -246,20 +252,12 @@ MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filte
                         : std::nullopt;
     if (!geometry.has_value()) {
         mftlib::platform::close_file(file);
-        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
-        if (result != nullptr) {
-            SetErrorMessage(result->errorMessage, L"Invalid or unsupported MFT record size");
-        }
-        return result;
+        return CreateErrorResult(L"Invalid or unsupported MFT record size");
     }
 
     if (static_cast<uint64_t>(fileSize) % geometry->recordSize != 0) {
         mftlib::platform::close_file(file);
-        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
-        if (result != nullptr) {
-            SetErrorMessage(result->errorMessage, L"File size is not a whole multiple of record size");
-        }
-        return result;
+        return CreateErrorResult(L"File size is not a whole multiple of record size");
     }
 
     uint64_t totalRecords = static_cast<uint64_t>(fileSize) / geometry->recordSize;
@@ -273,10 +271,14 @@ MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filte
 }  // namespace
 
 extern "C" {
+EXPORT uint32_t GetMftNativeAbiVersion() { return MFT_NATIVE_ABI_VERSION; }
+
 EXPORT void FreeMftResult(MftParseResult* result) {
     if (result != nullptr) {
         free(result->entries);
         free(result->pathEntries);
+        free(result->entryStrings);
+        free(result->pathStrings);
         free(result);
     }
 }
@@ -284,7 +286,7 @@ EXPORT void FreeMftResult(MftParseResult* result) {
 #ifdef _WIN32
 EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags,
                                        uint32_t bufferSizeRecords) {
-    auto* result = ShouldFailAlloc() ? nullptr : static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
+    auto* result = CreateEmptyResult();
     if (result == nullptr) {
         return nullptr;
     }
@@ -369,7 +371,7 @@ EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* 
     int u8len =
         ShouldFailPathConversion() ? 0 : WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
     if (u8len <= 0) {
-        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
+        auto* result = CreateEmptyResult();
         if (result != nullptr) {
             SetErrorMessage(result->errorMessage, L"Failed to convert path to UTF-8");
         }

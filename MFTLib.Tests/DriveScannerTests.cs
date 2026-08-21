@@ -262,28 +262,31 @@ public class DriveScannerTests
     static unsafe (IntPtr resultPtr, Action<IntPtr> cleanup) BuildMftParseResult(ulong recordCount,
         bool includeDirectory = false)
     {
-        var pathEntrySize = MftResult.NativePathEntrySize;
+        var entrySize = (int)MFTLibNative.NativeCompactEntrySize;
 
         var entriesPtr = IntPtr.Zero;
+        var stringsPtr = IntPtr.Zero;
+        var stringUnits = 0UL;
         if (recordCount > 0)
         {
-            var bufferSize = (int)recordCount * pathEntrySize;
+            var bufferSize = (int)recordCount * entrySize;
             entriesPtr = Marshal.AllocHGlobal(bufferSize);
             new Span<byte>((void*)entriesPtr, bufferSize).Clear();
 
             if (includeDirectory)
             {
+                var path = ".git";
+                stringUnits = (ulong)path.Length;
+                stringsPtr = Marshal.AllocHGlobal(path.Length * sizeof(char));
+                path.AsSpan().CopyTo(new Span<char>((void*)stringsPtr, path.Length));
+
                 var entryPtr = (byte*)entriesPtr;
                 *(ulong*)entryPtr = 1UL;
                 *(ulong*)(entryPtr + 8) = 5UL;
-                *(ushort*)(entryPtr + 16) = 0x0003; // InUse | Directory
-                var path = ".git";
-                *(ushort*)(entryPtr + 18) = (ushort)path.Length;
-                var pathChars = (char*)(entryPtr + MftResult.NativeStringOffset);
-                for (var i = 0; i < path.Length; i++)
-                {
-                    pathChars[i] = path[i];
-                }
+                *(ulong*)(entryPtr + 16) = 0UL; // stringOffset
+                *(uint*)(entryPtr + 24) = (uint)FileAttributes.Directory;
+                *(ushort*)(entryPtr + 28) = 0x0003; // InUse | Directory
+                *(ushort*)(entryPtr + 30) = (ushort)path.Length;
             }
         }
 
@@ -291,20 +294,28 @@ public class DriveScannerTests
         {
             TotalRecords = recordCount,
             UsedRecords = recordCount,
-            Entries = IntPtr.Zero,
-            PathEntries = entriesPtr
+            PathEntries = entriesPtr,
+            PathStrings = stringsPtr,
+            PathStringUnits = stringUnits,
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = MFTLibNative.NativeCompactEntrySize
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
 
         var capturedEntriesPtr = entriesPtr;
+        var capturedStringsPtr = stringsPtr;
 
         void CleanupAllocations(IntPtr pointer)
         {
             if (capturedEntriesPtr != IntPtr.Zero)
             {
                 Marshal.FreeHGlobal(capturedEntriesPtr);
+            }
+            if (capturedStringsPtr != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(capturedStringsPtr);
             }
 
             Marshal.FreeHGlobal(pointer);

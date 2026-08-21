@@ -76,6 +76,7 @@ public sealed partial class MftVolume : IDisposable
     public MftResult StreamRecords(string? filter = null, MatchFlags matchFlags = MatchFlags.None)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        MFTLibNative.EnsureCompatibleNativeAbi();
         var resultPtr = MFTLibNative.ParseMFTRecords(_volumeHandle, filter, matchFlags, _bufferSizeRecords);
 
         if (resultPtr == IntPtr.Zero)
@@ -136,6 +137,7 @@ public sealed partial class MftVolume : IDisposable
     public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags,
         out MftParseTimings timings, uint bufferSizeRecords = 262144)
     {
+        MFTLibNative.EnsureCompatibleNativeAbi();
         var resultPtr = MFTLibNative.ParseMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords);
 
         if (resultPtr == IntPtr.Zero)

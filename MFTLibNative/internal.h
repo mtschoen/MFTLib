@@ -18,21 +18,26 @@ static inline double ElapsedMs(TimePoint start, TimePoint end) {
     return std::chrono::duration<double, std::milli>(end - start).count();
 }
 
-// Writes a formatted wide error message to a fixed-size buffer. Silently
-// truncates and always null-terminates; asserts in debug builds when the
-// message didn't fit. Buffer size is deduced from the array reference.
-template <size_t N, typename... Args>
-// NOLINTNEXTLINE(modernize-avoid-c-arrays): array-reference parameter deduces the fixed C-ABI buffer size
-void SetErrorMessage(wchar_t (&buffer)[N], const wchar_t* format, Args... arguments) {
+template <typename... Args>
+void SetErrorMessageBuffer(wchar_t* buffer, size_t bufferLength, const wchar_t* format, Args... arguments) {
+    if (buffer == nullptr || bufferLength == 0) {
+        return;
+    }
 #ifdef _WIN32
-    int written = _snwprintf_s(buffer, N, _TRUNCATE, format, arguments...);
+    int written = _snwprintf_s(buffer, bufferLength, _TRUNCATE, format, arguments...);
 #else
-    int written = std::swprintf(buffer, N, format, arguments...);
-    if (written < 0 || static_cast<size_t>(written) >= N) {
-        buffer[N - 1] = L'\0';
+    int written = std::swprintf(buffer, bufferLength, format, arguments...);
+    if (written < 0 || static_cast<size_t>(written) >= bufferLength) {
+        buffer[bufferLength - 1] = L'\0';
     }
 #endif
     assert(written >= 0 && "error message truncated");
+}
+
+template <size_t N, typename... Args>
+// NOLINTNEXTLINE(modernize-avoid-c-arrays): array-reference parameter deduces the fixed C-ABI buffer size
+void SetErrorMessage(wchar_t (&buffer)[N], const wchar_t* format, Args... arguments) {
+    SetErrorMessageBuffer(buffer, N, format, arguments...);
 }
 
 // Test hook declarations (defined in core/test_hooks.cpp)

@@ -166,7 +166,7 @@ bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uin
 #endif  // _WIN32
 
 PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type) {
-    const auto* fileRecord = reinterpret_cast<const PFILE_RECORD_SEGMENT_HEADER>(record);
+    const auto* fileRecord = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(record);
     auto* attr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(record + fileRecord->FirstAttributeOffset);
 
     while (attr->TypeCode != ATTRIBUTE_TYPE_CODE::EndMarker) {

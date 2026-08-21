@@ -10,7 +10,8 @@
 #   --no-managed   skip the dotnet test pass (native-only run)
 #
 # Requires: cmake, ninja, g++ (with gcov), gcovr, dotnet 8 SDK.
-set -euo pipefail
+set -eu
+set -o pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$ROOT/build/linux-coverage"

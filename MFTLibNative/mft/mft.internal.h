@@ -105,12 +105,41 @@ struct PathLookup {
     }
 };
 
-// Per-worker accumulator. Uses a std::vector so growth is exception-safe (no
-// manual realloc to leak on failure); the merge step copies entries.data() out.
-struct SliceResult {
-    std::vector<MftFileEntry> entries;
+struct ParsedEntry {
+    uint64_t recordNumber;
+    uint64_t parentRecordNumber;
+    uint32_t fileAttributes;
+    uint16_t flags;
+    const WCHAR* name;
+    uint16_t nameLength;
+};
 
-    void init(uint64_t cap) { entries.reserve(cap); }
+// Per-worker accumulator. Uses std::vector so growth is exception-safe;
+// the merge step copies entries and strings out.
+struct SliceResult {
+    std::vector<MftCompactEntry> entries;
+    std::vector<uint16_t> strings;
+
+    void append(const ParsedEntry& entry) {
+        uint64_t stringOffset = strings.size();
+        if (entry.nameLength > 0 && entry.name != nullptr) {
+            const auto* src = reinterpret_cast<const uint16_t*>(entry.name);
+            strings.insert(strings.end(), src, src + entry.nameLength);
+        }
+        const MftCompactEntry compact{entry.recordNumber, entry.parentRecordNumber, stringOffset, entry.fileAttributes,
+                                      entry.flags,        entry.nameLength};
+        entries.push_back(compact);
+    }
+};
+
+// Growable compact output bookkeeping.
+struct CompactOutput {
+    MftCompactEntry* entries = nullptr;
+    uint64_t entryCount = 0;
+    uint64_t entryCapacity = 0;
+    uint16_t* strings = nullptr;
+    uint64_t stringUnits = 0;
+    uint64_t stringCapacity = 0;
 };
 
 // Read-only inputs that steer record scanning: the name filter, the optional
@@ -124,20 +153,13 @@ struct ScanContext {
     ParseGeometry geometry{};
 };
 
-// Growable output-array bookkeeping: the result that owns the entries array, the
-// number of slots used, and the current capacity. Grown in place by the batch and
-// merge paths.
-struct EntryBuffer {
-    MftParseResult* result;
-    uint64_t usedCount;
-    uint64_t capacity;
-};
+constexpr uint32_t MAX_NTFS_PATH_UNITS = 32767;
 
-uint16_t ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalRecords, wchar_t* pathBuf,
-                     uint16_t pathBufSize);
+bool ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalRecords, std::vector<uint16_t>& path);
+bool AppendSlice(CompactOutput& output, const SliceResult& slice, wchar_t* errorMessage);
 void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
                         const ScanContext& scan);
-void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, EntryBuffer& entries,
+void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, SliceResult& batchSlice,
                         const ScanContext& scan);
 
 using ReadChunkFn = uint64_t (*)(void* context, uint8_t* targetBuffer, double& ioMs);

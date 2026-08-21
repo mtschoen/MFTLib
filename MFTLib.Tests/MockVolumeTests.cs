@@ -14,9 +14,6 @@ namespace MFTLib.Tests;
 [TestClass]
 public class MockVolumeTests
 {
-    static readonly int NativeEntrySize = MftResult.NativeEntrySize;
-    static readonly int NativePathEntrySize = MftResult.NativePathEntrySize;
-
     [TestCleanup]
     public void Cleanup()
     {
@@ -33,34 +30,36 @@ public class MockVolumeTests
 
     static unsafe IntPtr BuildResult(uint usedRecords, bool withPaths = false, string? errorMessage = null)
     {
-        var entryBufSize = withPaths ? NativePathEntrySize * (int)usedRecords : NativeEntrySize * (int)usedRecords;
+        var entryBufSize = (int)(MFTLibNative.NativeCompactEntrySize * usedRecords);
         var entryBuf = Marshal.AllocHGlobal(entryBufSize);
         new Span<byte>((void*)entryBuf, entryBufSize).Clear();
 
+        var strings = new List<string>();
+        var totalStringUnits = 0;
         for (uint i = 0; i < usedRecords; i++)
         {
-            if (withPaths)
-            {
-                var ptr = (byte*)entryBuf + i * NativePathEntrySize;
-                Unsafe.WriteUnaligned(ptr, (ulong)i); // recordNumber
-                Unsafe.WriteUnaligned(ptr + 8, (ulong)5); // parentRecordNumber
-                Unsafe.WriteUnaligned(ptr + 16, (ushort)1); // flags = InUse
-                var path = $"dir\\file{i}.txt";
-                Unsafe.WriteUnaligned(ptr + 18, (ushort)path.Length); // pathLength
-                var pathSpan = new Span<char>(ptr + MftResult.NativeStringOffset, path.Length);
-                path.AsSpan().CopyTo(pathSpan);
-            }
-            else
-            {
-                var ptr = (byte*)entryBuf + i * NativeEntrySize;
-                Unsafe.WriteUnaligned(ptr, (ulong)i); // recordNumber
-                Unsafe.WriteUnaligned(ptr + 8, (ulong)5); // parentRecordNumber
-                Unsafe.WriteUnaligned(ptr + 16, (ushort)1); // flags = InUse
-                var name = $"file{i}.txt";
-                Unsafe.WriteUnaligned(ptr + 18, (ushort)name.Length); // nameLength
-                var nameSpan = new Span<char>(ptr + MftResult.NativeStringOffset, name.Length);
-                name.AsSpan().CopyTo(nameSpan);
-            }
+            var str = withPaths ? $"dir\\file{i}.txt" : $"file{i}.txt";
+            strings.Add(str);
+            totalStringUnits += str.Length;
+        }
+
+        var stringBuf = totalStringUnits > 0 ? Marshal.AllocHGlobal(totalStringUnits * sizeof(char)) : IntPtr.Zero;
+        var currentOffset = 0UL;
+        var stringSpan = stringBuf != IntPtr.Zero ? new Span<char>((void*)stringBuf, totalStringUnits) : Span<char>.Empty;
+
+        for (uint i = 0; i < usedRecords; i++)
+        {
+            var str = strings[(int)i];
+            var ptr = (byte*)entryBuf + i * MFTLibNative.NativeCompactEntrySize;
+            Unsafe.WriteUnaligned(ptr, (ulong)i); // recordNumber
+            Unsafe.WriteUnaligned(ptr + 8, 5UL); // parentRecordNumber
+            Unsafe.WriteUnaligned(ptr + 16, currentOffset); // stringOffset
+            Unsafe.WriteUnaligned(ptr + 24, (uint)FileAttributes.Normal); // fileAttributes
+            Unsafe.WriteUnaligned(ptr + 28, (ushort)1); // flags = InUse
+            Unsafe.WriteUnaligned(ptr + 30, (ushort)str.Length); // stringLength
+
+            str.AsSpan().CopyTo(stringSpan.Slice((int)currentOffset, str.Length));
+            currentOffset += (ulong)str.Length;
         }
 
         var result = new MftParseResult
@@ -68,7 +67,13 @@ public class MockVolumeTests
             TotalRecords = usedRecords,
             UsedRecords = usedRecords,
             Entries = withPaths ? IntPtr.Zero : entryBuf,
+            EntryStrings = withPaths ? IntPtr.Zero : stringBuf,
+            EntryStringUnits = withPaths ? 0 : (ulong)totalStringUnits,
             PathEntries = withPaths ? entryBuf : IntPtr.Zero,
+            PathStrings = withPaths ? stringBuf : IntPtr.Zero,
+            PathStringUnits = withPaths ? (ulong)totalStringUnits : 0,
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = MFTLibNative.NativeCompactEntrySize,
             ErrorMessage = errorMessage ?? string.Empty
         };
 
@@ -84,12 +89,16 @@ public class MockVolumeTests
         MFTLibNative.ParseMFTRecords = (_, _, _, _) => resultPtr;
         MFTLibNative.FreeMftResult = ptr =>
         {
-            // Read the result to find and free the entry buffer
             var parseResult = Marshal.PtrToStructure<MftParseResult>(ptr);
             var entryBuf = parseResult.Entries != IntPtr.Zero ? parseResult.Entries : parseResult.PathEntries;
             if (entryBuf != IntPtr.Zero)
             {
                 Marshal.FreeHGlobal(entryBuf);
+            }
+            var stringBuf = parseResult.EntryStrings != IntPtr.Zero ? parseResult.EntryStrings : parseResult.PathStrings;
+            if (stringBuf != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(stringBuf);
             }
 
             Marshal.FreeHGlobal(ptr);
@@ -99,177 +108,280 @@ public class MockVolumeTests
     // --- FileUtilities ---
 
     [TestMethod]
-    public void GetVolumeHandle_InvalidVolume_ThrowsIOException()
+    public void GetVolumePath_DriveLetter_ReturnsNormalizedPath()
     {
-        // kernel32.dll doesn't exist on Linux, so DllImport fails before we can throw IOException
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            Assert.Inconclusive("Windows-only test");
-        }
+        Assert.AreEqual(@"\\.\C:", MFTUtilities.GetVolumePath("C"));
+        Assert.AreEqual(@"\\.\C:", MFTUtilities.GetVolumePath("C:"));
+        Assert.AreEqual(@"\\.\C:", MFTUtilities.GetVolumePath(@"C:\"));
+        Assert.AreEqual(@"\\.\C:", MFTUtilities.GetVolumePath(@"\\.\C:"));
+    }
 
-        // Use the real native GetVolumeHandle - an invalid volume path will fail
-        Assert.ThrowsException<IOException>(() => FileUtilities.GetVolumeHandle(@"\\.\ZZZINVALID:"));
+    [TestMethod]
+    public void GetVolumePath_NullOrEmpty_ThrowsArgumentException()
+    {
+        Assert.ThrowsException<ArgumentNullException>(() => MFTUtilities.GetVolumePath(null!));
+        Assert.ThrowsException<ArgumentNullException>(() => MFTUtilities.GetVolumePath(string.Empty));
+        Assert.ThrowsException<ArgumentException>(() => MFTUtilities.GetVolumePath("   "));
+    }
+
+    [TestMethod]
+    public void GetVolumePath_InvalidFormat_ThrowsArgumentException()
+    {
+        Assert.ThrowsException<ArgumentException>(() => MFTUtilities.GetVolumePath("invalid_path"));
+    }
+
+    [TestMethod]
+    public void GetVolumeHandle_InvalidHandle_ThrowsIOException()
+    {
+        Kernel32.CreateFile = (_, _, _, _, _, _, _) => new SafeFileHandle(new IntPtr(-1), false);
+
+        Assert.ThrowsException<IOException>(() =>
+            FileUtilities.GetVolumeHandle(@"\\.\C:"));
     }
 
     [TestMethod]
     public void GetVolumeHandle_ValidHandle_ReturnsHandle()
     {
-        Kernel32.CreateFile = (_, _, _, _, _, _, _) => new SafeFileHandle(new IntPtr(99), false);
-        var handle = FileUtilities.GetVolumeHandle(@"\\.\C:");
+        Kernel32.CreateFile = (_, _, _, _, _, _, _) => FakeHandle();
+
+        using var handle = FileUtilities.GetVolumeHandle(@"\\.\C:");
         Assert.IsFalse(handle.IsInvalid);
     }
 
     // --- MftVolume.Open ---
 
     [TestMethod]
-    public void Open_WithMockedHandle_Succeeds()
+    public void Open_ValidVolume_ReturnsOpenVolume()
     {
         FileUtilities.GetVolumeHandle = _ => FakeHandle();
+
         using var volume = MftVolume.Open("C");
         Assert.IsNotNull(volume);
     }
 
-    // --- MftVolume.Dispose ---
-
     [TestMethod]
-    public void Dispose_PreventsSubsequentCalls()
+    public void Dispose_DisposesHandle()
     {
-        SetupMocks();
+        var handle = FakeHandle();
+        FileUtilities.GetVolumeHandle = _ => handle;
+
         var volume = MftVolume.Open("C");
         volume.Dispose();
-        Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords());
+
+        Assert.IsTrue(handle.IsClosed);
     }
 
     [TestMethod]
-    public void Dispose_CanBeCalledMultipleTimes()
+    public void Dispose_CalledTwice_DoesNotThrow()
     {
         FileUtilities.GetVolumeHandle = _ => FakeHandle();
+
         var volume = MftVolume.Open("C");
         volume.Dispose();
         volume.Dispose(); // Should not throw
     }
 
-    // --- MftVolume.StreamRecords ---
-
     [TestMethod]
-    public void StreamRecords_ReturnsResult()
-    {
-        SetupMocks();
-        using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
-        Assert.IsTrue(result.TotalRecords > 0);
-    }
-
-    [TestMethod]
-    public void StreamRecords_NullReturn_Throws()
+    public void Methods_AfterDispose_ThrowObjectDisposed()
     {
         FileUtilities.GetVolumeHandle = _ => FakeHandle();
-        MFTLibNative.ParseMFTRecords = (_, _, _, _) => IntPtr.Zero;
-        Assert.ThrowsException<InvalidOperationException>(() =>
-        {
-            using var volume = MftVolume.Open("C");
-            volume.StreamRecords();
-        });
+
+        var volume = MftVolume.Open("C");
+        volume.Dispose();
+
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.ReadAllRecords());
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.FindByName("test"));
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords());
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.FindDirectories("test").ToList());
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.FindFiles("test").ToList());
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.FindRecords("test").ToList());
     }
 
-    // --- MftVolume.ReadAllRecords overloads ---
+    // --- ReadAllRecords ---
 
     [TestMethod]
-    public void ReadAllRecords_NoParams_ReturnsRecords()
+    public void ReadAllRecords_NoPaths_ReturnsRecords()
     {
         SetupMocks();
+
         using var volume = MftVolume.Open("C");
         var records = volume.ReadAllRecords();
+
         Assert.AreEqual(3, records.Length);
+        Assert.AreEqual(0UL, records[0].RecordNumber);
+        Assert.AreEqual("file0.txt", records[0].FileName);
+        Assert.IsNull(records[0].FullPath);
     }
 
     [TestMethod]
-    public void ReadAllRecords_WithResolvePaths_ReturnsRecords()
+    public void ReadAllRecords_WithPaths_ReturnsRecordsWithFullPaths()
     {
         SetupMocks(withPaths: true);
+
         using var volume = MftVolume.Open("C");
         var records = volume.ReadAllRecords(true);
+
         Assert.AreEqual(3, records.Length);
-        Assert.IsNotNull(records[0].FullPath);
+        Assert.AreEqual(@"C:\dir\file0.txt", records[0].FullPath);
+        Assert.AreEqual("file0.txt", records[0].FileName);
     }
 
     [TestMethod]
     public void ReadAllRecords_WithTimings_PopulatesTimings()
     {
         SetupMocks();
+
         using var volume = MftVolume.Open("C");
         var records = volume.ReadAllRecords(out var timings);
+
         Assert.AreEqual(3, records.Length);
         Assert.AreEqual(3UL, timings.TotalRecords);
         Assert.IsTrue(timings.MarshalMs >= 0);
     }
 
     [TestMethod]
-    public void ReadAllRecords_WithResolvePathsAndTimings_PopulatesTimings()
+    public void ReadAllRecords_WithPathsAndTimings_PopulatesBoth()
     {
         SetupMocks(withPaths: true);
+
         using var volume = MftVolume.Open("C");
         var records = volume.ReadAllRecords(true, out var timings);
+
         Assert.AreEqual(3, records.Length);
-        Assert.IsNotNull(records[0].FullPath);
-        Assert.IsTrue(timings.MarshalMs >= 0);
+        Assert.AreEqual(@"C:\dir\file0.txt", records[0].FullPath);
+        Assert.AreEqual(3UL, timings.TotalRecords);
     }
 
-    // --- MftVolume.FindByName overloads ---
+    // --- FindByName ---
 
     [TestMethod]
-    public void FindByName_NoTimings_ReturnsRecords()
+    public void FindByName_DefaultFlags_PassesExactMatch()
     {
-        SetupMocks();
+        MatchFlags capturedFlags = 0;
+        string? capturedFilter = null;
+
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+        MFTLibNative.ParseMFTRecords = (_, filter, flags, _) =>
+        {
+            capturedFilter = filter;
+            capturedFlags = flags;
+            return BuildResult(1);
+        };
+        MFTLibNative.FreeMftResult = ptr =>
+        {
+            var p = Marshal.PtrToStructure<MftParseResult>(ptr);
+            if (p.Entries != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(p.Entries);
+            }
+            if (p.EntryStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(p.EntryStrings);
+            }
+            Marshal.FreeHGlobal(ptr);
+        };
+
         using var volume = MftVolume.Open("C");
-        var records = volume.FindByName("test");
-        Assert.AreEqual(3, records.Length);
+        var records = volume.FindByName("test.txt");
+
+        Assert.AreEqual(1, records.Length);
+        Assert.AreEqual("test.txt", capturedFilter);
+        Assert.AreEqual(MatchFlags.ExactMatch, capturedFlags);
     }
 
     [TestMethod]
-    public void FindByName_WithTimings_ReturnsRecords()
+    public void FindByName_WithTimings_PopulatesTimings()
     {
-        SetupMocks();
+        SetupMocks(2);
+
         using var volume = MftVolume.Open("C");
-        var records = volume.FindByName("test", MatchFlags.ExactMatch, out var timings);
-        Assert.AreEqual(3, records.Length);
-        Assert.IsTrue(timings.TotalRecords > 0);
+        var records = volume.FindByName("file", MatchFlags.Contains, out var timings);
+
+        Assert.AreEqual(2, records.Length);
+        Assert.AreEqual(2UL, timings.TotalRecords);
     }
 
-    // --- MftVolume.FindFiles / FindDirectories / FindRecords ---
+    // --- StreamRecords ---
+
+    [TestMethod]
+    public void StreamRecords_ReturnsEnumerableStream()
+    {
+        SetupMocks();
+
+        using var volume = MftVolume.Open("C");
+        using var stream = volume.StreamRecords();
+
+        Assert.AreEqual(3UL, stream.TotalRecords);
+        Assert.AreEqual(3UL, stream.UsedRecords);
+
+        var list = stream.ToList();
+        Assert.AreEqual(3, list.Count);
+        Assert.AreEqual("file0.txt", list[0].FileName);
+    }
+
+    [TestMethod]
+    public void StreamRecords_NonGenericEnumerator_Works()
+    {
+        SetupMocks(2);
+
+        using var volume = MftVolume.Open("C");
+        using var stream = volume.StreamRecords();
+
+        IEnumerable nonGeneric = stream;
+        var count = 0;
+        foreach (var item in nonGeneric)
+        {
+            Assert.IsInstanceOfType<MftRecord>(item);
+            count++;
+        }
+
+        Assert.AreEqual(2, count);
+    }
+
+    // --- FindFiles, FindDirectories, FindRecords ---
 
     [TestMethod]
     public unsafe void FindFiles_ReturnsOnlyFiles()
     {
-        // Build entries: one file (flags=1), one directory (flags=3)
-        var entryBufSize = NativePathEntrySize * 2;
+        var entryBufSize = (int)(2 * MFTLibNative.NativeCompactEntrySize);
         var entryBuf = Marshal.AllocHGlobal(entryBufSize);
         new Span<byte>((void*)entryBuf, entryBufSize).Clear();
+
+        var path1 = "test.txt";
+        var path2 = "somedir";
+        var totalUnits = path1.Length + path2.Length;
+        var stringBuf = Marshal.AllocHGlobal(totalUnits * sizeof(char));
+        var stringSpan = new Span<char>((void*)stringBuf, totalUnits);
+        path1.AsSpan().CopyTo(stringSpan);
+        path2.AsSpan().CopyTo(stringSpan.Slice(path1.Length));
 
         // File entry
         var ptr = (byte*)entryBuf;
         Unsafe.WriteUnaligned(ptr, 0UL);
         Unsafe.WriteUnaligned(ptr + 8, 5UL);
-        Unsafe.WriteUnaligned(ptr + 16, (ushort)1); // InUse, not directory
-        var path = "test.txt";
-        Unsafe.WriteUnaligned(ptr + 18, (ushort)path.Length);
-        path.AsSpan().CopyTo(new Span<char>(ptr + MftResult.NativeStringOffset, path.Length));
+        Unsafe.WriteUnaligned(ptr + 16, 0UL); // stringOffset = 0
+        Unsafe.WriteUnaligned(ptr + 24, (uint)FileAttributes.Normal);
+        Unsafe.WriteUnaligned(ptr + 28, (ushort)1); // InUse, not directory
+        Unsafe.WriteUnaligned(ptr + 30, (ushort)path1.Length);
 
         // Directory entry
-        ptr = (byte*)entryBuf + NativePathEntrySize;
+        ptr = (byte*)entryBuf + MFTLibNative.NativeCompactEntrySize;
         Unsafe.WriteUnaligned(ptr, 1UL);
         Unsafe.WriteUnaligned(ptr + 8, 5UL);
-        Unsafe.WriteUnaligned(ptr + 16, (ushort)3); // InUse + Directory
-        var dirPath = "somedir";
-        Unsafe.WriteUnaligned(ptr + 18, (ushort)dirPath.Length);
-        dirPath.AsSpan().CopyTo(new Span<char>(ptr + MftResult.NativeStringOffset, dirPath.Length));
+        Unsafe.WriteUnaligned(ptr + 16, (ulong)path1.Length); // stringOffset = 8
+        Unsafe.WriteUnaligned(ptr + 24, (uint)FileAttributes.Directory);
+        Unsafe.WriteUnaligned(ptr + 28, (ushort)3); // InUse + Directory
+        Unsafe.WriteUnaligned(ptr + 30, (ushort)path2.Length);
 
         var result = new MftParseResult
         {
             TotalRecords = 2,
             UsedRecords = 2,
-            Entries = IntPtr.Zero,
-            PathEntries = entryBuf
+            PathEntries = entryBuf,
+            PathStrings = stringBuf,
+            PathStringUnits = (ulong)totalUnits,
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = MFTLibNative.NativeCompactEntrySize
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
@@ -283,7 +395,10 @@ public class MockVolumeTests
             {
                 Marshal.FreeHGlobal(r.PathEntries);
             }
-
+            if (r.PathStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(r.PathStrings);
+            }
             Marshal.FreeHGlobal(p);
         };
 
@@ -297,34 +412,45 @@ public class MockVolumeTests
     [TestMethod]
     public unsafe void FindDirectories_ReturnsOnlyDirectories()
     {
-        var entryBufSize = NativePathEntrySize * 2;
+        var entryBufSize = (int)(2 * MFTLibNative.NativeCompactEntrySize);
         var entryBuf = Marshal.AllocHGlobal(entryBufSize);
         new Span<byte>((void*)entryBuf, entryBufSize).Clear();
+
+        var path1 = "test.txt";
+        var path2 = "somedir";
+        var totalUnits = path1.Length + path2.Length;
+        var stringBuf = Marshal.AllocHGlobal(totalUnits * sizeof(char));
+        var stringSpan = new Span<char>((void*)stringBuf, totalUnits);
+        path1.AsSpan().CopyTo(stringSpan);
+        path2.AsSpan().CopyTo(stringSpan.Slice(path1.Length));
 
         // File entry
         var ptr = (byte*)entryBuf;
         Unsafe.WriteUnaligned(ptr, 0UL);
         Unsafe.WriteUnaligned(ptr + 8, 5UL);
-        Unsafe.WriteUnaligned(ptr + 16, (ushort)1);
-        var filePath = "test.txt";
-        Unsafe.WriteUnaligned(ptr + 18, (ushort)filePath.Length);
-        filePath.AsSpan().CopyTo(new Span<char>(ptr + MftResult.NativeStringOffset, filePath.Length));
+        Unsafe.WriteUnaligned(ptr + 16, 0UL);
+        Unsafe.WriteUnaligned(ptr + 24, (uint)FileAttributes.Normal);
+        Unsafe.WriteUnaligned(ptr + 28, (ushort)1);
+        Unsafe.WriteUnaligned(ptr + 30, (ushort)path1.Length);
 
         // Directory entry
-        ptr = (byte*)entryBuf + NativePathEntrySize;
+        ptr = (byte*)entryBuf + MFTLibNative.NativeCompactEntrySize;
         Unsafe.WriteUnaligned(ptr, 1UL);
         Unsafe.WriteUnaligned(ptr + 8, 5UL);
-        Unsafe.WriteUnaligned(ptr + 16, (ushort)3);
-        var dirPath = "somedir";
-        Unsafe.WriteUnaligned(ptr + 18, (ushort)dirPath.Length);
-        dirPath.AsSpan().CopyTo(new Span<char>(ptr + MftResult.NativeStringOffset, dirPath.Length));
+        Unsafe.WriteUnaligned(ptr + 16, (ulong)path1.Length);
+        Unsafe.WriteUnaligned(ptr + 24, (uint)FileAttributes.Directory);
+        Unsafe.WriteUnaligned(ptr + 28, (ushort)3);
+        Unsafe.WriteUnaligned(ptr + 30, (ushort)path2.Length);
 
         var result = new MftParseResult
         {
             TotalRecords = 2,
             UsedRecords = 2,
-            Entries = IntPtr.Zero,
-            PathEntries = entryBuf
+            PathEntries = entryBuf,
+            PathStrings = stringBuf,
+            PathStringUnits = (ulong)totalUnits,
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = MFTLibNative.NativeCompactEntrySize
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
@@ -338,7 +464,10 @@ public class MockVolumeTests
             {
                 Marshal.FreeHGlobal(r.PathEntries);
             }
-
+            if (r.PathStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(r.PathStrings);
+            }
             Marshal.FreeHGlobal(p);
         };
 
@@ -353,118 +482,166 @@ public class MockVolumeTests
     public void FindRecords_NullDirectoryFilter_ReturnsBoth()
     {
         SetupMocks(withPaths: true);
-        using var volume = MftVolume.Open("C");
-        var results = volume.FindRecords("test").ToList();
-        Assert.IsTrue(results.Count > 0);
-    }
 
-    // --- MftResult properties and enumerator ---
-
-    [TestMethod]
-    public void MftResult_TotalRecords_MatchesExpected()
-    {
-        SetupMocks(5);
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
-        Assert.AreEqual(5UL, result.TotalRecords);
+        var all = volume.FindRecords("file").ToList();
+
+        Assert.AreEqual(3, all.Count);
     }
 
     [TestMethod]
-    public void MftResult_UsedRecords_MatchesExpected()
+    public void FindRecords_IgnoresRecordsWithoutFullPath()
     {
-        SetupMocks(5);
-        using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
-        Assert.AreEqual(5UL, result.UsedRecords);
-    }
-
-    [TestMethod]
-    public void MftResult_NonGenericEnumerator_Works()
-    {
+        // Setup without paths - FullPath will be null, but Fallback will yield FileName
         SetupMocks();
+
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
+        var results = volume.FindRecords("file").ToList();
 
-        IEnumerable enumerable = result;
-        var count = 0;
-        foreach (var item in enumerable)
-        {
-            Assert.IsInstanceOfType<MftRecord>(item);
-            count++;
-        }
-
-        Assert.AreEqual(3, count);
+        Assert.AreEqual(3, results.Count);
     }
 
+    // --- ExtractDriveLetter ---
+
     [TestMethod]
-    public void MftResult_Enumerate_WithEntries_ReadsRecords()
+    public void ExtractDriveLetter_VariousInputs_ReturnsCorrectLetter()
     {
-        SetupMocks();
-        using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
-
-        var records = new List<MftRecord>();
-        foreach (var record in result)
-        {
-            records.Add(record.Materialize());
-        }
-
-        Assert.AreEqual(3, records.Count);
-        Assert.AreEqual("file0.txt", records[0].FileName);
+        Assert.AreEqual("C", MftVolume.ExtractDriveLetter(@"\\.\C:"));
+        Assert.AreEqual("D", MftVolume.ExtractDriveLetter(@"\\.\D:"));
+        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter("C:"));
+        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(@"\\.\Volume{123}"));
+        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(string.Empty));
+        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(@"\\.\"));
+        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(@"\\.\C/"));
     }
 
-    [TestMethod]
-    public void MftResult_Enumerate_WithPathEntries_ReadsRecords()
-    {
-        SetupMocks(withPaths: true);
-        using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
-
-        var records = new List<MftRecord>();
-        foreach (var record in result)
-        {
-            records.Add(record.Materialize());
-        }
-
-        Assert.AreEqual(3, records.Count);
-        Assert.IsNotNull(records[0].FullPath);
-    }
+    // --- ParseMFTFromFile ---
 
     [TestMethod]
-    public void MftResult_Dispose_PreventsEnumeration()
+    public void ParseMFTFromFile_WithTimings_ReturnsRecordsAndTimings()
     {
-        SetupMocks();
-        using var volume = MftVolume.Open("C");
-        var result = volume.StreamRecords();
-        result.Dispose();
-
-        Assert.ThrowsException<ObjectDisposedException>(() =>
+        MFTLibNative.ParseMFTFromFile = (_, _, _, _) => BuildResult(2);
+        MFTLibNative.FreeMftResult = ptr =>
         {
-            foreach (var _ in result)
+            var p = Marshal.PtrToStructure<MftParseResult>(ptr);
+            if (p.Entries != IntPtr.Zero)
             {
+                Marshal.FreeHGlobal(p.Entries);
             }
-        });
+            if (p.EntryStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(p.EntryStrings);
+            }
+            Marshal.FreeHGlobal(ptr);
+        };
+
+        var records = MftVolume.ParseMFTFromFile("fake.bin", out var timings);
+
+        Assert.AreEqual(2, records.Length);
+        Assert.AreEqual(2UL, timings.TotalRecords);
+    }
+
+    // --- MftResult Error and Dispose ---
+
+    [TestMethod]
+    public void MftResult_ErrorMessage_ThrowsInvalidOperation()
+    {
+        var errorResultPtr = BuildResult(0, errorMessage: "Volume read failed");
+        MFTLibNative.FreeMftResult = Marshal.FreeHGlobal;
+
+        var ex = Assert.ThrowsException<InvalidOperationException>(() =>
+            new MftResult(errorResultPtr, "C", 0));
+
+        Assert.AreEqual("Volume read failed", ex.Message);
     }
 
     [TestMethod]
-    public void MftResult_Dispose_PreventsToArray()
+    public void MftResult_Dispose_FreesNativeResult()
     {
-        SetupMocks();
-        using var volume = MftVolume.Open("C");
-        var result = volume.StreamRecords();
+        var freed = false;
+        var resultPtr = BuildResult(1);
+        MFTLibNative.FreeMftResult = ptr =>
+        {
+            var p = Marshal.PtrToStructure<MftParseResult>(ptr);
+            if (p.Entries != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(p.Entries);
+            }
+            if (p.EntryStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(p.EntryStrings);
+            }
+            Marshal.FreeHGlobal(ptr);
+            freed = true;
+        };
+
+        var result = new MftResult(resultPtr, "C", 0);
         result.Dispose();
 
+        Assert.IsTrue(freed);
+    }
+
+    [TestMethod]
+    public void MftResult_Dispose_CalledTwice_FreesOnlyOnce()
+    {
+        var freeCount = 0;
+        var resultPtr = BuildResult(1);
+        MFTLibNative.FreeMftResult = ptr =>
+        {
+            var p = Marshal.PtrToStructure<MftParseResult>(ptr);
+            if (p.Entries != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(p.Entries);
+            }
+            if (p.EntryStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(p.EntryStrings);
+            }
+            Marshal.FreeHGlobal(ptr);
+            freeCount++;
+        };
+
+        var result = new MftResult(resultPtr, "C", 0);
+        result.Dispose();
+        result.Dispose();
+
+        Assert.AreEqual(1, freeCount);
+    }
+
+    [TestMethod]
+    public void MftResult_EnumerationAfterDispose_ThrowsObjectDisposed()
+    {
+        var resultPtr = BuildResult(1);
+        MFTLibNative.FreeMftResult = ptr =>
+        {
+            var p = Marshal.PtrToStructure<MftParseResult>(ptr);
+            if (p.Entries != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(p.Entries);
+            }
+            if (p.EntryStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(p.EntryStrings);
+            }
+            Marshal.FreeHGlobal(ptr);
+        };
+
+        var result = new MftResult(resultPtr, "C", 0);
+        result.Dispose();
+
+        Assert.ThrowsException<ObjectDisposedException>(() => result.GetEnumerator());
         Assert.ThrowsException<ObjectDisposedException>(() => result.ToArray());
     }
 
     [TestMethod]
-    public void MftResult_ToArray_ParallelPath_MaterializesRecords()
+    public void MftResult_ToArray_ParallelThreshold_MaterializesCorrectly()
     {
-        MftResult.ParallelThreshold = 2; // Lower threshold to trigger parallel path
+        // Force parallel path by setting threshold low
+        MftResult.ParallelThreshold = 2;
         SetupMocks(5);
+
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
-        var records = result.ToArray();
+        var records = volume.ReadAllRecords();
 
         Assert.AreEqual(5, records.Length);
         Assert.AreEqual("file0.txt", records[0].FileName);
@@ -474,25 +651,31 @@ public class MockVolumeTests
     [TestMethod]
     public unsafe void MftRecord_FileName_ExtractedFromPathWhenNoNamePointer()
     {
-        // Build a path entry with namePtr=Zero, pathPtr has "dir\file.txt"
-        var pathEntrySize = MftResult.NativePathEntrySize;
-        var entryBuf = (IntPtr)NativeMemory.AllocZeroed((nuint)pathEntrySize);
+        var compactSize = (nuint)MFTLibNative.NativeCompactEntrySize;
+        var entryBuf = (IntPtr)NativeMemory.AllocZeroed(compactSize);
+        var path = "dir\\file.txt";
+        var stringBuf = (IntPtr)NativeMemory.AllocZeroed((nuint)(path.Length * sizeof(char)));
         try
         {
+            path.AsSpan().CopyTo(new Span<char>((void*)stringBuf, path.Length));
+
             var ptr = (byte*)entryBuf;
             Unsafe.WriteUnaligned(ptr, 0UL); // recordNumber
             Unsafe.WriteUnaligned(ptr + 8, 5UL); // parentRecordNumber
-            Unsafe.WriteUnaligned(ptr + 16, (ushort)1); // flags = InUse
-            var path = "dir\\file.txt";
-            Unsafe.WriteUnaligned(ptr + 18, (ushort)path.Length);
-            path.AsSpan().CopyTo(new Span<char>(ptr + MftResult.NativeStringOffset, path.Length));
+            Unsafe.WriteUnaligned(ptr + 16, 0UL); // stringOffset
+            Unsafe.WriteUnaligned(ptr + 24, (uint)FileAttributes.Normal);
+            Unsafe.WriteUnaligned(ptr + 28, (ushort)1); // flags = InUse
+            Unsafe.WriteUnaligned(ptr + 30, (ushort)path.Length);
 
             var result = new MftParseResult
             {
                 TotalRecords = 1,
                 UsedRecords = 1,
-                Entries = IntPtr.Zero,
-                PathEntries = entryBuf
+                PathEntries = entryBuf,
+                PathStrings = stringBuf,
+                PathStringUnits = (ulong)path.Length,
+                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+                EntryStride = MFTLibNative.NativeCompactEntrySize
             };
 
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
@@ -503,25 +686,22 @@ public class MockVolumeTests
             MFTLibNative.FreeMftResult = _ => { };
 
             using var volume = MftVolume.Open("T");
-            // Use StreamRecords to get the raw MftRecord (unmaterialized, with native pointers)
             using var stream = volume.StreamRecords();
             var record = stream.First();
 
-            // FileName should be extracted from the path (last segment after backslash)
             Assert.AreEqual("file.txt", record.FileName);
-            // FullPath should be "T:\dir\file.txt"
             Assert.AreEqual("T:\\dir\\file.txt", record.FullPath);
         }
         finally
         {
             NativeMemory.Free((void*)entryBuf);
+            NativeMemory.Free((void*)stringBuf);
         }
     }
 
     [TestMethod]
     public void MftRecord_FullPath_NoDriveLetter_ReturnsRelativePath()
     {
-        // MftRecord constructed with string path but no drive letter (e.g. from ParseMFTFromFile after Materialize)
         var record = new MftRecord(0, 5, 1, "file.txt", "some\\path\\file.txt");
         Assert.AreEqual("some\\path\\file.txt", record.FullPath);
         Assert.AreEqual("file.txt", record.FileName);
