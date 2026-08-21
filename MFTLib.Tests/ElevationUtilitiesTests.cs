@@ -106,7 +106,7 @@ public class ElevationUtilitiesTests
                     ? string.Empty
                     : "/c exit 0"
             )
-            { CreateNoWindow = true });
+        { CreateNoWindow = true });
         Assert.IsTrue(ElevationUtilities.TryRunElevated("--test"));
     }
 
@@ -116,7 +116,7 @@ public class ElevationUtilitiesTests
         ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
         ElevationUtilities.IsUserInteractive = () => true;
         ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 1")
-            { CreateNoWindow = true });
+        { CreateNoWindow = true });
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 

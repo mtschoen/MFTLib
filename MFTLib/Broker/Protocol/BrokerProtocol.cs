@@ -69,7 +69,7 @@ public static class BrokerProtocol
             Timestamp = new DateTime(ticks, DateTimeKind.Utc),
             Reason = (UsnReason)reason,
             FileAttributes = (FileAttributes)attributes,
-            FileName = fileName,
+            FileName = fileName
         });
     }
 

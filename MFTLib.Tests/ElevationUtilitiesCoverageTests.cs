@@ -50,7 +50,7 @@ public class ElevationUtilitiesCoverageTests
                         ? string.Empty
                         : "/c exit 0"
                 )
-                { CreateNoWindow = true, UseShellExecute = false };
+            { CreateNoWindow = true, UseShellExecute = false };
             return Process.Start(psi);
         };
         Assert.IsTrue(ElevationUtilities.TryRunElevated("--test"));
@@ -74,7 +74,7 @@ public class ElevationUtilitiesCoverageTests
                         ? string.Empty
                         : "/c exit 1"
                 )
-                { CreateNoWindow = true, UseShellExecute = false };
+            { CreateNoWindow = true, UseShellExecute = false };
             return Process.Start(psi);
         };
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));

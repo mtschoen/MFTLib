@@ -45,21 +45,32 @@ public sealed partial class JournalBrokerHost
         {
             var frame = await ReadFrameAsync(stream, cancellationToken).ConfigureAwait(false);
             if (frame == null)
+            {
                 return;
+            }
 
             switch (frame.Value.Kind)
             {
                 case BrokerFrameKind.ArmAndScan:
                     if (frame.Value.DrivesSpec is { } drivesSpec)
+                    {
                         await HandleArmAndScanAsync(stream, mmfWriter, drivesSpec, frame.Value.KeepFileNames,
                             writeLock, cancellationToken).ConfigureAwait(false);
+                    }
+
                     if (oneShot)
+                    {
                         return;
+                    }
+
                     break;
 
                 case BrokerFrameKind.StartWatch:
                     if (frame.Value.DrivesSpec is { } watchSpec)
+                    {
                         StartWatch(stream, writeLock, watch, watchSpec, cancellationToken);
+                    }
+
                     break;
 
                 case BrokerFrameKind.EndWatch:
@@ -106,7 +117,10 @@ public sealed partial class JournalBrokerHost
     static async Task StopWatchGenerationAsync(WatchGeneration watch)
     {
         if (watch.Cancellation == null)
+        {
             return;
+        }
+
         await watch.Cancellation.CancelAsync().ConfigureAwait(false);
         await Task.WhenAll(watch.Tasks).ConfigureAwait(false);
         watch.Tasks.Clear();

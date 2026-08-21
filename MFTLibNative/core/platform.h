@@ -7,13 +7,13 @@
 #include <cstdint>
 
 #ifdef _WIN32
-#define MFT_EXPORT extern "C" __declspec(dllexport)
+    #define MFT_EXPORT extern "C" __declspec(dllexport)
 #else
-#define MFT_EXPORT extern "C" __attribute__((visibility("default")))
+    #define MFT_EXPORT extern "C" __attribute__((visibility("default")))
 #endif
 
 namespace mftlib::platform {
-struct File; // opaque handle
+struct File;  // opaque handle
 
 // Strong type for a byte offset within a file, so it cannot be transposed with
 // the adjacent byte-count argument of pread_at/pwrite_at.
@@ -47,4 +47,4 @@ void big_free(void* ptr, size_t bytes);
 // Returns the OS-level error code from the most recent failed call on this thread
 // (GetLastError on Win32, errno on POSIX). Useful for enriching error messages.
 uint32_t last_error();
-} // namespace mftlib::platform
+}  // namespace mftlib::platform

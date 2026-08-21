@@ -65,7 +65,10 @@ public readonly struct UsnJournalEntry
     ///     produce entries outside the native marshaling path (e.g. a tool that
     ///     serializes journal data to disk and reconstructs it in another process).
     /// </summary>
-    public static UsnJournalEntry Create(UsnJournalEntryOptions options) => new(options);
+    public static UsnJournalEntry Create(UsnJournalEntryOptions options)
+    {
+        return new UsnJournalEntry(options);
+    }
 
     public override string ToString()
     {

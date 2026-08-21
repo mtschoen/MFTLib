@@ -2,9 +2,9 @@
 
 #ifdef _WIN32
 
-#include "../framework.h"
-#include "../mft_api.h"
-#include "../internal.h"
+    #include "../framework.h"
+    #include "../mft_api.h"
+    #include "../internal.h"
 
 namespace {
 // A caller-owned buffer view (pointer + byte size) for the IOCTL wrapper, so the
@@ -85,9 +85,8 @@ bool GrowUsnEntries(UsnJournalResult* result, uint64_t& capacity) {
     uint64_t newCapacity = capacity * 2;
     auto* grown = ShouldFailAlloc()
                       ? nullptr
-                      : static_cast<UsnJournalEntry*>(VirtualAlloc(
-                          nullptr, newCapacity * sizeof(UsnJournalEntry),
-                          MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+                      : static_cast<UsnJournalEntry*>(VirtualAlloc(nullptr, newCapacity * sizeof(UsnJournalEntry),
+                                                                   MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     if (grown == nullptr) {
         SetErrorMessage(result->errorMessage, L"Failed to grow entry array");
         return false;
@@ -129,11 +128,10 @@ void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, D
     if (count == 0) {
         return;
     }
-    result->entries =
-        ShouldFailAlloc()
-            ? nullptr
-            : static_cast<UsnJournalEntry*>(VirtualAlloc(nullptr, count * sizeof(UsnJournalEntry),
-                                                         MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    result->entries = ShouldFailAlloc()
+                          ? nullptr
+                          : static_cast<UsnJournalEntry*>(VirtualAlloc(nullptr, count * sizeof(UsnJournalEntry),
+                                                                       MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     if (result->entries == nullptr) {
         return;
     }
@@ -149,7 +147,7 @@ void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, D
         recordPtr += usnRecord->RecordLength;
     }
 }
-} // namespace
+}  // namespace
 
 extern "C" {
 EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
@@ -202,9 +200,8 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
     uint64_t capacity = initialCapacity;
     result->entries = ShouldFailAlloc()
                           ? nullptr
-                          : static_cast<UsnJournalEntry*>(VirtualAlloc(
-                              nullptr, capacity * sizeof(UsnJournalEntry),
-                              MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+                          : static_cast<UsnJournalEntry*>(VirtualAlloc(nullptr, capacity * sizeof(UsnJournalEntry),
+                                                                       MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     if (result->entries == nullptr) {
         VirtualFree(readBuffer, 0, MEM_RELEASE);
         SetErrorMessage(result->errorMessage, L"Failed to allocate entry array");

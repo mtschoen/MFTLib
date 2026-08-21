@@ -54,7 +54,7 @@ public class JournalBrokerHostTests
         var advanced = new UsnJournalCursor(7UL, 250L);
         var batch = new[]
         {
-            JournalEntryFactory.Create(1, 110, "a"),
+            JournalEntryFactory.Create(1, 110, "a")
         };
         var host = new JournalBrokerHost(
             _ => default,
@@ -614,8 +614,11 @@ public class JournalBrokerHostTests
         return new ScanRecord(100, 5, 2048, 0, 0x20, false, "a.txt", "C:\\a.txt");
     }
 
-    static UsnJournalEntry SampleEntry() => JournalEntryFactory.Create(
-        100, 110, "a.txt", UsnReason.FileCreate | UsnReason.Close);
+    static UsnJournalEntry SampleEntry()
+    {
+        return JournalEntryFactory.Create(
+            100, 110, "a.txt", UsnReason.FileCreate | UsnReason.Close);
+    }
 
     static JournalBrokerHost MakeFakeHost(ScanRecord[] records, UsnJournalEntry[] catchUp)
     {

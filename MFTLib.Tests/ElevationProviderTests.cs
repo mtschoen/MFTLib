@@ -69,7 +69,7 @@ public class ElevationProviderTests
                 isPosix ? "true" : "cmd.exe",
                 isPosix ? string.Empty : "/c exit 0"
             )
-            { CreateNoWindow = true, UseShellExecute = false });
+        { CreateNoWindow = true, UseShellExecute = false });
         Assert.IsTrue(ElevationUtilities.DefaultProvider.TryRunElevated("--test"));
     }
 }

@@ -38,15 +38,15 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr,
 bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster, uint8_t* buffer,
                    uint64_t recordNumber);
 #endif
-} // namespace detail
-} // namespace mftlib::ntfs
+}  // namespace detail
+}  // namespace mftlib::ntfs
 
 // Bundles the filename-filter parameters so they travel as a single argument
 // (and cannot be transposed) through the record-parsing path.
 struct FilterSpec {
-    const wchar_t* text; // null = no filter (accept every named record)
-    uint16_t length; // wchar_t units in text
-    uint32_t flags; // match bitfield: 1=exact, 2=substring, 4=resolve paths
+    const wchar_t* text;  // null = no filter (accept every named record)
+    uint16_t length;      // wchar_t units in text
+    uint32_t flags;       // match bitfield: 1=exact, 2=substring, 4=resolve paths
 };
 
 // Half-open record range [start, end) within a chunk buffer.
@@ -76,7 +76,7 @@ struct PathLookup {
         // Each name entry can be up to 255 WCHAR units = 510 bytes; use 32 bytes avg * 2 for bytes.
         // A test hook can shrink the pool to exercise the exhaustion path.
         uint64_t capacityOverride = NamePoolCapacityOverride();
-        namePoolCapacity = (capacityOverride != 0U) ? capacityOverride : totalRecords * 64; // bytes
+        namePoolCapacity = (capacityOverride != 0U) ? capacityOverride : totalRecords * 64;  // bytes
         namePool = static_cast<uint8_t*>(malloc(namePoolCapacity));
         namePoolUsed = 0;
         namesDropped = 0;

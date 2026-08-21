@@ -22,7 +22,7 @@ public class BrokerProtocolTests
             Timestamp = new DateTime(2026, 6, 20, 1, 2, 3, DateTimeKind.Utc),
             Reason = UsnReason.FileCreate | UsnReason.Close,
             FileAttributes = FileAttributes.Archive,
-            FileName = "repört.txt",
+            FileName = "repört.txt"
         }); // non-ASCII to prove UTF-16
 
         var buffer = new ArrayBufferWriter<byte>();
@@ -45,7 +45,7 @@ public class BrokerProtocolTests
         var entries = new[]
         {
             JournalEntryFactory.Create(1, 10, "a"),
-            JournalEntryFactory.Create(2, 20, "b", UsnReason.FileDelete | UsnReason.Close),
+            JournalEntryFactory.Create(2, 20, "b", UsnReason.FileDelete | UsnReason.Close)
         };
         var cursor = new UsnJournalCursor(99UL, 20L);
 
@@ -410,7 +410,7 @@ public class BrokerProtocolTests
         var cursor = new UsnJournalCursor(7UL, 110L);
         var entries = new[]
         {
-            JournalEntryFactory.Create(1, 10, "a"),
+            JournalEntryFactory.Create(1, 10, "a")
         };
         var frame = BrokerFrame.JournalBatch("C", cursor, entries);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);

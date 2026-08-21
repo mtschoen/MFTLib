@@ -133,7 +133,7 @@ public class UsnJournalSyntheticTests
     public void QueryUsnJournal_SyntheticSuccess_ReturnsCursor()
     {
         UseFakeHandle();
-        QueueSuccess(BuildQueryBuffer(0xABCD, nextUsn: 5000));
+        QueueSuccess(BuildQueryBuffer());
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournal();
         Assert.AreEqual(0xABCDUL, cursor.JournalId);

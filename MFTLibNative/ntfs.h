@@ -126,8 +126,8 @@ using FILE_NAME = struct FileNameLayout {
     uint64_t ReadTime;
     uint64_t AllocatedSize;
     uint64_t FileSize;
-    uint32_t FileAttributes; // e.g. FILE_ATTRIBUTE_DIRECTORY
-    uint32_t ReparsePointTag; // or EA size
+    uint32_t FileAttributes;   // e.g. FILE_ATTRIBUTE_DIRECTORY
+    uint32_t ReparsePointTag;  // or EA size
     UCHAR FileNameLength;
     UCHAR Flags;
     WCHAR FileName[1];
@@ -193,4 +193,4 @@ struct NTFS_BPB {
     uint16_t bootSignature;
 };
 #pragma pack(pop)
-} // extern "C"
+}  // extern "C"

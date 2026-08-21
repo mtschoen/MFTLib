@@ -3,9 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace MFTLib;
 
 [Flags]
-[SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix",
-    Justification =
-        "MatchFlags is a [Flags] enum on the public API; the Flags suffix is conventional for flag enums and renaming would break consumers.")]
+[SuppressMessage("Naming", "CA1711", Justification = "Flags suffix is conventional here; renaming breaks consumers.")]
 public enum MatchFlags : uint
 {
     None = 0,

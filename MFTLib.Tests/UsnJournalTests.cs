@@ -284,7 +284,7 @@ public class UsnJournalTests
             FileTimeTimestamp = filetime,
             Reason = (uint)UsnReason.FileCreate,
             FileAttributes = 0x20,
-            FileName = "timestamped.txt",
+            FileName = "timestamped.txt"
         });
 
         Assert.AreEqual(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc), entry.Timestamp);
@@ -304,7 +304,7 @@ public class UsnJournalTests
             FileTimeTimestamp = 0,
             Reason = (uint)UsnReason.FileCreate,
             FileAttributes = 0,
-            FileName = "test.txt",
+            FileName = "test.txt"
         });
         Assert.AreEqual(DateTime.MinValue, entry.Timestamp);
     }
@@ -321,7 +321,7 @@ public class UsnJournalTests
             Timestamp = timestamp,
             Reason = UsnReason.FileCreate | UsnReason.Close,
             FileAttributes = FileAttributes.Archive,
-            FileName = "reconstructed.txt",
+            FileName = "reconstructed.txt"
         });
 
         Assert.AreEqual(77UL, entry.RecordNumber);

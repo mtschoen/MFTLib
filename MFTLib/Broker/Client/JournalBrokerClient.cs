@@ -204,40 +204,40 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
                     break;
 
                 case BrokerFrameKind.ScanReady:
-                {
-                    // The ScanReady frame does not carry a Drive field; correlate by mmfName.
-                    var mmfName = frame.RequireMmfName();
-                    var matchedDrive = _mmfNamesByDrive
-                        .FirstOrDefault(pair => string.Equals(pair.Value, mmfName, StringComparison.Ordinal))
-                        .Key;
-                    if (matchedDrive != null)
                     {
-                        _records.AddRange(_mmfReader.Read(mmfName, frame.ByteLength));
+                        // The ScanReady frame does not carry a Drive field; correlate by mmfName.
+                        var mmfName = frame.RequireMmfName();
+                        var matchedDrive = _mmfNamesByDrive
+                            .FirstOrDefault(pair => string.Equals(pair.Value, mmfName, StringComparison.Ordinal))
+                            .Key;
+                        if (matchedDrive != null)
+                        {
+                            _records.AddRange(_mmfReader.Read(mmfName, frame.ByteLength));
+                        }
+
+                        break;
                     }
 
-                    break;
-                }
-
                 case BrokerFrameKind.JournalBatch:
-                {
-                    var drive = frame.RequireDrive();
-                    _advancedCursors[drive] = frame.Cursor;
-                    _catchUpEntries[drive] = frame.Entries;
-                    // A drive is complete after Cursor + ScanReady + JournalBatch.
-                    // (Error also completes a drive; handled below.)
-                    _remaining.Remove(drive);
-                    break;
-                }
+                    {
+                        var drive = frame.RequireDrive();
+                        _advancedCursors[drive] = frame.Cursor;
+                        _catchUpEntries[drive] = frame.Entries;
+                        // A drive is complete after Cursor + ScanReady + JournalBatch.
+                        // (Error also completes a drive; handled below.)
+                        _remaining.Remove(drive);
+                        break;
+                    }
 
                 case BrokerFrameKind.Error:
-                {
-                    var drive = frame.RequireDrive();
-                    _errors[drive] = frame.RequireMessage();
-                    _remaining.Remove(drive);
-                    break;
-                }
+                    {
+                        var drive = frame.RequireDrive();
+                        _errors[drive] = frame.RequireMessage();
+                        _remaining.Remove(drive);
+                        break;
+                    }
 
-                // Heartbeat and other frames are ignored during the scan phase.
+                    // Heartbeat and other frames are ignored during the scan phase.
             }
         }
 

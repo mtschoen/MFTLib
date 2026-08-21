@@ -106,7 +106,7 @@ public sealed partial class MftVolume
                 FileTimeTimestamp = timestamp,
                 Reason = reason,
                 FileAttributes = fileAttributes,
-                FileName = fileName,
+                FileName = fileName
             });
         }
 

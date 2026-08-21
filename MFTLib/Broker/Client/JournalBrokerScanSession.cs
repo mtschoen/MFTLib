@@ -210,12 +210,12 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// Rescan the same drives, profile, and <c>keepFileNames</c> the session was
-    /// started or last rescanned with, on the same elevated broker (no second UAC
-    /// prompt), replacing <see cref="LatestScan"/>. Legal only in
-    /// <see cref="JournalBrokerSessionState.Parked"/>; call <see cref="StopWatchAsync"/>
-    /// first if watching. Throws <see cref="InvalidOperationException"/> if the broker
-    /// dies during the rescan.
+    ///     Rescan the same drives, profile, and <c>keepFileNames</c> the session was
+    ///     started or last rescanned with, on the same elevated broker (no second UAC
+    ///     prompt), replacing <see cref="LatestScan" />. Legal only in
+    ///     <see cref="JournalBrokerSessionState.Parked" />; call <see cref="StopWatchAsync" />
+    ///     first if watching. Throws <see cref="InvalidOperationException" /> if the broker
+    ///     dies during the rescan.
     /// </summary>
     public Task RescanAsync(CancellationToken cancellationToken = default)
     {

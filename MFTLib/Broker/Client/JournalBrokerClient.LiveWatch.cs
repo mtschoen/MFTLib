@@ -150,7 +150,7 @@ public sealed partial class JournalBrokerClient
             var finished = await Task.WhenAny(task, Task.Delay(Timeout.Infinite, timeout.Token))
                 .ConfigureAwait(false);
             if (finished != task)
-                // No ack within the window (broker wedged): force the demux down.
+            // No ack within the window (broker wedged): force the demux down.
             {
                 await demuxCts.CancelAsync().ConfigureAwait(false);
             }

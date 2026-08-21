@@ -7,8 +7,9 @@ static class JournalEntryFactory
         long usn,
         string fileName,
         UsnReason reason = UsnReason.Close,
-        FileAttributes fileAttributes = FileAttributes.Normal) =>
-        UsnJournalEntry.Create(new UsnJournalEntryOptions
+        FileAttributes fileAttributes = FileAttributes.Normal)
+    {
+        return UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = recordNumber,
             ParentRecordNumber = 5,
@@ -16,6 +17,7 @@ static class JournalEntryFactory
             Timestamp = DateTime.UnixEpoch,
             Reason = reason,
             FileAttributes = fileAttributes,
-            FileName = fileName,
+            FileName = fileName
         });
+    }
 }
