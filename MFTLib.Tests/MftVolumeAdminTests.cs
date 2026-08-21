@@ -408,4 +408,46 @@ public class MftVolumeAdminTests
 
         Assert.IsTrue(count > 0, "Expected at least one record via non-generic enumerator");
     }
+
+    [TestMethod]
+    public void ReadRecordBatches_RealVolume_TakesTwoBatches_DisposesEarly()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        var batches = new List<MftRecord[]>();
+        foreach (var batch in volume.ReadRecordBatches(batchSize: 100))
+        {
+            batches.Add(batch);
+            if (batches.Count == 2)
+            {
+                break;
+            }
+        }
+
+        Assert.AreEqual(2, batches.Count);
+        Assert.AreEqual(100, batches[0].Length);
+        Assert.AreEqual(100, batches[1].Length);
+        Assert.IsNotNull(batches[0][0].FileName);
+        Assert.IsNotNull(batches[1][0].FileName);
+    }
+
+    [TestMethod]
+    public void ReadRecordBatches_WithResolvePaths_RealVolume_PopulatesFullPath()
+    {
+        RequireElevation();
+        using var volume = MftVolume.Open("C");
+        var batches = new List<MftRecord[]>();
+        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, batchSize: 100))
+        {
+            batches.Add(batch);
+            if (batches.Count == 2)
+            {
+                break;
+            }
+        }
+
+        Assert.AreEqual(2, batches.Count);
+        var withPaths = batches.SelectMany(b => b).Where(r => r.FullPath != null).ToArray();
+        Assert.IsTrue(withPaths.Length > 0, "Expected some records with resolved paths");
+    }
 }

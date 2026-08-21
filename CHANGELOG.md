@@ -17,6 +17,10 @@
 - `UsnJournalEntry.Create(UsnJournalEntryOptions)` - public factory with a property-based value carrier for reconstructing an entry from already-decoded values (e.g. journal data serialized to disk and rebuilt in another process)
 - `MftRecord.FileAttributes` now sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback
 - Added public `IElevationProvider` interface (with `ElevationUtilities.DefaultProvider`) so consumers can substitute elevation behavior in their own tests
+- **Bounded materialization API**:
+  - `MftResult.MaterializeBatches(int batchSize = 4096)` - yields materialized batches of records with bounded memory footprint over the existing result lifetime
+  - `MftVolume.ReadRecordBatches(bool resolvePaths = false, int batchSize = 4096)` - owning iterator that streams and materializes record batches, releasing the native result upon completion or early disposal
+  - Unified `ToArray()` row decoding over `MaterializeBatches()` while maintaining full source compatibility
 - **VolumeBroker subsystem** — an elevated broker host/client for running MFT scans and USN journal watches through a single UAC session, so a non-elevated caller never needs more than one elevation prompt per process lifetime:
   - `JournalBrokerHost` (elevated side) arms the journal cursor before scanning each drive, scans, and serves catch-up + live-watch requests over a pipe; `JournalBrokerHost.CreateDefault()` wires it to real `MftVolume` access
   - `JournalBrokerClient` (non-elevated side) owns the pipe and per-drive page-file-backed `MemoryMappedFile`s; `ArmScanAndCatchUpAsync` drives the cold scan, `SendStartWatchAsync`/`CreateBatchSource`/`StopLiveWatchAsync` drive the live watch, and `BrokerDied` signals broker death exactly once

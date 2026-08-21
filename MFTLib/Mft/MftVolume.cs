@@ -62,6 +62,17 @@ public sealed partial class MftVolume : IDisposable
         return MaterializeWithTimings(result, out timings);
     }
 
+    public IEnumerable<MftRecord[]> ReadRecordBatches(
+        bool resolvePaths = false, int batchSize = 4096)
+    {
+        using var result = StreamRecords(
+            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None);
+        foreach (var batch in result.MaterializeBatches(batchSize))
+        {
+            yield return batch;
+        }
+    }
+
     public MftRecord[] FindByName(string name, MatchFlags matchFlags = MatchFlags.ExactMatch)
     {
         return FindByName(name, matchFlags, out _);

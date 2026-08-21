@@ -349,4 +349,133 @@ public class MftResultTests
             MFTLibNative.EnsureCompatibleNativeAbi());
         Assert.IsTrue(ex.Message.Contains("ABI mismatch"));
     }
+
+    [DataTestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    [DataRow(-100)]
+    public void MaterializeBatches_BatchSizeZeroOrNegative_ThrowsArgumentOutOfRangeException(int batchSize)
+    {
+        Assert.IsNotNull(_tempMftPath);
+        MFTLibNative.EnsureCompatibleNativeAbi();
+        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        {
+            using var result = new MftResult(resultPtr, string.Empty, 0);
+            _ = result.MaterializeBatches(batchSize).ToList();
+        });
+    }
+
+    [TestMethod]
+    public void MaterializeBatches_Disposed_ThrowsObjectDisposedException()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        MFTLibNative.EnsureCompatibleNativeAbi();
+        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        var result = new MftResult(resultPtr, string.Empty, 0);
+        result.Dispose();
+
+        Assert.ThrowsException<ObjectDisposedException>(() =>
+            result.MaterializeBatches().ToList());
+    }
+
+    [TestMethod]
+    public void MaterializeBatches_DefaultBatchSize_BatchesHaveExpectedLengthsAndOrder()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        MFTLibNative.EnsureCompatibleNativeAbi();
+        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        using var result = new MftResult(resultPtr, string.Empty, 0);
+
+        var expectedRecordNumbers = result.Select(r => r.RecordNumber).ToArray();
+        var batches = result.MaterializeBatches().ToList();
+
+        foreach (var batch in batches)
+        {
+            Assert.IsTrue(batch.Length > 0 && batch.Length <= 4096);
+        }
+
+        var actualRecordNumbers = batches.SelectMany(b => b).Select(r => r.RecordNumber).ToArray();
+        CollectionAssert.AreEqual(expectedRecordNumbers, actualRecordNumbers);
+    }
+
+    [TestMethod]
+    public void MaterializeBatches_CustomBatchSize_BatchesMatchRecordsInOrder()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        MFTLibNative.EnsureCompatibleNativeAbi();
+        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        using var result = new MftResult(resultPtr, string.Empty, 0);
+
+        const int batchSize = 64;
+        var batches = result.MaterializeBatches(batchSize).ToList();
+
+        Assert.IsTrue(batches.Count > 1);
+        for (var i = 0; i < batches.Count - 1; i++)
+        {
+            Assert.AreEqual(batchSize, batches[i].Length);
+        }
+        Assert.IsTrue(batches[^1].Length <= batchSize);
+
+        var expectedRecordNumbers = result.Select(r => r.RecordNumber).ToArray();
+        var actualRecordNumbers = batches.SelectMany(b => b).Select(r => r.RecordNumber).ToArray();
+        CollectionAssert.AreEqual(expectedRecordNumbers, actualRecordNumbers);
+    }
+
+    [TestMethod]
+    public void MaterializeBatches_WithPaths_MaterializesFullPaths()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        MFTLibNative.EnsureCompatibleNativeAbi();
+        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, 256);
+        using var result = new MftResult(resultPtr, "C", 0);
+
+        var batches = result.MaterializeBatches(batchSize: 50).ToList();
+        var withPaths = batches.SelectMany(b => b).Where(r => r.FullPath != null).ToArray();
+        Assert.IsTrue(withPaths.Length > 0);
+    }
+
+    [TestMethod]
+    public void MaterializeBatches_RecordsStayValidAfterNextBatch()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        MFTLibNative.EnsureCompatibleNativeAbi();
+        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        using var result = new MftResult(resultPtr, string.Empty, 0);
+
+        using var enumerator = result.MaterializeBatches(batchSize: 10).GetEnumerator();
+        Assert.IsTrue(enumerator.MoveNext());
+        var firstBatch = enumerator.Current;
+        var firstBatchNames = firstBatch.Select(r => r.FileName).ToArray();
+
+        Assert.IsTrue(enumerator.MoveNext());
+        var secondBatch = enumerator.Current;
+        Assert.IsTrue(secondBatch.Length > 0);
+
+        for (var i = 0; i < firstBatch.Length; i++)
+        {
+            Assert.AreEqual(firstBatchNames[i], firstBatch[i].FileName);
+        }
+    }
+
+    [TestMethod]
+    public void ToArray_MatchesMaterializeBatches()
+    {
+        Assert.IsNotNull(_tempMftPath);
+        MFTLibNative.EnsureCompatibleNativeAbi();
+        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        using var result = new MftResult(resultPtr, string.Empty, 0);
+        var expectedRecords = result.ToArray();
+
+        var batches = result.MaterializeBatches(batchSize: 128).ToList();
+        var actualRecords = batches.SelectMany(b => b).ToArray();
+
+        Assert.AreEqual(expectedRecords.Length, actualRecords.Length);
+        for (var i = 0; i < expectedRecords.Length; i++)
+        {
+            Assert.AreEqual(expectedRecords[i].RecordNumber, actualRecords[i].RecordNumber);
+            Assert.AreEqual(expectedRecords[i].FileName, actualRecords[i].FileName);
+        }
+    }
 }

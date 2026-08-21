@@ -20,7 +20,6 @@ public class MockVolumeTests
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
         Kernel32.ResetToDefaults();
-        MftResult.ParallelThreshold = 500_000;
     }
 
     static SafeFileHandle FakeHandle()
@@ -556,6 +555,71 @@ public class MockVolumeTests
     }
 
     [TestMethod]
+    public void MftResult_AbiVersionMismatch_ThrowsInvalidOperation()
+    {
+        var result = new MftParseResult
+        {
+            TotalRecords = 1,
+            UsedRecords = 1,
+            AbiVersion = 1,
+            EntryStride = MFTLibNative.NativeCompactEntrySize
+        };
+        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+        Marshal.StructureToPtr(result, resultPtr, false);
+        MFTLibNative.FreeMftResult = Marshal.FreeHGlobal;
+
+        var ex = Assert.ThrowsException<InvalidOperationException>(() =>
+            new MftResult(resultPtr, "C", 0));
+        Assert.IsTrue(ex.Message.Contains("ABI mismatch"));
+    }
+
+    [TestMethod]
+    public void MftResult_EntryStrideMismatch_ThrowsInvalidOperation()
+    {
+        var result = new MftParseResult
+        {
+            TotalRecords = 1,
+            UsedRecords = 1,
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = 40
+        };
+        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+        Marshal.StructureToPtr(result, resultPtr, false);
+        MFTLibNative.FreeMftResult = Marshal.FreeHGlobal;
+
+        var ex = Assert.ThrowsException<InvalidOperationException>(() =>
+            new MftResult(resultPtr, "C", 0));
+        Assert.IsTrue(ex.Message.Contains("stride"));
+    }
+
+    [TestMethod]
+    public void MftResult_Enumerate_WithPaths_ReadsRecords()
+    {
+        SetupMocks(withPaths: true);
+        using var volume = MftVolume.Open("C");
+        using var result = volume.StreamRecords();
+
+        var records = new List<MftRecord>();
+        foreach (var record in result)
+        {
+            records.Add(record.Materialize());
+        }
+
+        Assert.AreEqual(3, records.Count);
+        Assert.AreEqual(@"C:\dir\file0.txt", records[0].FullPath);
+    }
+
+    [TestMethod]
+    public void MftVolume_GetVolumeHandleForTest_ReturnsHandle()
+    {
+        var handle = FakeHandle();
+        FileUtilities.GetVolumeHandle = _ => handle;
+
+        using var volume = MftVolume.Open("C");
+        Assert.AreSame(handle, volume.GetVolumeHandleForTest());
+    }
+
+    [TestMethod]
     public void MftResult_Dispose_FreesNativeResult()
     {
         var freed = false;
@@ -634,10 +698,8 @@ public class MockVolumeTests
     }
 
     [TestMethod]
-    public void MftResult_ToArray_ParallelThreshold_MaterializesCorrectly()
+    public void MftResult_ToArray_MaterializesAllRecords()
     {
-        // Force parallel path by setting threshold low
-        MftResult.ParallelThreshold = 2;
         SetupMocks(5);
 
         using var volume = MftVolume.Open("C");
@@ -646,6 +708,187 @@ public class MockVolumeTests
         Assert.AreEqual(5, records.Length);
         Assert.AreEqual("file0.txt", records[0].FileName);
         Assert.AreEqual("file4.txt", records[4].FileName);
+    }
+
+    [DataTestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    [DataRow(-50)]
+    public void MftResult_MaterializeBatches_ZeroOrNegativeBatchSize_ThrowsArgumentOutOfRangeException(int batchSize)
+    {
+        SetupMocks(5);
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            using var result = volume.StreamRecords();
+            _ = result.MaterializeBatches(batchSize).ToList();
+        });
+    }
+
+    [TestMethod]
+    public void MftResult_MaterializeBatches_Disposed_ThrowsObjectDisposedException()
+    {
+        SetupMocks(5);
+        using var volume = MftVolume.Open("C");
+        var result = volume.StreamRecords();
+        result.Dispose();
+
+        Assert.ThrowsException<ObjectDisposedException>(() =>
+            result.MaterializeBatches().ToList());
+    }
+
+    [TestMethod]
+    public void MftResult_MaterializeBatches_BatchesMatchRecordsInOrder()
+    {
+        SetupMocks(7);
+        using var volume = MftVolume.Open("C");
+        using var result = volume.StreamRecords();
+
+        var batches = result.MaterializeBatches(batchSize: 3).ToList();
+
+        Assert.AreEqual(3, batches.Count);
+        Assert.AreEqual(3, batches[0].Length);
+        Assert.AreEqual(3, batches[1].Length);
+        Assert.AreEqual(1, batches[2].Length);
+
+        var concatenated = batches.SelectMany(b => b).ToArray();
+        Assert.AreEqual(7, concatenated.Length);
+        for (var i = 0; i < 7; i++)
+        {
+            Assert.AreEqual((ulong)i, concatenated[i].RecordNumber);
+            Assert.AreEqual($"file{i}.txt", concatenated[i].FileName);
+        }
+    }
+
+    [TestMethod]
+    public void MftResult_MaterializeBatches_WithPaths_MaterializesFullPaths()
+    {
+        SetupMocks(5, withPaths: true);
+        using var volume = MftVolume.Open("C");
+        using var result = volume.StreamRecords();
+
+        var batches = result.MaterializeBatches(batchSize: 2).ToList();
+
+        Assert.AreEqual(3, batches.Count);
+        var concatenated = batches.SelectMany(b => b).ToArray();
+        Assert.AreEqual(5, concatenated.Length);
+        for (var i = 0; i < 5; i++)
+        {
+            Assert.AreEqual($@"C:\dir\file{i}.txt", concatenated[i].FullPath);
+            Assert.AreEqual($"file{i}.txt", concatenated[i].FileName);
+        }
+    }
+
+    [TestMethod]
+    public void MftResult_MaterializeBatches_RecordsStayValidAfterResultDisposed()
+    {
+        SetupMocks();
+        using var volume = MftVolume.Open("C");
+        var result = volume.StreamRecords();
+        var batches = result.MaterializeBatches(batchSize: 2).ToList();
+        result.Dispose();
+
+        Assert.AreEqual(2, batches.Count);
+        Assert.AreEqual("file0.txt", batches[0][0].FileName);
+        Assert.AreEqual("file1.txt", batches[0][1].FileName);
+        Assert.AreEqual("file2.txt", batches[1][0].FileName);
+    }
+
+    [TestMethod]
+    public void MftVolume_ReadRecordBatches_Disposed_ThrowsObjectDisposedException()
+    {
+        SetupMocks(5);
+        var volume = MftVolume.Open("C");
+        volume.Dispose();
+
+        Assert.ThrowsException<ObjectDisposedException>(() =>
+            volume.ReadRecordBatches().ToList());
+    }
+
+    [DataTestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public void MftVolume_ReadRecordBatches_ZeroOrNegativeBatchSize_ThrowsArgumentOutOfRangeException(int batchSize)
+    {
+        SetupMocks(5);
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+        {
+            using var volume = MftVolume.Open("C");
+            _ = volume.ReadRecordBatches(batchSize: batchSize).ToList();
+        });
+    }
+
+    [TestMethod]
+    public void MftVolume_ReadRecordBatches_BatchesMatchReadAllRecords()
+    {
+        SetupMocks(7);
+        using var volume = MftVolume.Open("C");
+        var batches = volume.ReadRecordBatches(batchSize: 3).ToList();
+
+        Assert.AreEqual(3, batches.Count);
+        Assert.AreEqual(3, batches[0].Length);
+        Assert.AreEqual(3, batches[1].Length);
+        Assert.AreEqual(1, batches[2].Length);
+
+        var concatenated = batches.SelectMany(b => b).ToArray();
+        for (var i = 0; i < 7; i++)
+        {
+            Assert.AreEqual((ulong)i, concatenated[i].RecordNumber);
+            Assert.AreEqual($"file{i}.txt", concatenated[i].FileName);
+        }
+    }
+
+    [TestMethod]
+    public void MftVolume_ReadRecordBatches_WithResolvePaths_PopulatesFullPaths()
+    {
+        SetupMocks(4, withPaths: true);
+        using var volume = MftVolume.Open("C");
+        var batches = volume.ReadRecordBatches(resolvePaths: true, batchSize: 2).ToList();
+
+        Assert.AreEqual(2, batches.Count);
+        var concatenated = batches.SelectMany(b => b).ToArray();
+        Assert.AreEqual(4, concatenated.Length);
+        for (var i = 0; i < 4; i++)
+        {
+            Assert.AreEqual($@"C:\dir\file{i}.txt", concatenated[i].FullPath);
+            Assert.AreEqual($"file{i}.txt", concatenated[i].FileName);
+        }
+    }
+
+    [TestMethod]
+    public void MftVolume_ReadRecordBatches_EarlyEnumerationDisposal_FreesNativeResult()
+    {
+        var freed = false;
+        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+        var resultPtr = BuildResult(10);
+        MFTLibNative.ParseMFTRecords = (_, _, _, _) => resultPtr;
+        MFTLibNative.FreeMftResult = ptr =>
+        {
+            var parseResult = Marshal.PtrToStructure<MftParseResult>(ptr);
+            if (parseResult.Entries != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(parseResult.Entries);
+            }
+            if (parseResult.EntryStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(parseResult.EntryStrings);
+            }
+            Marshal.FreeHGlobal(ptr);
+            freed = true;
+        };
+
+        using var volume = MftVolume.Open("C");
+        MftRecord[]? firstBatch = null;
+        foreach (var batch in volume.ReadRecordBatches(batchSize: 3))
+        {
+            firstBatch = batch;
+            break;
+        }
+
+        Assert.IsTrue(freed, "Native MftResult should be freed upon early enumeration disposal");
+        Assert.IsNotNull(firstBatch);
+        Assert.AreEqual(3, firstBatch.Length);
+        Assert.AreEqual("file0.txt", firstBatch[0].FileName);
     }
 
     [TestMethod]

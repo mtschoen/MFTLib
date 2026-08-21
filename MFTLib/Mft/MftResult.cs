@@ -7,7 +7,6 @@ namespace MFTLib;
 
 public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 {
-    internal static int ParallelThreshold { get; set; } = 500_000;
     readonly char _driveLetter;
     readonly MftParseResult _result;
     bool _disposed;
@@ -75,11 +74,11 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     {
         for (ulong i = 0; i < _result.UsedRecords; i++)
         {
-            yield return GetEntry(i);
+            yield return GetValidatedEntry(i);
         }
     }
 
-    unsafe MftRecord GetEntry(ulong index)
+    unsafe MftRecord GetValidatedEntry(ulong index)
     {
         var active = GetActiveTableAndPool();
         return GetCompactEntry(active.Table, active.Pool, active.PoolUnits, index, active.IsPath, _driveLetter);
@@ -90,25 +89,33 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         return GetEnumerator();
     }
 
-    public unsafe MftRecord[] ToArray()
+    public IEnumerable<MftRecord[]> MaterializeBatches(int batchSize = 4096)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var count = _result.UsedRecords;
-        var records = new MftRecord[count];
-
-        var active = GetActiveTableAndPool();
-        var driveLetter = _driveLetter;
-
-        if (count >= (ulong)ParallelThreshold)
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
+        for (ulong start = 0; start < _result.UsedRecords; start += (ulong)batchSize)
         {
-            Parallel.For(0L, (long)count, i => records[i] = GetCompactEntry(active.Table, active.Pool, active.PoolUnits, (ulong)i, active.IsPath, driveLetter).Materialize());
-        }
-        else
-        {
-            for (ulong i = 0; i < count; i++)
+            var count = (int)Math.Min((ulong)batchSize, _result.UsedRecords - start);
+            var batch = new MftRecord[count];
+            for (var i = 0; i < count; i++)
             {
-                records[i] = GetCompactEntry(active.Table, active.Pool, active.PoolUnits, i, active.IsPath, driveLetter).Materialize();
+                batch[i] = GetValidatedEntry(start + (ulong)i).Materialize();
             }
+
+            yield return batch;
+        }
+    }
+
+    public MftRecord[] ToArray()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var count = (int)_result.UsedRecords;
+        var records = new MftRecord[count];
+        var offset = 0;
+        foreach (var batch in MaterializeBatches())
+        {
+            Array.Copy(batch, 0, records, offset, batch.Length);
+            offset += batch.Length;
         }
 
         return records;
