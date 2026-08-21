@@ -694,7 +694,8 @@ public class NativeCoverageTests
             // Corrupt the fixup in record 10: overwrite the last 2 bytes of sector 0
             // (bytes 510-511) with a value that doesn't match the USN
             var data = File.ReadAllBytes(path);
-            var recordOffset = 10 * 1024; // FILE_RECORD_SIZE = 1024
+            var recordSize = BitConverter.ToUInt32(data, 0x1C);
+            var recordOffset = (int)(10 * recordSize);
             // The USA offset is at bytes 4-5 of the record header
             var usaOffset = BitConverter.ToUInt16(data, recordOffset + 4);
             var usn = BitConverter.ToUInt16(data, recordOffset + usaOffset);
@@ -1710,35 +1711,39 @@ public class NativeCoverageTests
         return data;
     }
 
-    static void WriteFileRecord(byte[] data, int offset, ushort usn = 0x0001)
+    static void WriteFileRecord(byte[] data, int offset, ushort usn = 0x0001, uint recordSize = 1024)
     {
         // Magic "FILE"
         data[offset] = 0x46;
         data[offset + 1] = 0x49;
         data[offset + 2] = 0x4C;
         data[offset + 3] = 0x45;
-        // USA offset = 48, USA size = 3
+        // USA offset = 48, USA size = (recordSize / 512) + 1
+        var usaSize = (ushort)((recordSize / 512) + 1);
         data[offset + 4] = 0x30;
         data[offset + 5] = 0x00;
-        data[offset + 6] = 0x03;
-        data[offset + 7] = 0x00;
-        // First attribute offset = 56 (0x38)
-        data[offset + 0x14] = 0x38;
-        data[offset + 0x15] = 0x00;
+        data[offset + 6] = (byte)(usaSize & 0xFF);
+        data[offset + 7] = (byte)(usaSize >> 8);
+        // First attribute offset = 48 + usaSize * 2, 8-byte aligned
+        var firstAttrOffset = (ushort)((48 + usaSize * 2 + 7) & ~7);
+        data[offset + 0x14] = (byte)(firstAttrOffset & 0xFF);
+        data[offset + 0x15] = (byte)(firstAttrOffset >> 8);
         // Flags = in use
         data[offset + 0x16] = 0x01;
+        // BytesAllocated (record size) at 0x1C
+        BitConverter.GetBytes(recordSize).CopyTo(data, offset + 0x1C);
         // USA entries
         data[offset + 48] = (byte)(usn & 0xFF);
         data[offset + 49] = (byte)(usn >> 8);
-        data[offset + 50] = 0x00;
-        data[offset + 51] = 0x00; // original sector 0 end bytes
-        data[offset + 52] = 0x00;
-        data[offset + 53] = 0x00; // original sector 1 end bytes
-        // Write USN at sector boundaries
-        data[offset + 510] = (byte)(usn & 0xFF);
-        data[offset + 511] = (byte)(usn >> 8);
-        data[offset + 1022] = (byte)(usn & 0xFF);
-        data[offset + 1023] = (byte)(usn >> 8);
+        var sectorCount = (int)(recordSize / 512);
+        for (var i = 0; i < sectorCount; i++)
+        {
+            data[offset + 50 + i * 2] = 0x00;
+            data[offset + 51 + i * 2] = 0x00;
+            var sectorEnd = (i + 1) * 512 - 2;
+            data[offset + sectorEnd] = (byte)(usn & 0xFF);
+            data[offset + sectorEnd + 1] = (byte)(usn >> 8);
+        }
     }
 
     static int WriteNonResidentDataAttribute(byte[] data, int offset, long fileSize, int clusterOffset,
@@ -1795,5 +1800,338 @@ public class NativeCoverageTests
         data[offset + 1] = 0xFF;
         data[offset + 2] = 0xFF;
         data[offset + 3] = 0xFF;
+    }
+
+    // --- Variable record size and geometry validation tests ---
+
+    [TestMethod]
+    public void ParseFromFile_InvalidMagic_ReturnsError()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var data = new byte[2048];
+            // Magic "BAAD"
+            data[0] = (byte)'B';
+            data[1] = (byte)'A';
+            data[2] = (byte)'A';
+            data[3] = (byte)'D';
+            BitConverter.GetBytes(1024u).CopyTo(data, 0x1C);
+            File.WriteAllBytes(path, data);
+
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsTrue(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [DataTestMethod]
+    [DataRow(0u)]
+    [DataRow(256u)]
+    [DataRow(1536u)]
+    [DataRow(131072u)]
+    public void ParseFromFile_UnsupportedRecordSize_ReturnsError(uint recordSize)
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var data = new byte[4096];
+            // Magic "FILE"
+            data[0] = (byte)'F';
+            data[1] = (byte)'I';
+            data[2] = (byte)'L';
+            data[3] = (byte)'E';
+            BitConverter.GetBytes(recordSize).CopyTo(data, 0x1C);
+            File.WriteAllBytes(path, data);
+
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsTrue(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ParseFromFile_NonMultipleFileSize_ReturnsError()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var data = new byte[1500]; // Not a multiple of 1024
+            data[0] = (byte)'F';
+            data[1] = (byte)'I';
+            data[2] = (byte)'L';
+            data[3] = (byte)'E';
+            BitConverter.GetBytes(1024u).CopyTo(data, 0x1C);
+            File.WriteAllBytes(path, data);
+
+            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsTrue(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ParseMFTRecords_VolumeRecordSizeOverride_InvalidSize_ReturnsError()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            // Override with unsupported record size 1536
+            MFTLibNative.NativeSetVolumeRecordSizeOverride(1536);
+
+            var data = BuildSyntheticNtfs();
+            WriteFileRecord(data, 4096);
+            File.WriteAllBytes(path, data);
+
+            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsTrue(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            MFTLibNative.NativeResetTestState();
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ParseMFTRecords_VolumeRecordSizeOverride_Supported1024_Succeeds()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            MFTLibNative.NativeSetVolumeRecordSizeOverride(1024);
+
+            var data = BuildSyntheticNtfs();
+            WriteFileRecord(data, 4096, recordSize: 1024);
+            var dataAttribute = 4096 + 0x38;
+            var dataLength = WriteNonResidentDataAttribute(
+                data, dataAttribute, 1024L * 1024, 1, 256);
+            WriteEndMarker(data, dataAttribute + dataLength);
+            File.WriteAllBytes(path, data);
+
+            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.AreEqual(string.Empty, result.ErrorMessage);
+                Assert.IsTrue(result.TotalRecords > 0);
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            MFTLibNative.NativeResetTestState();
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ParseMFTRecords_VolumeRecordSizeOverride_Supported4096_Succeeds()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            MFTLibNative.NativeSetVolumeRecordSizeOverride(4096);
+
+            var data = BuildSyntheticNtfs();
+            WriteFileRecord(data, 4096, 0x0001, 4096);
+            var dataAttribute = 4096 + 0x48;
+            var dataLength = WriteNonResidentDataAttribute(
+                data, dataAttribute, 1024L * 1024, 1, 256);
+            WriteEndMarker(data, dataAttribute + dataLength);
+            File.WriteAllBytes(path, data);
+
+            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.AreEqual(string.Empty, result.ErrorMessage);
+                Assert.AreEqual(256UL, result.TotalRecords);
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            MFTLibNative.NativeResetTestState();
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ResetTestState_ClearsVolumeRecordSizeOverride()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            MFTLibNative.NativeSetVolumeRecordSizeOverride(1536);
+            MFTLibNative.NativeResetTestState();
+
+            var data = BuildSyntheticNtfs();
+            WriteFileRecord(data, 4096, recordSize: 1024);
+            var dataAttribute = 4096 + 0x38;
+            var dataLength = WriteNonResidentDataAttribute(
+                data, dataAttribute, 1024L * 1024, 1, 256);
+            WriteEndMarker(data, dataAttribute + dataLength);
+            File.WriteAllBytes(path, data);
+
+            using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.IsFalse(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
+            }
+            finally
+            {
+                MFTLibNative.FreeMftResult(resultPointer);
+            }
+        }
+        finally
+        {
+            MFTLibNative.NativeResetTestState();
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ParseFromFile_MalformedStandardInformationValueOffset_SkipsRecord()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MftVolume.GenerateSyntheticMFT(path, 20, 256);
+            var data = File.ReadAllBytes(path);
+            // Record 6 is at byte offset 6 * 1024 = 6144
+            // StandardInformation is at offset 0x38 in record 6; its Resident.ValueOffset is at offset 0x14
+            // Tamper ValueOffset to 60000 (0xEA60)
+            data[6 * 1024 + 0x38 + 0x14] = 0x60;
+            data[6 * 1024 + 0x38 + 0x15] = 0xEA;
+            File.WriteAllBytes(path, data);
+
+            var records = MftVolume.ParseMFTFromFile(path, out _);
+            Assert.IsTrue(records.Length > 0);
+            // Record 6 should have been skipped due to malformed attribute
+            Assert.IsFalse(records.Any(r => r.RecordNumber == 6));
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ParseFromFile_MalformedFileNameValueOffset_SkipsRecord()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MftVolume.GenerateSyntheticMFT(path, 20, 256);
+            var data = File.ReadAllBytes(path);
+            // Record 6: StandardInformation length is 0x60 (ends at 0x38 + 0x60 = 0x98)
+            // FileName attribute starts at 0x98 in record 6; its Resident.ValueOffset is at offset 0x14
+            // Tamper ValueOffset to 60000 (0xEA60)
+            data[6 * 1024 + 0x98 + 0x14] = 0x60;
+            data[6 * 1024 + 0x98 + 0x15] = 0xEA;
+            File.WriteAllBytes(path, data);
+
+            var records = MftVolume.ParseMFTFromFile(path, out _);
+            Assert.IsTrue(records.Length > 0);
+            // Record 6 should have been skipped due to malformed attribute
+            Assert.IsFalse(records.Any(r => r.RecordNumber == 6));
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
     }
 }

@@ -71,12 +71,12 @@ bool AllocateParseBuffers(std::array<uint8_t*, 2>& buf, size_t bufSize, PathLook
 }
 
 // Apply USA fixups to every valid record in buffer[range.start, range.end).
-void FixupRange(uint8_t* buffer, SliceRange range) {
+void FixupRange(uint8_t* buffer, SliceRange range, ParseGeometry geometry) {
     for (uint64_t i = range.start; i < range.end; i++) {
-        auto* recPtr = buffer + (FILE_RECORD_SIZE * i);
-        auto* rec = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recPtr);
+        auto* recPtr = buffer + (static_cast<size_t>(geometry.recordSize) * i);
+        const auto* rec = reinterpret_cast<const PFILE_RECORD_SEGMENT_HEADER>(recPtr);
         if (rec->MultiSectorHeader.Magic == 0x454C4946) {
-            ApplyFixup(recPtr, FILE_RECORD_SIZE);
+            ApplyFixup(recPtr, geometry.recordSize);
         }
     }
 }
@@ -85,7 +85,7 @@ void FixupRange(uint8_t* buffer, SliceRange range) {
 // Returns false (after setting the error message) if a growth realloc fails.
 bool MergeSlices(std::vector<SliceResult>& slices, unsigned actualThreads, ParseState& state) {
     for (unsigned ti = 0; ti < actualThreads; ti++) {
-        auto& slice = slices[ti];
+        const auto& slice = slices[ti];
         uint64_t sliceCount = slice.entries.size();
         if (sliceCount == 0) {
             continue;
@@ -139,7 +139,7 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
         uint64_t recordIndex = chunk.recordIndex;
         workers.emplace_back([buffer, tStart, tEnd, ti, &slices, &threadFixupMs, scan, recordIndex]() {
             auto fStart = SteadyClock::now();
-            FixupRange(buffer, SliceRange{tStart, tEnd});
+            FixupRange(buffer, SliceRange{tStart, tEnd}, scan.geometry);
             threadFixupMs[ti] = ElapsedMs(fStart, SteadyClock::now());
             ProcessRecordSlice(buffer, SliceRange{tStart, tEnd}, recordIndex, &slices[ti], scan);
         });
@@ -149,10 +149,8 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
     }
 
     double totalElapsed = ElapsedMs(fixupStart, SteadyClock::now());
-    double maxFixup = 0;
-    for (unsigned ti = 0; ti < actualThreads; ti++) {
-        maxFixup = (std::max)(threadFixupMs[ti], maxFixup);
-    }
+    double maxFixup =
+        (actualThreads > 0) ? *std::max_element(threadFixupMs.begin(), threadFixupMs.begin() + actualThreads) : 0.0;
     state.fixupMs += maxFixup;
     state.parseMs += totalElapsed - maxFixup;
 
@@ -160,7 +158,7 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
 }
 
 // Resolve a full path for every parsed entry, fanning out across numThreads workers.
-void ResolveAllPaths(uint64_t totalRecords, PathLookup& lookup, unsigned numThreads, ParseState& state) {
+void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned numThreads, ParseState& state) {
     MftParseResult* result = state.entries.result;
     uint64_t usedCount = state.entries.usedCount;
     result->pathEntries =
@@ -171,7 +169,7 @@ void ResolveAllPaths(uint64_t totalRecords, PathLookup& lookup, unsigned numThre
     }
     auto resolveRange = [&](uint64_t start, uint64_t end) {
         for (uint64_t i = start; i < end; i++) {
-            auto& src = result->entries[i];
+            const auto& src = result->entries[i];
             auto& dst = result->pathEntries[i];
             dst.recordNumber = src.recordNumber;
             dst.parentRecordNumber = src.parentRecordNumber;
@@ -222,7 +220,7 @@ bool ParseAllChunks(ReadChunkFn readChunk, void* readContext, std::array<uint8_t
             }
         } else {
             auto fixupStart = SteadyClock::now();
-            FixupRange(buffer, SliceRange{0, currentChunkSize});
+            FixupRange(buffer, SliceRange{0, currentChunkSize}, scan.geometry);
             state.fixupMs += ElapsedMs(fixupStart, SteadyClock::now());
 
             auto parseStart = SteadyClock::now();
@@ -248,7 +246,7 @@ bool ParseAllChunks(ReadChunkFn readChunk, void* readContext, std::array<uint8_t
 }  // namespace
 
 MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
-                             uint32_t bufferSizeRecords) {
+                             uint32_t bufferSizeRecords, ParseGeometry geometry) {
     auto wallStart = SteadyClock::now();
 
     auto* result = ShouldFailAlloc() ? nullptr : static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
@@ -269,7 +267,7 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
     }
 
     unsigned numThreads = EffectiveThreadCount();
-    const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * FILE_RECORD_SIZE;
+    const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * geometry.recordSize;
 
     ParseState state = {};
     state.entries.result = result;
@@ -280,7 +278,7 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
         return result;
     }
 
-    ScanContext scan{filter, resolvePaths ? &lookup : nullptr, totalRecords};
+    ScanContext scan{filter, resolvePaths ? &lookup : nullptr, totalRecords, geometry};
     bool parsedOk = ParseAllChunks(readChunk, readContext, buf, numThreads, scan, state);
 
     mftlib::platform::big_free(buf[0], bufSize);

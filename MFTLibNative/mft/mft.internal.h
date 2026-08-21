@@ -29,14 +29,14 @@ struct VolumeOffset {
 // (each including TU would get its own internal-linkage copy).
 namespace detail {
 bool ApplyFixup(uint8_t* record, uint32_t recordSize);
-std::vector<DataRun> ParseDataRuns(PATTRIBUTE_RECORD_HEADER attr);
+std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr);
 PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type);
 #ifdef _WIN32
 BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead);
-uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr, uint32_t bytesPerCluster,
+uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attr, uint32_t bytesPerCluster,
                              uint64_t* outSize);
-bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster, uint8_t* buffer,
-                   uint64_t recordNumber);
+bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
+                   ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber);
 #endif
 }  // namespace detail
 }  // namespace mftlib::ntfs
@@ -56,18 +56,18 @@ struct SliceRange {
 };
 
 struct PathLookup {
-    uint64_t* parents;
-    uint8_t* nameLens;
-    uint32_t* nameOffsets;
+    uint64_t* parents = nullptr;
+    uint8_t* nameLens = nullptr;
+    uint32_t* nameOffsets = nullptr;
     // namePool stores raw NTFS UTF-16 bytes (2 bytes per WCHAR unit).
     // On Windows wchar_t==WCHAR so this is a direct match.
     // On Linux wchar_t is 32-bit, so we use a byte pool and keep sizes in code units.
-    uint8_t* namePool;
-    std::atomic<uint64_t> namePoolUsed;
-    uint64_t namePoolCapacity;
+    uint8_t* namePool = nullptr;
+    std::atomic<uint64_t> namePoolUsed{0};
+    uint64_t namePoolCapacity = 0;
     // Count of names dropped because the pool filled up. Nonzero means some
     // resolved paths are truncated; surfaced to the caller via errorMessage.
-    std::atomic<uint64_t> namesDropped;
+    std::atomic<uint64_t> namesDropped{0};
 
     bool init(uint64_t totalRecords) {
         parents = static_cast<uint64_t*>(calloc(totalRecords, sizeof(uint64_t)));
@@ -118,9 +118,10 @@ struct SliceResult {
 // count. Threaded through the scan pipeline as one const& instead of three
 // same-purpose arguments that could be transposed at a call site.
 struct ScanContext {
-    FilterSpec filter;
-    PathLookup* lookup;
-    uint64_t totalRecords;
+    FilterSpec filter{};
+    PathLookup* lookup = nullptr;
+    uint64_t totalRecords = 0;
+    ParseGeometry geometry{};
 };
 
 // Growable output-array bookkeeping: the result that owns the entries array, the
@@ -142,4 +143,4 @@ void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordI
 using ReadChunkFn = uint64_t (*)(void* context, uint8_t* targetBuffer, double& ioMs);
 
 MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
-                             uint32_t bufferSizeRecords);
+                             uint32_t bufferSizeRecords, ParseGeometry geometry);

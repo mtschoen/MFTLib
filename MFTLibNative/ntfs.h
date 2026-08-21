@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <cstdint>
 
@@ -16,12 +16,11 @@ using UCHAR = uint8_t;
 using LONGLONG = int64_t;
 using ULONGLONG = uint64_t;
 union LARGE_INTEGER {
+    int64_t QuadPart = 0;
     struct {
         uint32_t LowPart;
         int32_t HighPart;
     };
-
-    int64_t QuadPart;
 };
 using PVOID = void*;
 using BOOL = int;
@@ -40,7 +39,18 @@ using PUPDATE_SEQUENCE_NUMBER = UPDATE_SEQUENCE_NUMBER*;
 // NOLINTNEXTLINE(modernize-avoid-c-arrays): on-disk NTFS update-sequence-array layout type
 using UPDATE_SEQUENCE_ARRAY = UPDATE_SEQUENCE_NUMBER[1];
 
-constexpr uint32_t FILE_RECORD_SIZE = 1024;
+constexpr uint32_t DEFAULT_FILE_RECORD_SIZE = 1024;
+constexpr uint32_t MIN_FILE_RECORD_SIZE = 512;
+constexpr uint32_t MAX_FILE_RECORD_SIZE = 65536;
+
+struct ParseGeometry {
+    uint32_t recordSize = 0;
+};
+
+inline bool IsSupportedRecordSize(uint32_t value) {
+    return value >= MIN_FILE_RECORD_SIZE && value <= MAX_FILE_RECORD_SIZE && (value % 512U) == 0U &&
+           (value & (value - 1U)) == 0U;
+}
 
 enum ATTRIBUTE_TYPE_CODE : uint32_t {
     StandardInformation = 0x10,
@@ -64,9 +74,9 @@ enum ATTRIBUTE_TYPE_CODE : uint32_t {
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/mft-segment-reference
 using MFT_SEGMENT_REFERENCE = struct MftSegmentReferenceLayout {
-    ULONG SegmentNumberLowPart;
-    USHORT SegmentNumberHighPart;
-    USHORT SequenceNumber;
+    ULONG SegmentNumberLowPart = 0;
+    USHORT SegmentNumberHighPart = 0;
+    USHORT SequenceNumber = 0;
 };
 using PMFT_SEGMENT_REFERENCE = MFT_SEGMENT_REFERENCE*;
 
@@ -75,13 +85,13 @@ using PFILE_REFERENCE = FILE_REFERENCE*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/attribute-record-header
 using ATTRIBUTE_RECORD_HEADER = struct AttributeRecordHeaderLayout {
-    ATTRIBUTE_TYPE_CODE TypeCode;
-    ULONG RecordLength;
-    UCHAR FormCode;
-    UCHAR NameLength;
-    USHORT NameOffset;
-    USHORT Flags;
-    USHORT Instance;
+    ATTRIBUTE_TYPE_CODE TypeCode = StandardInformation;
+    ULONG RecordLength = 0;
+    UCHAR FormCode = 0;
+    UCHAR NameLength = 0;
+    USHORT NameOffset = 0;
+    USHORT Flags = 0;
+    USHORT Instance = 0;
 
     union {
         struct {
@@ -100,64 +110,64 @@ using ATTRIBUTE_RECORD_HEADER = struct AttributeRecordHeaderLayout {
             LONGLONG ValidDataLength;
             LONGLONG TotalAllocated;
         } Nonresident;
-    } Form;
+    } Form{};
 };
 using PATTRIBUTE_RECORD_HEADER = ATTRIBUTE_RECORD_HEADER*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/attribute-list-entry
 using ATTRIBUTE_LIST_ENTRY = struct AttributeListEntryLayout {
-    ATTRIBUTE_TYPE_CODE AttributeTypeCode;
-    USHORT RecordLength;
-    UCHAR AttributeNameLength;
-    UCHAR AttributeNameOffset;
-    VCN LowestVcn;
-    MFT_SEGMENT_REFERENCE SegmentReference;
-    USHORT Reserved;
-    WCHAR AttributeName[1];
+    ATTRIBUTE_TYPE_CODE AttributeTypeCode = StandardInformation;
+    USHORT RecordLength = 0;
+    UCHAR AttributeNameLength = 0;
+    UCHAR AttributeNameOffset = 0;
+    VCN LowestVcn{};
+    MFT_SEGMENT_REFERENCE SegmentReference{};
+    USHORT Reserved = 0;
+    WCHAR AttributeName[1]{};
 };
 using PATTRIBUTE_LIST_ENTRY = ATTRIBUTE_LIST_ENTRY*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/file-name
 using FILE_NAME = struct FileNameLayout {
-    FILE_REFERENCE ParentDirectory;
-    uint64_t CreationTime;
-    uint64_t ModificationTime;
-    uint64_t MftModificationTime;
-    uint64_t ReadTime;
-    uint64_t AllocatedSize;
-    uint64_t FileSize;
-    uint32_t FileAttributes;   // e.g. FILE_ATTRIBUTE_DIRECTORY
-    uint32_t ReparsePointTag;  // or EA size
-    UCHAR FileNameLength;
-    UCHAR Flags;
-    WCHAR FileName[1];
+    FILE_REFERENCE ParentDirectory{};
+    uint64_t CreationTime = 0;
+    uint64_t ModificationTime = 0;
+    uint64_t MftModificationTime = 0;
+    uint64_t ReadTime = 0;
+    uint64_t AllocatedSize = 0;
+    uint64_t FileSize = 0;
+    uint32_t FileAttributes = 0;   // e.g. FILE_ATTRIBUTE_DIRECTORY
+    uint32_t ReparsePointTag = 0;  // or EA size
+    UCHAR FileNameLength = 0;
+    UCHAR Flags = 0;
+    WCHAR FileName[1]{};
 };
 using PFILE_NAME = FILE_NAME*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/multi-sector-header
 using MULTI_SECTOR_HEADER = struct MultiSectorHeaderLayout {
     union {
+        UINT Magic = 0;
         UCHAR Signature[4];
-        UINT Magic;
     };
 
-    USHORT UpdateSequenceArrayOffset;
-    USHORT UpdateSequenceArraySize;
+    USHORT UpdateSequenceArrayOffset = 0;
+    USHORT UpdateSequenceArraySize = 0;
 };
 using PMULTI_SECTOR_HEADER = MULTI_SECTOR_HEADER*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/file-record-segment-header
 using FILE_RECORD_SEGMENT_HEADER = struct FileRecordSegmentHeaderLayout {
-    MULTI_SECTOR_HEADER MultiSectorHeader;
-    ULONGLONG Reserved1;
-    USHORT SequenceNumber;
-    USHORT Reserved2;
-    USHORT FirstAttributeOffset;
-    USHORT Flags;
-    ULONG Reserved3[2];
-    FILE_REFERENCE BaseFileRecordSegment;
-    USHORT Reserved4;
-    UPDATE_SEQUENCE_ARRAY UpdateSequenceArray;
+    MULTI_SECTOR_HEADER MultiSectorHeader{};
+    ULONGLONG Reserved1 = 0;
+    USHORT SequenceNumber = 0;
+    USHORT Reserved2 = 0;
+    USHORT FirstAttributeOffset = 0;
+    USHORT Flags = 0;
+    ULONG Reserved3[2] = {0, 0};
+    FILE_REFERENCE BaseFileRecordSegment{};
+    USHORT Reserved4 = 0;
+    UPDATE_SEQUENCE_ARRAY UpdateSequenceArray{};
 };
 using PFILE_RECORD_SEGMENT_HEADER = FILE_RECORD_SEGMENT_HEADER*;
 

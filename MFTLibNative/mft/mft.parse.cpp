@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,15 +22,41 @@ using namespace mftlib::ntfs::detail;
 
 namespace {
 
+std::optional<ParseGeometry> DetectRecordSizeFromHeader(const uint8_t* header, size_t headerLength) {
+    if (headerLength < 0x20 || memcmp(header, "FILE", 4) != 0) {
+        return std::nullopt;
+    }
+    uint32_t recordSize = 0;
+    memcpy(&recordSize, header + 0x1C, sizeof(recordSize));
+    return IsSupportedRecordSize(recordSize) ? std::optional<ParseGeometry>(ParseGeometry{recordSize}) : std::nullopt;
+}
+
 #ifdef _WIN32
+std::optional<ParseGeometry> QueryVolumeRecordSize(HANDLE volumeHandle) {
+    uint32_t overrideSize = VolumeRecordSizeOverride();
+    if (overrideSize != 0) {
+        return IsSupportedRecordSize(overrideSize) ? std::optional<ParseGeometry>(ParseGeometry{overrideSize})
+                                                   : std::nullopt;
+    }
+    NTFS_VOLUME_DATA_BUFFER data{};
+    DWORD returned = 0;
+    if (DeviceIoControl(volumeHandle, FSCTL_GET_NTFS_VOLUME_DATA, nullptr, 0, &data, sizeof(data), &returned,
+                        nullptr) == 0 ||
+        !IsSupportedRecordSize(data.BytesPerFileRecordSegment)) {
+        return std::nullopt;
+    }
+    return ParseGeometry{data.BytesPerFileRecordSegment};
+}
+
 struct VolumeReadContext {
-    HANDLE volumeHandle;
-    std::vector<DataRun>* mftRuns;
-    uint32_t bytesPerCluster;
-    size_t runIndex;
-    uint64_t filesRemaining;
-    uint64_t positionInBlock;
-    uint32_t bufferSizeRecords;
+    HANDLE volumeHandle = INVALID_HANDLE_VALUE;
+    std::vector<DataRun>* mftRuns = nullptr;
+    uint32_t bytesPerCluster = 0;
+    size_t runIndex = 0;
+    uint64_t filesRemaining = 0;
+    uint64_t positionInBlock = 0;
+    uint32_t bufferSizeRecords = 0;
+    ParseGeometry geometry{};
 };
 
 uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
@@ -40,24 +67,22 @@ uint64_t VolumeReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
             return 0;
         }
         auto& run = (*volumeCtx->mftRuns)[volumeCtx->runIndex];
-        volumeCtx->filesRemaining = run.clusterCount * volumeCtx->bytesPerCluster / FILE_RECORD_SIZE;
+        volumeCtx->filesRemaining = run.clusterCount * volumeCtx->bytesPerCluster / volumeCtx->geometry.recordSize;
         volumeCtx->positionInBlock = 0;
     }
 
-    auto& run = (*volumeCtx->mftRuns)[volumeCtx->runIndex];
-    uint64_t filesToLoad = volumeCtx->filesRemaining < static_cast<uint64_t>(volumeCtx->bufferSizeRecords)
-                               ? volumeCtx->filesRemaining
-                               : static_cast<uint64_t>(volumeCtx->bufferSizeRecords);
+    const auto& run = (*volumeCtx->mftRuns)[volumeCtx->runIndex];
+    uint64_t filesToLoad = (std::min)(volumeCtx->filesRemaining, static_cast<uint64_t>(volumeCtx->bufferSizeRecords));
     DWORD readBytes;
     auto ioStart = SteadyClock::now();
     if (Read(volumeCtx->volumeHandle, targetBuffer,
              VolumeOffset{(static_cast<uint64_t>(run.clusterOffset) * volumeCtx->bytesPerCluster) +
                           volumeCtx->positionInBlock},
-             static_cast<DWORD>(filesToLoad * FILE_RECORD_SIZE), &readBytes) == 0) {
+             static_cast<DWORD>(filesToLoad * volumeCtx->geometry.recordSize), &readBytes) == 0) {
         return 0;
     }
     ioMs += ElapsedMs(ioStart, SteadyClock::now());
-    volumeCtx->positionInBlock += filesToLoad * FILE_RECORD_SIZE;
+    volumeCtx->positionInBlock += filesToLoad * volumeCtx->geometry.recordSize;
     volumeCtx->filesRemaining -= filesToLoad;
     return filesToLoad;
 }
@@ -75,14 +100,7 @@ std::vector<uint64_t> CollectExtensionRecordNumbers(uint8_t* attrListData, uint6
         uint64_t segNum = static_cast<uint64_t>(entry->SegmentReference.SegmentNumberLowPart) |
                           (static_cast<uint64_t>(entry->SegmentReference.SegmentNumberHighPart) << 32);
         if (segNum != 0) {
-            bool found = false;
-            for (auto existing : extensionRecords) {
-                if (existing == segNum) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
+            if (std::find(extensionRecords.begin(), extensionRecords.end(), segNum) == extensionRecords.end()) {
                 extensionRecords.push_back(segNum);
             }
         }
@@ -93,7 +111,7 @@ std::vector<uint64_t> CollectExtensionRecordNumbers(uint8_t* attrListData, uint6
 
 // Append the $DATA runs of one already-read extension record to mftRuns.
 void AppendRecordDataRuns(uint8_t* extRecord, std::vector<DataRun>& mftRuns) {
-    auto* extHdr = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(extRecord);
+    const auto* extHdr = reinterpret_cast<const PFILE_RECORD_SEGMENT_HEADER>(extRecord);
     if (extHdr->MultiSectorHeader.Magic != 0x454C4946) {
         return;
     }
@@ -104,7 +122,7 @@ void AppendRecordDataRuns(uint8_t* extRecord, std::vector<DataRun>& mftRuns) {
         }
         if (extAttr->TypeCode == Data) {
             auto additionalRuns = ParseDataRuns(extAttr);
-            for (auto& additionalRun : additionalRuns) {
+            for (const auto& additionalRun : additionalRuns) {
                 mftRuns.push_back(additionalRun);
             }
         }
@@ -116,12 +134,18 @@ void AppendRecordDataRuns(uint8_t* extRecord, std::vector<DataRun>& mftRuns) {
 // Follow record 0's $ATTRIBUTE_LIST (when present) to its extension records and
 // append their $DATA runs to mftRuns, completing the $MFT's run list.
 void MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrListAttr, uint32_t bytesPerCluster,
-                            std::vector<DataRun>& mftRuns) {
+                            ParseGeometry geometry, std::vector<DataRun>& mftRuns) {
     uint8_t* attrListData;
     uint64_t attrListSize = 0;
     if (attrListAttr->FormCode == 1) {
         attrListData = ReadNonResidentData(volumeHandle, attrListAttr, bytesPerCluster, &attrListSize);
     } else {
+        constexpr size_t kResidentHeaderSize = 0x18;
+        if (attrListAttr->Form.Resident.ValueOffset < kResidentHeaderSize ||
+            static_cast<size_t>(attrListAttr->Form.Resident.ValueOffset) + attrListAttr->Form.Resident.ValueLength >
+                attrListAttr->RecordLength) {
+            return;
+        }
         attrListSize = attrListAttr->Form.Resident.ValueLength;
         attrListData = static_cast<uint8_t*>(malloc(static_cast<size_t>(attrListSize)));
         if (attrListData != nullptr) {
@@ -134,9 +158,9 @@ void MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrLi
     }
 
     std::vector<uint64_t> extensionRecords = CollectExtensionRecordNumbers(attrListData, attrListSize);
-    std::array<uint8_t, FILE_RECORD_SIZE> extRecord{};
+    std::vector<uint8_t> extRecord(geometry.recordSize);
     for (auto recNum : extensionRecords) {
-        if (ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, extRecord.data(), recNum)) {
+        if (ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, geometry, extRecord.data(), recNum)) {
             AppendRecordDataRuns(extRecord.data(), mftRuns);
         }
     }
@@ -145,10 +169,11 @@ void MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrLi
 #endif  // _WIN32
 
 struct FileReadContext {
-    mftlib::platform::File* file;
-    uint64_t recordsRemaining;
-    uint32_t bufferSizeRecords;
-    int64_t fileOffset;  // current read position in bytes
+    mftlib::platform::File* file = nullptr;
+    uint64_t recordsRemaining = 0;
+    uint32_t bufferSizeRecords = 0;
+    int64_t fileOffset = 0;  // current read position in bytes
+    ParseGeometry geometry{};
 };
 
 uint64_t FileReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
@@ -156,10 +181,8 @@ uint64_t FileReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
     if (fileCtx->recordsRemaining == 0) {
         return 0;
     }
-    uint64_t filesToLoad = fileCtx->recordsRemaining < static_cast<uint64_t>(fileCtx->bufferSizeRecords)
-                               ? fileCtx->recordsRemaining
-                               : static_cast<uint64_t>(fileCtx->bufferSizeRecords);
-    auto byteCount = static_cast<size_t>(filesToLoad * FILE_RECORD_SIZE);
+    uint64_t filesToLoad = (std::min)(fileCtx->recordsRemaining, static_cast<uint64_t>(fileCtx->bufferSizeRecords));
+    auto byteCount = static_cast<size_t>(filesToLoad * fileCtx->geometry.recordSize);
     auto ioStart = SteadyClock::now();
     if (ShouldFailRead()) {
         return 0;
@@ -170,8 +193,8 @@ uint64_t FileReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
         return 0;
     }
     ioMs += ElapsedMs(ioStart, SteadyClock::now());
-    uint64_t recordsRead = static_cast<uint64_t>(bytesRead) / FILE_RECORD_SIZE;
-    fileCtx->fileOffset += static_cast<int64_t>(recordsRead) * FILE_RECORD_SIZE;
+    uint64_t recordsRead = static_cast<uint64_t>(bytesRead) / fileCtx->geometry.recordSize;
+    fileCtx->fileOffset += static_cast<int64_t>(recordsRead * fileCtx->geometry.recordSize);
     fileCtx->recordsRemaining -= recordsRead;
     return recordsRead;
 }
@@ -182,7 +205,9 @@ MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filte
 #ifndef _WIN32
     if (filter != nullptr) {
         auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
-        if (result) SetErrorMessage(result->errorMessage, L"Filter not supported on Linux yet");
+        if (result != nullptr) {
+            SetErrorMessage(result->errorMessage, L"Filter not supported on Linux yet");
+        }
         return result;
     }
 #endif
@@ -207,10 +232,40 @@ MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filte
         return result;
     }
 
-    uint64_t totalRecords = static_cast<uint64_t>(fileSize) / FILE_RECORD_SIZE;
-    FileReadContext ctx = {file, totalRecords, bufferSizeRecords, 0};
-    auto* result =
-        ParseMFTImpl(FileReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords);
+    if (fileSize == 0) {
+        mftlib::platform::close_file(file);
+        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
+        return result;
+    }
+
+    std::array<uint8_t, 0x20> header{};
+    int64_t headerBytesRead =
+        mftlib::platform::pread_at(file, header.data(), header.size(), mftlib::platform::FileOffset{0});
+    auto geometry = (headerBytesRead >= static_cast<int64_t>(header.size()))
+                        ? DetectRecordSizeFromHeader(header.data(), header.size())
+                        : std::nullopt;
+    if (!geometry.has_value()) {
+        mftlib::platform::close_file(file);
+        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
+        if (result != nullptr) {
+            SetErrorMessage(result->errorMessage, L"Invalid or unsupported MFT record size");
+        }
+        return result;
+    }
+
+    if (static_cast<uint64_t>(fileSize) % geometry->recordSize != 0) {
+        mftlib::platform::close_file(file);
+        auto* result = static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
+        if (result != nullptr) {
+            SetErrorMessage(result->errorMessage, L"File size is not a whole multiple of record size");
+        }
+        return result;
+    }
+
+    uint64_t totalRecords = static_cast<uint64_t>(fileSize) / geometry->recordSize;
+    FileReadContext ctx = {file, totalRecords, bufferSizeRecords, 0, *geometry};
+    auto* result = ParseMFTImpl(FileReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords,
+                                *geometry);
     mftlib::platform::close_file(file);
     return result;
 }
@@ -239,6 +294,12 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
         return result;
     }
 
+    auto geometry = QueryVolumeRecordSize(volumeHandle);
+    if (!geometry.has_value()) {
+        SetErrorMessage(result->errorMessage, L"Failed to query volume record size or unsupported record size");
+        return result;
+    }
+
     NTFS_BPB bpb;
     DWORD bytesRead;
     if ((Read(volumeHandle, &bpb, VolumeOffset{0}, 512, &bytesRead) == 0) || bytesRead != 512) {
@@ -252,51 +313,53 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
 
     uint32_t bytesPerCluster = bpb.bytesPerSector * bpb.sectorsPerCluster;
 
-    uint8_t record0[FILE_RECORD_SIZE];
-    if ((Read(volumeHandle, record0, VolumeOffset{bpb.mftStart * bytesPerCluster}, FILE_RECORD_SIZE, &bytesRead) ==
-         0) ||
-        bytesRead != FILE_RECORD_SIZE) {
+    std::vector<uint8_t> record0(geometry->recordSize);
+    if ((Read(volumeHandle, record0.data(), VolumeOffset{bpb.mftStart * bytesPerCluster}, geometry->recordSize,
+              &bytesRead) == 0) ||
+        bytesRead != geometry->recordSize) {
         SetErrorMessage(result->errorMessage, L"Failed to read MFT record 0");
         return result;
     }
 
-    ApplyFixup(record0, FILE_RECORD_SIZE);
+    ApplyFixup(record0.data(), geometry->recordSize);
 
-    auto* fileRecord0 = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record0);
+    const auto* fileRecord0 = reinterpret_cast<const PFILE_RECORD_SEGMENT_HEADER>(record0.data());
     if (fileRecord0->MultiSectorHeader.Magic != 0x454C4946) {
         SetErrorMessage(result->errorMessage, L"Invalid MFT record 0 magic");
         return result;
     }
 
-    auto* dataAttr = FindAttribute(record0, Data);
+    const auto* dataAttr = FindAttribute(record0.data(), Data);
     if (dataAttr == nullptr) {
         SetErrorMessage(result->errorMessage, L"No Data attribute in MFT record 0");
         return result;
     }
     auto mftRuns = ParseDataRuns(dataAttr);
 
-    auto* attrListAttr = FindAttribute(record0, AttributeList);
+    auto* attrListAttr = FindAttribute(record0.data(), AttributeList);
     if (attrListAttr != nullptr) {
-        MergeExtensionDataRuns(volumeHandle, attrListAttr, bytesPerCluster, mftRuns);
+        MergeExtensionDataRuns(volumeHandle, attrListAttr, bytesPerCluster, *geometry, mftRuns);
     }
 
     uint64_t totalMftBytes = 0;
-    for (auto& run : mftRuns) {
+    for (const auto& run : mftRuns) {
         totalMftBytes += run.clusterCount * bytesPerCluster;
     }
-    uint64_t totalRecords = totalMftBytes / FILE_RECORD_SIZE;
+    uint64_t totalRecords = totalMftBytes / geometry->recordSize;
 
     VolumeReadContext ctx;
     ctx.volumeHandle = volumeHandle;
     ctx.mftRuns = &mftRuns;
     ctx.bytesPerCluster = bytesPerCluster;
     ctx.runIndex = 0;
-    ctx.filesRemaining = mftRuns[0].clusterCount * bytesPerCluster / FILE_RECORD_SIZE;
+    ctx.filesRemaining = mftRuns[0].clusterCount * bytesPerCluster / geometry->recordSize;
     ctx.positionInBlock = 0;
     ctx.bufferSizeRecords = bufferSizeRecords;
+    ctx.geometry = *geometry;
 
     free(result);
-    return ParseMFTImpl(VolumeReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords);
+    return ParseMFTImpl(VolumeReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords,
+                        *geometry);
 }
 
 // C-ABI export; (filePath, filter) order is fixed by the C# P/Invoke signature.

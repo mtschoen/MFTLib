@@ -335,4 +335,58 @@ public class MftVolumeTests
     {
         Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(@"\\.\CX"));
     }
+
+    [DataTestMethod]
+    [DataRow(1024u)]
+    [DataRow(4096u)]
+    public void ParseMFTFromFile_RecordSizes_RoundTrip(uint recordSize)
+    {
+        var tempPath = Path.GetTempFileName();
+        try
+        {
+            MftVolume.GenerateSyntheticMFT(tempPath, 1000, 256, recordSize);
+            var records = MftVolume.ParseMFTFromFile(tempPath, out var timings);
+
+            Assert.IsTrue(records.Length > 0);
+            Assert.AreEqual(1000UL, timings.TotalRecords);
+
+            var rec0 = records.FirstOrDefault(r => r.RecordNumber == 0);
+            Assert.IsNotNull(rec0, "Record 0 ($MFT) must exist");
+            Assert.AreEqual("$MFT", rec0.FileName);
+
+            var rec5 = records.FirstOrDefault(r => r.RecordNumber == 5);
+            Assert.IsNotNull(rec5, "Record 5 (root directory) must exist");
+            Assert.AreEqual(".", rec5.FileName);
+            Assert.IsTrue(rec5.IsDirectory, "Record 5 must be a directory");
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+    }
+
+    [DataTestMethod]
+    [DataRow(0u)]
+    [DataRow(256u)]
+    [DataRow(1536u)]
+    [DataRow(131072u)]
+    public void GenerateSyntheticMFT_UnsupportedRecordSizes_Throw(uint recordSize)
+    {
+        var tempPath = Path.GetTempFileName();
+        try
+        {
+            Assert.ThrowsException<InvalidOperationException>(() =>
+                MftVolume.GenerateSyntheticMFT(tempPath, 100, 256, recordSize));
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+    }
 }

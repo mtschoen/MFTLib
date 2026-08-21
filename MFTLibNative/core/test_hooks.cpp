@@ -15,6 +15,7 @@ int g_failFileSize = 0;
 int g_failPathConversion = 0;
 int g_failPlatformReadCountdown = 0;
 int g_failPlatformWrite = 0;
+uint32_t g_volumeRecordSizeOverride = 0;
 #ifdef _WIN32
 DWORD g_usnIoFailError = 0;
 int g_usnIoFailCountdown = 0;
@@ -25,7 +26,7 @@ int g_usnIoHead = 0;
 int g_usnIoCount = 0;
 int g_usnOverlappedAbort = 0;
 #endif
-} // namespace
+}  // namespace
 
 unsigned EffectiveThreadCount() {
     unsigned threadCount = std::thread::hardware_concurrency();
@@ -63,6 +64,7 @@ bool ShouldFailPlatformRead() {
 }
 
 bool ShouldFailPlatformWrite() { return g_failPlatformWrite != 0; }
+uint32_t VolumeRecordSizeOverride() { return g_volumeRecordSizeOverride; }
 
 #ifdef _WIN32
 // Cross-component test seam used by USN code and exported test hooks; keep external.
@@ -114,6 +116,7 @@ EXPORT void SetFailFileSize(int fail) { g_failFileSize = fail; }
 EXPORT void SetFailPathConversion(int fail) { g_failPathConversion = fail; }
 EXPORT void SetFailPlatformRead(int countdown) { g_failPlatformReadCountdown = countdown; }
 EXPORT void SetFailPlatformWrite(int fail) { g_failPlatformWrite = fail; }
+EXPORT void SetVolumeRecordSizeOverride(uint32_t recordSize) { g_volumeRecordSizeOverride = recordSize; }
 #ifdef _WIN32
 // C-ABI test hook; (error, countdown) order is fixed by the C# P/Invoke harness.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
@@ -143,6 +146,7 @@ EXPORT void ResetTestState() {
     g_failPathConversion = 0;
     g_failPlatformReadCountdown = 0;
     g_failPlatformWrite = 0;
+    g_volumeRecordSizeOverride = 0;
     g_usnIoFailError = 0;
     g_usnIoFailCountdown = 0;
     g_usnIoHead = 0;
@@ -159,6 +163,7 @@ EXPORT void ResetTestState() {
     g_failPathConversion = 0;
     g_failPlatformReadCountdown = 0;
     g_failPlatformWrite = 0;
+    g_volumeRecordSizeOverride = 0;
 }
 #endif
 }

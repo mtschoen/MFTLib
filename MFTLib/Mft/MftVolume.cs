@@ -119,6 +119,15 @@ public sealed partial class MftVolume : IDisposable
         }
     }
 
+    public static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords,
+        uint recordSize)
+    {
+        if (!MFTLibNative.GenerateSyntheticMFTSized(filePath, recordCount, bufferSizeRecords, recordSize))
+        {
+            throw new InvalidOperationException("Failed to generate synthetic MFT file");
+        }
+    }
+
     public static MftRecord[] ParseMFTFromFile(string filePath, out MftParseTimings timings)
     {
         return ParseMFTFromFile(filePath, null, MatchFlags.None, out timings);

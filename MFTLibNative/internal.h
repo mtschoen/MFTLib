@@ -28,7 +28,9 @@ void SetErrorMessage(wchar_t (&buffer)[N], const wchar_t* format, Args... argume
     int written = _snwprintf_s(buffer, N, _TRUNCATE, format, arguments...);
 #else
     int written = std::swprintf(buffer, N, format, arguments...);
-    if (written < 0 || static_cast<size_t>(written) >= N) buffer[N - 1] = L'\0';
+    if (written < 0 || static_cast<size_t>(written) >= N) {
+        buffer[N - 1] = L'\0';
+    }
 #endif
     assert(written >= 0 && "error message truncated");
 }
@@ -44,6 +46,7 @@ bool ShouldFailPathConversion();
 // pread_at/pwrite_at error handling is coverable without a real I/O failure.
 bool ShouldFailPlatformRead();
 bool ShouldFailPlatformWrite();
+uint32_t VolumeRecordSizeOverride();
 
 #ifdef _WIN32
 bool ShouldFailUsnIo(DWORD& outError);

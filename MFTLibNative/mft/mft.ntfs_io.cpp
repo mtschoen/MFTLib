@@ -54,18 +54,18 @@ bool ApplyFixupInternal(uint8_t* record, uint32_t recordSize) {
 
 bool ApplyFixup(uint8_t* record, uint32_t recordSize) { return ApplyFixupInternal(record, recordSize); }
 
-std::vector<DataRun> ParseDataRuns(PATTRIBUTE_RECORD_HEADER attr) {
+std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr) {
     std::vector<DataRun> runs;
     if (attr->FormCode != 1) {
         return runs;
     }
 
-    auto* runPtr = reinterpret_cast<uint8_t*>(attr) + attr->Form.Nonresident.MappingPairsOffset;
-    auto* endPtr = reinterpret_cast<uint8_t*>(attr) + attr->RecordLength;
+    const auto* runPtr = reinterpret_cast<const uint8_t*>(attr) + attr->Form.Nonresident.MappingPairsOffset;
+    const auto* endPtr = reinterpret_cast<const uint8_t*>(attr) + attr->RecordLength;
     int64_t prevCluster = 0;
 
     while (runPtr < endPtr) {
-        auto* header = reinterpret_cast<RunHeader*>(runPtr);
+        const auto* header = reinterpret_cast<const RunHeader*>(runPtr);
         if (header->lengthFieldBytes == 0) {
             break;
         }
@@ -96,17 +96,17 @@ std::vector<DataRun> ParseDataRuns(PATTRIBUTE_RECORD_HEADER attr) {
 }
 
 #ifdef _WIN32
-uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr, uint32_t bytesPerCluster,
+uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attr, uint32_t bytesPerCluster,
                              uint64_t* outSize) {
     auto runs = ParseDataRuns(attr);
     auto fileSize = static_cast<uint64_t>(attr->Form.Nonresident.FileSize);
     *outSize = fileSize;
 
     uint64_t totalClusterBytes = 0;
-    for (auto& run : runs) {
+    for (const auto& run : runs) {
         totalClusterBytes += run.clusterCount * bytesPerCluster;
     }
-    uint64_t allocSize = max(totalClusterBytes, fileSize);
+    uint64_t allocSize = (std::max)(totalClusterBytes, fileSize);
 
     auto* buffer = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(malloc(static_cast<size_t>(allocSize)));
     if (buffer == nullptr) {
@@ -114,11 +114,11 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr,
     }
 
     uint64_t bufferOffset = 0;
-    for (auto& run : runs) {
+    for (const auto& run : runs) {
         uint64_t runBytes = run.clusterCount * bytesPerCluster;
         uint64_t runOffset = 0;
         while (runOffset < runBytes && bufferOffset < allocSize) {
-            auto chunkSize = static_cast<DWORD> min((uint64_t)0x10000000, runBytes - runOffset);
+            auto chunkSize = static_cast<DWORD>((std::min)(static_cast<uint64_t>(0x10000000ULL), runBytes - runOffset));
             DWORD bytesRead;
             if (Read(volumeHandle, buffer + bufferOffset,
                      VolumeOffset{(static_cast<uint64_t>(run.clusterOffset) * bytesPerCluster) + runOffset}, chunkSize,
@@ -135,36 +135,38 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attr,
     return buffer;
 }
 
-bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster, uint8_t* buffer,
-                   uint64_t recordNumber) {
-    uint64_t byteOffset = recordNumber * FILE_RECORD_SIZE;
+bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
+                   ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber) {
+    uint64_t byteOffset = recordNumber * geometry.recordSize;
     uint64_t currentOffset = 0;
 
     for (const auto& run : mftRuns) {
         uint64_t runBytes = run.clusterCount * bytesPerCluster;
 
         if (byteOffset >= currentOffset && byteOffset < currentOffset + runBytes) {
-            uint64_t diskOffset =
-                (static_cast<uint64_t>(run.clusterOffset) * bytesPerCluster) + (byteOffset - currentOffset);
+            uint64_t offsetInRun = byteOffset - currentOffset;
+            uint64_t diskOffset = (static_cast<uint64_t>(run.clusterOffset) * bytesPerCluster) + offsetInRun;
+
             DWORD bytesRead;
-            if ((Read(volumeHandle, buffer, VolumeOffset{diskOffset}, FILE_RECORD_SIZE, &bytesRead) == 0) ||
-                bytesRead != FILE_RECORD_SIZE) {
+            if ((Read(volumeHandle, buffer, VolumeOffset{diskOffset}, geometry.recordSize, &bytesRead) == 0) ||
+                bytesRead != geometry.recordSize) {
                 return false;
             }
-            return ApplyFixup(buffer, FILE_RECORD_SIZE);
+            return ApplyFixup(buffer, geometry.recordSize);
         }
 
         currentOffset += runBytes;
     }
 
-    printf("Error: MFT record %llu not found in data runs (covered %llu bytes, needed offset %llu)\n", recordNumber,
-           currentOffset, byteOffset);
+    printf("Error: MFT record %llu not found in data runs (covered %llu bytes, needed offset %llu)\n",
+           static_cast<unsigned long long>(recordNumber), static_cast<unsigned long long>(currentOffset),
+           static_cast<unsigned long long>(byteOffset));
     return false;
 }
 #endif  // _WIN32
 
 PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type) {
-    auto* fileRecord = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
+    const auto* fileRecord = reinterpret_cast<const PFILE_RECORD_SEGMENT_HEADER>(record);
     auto* attr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(record + fileRecord->FirstAttributeOffset);
 
     while (attr->TypeCode != ATTRIBUTE_TYPE_CODE::EndMarker) {

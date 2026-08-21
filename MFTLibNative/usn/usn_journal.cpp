@@ -246,10 +246,10 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
         nextUsn = bufferNextUsn;
 
         uint8_t* recordPtr = readBuffer + sizeof(int64_t);
-        uint8_t* endPtr = readBuffer + bytesReturned;
+        const uint8_t* endPtr = readBuffer + bytesReturned;
 
         while (recordPtr + sizeof(USN_RECORD_V2) <= endPtr) {
-            auto* usnRecord = reinterpret_cast<USN_RECORD_V2*>(recordPtr);
+            const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPtr);
             if (usnRecord->RecordLength == 0) {
                 break;
             }

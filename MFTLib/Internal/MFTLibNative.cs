@@ -5,15 +5,16 @@ namespace MFTLib;
 static class MFTLibNative
 {
     // .NET's DllImport resolver adds the right platform suffix:
-    //   Windows → MFTLibNative.dll
-    //   Linux   → libMFTLibNative.so
+    //   Windows -> MFTLibNative.dll
+    //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
-    // Swappable function pointers — default to the native P/Invoke implementations.
+    // Swappable function pointers - default to the native P/Invoke implementations.
     // Tests or platforms without the native library can replace these.
     internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr> ParseMFTRecords = NativeParseMFTRecords;
     internal static Action<IntPtr> FreeMftResult = NativeFreeMftResult;
     internal static Func<string, ulong, uint, bool> GenerateSyntheticMFT = NativeGenerateSyntheticMFT;
+    internal static Func<string, ulong, uint, uint, bool> GenerateSyntheticMFTSized = NativeGenerateSyntheticMFTSized;
     internal static Func<string, string?, MatchFlags, uint, IntPtr> ParseMFTFromFile = NativeParseMFTFromFile;
     internal static Func<SafeHandle, IntPtr> QueryUsnJournal = NativeQueryUsnJournal;
     internal static Action<IntPtr> FreeUsnJournalInfo = NativeFreeUsnJournalInfo;
@@ -22,7 +23,7 @@ static class MFTLibNative
     internal static Func<SafeHandle, long, ulong, IntPtr> WatchUsnJournalBatch = NativeWatchUsnJournalBatch;
     internal static Func<SafeHandle, bool> CancelUsnJournalWatch = NativeCancelUsnJournalWatch;
 
-    // P/Invoke declarations (private — all access goes through the Func fields)
+    // P/Invoke declarations (private - all access goes through the Func fields)
     [DllImport(LibraryName, EntryPoint = "ParseMFTRecords", CallingConvention = CallingConvention.Cdecl,
         CharSet = CharSet.Unicode)]
     static extern IntPtr NativeParseMFTRecords(SafeHandle volumeHandle, string? filter, MatchFlags matchFlags,
@@ -36,12 +37,18 @@ static class MFTLibNative
     [return: MarshalAs(UnmanagedType.I1)]
     static extern bool NativeGenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords);
 
+    [DllImport(LibraryName, EntryPoint = "GenerateSyntheticMFTSized", CallingConvention = CallingConvention.Cdecl,
+        CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    static extern bool NativeGenerateSyntheticMFTSized(string filePath, ulong recordCount, uint bufferSizeRecords,
+        uint recordSize);
+
     [DllImport(LibraryName, EntryPoint = "ParseMFTFromFile", CallingConvention = CallingConvention.Cdecl,
         CharSet = CharSet.Unicode)]
     static extern IntPtr NativeParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags,
         uint bufferSizeRecords);
 
-    // Test support exports — control native failure injection
+    // Test support exports - control native failure injection
     [DllImport(LibraryName, EntryPoint = "SetMaxThreads", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetMaxThreads(uint maxThreads);
 
@@ -65,6 +72,9 @@ static class MFTLibNative
 
     [DllImport(LibraryName, EntryPoint = "SetFailPlatformWrite", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetFailPlatformWrite(int fail);
+
+    [DllImport(LibraryName, EntryPoint = "SetVolumeRecordSizeOverride", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetVolumeRecordSizeOverride(uint recordSize);
 
     [DllImport(LibraryName, EntryPoint = "SetUsnIoFailError", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetUsnIoFailError(uint error, int countdown);
@@ -111,6 +121,7 @@ static class MFTLibNative
         ParseMFTRecords = NativeParseMFTRecords;
         FreeMftResult = NativeFreeMftResult;
         GenerateSyntheticMFT = NativeGenerateSyntheticMFT;
+        GenerateSyntheticMFTSized = NativeGenerateSyntheticMFTSized;
         ParseMFTFromFile = NativeParseMFTFromFile;
         QueryUsnJournal = NativeQueryUsnJournal;
         FreeUsnJournalInfo = NativeFreeUsnJournalInfo;

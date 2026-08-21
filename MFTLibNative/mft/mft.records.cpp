@@ -3,6 +3,7 @@
     #error "mft.records.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -55,7 +56,7 @@ uint16_t CopyNtfsNameUnits(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src,
             uint16_t low;
             memcpy(&low, src + i + 1, sizeof(WCHAR));
             if (low >= 0xDC00 && low <= 0xDFFF) {
-                uint32_t codepoint = 0x10000u + (static_cast<uint32_t>(unit - 0xD800) << 10) + (low - 0xDC00);
+                uint32_t codepoint = 0x10000U + (static_cast<uint32_t>(unit - 0xD800) << 10) + (low - 0xDC00);
                 dst[out++] = static_cast<wchar_t>(codepoint);
                 i++;
                 continue;
@@ -78,31 +79,79 @@ void CopyNtfsName(wchar_t* dst, uint16_t dstCapacity, const WCHAR* src, uint16_t
     }
 }
 
+bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, uint32_t* siAttributes,
+                                   bool* sawStandardInformation) {
+    constexpr size_t kResidentHeaderSize = 0x18;
+    constexpr size_t kMinStandardInformationSize = 36;
+    if (attribute->Form.Resident.ValueOffset < kResidentHeaderSize ||
+        static_cast<size_t>(attribute->Form.Resident.ValueOffset) + kMinStandardInformationSize >
+            attribute->RecordLength) {
+        return false;
+    }
+    const auto* siValue = reinterpret_cast<const uint8_t*>(attribute) + attribute->Form.Resident.ValueOffset;
+    *siAttributes = *reinterpret_cast<const uint32_t*>(siValue + 32);
+    *sawStandardInformation = true;
+    return true;
+}
+
+bool TryExtractFileName(const ATTRIBUTE_RECORD_HEADER* attribute, PFILE_NAME* outNameAttr) {
+    constexpr size_t kResidentHeaderSize = 0x18;
+    constexpr size_t kMinFileNameHeaderSize = 66;
+    if (attribute->Form.Resident.ValueOffset < kResidentHeaderSize ||
+        static_cast<size_t>(attribute->Form.Resident.ValueOffset) + kMinFileNameHeaderSize > attribute->RecordLength) {
+        return false;
+    }
+    auto* nameAttr = reinterpret_cast<PFILE_NAME>(const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(attribute)) +
+                                                  attribute->Form.Resident.ValueOffset);
+    size_t requiredNameSize = kMinFileNameHeaderSize + (static_cast<size_t>(nameAttr->FileNameLength) * sizeof(WCHAR));
+    if (static_cast<size_t>(attribute->Form.Resident.ValueOffset) + requiredNameSize > attribute->RecordLength) {
+        return false;
+    }
+    *outNameAttr = nameAttr;
+    return true;
+}
+
 // Walk a record's attributes, accumulating the StandardInformation file
 // attributes into *siAttributes (*sawStandardInformation set if seen), and stop
 // at the first resident, non-DOS FileName attribute. Returns that FileName
 // attribute, or nullptr if the record has none.
-PFILE_NAME FindNamedAttribute(PFILE_RECORD_SEGMENT_HEADER rec, uint32_t* siAttributes, bool* sawStandardInformation) {
+PFILE_NAME FindNamedAttribute(PFILE_RECORD_SEGMENT_HEADER rec, ParseGeometry geometry, uint32_t* siAttributes,
+                              bool* sawStandardInformation) {
     *siAttributes = 0;
     *sawStandardInformation = false;
-    auto* attr =
-        reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(rec) + rec->FirstAttributeOffset);
-    while (reinterpret_cast<uint8_t*>(attr) - reinterpret_cast<uint8_t*>(rec) < FILE_RECORD_SIZE) {
-        if (attr->TypeCode == EndMarker || attr->RecordLength == 0) {
+    auto* recordPointer = reinterpret_cast<uint8_t*>(rec);
+    if (rec->FirstAttributeOffset < 42 || rec->FirstAttributeOffset + sizeof(uint32_t) > geometry.recordSize) {
+        return nullptr;
+    }
+    auto* attribute = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(recordPointer + rec->FirstAttributeOffset);
+    constexpr size_t kResidentHeaderSize = 0x18;
+    while (true) {
+        const auto offset = static_cast<size_t>(reinterpret_cast<uint8_t*>(attribute) - recordPointer);
+        if (offset + sizeof(uint32_t) > geometry.recordSize) {
+            return nullptr;
+        }
+        if (attribute->TypeCode == EndMarker) {
             break;
         }
-        if (attr->TypeCode == StandardInformation && attr->FormCode == 0) {
-            auto* siValue = reinterpret_cast<uint8_t*>(attr) + attr->Form.Resident.ValueOffset;
-            *siAttributes = *reinterpret_cast<uint32_t*>(siValue + 32);
-            *sawStandardInformation = true;
-        } else if (attr->TypeCode == FileName && attr->FormCode == 0) {
-            auto* nameAttr =
-                reinterpret_cast<PFILE_NAME>(reinterpret_cast<uint8_t*>(attr) + attr->Form.Resident.ValueOffset);
+        if (offset + kResidentHeaderSize > geometry.recordSize || attribute->RecordLength < kResidentHeaderSize ||
+            offset + attribute->RecordLength > geometry.recordSize) {
+            return nullptr;
+        }
+        if (attribute->TypeCode == StandardInformation && attribute->FormCode == 0) {
+            if (!TryExtractStandardInformation(attribute, siAttributes, sawStandardInformation)) {
+                return nullptr;
+            }
+        } else if (attribute->TypeCode == FileName && attribute->FormCode == 0) {
+            PFILE_NAME nameAttr = nullptr;
+            if (!TryExtractFileName(attribute, &nameAttr)) {
+                return nullptr;
+            }
             if (nameAttr->Flags != 2) {
                 return nameAttr;
             }
         }
-        attr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(attr) + attr->RecordLength);
+        attribute =
+            reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(attribute) + attribute->RecordLength);
     }
     return nullptr;
 }
@@ -129,7 +178,7 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
 
     uint32_t siAttributes = 0;
     bool sawStandardInformation = false;
-    auto* nameAttr = FindNamedAttribute(rec, &siAttributes, &sawStandardInformation);
+    auto* nameAttr = FindNamedAttribute(rec, scan.geometry, &siAttributes, &sawStandardInformation);
     if (nameAttr == nullptr) {
         return false;
     }
@@ -171,14 +220,7 @@ uint16_t ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t to
     int visitCount = 0;
 
     while (current != 5 && current < totalRecords && depth < 128) {
-        bool cycle = false;
-        for (int vi = 0; vi < visitCount; vi++) {
-            if (visited[vi] == current) {
-                cycle = true;
-                break;
-            }
-        }
-        if (cycle) {
+        if (std::find(visited.begin(), visited.begin() + visitCount, current) != visited.begin() + visitCount) {
             break;
         }
         visited[visitCount++] = current;
@@ -216,7 +258,8 @@ void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, 
                         const ScanContext& scan) {
     for (uint64_t i = range.start; i < range.end; i++) {
         MftFileEntry entry;
-        if (ScanRecordForEntry(buffer + (FILE_RECORD_SIZE * i), recordBase + i, scan, &entry)) {
+        if (ScanRecordForEntry(buffer + (static_cast<size_t>(scan.geometry.recordSize) * i), recordBase + i, scan,
+                               &entry)) {
             slice->entries.push_back(entry);
         }
     }
@@ -226,7 +269,8 @@ void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordI
                         const ScanContext& scan) {
     for (uint64_t i = 0; i < filesToLoad; i++, recordIndex++) {
         MftFileEntry entry;
-        if (!ScanRecordForEntry(buffer + (FILE_RECORD_SIZE * i), recordIndex, scan, &entry)) {
+        if (!ScanRecordForEntry(buffer + (static_cast<size_t>(scan.geometry.recordSize) * i), recordIndex, scan,
+                                &entry)) {
             continue;
         }
 
