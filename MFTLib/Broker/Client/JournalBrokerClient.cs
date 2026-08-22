@@ -78,104 +78,34 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
     public event Action<string>? BrokerDied;
 
     /// <summary>
-    ///     For each drive: pre-create its MMF, request a full cold scan, then consume response
-    ///     frames until every requested drive has delivered either a complete scan (Cursor +
-    ///     ScanReady + JournalBatch) or an Error.
-    /// </summary>
-    public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
-        IReadOnlyList<string> drives, CancellationToken cancellationToken = default)
-    {
-        return ArmScanAndCatchUpAsync(drives, BrokerScanProfile.Full, static (_, _) => ValueTask.CompletedTask, null, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Arms, scans, and catches up each drive, streaming records to <paramref name="consumeRecords" />.
+    ///     Arms, scans, and catches up each drive with optional scan profile, consumer, marker files, and progress callback.
     /// </summary>
     public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
         IReadOnlyList<string> drives,
-        ScanRecordBatchConsumer consumeRecords,
+        BrokerScanOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        return ArmScanAndCatchUpAsync(drives, BrokerScanProfile.Full, consumeRecords, null, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Arms, scans, and catches up each drive using the requested cold-scan record profile.
-    /// </summary>
-    public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
-        IReadOnlyList<string> drives, BrokerScanProfile profile,
-        CancellationToken cancellationToken = default)
-    {
-        return ArmScanAndCatchUpAsync(drives, profile, static (_, _) => ValueTask.CompletedTask, null, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Arms, scans, and catches up each drive using the requested cold-scan record profile,
-    ///     streaming records to <paramref name="consumeRecords" />.
-    /// </summary>
-    public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
-        IReadOnlyList<string> drives,
-        BrokerScanProfile profile,
-        ScanRecordBatchConsumer consumeRecords,
-        CancellationToken cancellationToken = default)
-    {
-        return ArmScanAndCatchUpAsync(drives, profile, consumeRecords, null, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Arms, scans, and catches up each drive using the requested cold-scan record profile.
-    ///     <paramref name="keepFileNames" /> is only consulted under <see cref="BrokerScanProfile.DirectoryIndex" />;
-    ///     it names non-directory files (matched case-insensitively) to keep alongside every
-    ///     directory record - for example a name your application treats as a marker file.
-    /// </summary>
-    public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
-        IReadOnlyList<string> drives, BrokerScanProfile profile,
-        IReadOnlyCollection<string>? keepFileNames, CancellationToken cancellationToken = default)
-    {
-        return ArmScanAndCatchUpCoreAsync(drives, profile, static (_, _) => ValueTask.CompletedTask, keepFileNames, null, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Arms, scans, and catches up each drive using the requested cold-scan record profile,
-    ///     streaming records to <paramref name="consumeRecords" />.
-    /// </summary>
-    public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
-        IReadOnlyList<string> drives,
-        BrokerScanProfile profile,
-        ScanRecordBatchConsumer consumeRecords,
-        IReadOnlyCollection<string>? keepFileNames,
-        CancellationToken cancellationToken = default)
-    {
-        return ArmScanAndCatchUpCoreAsync(drives, profile, consumeRecords, keepFileNames, null, cancellationToken);
-    }
-
-    internal Task<BrokerScanResult> ArmScanAndCatchUpAsync(
-        IReadOnlyList<string> drives, BrokerScanProfile profile,
-        IReadOnlyCollection<string>? keepFileNames, Action transmissionStarted,
-        CancellationToken cancellationToken)
-    {
-        return ArmScanAndCatchUpCoreAsync(drives, profile, static (_, _) => ValueTask.CompletedTask, keepFileNames, transmissionStarted, cancellationToken);
+        return ArmScanAndCatchUpCoreAsync(drives, options, null, cancellationToken);
     }
 
     internal Task<BrokerScanResult> ArmScanAndCatchUpAsync(
         IReadOnlyList<string> drives,
-        BrokerScanProfile profile,
-        ScanRecordBatchConsumer consumeRecords,
-        IReadOnlyCollection<string>? keepFileNames,
-        Action transmissionStarted,
+        BrokerScanOptions? options,
+        Action? transmissionStarted,
         CancellationToken cancellationToken)
     {
-        return ArmScanAndCatchUpCoreAsync(drives, profile, consumeRecords, keepFileNames, transmissionStarted, cancellationToken);
+        return ArmScanAndCatchUpCoreAsync(drives, options, transmissionStarted, cancellationToken);
     }
 
     async Task<BrokerScanResult> ArmScanAndCatchUpCoreAsync(
         IReadOnlyList<string> drives,
-        BrokerScanProfile profile,
-        ScanRecordBatchConsumer consumeRecords,
-        IReadOnlyCollection<string>? keepFileNames,
+        BrokerScanOptions? options,
         Action? transmissionStarted,
         CancellationToken cancellationToken)
     {
+        var profile = options?.Profile ?? BrokerScanProfile.Full;
+        var keepFileNames = options?.KeepFileNames;
+
         var mmfNamesByDrive = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var drivesSpec = PrepareDriveScan(drives, profile, mmfNamesByDrive);
 
@@ -187,7 +117,7 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
         // Fold each broker response into the collector until every drive reports in.
         var collector = new ScanCollector(
             _mmfReader, mmfNamesByDrive, drives.Select(NormalizeDriveLetter),
-            consumeRecords, TakeMmfLifetime, cancellationToken);
+            options, TakeMmfLifetime, cancellationToken);
 
         while (!collector.IsComplete)
         {
@@ -252,6 +182,7 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
         readonly IReadOnlyDictionary<string, string> _mmfNamesByDrive;
         readonly IMmfReader _mmfReader;
         readonly ScanRecordBatchConsumer _consumeRecords;
+        readonly IProgress<BrokerScanProgress>? _progress;
         readonly Func<string, IDisposable?> _takeMmfLifetime;
         readonly CancellationToken _cancellationToken;
         readonly HashSet<string> _remaining;
@@ -260,13 +191,14 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
             IMmfReader mmfReader,
             IReadOnlyDictionary<string, string> mmfNamesByDrive,
             IEnumerable<string> drives,
-            ScanRecordBatchConsumer consumeRecords,
+            BrokerScanOptions? options,
             Func<string, IDisposable?> takeMmfLifetime,
             CancellationToken cancellationToken)
         {
             _mmfReader = mmfReader;
             _mmfNamesByDrive = mmfNamesByDrive;
-            _consumeRecords = consumeRecords;
+            _consumeRecords = options?.ConsumeRecords ?? (static (_, _) => ValueTask.CompletedTask);
+            _progress = options?.Progress;
             _takeMmfLifetime = takeMmfLifetime;
             _cancellationToken = cancellationToken;
             _remaining = new HashSet<string>(drives, StringComparer.OrdinalIgnoreCase);
@@ -278,6 +210,13 @@ public sealed partial class JournalBrokerClient : IAsyncDisposable
         {
             switch (frame.Kind)
             {
+                case BrokerFrameKind.ScanProgress:
+                    if (frame.Progress is { } p)
+                    {
+                        _progress?.Report(p);
+                    }
+                    break;
+
                 case BrokerFrameKind.Cursor:
                     _armedCursors[frame.RequireDrive()] = frame.Cursor;
                     break;

@@ -16,6 +16,9 @@ extern "C" bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t rec
                                               uint32_t recordSize);
 extern "C" MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,
                                                 uint32_t bufferSizeRecords);
+extern "C" MftParseResult* ParseMFTFromFileUtf8WithProgress(const char* filePath, const wchar_t* filter,
+                                                            uint32_t matchFlags, uint32_t bufferSizeRecords,
+                                                            MftProgressCallback callback, void* context);
 extern "C" void FreeMftResult(MftParseResult* result);
 extern "C" void SetAllocFailCountdown(int countdown);
 extern "C" void SetReadFailCountdown(int countdown);
@@ -348,6 +351,56 @@ bool test_path_resolution_and_fallback() {
     return testPassed && fallbackPassed;
 }
 
+struct ProgressReport {
+    uint64_t recordsScanned;
+    uint64_t totalRecords;
+    double elapsedMs;
+};
+
+bool test_progress_callback() {
+    if (!generate_fixture()) {
+        return false;
+    }
+    std::vector<ProgressReport> reports;
+    auto callback = [](uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs, void* context) {
+        auto* vec = static_cast<std::vector<ProgressReport>*>(context);
+        vec->push_back({recordsScanned, totalRecords, elapsedMs});
+    };
+
+    MftParseResult* result = ParseMFTFromFileUtf8WithProgress(kFixturePath, nullptr, 0, 1, callback, &reports);
+    bool ok = (result != nullptr && result->usedRecords > 0);
+    if (ok) {
+        if (reports.empty()) {
+            std::fprintf(stderr, "  FAIL: no progress reports\n");
+            ok = false;
+        } else {
+            uint64_t prev = 0;
+            for (const auto& r : reports) {
+                if (r.recordsScanned <= prev || r.recordsScanned > r.totalRecords) {
+                    std::fprintf(stderr, "  FAIL: progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
+                                 static_cast<unsigned long long>(prev),
+                                 static_cast<unsigned long long>(r.recordsScanned),
+                                 static_cast<unsigned long long>(r.totalRecords));
+                    ok = false;
+                    break;
+                }
+                prev = r.recordsScanned;
+            }
+            if (ok && reports.back().recordsScanned != result->totalRecords) {
+                std::fprintf(stderr, "  FAIL: final report (%llu) != totalRecords (%llu)\n",
+                             static_cast<unsigned long long>(reports.back().recordsScanned),
+                             static_cast<unsigned long long>(result->totalRecords));
+                ok = false;
+            }
+        }
+    }
+    if (result != nullptr) {
+        FreeMftResult(result);
+    }
+    remove_fixture();
+    return ok;
+}
+
 struct TestCase {
     const char* name;
     bool (*fn)();
@@ -356,7 +409,7 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 14> tests = {{
+    const std::array<TestCase, 15> tests = {{
         {"abi_version", test_abi_version},
         {"round_trip", test_round_trip},
         {"round_trip_4096", test_round_trip_4096},
@@ -371,6 +424,7 @@ int main() {
         {"malformed_attribute_offset", test_malformed_attribute_offset},
         {"zero_length_file_name", test_zero_length_file_name},
         {"path_resolution_and_fallback", test_path_resolution_and_fallback},
+        {"progress_callback", test_progress_callback},
     }};
 
     int passedCount = 0;

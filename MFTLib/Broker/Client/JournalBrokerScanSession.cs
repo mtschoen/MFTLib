@@ -326,7 +326,12 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
             try
             {
                 result = await _client.ArmScanAndCatchUpAsync(
-                    drives, profile, consumeRecords, keepFileNames,
+                    drives, new BrokerScanOptions
+                    {
+                        Profile = profile,
+                        ConsumeRecords = consumeRecords,
+                        KeepFileNames = keepFileNames
+                    },
                     () => transmissionStarted = true, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (transmissionStarted)

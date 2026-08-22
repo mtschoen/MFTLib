@@ -11,6 +11,8 @@
 
 constexpr uint32_t MFT_NATIVE_ABI_VERSION = 2;
 
+using MftProgressCallback = void (*)(uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs, void* context);
+
 #pragma pack(push, 1)
 
 struct MftCompactEntry {

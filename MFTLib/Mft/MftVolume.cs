@@ -63,10 +63,10 @@ public sealed partial class MftVolume : IDisposable
     }
 
     public IEnumerable<MftRecord[]> ReadRecordBatches(
-        bool resolvePaths = false, int batchSize = 4096)
+        bool resolvePaths = false, int batchSize = 4096, IProgress<MftScanProgress>? progress = null)
     {
         using var result = StreamRecords(
-            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None);
+            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None, progress);
         foreach (var batch in result.MaterializeBatches(batchSize))
         {
             yield return batch;
@@ -84,19 +84,55 @@ public sealed partial class MftVolume : IDisposable
         return MaterializeWithTimings(result, out timings);
     }
 
-    public MftResult StreamRecords(string? filter = null, MatchFlags matchFlags = MatchFlags.None)
+    public MftResult StreamRecords(
+        string? filter = null,
+        MatchFlags matchFlags = MatchFlags.None,
+        IProgress<MftScanProgress>? progress = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative.ParseMFTRecords(_volumeHandle, filter, matchFlags, _bufferSizeRecords);
+
+        List<MftScanProgress>? queue = progress != null ? new List<MftScanProgress>() : null;
+        MFTLibNative.NativeMftProgressCallback? nativeCallback = queue != null ? (recordsScanned, totalRecords, elapsedMs, _) =>
+        {
+            try
+            {
+                lock (queue)
+                {
+                    queue.Add(new MftScanProgress((long)recordsScanned, (long)totalRecords,
+                        TimeSpan.FromMilliseconds(elapsedMs)));
+                }
+            }
+            catch
+            {
+                // Non-throwing adapter: never throw across unmanaged boundary
+            }
+        }
+        : null;
+
+        var resultPtr = MFTLibNative.ParseMFTRecordsWithProgress(
+            _volumeHandle, filter, matchFlags, _bufferSizeRecords, nativeCallback, IntPtr.Zero);
+        GC.KeepAlive(nativeCallback);
 
         if (resultPtr == IntPtr.Zero)
         {
             throw new InvalidOperationException("ParseMFTRecords returned null");
         }
 
+        if (queue != null && progress != null)
+        {
+            lock (queue)
+            {
+                foreach (var item in queue)
+                {
+                    progress.Report(item);
+                }
+            }
+        }
+
         return new MftResult(resultPtr, _driveLetter, 0);
     }
+
 
     public IEnumerable<string> FindDirectories(string name)
     {

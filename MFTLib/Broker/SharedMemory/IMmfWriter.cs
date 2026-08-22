@@ -33,4 +33,16 @@ public interface IStreamingMmfWriter : IMmfWriter
         string mmfName,
         IEnumerable<IReadOnlyList<ScanRecord>> batches,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    ///     Open the map named <paramref name="mmfName" />, write record batches in
+    ///     interleaved payload format v2, and return the record count and byte length,
+    ///     reporting progress.
+    /// </summary>
+    MmfWriteResult Write(
+        string mmfName,
+        IEnumerable<IReadOnlyList<ScanRecord>> batches,
+        IProgress<MmfWriteProgress>? progress,
+        CancellationToken cancellationToken);
 }
+

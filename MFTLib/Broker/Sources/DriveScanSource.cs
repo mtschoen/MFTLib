@@ -13,3 +13,11 @@ public delegate ScanRecord[] DriveScanSource(string driveLetter);
 /// </summary>
 public delegate IEnumerable<IReadOnlyList<ScanRecord>> StreamingDriveScanSource(
     string driveLetter, CancellationToken cancellationToken);
+
+/// <summary>
+///     Progress-carrying streaming variant of <see cref="DriveScanSource" /> that yields bounded batches
+///     of <see cref="ScanRecord" />s and reports progress.
+/// </summary>
+public delegate IEnumerable<IReadOnlyList<ScanRecord>> ProgressStreamingDriveScanSource(
+    string driveLetter, IProgress<MmfWriteProgress>? progress, CancellationToken cancellationToken);
+

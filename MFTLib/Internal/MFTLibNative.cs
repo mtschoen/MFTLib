@@ -12,10 +12,16 @@ static class MFTLibNative
     internal const uint ExpectedMftNativeAbiVersion = 2;
     internal const uint NativeCompactEntrySize = 32;
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void NativeMftProgressCallback(ulong recordsScanned, ulong totalRecords, double elapsedMs,
+        IntPtr context);
+
     // Swappable function pointers - default to the native P/Invoke implementations.
     // Tests or platforms without the native library can replace these.
     internal static Func<uint> GetMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
     internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr> ParseMFTRecords = NativeParseMFTRecords;
+    internal static Func<SafeHandle, string?, MatchFlags, uint, NativeMftProgressCallback?, IntPtr, IntPtr>
+        ParseMFTRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
     internal static Action<IntPtr> FreeMftResult = NativeFreeMftResult;
     internal static Func<string, ulong, uint, bool> GenerateSyntheticMFT = NativeGenerateSyntheticMFT;
     internal static Func<string, ulong, uint, uint, bool> GenerateSyntheticMFTSized = NativeGenerateSyntheticMFTSized;
@@ -27,6 +33,18 @@ static class MFTLibNative
     internal static Func<SafeHandle, long, ulong, IntPtr> WatchUsnJournalBatch = NativeWatchUsnJournalBatch;
     internal static Func<SafeHandle, bool> CancelUsnJournalWatch = NativeCancelUsnJournalWatch;
 
+    static IntPtr NativeParseMFTRecordsWithProgressDefault(
+        SafeHandle volumeHandle, string? filter, MatchFlags matchFlags, uint bufferSizeRecords,
+        NativeMftProgressCallback? callback, IntPtr context)
+    {
+        if (ParseMFTRecords != NativeParseMFTRecords)
+        {
+            return ParseMFTRecords(volumeHandle, filter, matchFlags, bufferSizeRecords);
+        }
+
+        return NativeParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, callback, context);
+    }
+
     // P/Invoke declarations (private - all access goes through the Func fields)
     [DllImport(LibraryName, EntryPoint = "GetMftNativeAbiVersion", CallingConvention = CallingConvention.Cdecl)]
     static extern uint NativeGetMftNativeAbiVersion();
@@ -35,6 +53,11 @@ static class MFTLibNative
         CharSet = CharSet.Unicode)]
     static extern IntPtr NativeParseMFTRecords(SafeHandle volumeHandle, string? filter, MatchFlags matchFlags,
         uint bufferSizeRecords);
+
+    [DllImport(LibraryName, EntryPoint = "ParseMFTRecordsWithProgress", CallingConvention = CallingConvention.Cdecl,
+        CharSet = CharSet.Unicode)]
+    static extern IntPtr NativeParseMFTRecordsWithProgress(SafeHandle volumeHandle, string? filter,
+        MatchFlags matchFlags, uint bufferSizeRecords, NativeMftProgressCallback? callback, IntPtr context);
 
     [DllImport(LibraryName, EntryPoint = "FreeMftResult", CallingConvention = CallingConvention.Cdecl)]
     static extern void NativeFreeMftResult(IntPtr result);
@@ -101,6 +124,11 @@ static class MFTLibNative
     internal static extern IntPtr NativeParseMFTRecordsRaw(IntPtr volumeHandle, string? filter, uint matchFlags,
         uint bufferSizeRecords);
 
+    [DllImport(LibraryName, EntryPoint = "ParseMFTRecordsWithProgress", CallingConvention = CallingConvention.Cdecl,
+        CharSet = CharSet.Unicode)]
+    internal static extern IntPtr NativeParseMFTRecordsWithProgressRaw(IntPtr volumeHandle, string? filter,
+        uint matchFlags, uint bufferSizeRecords, NativeMftProgressCallback? callback, IntPtr context);
+
     [DllImport(LibraryName, EntryPoint = "QueryUsnJournal", CallingConvention = CallingConvention.Cdecl)]
     static extern IntPtr NativeQueryUsnJournal(SafeHandle volumeHandle);
 
@@ -137,6 +165,7 @@ static class MFTLibNative
     {
         GetMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
         ParseMFTRecords = NativeParseMFTRecords;
+        ParseMFTRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
         FreeMftResult = NativeFreeMftResult;
         GenerateSyntheticMFT = NativeGenerateSyntheticMFT;
         GenerateSyntheticMFTSized = NativeGenerateSyntheticMFTSized;
@@ -149,3 +178,4 @@ static class MFTLibNative
         CancelUsnJournalWatch = NativeCancelUsnJournalWatch;
     }
 }
+

@@ -2,7 +2,7 @@ namespace MFTLib;
 
 /// <summary>
 ///     Aggregated result of
-///     <see cref="JournalBrokerClient.ArmScanAndCatchUpAsync(IReadOnlyList{string}, ScanRecordBatchConsumer, CancellationToken)" />
+///     <see cref="JournalBrokerClient.ArmScanAndCatchUpAsync(IReadOnlyList{string}, BrokerScanOptions?, CancellationToken)" />
 ///     :
 ///     the armed cursor (captured before the scan began), the advanced cursor after catch-up,
 ///     the catch-up journal entries, and any per-drive error messages.

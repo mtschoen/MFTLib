@@ -240,6 +240,35 @@ public static class BrokerProtocol
         writer.Advance(offset);
     }
 
+    public static void WriteScanProgress(IBufferWriter<byte> writer, BrokerScanProgress progress)
+    {
+        var driveBytes = Encoding.Unicode.GetBytes(progress.DriveLetter);
+        // payload: [driveLen int32][driveBytes][recordsProcessed i64][bytesProcessed i64][totalRecordsOrMinusOne i64][totalBytesOrMinusOne i64][elapsedTicks i64]
+        var payloadLength = 4 + driveBytes.Length + 8 + 8 + 8 + 8 + 8;
+        var totalLength = 1 + payloadLength;
+        var span = writer.GetSpan(4 + totalLength);
+        var offset = 0;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)BrokerFrameKind.ScanProgress;
+        offset += 1;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
+        offset += 4;
+        driveBytes.CopyTo(span[offset..]);
+        offset += driveBytes.Length;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.RecordsProcessed);
+        offset += 8;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.BytesProcessed);
+        offset += 8;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.TotalRecords ?? -1L);
+        offset += 8;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.TotalBytes ?? -1L);
+        offset += 8;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.Elapsed.Ticks);
+        offset += 8;
+        writer.Advance(offset);
+    }
+
     public static BrokerFrame ReadFrame(ReadOnlySpan<byte> span, out int consumed)
     {
         var totalLength = BinaryPrimitives.ReadInt32LittleEndian(span);
@@ -259,6 +288,7 @@ public static class BrokerProtocol
             BrokerFrameKind.Cursor => ReadCursorFrame(payload),
             BrokerFrameKind.JournalBatch => ReadJournalBatchFrame(payload),
             BrokerFrameKind.Error => ReadErrorFrame(payload),
+            BrokerFrameKind.ScanProgress => ReadScanProgressFrame(payload),
             _ => throw new InvalidDataException($"Unknown frame kind: {kind}")
         };
     }
@@ -360,4 +390,26 @@ public static class BrokerProtocol
         var message = ReadString(payload, offset, out _);
         return BrokerFrame.Error(drive, message);
     }
+
+    static BrokerFrame ReadScanProgressFrame(ReadOnlySpan<byte> payload)
+    {
+        var drive = ReadString(payload, 0, out var offset);
+        var recordsProcessed = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        offset += 8;
+        var bytesProcessed = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        offset += 8;
+        var totalRecordsRaw = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        offset += 8;
+        var totalBytesRaw = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        offset += 8;
+        var elapsedTicks = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+
+        long? totalRecords = totalRecordsRaw >= 0 ? totalRecordsRaw : null;
+        long? totalBytes = totalBytesRaw >= 0 ? totalBytesRaw : null;
+        var elapsed = TimeSpan.FromTicks(elapsedTicks);
+
+        var progress = new BrokerScanProgress(drive, recordsProcessed, bytesProcessed, totalRecords, totalBytes, elapsed);
+        return BrokerFrame.ScanProgress(progress);
+    }
 }
+

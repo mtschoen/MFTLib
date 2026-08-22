@@ -102,8 +102,15 @@ public sealed partial class JournalBrokerScanSession
         var session = new JournalBrokerScanSession(client, drives, profile, keepFileNames, EmptyCursors);
         try
         {
-            var result = await client.ArmScanAndCatchUpAsync(drives, profile, consumeRecords, keepFileNames, cancellationToken)
-                .ConfigureAwait(false);
+            var result = await client.ArmScanAndCatchUpAsync(
+                drives,
+                new BrokerScanOptions
+                {
+                    Profile = profile,
+                    ConsumeRecords = consumeRecords,
+                    KeepFileNames = keepFileNames
+                },
+                cancellationToken).ConfigureAwait(false);
             lock (session._stateLock)
             {
                 if (!session._isFaulted)

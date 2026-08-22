@@ -428,4 +428,82 @@ public class BrokerProtocolTests
         Assert.AreEqual("journal wrapped", frame.Message);
         Assert.AreEqual(0, frame.Entries.Length);
     }
+
+    [TestMethod]
+    public void ScanProgressFrame_RoundTrips_AllFields()
+    {
+        var progress = new BrokerScanProgress("C", 1000, 20480, 5000, 102400, TimeSpan.FromMilliseconds(150));
+        var buffer = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteScanProgress(buffer, progress);
+        var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
+
+        Assert.AreEqual(BrokerFrameKind.ScanProgress, frame.Kind);
+        Assert.AreEqual("C", frame.Drive);
+        Assert.IsNotNull(frame.Progress);
+        Assert.AreEqual(progress, frame.Progress.Value);
+        Assert.AreEqual(buffer.WrittenCount, consumed);
+    }
+
+    [TestMethod]
+    public void ScanProgressFrame_RoundTrips_NullableFieldsAsMinusOne()
+    {
+        var progress = new BrokerScanProgress("D", 500, 10240, null, null, TimeSpan.FromMilliseconds(50));
+        var buffer = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteScanProgress(buffer, progress);
+        var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
+
+        Assert.AreEqual(BrokerFrameKind.ScanProgress, frame.Kind);
+        Assert.AreEqual("D", frame.Drive);
+        Assert.IsNotNull(frame.Progress);
+        Assert.AreEqual(progress, frame.Progress.Value);
+        Assert.IsNull(frame.Progress.Value.TotalRecords);
+        Assert.IsNull(frame.Progress.Value.TotalBytes);
+        Assert.AreEqual(buffer.WrittenCount, consumed);
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_ScanProgressFrame()
+    {
+        var progress = new BrokerScanProgress("C", 100, 200, 300, 400, TimeSpan.FromTicks(500));
+        AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, progress), new byte[]
+        {
+            0x2F, 0x00, 0x00, 0x00, // totalLength = 47 (1 + 4 + 2 + 8*5 = 47)
+            0x0B, // kind = ScanProgress (11)
+            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C" (UTF-16)
+            0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 100
+            0xC8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 200
+            0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // totalRecords = 300
+            0x90, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // totalBytes = 400
+            0xF4, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // elapsedTicks = 500
+        });
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_ScanProgressFrame_NullTotals()
+    {
+        var progress = new BrokerScanProgress("C", 1, 2, null, null, TimeSpan.FromTicks(3));
+        AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, progress), new byte[]
+        {
+            0x2F, 0x00, 0x00, 0x00, // totalLength = 47
+            0x0B, // kind = ScanProgress (11)
+            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 1
+            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 2
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalRecords = -1
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalBytes = -1
+            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // elapsedTicks = 3
+        });
+    }
+
+    [TestMethod]
+    public void Factory_ScanProgress_PopulatesDriveAndProgress()
+    {
+        var progress = new BrokerScanProgress("E", 10, 20, 30, 40, TimeSpan.FromSeconds(1));
+        var frame = BrokerFrame.ScanProgress(progress);
+        Assert.AreEqual(BrokerFrameKind.ScanProgress, frame.Kind);
+        Assert.AreEqual("E", frame.Drive);
+        Assert.AreEqual(progress, frame.Progress);
+        Assert.AreEqual(0, frame.Entries.Length);
+    }
 }
+

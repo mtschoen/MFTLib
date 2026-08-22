@@ -138,6 +138,38 @@ non-directory records whose name matches `keepFileNames` (case-insensitive); use
 journal path indexing plus a small set of caller-named marker files when a full packed
 snapshot could exceed the single-MMF payload limit. `keepFileNames` is ignored under `Full`.
 
+### Scan options and low-level client
+
+When calling `JournalBrokerClient.ArmScanAndCatchUpAsync` directly, all optional cold-scan parameters are bundled in `BrokerScanOptions`:
+
+```csharp
+public sealed record BrokerScanOptions
+{
+    public BrokerScanProfile Profile { get; init; } = BrokerScanProfile.Full;
+    public ScanRecordBatchConsumer? ConsumeRecords { get; init; }
+    public IReadOnlyCollection<string>? KeepFileNames { get; init; }
+    public IProgress<BrokerScanProgress>? Progress { get; init; }
+}
+
+var progress = new Progress<BrokerScanProgress>(p =>
+{
+    Console.WriteLine($"Scanning drive {p.DriveLetter}: {p.RecordsProcessed:N0} records ({p.BytesProcessed / (1024 * 1024):N1} MB) in {p.Elapsed.TotalSeconds:F1}s");
+});
+
+var scan = await broker.ArmScanAndCatchUpAsync(
+    new[] { "C", "D" },
+    new BrokerScanOptions
+    {
+        Profile = BrokerScanProfile.DirectoryIndex,
+        KeepFileNames = new[] { ".git" },
+        Progress = progress,
+        ConsumeRecords = (batch, ct) => ValueTask.CompletedTask
+    },
+    cancellationToken);
+```
+
+Progress updates are throttled on the broker host to at most once every 250ms per drive, and the final 100% frame is guaranteed immediately before the `ScanReady` frame. Late progress frames arriving during live watch are discarded safely.
+
 `ScanRecord.Size` and `ScanRecord.LastWriteTicks` are currently zero because those
 fields are reserved for a future MFT surface. Use `Name`, `Path`, `Attributes`,
 `IsDirectory`, `RecordNumber`, and `ParentRecordNumber` today.

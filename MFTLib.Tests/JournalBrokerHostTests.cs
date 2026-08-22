@@ -89,11 +89,12 @@ public class JournalBrokerHostTests
 
         var frames = ReadAllFrames(clientSide);
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
-        Assert.AreEqual(BrokerFrameKind.ScanReady, frames[1].Kind);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[2].Kind);
+        Assert.IsTrue(frames.Any(f => f.Kind == BrokerFrameKind.ScanProgress));
+        var scanReady = frames.Single(f => f.Kind == BrokerFrameKind.ScanReady);
+        var journalBatch = frames.Single(f => f.Kind == BrokerFrameKind.JournalBatch);
         Assert.AreEqual("C", frames[0].Drive);
-        Assert.AreEqual("mftlib-scan-C", frames[1].MmfName);
-        Assert.AreEqual(1, frames[2].Entries.Length);
+        Assert.AreEqual("mftlib-scan-C", scanReady.MmfName);
+        Assert.AreEqual(1, journalBatch.Entries.Length);
         Assert.AreEqual(1, writeMmf.LastPayloadRecordCount);
         Assert.AreEqual("mftlib-scan-C", writeMmf.LastMmfName);
     }
@@ -122,8 +123,9 @@ public class JournalBrokerHostTests
 
         var frames = ReadAllFrames(clientSide);
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
-        Assert.AreEqual(BrokerFrameKind.ScanReady, frames[1].Kind);
-        Assert.AreEqual(2, frames[1].RecordCount);
+        Assert.IsTrue(frames.Any(f => f.Kind == BrokerFrameKind.ScanProgress));
+        var scanReady = frames.Single(f => f.Kind == BrokerFrameKind.ScanReady);
+        Assert.AreEqual(2, scanReady.RecordCount);
         Assert.AreEqual(2, writeMmf.WrittenBatches.Count);
         Assert.AreEqual(2, writeMmf.LastPayloadRecordCount);
     }
@@ -151,8 +153,10 @@ public class JournalBrokerHostTests
         serverSide.Dispose();
 
         var frames = ReadAllFrames(clientSide);
-        Assert.AreEqual(BrokerFrameKind.ScanReady, frames[1].Kind);
-        Assert.AreEqual(2, frames[1].RecordCount);
+        Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
+        Assert.IsTrue(frames.Any(f => f.Kind == BrokerFrameKind.ScanProgress));
+        var scanReady = frames.Single(f => f.Kind == BrokerFrameKind.ScanReady);
+        Assert.AreEqual(2, scanReady.RecordCount);
         Assert.AreEqual(2, legacyWriter.LastRecords.Length);
     }
 
@@ -689,6 +693,229 @@ public class JournalBrokerHostTests
             100, 110, "a.txt", UsnReason.FileCreate | UsnReason.Close);
     }
 
+    [TestMethod]
+    public async Task ServeOnce_ScanProgress_EmitsFinalFrameImmediatelyBeforeScanReady()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var host = new JournalBrokerHost(
+            _ => new UsnJournalCursor(7UL, 0L),
+            (_, _) => new[]
+            {
+                new[] { new ScanRecord(1, 0, 100, 0, 0x20, false, "r1.txt", @"C:\r1.txt") },
+                new[] { new ScanRecord(2, 0, 200, 0, 0x20, false, "r2.txt", @"C:\r2.txt") }
+            },
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-progress-C");
+        await clientSide.WriteAsync(request.WrittenMemory);
+        await clientSide.FlushAsync();
+
+        var writeMmf = new RecordingMmfWriter();
+        await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
+        serverSide.Dispose();
+
+        var frames = ReadAllFrames(clientSide);
+        Assert.IsTrue(frames.Count >= 3, "Expected at least Cursor, ScanProgress, and ScanReady frames");
+        Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
+
+        var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
+        Assert.IsTrue(scanReadyIndex > 0, "ScanReady frame must be present");
+        var finalProgressIndex = scanReadyIndex - 1;
+        Assert.AreEqual(BrokerFrameKind.ScanProgress, frames[finalProgressIndex].Kind, "Final progress frame must immediately precede ScanReady");
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[scanReadyIndex + 1].Kind);
+
+        var progress = frames[finalProgressIndex].Progress;
+        Assert.IsNotNull(progress);
+        Assert.AreEqual("C", progress.Value.DriveLetter);
+        Assert.AreEqual(2, progress.Value.RecordsProcessed);
+        Assert.AreEqual(2, progress.Value.TotalRecords);
+        Assert.IsTrue(progress.Value.BytesProcessed > 0);
+        Assert.AreEqual(progress.Value.BytesProcessed, progress.Value.TotalBytes);
+    }
+
+    [TestMethod]
+    public async Task ServeOnce_ScanProgress_ThrottlesNonFinalFrames()
+    {
+        var originalThrottle = JournalBrokerHost.ProgressThrottleInterval;
+        try
+        {
+            JournalBrokerHost.ProgressThrottleInterval = TimeSpan.FromMinutes(10);
+
+            var (clientSide, serverSide) = DuplexStream.CreatePair();
+            var host = new JournalBrokerHost(
+                _ => new UsnJournalCursor(7UL, 0L),
+                (_, progress, _) =>
+                {
+                    var batches = new List<IReadOnlyList<ScanRecord>>();
+                    for (var i = 0; i < 20; i++)
+                    {
+                        progress?.Report(new MmfWriteProgress(i, i * 100, 20, 2000));
+                        batches.Add(new[] { new ScanRecord((ulong)i, 0, 100, 0, 0x20, false, $"r{i}.txt", $@"C:\r{i}.txt") });
+                    }
+                    return batches;
+                },
+                (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+            var request = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-throttle-C");
+            await clientSide.WriteAsync(request.WrittenMemory);
+            await clientSide.FlushAsync();
+
+            var writeMmf = new RecordingMmfWriter();
+            await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
+            serverSide.Dispose();
+
+            var frames = ReadAllFrames(clientSide);
+            var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
+            // With a 10-minute throttle interval, the rapid burst of 20 reports emits at most 1 initial non-final frame
+            // plus 1 final synthetic frame before ScanReady (at most 2 total progress frames).
+            Assert.IsTrue(progressFrames.Count >= 1, "At least one progress frame must be emitted");
+            Assert.IsTrue(progressFrames.Count <= 2, $"Expected at most 2 progress frames due to throttling, but got {progressFrames.Count}");
+            var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
+            var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
+            Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "Final progress frame must immediately precede ScanReady");
+        }
+        finally
+        {
+            JournalBrokerHost.ProgressThrottleInterval = originalThrottle;
+        }
+    }
+
+    [TestMethod]
+    public async Task ServeOnce_ScanProgress_CancelledScan_EndsCleanlyWithoutErrorFrame()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        using var cts = new CancellationTokenSource();
+        var host = new JournalBrokerHost(
+            _ => new UsnJournalCursor(7UL, 0L),
+            (_, _, ct) => throw new OperationCanceledException(ct),
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-cancel-C");
+        await clientSide.WriteAsync(request.WrittenMemory);
+        await clientSide.FlushAsync();
+
+        var writeMmf = new RecordingMmfWriter();
+        await host.ServeAsync(serverSide, writeMmf, true, cts.Token);
+        serverSide.Dispose();
+
+        var frames = ReadAllFrames(clientSide);
+        Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Error),
+            "Cancellation must not emit an Error frame");
+    }
+
+
+    [TestMethod]
+    public async Task ServeOnce_ScanProgress_MonotonicAcrossParseAndWritePhases()
+    {
+        var originalThrottle = JournalBrokerHost.ProgressThrottleInterval;
+        try
+        {
+            // Zero, not a small interval: a non-zero throttle makes emission depend on
+            // real elapsed time between reports, which is what made this test flake on
+            // CI. With Zero the pump emits every value it manages to read.
+            JournalBrokerHost.ProgressThrottleInterval = TimeSpan.Zero;
+
+            var (clientSide, serverSide) = DuplexStream.CreatePair();
+            var host = new JournalBrokerHost(
+                _ => new UsnJournalCursor(7UL, 0L),
+                (_, progress, _) =>
+                {
+                    for (var i = 1; i <= 5; i++)
+                    {
+                        progress?.Report(new MmfWriteProgress(
+                            i * 1000,
+                            0,
+                            5000,
+                            null));
+                    }
+
+                    return new[]
+                    {
+                        new[] { new ScanRecord(1, 0, 100, 0, 0x20, false, "r1.txt", @"C:\r1.txt") },
+                        new[] { new ScanRecord(2, 0, 200, 0, 0x20, false, "r2.txt", @"C:\r2.txt") },
+                        new[] { new ScanRecord(3, 0, 300, 0, 0x20, false, "r3.txt", @"C:\r3.txt") }
+                    };
+                },
+                (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+            var request = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-monotonic-C");
+            await clientSide.WriteAsync(request.WrittenMemory);
+            await clientSide.FlushAsync();
+
+            var writeMmf = new RecordingMmfWriter();
+            await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
+            serverSide.Dispose();
+
+            var frames = ReadAllFrames(clientSide);
+            var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
+
+            // Only the final frame is guaranteed. Intermediate frames flow through a
+            // bounded(1)/DropOldest channel, so the pump silently loses any value it has
+            // not read before the next write - how many survive depends on thread
+            // scheduling, not on behaviour under test. Asserting a count above one is
+            // what made this flaky. The invariants below hold for whatever does arrive.
+            Assert.IsTrue(progressFrames.Count >= 1, "The final progress frame is always emitted");
+
+            var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
+            var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
+            Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "Final progress frame must immediately precede ScanReady");
+
+            long previousRecords = 0;
+            var previousElapsed = TimeSpan.Zero;
+            foreach (var frame in progressFrames)
+            {
+                Assert.IsNotNull(frame.Progress);
+                var p = frame.Progress.Value;
+                Assert.AreEqual("C", p.DriveLetter);
+                Assert.IsTrue(p.RecordsProcessed >= previousRecords,
+                    $"RecordsProcessed must be non-decreasing: got {p.RecordsProcessed}, previous was {previousRecords}");
+                Assert.IsTrue(p.Elapsed >= previousElapsed,
+                    $"Elapsed must be non-decreasing: got {p.Elapsed}, previous was {previousElapsed}");
+                Assert.AreEqual(5000L, p.TotalRecords, "TotalRecords must stay 5000 throughout");
+                previousRecords = p.RecordsProcessed;
+                previousElapsed = p.Elapsed;
+            }
+
+            var finalProgress = progressFrames.Last().Progress!.Value;
+            Assert.AreEqual(5000L, finalProgress.RecordsProcessed);
+            Assert.AreEqual(5000L, finalProgress.TotalRecords);
+            Assert.IsTrue(finalProgress.BytesProcessed > 0);
+            Assert.AreEqual(finalProgress.BytesProcessed, finalProgress.TotalBytes);
+        }
+        finally
+        {
+            JournalBrokerHost.ProgressThrottleInterval = originalThrottle;
+        }
+    }
+
+    [TestMethod]
+    public void ArmAndScanBatches_ProgressStreamingSource_PassesProgressCallback()
+    {
+        MmfWriteProgress? reportedProgress = null;
+        var progress = new DirectProgress(p => reportedProgress = p);
+
+        var host = new JournalBrokerHost(
+            _ => new UsnJournalCursor(7UL, 0L),
+            (_, p, _) =>
+            {
+                p?.Report(new MmfWriteProgress(500, 10000, 1500, 30000));
+                return new[] { new[] { SampleRecord() } };
+            },
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+        var (_, batches) = host.ArmAndScanBatches("C", progress);
+        var enumerated = batches.ToList();
+
+        Assert.AreEqual(1, enumerated.Count);
+        Assert.IsNotNull(reportedProgress);
+        Assert.AreEqual(500L, reportedProgress.Value.RecordsProcessed);
+        Assert.AreEqual(1500L, reportedProgress.Value.TotalRecords);
+    }
+
     static JournalBrokerHost MakeFakeHost(ScanRecord[] records, UsnJournalEntry[] catchUp)
     {
         return new JournalBrokerHost(
@@ -712,5 +939,20 @@ public class JournalBrokerHostTests
         }
 
         return frames;
+    }
+
+    sealed class DirectProgress : IProgress<MmfWriteProgress>
+    {
+        readonly Action<MmfWriteProgress> _handler;
+
+        public DirectProgress(Action<MmfWriteProgress> handler)
+        {
+            _handler = handler;
+        }
+
+        public void Report(MmfWriteProgress value)
+        {
+            _handler(value);
+        }
     }
 }

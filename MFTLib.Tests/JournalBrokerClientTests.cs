@@ -83,10 +83,13 @@ public class JournalBrokerClientTests
 
         // Act
         var consumed = new List<ScanRecord>();
-        var result = await client.ArmScanAndCatchUpAsync(DriveC, (batch, _) =>
+        var result = await client.ArmScanAndCatchUpAsync(DriveC, new BrokerScanOptions
         {
-            consumed.AddRange(batch);
-            return ValueTask.CompletedTask;
+            ConsumeRecords = (batch, _) =>
+            {
+                consumed.AddRange(batch);
+                return ValueTask.CompletedTask;
+            }
         });
         await brokerTask;
 
@@ -156,7 +159,7 @@ public class JournalBrokerClientTests
         });
 
         var client = MakeMinimalFakeClient(clientSide);
-        var result = await client.ArmScanAndCatchUpAsync(DriveD, BrokerScanProfile.Full, CancellationToken.None);
+        var result = await client.ArmScanAndCatchUpAsync(DriveD, new BrokerScanOptions { Profile = BrokerScanProfile.Full }, CancellationToken.None);
         await brokerTask;
 
         Assert.IsTrue(result.Errors.ContainsKey("D"));
@@ -183,7 +186,7 @@ public class JournalBrokerClientTests
 
         var client = MakeMinimalFakeClient(clientSide);
         var result = await client.ArmScanAndCatchUpAsync(
-            DriveD, BrokerScanProfile.DirectoryIndex, KeepFileNamesGit);
+            DriveD, new BrokerScanOptions { Profile = BrokerScanProfile.DirectoryIndex, KeepFileNames = KeepFileNamesGit });
         await brokerTask;
 
         Assert.IsTrue(result.Errors.ContainsKey("D"));
@@ -748,7 +751,7 @@ public class JournalBrokerClientTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var client = await JournalBrokerClient.SpawnAndConnectAsync(launchBroker, cts.Token);
 
-        var result = await client.ArmScanAndCatchUpAsync(DriveC, cts.Token);
+        var result = await client.ArmScanAndCatchUpAsync(DriveC, cancellationToken: cts.Token);
 
         Assert.IsTrue(result.ArmedCursors.ContainsKey("C"));
         Assert.AreEqual(0, result.Errors.Count);
@@ -813,17 +816,20 @@ public class JournalBrokerClientTests
 
         await client.ArmScanAndCatchUpAsync(
             new[] { "C:\\", "D:\\" },
-            (records, _) =>
+            new BrokerScanOptions
             {
-                if (records.Any(r => r.Name == "c.txt"))
+                ConsumeRecords = (records, _) =>
                 {
-                    collectedC.AddRange(records);
+                    if (records.Any(r => r.Name == "c.txt"))
+                    {
+                        collectedC.AddRange(records);
+                    }
+                    else
+                    {
+                        collectedD.AddRange(records);
+                    }
+                    return ValueTask.CompletedTask;
                 }
-                else
-                {
-                    collectedD.AddRange(records);
-                }
-                return ValueTask.CompletedTask;
             });
 
         await brokerTask;
@@ -856,7 +862,7 @@ public class JournalBrokerClientTests
             await serverSide.FlushAsync();
         });
 
-        var result = await client.ArmScanAndCatchUpAsync(DriveD, (_, _) => ValueTask.CompletedTask);
+        var result = await client.ArmScanAndCatchUpAsync(DriveD, new BrokerScanOptions { ConsumeRecords = (_, _) => ValueTask.CompletedTask });
         await brokerTask;
 
         Assert.IsTrue(trackerD.IsDisposed, "Error frame must immediately dispose the failed drive's map");
@@ -888,7 +894,7 @@ public class JournalBrokerClientTests
         });
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            client.ArmScanAndCatchUpAsync(DriveC, (_, _) => ValueTask.CompletedTask));
+            client.ArmScanAndCatchUpAsync(DriveC, new BrokerScanOptions { ConsumeRecords = (_, _) => ValueTask.CompletedTask }));
 
         await brokerTask;
 
@@ -929,12 +935,15 @@ public class JournalBrokerClientTests
         var receivedBatches = new List<IReadOnlyList<ScanRecord>>();
         var collectedRecords = new List<ScanRecord>();
 
-        await client.ArmScanAndCatchUpAsync(DriveC, (batch, _) =>
+        await client.ArmScanAndCatchUpAsync(DriveC, new BrokerScanOptions
         {
-            Assert.IsTrue(batch.Count <= 4096, $"Batch size {batch.Count} must not exceed 4096");
-            receivedBatches.Add(batch);
-            collectedRecords.AddRange(batch);
-            return ValueTask.CompletedTask;
+            ConsumeRecords = (batch, _) =>
+            {
+                Assert.IsTrue(batch.Count <= 4096, $"Batch size {batch.Count} must not exceed 4096");
+                receivedBatches.Add(batch);
+                collectedRecords.AddRange(batch);
+                return ValueTask.CompletedTask;
+            }
         });
 
         await brokerTask;
@@ -1018,6 +1027,131 @@ public class JournalBrokerClientTests
                 var batch = new ScanRecord[count];
                 list.CopyTo(i, batch, 0, count);
                 yield return batch;
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_Options_DispatchesProgressCallback()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var progress = new SyncProgress<BrokerScanProgress>();
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide); // ArmAndScan
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 100L));
+            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 50, 1000, 100, 2000, TimeSpan.FromMilliseconds(50)));
+            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromMilliseconds(100)));
+            BrokerProtocol.WriteScanReady(response, "mftlib-progress-C", 100, 2000);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 200L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var reader = new FakeBatchMmfReader();
+        reader.SetData("mftlib-progress-C", Array.Empty<ScanRecord>());
+        var client = MakeFakeClient(clientSide, reader, "mftlib-progress-C");
+
+        var options = new BrokerScanOptions
+        {
+            Progress = progress
+        };
+
+        var result = await client.ArmScanAndCatchUpAsync(DriveC, options);
+        await brokerTask;
+
+        Assert.AreEqual(2, progress.Reports.Count);
+        Assert.AreEqual(50, progress.Reports[0].RecordsProcessed);
+        Assert.AreEqual(100, progress.Reports[1].RecordsProcessed);
+        Assert.AreEqual("C", progress.Reports[0].DriveLetter);
+        Assert.AreEqual(0, result.Errors.Count);
+
+        await client.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_ScanProgressFrame_DoesNotCompleteDrive()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var progress = new SyncProgress<BrokerScanProgress>();
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide); // ArmAndScan
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 100L));
+            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 10, 200, 100, 2000, TimeSpan.FromMilliseconds(10)));
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+
+            // Delay before completing the scan
+            await Task.Delay(50);
+            var completeResponse = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteScanReady(completeResponse, "mftlib-scan-C", 100, 2000);
+            BrokerProtocol.WriteJournalBatch(completeResponse, "C", new UsnJournalCursor(7UL, 200L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(completeResponse.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var reader = new FakeBatchMmfReader();
+        reader.SetData("mftlib-scan-C", Array.Empty<ScanRecord>());
+        var client = MakeFakeClient(clientSide, reader, "mftlib-scan-C");
+
+        var result = await client.ArmScanAndCatchUpAsync(DriveC, new BrokerScanOptions { Progress = progress });
+        await brokerTask;
+
+        Assert.AreEqual(1, progress.Reports.Count);
+        Assert.IsTrue(result.ArmedCursors.ContainsKey("C"));
+        Assert.IsTrue(result.AdvancedCursors.ContainsKey("C"));
+
+        await client.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task DemuxLoopAsync_ScanProgressFrame_IgnoredDuringLiveWatch()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide); // StartWatch
+            var response = new ArrayBufferWriter<byte>();
+            // Late progress frame arriving during live watch
+            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromSeconds(1)));
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 110L), new[] { JournalEntryFactory.Create(1, 110, "live.txt") });
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        await client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 100L) });
+        var batchSource = client.CreateBatchSource();
+
+        var received = new List<(UsnJournalEntry[], UsnJournalCursor)>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await foreach (var batch in batchSource("C:\\", default, cts.Token))
+        {
+            received.Add(batch);
+            break;
+        }
+
+        await brokerTask;
+        Assert.AreEqual(1, received.Count);
+        Assert.AreEqual("live.txt", received[0].Item1[0].FileName);
+
+        await client.DisposeAsync();
+    }
+
+    sealed class SyncProgress<T> : IProgress<T>
+    {
+        public List<T> Reports { get; } = new();
+        public void Report(T value)
+        {
+            lock (Reports)
+            {
+                Reports.Add(value);
             }
         }
     }

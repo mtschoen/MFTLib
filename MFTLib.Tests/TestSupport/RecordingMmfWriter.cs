@@ -21,6 +21,14 @@ public sealed class RecordingMmfWriter : IStreamingMmfWriter
         string mmfName, IEnumerable<IReadOnlyList<ScanRecord>> batches,
         CancellationToken cancellationToken)
     {
+        return Write(mmfName, batches, null, cancellationToken);
+    }
+
+    public MmfWriteResult Write(
+        string mmfName, IEnumerable<IReadOnlyList<ScanRecord>> batches,
+        IProgress<MmfWriteProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         LastMmfName = mmfName;
         WrittenBatches.Clear();
         long recordCount = 0;
@@ -37,9 +45,13 @@ public sealed class RecordingMmfWriter : IStreamingMmfWriter
                               System.Text.Encoding.Unicode.GetByteCount(record.Name) +
                               System.Text.Encoding.Unicode.GetByteCount(record.Path);
             }
+
+            progress?.Report(new MmfWriteProgress(recordCount, byteLength, null, null));
         }
 
         LastPayloadRecordCount = recordCount;
+        progress?.Report(new MmfWriteProgress(recordCount, byteLength, recordCount, byteLength));
         return new MmfWriteResult(recordCount, byteLength);
     }
 }
+

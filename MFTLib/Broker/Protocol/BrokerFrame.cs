@@ -11,7 +11,8 @@ public enum BrokerFrameKind : byte
     Error = 7,
     Heartbeat = 8,
     EndWatch = 9,
-    EndWatchAck = 10
+    EndWatchAck = 10,
+    ScanProgress = 11
 }
 
 public readonly record struct BrokerFrame
@@ -26,6 +27,7 @@ public readonly record struct BrokerFrame
     public string? Message { get; private init; }
     public string? DrivesSpec { get; private init; }
     public IReadOnlyList<string> KeepFileNames { get; private init; }
+    public BrokerScanProgress? Progress { get; private init; }
 
     // Cursor/JournalBatch/Error frames always carry a real (possibly empty, never
     // null) drive string: BrokerProtocol.ReadFrame decodes it via a length-prefixed
@@ -125,6 +127,18 @@ public readonly record struct BrokerFrame
             Entries = entries,
             Drive = drive,
             Cursor = cursor,
+            KeepFileNames = Array.Empty<string>()
+        };
+    }
+
+    public static BrokerFrame ScanProgress(BrokerScanProgress progress)
+    {
+        return new BrokerFrame
+        {
+            Kind = BrokerFrameKind.ScanProgress,
+            Entries = Array.Empty<UsnJournalEntry>(),
+            Drive = progress.DriveLetter,
+            Progress = progress,
             KeepFileNames = Array.Empty<string>()
         };
     }

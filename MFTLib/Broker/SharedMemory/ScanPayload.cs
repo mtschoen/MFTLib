@@ -83,6 +83,15 @@ public static class ScanPayload
         IEnumerable<IReadOnlyList<ScanRecord>> batches,
         CancellationToken cancellationToken)
     {
+        return Write(destination, batches, null, cancellationToken);
+    }
+
+    public static MmfWriteResult Write(
+        Stream destination,
+        IEnumerable<IReadOnlyList<ScanRecord>> batches,
+        IProgress<MmfWriteProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         var startPosition = destination.Position;
         Span<byte> headerBytes = stackalloc byte[HeaderSize];
         destination.Write(headerBytes);
@@ -115,6 +124,9 @@ public static class ScanPayload
                 destination.Write(nameBytes);
                 destination.Write(pathBytes);
             }
+
+            var currentBytes = destination.Position - startPosition;
+            progress?.Report(new MmfWriteProgress(recordCount, currentBytes, null, null));
         }
 
         var endPosition = destination.Position;
@@ -130,8 +142,11 @@ public static class ScanPayload
         destination.Position = endPosition;
         destination.Flush();
 
+        progress?.Report(new MmfWriteProgress(recordCount, totalBytes, recordCount, totalBytes));
+
         return new MmfWriteResult(recordCount, totalBytes);
     }
+
 
     public static long ReadCount(ReadOnlySpan<byte> source)
     {

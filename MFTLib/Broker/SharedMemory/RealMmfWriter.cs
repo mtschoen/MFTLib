@@ -21,8 +21,17 @@ public sealed class RealMmfWriter : IStreamingMmfWriter
         string mmfName, IEnumerable<IReadOnlyList<ScanRecord>> batches,
         CancellationToken cancellationToken)
     {
+        return Write(mmfName, batches, null, cancellationToken);
+    }
+
+    public MmfWriteResult Write(
+        string mmfName, IEnumerable<IReadOnlyList<ScanRecord>> batches,
+        IProgress<MmfWriteProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         using var map = MemoryMappedFile.OpenExisting(mmfName, MemoryMappedFileRights.Write);
         using var view = map.CreateViewStream(0, 0, MemoryMappedFileAccess.Write);
-        return ScanPayload.Write(view, batches, cancellationToken);
+        return ScanPayload.Write(view, batches, progress, cancellationToken);
     }
 }
+

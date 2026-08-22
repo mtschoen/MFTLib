@@ -216,7 +216,8 @@ uint64_t FileReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
 
 // Core implementation that takes a UTF-8 file path.
 MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filter, uint32_t matchFlags,
-                                     uint32_t bufferSizeRecords) {
+                                     uint32_t bufferSizeRecords, MftProgressCallback callback = nullptr,
+                                     void* context = nullptr) {
 #ifndef _WIN32
     if (filter != nullptr) {
         return CreateErrorResult(L"Filter not supported on Linux yet");
@@ -263,7 +264,7 @@ MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filte
     uint64_t totalRecords = static_cast<uint64_t>(fileSize) / geometry->recordSize;
     FileReadContext ctx = {file, totalRecords, bufferSizeRecords, 0, *geometry};
     auto* result = ParseMFTImpl(FileReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords,
-                                *geometry);
+                                *geometry, callback, context);
     mftlib::platform::close_file(file);
     return result;
 }
@@ -284,8 +285,9 @@ EXPORT void FreeMftResult(MftParseResult* result) {
 }
 
 #ifdef _WIN32
-EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags,
-                                       uint32_t bufferSizeRecords) {
+EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags,
+                                                   uint32_t bufferSizeRecords, MftProgressCallback callback,
+                                                   void* context) {
     auto* result = CreateEmptyResult();
     if (result == nullptr) {
         return nullptr;
@@ -361,7 +363,12 @@ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filte
 
     free(result);
     return ParseMFTImpl(VolumeReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords,
-                        *geometry);
+                        *geometry, callback, context);
+}
+
+EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags,
+                                       uint32_t bufferSizeRecords) {
+    return ParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, nullptr, nullptr);
 }
 
 // C-ABI export; (filePath, filter) order is fixed by the C# P/Invoke signature.
@@ -384,9 +391,26 @@ EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* 
 #endif  // _WIN32
 
 #ifndef _WIN32
+EXPORT MftParseResult* ParseMFTRecordsWithProgress(void* /*volumeHandle*/, const wchar_t* /*filter*/,
+                                                   uint32_t /*matchFlags*/, uint32_t /*bufferSizeRecords*/,
+                                                   MftProgressCallback /*callback*/, void* /*context*/) {
+    return CreateErrorResult(L"Direct volume parsing is not supported on Linux");
+}
+
+EXPORT MftParseResult* ParseMFTRecords(void* volumeHandle, const wchar_t* filter, uint32_t matchFlags,
+                                       uint32_t bufferSizeRecords) {
+    return ParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, nullptr, nullptr);
+}
+
 EXPORT MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,
                                             uint32_t bufferSizeRecords) {
     return ParseMFTFromFileImpl(filePath, filter, matchFlags, bufferSizeRecords);
+}
+
+EXPORT MftParseResult* ParseMFTFromFileUtf8WithProgress(const char* filePath, const wchar_t* filter,
+                                                        uint32_t matchFlags, uint32_t bufferSizeRecords,
+                                                        MftProgressCallback callback, void* context) {
+    return ParseMFTFromFileImpl(filePath, filter, matchFlags, bufferSizeRecords, callback, context);
 }
 #endif
 }

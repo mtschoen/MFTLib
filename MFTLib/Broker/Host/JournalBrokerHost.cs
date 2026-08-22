@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace MFTLib;
@@ -16,12 +15,14 @@ public sealed partial class JournalBrokerHost
 {
     readonly UsnJournalCursorQuery _queryCursor;
     readonly UsnJournalCatchUpSource _readJournal;
-    readonly StreamingDriveScanSource _scanDrive;
+    readonly ProgressStreamingDriveScanSource _scanDrive;
     readonly JournalBatchSource? _watchDrive;
+
+    internal static TimeSpan ProgressThrottleInterval = TimeSpan.FromMilliseconds(250);
 
     public JournalBrokerHost(
         UsnJournalCursorQuery queryCursor,
-        StreamingDriveScanSource scanDrive,
+        ProgressStreamingDriveScanSource scanDrive,
         UsnJournalCatchUpSource readJournal,
         JournalBatchSource? watchDrive = null)
     {
@@ -33,12 +34,25 @@ public sealed partial class JournalBrokerHost
 
     public JournalBrokerHost(
         UsnJournalCursorQuery queryCursor,
+        StreamingDriveScanSource scanDrive,
+        UsnJournalCatchUpSource readJournal,
+        JournalBatchSource? watchDrive = null)
+        : this(
+            queryCursor,
+            (drive, _, ct) => scanDrive(drive, ct),
+            readJournal,
+            watchDrive)
+    {
+    }
+
+    public JournalBrokerHost(
+        UsnJournalCursorQuery queryCursor,
         DriveScanSource scanDrive,
         UsnJournalCatchUpSource readJournal,
         JournalBatchSource? watchDrive = null)
         : this(
             queryCursor,
-            (drive, _) => new[] { scanDrive(drive) },
+            (drive, _, _) => new[] { scanDrive(drive) },
             readJournal,
             watchDrive)
     {
@@ -52,15 +66,15 @@ public sealed partial class JournalBrokerHost
     public (UsnJournalCursor Cursor, ScanRecord[] Records) ArmAndScan(string driveLetter)
     {
         var cursor = _queryCursor(driveLetter); // strictly before the scan
-        var records = _scanDrive(driveLetter, CancellationToken.None).SelectMany(b => b).ToArray();
+        var records = _scanDrive(driveLetter, null, CancellationToken.None).SelectMany(b => b).ToArray();
         return (cursor, records);
     }
 
     public (UsnJournalCursor Cursor, IEnumerable<IReadOnlyList<ScanRecord>> Batches) ArmAndScanBatches(
-        string driveLetter, CancellationToken cancellationToken = default)
+        string driveLetter, IProgress<MmfWriteProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         var cursor = _queryCursor(driveLetter);
-        var batches = _scanDrive(driveLetter, cancellationToken);
+        var batches = _scanDrive(driveLetter, progress, cancellationToken);
         return (cursor, batches);
     }
 
@@ -126,137 +140,6 @@ public sealed partial class JournalBrokerHost
                     writer => BrokerProtocol.WriteError(writer, drive, exception.Message), CancellationToken.None)
                 .ConfigureAwait(false);
         }
-    }
-
-    async Task HandleArmAndScanAsync(Stream stream, IMmfWriter mmfWriter, string drivesSpec,
-        IReadOnlyList<string> keepFileNames, SemaphoreSlim writeLock, CancellationToken cancellationToken)
-    {
-        foreach (var request in ParseScanSpec(drivesSpec))
-        {
-            try
-            {
-                var (cursor, batches) = ArmAndScanBatches(request.Letter, cancellationToken);
-                var filteredBatches = FilterScanProfile(batches, request.Profile, keepFileNames);
-
-                await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteCursor(writer, request.Letter, cursor), cancellationToken)
-                    .ConfigureAwait(false);
-
-                MmfWriteResult writeResult;
-                if (mmfWriter is IStreamingMmfWriter streamingWriter)
-                {
-                    writeResult = streamingWriter.Write(request.MmfName, filteredBatches, cancellationToken);
-                }
-                else
-                {
-                    var allRecords = filteredBatches.SelectMany(b => b).ToArray();
-                    var byteLength = mmfWriter.Write(request.MmfName, allRecords);
-                    writeResult = new MmfWriteResult(allRecords.Length, byteLength);
-                }
-
-                await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, writeResult.RecordCount, writeResult.ByteLength),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-
-                var (entries, updated) = CatchUp(request.Letter, cursor);
-                await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteJournalBatch(writer, request.Letter, updated, entries),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            // Deliberate per-drive boundary: any failure on one drive (journal
-            // wrapped, volume open denied, scan IO error) is reported as an Error
-            // frame and the remaining drives still proceed - matching the existing
-            // non-fatal per-drive journal contract. A throw here would abort the
-            // whole session, losing the other drives' scans. Cancellation is not a
-            // per-drive error: let it propagate to end the session cleanly.
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteError(writer, request.Letter, exception.Message),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-    }
-
-    // Spec tokens are comma-joined "letter:journalId:nextUsn:mmfName". The watch
-    // spec omits the map name (three fields); MmfName is then empty.
-    static IEnumerable<ScanDriveRequest> ParseScanSpec(string spec)
-    {
-        foreach (var token in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var parts = token.Split(':');
-            yield return new ScanDriveRequest(
-                parts[0],
-                ulong.Parse(parts[1], CultureInfo.InvariantCulture),
-                long.Parse(parts[2], CultureInfo.InvariantCulture),
-                parts.Length > 3 ? parts[3] : string.Empty,
-                parts.Length > 4
-                    ? ParseScanProfile(parts[4])
-                    : BrokerScanProfile.Full);
-        }
-    }
-
-    static BrokerScanProfile ParseScanProfile(string value)
-    {
-        var profile = (BrokerScanProfile)int.Parse(value, CultureInfo.InvariantCulture);
-        if (!Enum.IsDefined(profile))
-        {
-            throw new InvalidDataException($"Unknown broker scan profile: {value}");
-        }
-
-        return profile;
-    }
-
-    // internal: ParseScanProfile already rejects undefined values before a request
-    // reaches here, so the default arm is unreachable from the wire path; it exists
-    // as an exhaustiveness guard for future profile values and is tested directly.
-    // keepFileNames is ignored under Full (the complete inventory already includes
-    // every file); under DirectoryIndex it names non-directory files to keep
-    // alongside every directory, matched case-insensitively against NTFS's default
-    // case-insensitive name comparison.
-    internal static ScanRecord[] ApplyScanProfile(
-        ScanRecord[] records, BrokerScanProfile profile, IReadOnlyCollection<string> keepFileNames)
-    {
-        return FilterScanProfile(new[] { records }, profile, keepFileNames).Single().ToArray();
-    }
-
-    internal static IEnumerable<IReadOnlyList<ScanRecord>> FilterScanProfile(
-        IEnumerable<IReadOnlyList<ScanRecord>> batches,
-        BrokerScanProfile profile,
-        IReadOnlyCollection<string>? keepFileNames)
-    {
-        HashSet<string>? keepSet = null;
-        if (profile == BrokerScanProfile.DirectoryIndex && keepFileNames != null && keepFileNames.Count > 0)
-        {
-            keepSet = new HashSet<string>(keepFileNames, StringComparer.OrdinalIgnoreCase);
-        }
-
-        foreach (var batch in batches)
-        {
-            yield return profile switch
-            {
-                BrokerScanProfile.Full => batch,
-                BrokerScanProfile.DirectoryIndex => FilterDirectoryIndexBatch(batch, keepSet),
-                _ => throw new InvalidDataException($"Unknown broker scan profile: {profile}")
-            };
-        }
-    }
-
-    static ScanRecord[] FilterDirectoryIndexBatch(IReadOnlyList<ScanRecord> batch, HashSet<string>? keepSet)
-    {
-        var result = new List<ScanRecord>(batch.Count);
-        foreach (var record in batch)
-        {
-            if (record.IsDirectory || (keepSet != null && keepSet.Contains(record.Name)))
-            {
-                result.Add(record);
-            }
-        }
-
-        return result.ToArray();
     }
 
     static async Task WriteFrameAsync(Stream stream, SemaphoreSlim writeLock,
@@ -344,10 +227,31 @@ public sealed partial class JournalBrokerHost
         return volume.QueryUsnJournal();
     }
 
-    static IEnumerable<IReadOnlyList<ScanRecord>> ScanDriveBatches(string drive, CancellationToken cancellationToken)
+    static IEnumerable<IReadOnlyList<ScanRecord>> ScanDriveBatches(
+        string drive, IProgress<MmfWriteProgress>? progress, CancellationToken cancellationToken)
     {
         using var volume = MftVolume.Open(Bare(drive));
-        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, batchSize: 4096))
+        // Adapt MftScanProgress from the native MFT volume parser into MmfWriteProgress
+        // so drive scan progress flows to the host progress pump.
+        //
+        // This is the parse-phase source, reporting RecordsScanned climbing to
+        // TotalRecords with BytesProcessed = 0. The write phase is not wired to
+        // mid-scan progress (the writer receives null progress in ExecuteDriveScanAsync),
+        // and the final byte/record totals are emitted in the guaranteed final frame by
+        // EmitScanCompletionFramesAsync.
+        //
+        // DirectProgress invokes handlers synchronously on the calling thread to avoid
+        // thread-pool dispatch delays and ensure TotalRecords is captured reliably.
+        var mftProgress = progress != null
+            ? new DirectProgress<MftScanProgress>(p =>
+                progress.Report(new MmfWriteProgress(
+                    p.RecordsScanned,
+                    0,
+                    p.TotalRecords,
+                    null)))
+            : null;
+
+        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, batchSize: 4096, progress: mftProgress))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var scanRecords = ToScanRecords(batch);
@@ -406,21 +310,23 @@ public sealed partial class JournalBrokerHost
         return result.ToArray();
     }
 
-    // A per-drive arm-and-scan request: bare drive letter, the resume cursor
-    // (unused for arm-and-scan, which queries fresh), the caller-created map name,
-    // and an optional cold-scan record profile.
-    readonly record struct ScanDriveRequest(
-        string Letter,
-        ulong JournalId,
-        long NextUsn,
-        string MmfName,
-        BrokerScanProfile Profile);
-
     // Holds the live watch generation's CTS and per-drive tasks. A StartWatch creates
     // one, an EndWatch (or session end) tears it down; see ServeAsync.
     sealed class WatchGeneration
     {
         public readonly List<Task> Tasks = new();
         public CancellationTokenSource? Cancellation;
+    }
+
+    sealed class DirectProgress<T> : IProgress<T>
+    {
+        readonly Action<T> _handler;
+
+        public DirectProgress(Action<T> handler)
+        {
+            _handler = handler ?? throw new ArgumentNullException(nameof(handler));
+        }
+
+        public void Report(T value) => _handler(value);
     }
 }

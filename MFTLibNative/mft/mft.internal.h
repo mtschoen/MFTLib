@@ -165,4 +165,5 @@ void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordI
 using ReadChunkFn = uint64_t (*)(void* context, uint8_t* targetBuffer, double& ioMs);
 
 MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
-                             uint32_t bufferSizeRecords, ParseGeometry geometry);
+                             uint32_t bufferSizeRecords, ParseGeometry geometry, MftProgressCallback callback = nullptr,
+                             void* progressContext = nullptr);

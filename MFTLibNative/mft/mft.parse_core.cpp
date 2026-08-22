@@ -246,11 +246,18 @@ void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned n
     state.output.stringCapacity = 0;
 }
 
+struct ProgressHook {
+    MftProgressCallback callback = nullptr;
+    void* context = nullptr;
+    SteadyClock::time_point wallStart;
+};
+
 // Drive the double-buffered read/parse loop over every chunk. Returns false if a
 // chunk's merge ran out of memory (result error already set; buffers freed by caller).
 bool ParseAllChunks(ChunkReader& reader, unsigned numThreads, const ScanContext& scan, ParseState& state,
-                    MftParseResult* result) {
+                    MftParseResult* result, const ProgressHook& progress) {
     uint64_t recordIndex = 0;
+    uint64_t lastReportedRecords = 0;
     uint64_t currentChunkSize = reader.readChunk(reader.readContext, (*reader.buf)[0], state.ioMs);
     int curBuf = 0;
 
@@ -289,19 +296,32 @@ bool ParseAllChunks(ChunkReader& reader, unsigned numThreads, const ScanContext&
 
         recordIndex += currentChunkSize;
 
+        if (progress.callback != nullptr) {
+            double elapsedMs = ElapsedMs(progress.wallStart, SteadyClock::now());
+            progress.callback(recordIndex, scan.totalRecords, elapsedMs, progress.context);
+            lastReportedRecords = recordIndex;
+        }
+
         ioThread.join();
         state.ioMs += nextIoMs;
 
         currentChunkSize = nextChunkSize;
         curBuf = 1 - curBuf;
     }
+
+    if (progress.callback != nullptr && lastReportedRecords < scan.totalRecords) {
+        double elapsedMs = ElapsedMs(progress.wallStart, SteadyClock::now());
+        progress.callback(scan.totalRecords, scan.totalRecords, elapsedMs, progress.context);
+    }
+
     return true;
 }
 
 }  // namespace
 
 MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
-                             uint32_t bufferSizeRecords, ParseGeometry geometry) {
+                             uint32_t bufferSizeRecords, ParseGeometry geometry, MftProgressCallback callback,
+                             void* progressContext) {
     auto wallStart = SteadyClock::now();
 
     auto* result = ShouldFailAlloc() ? nullptr : static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
@@ -337,7 +357,8 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
 
     ScanContext scan{filter, resolvePaths ? &lookup : nullptr, totalRecords, geometry};
     ChunkReader reader{readChunk, readContext, &buf};
-    bool parsedOk = ParseAllChunks(reader, numThreads, scan, state, result);
+    ProgressHook progress{callback, progressContext, wallStart};
+    bool parsedOk = ParseAllChunks(reader, numThreads, scan, state, result, progress);
 
     mftlib::platform::big_free(buf[0], bufSize);
     mftlib::platform::big_free(buf[1], bufSize);

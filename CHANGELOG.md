@@ -24,8 +24,9 @@
 - **VolumeBroker subsystem** — an elevated broker host/client for running MFT scans and USN journal watches through a single UAC session, so a non-elevated caller never needs more than one elevation prompt per process lifetime:
   - `JournalBrokerHost` (elevated side) arms the journal cursor before scanning each drive, scans, and serves catch-up + live-watch requests over a pipe; `JournalBrokerHost.CreateDefault()` wires it to real `MftVolume` access
   - `JournalBrokerClient` (non-elevated side) owns the pipe and per-drive page-file-backed `MemoryMappedFile`s; `ArmScanAndCatchUpAsync` drives the cold scan, `SendStartWatchAsync`/`CreateBatchSource`/`StopLiveWatchAsync` drive the live watch, and `BrokerDied` signals broker death exactly once
-  - `BrokerProtocol` — binary frame codec for the pipe (`BrokerFrameKind`, `BrokerFrame`) carrying scan requests, cursors, journal batches, and errors
+  - `BrokerProtocol` — binary frame codec for the pipe (`BrokerFrameKind`, `BrokerFrame`) carrying scan requests, cursors, scan progress (frame kind 11), journal batches, and errors
   - `ScanPayload`/`ScanRecord` — packed binary cold-scan payload written into the shared MMF, read back without a disk round-trip
+  - `BrokerScanProgress` and `BrokerScanOptions` — structured progress reporting during cold scans with host-side 250ms throttling via bounded channels (`Channel.CreateBounded<BrokerScanProgress>(1, DropOldest)`), non-throwing native callback integration (`ParseMFTRecordsWithProgress` / `MftProgressCallback`), client demux dispatch to `IProgress<BrokerScanProgress>`, and collapsed `ArmScanAndCatchUpAsync` overloads
   - `ElevatedEntryPoint.TryHandle` dispatches the `--broker` (`--pipe`, `--once`, `--diag`) elevated child mode; `BrokerLauncher.Launch` starts it via a non-waiting `runas` relaunch
   - Opt-in `BrokerDiagnostics` frame/event tracing via `MFTLIB_BROKER_DIAG=1` or `BrokerDiagnostics.Enable(role)`, writing to `BrokerDiagnostics.LogDirectory` (consumers point this at their own app-data directory)
   - Live watches can be stopped and restarted on the same client for rescans without launching another elevated process
