@@ -337,6 +337,47 @@ public class MockVolumeTests
         Assert.AreEqual(2, count);
     }
 
+    [TestMethod]
+    public void MftResult_NativeCompactBytes_WithoutPaths_ComputesCorrectSize()
+    {
+        SetupMocks(usedRecords: 3, withPaths: false);
+
+        using var volume = MftVolume.Open("C");
+        using var stream = volume.StreamRecords();
+
+        // 3 records * 32 bytes + string units (file0.txt=9, file1.txt=9, file2.txt=9 = 27 units * 2 bytes = 54)
+        // 96 + 54 = 150 bytes
+        Assert.AreEqual(150UL, stream.NativeCompactBytes);
+    }
+
+    [TestMethod]
+    public void MftResult_NativeCompactBytes_WithPaths_ComputesCorrectSize()
+    {
+        SetupMocks(usedRecords: 3, withPaths: true);
+
+        using var volume = MftVolume.Open("C");
+        using var stream = volume.StreamRecords();
+
+        // With paths: pathEntries (3*32 = 96) + pathStrings (dir\file0.txt=13, 13, 13 = 39 units * 2 bytes = 78)
+        // 96 + 78 = 174 bytes
+        Assert.AreEqual(174UL, stream.NativeCompactBytes);
+    }
+
+    [TestMethod]
+    public void MftResult_Dispose_TotalsAndCompactBytesRemainReadable()
+    {
+        SetupMocks(usedRecords: 3, withPaths: false);
+
+        using var volume = MftVolume.Open("C");
+        var stream = volume.StreamRecords();
+        stream.Dispose();
+
+        Assert.AreEqual(3UL, stream.TotalRecords);
+        Assert.AreEqual(3UL, stream.UsedRecords);
+        Assert.AreEqual(150UL, stream.NativeCompactBytes);
+        Assert.IsNotNull(stream.Timings);
+    }
+
     // --- FindFiles, FindDirectories, FindRecords ---
 
     [TestMethod]
@@ -538,6 +579,39 @@ public class MockVolumeTests
 
         Assert.AreEqual(2, records.Length);
         Assert.AreEqual(2UL, timings.TotalRecords);
+    }
+
+    [TestMethod]
+    public void StreamMFTFromFile_ReturnsStream()
+    {
+        MFTLibNative.ParseMFTFromFile = (_, _, _, _) => BuildResult(3);
+        MFTLibNative.FreeMftResult = ptr =>
+        {
+            var p = Marshal.PtrToStructure<MftParseResult>(ptr);
+            if (p.Entries != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(p.Entries);
+            }
+            if (p.EntryStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(p.EntryStrings);
+            }
+            Marshal.FreeHGlobal(ptr);
+        };
+
+        using var result = MftVolume.StreamMFTFromFile("fake.bin");
+
+        Assert.AreEqual(3UL, result.TotalRecords);
+        Assert.AreEqual(3UL, result.UsedRecords);
+    }
+
+    [TestMethod]
+    public void StreamMFTFromFile_NullReturn_ThrowsInvalidOperation()
+    {
+        MFTLibNative.ParseMFTFromFile = (_, _, _, _) => IntPtr.Zero;
+
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            MftVolume.StreamMFTFromFile("fake.bin"));
     }
 
     // --- MftResult Error and Dispose ---

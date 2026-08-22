@@ -46,9 +46,48 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
             _result.TotalTimeMs, marshalMs);
     }
 
+    /// <summary>
+    /// Total number of MFT records examined during the parse pass.
+    /// Remains readable after <see cref="Dispose"/>.
+    /// </summary>
     public ulong TotalRecords => _result.TotalRecords;
+
+    /// <summary>
+    /// Number of active or matching records returned in the result set.
+    /// Remains readable after <see cref="Dispose"/>.
+    /// </summary>
     public ulong UsedRecords => _result.UsedRecords;
+
+    /// <summary>
+    /// Detailed phase timings for the parse pass.
+    /// Remains readable after <see cref="Dispose"/>.
+    /// </summary>
     public MftParseTimings Timings { get; }
+
+    /// <summary>
+    /// Total bytes occupied by the native compact entry buffers and UTF-16 string pools.
+    /// Cached from the parsed result header and remains readable after <see cref="Dispose"/>.
+    /// </summary>
+    public ulong NativeCompactBytes
+    {
+        get
+        {
+            ulong bytes = 0;
+            if (_result.Entries != IntPtr.Zero)
+            {
+                bytes += _result.UsedRecords * MFTLibNative.NativeCompactEntrySize;
+            }
+
+            bytes += _result.EntryStringUnits * sizeof(ushort);
+            if (_result.PathEntries != IntPtr.Zero)
+            {
+                bytes += _result.UsedRecords * MFTLibNative.NativeCompactEntrySize;
+            }
+
+            bytes += _result.PathStringUnits * sizeof(ushort);
+            return bytes;
+        }
+    }
 
     public void Dispose()
     {

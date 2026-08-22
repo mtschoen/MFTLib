@@ -1,3 +1,8 @@
+Git: 7b90748247a0f434e99fdf1206fddfd9651a3c70
+Benchmark arguments: 1000000 5
+Peak working set: 21749760
+Peak private bytes: 6590464
+
 System Info
 ====================================
   Build:       Release
@@ -6,73 +11,55 @@ System Info
   Threads:     32
   RAM:         64 GB
   Disk:        Samsung SSD 990 PRO 4TB
-  .NET:        .NET 8.0.25
-  Date:        2026-04-12 00:43:05
+  .NET:        .NET 8.0.30
+  Date:        2026-08-22 00:11:38
 
 MFT Benchmark
-  Records: 8,000,000
-  Iterations: 3
+  Records: 1,000,000
+  Iterations: 5
 
-Generating synthetic MFT... done in 4.4s (7.63 GB)
+Generating synthetic MFT... done in 0.5s (0.95 GB)
 
---- Unfiltered (all records) ---
-  Iteration 1/3... 6039ms (5,999,037 records)
-  Iteration 2/3... 5580ms (5,999,037 records)
-  Iteration 3/3... 5323ms (5,999,037 records)
-  Results (median of 3 successful iterations):
-    Records:         5,999,037
-    I/O:                4201.6ms
-    Fixup:                46.2ms
-    Parse:               801.8ms
-    Marshal:             486.3ms
-    Compute:            1334.2ms  (fixup + parse + marshal)
-    Wall clock:         5579.6ms
-    Throughput:      5,996,041 records/sec (compute)
-                     1,433,803 records/sec (wall clock)
-
---- Filtered: exact ".git" ---
-  Iteration 1/3... 3254ms (75,458 records)
-  Iteration 2/3... 3435ms (75,458 records)
-  Iteration 3/3... 3469ms (75,458 records)
-  Results (median of 3 successful iterations):
-    Records:            75,458
-    I/O:                3399.3ms
-    Fixup:                29.2ms
-    Parse:               102.2ms
-    Marshal:               2.7ms
-    Compute:             134.1ms  (fixup + parse + marshal)
-    Wall clock:         3435.3ms
-    Throughput:     59,647,854 records/sec (compute)
-                     2,328,791 records/sec (wall clock)
-
---- Filtered: contains "config" ---
-  Iteration 1/3... 3509ms (374,581 records)
-  Iteration 2/3... 3542ms (374,581 records)
-  Iteration 3/3... 3979ms (374,581 records)
-  Results (median of 3 successful iterations):
-    Records:           374,581
-    I/O:                3473.3ms
-    Fixup:                31.2ms
-    Parse:               120.3ms
-    Marshal:              53.9ms
-    Compute:             205.4ms  (fixup + parse + marshal)
-    Wall clock:         3542.2ms
-    Throughput:     38,950,347 records/sec (compute)
-                     2,258,493 records/sec (wall clock)
-
---- Filtered: exact ".git" + paths ---
-  Iteration 1/3... 4284ms (75,458 records)
-  Iteration 2/3... 4282ms (75,458 records)
-  Iteration 3/3... 4257ms (75,458 records)
-  Results (median of 3 successful iterations):
-    Records:            75,458
-    I/O:                4166.7ms
-    Fixup:                19.8ms
-    Parse:               307.9ms
-    Marshal:              11.1ms
-    Compute:             338.7ms  (fixup + parse + marshal)
-    Wall clock:         4281.8ms
-    Throughput:     23,617,387 records/sec (compute)
-                     1,868,394 records/sec (wall clock)
-
+--- Scenario: compat ---
+  Iteration 1/5... 271ms (749,599 records)
+  Iteration 2/5... 225ms (749,599 records)
+  Iteration 3/5... 214ms (749,599 records)
+  Iteration 4/5... 212ms (749,599 records)
+  Iteration 5/5... 212ms (749,599 records)
+  Results (median of 5 successful iterations):
+    Records:                     749,599
+    Managed allocated:       126,984,832 bytes
+    Peak working set:        715,448,320 bytes
+    Peak private bytes:      142,561,280 bytes
+    Native compact bytes:     36,220,210 bytes
+    Wall clock:                    213.7ms
+    Throughput:                3,508,344 records/sec (wall clock)
+--- Scenario: bounded ---
+  Iteration 1/5... 244ms (749,599 records)
+  Iteration 2/5... 204ms (749,599 records)
+  Iteration 3/5... 197ms (749,599 records)
+  Iteration 4/5... 198ms (749,599 records)
+  Iteration 5/5... 193ms (749,599 records)
+  Results (median of 5 successful iterations):
+    Records:                     749,599
+    Managed allocated:        79,015,176 bytes
+    Peak working set:        619,700,224 bytes
+    Peak private bytes:       14,716,928 bytes
+    Native compact bytes:     36,220,210 bytes
+    Wall clock:                    197.7ms
+    Throughput:                3,791,635 records/sec (wall clock)
+--- Scenario: broker-stream ---
+  Iteration 1/5... 614ms (749,599 records)
+  Iteration 2/5... 437ms (749,599 records)
+  Iteration 3/5... 433ms (749,599 records)
+  Iteration 4/5... 431ms (749,599 records)
+  Iteration 5/5... 458ms (749,599 records)
+  Results (median of 5 successful iterations):
+    Records:                     749,599
+    Managed allocated:       352,738,120 bytes
+    Peak working set:        629,628,928 bytes
+    Peak private bytes:       24,043,520 bytes
+    Native compact bytes:     36,220,210 bytes
+    Wall clock:                    436.7ms
+    Throughput:                1,716,634 records/sec (wall clock)
 Synthetic MFT file cleaned up.

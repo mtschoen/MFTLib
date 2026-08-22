@@ -184,6 +184,13 @@ public sealed partial class MftVolume : IDisposable
     public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags,
         out MftParseTimings timings, uint bufferSizeRecords = 262144)
     {
+        using var result = StreamMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords);
+        return MaterializeWithTimings(result, out timings);
+    }
+
+    public static MftResult StreamMFTFromFile(
+        string filePath, string? filter = null, MatchFlags matchFlags = MatchFlags.None, uint bufferSizeRecords = 262144)
+    {
         MFTLibNative.EnsureCompatibleNativeAbi();
         var resultPtr = MFTLibNative.ParseMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords);
 
@@ -192,8 +199,7 @@ public sealed partial class MftVolume : IDisposable
             throw new InvalidOperationException("ParseMFTFromFile returned null");
         }
 
-        using var result = new MftResult(resultPtr, string.Empty, 0);
-        return MaterializeWithTimings(result, out timings);
+        return new MftResult(resultPtr, string.Empty, 0);
     }
 
     static MftRecord[] MaterializeWithTimings(MftResult result, out MftParseTimings timings)

@@ -1,22 +1,125 @@
 using System.Diagnostics;
-using System.Globalization;
+using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
-using System.Text;
 using MFTLib;
 
 namespace Benchmark;
 
-#pragma warning disable CA1416 // Validate platform compatibility — Benchmark is Windows-only
+#pragma warning disable CA1416 // Validate platform compatibility - Benchmark is Windows-only
 
 // One benchmark scenario: a display name plus the filter/match-flags it exercises.
 readonly record struct BenchmarkScenario(string Name, string? Filter, MatchFlags MatchFlags);
 
-class BenchmarkRunner
+sealed record ReportMetrics(
+    double CompatThroughput,
+    long CompatPeakPrivateBytes,
+    long BoundedPeakPrivateBytes,
+    long BrokerStreamPeakPrivateBytes);
+
+public partial class BenchmarkRunner
 {
+    // File system seams
     internal Action<string> DeleteFile = File.Delete;
-    internal Action<string, ulong, uint> GenerateSynthetic = MftVolume.GenerateSyntheticMFT;
+    internal Func<string, bool> FileExists = File.Exists;
+    internal Func<string, string> ReadAllText = File.ReadAllText;
+    internal Action<string, string> WriteAllText = File.WriteAllText;
     internal Func<string, FileInfo> GetFileInfo = path => new FileInfo(path);
 
+    // Console output seams
+    internal Action<string> WriteLineToConsole = Console.WriteLine;
+    internal Action<string> WriteToConsole = value => Console.Write(value);
+
+    // System info and Git seams
+    internal SystemInfo SystemInfo = new();
+    internal Func<string> GetGitCommitHash = () =>
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "rev-parse HEAD",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            if (process != null)
+            {
+                var sha = process.StandardOutput.ReadToEnd().Trim();
+                process.WaitForExit();
+                if (sha.Length == 40)
+                {
+                    return sha;
+                }
+            }
+        }
+        catch
+        {
+            // aislop-ignore-next-line SwallowedException -- fallback when git is not available
+        }
+        return "0000000000000000000000000000000000000000";
+    };
+
+    // Synthetic generation seam
+    internal Action<string, ulong, uint> GenerateSynthetic = MftVolume.GenerateSyntheticMFT;
+
+    // Measurement seams
+    internal Func<long> GetTotalAllocatedBytes = () => GC.GetTotalAllocatedBytes(precise: true);
+    internal Func<long> GetPeakWorkingSet64 = () => Process.GetCurrentProcess().PeakWorkingSet64;
+    internal Func<long> GetPeakPrivateBytes64 = () => Process.GetCurrentProcess().PrivateMemorySize64;
+    internal Func<Stopwatch, double> GetStopwatchElapsedMs = stopwatch => stopwatch.Elapsed.TotalMilliseconds;
+
+    // Child process runner seam
+    internal Func<string[], (int ExitCode, string Stdout, string Stderr)> RunChildProcess = arguments =>
+    {
+        var processPath = Environment.ProcessPath;
+        var assemblyLocation = typeof(BenchmarkRunner).Assembly.Location;
+        var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        var candidateExe = Path.ChangeExtension(assemblyLocation, isWindows ? ".exe" : null);
+
+        var startInfo = new ProcessStartInfo
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        if (processPath != null && Path.GetFileNameWithoutExtension(processPath).Equals("Benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            startInfo.FileName = processPath;
+        }
+        else if (File.Exists(candidateExe))
+        {
+            startInfo.FileName = candidateExe;
+        }
+        else
+        {
+            var dotnetExe = processPath != null && Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
+                ? processPath
+                : "dotnet";
+            startInfo.FileName = dotnetExe;
+            startInfo.ArgumentList.Add(assemblyLocation);
+        }
+
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(startInfo);
+        if (process == null)
+        {
+            throw new InvalidOperationException("Failed to start child benchmark process");
+        }
+
+        var stdout = process.StandardOutput.ReadToEnd();
+        var stderr = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        return (process.ExitCode, stdout, stderr);
+    };
+
+    // Scenario execution seams (used by measure subcommand)
     internal Func<string, string?, MatchFlags, (MftRecord[] Records, MftParseTimings Timings)> ParseFromFile =
         (path, filter, flags) =>
         {
@@ -24,151 +127,81 @@ class BenchmarkRunner
             return (records, timings);
         };
 
-    internal SystemInfo SystemInfo = new();
-    internal Action<string, string> WriteAllText = File.WriteAllText;
-    internal Action<string> WriteLineToConsole = Console.WriteLine;
-    internal Action<string> WriteToConsole = value => Console.Write(value);
-
-    internal int Run(string[] arguments)
+    internal Func<string, (int RecordCount, ulong NativeCompactBytes)> ParseCompat = path =>
     {
-        const ulong defaultRecordCount = 8_000_000;
-        var recordCount = arguments.Length > 0 && ulong.TryParse(arguments[0], out var parsedRecordCount)
-            ? parsedRecordCount
-            : defaultRecordCount;
-        var iterations = arguments.Length > 1 && int.TryParse(arguments[1], out var parsedIterations)
-            ? parsedIterations
-            : 3;
+        using var result = MftVolume.StreamMFTFromFile(path);
+        var records = result.ToArray();
+        return (records.Length, result.NativeCompactBytes);
+    };
 
-        var mftPath = Path.Combine(AppContext.BaseDirectory, "synthetic.mft");
-        var output = new StringBuilder();
-
-        void Log(string line = "")
+    internal Func<string, int, (int RecordCount, ulong NativeCompactBytes)> ParseBounded = (path, batchSize) =>
+    {
+        using var result = MftVolume.StreamMFTFromFile(path);
+        var count = 0;
+        foreach (var batch in result.MaterializeBatches(batchSize))
         {
-            WriteLineToConsole(line);
-            output.AppendLine(line);
+            count += batch.Length;
         }
 
-        // System info
-        Log("System Info");
-        Log("====================================");
-        Log($"  Build:       {SystemInfo.GetBuildConfiguration()}");
-        Log(
-            $"  OS:          {SystemInfo.GetWmiValue("Win32_OperatingSystem", "Caption")} ({Environment.OSVersion.Version})");
-        Log($"  CPU:         {SystemInfo.GetWmiValue("Win32_Processor", "Name")}");
-        Log($"  Threads:     {Environment.ProcessorCount}");
-        Log($"  RAM:         {SystemInfo.GetInstalledMemoryGB()} GB");
-        Log($"  Disk:        {SystemInfo.GetDiskModel(AppContext.BaseDirectory)}");
-        Log($"  .NET:        {RuntimeInformation.FrameworkDescription}");
-        Log($"  Date:        {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        Log();
+        return (count, result.NativeCompactBytes);
+    };
 
-        Log("MFT Benchmark");
-        Log($"  Records: {recordCount:N0}");
-        Log($"  Iterations: {iterations}");
-        Log();
+    // Mirrors the production broker transport: a page-file-backed named map written through
+    // RealMmfWriter and read back through RealMmfReader. An earlier revision buffered the whole
+    // payload in a MemoryStream, which measured the benchmark's own managed heap rather than the
+    // broker path, and reported the broker scenario as using more memory than compat.
+    internal Func<string, int, (int RecordCount, ulong NativeCompactBytes)> ParseBrokerStream = (path, batchSize) =>
+    {
+        using var result = MftVolume.StreamMFTFromFile(path);
+        var nativeBytes = result.NativeCompactBytes;
 
-        // Generate synthetic MFT
-        WriteToConsole("Generating synthetic MFT... ");
-        var generationStopwatch = Stopwatch.StartNew();
-        GenerateSynthetic(mftPath, recordCount, 262144);
-        generationStopwatch.Stop();
+        var scanBatches = result.MaterializeBatches(batchSize)
+            .Select(batch => (IReadOnlyList<ScanRecord>)batch.Select(record => new ScanRecord(
+                record.RecordNumber,
+                record.ParentRecordNumber,
+                0,
+                0,
+                (uint)record.FileAttributes,
+                record.IsDirectory,
+                record.FileName,
+                record.FullPath ?? record.FileName)).ToArray());
 
-        var fileInfo = GetFileInfo(mftPath);
-        var generationLine =
-            $"done in {generationStopwatch.Elapsed.TotalSeconds:F1}s ({fileInfo.Length / 1024.0 / 1024 / 1024:F2} GB)";
-        WriteLineToConsole(generationLine);
-        output.Append(CultureInfo.InvariantCulture, $"Generating synthetic MFT... {generationLine}").AppendLine();
-        Log();
+        var mmfName = "mftlib-benchmark-" + Guid.NewGuid().ToString("N");
+        var capacity = EstimateScanPayloadCapacity(result.UsedRecords);
+        using var map = MemoryMappedFile.CreateNew(mmfName, capacity);
 
-        // Benchmark scenarios
-        var scenarios = new BenchmarkScenario[]
+        var writeResult = new RealMmfWriter().Write(mmfName, scanBatches, CancellationToken.None);
+
+        var count = 0;
+        foreach (var batch in new RealMmfReader().ReadBatches(
+                     mmfName, writeResult.ByteLength, batchSize, CancellationToken.None))
         {
-            new("Unfiltered (all records)", null, MatchFlags.None),
-            new("Filtered: exact \".git\"", ".git", MatchFlags.ExactMatch),
-            new("Filtered: contains \"config\"", "config", MatchFlags.Contains),
-            new("Filtered: exact \".git\" + paths", ".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths)
-        };
-
-        foreach (var scenario in scenarios)
-        {
-            RunScenario(scenario, mftPath, iterations, recordCount, Log, output);
+            count += batch.Length;
         }
 
-        // Cleanup
-        DeleteFile(mftPath);
-        Log("Synthetic MFT file cleaned up.");
+        return (count, nativeBytes);
+    };
 
-        // Save baseline
-        var baselinePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-            "Benchmark", "baseline.txt"));
-        WriteAllText(baselinePath, output.ToString());
-        Log($"Baseline saved to {baselinePath}");
-
-        return 0;
+    // The production client sizes the map from the record count before the scan is read back.
+    static long EstimateScanPayloadCapacity(ulong recordCount)
+    {
+        const long bytesPerRecordEstimate = 512;
+        const long minimumCapacity = 1L * 1024 * 1024;
+        return Math.Max(minimumCapacity, ((long)recordCount + 1L) * bytesPerRecordEstimate);
     }
 
-    internal void RunScenario(BenchmarkScenario scenario,
-        string mftPath, int iterations, ulong recordCount, Action<string> log, StringBuilder output)
+    public int Run(string[] arguments)
     {
-        log($"--- {scenario.Name} ---");
-
-        var allTimings = new List<MftParseTimings>();
-        var allWallClocks = new List<double>();
-        var recordCounts = new List<int>();
-
-        for (var iteration = 0; iteration < iterations; iteration++)
+        if (arguments.Length > 0 && arguments[0].Equals("measure", StringComparison.OrdinalIgnoreCase))
         {
-            WriteToConsole($"  Iteration {iteration + 1}/{iterations}... ");
-            try
-            {
-                var stopwatch = Stopwatch.StartNew();
-                var (records, timings) = ParseFromFile(mftPath, scenario.Filter, scenario.MatchFlags);
-                stopwatch.Stop();
-
-                allTimings.Add(timings);
-                allWallClocks.Add(stopwatch.Elapsed.TotalMilliseconds);
-                recordCounts.Add(records.Length);
-
-                var iterationLine = $"{stopwatch.Elapsed.TotalMilliseconds:F0}ms ({records.Length:N0} records)";
-                WriteLineToConsole(iterationLine);
-                output.Append(CultureInfo.InvariantCulture,
-                    $"  Iteration {iteration + 1}/{iterations}... {iterationLine}").AppendLine();
-            }
-            catch (Exception exception)
-            {
-                var failLine = $"FAILED: {exception.GetType().Name}: {exception.Message}";
-                WriteLineToConsole(failLine);
-                output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {failLine}")
-                    .AppendLine();
-            }
+            return RunMeasure(arguments.AsSpan(1).ToArray());
         }
 
-        if (allWallClocks.Count == 0)
+        if (arguments.Length > 0 && arguments[0].Equals("compare", StringComparison.OrdinalIgnoreCase))
         {
-            log("  All iterations failed — no results to report.");
-            log(string.Empty);
-            return;
+            return RunCompare(arguments.AsSpan(1).ToArray());
         }
 
-        var medianRecords = recordCounts.OrderBy(x => x).ElementAt(recordCounts.Count / 2);
-        var medianIo = allTimings.Select(t => t.NativeIoMs).OrderBy(x => x).ElementAt(allTimings.Count / 2);
-        var successCount = allTimings.Count;
-        var medianFixup = allTimings.Select(t => t.NativeFixupMs).OrderBy(x => x).ElementAt(successCount / 2);
-        var medianParse = allTimings.Select(t => t.NativeParseMs).OrderBy(x => x).ElementAt(successCount / 2);
-        var medianMarshal = allTimings.Select(t => t.MarshalMs).OrderBy(x => x).ElementAt(successCount / 2);
-        var medianWall = allWallClocks.OrderBy(x => x).ElementAt(successCount / 2);
-        var computeMs = medianFixup + medianParse + medianMarshal;
-
-        log($"  Results (median of {successCount} successful iteration{(successCount == 1 ? "" : "s")}):");
-        log($"    Records:      {medianRecords,12:N0}");
-        log($"    I/O:          {medianIo,12:F1}ms");
-        log($"    Fixup:        {medianFixup,12:F1}ms");
-        log($"    Parse:        {medianParse,12:F1}ms");
-        log($"    Marshal:      {medianMarshal,12:F1}ms");
-        log($"    Compute:      {computeMs,12:F1}ms  (fixup + parse + marshal)");
-        log($"    Wall clock:   {medianWall,12:F1}ms");
-        log($"    Throughput:   {recordCount / (computeMs / 1000.0),12:N0} records/sec (compute)");
-        log($"                  {recordCount / (medianWall / 1000.0),12:N0} records/sec (wall clock)");
-        log(string.Empty);
+        return RunParent(arguments);
     }
 }
