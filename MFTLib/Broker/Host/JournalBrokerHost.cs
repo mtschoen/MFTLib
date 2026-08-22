@@ -16,12 +16,12 @@ public sealed partial class JournalBrokerHost
 {
     readonly UsnJournalCursorQuery _queryCursor;
     readonly UsnJournalCatchUpSource _readJournal;
-    readonly DriveScanSource _scanDrive;
+    readonly StreamingDriveScanSource _scanDrive;
     readonly JournalBatchSource? _watchDrive;
 
     public JournalBrokerHost(
         UsnJournalCursorQuery queryCursor,
-        DriveScanSource scanDrive,
+        StreamingDriveScanSource scanDrive,
         UsnJournalCatchUpSource readJournal,
         JournalBatchSource? watchDrive = null)
     {
@@ -29,6 +29,19 @@ public sealed partial class JournalBrokerHost
         _scanDrive = scanDrive;
         _readJournal = readJournal;
         _watchDrive = watchDrive;
+    }
+
+    public JournalBrokerHost(
+        UsnJournalCursorQuery queryCursor,
+        DriveScanSource scanDrive,
+        UsnJournalCatchUpSource readJournal,
+        JournalBatchSource? watchDrive = null)
+        : this(
+            queryCursor,
+            (drive, _) => new[] { scanDrive(drive) },
+            readJournal,
+            watchDrive)
+    {
     }
 
     /// <summary>
@@ -39,14 +52,23 @@ public sealed partial class JournalBrokerHost
     public (UsnJournalCursor Cursor, ScanRecord[] Records) ArmAndScan(string driveLetter)
     {
         var cursor = _queryCursor(driveLetter); // strictly before the scan
-        var records = _scanDrive(driveLetter);
+        var records = _scanDrive(driveLetter, CancellationToken.None).SelectMany(b => b).ToArray();
         return (cursor, records);
+    }
+
+    public (UsnJournalCursor Cursor, IEnumerable<IReadOnlyList<ScanRecord>> Batches) ArmAndScanBatches(
+        string driveLetter, CancellationToken cancellationToken = default)
+    {
+        var cursor = _queryCursor(driveLetter);
+        var batches = _scanDrive(driveLetter, cancellationToken);
+        return (cursor, batches);
     }
 
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) CatchUp(string driveLetter, UsnJournalCursor since)
     {
         return _readJournal(driveLetter, since);
     }
+
 
     List<Task> StartWatchTasks(Stream stream, string watchSpec, SemaphoreSlim writeLock,
         CancellationToken cancellationToken)
@@ -113,15 +135,27 @@ public sealed partial class JournalBrokerHost
         {
             try
             {
-                var (cursor, records) = ArmAndScan(request.Letter);
-                records = ApplyScanProfile(records, request.Profile, keepFileNames);
+                var (cursor, batches) = ArmAndScanBatches(request.Letter, cancellationToken);
+                var filteredBatches = FilterScanProfile(batches, request.Profile, keepFileNames);
+
                 await WriteFrameAsync(stream, writeLock,
                         writer => BrokerProtocol.WriteCursor(writer, request.Letter, cursor), cancellationToken)
                     .ConfigureAwait(false);
 
-                var byteLength = mmfWriter.Write(request.MmfName, records);
+                MmfWriteResult writeResult;
+                if (mmfWriter is IStreamingMmfWriter streamingWriter)
+                {
+                    writeResult = streamingWriter.Write(request.MmfName, filteredBatches, cancellationToken);
+                }
+                else
+                {
+                    var allRecords = filteredBatches.SelectMany(b => b).ToArray();
+                    var byteLength = mmfWriter.Write(request.MmfName, allRecords);
+                    writeResult = new MmfWriteResult(allRecords.Length, byteLength);
+                }
+
                 await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, records.Length, byteLength),
+                        writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, writeResult.RecordCount, writeResult.ByteLength),
                         cancellationToken)
                     .ConfigureAwait(false);
 
@@ -186,18 +220,43 @@ public sealed partial class JournalBrokerHost
     internal static ScanRecord[] ApplyScanProfile(
         ScanRecord[] records, BrokerScanProfile profile, IReadOnlyCollection<string> keepFileNames)
     {
-        return profile switch
-        {
-            BrokerScanProfile.Full => records,
-            BrokerScanProfile.DirectoryIndex => FilterDirectoryIndex(records, keepFileNames),
-            _ => throw new InvalidDataException($"Unknown broker scan profile: {profile}")
-        };
+        return FilterScanProfile(new[] { records }, profile, keepFileNames).Single().ToArray();
     }
 
-    static ScanRecord[] FilterDirectoryIndex(ScanRecord[] records, IReadOnlyCollection<string> keepFileNames)
+    internal static IEnumerable<IReadOnlyList<ScanRecord>> FilterScanProfile(
+        IEnumerable<IReadOnlyList<ScanRecord>> batches,
+        BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames)
     {
-        var keepSet = new HashSet<string>(keepFileNames, StringComparer.OrdinalIgnoreCase);
-        return records.Where(record => record.IsDirectory || keepSet.Contains(record.Name)).ToArray();
+        HashSet<string>? keepSet = null;
+        if (profile == BrokerScanProfile.DirectoryIndex && keepFileNames != null && keepFileNames.Count > 0)
+        {
+            keepSet = new HashSet<string>(keepFileNames, StringComparer.OrdinalIgnoreCase);
+        }
+
+        foreach (var batch in batches)
+        {
+            yield return profile switch
+            {
+                BrokerScanProfile.Full => batch,
+                BrokerScanProfile.DirectoryIndex => FilterDirectoryIndexBatch(batch, keepSet),
+                _ => throw new InvalidDataException($"Unknown broker scan profile: {profile}")
+            };
+        }
+    }
+
+    static ScanRecord[] FilterDirectoryIndexBatch(IReadOnlyList<ScanRecord> batch, HashSet<string>? keepSet)
+    {
+        var result = new List<ScanRecord>(batch.Count);
+        foreach (var record in batch)
+        {
+            if (record.IsDirectory || (keepSet != null && keepSet.Contains(record.Name)))
+            {
+                result.Add(record);
+            }
+        }
+
+        return result.ToArray();
     }
 
     static async Task WriteFrameAsync(Stream stream, SemaphoreSlim writeLock,
@@ -274,7 +333,7 @@ public sealed partial class JournalBrokerHost
     {
         return new JournalBrokerHost(
             QueryCursor,
-            ScanDrive,
+            ScanDriveBatches,
             ReadJournal,
             WatchAndDisposeAsync);
     }
@@ -285,10 +344,18 @@ public sealed partial class JournalBrokerHost
         return volume.QueryUsnJournal();
     }
 
-    static ScanRecord[] ScanDrive(string drive)
+    static IEnumerable<IReadOnlyList<ScanRecord>> ScanDriveBatches(string drive, CancellationToken cancellationToken)
     {
         using var volume = MftVolume.Open(Bare(drive));
-        return ToScanRecords(volume.ReadAllRecords(true));
+        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, batchSize: 4096))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var scanRecords = ToScanRecords(batch);
+            if (scanRecords.Length > 0)
+            {
+                yield return scanRecords;
+            }
+        }
     }
 
     static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(string drive, UsnJournalCursor since)

@@ -9,20 +9,20 @@ namespace MFTLib;
 ///     memory-mapped files are a Windows facility; the broker only runs on Windows.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class RealMmfWriter : IMmfWriter
+public sealed class RealMmfWriter : IStreamingMmfWriter
 {
     public long Write(string mmfName, ScanRecord[] records)
     {
-        var byteLength = ScanPayload.ComputeSize(records);
-        // Pack into a transient buffer, then copy into the shared view. The MMF's
-        // value is avoiding the disk round-trip, not this RAM copy; a zero-copy
-        // span write would need unsafe and is a later optimization.
-        var buffer = new byte[byteLength];
-        ScanPayload.Write(buffer, records);
+        var result = Write(mmfName, new[] { records }, CancellationToken.None);
+        return result.ByteLength;
+    }
 
+    public MmfWriteResult Write(
+        string mmfName, IEnumerable<IReadOnlyList<ScanRecord>> batches,
+        CancellationToken cancellationToken)
+    {
         using var map = MemoryMappedFile.OpenExisting(mmfName, MemoryMappedFileRights.Write);
-        using var view = map.CreateViewStream(0, byteLength, MemoryMappedFileAccess.Write);
-        view.Write(buffer, 0, buffer.Length);
-        return byteLength;
+        using var view = map.CreateViewStream(0, 0, MemoryMappedFileAccess.Write);
+        return ScanPayload.Write(view, batches, cancellationToken);
     }
 }

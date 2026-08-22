@@ -99,6 +99,75 @@ public class JournalBrokerHostTests
     }
 
     [TestMethod]
+    public async Task ServeOnce_StreamingDriveScanSource_StreamsBatchesToStreamingMmfWriter()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var host = new JournalBrokerHost(
+            _ => new UsnJournalCursor(7UL, 0L),
+            (_, _) => new[]
+            {
+                new[] { new ScanRecord(1, 0, 100, 0, 0x20, false, "batch1.txt", @"C:\batch1.txt") },
+                new[] { new ScanRecord(2, 0, 200, 0, 0x20, false, "batch2.txt", @"C:\batch2.txt") }
+            },
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-streaming-C");
+        await clientSide.WriteAsync(request.WrittenMemory);
+        await clientSide.FlushAsync();
+
+        var writeMmf = new RecordingMmfWriter();
+        await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
+        serverSide.Dispose();
+
+        var frames = ReadAllFrames(clientSide);
+        Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
+        Assert.AreEqual(BrokerFrameKind.ScanReady, frames[1].Kind);
+        Assert.AreEqual(2, frames[1].RecordCount);
+        Assert.AreEqual(2, writeMmf.WrittenBatches.Count);
+        Assert.AreEqual(2, writeMmf.LastPayloadRecordCount);
+    }
+
+    [TestMethod]
+    public async Task ServeOnce_LegacyNonStreamingMmfWriter_AdaptsBatchesToArray()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var host = new JournalBrokerHost(
+            _ => new UsnJournalCursor(7UL, 0L),
+            (_, _) => new[]
+            {
+                new[] { new ScanRecord(1, 0, 100, 0, 0x20, false, "b1.txt", @"C:\b1.txt") },
+                new[] { new ScanRecord(2, 0, 200, 0, 0x20, false, "b2.txt", @"C:\b2.txt") }
+            },
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-legacy-C");
+        await clientSide.WriteAsync(request.WrittenMemory);
+        await clientSide.FlushAsync();
+
+        var legacyWriter = new LegacyMmfWriterDouble();
+        await host.ServeAsync(serverSide, legacyWriter, true, CancellationToken.None);
+        serverSide.Dispose();
+
+        var frames = ReadAllFrames(clientSide);
+        Assert.AreEqual(BrokerFrameKind.ScanReady, frames[1].Kind);
+        Assert.AreEqual(2, frames[1].RecordCount);
+        Assert.AreEqual(2, legacyWriter.LastRecords.Length);
+    }
+
+    sealed class LegacyMmfWriterDouble : IMmfWriter
+    {
+        public ScanRecord[] LastRecords { get; private set; } = Array.Empty<ScanRecord>();
+
+        public long Write(string mmfName, ScanRecord[] records)
+        {
+            LastRecords = records;
+            return 1234;
+        }
+    }
+
+    [TestMethod]
     public async Task ServeOnce_DirectoryIndexProfile_KeepFileNameMatch_KeepsTheNamedFile()
     {
         var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, KeepFileNamesGit);

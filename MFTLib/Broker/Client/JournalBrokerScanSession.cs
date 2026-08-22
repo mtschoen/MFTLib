@@ -91,7 +91,7 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     ///     <see cref="StartFromCursorsAsync(Func{string,bool},IReadOnlyDictionary{string,UsnJournalCursor},CancellationToken)" />
     ///     )
     ///     that has not yet rescanned. Set by the initial scan and replaced by each rescan.
-    ///     Immutable between rescans; exposes per-drive records, armed and advanced cursors,
+    ///     Immutable between rescans; exposes armed and advanced cursors,
     ///     catch-up entries, and per-drive errors.
     /// </summary>
     public BrokerScanResult? LatestScan
@@ -229,7 +229,29 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
             keepFileNames = _keepFileNames;
         }
 
-        return RescanAsync(drives, profile, keepFileNames, cancellationToken);
+        return RescanAsync(drives, profile, static (_, _) => ValueTask.CompletedTask, keepFileNames, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Rescan the same drives, profile, and <c>keepFileNames</c> the session was
+    ///     started or last rescanned with, streaming records to <paramref name="consumeRecords" />
+    ///     on the same elevated broker (no second UAC prompt), replacing <see cref="LatestScan" />.
+    /// </summary>
+    public Task RescanAsync(
+        ScanRecordBatchConsumer consumeRecords,
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<string> drives;
+        BrokerScanProfile profile;
+        IReadOnlyCollection<string>? keepFileNames;
+        lock (_stateLock)
+        {
+            drives = _drives;
+            profile = _profile;
+            keepFileNames = _keepFileNames;
+        }
+
+        return RescanAsync(drives, profile, consumeRecords, keepFileNames, cancellationToken);
     }
 
     /// <summary>Rescan a different set of drives (same profile and keepFileNames) on the same broker.</summary>
@@ -243,13 +265,41 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
             keepFileNames = _keepFileNames;
         }
 
-        return RescanAsync(drives, profile, keepFileNames, cancellationToken);
+        return RescanAsync(drives, profile, static (_, _) => ValueTask.CompletedTask, keepFileNames, cancellationToken);
+    }
+
+    /// <summary>Rescan a different set of drives (same profile and keepFileNames) on the same broker, streaming records to <paramref name="consumeRecords" />.</summary>
+    public Task RescanAsync(
+        IReadOnlyList<string> drives,
+        ScanRecordBatchConsumer consumeRecords,
+        CancellationToken cancellationToken = default)
+    {
+        BrokerScanProfile profile;
+        IReadOnlyCollection<string>? keepFileNames;
+        lock (_stateLock)
+        {
+            profile = _profile;
+            keepFileNames = _keepFileNames;
+        }
+
+        return RescanAsync(drives, profile, consumeRecords, keepFileNames, cancellationToken);
     }
 
     /// <summary>Rescan a different set of drives with a different profile and keepFileNames on the same broker.</summary>
+    public Task RescanAsync(
+        IReadOnlyList<string> drives,
+        BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames = null,
+        CancellationToken cancellationToken = default)
+    {
+        return RescanAsync(drives, profile, static (_, _) => ValueTask.CompletedTask, keepFileNames, cancellationToken);
+    }
+
+    /// <summary>Rescan a different set of drives with a different profile and keepFileNames on the same broker, streaming records to <paramref name="consumeRecords" />.</summary>
     public async Task RescanAsync(
         IReadOnlyList<string> drives,
         BrokerScanProfile profile,
+        ScanRecordBatchConsumer consumeRecords,
         IReadOnlyCollection<string>? keepFileNames = null,
         CancellationToken cancellationToken = default)
     {
@@ -276,7 +326,7 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
             try
             {
                 result = await _client.ArmScanAndCatchUpAsync(
-                    drives, profile, keepFileNames,
+                    drives, profile, consumeRecords, keepFileNames,
                     () => transmissionStarted = true, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (transmissionStarted)

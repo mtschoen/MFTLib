@@ -61,6 +61,12 @@ that covers discovery, watching, and teardown together:
 await using var session = await JournalBrokerScanSession.StartAsync(
     BrokerLauncher.Launch,
     new[] { "C", "D" },
+    (batch, cancellationToken) =>
+    {
+        foreach (var record in batch)
+            Console.WriteLine(record.Path);
+        return ValueTask.CompletedTask;
+    },
     cancellationToken);
 
 session.Faulted += reason =>
@@ -69,9 +75,6 @@ session.Faulted += reason =>
 // Discovery: LatestScan is the parked scan-and-catch-up result.
 foreach (var (drive, error) in session.LatestScan.Errors)
     Console.Error.WriteLine($"{drive}: {error}");
-
-foreach (var record in session.LatestScan.Records)
-    Console.WriteLine(record.Path);
 
 // Live watch: one StartWatchAsync, then one WatchDriveAsync consumer per drive.
 await session.StartWatchAsync(cancellationToken);
@@ -92,9 +95,12 @@ await Task.WhenAll(watchTasks);
 `StartAsync` displays the UAC prompt via `launchBroker` (typically `BrokerLauncher.Launch`).
 It throws `InvalidOperationException` if the broker declines to launch or dies before the
 initial scan completes; the session is fully disposed before the exception is thrown, so
-there is nothing left to clean up. Run one consumer task per drive returned by
-`WatchDriveAsync`; the session owns the pipe reader and routes batches to per-drive
-channels, so consumers must not read the pipe directly.
+there is nothing left to clean up. Scan records are streamed incrementally to the
+supplied `ScanRecordBatchConsumer` callback in 4096-record batches, and each per-drive
+shared memory map is disposed immediately after consumption.
+
+Run one consumer task per drive returned by `WatchDriveAsync`; the session owns the pipe
+reader and routes batches to per-drive channels, so consumers must not read the pipe directly.
 
 Consumers that only need directory path resolution plus a handful of named files can
 request a smaller snapshot on very large volumes while preserving arm/catch-up order.
@@ -106,6 +112,11 @@ await using var indexSession = await JournalBrokerScanSession.StartAsync(
     BrokerLauncher.Launch,
     new[] { "C", "D" },
     BrokerScanProfile.DirectoryIndex,
+    (batch, cancellationToken) =>
+    {
+        // Process directory index batch
+        return ValueTask.CompletedTask;
+    },
     keepFileNames: new[] { ".git" },
     cancellationToken);
 ```
@@ -116,7 +127,6 @@ start below). It contains:
 
 | Property | Meaning |
 | --- | --- |
-| `Records` | Full-scan records from all successful drives |
 | `ArmedCursors` | Cursors captured before each scan |
 | `CatchUpEntries` | Changes recorded while each scan was running |
 | `AdvancedCursors` | Resume cursors after catch-up; also the drives `StartWatchAsync` will watch |

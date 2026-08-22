@@ -52,8 +52,7 @@ public class JournalBrokerScanSessionTests
         await brokerTask;
 
         Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
-        Assert.AreEqual(1, session.LatestScan!.Records.Count);
-        Assert.AreEqual(armedCursor, session.LatestScan.ArmedCursors["C"]);
+        Assert.AreEqual(armedCursor, session.LatestScan!.ArmedCursors["C"]);
         Assert.AreEqual(advancedCursor, session.LatestScan.AdvancedCursors["C"]);
         Assert.AreEqual(1, session.LatestScan.CatchUpEntries["C"].Length);
         Assert.AreEqual("journal wrapped", session.LatestScan.Errors["D"]);
@@ -61,6 +60,54 @@ public class JournalBrokerScanSessionTests
         Assert.IsNull(session.FaultReason);
         CollectionAssert.AreEqual(DrivesCAndD, session.Drives.ToArray());
         Assert.AreEqual(BrokerScanProfile.Full, session.Profile);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task StartAsync_WithRecordConsumer_StreamsRecordsDuringScan()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var scanRecord = new ScanRecord(5, 5, 0,
+            0, 0x10, true, "C:", "C:\\");
+        var armedCursor = new UsnJournalCursor(7UL, 100L);
+        var advancedCursor = new UsnJournalCursor(7UL, 200L);
+        var catchUpEntry = JournalEntryFactory.Create(
+            100, 150, "note.txt", UsnReason.FileCreate | UsnReason.Close);
+
+        var client = new JournalBrokerClient(
+            clientSide,
+            new FakeMmfReader(new[] { scanRecord }),
+            (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide);
+
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", armedCursor);
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 1, 1);
+            BrokerProtocol.WriteJournalBatch(response, "C", advancedCursor, new[] { catchUpEntry });
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var consumed = new List<ScanRecord>();
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full,
+            (batch, _) =>
+            {
+                consumed.AddRange(batch);
+                return ValueTask.CompletedTask;
+            },
+            cancellationToken: CancellationToken.None);
+        await brokerTask;
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.AreEqual(1, consumed.Count);
+        Assert.AreEqual("C:\\", consumed[0].Path);
+        Assert.AreEqual(armedCursor, session.LatestScan!.ArmedCursors["C"]);
+        Assert.AreEqual(advancedCursor, session.LatestScan.AdvancedCursors["C"]);
 
         await session.DisposeAsync();
     }
@@ -430,8 +477,7 @@ public class JournalBrokerScanSessionTests
         var session = await JournalBrokerScanSession.StartAsync(launchBroker, DriveC, cts.Token);
 
         Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
-        Assert.AreEqual(0, session.LatestScan!.Records.Count);
-        Assert.IsTrue(session.LatestScan.ArmedCursors.ContainsKey("C"));
+        Assert.IsTrue(session.LatestScan!.ArmedCursors.ContainsKey("C"));
 
         await brokerTask!.WaitAsync(cts.Token);
         await session.DisposeAsync();
@@ -1688,7 +1734,6 @@ public class JournalBrokerScanSessionTests
         StringAssert.Contains(rescanFrame.DrivesSpec, $"C:0:0:mftlib-null-C:{(int)BrokerScanProfile.DirectoryIndex}");
         CollectionAssert.AreEqual(keepFileNames, rescanFrame.KeepFileNames.ToArray());
         Assert.IsNotNull(session.LatestScan);
-        Assert.AreEqual(1, session.LatestScan!.Records.Count);
         Assert.AreEqual(advancedCursor, session.LatestScan.AdvancedCursors["C"]);
 
         // The subsequent watch resumes from the rescan's advanced cursor, not the
@@ -1697,6 +1742,48 @@ public class JournalBrokerScanSessionTests
         await session.StartWatchAsync();
         var watchFrame = await watchFrameTask;
         StringAssert.Contains(watchFrame.DrivesSpec, "C:9:400");
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task StartFromCursors_RescanAsync_WithRecordConsumer_StreamsRecords()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var scanRecord = new ScanRecord(5, 5, 0, 0, 0x10, true, "C:", "C:\\");
+        var client = new JournalBrokerClient(
+            clientSide,
+            new FakeMmfReader(new[] { scanRecord }),
+            (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
+
+        var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 200L) };
+        var session = await JournalBrokerScanSession.StartFromCursorsAsync(
+            _ => Task.FromResult(client), cursors, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+
+        var advancedCursor = new UsnJournalCursor(9UL, 400L);
+        var rescanTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(9UL, 350L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 1, 1);
+            BrokerProtocol.WriteJournalBatch(response, "C", advancedCursor, Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var consumed = new List<ScanRecord>();
+        await session.RescanAsync((batch, _) =>
+        {
+            consumed.AddRange(batch);
+            return ValueTask.CompletedTask;
+        });
+        await rescanTask;
+
+        Assert.AreEqual(1, consumed.Count);
+        Assert.AreEqual("C:\\", consumed[0].Path);
+        Assert.IsNotNull(session.LatestScan);
+        Assert.AreEqual(advancedCursor, session.LatestScan.AdvancedCursors["C"]);
 
         await session.DisposeAsync();
     }

@@ -26,6 +26,11 @@ public class JournalBrokerClientTests
     [SupportedOSPlatform("windows")]
     public async Task ArmScanAndCatchUpAsync_ReturnsRecords_ArmedCursor_AndCatchUpEntries()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Named memory-mapped files require Windows.");
+        }
+
         // Arrange: pre-create a real MMF and write known records into it.
         var records = new[]
         {
@@ -77,12 +82,17 @@ public class JournalBrokerClientTests
             mapName);
 
         // Act
-        var result = await client.ArmScanAndCatchUpAsync(DriveC);
+        var consumed = new List<ScanRecord>();
+        var result = await client.ArmScanAndCatchUpAsync(DriveC, (batch, _) =>
+        {
+            consumed.AddRange(batch);
+            return ValueTask.CompletedTask;
+        });
         await brokerTask;
 
         // Assert
-        Assert.AreEqual(2, result.Records.Count);
-        Assert.AreEqual("C:\\nöte.txt", result.Records[1].Path);
+        Assert.AreEqual(2, consumed.Count);
+        Assert.AreEqual("C:\\nöte.txt", consumed[1].Path);
         Assert.IsTrue(result.ArmedCursors.ContainsKey("C"));
         Assert.AreEqual(armedCursor, result.ArmedCursors["C"]);
         Assert.IsTrue(result.AdvancedCursors.ContainsKey("C"));
@@ -117,7 +127,6 @@ public class JournalBrokerClientTests
         var result = await client.ArmScanAndCatchUpAsync(DriveD);
         await brokerTask;
 
-        Assert.AreEqual(0, result.Records.Count);
         Assert.IsTrue(result.Errors.ContainsKey("D"));
         Assert.AreEqual("journal wrapped", result.Errors["D"]);
         Assert.IsFalse(result.ArmedCursors.ContainsKey("D"));
@@ -706,7 +715,13 @@ public class JournalBrokerClientTests
     [SupportedOSPlatform("windows")]
     public async Task SpawnAndConnectAsync_EndToEnd_UsesRealPipeAndRealMmfSeams()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Named memory-mapped files and named pipes require Windows.");
+        }
+
         Task? brokerTask = null;
+
         var launchBroker = new Func<string, bool>(args =>
         {
             var parts = args.Split(' ');
@@ -735,11 +750,198 @@ public class JournalBrokerClientTests
 
         var result = await client.ArmScanAndCatchUpAsync(DriveC, cts.Token);
 
-        Assert.AreEqual(0, result.Records.Count);
         Assert.IsTrue(result.ArmedCursors.ContainsKey("C"));
         Assert.AreEqual(0, result.Errors.Count);
 
         await brokerTask!.WaitAsync(cts.Token);
+        await client.DisposeAsync();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Disposal & Streaming tests (Task 6)
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_DisposesMmf_AfterScanReadyPayloadConsumption_WhileUnreadDriveStaysLive()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var trackerC = new TrackingDisposable();
+        var trackerD = new TrackingDisposable();
+        var reader = new FakeBatchMmfReader();
+        reader.SetData("mmf-C", new[] { new ScanRecord(1, 0, 100, 1000, 0x20, false, "c.txt", "C:\\c.txt") });
+        reader.SetData("mmf-D", new[] { new ScanRecord(2, 0, 200, 2000, 0x20, false, "d.txt", "D:\\d.txt") });
+
+        var client = new JournalBrokerClient(
+            clientSide,
+            reader,
+            (letter, _) => (letter == "C" ? "mmf-C" : "mmf-D", letter == "C" ? trackerC : trackerD));
+
+        var collectedC = new List<ScanRecord>();
+        var collectedD = new List<ScanRecord>();
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide); // Read ArmAndScan
+
+            // Drive C
+            var responseC = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(responseC, "C", new UsnJournalCursor(7UL, 100L));
+            BrokerProtocol.WriteScanReady(responseC, "mmf-C", 1, 100);
+            await serverSide.WriteAsync(responseC.WrittenMemory);
+            await serverSide.FlushAsync();
+
+            await trackerC.DisposedTask; // wait until client consumed ScanReady for C and disposed the map
+
+            // At this point, C should be disposed, D should still be live
+            Assert.IsTrue(trackerC.IsDisposed, "Drive C's map must be disposed after consumption");
+            Assert.IsFalse(trackerD.IsDisposed, "Drive D's map must stay live while unread");
+
+            // Complete C's catchup
+            var catchupC = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteJournalBatch(catchupC, "C", new UsnJournalCursor(7UL, 110L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(catchupC.WrittenMemory);
+            await serverSide.FlushAsync();
+
+            // Drive D
+            var responseD = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(responseD, "D", new UsnJournalCursor(8UL, 200L));
+            BrokerProtocol.WriteScanReady(responseD, "mmf-D", 1, 100);
+            BrokerProtocol.WriteJournalBatch(responseD, "D", new UsnJournalCursor(8UL, 210L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(responseD.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        await client.ArmScanAndCatchUpAsync(
+            new[] { "C:\\", "D:\\" },
+            (records, _) =>
+            {
+                if (records.Any(r => r.Name == "c.txt"))
+                {
+                    collectedC.AddRange(records);
+                }
+                else
+                {
+                    collectedD.AddRange(records);
+                }
+                return ValueTask.CompletedTask;
+            });
+
+        await brokerTask;
+
+        Assert.IsTrue(trackerC.IsDisposed);
+        Assert.IsTrue(trackerD.IsDisposed);
+        Assert.AreEqual(1, collectedC.Count);
+        Assert.AreEqual(1, collectedD.Count);
+
+        await client.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_ErrorFrame_DisposesMmfLifetimeImmediately()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var trackerD = new TrackingDisposable();
+
+        var client = new JournalBrokerClient(
+            clientSide,
+            new FakeBatchMmfReader(),
+            (_, _) => ("mmf-D", trackerD));
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide); // Read ArmAndScan
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteError(response, "D", "drive failed");
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var result = await client.ArmScanAndCatchUpAsync(DriveD, (_, _) => ValueTask.CompletedTask);
+        await brokerTask;
+
+        Assert.IsTrue(trackerD.IsDisposed, "Error frame must immediately dispose the failed drive's map");
+        Assert.IsTrue(result.Errors.ContainsKey("D"));
+
+        await client.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_ReaderThrows_StillDisposesMmfLifetime()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var trackerC = new TrackingDisposable();
+        var throwingReader = new ThrowingMmfReader();
+
+        var client = new JournalBrokerClient(
+            clientSide,
+            throwingReader,
+            (_, _) => ("mmf-C", trackerC));
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide); // Read ArmAndScan
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 100L));
+            BrokerProtocol.WriteScanReady(response, "mmf-C", 1, 100);
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            client.ArmScanAndCatchUpAsync(DriveC, (_, _) => ValueTask.CompletedTask));
+
+        await brokerTask;
+
+        Assert.IsTrue(trackerC.IsDisposed, "Throwing reader must still trigger disposal in finally");
+
+        await client.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_StreamsBatches_ConcatenatedEqualOriginal_BatchSizeNotExceeding4096()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var reader = new FakeBatchMmfReader();
+
+        var totalRecords = new List<ScanRecord>();
+        for (ulong i = 0; i < 10000; i++)
+        {
+            totalRecords.Add(new ScanRecord(i, 0, i * 10, 1000, 0x20, false, $"file{i}.txt", $"C:\\file{i}.txt"));
+        }
+        reader.SetData("mmf-C", totalRecords);
+
+        var client = new JournalBrokerClient(
+            clientSide,
+            reader,
+            (_, _) => ("mmf-C", new TrackingDisposable()));
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 100L));
+            BrokerProtocol.WriteScanReady(response, "mmf-C", 10000, 500000);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 110L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var receivedBatches = new List<IReadOnlyList<ScanRecord>>();
+        var collectedRecords = new List<ScanRecord>();
+
+        await client.ArmScanAndCatchUpAsync(DriveC, (batch, _) =>
+        {
+            Assert.IsTrue(batch.Count <= 4096, $"Batch size {batch.Count} must not exceed 4096");
+            receivedBatches.Add(batch);
+            collectedRecords.AddRange(batch);
+            return ValueTask.CompletedTask;
+        });
+
+        await brokerTask;
+
+        Assert.IsTrue(receivedBatches.Count >= 3);
+        CollectionAssert.AreEqual(totalRecords, collectedRecords);
+
         await client.DisposeAsync();
     }
 
@@ -784,6 +986,71 @@ public class JournalBrokerClientTests
         public ScanRecord[] Read(string mmfName, long byteLength)
         {
             return Array.Empty<ScanRecord>();
+        }
+    }
+
+    sealed class FakeBatchMmfReader : IStreamingMmfReader
+    {
+        readonly Dictionary<string, List<ScanRecord>> _data = new();
+
+        public void SetData(string mmfName, IEnumerable<ScanRecord> records)
+        {
+            _data[mmfName] = records.ToList();
+        }
+
+        public ScanRecord[] Read(string mmfName, long byteLength)
+        {
+            return _data.TryGetValue(mmfName, out var list) ? list.ToArray() : Array.Empty<ScanRecord>();
+        }
+
+        public IEnumerable<ScanRecord[]> ReadBatches(
+            string mmfName, long byteLength, int batchSize, CancellationToken cancellationToken)
+        {
+            if (!_data.TryGetValue(mmfName, out var list))
+            {
+                yield break;
+            }
+
+            for (var i = 0; i < list.Count; i += batchSize)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var count = Math.Min(batchSize, list.Count - i);
+                var batch = new ScanRecord[count];
+                list.CopyTo(i, batch, 0, count);
+                yield return batch;
+            }
+        }
+    }
+
+    sealed class ThrowingMmfReader : IStreamingMmfReader
+    {
+        public ScanRecord[] Read(string mmfName, long byteLength)
+        {
+            throw new InvalidOperationException("Simulated reader failure");
+        }
+
+        public IEnumerable<ScanRecord[]> ReadBatches(
+            string mmfName, long byteLength, int batchSize, CancellationToken cancellationToken)
+        {
+            throw new InvalidOperationException("Simulated reader failure");
+#pragma warning disable CS0162
+            // aislop-ignore-next-line HeuristicUnreachableCode -- unreachable but required so the compiler emits the iterator state machine for IEnumerable
+            yield break;
+#pragma warning restore CS0162
+        }
+    }
+
+    sealed class TrackingDisposable : IDisposable
+    {
+        readonly TaskCompletionSource _disposedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool IsDisposed { get; private set; }
+        public Task DisposedTask => _disposedTcs.Task;
+
+        public void Dispose()
+        {
+            IsDisposed = true;
+            _disposedTcs.TrySetResult();
         }
     }
 

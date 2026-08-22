@@ -10,16 +10,28 @@ namespace MFTLib;
 ///     Named memory-mapped files are a Windows facility; the client only uses them on Windows.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class RealMmfReader : IMmfReader
+public sealed class RealMmfReader : IStreamingMmfReader
 {
     public ScanRecord[] Read(string mmfName, long byteLength)
     {
-        // Read exactly byteLength bytes - not the generous MMF capacity - so the
-        // ScanPayload magic and record count are at the correct offsets.
-        var buffer = new byte[byteLength];
+        var list = new List<ScanRecord>();
+        foreach (var batch in ReadBatches(mmfName, byteLength, 4096, CancellationToken.None))
+        {
+            list.AddRange(batch);
+        }
+
+        return list.ToArray();
+    }
+
+    public IEnumerable<ScanRecord[]> ReadBatches(
+        string mmfName, long byteLength, int batchSize,
+        CancellationToken cancellationToken)
+    {
         using var map = MemoryMappedFile.OpenExisting(mmfName, MemoryMappedFileRights.Read);
         using var view = map.CreateViewStream(0, byteLength, MemoryMappedFileAccess.Read);
-        view.ReadExactly(buffer);
-        return ScanPayload.ReadAll(buffer).ToArray();
+        foreach (var batch in ScanPayload.ReadBatches(view, byteLength, batchSize, cancellationToken))
+        {
+            yield return batch;
+        }
     }
 }

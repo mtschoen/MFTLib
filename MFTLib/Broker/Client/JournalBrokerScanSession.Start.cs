@@ -17,7 +17,25 @@ public sealed partial class JournalBrokerScanSession
         IReadOnlyList<string> drives,
         CancellationToken cancellationToken = default)
     {
-        return StartAsync(launchBroker, drives, BrokerScanProfile.Full, cancellationToken: cancellationToken);
+        return StartAsync(launchBroker, drives, BrokerScanProfile.Full, static (_, _) => ValueTask.CompletedTask, null, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Spawn one elevated broker (single UAC prompt via <paramref name="launchBroker" />),
+    ///     arm and scan <paramref name="drives" /> with <see cref="BrokerScanProfile.Full" />,
+    ///     streaming records to <paramref name="consumeRecords" />,
+    ///     and return a session parked on the result. Throws
+    ///     <see cref="InvalidOperationException" /> if the broker declines to launch or
+    ///     dies before the scan completes.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public static Task<JournalBrokerScanSession> StartAsync(
+        Func<string, bool> launchBroker,
+        IReadOnlyList<string> drives,
+        ScanRecordBatchConsumer consumeRecords,
+        CancellationToken cancellationToken = default)
+    {
+        return StartAsync(launchBroker, drives, BrokerScanProfile.Full, consumeRecords, null, cancellationToken);
     }
 
     /// <summary>
@@ -36,16 +54,47 @@ public sealed partial class JournalBrokerScanSession
     {
         return StartAsync(
             cancellation => JournalBrokerClient.SpawnAndConnectAsync(launchBroker, cancellation),
-            drives, profile, keepFileNames, cancellationToken);
+            drives, profile, static (_, _) => ValueTask.CompletedTask, keepFileNames, cancellationToken);
+    }
+
+    /// <summary>
+    ///     As <see cref="StartAsync(Func{string,bool},IReadOnlyList{string},ScanRecordBatchConsumer,CancellationToken)" />
+    ///     but with an explicit <paramref name="profile" /> and, under
+    ///     <see cref="BrokerScanProfile.DirectoryIndex" />, an optional set of non-directory
+    ///     <paramref name="keepFileNames" /> to keep alongside every directory record.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public static Task<JournalBrokerScanSession> StartAsync(
+        Func<string, bool> launchBroker,
+        IReadOnlyList<string> drives,
+        BrokerScanProfile profile,
+        ScanRecordBatchConsumer consumeRecords,
+        IReadOnlyCollection<string>? keepFileNames = null,
+        CancellationToken cancellationToken = default)
+    {
+        return StartAsync(
+            cancellation => JournalBrokerClient.SpawnAndConnectAsync(launchBroker, cancellation),
+            drives, profile, consumeRecords, keepFileNames, cancellationToken);
     }
 
     // The public overloads above delegate here with connectAsync set to
     // JournalBrokerClient.SpawnAndConnectAsync. Tests inject a fake client built
     // over an in-memory duplex stream.
+    internal static Task<JournalBrokerScanSession> StartAsync(
+        Func<CancellationToken, Task<JournalBrokerClient>> connectAsync,
+        IReadOnlyList<string> drives,
+        BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames = null,
+        CancellationToken cancellationToken = default)
+    {
+        return StartAsync(connectAsync, drives, profile, static (_, _) => ValueTask.CompletedTask, keepFileNames, cancellationToken);
+    }
+
     internal static async Task<JournalBrokerScanSession> StartAsync(
         Func<CancellationToken, Task<JournalBrokerClient>> connectAsync,
         IReadOnlyList<string> drives,
         BrokerScanProfile profile,
+        ScanRecordBatchConsumer consumeRecords,
         IReadOnlyCollection<string>? keepFileNames = null,
         CancellationToken cancellationToken = default)
     {
@@ -53,7 +102,7 @@ public sealed partial class JournalBrokerScanSession
         var session = new JournalBrokerScanSession(client, drives, profile, keepFileNames, EmptyCursors);
         try
         {
-            var result = await client.ArmScanAndCatchUpAsync(drives, profile, keepFileNames, cancellationToken)
+            var result = await client.ArmScanAndCatchUpAsync(drives, profile, consumeRecords, keepFileNames, cancellationToken)
                 .ConfigureAwait(false);
             lock (session._stateLock)
             {

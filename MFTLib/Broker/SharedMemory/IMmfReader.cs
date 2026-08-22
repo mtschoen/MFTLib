@@ -15,3 +15,19 @@ public interface IMmfReader
     /// </summary>
     ScanRecord[] Read(string mmfName, long byteLength);
 }
+
+/// <summary>
+///     Streaming UI-side seam for reading cold-scan record batches from a shared-memory map
+///     without buffering the entire payload into a single array in RAM.
+/// </summary>
+public interface IStreamingMmfReader : IMmfReader
+{
+    /// <summary>
+    ///     Read records from the map in batches of size <paramref name="batchSize" />.
+    /// </summary>
+    IEnumerable<ScanRecord[]> ReadBatches(
+        string mmfName,
+        long byteLength,
+        int batchSize,
+        CancellationToken cancellationToken);
+}

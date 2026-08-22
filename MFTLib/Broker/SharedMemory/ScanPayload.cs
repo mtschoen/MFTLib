@@ -14,97 +14,325 @@ public readonly record struct ScanRecord(
     string Path);
 
 /// <summary>
-///     Packed binary scan payload for the shared-memory cold-scan handoff:
-///     [header][fixed-stride record table][UTF-16 string heap]. The UI reads the
-///     table by offset and slices names/paths from the heap, mirroring MFTLib's
-///     lazy-materialization design. Replaces the text-on-disk scan round-trip.
+///     Packed binary scan payload for the shared-memory cold-scan handoff (Version 2).
+///     Uses an interleaved one-pass binary layout:
+///     [magic u32][version i32=2][recordCount i64][byteLength i64]
+///     repeated recordCount times:
+///     [recordNumber u64][parent u64][size u64][lastWriteTicks i64]
+///     [attributes u32][isDirectory u8][reserved u8,u16]
+///     [nameByteLength i32][pathByteLength i32][name UTF-16][path UTF-16]
 /// </summary>
 public static class ScanPayload
 {
     const uint Magic = 0x4D4C_5343; // "MLSC"
-    const int Version = 1;
-    const int HeaderSize = 4 + 4 + 4 + 8 + 8; // magic, version, count, tableLen, heapLen
-    const int RecordStride = 8 + 8 + 8 + 8 + 4 + 4 + 4 + 4 + 4 + 4; // see field order below
+    const int Version = 2;
+    public const int HeaderSize = 4 + 4 + 8 + 8; // magic (4), version (4), count (8), byteLength (8) = 24
+    public const int FixedRecordHeaderSize = 8 + 8 + 8 + 8 + 4 + 1 + 1 + 2 + 4 + 4; // 48 bytes
 
     public static long ComputeSize(IReadOnlyList<ScanRecord> records)
     {
-        long heap = 0;
+        long size = HeaderSize;
         foreach (var record in records)
         {
-            heap += Encoding.Unicode.GetByteCount(record.Name) + Encoding.Unicode.GetByteCount(record.Path);
+            size += FixedRecordHeaderSize +
+                    Encoding.Unicode.GetByteCount(record.Name) +
+                    Encoding.Unicode.GetByteCount(record.Path);
         }
 
-        return HeaderSize + (long)records.Count * RecordStride + heap;
+        return size;
     }
 
     public static void Write(Span<byte> destination, IReadOnlyList<ScanRecord> records)
     {
-        var tableLen = (long)records.Count * RecordStride;
-        var heapStart = HeaderSize + (int)tableLen;
-        var heapCursor = heapStart;
-
+        var totalBytes = ComputeSize(records);
         BinaryPrimitives.WriteUInt32LittleEndian(destination, Magic);
         BinaryPrimitives.WriteInt32LittleEndian(destination[4..], Version);
-        BinaryPrimitives.WriteInt32LittleEndian(destination[8..], records.Count);
-        BinaryPrimitives.WriteInt64LittleEndian(destination[12..], tableLen);
+        BinaryPrimitives.WriteInt64LittleEndian(destination[8..], records.Count);
+        BinaryPrimitives.WriteInt64LittleEndian(destination[16..], totalBytes);
 
-        for (var i = 0; i < records.Count; i++)
+        var cursor = HeaderSize;
+        foreach (var record in records)
         {
-            var record = records[i];
-            var rowOffset = HeaderSize + i * RecordStride;
-            var row = destination[rowOffset..];
+            var row = destination.Slice(cursor, FixedRecordHeaderSize);
             BinaryPrimitives.WriteUInt64LittleEndian(row, record.RecordNumber);
             BinaryPrimitives.WriteUInt64LittleEndian(row[8..], record.ParentRecordNumber);
             BinaryPrimitives.WriteUInt64LittleEndian(row[16..], record.Size);
             BinaryPrimitives.WriteInt64LittleEndian(row[24..], record.LastWriteTicks);
             BinaryPrimitives.WriteUInt32LittleEndian(row[32..], record.Attributes);
-            BinaryPrimitives.WriteUInt32LittleEndian(row[36..], record.IsDirectory ? 1u : 0u);
+            row[36] = (byte)(record.IsDirectory ? 1 : 0);
+            row[37] = 0;
+            BinaryPrimitives.WriteUInt16LittleEndian(row[38..], 0);
 
             var nameBytes = Encoding.Unicode.GetBytes(record.Name);
             var pathBytes = Encoding.Unicode.GetBytes(record.Path);
-            BinaryPrimitives.WriteInt32LittleEndian(row[40..], heapCursor);
-            BinaryPrimitives.WriteInt32LittleEndian(row[44..], nameBytes.Length);
-            nameBytes.CopyTo(destination[heapCursor..]);
-            heapCursor += nameBytes.Length;
-            BinaryPrimitives.WriteInt32LittleEndian(row[48..], heapCursor);
-            BinaryPrimitives.WriteInt32LittleEndian(row[52..], pathBytes.Length);
-            pathBytes.CopyTo(destination[heapCursor..]);
-            heapCursor += pathBytes.Length;
-        }
 
-        BinaryPrimitives.WriteInt64LittleEndian(destination[20..], heapCursor - heapStart);
+            BinaryPrimitives.WriteInt32LittleEndian(row[40..], nameBytes.Length);
+            BinaryPrimitives.WriteInt32LittleEndian(row[44..], pathBytes.Length);
+            cursor += FixedRecordHeaderSize;
+
+            nameBytes.CopyTo(destination[cursor..]);
+            cursor += nameBytes.Length;
+
+            pathBytes.CopyTo(destination[cursor..]);
+            cursor += pathBytes.Length;
+        }
     }
 
-    public static int ReadCount(ReadOnlySpan<byte> source)
+    public static MmfWriteResult Write(
+        Stream destination,
+        IEnumerable<IReadOnlyList<ScanRecord>> batches,
+        CancellationToken cancellationToken)
     {
+        var startPosition = destination.Position;
+        Span<byte> headerBytes = stackalloc byte[HeaderSize];
+        destination.Write(headerBytes);
+
+        long recordCount = 0;
+        Span<byte> recordHeader = stackalloc byte[FixedRecordHeaderSize];
+
+        foreach (var batch in batches)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var record in batch)
+            {
+                recordCount++;
+
+                BinaryPrimitives.WriteUInt64LittleEndian(recordHeader, record.RecordNumber);
+                BinaryPrimitives.WriteUInt64LittleEndian(recordHeader[8..], record.ParentRecordNumber);
+                BinaryPrimitives.WriteUInt64LittleEndian(recordHeader[16..], record.Size);
+                BinaryPrimitives.WriteInt64LittleEndian(recordHeader[24..], record.LastWriteTicks);
+                BinaryPrimitives.WriteUInt32LittleEndian(recordHeader[32..], record.Attributes);
+                recordHeader[36] = (byte)(record.IsDirectory ? 1 : 0);
+                recordHeader[37] = 0;
+                BinaryPrimitives.WriteUInt16LittleEndian(recordHeader[38..], 0);
+
+                var nameBytes = Encoding.Unicode.GetBytes(record.Name);
+                var pathBytes = Encoding.Unicode.GetBytes(record.Path);
+                BinaryPrimitives.WriteInt32LittleEndian(recordHeader[40..], nameBytes.Length);
+                BinaryPrimitives.WriteInt32LittleEndian(recordHeader[44..], pathBytes.Length);
+
+                destination.Write(recordHeader);
+                destination.Write(nameBytes);
+                destination.Write(pathBytes);
+            }
+        }
+
+        var endPosition = destination.Position;
+        var totalBytes = endPosition - startPosition;
+
+        destination.Position = startPosition;
+        BinaryPrimitives.WriteUInt32LittleEndian(headerBytes, Magic);
+        BinaryPrimitives.WriteInt32LittleEndian(headerBytes[4..], Version);
+        BinaryPrimitives.WriteInt64LittleEndian(headerBytes[8..], recordCount);
+        BinaryPrimitives.WriteInt64LittleEndian(headerBytes[16..], totalBytes);
+        destination.Write(headerBytes);
+
+        destination.Position = endPosition;
+        destination.Flush();
+
+        return new MmfWriteResult(recordCount, totalBytes);
+    }
+
+    public static long ReadCount(ReadOnlySpan<byte> source)
+    {
+        if (source.Length < HeaderSize)
+        {
+            throw new InvalidDataException("Scan payload header too short");
+        }
+
         if (BinaryPrimitives.ReadUInt32LittleEndian(source) != Magic)
         {
             throw new InvalidDataException("Scan payload magic mismatch");
         }
 
-        return BinaryPrimitives.ReadInt32LittleEndian(source[8..]);
+        var version = BinaryPrimitives.ReadInt32LittleEndian(source[4..]);
+        if (version != Version)
+        {
+            throw new InvalidDataException($"Scan payload version mismatch: expected {Version}, got {version}");
+        }
+
+        var count = BinaryPrimitives.ReadInt64LittleEndian(source[8..]);
+        if (count < 0)
+        {
+            throw new InvalidDataException("Negative record count in scan payload");
+        }
+
+        return count;
+    }
+
+    public static IEnumerable<ScanRecord[]> ReadBatches(
+        Stream source,
+        long byteLength,
+        int batchSize,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(batchSize, 0);
+
+        if (byteLength < HeaderSize)
+        {
+            throw new InvalidDataException($"Payload byteLength {byteLength} is smaller than header size {HeaderSize}");
+        }
+
+        var recordCount = ReadAndValidateHeader(source, byteLength);
+        if (recordCount == 0)
+        {
+            yield break;
+        }
+
+        var currentBatch = new List<ScanRecord>(Math.Min(batchSize, 4096));
+        var fixedHeaderBuffer = new byte[FixedRecordHeaderSize];
+        long currentOffset = HeaderSize;
+
+        for (long i = 0; i < recordCount; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var record = ReadRecord(source, fixedHeaderBuffer, i, ref currentOffset, byteLength);
+            currentBatch.Add(record);
+
+            if (currentBatch.Count >= batchSize)
+            {
+                yield return currentBatch.ToArray();
+                currentBatch.Clear();
+            }
+        }
+
+        if (currentOffset != byteLength)
+        {
+            throw new InvalidDataException($"Trailing or incomplete data in payload: offset is {currentOffset}, expected {byteLength}");
+        }
+
+        if (currentBatch.Count > 0)
+        {
+            yield return currentBatch.ToArray();
+        }
+    }
+
+    static long ReadAndValidateHeader(Stream source, long expectedByteLength)
+    {
+        var header = new byte[HeaderSize];
+        var readHeaderBytes = ReadExactly(source, header, HeaderSize);
+        if (readHeaderBytes < HeaderSize)
+        {
+            throw new InvalidDataException("Truncated scan payload header");
+        }
+
+        if (BinaryPrimitives.ReadUInt32LittleEndian(header) != Magic)
+        {
+            throw new InvalidDataException("Scan payload magic mismatch");
+        }
+
+        var version = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(4));
+        if (version != Version)
+        {
+            throw new InvalidDataException($"Scan payload version mismatch: expected {Version}, got {version}");
+        }
+
+        var recordCount = BinaryPrimitives.ReadInt64LittleEndian(header.AsSpan(8));
+        if (recordCount < 0)
+        {
+            throw new InvalidDataException("Negative record count in scan payload");
+        }
+
+        var payloadByteLength = BinaryPrimitives.ReadInt64LittleEndian(header.AsSpan(16));
+        if (payloadByteLength != expectedByteLength)
+        {
+            throw new InvalidDataException($"Scan payload byte length mismatch: header has {payloadByteLength}, expected {expectedByteLength}");
+        }
+
+        return recordCount;
+    }
+
+    static ScanRecord ReadRecord(
+        Stream source,
+        byte[] fixedHeaderBuffer,
+        long recordIndex,
+        ref long currentOffset,
+        long totalByteLength)
+    {
+        if (currentOffset + FixedRecordHeaderSize > totalByteLength)
+        {
+            throw new InvalidDataException("Record header exceeds payload byte length");
+        }
+
+        var read = ReadExactly(source, fixedHeaderBuffer, FixedRecordHeaderSize);
+        if (read < FixedRecordHeaderSize)
+        {
+            throw new InvalidDataException("Truncated record header in scan payload");
+        }
+
+        var span = fixedHeaderBuffer.AsSpan();
+        var recordNumber = BinaryPrimitives.ReadUInt64LittleEndian(span);
+        var parent = BinaryPrimitives.ReadUInt64LittleEndian(span[8..]);
+        var size = BinaryPrimitives.ReadUInt64LittleEndian(span[16..]);
+        var lastWriteTicks = BinaryPrimitives.ReadInt64LittleEndian(span[24..]);
+        var attributes = BinaryPrimitives.ReadUInt32LittleEndian(span[32..]);
+        var isDir = span[36] != 0;
+
+        var nameByteLength = BinaryPrimitives.ReadInt32LittleEndian(span[40..]);
+        var pathByteLength = BinaryPrimitives.ReadInt32LittleEndian(span[44..]);
+
+        if (nameByteLength < 0 || (nameByteLength % 2) != 0)
+        {
+            throw new InvalidDataException($"Invalid name byte length {nameByteLength} in record {recordIndex}");
+        }
+
+        if (pathByteLength < 0 || (pathByteLength % 2) != 0)
+        {
+            throw new InvalidDataException($"Invalid path byte length {pathByteLength} in record {recordIndex}");
+        }
+
+        if (currentOffset + FixedRecordHeaderSize + nameByteLength + pathByteLength > totalByteLength)
+        {
+            throw new InvalidDataException("Record string data exceeds payload byte length");
+        }
+
+        var nameBytes = new byte[nameByteLength];
+        if (nameByteLength > 0 && ReadExactly(source, nameBytes, nameByteLength) < nameByteLength)
+        {
+            throw new InvalidDataException("Truncated record name in scan payload");
+        }
+
+        var pathBytes = new byte[pathByteLength];
+        if (pathByteLength > 0 && ReadExactly(source, pathBytes, pathByteLength) < pathByteLength)
+        {
+            throw new InvalidDataException("Truncated record path in scan payload");
+        }
+
+        currentOffset += FixedRecordHeaderSize + nameByteLength + pathByteLength;
+
+        var name = Encoding.Unicode.GetString(nameBytes);
+        var path = Encoding.Unicode.GetString(pathBytes);
+
+        return new ScanRecord(recordNumber, parent, size, lastWriteTicks, attributes, isDir, name, path);
+    }
+
+    static int ReadExactly(Stream stream, byte[] buffer, int count)
+    {
+        var totalRead = 0;
+        while (totalRead < count)
+        {
+            var read = stream.Read(buffer, totalRead, count - totalRead);
+            if (read == 0)
+            {
+                break;
+            }
+
+            totalRead += read;
+        }
+
+        return totalRead;
     }
 
     public static IEnumerable<ScanRecord> ReadAll(byte[] source)
     {
-        var count = ReadCount(source);
-        for (var i = 0; i < count; i++)
+        using var stream = new MemoryStream(source, writable: false);
+        foreach (var batch in ReadBatches(stream, source.Length, 4096, CancellationToken.None))
         {
-            var rowOffset = HeaderSize + i * RecordStride;
-            var row = source.AsSpan(rowOffset);
-            var recordNumber = BinaryPrimitives.ReadUInt64LittleEndian(row);
-            var parent = BinaryPrimitives.ReadUInt64LittleEndian(row[8..]);
-            var size = BinaryPrimitives.ReadUInt64LittleEndian(row[16..]);
-            var ticks = BinaryPrimitives.ReadInt64LittleEndian(row[24..]);
-            var attributes = BinaryPrimitives.ReadUInt32LittleEndian(row[32..]);
-            var isDir = BinaryPrimitives.ReadUInt32LittleEndian(row[36..]) != 0;
-            var nameOffset = BinaryPrimitives.ReadInt32LittleEndian(row[40..]);
-            var nameLen = BinaryPrimitives.ReadInt32LittleEndian(row[44..]);
-            var pathOffset = BinaryPrimitives.ReadInt32LittleEndian(row[48..]);
-            var pathLen = BinaryPrimitives.ReadInt32LittleEndian(row[52..]);
-            var name = Encoding.Unicode.GetString(source, nameOffset, nameLen);
-            var path = Encoding.Unicode.GetString(source, pathOffset, pathLen);
-            yield return new ScanRecord(recordNumber, parent, size, ticks, attributes, isDir, name, path);
+            foreach (var record in batch)
+            {
+                yield return record;
+            }
         }
     }
 }

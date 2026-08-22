@@ -1,5 +1,7 @@
 namespace MFTLib;
 
+public readonly record struct MmfWriteResult(long RecordCount, long ByteLength);
+
 /// <summary>
 ///     Broker-side seam for writing a cold-scan payload into a shared-memory map.
 ///     The non-elevated UI pre-creates the page-file-backed <c>MemoryMappedFile</c>
@@ -15,4 +17,20 @@ public interface IMmfWriter
     ///     written (the UI reads exactly that many back).
     /// </summary>
     long Write(string mmfName, ScanRecord[] records);
+}
+
+/// <summary>
+///     Streaming broker-side seam for writing cold-scan record batches directly
+///     into a shared-memory map without a full-scan array in RAM.
+/// </summary>
+public interface IStreamingMmfWriter : IMmfWriter
+{
+    /// <summary>
+    ///     Open the map named <paramref name="mmfName" />, write record batches in
+    ///     interleaved payload format v2, and return the record count and byte length.
+    /// </summary>
+    MmfWriteResult Write(
+        string mmfName,
+        IEnumerable<IReadOnlyList<ScanRecord>> batches,
+        CancellationToken cancellationToken);
 }
