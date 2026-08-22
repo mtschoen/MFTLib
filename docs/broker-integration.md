@@ -138,9 +138,9 @@ non-directory records whose name matches `keepFileNames` (case-insensitive); use
 journal path indexing plus a small set of caller-named marker files when a full packed
 snapshot could exceed the single-MMF payload limit. `keepFileNames` is ignored under `Full`.
 
-### Scan options and low-level client
+### Scan options and progress reporting
 
-When calling `JournalBrokerClient.ArmScanAndCatchUpAsync` directly, all optional cold-scan parameters are bundled in `BrokerScanOptions`:
+Cold-scan parameters and progress callbacks are bundled in `BrokerScanOptions`, which can be passed to `JournalBrokerScanSession.StartAsync`, `RescanAsync`, or directly to `JournalBrokerClient.ArmScanAndCatchUpAsync`:
 
 ```csharp
 public sealed record BrokerScanOptions
@@ -156,7 +156,8 @@ var progress = new Progress<BrokerScanProgress>(p =>
     Console.WriteLine($"Scanning drive {p.DriveLetter}: {p.RecordsProcessed:N0} records ({p.BytesProcessed / (1024 * 1024):N1} MB) in {p.Elapsed.TotalSeconds:F1}s");
 });
 
-var scan = await broker.ArmScanAndCatchUpAsync(
+await using var session = await JournalBrokerScanSession.StartAsync(
+    BrokerLauncher.Launch,
     new[] { "C", "D" },
     new BrokerScanOptions
     {

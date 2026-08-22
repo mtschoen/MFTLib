@@ -21,6 +21,30 @@ public static class ScanSessionTestHarness
 {
     /// <summary>
     ///     Start a scanned session: connect via <paramref name="connectAsync" />, arm and scan
+    ///     <paramref name="drives" /> with <paramref name="options" />, and return the session
+    ///     parked on the scan result - the same behaviour as the shipping
+    ///     <c>JournalBrokerScanSession.StartAsync</c> with a fake client in place of the
+    ///     elevated broker.
+    /// </summary>
+    /// <param name="connectAsync">
+    ///     Factory yielding a fresh, connected <see cref="JournalBrokerClient" />. The session
+    ///     takes exclusive ownership of the returned client and disposes it; return a new
+    ///     client per call, never a shared one.
+    /// </param>
+    /// <param name="drives">Drives to arm and scan.</param>
+    /// <param name="options">Cold-scan options (profile, consumer, keepFileNames, progress).</param>
+    /// <param name="cancellationToken">Cancels the connect and scan.</param>
+    public static Task<JournalBrokerScanSession> StartScannedAsync(
+        Func<CancellationToken, Task<JournalBrokerClient>> connectAsync,
+        IReadOnlyList<string> drives,
+        BrokerScanOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        return JournalBrokerScanSession.StartAsync(connectAsync, drives, options, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Start a scanned session: connect via <paramref name="connectAsync" />, arm and scan
     ///     <paramref name="drives" /> with <paramref name="profile" />, and return the session
     ///     parked on the scan result - the same behaviour as the shipping
     ///     <c>JournalBrokerScanSession.StartAsync</c> with a fake client in place of the
@@ -45,7 +69,15 @@ public static class ScanSessionTestHarness
         IReadOnlyCollection<string>? keepFileNames = null,
         CancellationToken cancellationToken = default)
     {
-        return JournalBrokerScanSession.StartAsync(connectAsync, drives, profile, keepFileNames, cancellationToken);
+        return JournalBrokerScanSession.StartAsync(
+            connectAsync,
+            drives,
+            new BrokerScanOptions
+            {
+                Profile = profile,
+                KeepFileNames = keepFileNames
+            },
+            cancellationToken);
     }
 
     /// <summary>

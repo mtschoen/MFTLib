@@ -113,6 +113,82 @@ public class JournalBrokerScanSessionTests
     }
 
     [TestMethod]
+    public async Task StartAsync_WithOptions_DispatchesProgressCallback()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var progress = new SyncProgress<BrokerScanProgress>();
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide); // ArmAndScan
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 100L));
+            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 50, 1000, 100, 2000, TimeSpan.FromMilliseconds(50)));
+            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromMilliseconds(100)));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 100, 2000);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 200L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var client = MakeMinimalFakeClient(clientSide);
+        var options = new BrokerScanOptions
+        {
+            Progress = progress
+        };
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, options, CancellationToken.None);
+        await brokerTask;
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.AreEqual(2, progress.Reports.Count);
+        Assert.AreEqual(50, progress.Reports[0].RecordsProcessed);
+        Assert.AreEqual(100, progress.Reports[1].RecordsProcessed);
+        Assert.AreEqual("C", progress.Reports[0].DriveLetter);
+        Assert.AreEqual(0, session.LatestScan!.Errors.Count);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task ScanSessionTestHarness_StartScannedAsync_WithOptions_DispatchesProgressCallback()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var progress = new SyncProgress<BrokerScanProgress>();
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 100L));
+            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromMilliseconds(100)));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 100, 2000);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 200L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var client = MakeMinimalFakeClient(clientSide);
+        var options = new BrokerScanOptions
+        {
+            Profile = BrokerScanProfile.DirectoryIndex,
+            KeepFileNames = new[] { ".git" },
+            Progress = progress
+        };
+
+        var session = await ScanSessionTestHarness.StartScannedAsync(
+            _ => Task.FromResult(client), DriveC, options);
+        await brokerTask;
+
+        Assert.AreEqual(1, progress.Reports.Count);
+        Assert.AreEqual(100, progress.Reports[0].RecordsProcessed);
+        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, session.Profile);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
     public async Task StartAsync_WithKeepFileNames_ForwardsNamesToArmAndScanFrame()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
@@ -1245,6 +1321,80 @@ public class JournalBrokerScanSessionTests
     }
 
     [TestMethod]
+    public async Task RescanAsync_WithOptions_DispatchesProgressCallback()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var initialScanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await initialScanTask;
+
+        var progress = new SyncProgress<BrokerScanProgress>();
+        var rescanBrokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide); // ArmAndScan for Rescan
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 300L));
+            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 25, 500, 100, 2000, TimeSpan.FromMilliseconds(25)));
+            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 75, 1500, 100, 2000, TimeSpan.FromMilliseconds(75)));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 100, 2000);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 400L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        await session.RescanAsync(new BrokerScanOptions { Progress = progress });
+        await rescanBrokerTask;
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.AreEqual(2, progress.Reports.Count);
+        Assert.AreEqual(25, progress.Reports[0].RecordsProcessed);
+        Assert.AreEqual(75, progress.Reports[1].RecordsProcessed);
+        Assert.AreEqual("C", progress.Reports[0].DriveLetter);
+        Assert.AreEqual(new UsnJournalCursor(7UL, 400L), session.LatestScan!.AdvancedCursors["C"]);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_WithDrivesAndOptions_DispatchesProgressCallbackAndUpdatesDrives()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var initialScanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await initialScanTask;
+
+        var progress = new SyncProgress<BrokerScanProgress>();
+        var rescanBrokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide); // ArmAndScan for Rescan
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "D", new UsnJournalCursor(7UL, 300L));
+            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("D", 50, 1000, 100, 2000, TimeSpan.FromMilliseconds(50)));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-D", 100, 2000);
+            BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(7UL, 400L), Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        await session.RescanAsync(DriveD, new BrokerScanOptions { Profile = BrokerScanProfile.DirectoryIndex, Progress = progress });
+        await rescanBrokerTask;
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.AreEqual(1, progress.Reports.Count);
+        Assert.AreEqual("D", progress.Reports[0].DriveLetter);
+        CollectionAssert.AreEqual(DriveD, session.Drives.ToArray());
+        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, session.Profile);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
     public async Task Rescan_WithNewDrives_UpdatesStoredDrivesAndProfileForNextNoArgRescan()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
@@ -2123,6 +2273,19 @@ public class JournalBrokerScanSessionTests
             }
 
             base.Dispose(disposing);
+        }
+    }
+
+    sealed class SyncProgress<T> : IProgress<T>
+    {
+        public List<T> Reports { get; } = new();
+
+        public void Report(T value)
+        {
+            lock (Reports)
+            {
+                Reports.Add(value);
+            }
         }
     }
 }

@@ -77,6 +77,25 @@ public sealed partial class JournalBrokerScanSession
             drives, profile, consumeRecords, keepFileNames, cancellationToken);
     }
 
+    /// <summary>
+    ///     Spawn one elevated broker (single UAC prompt via <paramref name="launchBroker" />),
+    ///     arm and scan <paramref name="drives" /> with caller-specified <paramref name="options" />
+    ///     (profile, consumer, keepFileNames, progress), and return a session parked on the result.
+    ///     Throws <see cref="InvalidOperationException" /> if the broker declines to launch or
+    ///     dies before the scan completes.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public static Task<JournalBrokerScanSession> StartAsync(
+        Func<string, bool> launchBroker,
+        IReadOnlyList<string> drives,
+        BrokerScanOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        return StartAsync(
+            cancellation => JournalBrokerClient.SpawnAndConnectAsync(launchBroker, cancellation),
+            drives, options, cancellationToken);
+    }
+
     // The public overloads above delegate here with connectAsync set to
     // JournalBrokerClient.SpawnAndConnectAsync. Tests inject a fake client built
     // over an in-memory duplex stream.
@@ -87,10 +106,14 @@ public sealed partial class JournalBrokerScanSession
         IReadOnlyCollection<string>? keepFileNames = null,
         CancellationToken cancellationToken = default)
     {
-        return StartAsync(connectAsync, drives, profile, static (_, _) => ValueTask.CompletedTask, keepFileNames, cancellationToken);
+        return StartAsync(connectAsync, drives, new BrokerScanOptions
+        {
+            Profile = profile,
+            KeepFileNames = keepFileNames
+        }, cancellationToken);
     }
 
-    internal static async Task<JournalBrokerScanSession> StartAsync(
+    internal static Task<JournalBrokerScanSession> StartAsync(
         Func<CancellationToken, Task<JournalBrokerClient>> connectAsync,
         IReadOnlyList<string> drives,
         BrokerScanProfile profile,
@@ -98,18 +121,29 @@ public sealed partial class JournalBrokerScanSession
         IReadOnlyCollection<string>? keepFileNames = null,
         CancellationToken cancellationToken = default)
     {
+        return StartAsync(connectAsync, drives, new BrokerScanOptions
+        {
+            Profile = profile,
+            ConsumeRecords = consumeRecords,
+            KeepFileNames = keepFileNames
+        }, cancellationToken);
+    }
+
+    internal static async Task<JournalBrokerScanSession> StartAsync(
+        Func<CancellationToken, Task<JournalBrokerClient>> connectAsync,
+        IReadOnlyList<string> drives,
+        BrokerScanOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
         var client = await connectAsync(cancellationToken).ConfigureAwait(false);
+        var profile = options?.Profile ?? BrokerScanProfile.Full;
+        var keepFileNames = options?.KeepFileNames;
         var session = new JournalBrokerScanSession(client, drives, profile, keepFileNames, EmptyCursors);
         try
         {
             var result = await client.ArmScanAndCatchUpAsync(
                 drives,
-                new BrokerScanOptions
-                {
-                    Profile = profile,
-                    ConsumeRecords = consumeRecords,
-                    KeepFileNames = keepFileNames
-                },
+                options,
                 cancellationToken).ConfigureAwait(false);
             lock (session._stateLock)
             {
