@@ -62,9 +62,9 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     mkdir -p "$MANAGED_REPORT_DIR"
 
     # Tests excluded on Linux (call Windows-only entry points or use raw volume APIs):
-    #   MftResultTests, MftVolumeTests, NativeCoverageTests, UsnJournalSyntheticTests
-    #   (UsnJournalSyntheticTests P/Invokes the USN test hooks + usn_journal exports,
-    #    all #ifdef _WIN32, so they don't exist in libMFTLibNative.so)
+    #   MftResultTests, MftVolumeTests, NativeCoverageTests, NativeParserCoverageTests,
+    #   UsnJournalSyntheticTests (UsnJournalSyntheticTests P/Invokes the USN test hooks
+    #   + usn_journal exports, all #ifdef _WIN32, so they don't exist in libMFTLibNative.so)
     # Plus individual tests that need Windows-side platform behavior:
     #   ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse
     #   ElevationUtilitiesTests.TryRunElevated_ProcessExitsZero_ReturnsTrue
@@ -74,11 +74,15 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     #   DefaultElevatedEntryRunnerTests.RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilShutdown_ExitsWithCode0 (real named pipe)
     #   JournalBrokerClientTests.SpawnAndConnectAsync_EndToEnd_UsesRealPipeAndRealMmfSeams (real named pipe + real named MMF)
     #   JournalBrokerScanSessionTests.PublicStartAsync_InProcessBroker_EndToEnd (real named pipe + real named MMF)
+    #   JournalBrokerScanSessionTests.PublicStartAsync_WithRecordConsumer_InProcessBroker_StreamsRecords (real named pipe + real named MMF)
+    #   JournalBrokerScanSessionTests.PublicStartAsync_WithProfileAndKeepFileNames_InProcessBroker_ParksWithRequestedProfile (real named pipe + real named MMF)
+    #   JournalBrokerScanSessionTests.PublicStartAsync_WithOptions_InProcessBroker_ParksWithRequestedProfile (real named pipe + real named MMF)
     #   JournalBrokerScanSessionTests.PublicStartFromCursors_InProcessBroker_EndToEnd (real named pipe + real named MMF)
     # Coverlet only writes output when the run is green, so failing tests must be filtered.
     FILTER='FullyQualifiedName!~MftResultTests'
     FILTER+='&FullyQualifiedName!~MftVolumeTests'
     FILTER+='&FullyQualifiedName!~NativeCoverageTests'
+    FILTER+='&FullyQualifiedName!~NativeParserCoverageTests'
     FILTER+='&FullyQualifiedName!~UsnJournalSyntheticTests'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.ElevationUtilitiesTests.TryRunElevated_ProcessExitsZero_ReturnsTrue'
@@ -88,6 +92,9 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.DefaultElevatedEntryRunnerTests.RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilShutdown_ExitsWithCode0'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerClientTests.SpawnAndConnectAsync_EndToEnd_UsesRealPipeAndRealMmfSeams'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerScanSessionTests.PublicStartAsync_InProcessBroker_EndToEnd'
+    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerScanSessionTests.PublicStartAsync_WithRecordConsumer_InProcessBroker_StreamsRecords'
+    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerScanSessionTests.PublicStartAsync_WithProfileAndKeepFileNames_InProcessBroker_ParksWithRequestedProfile'
+    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerScanSessionTests.PublicStartAsync_WithOptions_InProcessBroker_ParksWithRequestedProfile'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerScanSessionTests.PublicStartFromCursors_InProcessBroker_EndToEnd'
 
     echo

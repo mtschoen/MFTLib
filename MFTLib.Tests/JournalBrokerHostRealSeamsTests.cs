@@ -144,6 +144,68 @@ public class JournalBrokerHostRealSeamsTests
     }
 
     [TestMethod]
+    public void ArmAndScanBatches_RealScanDriveBatches_AdaptsNativeProgressThroughDirectProgressLambda()
+    {
+        // Exercises the real ScanDriveBatches production delegate (used only by
+        // CreateDefault()) with a non-null progress: the DirectProgress<MftScanProgress>
+        // lambda that adapts MftScanProgress into MmfWriteProgress and forwards it to
+        // the caller-supplied IProgress<MmfWriteProgress>.
+        FileUtilities._getVolumeHandle = _ => FakeHandle();
+
+        var queryInfo = new UsnJournalInfoNative { JournalId = 7UL, NextUsn = 100 };
+        var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
+        Marshal.StructureToPtr(queryInfo, queryPtr, false);
+        MFTLibNative._queryUsnJournal = _ => queryPtr;
+        MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
+
+        var parsePtr = BuildThreePathRecordsResult();
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
+        {
+            callback?.Invoke(2, 3, 42.0, context);
+            return parsePtr;
+        };
+        MFTLibNative._freeMftResult = ptr =>
+        {
+            var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
+            if (parsed.PathEntries != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(parsed.PathEntries);
+            }
+
+            if (parsed.PathStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(parsed.PathStrings);
+            }
+
+            Marshal.FreeHGlobal(ptr);
+        };
+
+        var reported = new List<MmfWriteProgress>();
+        var progress = new RecordingProgress(reported.Add);
+
+        var host = JournalBrokerHost.CreateDefault();
+        var (_, batches) = host.ArmAndScanBatches("C", progress, CancellationToken.None);
+        var materialized = batches.ToList();
+
+        // Only the "kept" record survives ToScanRecords' InUse/FullPath filter, so
+        // exactly one non-empty batch is yielded.
+        Assert.AreEqual(1, materialized.Count);
+        Assert.AreEqual(1, reported.Count);
+        Assert.AreEqual(2L, reported[0].RecordsProcessed);
+        Assert.AreEqual(3L, reported[0].TotalRecords);
+        Assert.AreEqual(0L, reported[0].BytesProcessed);
+        Assert.IsNull(reported[0].TotalBytes);
+    }
+
+    sealed class RecordingProgress(Action<MmfWriteProgress> handler) : IProgress<MmfWriteProgress>
+    {
+        public void Report(MmfWriteProgress value)
+        {
+            handler(value);
+        }
+    }
+
+    [TestMethod]
     public async Task ServeAsync_StartWatch_UsesRealWatchAndDisposeSeam()
     {
         FileUtilities._getVolumeHandle = _ => FakeHandle();

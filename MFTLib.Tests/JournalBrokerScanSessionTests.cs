@@ -322,6 +322,40 @@ public class JournalBrokerScanSessionTests
     }
 
     [TestMethod]
+    public async Task StartAsync_WithNullOptions_DefaultsToFullProfileAndNoKeepFileNames()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+
+        BrokerFrame armAndScanFrame = default;
+        var scanTask = Task.Run(async () =>
+        {
+            armAndScanFrame = await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 0L),
+                Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        // Calling the internal connectAsync-based seam directly with a null options
+        // argument exercises the "no caller-supplied options" branch of the null-
+        // coalescing default (BrokerScanProfile.Full, no keepFileNames) - every public
+        // overload above it always builds and forwards a non-null BrokerScanOptions.
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, null, CancellationToken.None);
+        await scanTask;
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.AreEqual(BrokerScanProfile.Full, session.Profile);
+        Assert.AreEqual(0, armAndScanFrame.KeepFileNames.Count);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
     public async Task Dispose_WhileParked_SendsSingleShutdownFrame()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
@@ -558,6 +592,143 @@ public class JournalBrokerScanSessionTests
         var session = await JournalBrokerScanSession.StartAsync(launchBroker, DriveC, cts.Token);
 
         Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.IsTrue(session.LatestScan!.ArmedCursors.ContainsKey("C"));
+
+        await brokerTask!.WaitAsync(cts.Token);
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task PublicStartAsync_WithRecordConsumer_InProcessBroker_StreamsRecords()
+    {
+        Task? brokerTask = null;
+        var scanRecord = new ScanRecord(5, 5, 0, 0, 0x10, true, "C:", "C:\\");
+        var launchBroker = new Func<string, bool>(args =>
+        {
+            var parts = args.Split(' ');
+            var pipeName = parts[Array.IndexOf(parts, "--pipe") + 1];
+            brokerTask = Task.Run(async () =>
+            {
+                await using var pipe = new NamedPipeClientStream(
+                    ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                await pipe.ConnectAsync(5000);
+
+                var fakeHost = new JournalBrokerHost(
+                    _ => new UsnJournalCursor(7UL, 0L),
+                    _ => new[] { scanRecord },
+                    (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+                await fakeHost.ServeAsync(pipe, new RealMmfWriter(), true, CancellationToken.None);
+            });
+            return true;
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var consumed = new List<ScanRecord>();
+
+        // The launchBroker + consumeRecords public overload (no explicit profile) is
+        // never exercised through the internal connectAsync seam used elsewhere in
+        // this file, so it needs its own real in-process broker round trip.
+        var session = await JournalBrokerScanSession.StartAsync(
+            launchBroker, DriveC,
+            (batch, _) =>
+            {
+                consumed.AddRange(batch);
+                return ValueTask.CompletedTask;
+            },
+            cts.Token);
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.AreEqual(1, consumed.Count);
+        Assert.AreEqual("C:\\", consumed[0].Path);
+
+        await brokerTask!.WaitAsync(cts.Token);
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task PublicStartAsync_WithProfileAndKeepFileNames_InProcessBroker_ParksWithRequestedProfile()
+    {
+        Task? brokerTask = null;
+        var keepFileNames = new[] { "note.txt" };
+        var launchBroker = new Func<string, bool>(args =>
+        {
+            var parts = args.Split(' ');
+            var pipeName = parts[Array.IndexOf(parts, "--pipe") + 1];
+            brokerTask = Task.Run(async () =>
+            {
+                await using var pipe = new NamedPipeClientStream(
+                    ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                await pipe.ConnectAsync(5000);
+
+                var fakeHost = new JournalBrokerHost(
+                    _ => new UsnJournalCursor(7UL, 0L),
+                    _ => Array.Empty<ScanRecord>(),
+                    (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+                await fakeHost.ServeAsync(pipe, new RealMmfWriter(), true, CancellationToken.None);
+            });
+            return true;
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        // The launchBroker + profile + keepFileNames public overload (no consumer, no
+        // options record) is never exercised through the internal connectAsync seam
+        // used elsewhere in this file, so it needs its own real in-process broker
+        // round trip.
+        var session = await JournalBrokerScanSession.StartAsync(
+            launchBroker, DriveC, BrokerScanProfile.DirectoryIndex, keepFileNames, cts.Token);
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, session.Profile);
+        Assert.IsTrue(session.LatestScan!.ArmedCursors.ContainsKey("C"));
+
+        await brokerTask!.WaitAsync(cts.Token);
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task PublicStartAsync_WithOptions_InProcessBroker_ParksWithRequestedProfile()
+    {
+        Task? brokerTask = null;
+        var launchBroker = new Func<string, bool>(args =>
+        {
+            var parts = args.Split(' ');
+            var pipeName = parts[Array.IndexOf(parts, "--pipe") + 1];
+            brokerTask = Task.Run(async () =>
+            {
+                await using var pipe = new NamedPipeClientStream(
+                    ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                await pipe.ConnectAsync(5000);
+
+                var fakeHost = new JournalBrokerHost(
+                    _ => new UsnJournalCursor(7UL, 0L),
+                    _ => Array.Empty<ScanRecord>(),
+                    (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+                await fakeHost.ServeAsync(pipe, new RealMmfWriter(), true, CancellationToken.None);
+            });
+            return true;
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var options = new BrokerScanOptions
+        {
+            Profile = BrokerScanProfile.DirectoryIndex,
+            KeepFileNames = new[] { "note.txt" }
+        };
+
+        // The launchBroker + BrokerScanOptions public overload is never exercised
+        // through the internal connectAsync seam used elsewhere in this file, so it
+        // needs its own real in-process broker round trip.
+        var session = await JournalBrokerScanSession.StartAsync(launchBroker, DriveC, options, cts.Token);
+
+        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
+        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, session.Profile);
         Assert.IsTrue(session.LatestScan!.ArmedCursors.ContainsKey("C"));
 
         await brokerTask!.WaitAsync(cts.Token);
@@ -1758,6 +1929,149 @@ public class JournalBrokerScanSessionTests
         var secondRescanBrokerTask = RespondToArmAndScanAsync(serverSide, "C");
         await session.RescanAsync();
         await secondRescanBrokerTask;
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_WithDrivesAndRecordConsumer_StreamsRecordsToNewDrives()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var scanRecord = new ScanRecord(5, 5, 0, 0, 0x10, true, "D:", "D:\\");
+        var client = new JournalBrokerClient(
+            clientSide,
+            new FakeMmfReader([scanRecord]),
+            (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
+
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        var rescanFrameTask = ReadOneFrameAsync(serverSide);
+        var rescanBrokerTask = Task.Run(async () =>
+        {
+            var frame = await rescanFrameTask;
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "D", new UsnJournalCursor(9UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-D", 1, 1);
+            BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(9UL, 0L),
+                Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+            return frame;
+        });
+
+        // The (drives, consumeRecords, cancellationToken) overload - same profile and
+        // keepFileNames as before, new drives, streaming to a consumer - is otherwise
+        // untested; every other rescan-with-consumer test either keeps the original
+        // drives or also supplies a profile.
+        var consumed = new List<ScanRecord>();
+        await session.RescanAsync(DriveD, (batch, _) =>
+        {
+            consumed.AddRange(batch);
+            return ValueTask.CompletedTask;
+        });
+        var rescanFrame = await rescanBrokerTask;
+
+        Assert.AreEqual(1, consumed.Count);
+        Assert.AreEqual("D:\\", consumed[0].Path);
+        CollectionAssert.AreEqual(DriveD, session.Drives.ToArray());
+        Assert.AreEqual(BrokerScanProfile.Full, session.Profile);
+        StringAssert.Contains(rescanFrame.DrivesSpec, "D:0:0:mftlib-null-D");
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_WithDrivesProfileConsumerAndKeepFileNames_ForwardsAllParameters()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var scanRecord = new ScanRecord(5, 5, 0, 0, 0x10, true, "D:", "D:\\");
+        var client = new JournalBrokerClient(
+            clientSide,
+            new FakeMmfReader([scanRecord]),
+            (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
+        var keepFileNames = new[] { "keep-me.txt" };
+
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        var rescanFrameTask = ReadOneFrameAsync(serverSide);
+        var rescanBrokerTask = Task.Run(async () =>
+        {
+            var frame = await rescanFrameTask;
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "D", new UsnJournalCursor(9UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-D", 1, 1);
+            BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(9UL, 0L),
+                Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+            return frame;
+        });
+
+        // The (drives, profile, consumeRecords, keepFileNames, cancellationToken)
+        // overload - every parameter caller-specified at once - is otherwise
+        // untested; the other full-parameter rescan tests omit either the consumer
+        // or the keepFileNames argument.
+        var consumed = new List<ScanRecord>();
+        await session.RescanAsync(DriveD, BrokerScanProfile.DirectoryIndex, (batch, _) =>
+        {
+            consumed.AddRange(batch);
+            return ValueTask.CompletedTask;
+        }, keepFileNames, CancellationToken.None);
+        var rescanFrame = await rescanBrokerTask;
+
+        Assert.AreEqual(1, consumed.Count);
+        CollectionAssert.AreEqual(keepFileNames, rescanFrame.KeepFileNames.ToArray());
+        CollectionAssert.AreEqual(DriveD, session.Drives.ToArray());
+        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, session.Profile);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_WithNullOptions_DefaultsToFullProfileAndNoKeepFileNames()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var keepFileNames = new[] { "note.txt" };
+
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.DirectoryIndex, keepFileNames,
+            CancellationToken.None);
+        await scanTask;
+
+        BrokerFrame rescanFrame = default;
+        var rescanBrokerTask = Task.Run(async () =>
+        {
+            rescanFrame = await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "D", new UsnJournalCursor(9UL, 0L));
+            BrokerProtocol.WriteScanReady(response, "mftlib-null-D", 0, 0);
+            BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(9UL, 0L),
+                Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        // A null options argument to the (drives, options, cancellationToken) overload
+        // exercises the "no caller-supplied options" branch of the null-coalescing
+        // default (BrokerScanProfile.Full, no keepFileNames), overriding what the
+        // session was originally started with (DirectoryIndex + note.txt).
+        await session.RescanAsync(DriveD, (BrokerScanOptions?)null, CancellationToken.None);
+        await rescanBrokerTask;
+
+        Assert.AreEqual(BrokerScanProfile.Full, session.Profile);
+        Assert.AreEqual(0, rescanFrame.KeepFileNames.Count);
+        CollectionAssert.AreEqual(DriveD, session.Drives.ToArray());
 
         await session.DisposeAsync();
     }

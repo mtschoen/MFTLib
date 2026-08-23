@@ -308,6 +308,137 @@ public class ScanPayloadTests
         });
     }
 
+    [TestMethod]
+    public void ScanPayload_V2_ReadCount_ArrayShorterThanHeader_Throws()
+    {
+        Assert.ThrowsException<InvalidDataException>(() => ScanPayload.ReadCount(new byte[16]));
+    }
+
+    [TestMethod]
+    public void ScanPayload_V2_ReadCount_NegativeRecordCount_Throws()
+    {
+        var bytes = new byte[32];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0x4D4C_5343);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(4), 2);
+        BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(8), -1);
+        BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(16), 24);
+
+        Assert.ThrowsException<InvalidDataException>(() => ScanPayload.ReadCount(bytes));
+    }
+
+    [TestMethod]
+    public void ScanPayload_V2_Malformed_StreamShorterThanDeclaredHeader_Throws()
+    {
+        // byteLength (24) satisfies the pre-check in ReadBatches, but the stream
+        // itself only has 10 bytes to actually read, so the header read is short.
+        var truncatedStream = new byte[10];
+
+        Assert.ThrowsException<InvalidDataException>(() =>
+        {
+            using var stream = new MemoryStream(truncatedStream);
+            _ = ScanPayload.ReadBatches(stream, 24, 4096, CancellationToken.None).ToList();
+        });
+    }
+
+    [TestMethod]
+    public void ScanPayload_V2_Malformed_ByteLengthParamMismatchesHeader_Throws()
+    {
+        var payload = CreateValidPayloadBytes();
+
+        Assert.ThrowsException<InvalidDataException>(() =>
+        {
+            using var stream = new MemoryStream(payload);
+            _ = ScanPayload.ReadBatches(stream, payload.Length + 5, 4096, CancellationToken.None).ToList();
+        });
+    }
+
+    [TestMethod]
+    public void ScanPayload_V2_Malformed_RecordCountExceedsAvailableData_Throws()
+    {
+        var payload = CreateValidPayloadBytes();
+        // Inflate the declared record count from 1 to 2 while leaving the declared
+        // byteLength and the actual bytes untouched, so the second record's fixed
+        // header has no room left in the payload.
+        BinaryPrimitives.WriteInt64LittleEndian(payload.AsSpan(8), 2);
+
+        Assert.ThrowsException<InvalidDataException>(() =>
+        {
+            using var stream = new MemoryStream(payload);
+            _ = ScanPayload.ReadBatches(stream, payload.Length, 4096, CancellationToken.None).ToList();
+        });
+    }
+
+    [TestMethod]
+    public void ScanPayload_V2_Malformed_StreamTruncatedInsideFixedRecordHeader_Throws()
+    {
+        var payload = CreateValidPayloadBytes();
+        // Keep the top-level header (24 bytes) intact but cut the stream off six
+        // bytes into the 48-byte fixed record header, while the declared byteLength
+        // still matches the full, untruncated payload.
+        var truncated = payload.Take(30).ToArray();
+
+        Assert.ThrowsException<InvalidDataException>(() =>
+        {
+            using var stream = new MemoryStream(truncated);
+            _ = ScanPayload.ReadBatches(stream, payload.Length, 4096, CancellationToken.None).ToList();
+        });
+    }
+
+    [TestMethod]
+    public void ScanPayload_V2_Malformed_StreamTruncatedInsideRecordName_Throws()
+    {
+        var payload = CreateValidPayloadBytes();
+        // Fixed record header ends at offset 24 + 48 = 72. Cut the stream a few
+        // bytes into the 16-byte name so the header read succeeds but the name
+        // read comes up short.
+        var truncated = payload.Take(77).ToArray();
+
+        Assert.ThrowsException<InvalidDataException>(() =>
+        {
+            using var stream = new MemoryStream(truncated);
+            _ = ScanPayload.ReadBatches(stream, payload.Length, 4096, CancellationToken.None).ToList();
+        });
+    }
+
+    [TestMethod]
+    public void ScanPayload_V2_Malformed_TrailingDataAfterLastRecord_Throws()
+    {
+        var payload = CreateValidPayloadBytes();
+        var withTrailingGarbage = payload.Concat(new byte[10]).ToArray();
+        // Declare the inflated byteLength in the header so the length-mismatch
+        // check passes, leaving only the trailing-data check to catch the padding.
+        BinaryPrimitives.WriteInt64LittleEndian(withTrailingGarbage.AsSpan(16), withTrailingGarbage.Length);
+
+        Assert.ThrowsException<InvalidDataException>(() =>
+        {
+            using var stream = new MemoryStream(withTrailingGarbage);
+            _ = ScanPayload.ReadBatches(stream, withTrailingGarbage.Length, 4096, CancellationToken.None).ToList();
+        });
+    }
+
+    [TestMethod]
+    public void ScanPayload_V2_Write_WithProgress_ReportsIntermediateAndFinalProgress()
+    {
+        var batch1 = new[] { new ScanRecord(1, 0, 100, 1000, 0x20, false, "a", "C:\\a") };
+        var batch2 = new[] { new ScanRecord(2, 0, 200, 2000, 0x20, false, "b", "C:\\b") };
+        var progress = new SyncProgress<MmfWriteProgress>();
+
+        using var stream = new MemoryStream();
+        var result = ScanPayload.Write(stream, [batch1, batch2], progress, CancellationToken.None);
+
+        Assert.IsTrue(progress.Reports.Count >= 2);
+
+        var intermediateReport = progress.Reports[0];
+        Assert.IsNull(intermediateReport.TotalRecords);
+        Assert.IsNull(intermediateReport.TotalBytes);
+
+        var finalReport = progress.Reports[^1];
+        Assert.AreEqual(result.RecordCount, finalReport.RecordsProcessed);
+        Assert.AreEqual(result.ByteLength, finalReport.BytesProcessed);
+        Assert.AreEqual(result.RecordCount, finalReport.TotalRecords);
+        Assert.AreEqual(result.ByteLength, finalReport.TotalBytes);
+    }
+
     static byte[] CreateValidPayloadBytes()
     {
         var records = new[]
@@ -317,5 +448,18 @@ public class ScanPayloadTests
         using var stream = new MemoryStream();
         ScanPayload.Write(stream, [records], CancellationToken.None);
         return stream.ToArray();
+    }
+
+    sealed class SyncProgress<T> : IProgress<T>
+    {
+        public List<T> Reports { get; } = [];
+
+        public void Report(T value)
+        {
+            lock (Reports)
+            {
+                Reports.Add(value);
+            }
+        }
     }
 }

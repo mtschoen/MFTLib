@@ -62,6 +62,7 @@
     <Compile Remove="MftResultTests.cs" />
     <Compile Remove="MftVolumeTests.cs" />
     <Compile Remove="NativeCoverageTests.cs" />
+    <Compile Remove="NativeParserCoverageTests.cs" />
   </ItemGroup>
 
 </Project>

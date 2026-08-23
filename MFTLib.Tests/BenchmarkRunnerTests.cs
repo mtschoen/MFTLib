@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using Benchmark;
@@ -1077,5 +1078,311 @@ public class BenchmarkRunnerTests
         Assert.AreEqual(0, exitCode);
         var allOutput = string.Join("\n", _consoleLines);
         Assert.IsTrue(allOutput.Contains("Throughput:") && allOutput.Contains("0 records/sec (wall clock)"));
+    }
+
+    // --- Default _getGitCommitHash fallback paths (BenchmarkRunner.cs) ---
+    // These exercise the real default lambda directly (not the overridable seam), matching
+    // the existing DefaultGetGitCommitHash_ReturnsNonEmptySha pattern of invoking live git.
+
+    [TestMethod]
+    public void DefaultGetGitCommitHash_NotInsideGitRepository_ReturnsFallbackSha()
+    {
+        var freshRunner = new BenchmarkRunner();
+        var previousDirectory = Environment.CurrentDirectory;
+        var driveRoot = Path.GetPathRoot(Path.GetTempPath())!;
+        try
+        {
+            // A drive root has no ancestor directory, so git's upward repository search
+            // reliably fails here regardless of which machine this runs on.
+            Environment.CurrentDirectory = driveRoot;
+            var sha = freshRunner._getGitCommitHash();
+
+            Assert.AreEqual("0000000000000000000000000000000000000000", sha);
+        }
+        finally
+        {
+            Environment.CurrentDirectory = previousDirectory;
+        }
+    }
+
+    [TestMethod]
+    public void DefaultGetGitCommitHash_GitExecutableNotOnPath_ReturnsFallbackSha()
+    {
+        var freshRunner = new BenchmarkRunner();
+        var previousPath = Environment.GetEnvironmentVariable("PATH");
+        try
+        {
+            Environment.SetEnvironmentVariable("PATH", string.Empty);
+            var sha = freshRunner._getGitCommitHash();
+
+            Assert.AreEqual("0000000000000000000000000000000000000000", sha);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", previousPath);
+        }
+    }
+
+    // --- BenchmarkRunner.Compare.cs: EvaluateThresholds guard-clause branches ---
+    // ValidateBeforeBaseline always rejects a non-positive throughput or peak-private-bytes
+    // value before EvaluateThresholds runs, so the "not positive" side of these ternaries is
+    // unreachable through the public Run(...) surface. EvaluateThresholds is called directly
+    // via reflection (the same private-member pattern already used elsewhere in this suite,
+    // e.g. JournalBrokerClientTests) to exercise it.
+
+    [TestMethod]
+    public void EvaluateThresholds_BeforeThroughputNotPositive_SkipsRegressionFormula()
+    {
+        var method = typeof(BenchmarkRunner).GetMethod("EvaluateThresholds", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var logLines = new List<string>();
+        var metrics = new ReportMetrics(2_500_000, 900_000_000, 600_000_000, 650_000_000);
+
+        method.Invoke(null,
+        [
+            "9f17b3fd75215cef39788031ac1cc36dbbbed060", 900_000_000L, 0.0, metrics, (Action<string>)logLines.Add
+        ]);
+
+        var allOutput = string.Join("\n", logLines);
+        Assert.IsTrue(allOutput.Contains("Throughput regression:") && allOutput.Contains("0.0%"));
+        Assert.IsFalse(allOutput.Contains("Infinity"));
+    }
+
+    [TestMethod]
+    public void EvaluateThresholds_BeforePeakPrivateBytesNotPositive_SkipsReductionFormula()
+    {
+        var method = typeof(BenchmarkRunner).GetMethod("EvaluateThresholds", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var logLines = new List<string>();
+        var metrics = new ReportMetrics(2_500_000, 900_000_000, 600_000_000, 650_000_000);
+
+        var result = (int)method.Invoke(null,
+        [
+            "9f17b3fd75215cef39788031ac1cc36dbbbed060", 0L, 2_500_000.0, metrics, (Action<string>)logLines.Add
+        ])!;
+
+        Assert.AreEqual(1, result);
+        var allOutput = string.Join("\n", logLines);
+        Assert.IsTrue(allOutput.Contains("Peak private bytes reduction:") && allOutput.Contains("0.0%"));
+        Assert.IsFalse(allOutput.Contains("Infinity"));
+    }
+
+    // --- BenchmarkRunner.Compare.cs: ExtractReportMetrics regex/parse failure branches ---
+    // Each case below leaves one scenario block matching but a single measurement either
+    // absent (regex Success = false) or present as a comma-only capture (regex Success = true,
+    // but the numeric parse fails), isolating one guard clause per test.
+
+    [TestMethod]
+    public void Run_Compare_AfterCompatBlockMissingThroughputPattern_ReturnsOne()
+    {
+        const string beforeContent = """
+        Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
+        Peak private bytes: 1818877952
+        Throughput: 2,670,625 records/sec
+        """;
+        const string afterContent = """
+        --- Scenario: compat ---
+          Peak private bytes: 900,000,000 bytes
+        --- Scenario: bounded ---
+          Peak private bytes: 600,000,000 bytes
+        --- Scenario: broker-stream ---
+          Peak private bytes: 650,000,000 bytes
+        """;
+
+        _runner._fileExists = _ => true;
+        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
+
+        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
+
+        Assert.AreEqual(1, exitCode);
+        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
+    }
+
+    [TestMethod]
+    public void Run_Compare_AfterCompatThroughputCommaOnly_FailsNumericParse_ReturnsOne()
+    {
+        const string beforeContent = """
+        Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
+        Peak private bytes: 1818877952
+        Throughput: 2,670,625 records/sec
+        """;
+        const string afterContent = """
+        --- Scenario: compat ---
+          Peak private bytes: 900,000,000 bytes
+          Throughput: ,,, records/sec
+        --- Scenario: bounded ---
+          Peak private bytes: 600,000,000 bytes
+        --- Scenario: broker-stream ---
+          Peak private bytes: 650,000,000 bytes
+        """;
+
+        _runner._fileExists = _ => true;
+        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
+
+        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
+
+        Assert.AreEqual(1, exitCode);
+        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
+    }
+
+    [TestMethod]
+    public void Run_Compare_AfterCompatPeakPrivateBytesCommaOnly_FailsNumericParse_ReturnsOne()
+    {
+        const string beforeContent = """
+        Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
+        Peak private bytes: 1818877952
+        Throughput: 2,670,625 records/sec
+        """;
+        const string afterContent = """
+        --- Scenario: compat ---
+          Peak private bytes: ,,, bytes
+          Throughput: 2,700,000 records/sec
+        --- Scenario: bounded ---
+          Peak private bytes: 600,000,000 bytes
+        --- Scenario: broker-stream ---
+          Peak private bytes: 650,000,000 bytes
+        """;
+
+        _runner._fileExists = _ => true;
+        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
+
+        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
+
+        Assert.AreEqual(1, exitCode);
+        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
+    }
+
+    [TestMethod]
+    public void Run_Compare_AfterBoundedPeakPrivateBytesCommaOnly_FailsNumericParse_ReturnsOne()
+    {
+        const string beforeContent = """
+        Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
+        Peak private bytes: 1818877952
+        Throughput: 2,670,625 records/sec
+        """;
+        const string afterContent = """
+        --- Scenario: compat ---
+          Peak private bytes: 900,000,000 bytes
+          Throughput: 2,700,000 records/sec
+        --- Scenario: bounded ---
+          Peak private bytes: ,,, bytes
+        --- Scenario: broker-stream ---
+          Peak private bytes: 650,000,000 bytes
+        """;
+
+        _runner._fileExists = _ => true;
+        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
+
+        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
+
+        Assert.AreEqual(1, exitCode);
+        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
+    }
+
+    [TestMethod]
+    public void Run_Compare_AfterBrokerStreamPeakPrivateBytesCommaOnly_FailsNumericParse_ReturnsOne()
+    {
+        const string beforeContent = """
+        Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
+        Peak private bytes: 1818877952
+        Throughput: 2,670,625 records/sec
+        """;
+        const string afterContent = """
+        --- Scenario: compat ---
+          Peak private bytes: 900,000,000 bytes
+          Throughput: 2,700,000 records/sec
+        --- Scenario: bounded ---
+          Peak private bytes: 600,000,000 bytes
+        --- Scenario: broker-stream ---
+          Peak private bytes: ,,, bytes
+        """;
+
+        _runner._fileExists = _ => true;
+        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
+
+        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
+
+        Assert.AreEqual(1, exitCode);
+        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
+    }
+
+    // --- BenchmarkRunner.Measure.cs: iterations-argument default branch ---
+    // Each of these leaves the trailing iterations argument unusable in a different way
+    // (absent, non-numeric, non-positive), exercising a different short-circuit of the
+    // "arguments.Length > 2 && int.TryParse(...) && parsedIterations > 0" condition while
+    // landing on the same observable default of 3 iterations.
+
+    [TestMethod]
+    public void Run_Measure_NoIterationsArgument_DefaultsToThreeIterations()
+    {
+        var callCount = 0;
+        _runner._fileExists = _ => true;
+        _runner._parseCompat = _ =>
+        {
+            callCount++;
+            return (1000, 50000UL);
+        };
+
+        var exitCode = _runner.Run(["measure", "compat", "fake.mft"]);
+
+        Assert.AreEqual(0, exitCode);
+        Assert.AreEqual(3, callCount);
+        Assert.IsTrue(_consoleWrites.Any(write => write.Contains("Iteration 3/3")));
+    }
+
+    [TestMethod]
+    public void Run_Measure_NonNumericIterationsArgument_DefaultsToThreeIterations()
+    {
+        var callCount = 0;
+        _runner._fileExists = _ => true;
+        _runner._parseCompat = _ =>
+        {
+            callCount++;
+            return (1000, 50000UL);
+        };
+
+        var exitCode = _runner.Run(["measure", "compat", "fake.mft", "not-a-number"]);
+
+        Assert.AreEqual(0, exitCode);
+        Assert.AreEqual(3, callCount);
+        Assert.IsTrue(_consoleWrites.Any(write => write.Contains("Iteration 3/3")));
+    }
+
+    [TestMethod]
+    public void Run_Measure_ZeroIterationsArgument_DefaultsToThreeIterations()
+    {
+        var callCount = 0;
+        _runner._fileExists = _ => true;
+        _runner._parseCompat = _ =>
+        {
+            callCount++;
+            return (1000, 50000UL);
+        };
+
+        var exitCode = _runner.Run(["measure", "compat", "fake.mft", "0"]);
+
+        Assert.AreEqual(0, exitCode);
+        Assert.AreEqual(3, callCount);
+        Assert.IsTrue(_consoleWrites.Any(write => write.Contains("Iteration 3/3")));
+    }
+
+    // --- BenchmarkRunner.Measure.cs: ExecuteMeasureIteration switch discard arm ---
+    // RunMeasure already rejects any scenario outside compat/bounded/broker-stream before
+    // ExecuteMeasureIteration runs, so the discard arm's throw is unreachable through the
+    // public Run(...) surface. ExecuteMeasureIteration is invoked directly via reflection to
+    // exercise it; the surrounding try/catch in the method catches the throw itself and
+    // reports it as a failed iteration, which is what this test observes.
+
+    [TestMethod]
+    public void ExecuteMeasureIteration_UnknownScenario_HitsSwitchDiscardArmAndLogsFailure()
+    {
+        var method = typeof(BenchmarkRunner).GetMethod("ExecuteMeasureIteration", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var output = new StringBuilder();
+        var metrics = new ScenarioMetricAccumulator();
+
+        method.Invoke(_runner, ["not-a-real-scenario", "fake.mft", 0, 1, output, metrics]);
+
+        Assert.AreEqual(0, metrics.WallClocks.Count);
+        var outputText = output.ToString();
+        Assert.IsTrue(outputText.Contains("FAILED:"));
+        Assert.IsTrue(outputText.Contains("Unknown scenario: not-a-real-scenario"));
     }
 }

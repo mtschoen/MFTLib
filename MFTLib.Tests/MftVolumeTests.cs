@@ -1,4 +1,8 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using MFTLib.Interop;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests;
 
@@ -18,6 +22,9 @@ public class MftVolumeTests
     [TestCleanup]
     public void Cleanup()
     {
+        MFTLibNative.ResetToDefaults();
+        FileUtilities.ResetToDefaults();
+
         if (_tempMftPath != null && File.Exists(_tempMftPath))
         {
             File.Delete(_tempMftPath);
@@ -365,6 +372,66 @@ public class MftVolumeTests
             {
                 File.Delete(tempPath);
             }
+        }
+    }
+
+    [TestMethod]
+    public unsafe void StreamRecords_ProgressCallbackElapsedMsIsNaN_SwallowsExceptionAndStillCompletes()
+    {
+        // The native progress adapter in MftVolume.StreamRecords wraps queue.Add in a
+        // bare try/catch specifically because it runs inside a delegate invoked from
+        // unmanaged code: an exception must never cross that boundary. Feeding an
+        // elapsedMs of NaN makes TimeSpan.FromMilliseconds throw while constructing the
+        // MftScanProgress, exercising that catch. The malformed sample must be dropped
+        // (never reach queue.Add), while the parse itself still succeeds normally.
+        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+
+        var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
+        var entryBuf = Marshal.AllocHGlobal((int)stride);
+        new Span<byte>((void*)entryBuf, (int)stride).Clear();
+        Unsafe.WriteUnaligned((byte*)entryBuf, 100UL);
+        Unsafe.WriteUnaligned((byte*)entryBuf + 28, (ushort)1);
+        Unsafe.WriteUnaligned((byte*)entryBuf + 30, (ushort)0);
+
+        var parseResult = new MftParseResult
+        {
+            TotalRecords = 1,
+            UsedRecords = 1,
+            Entries = entryBuf,
+            EntryStrings = IntPtr.Zero,
+            EntryStringUnits = 0,
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = MFTLibNative.NativeCompactEntrySize
+        };
+        var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+        Marshal.StructureToPtr(parseResult, parsePtr, false);
+
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
+        {
+            callback?.Invoke(1, 10, double.NaN, context);
+            return parsePtr;
+        };
+        MFTLibNative._freeMftResult = ptr =>
+        {
+            Marshal.FreeHGlobal(entryBuf);
+            Marshal.FreeHGlobal(ptr);
+        };
+
+        var reported = new List<MftScanProgress>();
+        var directProgress = new DirectMftProgress(reported.Add);
+
+        using var volume = MftVolume.Open("C");
+        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
+
+        Assert.AreEqual(1, batches.Count, "The parse itself must still succeed despite the malformed progress sample");
+        Assert.AreEqual(0, reported.Count, "The NaN-elapsed sample must be dropped, not reported");
+    }
+
+    sealed class DirectMftProgress(Action<MftScanProgress> handler) : IProgress<MftScanProgress>
+    {
+        public void Report(MftScanProgress value)
+        {
+            handler(value);
         }
     }
 

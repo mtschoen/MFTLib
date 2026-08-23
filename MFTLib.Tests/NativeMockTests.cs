@@ -65,6 +65,39 @@ public class NativeMockTests
     }
 
     [TestMethod]
+    public void ParseMftRecordsWithProgressDefault_NoOverrideConfigured_CallsRealNativeExport()
+    {
+        // Leave both _parseMftRecords and _parseMftRecordsWithProgress at their native
+        // P/Invoke defaults (guaranteed by TestCleanup running after every test in this
+        // class). NativeParseMFTRecordsWithProgressDefault's
+        // `_parseMftRecords != NativeParseMFTRecords` check is then false, so it falls
+        // through to the real ParseMFTRecordsWithProgress export instead of the
+        // ParseMFTRecords fallback other tests exercise by mocking _parseMftRecords.
+        // INVALID_HANDLE_VALUE (-1) lets the native side fail gracefully with an error
+        // result instead of needing a real, elevated volume handle.
+        using var handle = new SafeFileHandle(new IntPtr(-1), false);
+
+        var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
+            handle, null, MatchFlags.None, 256, null, IntPtr.Zero);
+
+        Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+        try
+        {
+            var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+            var errorMessage = result.ErrorMessage;
+            var expectedMessage = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? errorMessage!.Contains("invalid", StringComparison.OrdinalIgnoreCase)
+                : !string.IsNullOrEmpty(errorMessage);
+            Assert.IsTrue(expectedMessage,
+                $"Expected an invalid-handle or unsupported-platform error, got: {errorMessage}");
+        }
+        finally
+        {
+            MFTLibNative._freeMftResult(resultPointer);
+        }
+    }
+
+    [TestMethod]
     public unsafe void FindRecords_NullFullPath_FallsBackToFileName()
     {
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);

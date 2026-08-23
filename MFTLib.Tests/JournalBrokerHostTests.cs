@@ -882,6 +882,88 @@ public class JournalBrokerHostTests
     }
 
     [TestMethod]
+    public async Task ServeOnce_ScanProgress_PumpCancelledBeforeAnyProgressReported_SwallowsCancellationInPump()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        using var cts = new CancellationTokenSource();
+        var scanStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new JournalBrokerHost(
+            _ => new UsnJournalCursor(7UL, 0L),
+            (_, _, ct) =>
+            {
+                scanStarted.TrySetResult();
+                // Block without ever reporting progress, so the progress channel stays
+                // empty and RunProgressPumpAsync stays parked in its first
+                // reader.WaitToReadAsync call when the caller cancels - the condition
+                // needed to hit the pump's own catch (OperationCanceledException)
+                // rather than observing the channel complete normally afterward.
+                ct.WaitHandle.WaitOne();
+                throw new OperationCanceledException(ct);
+            },
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-pump-cancel-C");
+        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+
+        var writeMmf = new RecordingMmfWriter();
+        var serveTask = host.ServeAsync(serverSide, writeMmf, true, cts.Token);
+
+        await scanStarted.Task;
+        await cts.CancelAsync();
+
+        var finished = await Task.WhenAny(serveTask, Task.Delay(TimeSpan.FromSeconds(10), CancellationToken.None));
+        Assert.AreSame(serveTask, finished, "ServeAsync must return promptly after cancellation, not hang");
+        await serveTask;
+        await serverSide.DisposeAsync();
+
+        var frames = ReadAllFrames(clientSide);
+        Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Error),
+            "Cancellation must not emit an Error frame, and the progress pump's own cancellation must be swallowed internally");
+    }
+
+    [TestMethod]
+    public async Task ServeOnce_ScanProgress_MaxRecordsProcessedExceedsReportedTotals_ClampsFinalCounts()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var host = new JournalBrokerHost(
+            _ => new UsnJournalCursor(7UL, 0L),
+            (_, progress, _) =>
+            {
+                // Report more records processed than the (deliberately understated)
+                // TotalRecords estimate, so EmitScanCompletionFramesAsync's clamp has to
+                // bump both finalRecords and finalTotalRecords up to maxRecordsProcessed
+                // instead of trusting the last reported total.
+                progress?.Report(new MmfWriteProgress(10, 500, 5, 1000));
+                return
+                [
+                    [new ScanRecord(1, 0, 100, 0, 0x20, false, "r1.txt", @"C:\r1.txt")]
+                ];
+            },
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-clamp-C");
+        await clientSide.WriteAsync(request.WrittenMemory);
+        await clientSide.FlushAsync();
+
+        var writeMmf = new RecordingMmfWriter();
+        await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
+        await serverSide.DisposeAsync();
+
+        var frames = ReadAllFrames(clientSide);
+        var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
+        Assert.IsTrue(scanReadyIndex > 0, "ScanReady frame must be present");
+        var finalProgress = frames[scanReadyIndex - 1].Progress;
+        Assert.IsNotNull(finalProgress);
+        Assert.AreEqual(10L, finalProgress.Value.RecordsProcessed,
+            "finalRecords must be clamped up to maxRecordsProcessed when the reported total undercounts it");
+        Assert.AreEqual(10L, finalProgress.Value.TotalRecords,
+            "finalTotalRecords must be clamped up to the clamped finalRecords, not left at the stale reported total");
+    }
+
+    [TestMethod]
     public void ArmAndScanBatches_ProgressStreamingSource_PassesProgressCallback()
     {
         MmfWriteProgress? reportedProgress = null;
