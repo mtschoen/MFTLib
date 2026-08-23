@@ -11,14 +11,12 @@ Code-complete. Three APIs:
   scanning + live USN watch for non-elevated consumers. Consumers wired: file-wizard
   (submodule pin) and git-wizard (`--watch`, vendored DLLs).
 
-### 0.3.0 NuGet publish checklist (blockers — currently gated on file-wizard finishing the USN cross-drive rename/move work)
+### 0.3.0 NuGet publish checklist
 
-Surfaced in the 2026-05-28 pre-publish audit; none are code — all are release packaging:
-- **[DONE 2026-05-29]** **CHANGELOG.md** 0.3.0 section added: USN journal trio + `WatchUsnJournalWithCursor`, `IElevationProvider`, `UsnJournalEntry.Create`, `$STANDARD_INFORMATION`-sourced `FileAttributes`, parallel path resolution, name-pool exhaustion surfacing.
-- **[DONE 2026-05-29]** **README.md** intro + Features updated to mention USN; added a "Tracking changes with the USN journal" section with `QueryUsnJournal`/`ReadUsnJournal`/`WatchUsnJournalWithCursor` examples.
-- **[DONE 2026-05-29]** **MFTLib.csproj:30** stale "GitHub Actions pipeline" TODO replaced with an accurate note; `ContinuousIntegrationBuild` stays unconditionally `true` for deterministic packs.
-- **[TODO — deliberately held]** **Tag + push `v0.3.0`.** SourceLink (`PublishRepositoryUrl=true` + `SourceLink.GitHub`) resolves against github.com/mtschoen/MFTLib, so the exact packed commit AND the tag must be pushed to the GitHub mirror before `-t:Pack`, or source links 404. Update 2026-07-06: no longer gated on file-wizard (its journal-broker work is done and the VolumeBroker extraction landed at `feat/volume-broker` fd0b750, pack-verified); now held only on the maintainer's interactive validation + publish steps — runbook: `docs/handoff-release-0.3.0.md`.
-- Already confirmed fine: 0.2.0 IS on NuGet; github.com/mtschoen/MFTLib exists (public); LICENSE.txt + README are packaged.
+Everything is done except the final tag + publish step. Runbook: `docs/handoff-release-0.3.0.md`.
+
+- **[DONE]** CHANGELOG.md, README.md, and MFTLib.csproj release-prep edits (USN journal trio, `IElevationProvider`, `$STANDARD_INFORMATION`-sourced `FileAttributes`, name-pool exhaustion surfacing, stale TODO cleanup).
+- **[TODO]** Tag and push `v0.3.0`, then publish. SourceLink (`PublishRepositoryUrl=true` + `SourceLink.GitHub`) resolves against github.com/mtschoen/MFTLib, so the exact packed commit and the tag must be pushed to the GitHub mirror before `-t:Pack`, or source links 404.
 
 ## Native C++ Cleanup (mft/mft_parse.cpp)
 
@@ -45,12 +43,33 @@ Surfaced in the 2026-05-28 pre-publish audit; none are code — all are release 
 
 ## Test Infrastructure
 
-- **Admin test runs hang on exit (recurring).** When `run-coverage.ps1` (full mode) or `native-coverage.ps1` is launched elevated via UAC, the elevated process intermittently fails to exit cleanly after `dotnet test` reports all tests passed — the parent shell sits indefinitely waiting on `Start-Process -Wait`. Same symptom appears with both `Microsoft.CodeCoverage.Console collect` (native script) and the plain coverlet path (managed script). Suspects to investigate:
-  - **2026-05-28 confirmed — it is a real hang, not a missed UAC prompt.** The elevated `native-coverage-elevated.ps1` run launched (build + instrument + test-run-start all appeared in the elevated log, so UAC *was* approved), then `dotnet test` never returned within 300s. A watchdog killing the hung `dotnet`/`testhost` to escape produces a CORRUPT cobertura (normally-covered lines show uncovered; `collect` only finalizes on a clean child exit) — so kill-to-recover does not yield a usable report. Pragmatic verification meanwhile: run `scripts/native-coverage.ps1` NON-elevated — branch coverage stays 100%, only USN/admin lines drop; inspect the cobertura per-file to confirm changed lines are covered. See memory `reference_native_coverage_hang.md`. The split-admin-tests item below is the real remedy.
-  - `WatchUsnJournal_*` admin tests use `CancelIoEx` to unblock a kernel wait — possible the cancel races with process teardown and leaves a worker thread in a non-signaled wait, blocking the runtime's exit. Worth checking with `procdump -ma` on a hung session to see what threads are alive.
-  - `dotnet test` host process (`testhost.dll`) running under instrumentation may not flush the coverage file before the parent reaps it — could be the instrumentation harness, not the tests themselves.
-  - A timeout wrapper around the elevated invocation (e.g. `Start-Process` with a watchdog that issues `taskkill /T` after N minutes past the last log line) would at least prevent the session from blocking forever.
-  - Long-term: split admin-only tests into a separate test project so the non-admin run stays the default and elevated runs can be opted into with a known-stable test set.
+- **Elevated build-start hang (fixed 2026-08-22).** The elevated `native-coverage.ps1`
+  wrapper appeared to hang at build start: a bare `MSBuild.exe` invocation failed to
+  resolve on PATH in the fresh elevated shell (machine/user PATH lacks MSBuild), the
+  resulting CommandNotFound exception aborted the child script before the `.done`
+  marker was created, and the parent shell polled for that marker forever. Fixed by
+  resolving MSBuild via `vswhere` in `scripts/native-coverage.ps1` plus wrapping the
+  child script invocation in try/catch/finally in
+  `.claude/scripts/native-coverage-elevated.ps1`, so a terminating error still creates
+  the marker. A full elevated run after the fix (679 tests, 13 minutes) completed
+  cleanly with no post-test hang.
+
+- **Admin test runs hang on exit (historic; not reproduced in the last two attended
+  runs).** `run-coverage.ps1` (full mode) or `native-coverage.ps1` launched elevated
+  via UAC has intermittently failed to exit cleanly after `dotnet test` reports all
+  tests passed, with the parent shell sitting indefinitely on `Start-Process -Wait`.
+  This is a different failure mode than the build-start hang above (it happens after
+  tests pass, not at build start). Not reproduced in the 2026-07-13 or 2026-08-22
+  attended runs - two clean runs, not proof the underlying issue is gone. If it
+  recurs, prior investigation narrowed the suspects to:
+  - `WatchUsnJournal_*` admin tests use `CancelIoEx` to unblock a kernel wait -
+    possible the cancel races with process teardown and leaves a worker thread in a
+    non-signaled wait, blocking the runtime's exit.
+  - The `dotnet test` host process (`testhost.dll`) running under instrumentation may
+    not flush the coverage file before the parent reaps it.
+  - Long-term remedy if it recurs: split admin-only tests into a separate test
+    project so the non-admin run stays the default and elevated runs can be opted
+    into with a known-stable test set.
 
 ## Cross-Platform Managed Port (deferred)
 

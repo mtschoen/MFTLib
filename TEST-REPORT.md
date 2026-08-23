@@ -1,39 +1,60 @@
-MFTLib test report - 2026-07-16
+MFTLib test report - 2026-08-22
 ===========================================
 
-Status:   PASS (Linux CI-equivalent verification)
-Tests:    271 managed passed, 34 platform tests skipped; 8 native smoke tests passed
-Git:      feat/scan-to-watch-session-api at 54486b3 plus the changes in this commit
+Status:   PASS
+Mode:     0.3.0 release verification (attended full managed run + separate elevated native run)
+Tests:    679 passed, 0 failed (643 non-admin + 36 elevated NTFS/USN, managed);
+          679 passed, 0 failed under native Debug|x64 instrumentation (full suite rerun elevated)
+Git:      main at e26429f plus the MSBuild-resolution fix in
+          scripts/native-coverage.ps1 landing in this commit and the
+          elevated-wrapper marker fix in .claude/scripts/
+          native-coverage-elevated.ps1 (gitignored, lives outside the repo history)
 
-Managed coverage (`bash scripts/coverage-linux.sh`):
-  Line:   1736/1782 (97.41%)
-  Branch: 382/391 (97.69%)
-  Method: 97.76%
-  Touched broker client/session classes: 100% line and branch coverage
-  Exclusion annotations added by this change: 0
+Managed coverage (`scripts/run-coverage.ps1`, full attended run):
+  Non-admin phase (643 tests):
+    Module                  Line     Branch   Method
+    Benchmark               98.74%   95.6%    100%
+    MFTLib                  100%     99.33%   100%
+    MFTLibTestExtensions    100%     100%     100%
+    TestProgram             100%     100%     100%
+    Total                   99.73%   98.49%   100%
+  Elevated admin phase (36 tests, merged into the same coverage run): every MFTLib
+  class reports 100% line coverage. Aggregate totals are unchanged from the
+  non-admin phase - Benchmark's uncovered lines are not admin-gated, so they
+  still account for the total falling short of 100%.
+  Exclusion annotations added by this run: 0
 
-Native coverage (`bash scripts/coverage-linux.sh`):
-  Line:   547/868 (63.0%)
-  Branch: 242/641 (37.8%)
-  Functions: 56/84 (66.7%)
-  Exclusion annotations added by this change: 0
+Native coverage (`scripts/native-coverage.ps1` via the elevated wrapper, 679 tests, 13m):
+  MFTLibNative: 98.8% line, 100% branch
+  Exclusion annotations added by this run: 0
 
-The Linux script intentionally omits Windows-only named-pipe, named-MMF, raw-volume,
-and elevated tests. Those platform exclusions account for the managed gap; the native
-Linux smoke suite is a portability gate rather than the repository's full Windows
-native coverage suite. The last attended Windows report (2026-07-13) recorded 100%
-managed and native coverage. This worktree cannot run MSBuild/UAC verification, so the
-Windows CI jobs remain the authoritative current check for those paths.
+Documented unreachable (carried forward from PR #55; no coverage exclusions or
+suppressions added anywhere to reach these numbers):
+  - BenchmarkRunner: 6 locations dead under the Process.Start contract
+    (UseShellExecute=false throws instead of returning null) or requiring the
+    compiled Benchmark.exe as the test host process.
+  - JournalBrokerHost DirectProgress constructor null-check: private class,
+    both call sites pass literal lambdas.
+  - mft.records.cpp integer-overflow prechecks: a requested capacity near the
+    size-type maximum is not constructible.
+  - ResolvePath path-length guard (records.cpp:209): the maximum constructible
+    total path length is exactly MAX_NTFS_PATH_UNITS (32767), given depth <= 128
+    and per-level names <= 255 bytes (NTFS single-byte FileNameLength), so the
+    > branch is mathematically dead. parse_core.cpp:169-170 and :181 are dead
+    by the same construction and by caller gating.
 
-Quality:
-  - `git diff --check`: clean
-  - Focused concurrency/cancellation regressions: 20 repeated passes
-  - `aislop scan .` on Linux: 0 lint/security errors; the repository-wide CRLF
-    `.editorconfig` rule flags all 79 tracked C# files because this Linux checkout stores
-    them with LF. The same finding is present on untouched files and is resolved by the
-    Windows CI checkout used by the authoritative aislop gate.
+Release validation performed:
+  - Full Release|x64 solution build, then Debug|x64 build for native instrumentation
+  - 643 non-admin managed tests plus 36 elevated tests against real NTFS MFT and
+    USN journal APIs
+  - Native coverage collection re-ran the full 679-test suite elevated under
+    Debug|x64 instrumentation, reaching 98.8% line / 100% branch on MFTLibNative
+  - No coverage exclusions or suppressions added anywhere
+
+Remaining outward checks:
+  - Tag and publish 0.3.0 per docs/handoff-release-0.3.0.md - the only step not
+    yet done in the NuGet publish checklist
 
 Commands:
-  `bash scripts/coverage-linux.sh`
-  `aislop scan .`
-  `aislop ci .`
+  `.\scripts\run-coverage.ps1`
+  `.\.claude\scripts\native-coverage-elevated.ps1`

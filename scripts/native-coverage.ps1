@@ -24,8 +24,14 @@ if (-not (Test-Path $coverageTool)) {
 }
 
 Write-Host "=== Building Debug|x64 ===" -ForegroundColor Cyan
+# Resolve MSBuild via vswhere: a fresh (e.g. elevated) shell has no MSBuild on PATH.
+$vsInstallPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+    -products '*' -requires Microsoft.Component.MSBuild -property installationPath -latest 2>$null
+$msbuild = if ($vsInstallPath) {
+    Join-Path $vsInstallPath "MSBuild\Current\Bin\amd64\MSBuild.exe"
+} else { "MSBuild.exe" }
 Push-Location $solutionRoot
-MSBuild.exe MFTLib.sln -p:Configuration=Debug -p:Platform=x64 -v:quiet
+& $msbuild MFTLib.sln -p:Configuration=Debug -p:Platform=x64 -v:quiet
 if ($LASTEXITCODE -ne 0) { Write-Error "Build failed"; exit 1 }
 Pop-Location
 
