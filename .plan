@@ -1,75 +1,21 @@
-## 0.3.0 — USN Journal Support (code-complete; NOT yet published to NuGet)
+# Backlog / Future Work
 
-Code-complete. Three APIs:
-- `MftVolume.QueryUsnJournal()` — get current journal cursor
-- `MftVolume.ReadUsnJournal(cursor)` — batch catch-up read
-- `MftVolume.WatchUsnJournal(cursor, cancellationToken)` — live IAsyncEnumerable event stream
-- `FileAttributes` sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback
-- **[ADDED 2026-07-06]** VolumeBroker subsystem (extracted from file-wizard, branch
-  `feat/volume-broker`): JournalBrokerHost/Client, BrokerProtocol, ScanPayload/ScanRecord,
-  ElevatedEntryPoint `--broker` + BrokerLauncher, BrokerDiagnostics — single-UAC elevated
-  scanning + live USN watch for non-elevated consumers. Consumers wired: file-wizard
-  (submodule pin) and git-wizard (`--watch`, vendored DLLs).
+## Native C++ Cleanup
 
-### 0.3.0 NuGet publish checklist
-
-Everything is done except the final tag + publish step. Runbook: `docs/handoff-release-0.3.0.md`.
-
-- **[DONE]** CHANGELOG.md, README.md, and MFTLib.csproj release-prep edits (USN journal trio, `IElevationProvider`, `$STANDARD_INFORMATION`-sourced `FileAttributes`, name-pool exhaustion surfacing, stale TODO cleanup).
-- **[TODO]** Tag and push `v0.3.0`, then publish. SourceLink (`PublishRepositoryUrl=true` + `SourceLink.GitHub`) resolves against github.com/mtschoen/MFTLib, so the exact packed commit and the tag must be pushed to the GitHub mirror before `-t:Pack`, or source links 404.
-
-## Native C++ Cleanup (mft/mft_parse.cpp)
-
-(Code moved out of `dllmain.cpp` into `mft/mft_parse.cpp` during the Linux-port refactor; line numbers in older notes are stale.)
-
-- **[DONE] Parallelize path resolution**: The post-parse `ResolvePath` loop now fans out across `EffectiveThreadCount()` workers (same pattern as fixup+parse) when `numThreads > 1`, with a serial fallback. Read-only on `PathLookup`, independent output slots. Ranges are clamped with `std::min` so extra workers just get empty ranges (no thread-count-dependent branch to cover). Covered by `ParseFromFile_MultiThreaded_WithPaths_ResolvesPathEntries` (parallel) + the existing single-threaded test (serial).
-- **[DONE] PathLookup silent name-drop**: `storeName` now bumps a `namesDropped` atomic on pool exhaustion; `ParseMFTImpl` surfaces it via `errorMessage` ("Path name pool exhausted; N names dropped, some paths truncated"). New `SetNamePoolCapacityOverride` test hook forces the branch (`ParseFromFile_NamePoolExhausted_ReportsTruncation`).
-
-### Deferred — investigate later (not blocking 0.3)
-
-- **Deduplicate ProcessRecordBatch / ProcessRecordSlice**: ~40 lines of shared attribute-scan logic. CAUTION: the two diverge in alloc-failure semantics — `ProcessRecordBatch` has `ShouldFailAlloc` + "entry array" error propagation, `ProcessRecordSlice` does a bare `realloc`. A wholesale merge (routing single-thread through the slice path) would change observable error behavior and break `ParseFromFile_SingleThreaded_AllocFailOnRealloc`. Safe form: extract only the shared per-record attribute walk into a helper, leave each function's alloc/error path intact. Cosmetic.
-- **ResolvePath cycle detection**: O(depth^2) linear scan over `visited[128]`, but `depth` and `visitCount` are both capped at 128, so worst case is 128^2 per path and only for pathological 128-deep chains; the depth cap already guarantees termination. True O(1) needs a hash set keyed on uint64 record numbers. Low value vs risk — revisit only if path resolution shows up in a profile.
-- **PathLookup over-allocation**: `namePoolCapacity = totalRecords * 64` bytes (~512 MB at 8M records). Avg filename is ~12-15 WCHAR, so a smaller multiplier would save memory — but now that exhaustion is surfaced (above) rather than silent, a blind reduction just trades memory for more truncated-path reports. Investigate a tuned multiplier (e.g. *32) paired with a pool-grow fallback, not a bare reduction.
+- **Deduplicate ProcessRecordBatch / ProcessRecordSlice**: ~40 lines of shared attribute-scan logic. CAUTION: the two diverge in alloc-failure semantics - `ProcessRecordBatch` has `ShouldFailAlloc` + "entry array" error propagation, `ProcessRecordSlice` does a bare `realloc`. A wholesale merge (routing single-thread through the slice path) would change observable error behavior and break `ParseFromFile_SingleThreaded_AllocFailOnRealloc`. Safe form: extract only the shared per-record attribute walk into a helper, leave each function's alloc/error path intact. Cosmetic.
+- **ResolvePath cycle detection**: O(depth^2) linear scan over `visited[128]`, but `depth` and `visitCount` are both capped at 128, so worst case is 128^2 per path and only for pathological 128-deep chains; the depth cap already guarantees termination. True O(1) needs a hash set keyed on uint64 record numbers. Low value vs risk - revisit only if path resolution shows up in a profile.
+- **PathLookup over-allocation**: `namePoolCapacity = totalRecords * 64` bytes (~512 MB at 8M records). Avg filename is ~12-15 WCHAR, so a smaller multiplier would save memory - but now that exhaustion is surfaced rather than silent, a blind reduction just trades memory for more truncated-path reports. Investigate a tuned multiplier (e.g. *32) paired with a pool-grow fallback, not a bare reduction.
 
 ## Review Follow-Ups
 
-- ~~Decide whether `MFTLib` should expose a higher-level scan-result contract for app-to-helper transport.~~
-  **Done 2026-07-06** — resolved by the VolumeBroker extraction: `ScanPayload`/`ScanRecord`
-  (packed binary MMF payload) + `BrokerProtocol` are the library-owned transport, and the
-  downstream custom text formats were retired (file-wizard's legacy helpers deleted).
-
-- Optional: make benchmark environment failures explicit instead of silently printing `Unknown`.
-  Address by logging the WMI/CIM exception message or HRESULT in the benchmark header when system info queries fail.
+- Optional: make benchmark environment failures explicit instead of silently printing `Unknown`. Address by logging the WMI/CIM exception message or HRESULT in the benchmark header when system info queries fail.
 
 ## Test Infrastructure
 
-- **Elevated build-start hang (fixed 2026-08-22).** The elevated `native-coverage.ps1`
-  wrapper appeared to hang at build start: a bare `MSBuild.exe` invocation failed to
-  resolve on PATH in the fresh elevated shell (machine/user PATH lacks MSBuild), the
-  resulting CommandNotFound exception aborted the child script before the `.done`
-  marker was created, and the parent shell polled for that marker forever. Fixed by
-  resolving MSBuild via `vswhere` in `scripts/native-coverage.ps1` plus wrapping the
-  child script invocation in try/catch/finally in
-  `.claude/scripts/native-coverage-elevated.ps1`, so a terminating error still creates
-  the marker. A full elevated run after the fix (679 tests, 13 minutes) completed
-  cleanly with no post-test hang.
-
-- **Admin test runs hang on exit (historic; not reproduced in the last two attended
-  runs).** `run-coverage.ps1` (full mode) or `native-coverage.ps1` launched elevated
-  via UAC has intermittently failed to exit cleanly after `dotnet test` reports all
-  tests passed, with the parent shell sitting indefinitely on `Start-Process -Wait`.
-  This is a different failure mode than the build-start hang above (it happens after
-  tests pass, not at build start). Not reproduced in the 2026-07-13 or 2026-08-22
-  attended runs - two clean runs, not proof the underlying issue is gone. If it
-  recurs, prior investigation narrowed the suspects to:
-  - `WatchUsnJournal_*` admin tests use `CancelIoEx` to unblock a kernel wait -
-    possible the cancel races with process teardown and leaves a worker thread in a
-    non-signaled wait, blocking the runtime's exit.
-  - The `dotnet test` host process (`testhost.dll`) running under instrumentation may
-    not flush the coverage file before the parent reaps it.
-  - Long-term remedy if it recurs: split admin-only tests into a separate test
-    project so the non-admin run stays the default and elevated runs can be opted
-    into with a known-stable test set.
+- **Admin test runs hang on exit (historic; not reproduced in the last two attended runs)**: `run-coverage.ps1` (full mode) or `native-coverage.ps1` launched elevated via UAC has intermittently failed to exit cleanly after `dotnet test` reports all tests passed, with the parent shell sitting indefinitely on `Start-Process -Wait`. This is a different failure mode than the build-start hang (it happens after tests pass, not at build start). Not reproduced in the 2026-07-13 or 2026-08-22 attended runs - two clean runs, not proof the underlying issue is gone. If it recurs, prior investigation narrowed the suspects to:
+  - `WatchUsnJournal_*` admin tests use `CancelIoEx` to unblock a kernel wait - possible the cancel races with process teardown and leaves a worker thread in a non-signaled wait, blocking the runtime's exit.
+  - The `dotnet test` host process (`testhost.dll`) running under instrumentation may not flush the coverage file before the parent reaps it.
+  - Long-term remedy if it recurs: split admin-only tests into a separate test project so the non-admin run stays the default and elevated runs can be opted into with a known-stable test set.
 
 ## Cross-Platform Managed Port (deferred)
 
