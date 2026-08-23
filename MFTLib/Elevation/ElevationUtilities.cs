@@ -50,7 +50,7 @@ public static class ElevationUtilities
 
     /// <summary>
     ///     Returns true if the current process can self-elevate via UAC - i.e., there is a
-    ///     resolvable executable path and the host is not dotnet.exe.
+    ///     resolvable executable path, the host is not dotnet.exe, and the session is user-interactive.
     /// </summary>
     public static bool CanSelfElevate()
     {
@@ -60,8 +60,20 @@ public static class ElevationUtilities
             return false;
         }
 
-        var fileName = Path.GetFileNameWithoutExtension(processPath).ToLowerInvariant();
-        return fileName != "dotnet";
+        if (Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // ShellExecuteEx with the "runas" verb needs an interactive desktop to show
+        // the UAC consent dialog. Without one (Session 0 services, CI runners) it
+        // cannot self-elevate.
+        if (!_isUserInteractive())
+        {
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>

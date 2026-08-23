@@ -64,7 +64,16 @@ public class ElevationUtilitiesTests
     public void CanSelfElevate_NormalExe_ReturnsTrue()
     {
         ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
         Assert.IsTrue(ElevationUtilities.CanSelfElevate());
+    }
+
+    [TestMethod]
+    public void CanSelfElevate_NotUserInteractive_ReturnsFalse()
+    {
+        ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => false;
+        Assert.IsFalse(ElevationUtilities.CanSelfElevate());
     }
 
     // --- TryRunElevated ---
