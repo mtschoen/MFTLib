@@ -101,8 +101,22 @@ jobs:
           # fetch a different build. .aislop/config.yml resolves from cwd.
           Set-Location $env:GITHUB_WORKSPACE
           $report = "$env:RUNNER_TEMP\aislop-report.json"
-          npx --no-install aislop ci . --json > $report
-          $gateExit = $LASTEXITCODE
+          # The scan's stdout goes to $report, so the step would otherwise stay silent
+          # for the scan's whole duration - and Gitea's zombie-task reaper
+          # (ZOMBIE_TASK_TIMEOUT, 10 minutes) fails any task whose log is quiet that
+          # long, which a busy runner can trigger. Run the scan detached and heartbeat
+          # from the foreground so the task log stays alive.
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npx --no-install aislop ci . --json > `"$report`"" -NoNewWindow -PassThru
+          $null = $process.Handle
+          $lastBeat = [DateTime]::UtcNow
+          while (-not $process.HasExited) {
+              Start-Sleep -Seconds 5
+              if (([DateTime]::UtcNow - $lastBeat).TotalSeconds -ge 60) {
+                  Write-Host "aislop scan in progress ($([DateTime]::UtcNow.ToString('HH:mm:ss')))"
+                  $lastBeat = [DateTime]::UtcNow
+              }
+          }
+          $gateExit = $process.ExitCode
           $result = Get-Content $report -Raw | ConvertFrom-Json
           $files = if ($result.summary.files) { $result.summary.files } else { 0 }
           Write-Host "aislop score $($result.score) over $files files"
