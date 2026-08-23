@@ -1,43 +1,32 @@
 # Handoff: MFTLib 0.3.0 Release
 
-Updated 2026-07-13. `CHANGELOG.md` is the authoritative description of 0.3.0;
+Updated 2026-08-23. `CHANGELOG.md` is the authoritative description of 0.3.0;
 this document tracks the remaining release sequence.
 
 ## Status
 
-Gitea PR #19 (VolumeBroker and release validation) and PR #20 (source
-organization and 0.3 documentation) are merged to `main` at `159d963`.
+`main` is at `a841998`. All 0.3.0 feature, broker, memory optimization, and test
+hardening work is merged and validated on both Windows and Linux.
 The public `MFTLib` namespace and API remain intact while source files are grouped
 by MFT, journal, broker, elevation, interop, and internal responsibilities.
 
-The follow-up `fix/native-coverage-100` branch closes the remaining native coverage
-gap and fixes two synthetic-generator defects found while exercising those paths:
+Validation on the integrated tree (`TEST-REPORT.md`):
 
-- native C++ `bool` results are marshaled as one-byte values, so early conversion
-  failures reliably propagate to managed callers;
-- a completed asynchronous writer is marked no longer pending before failure
-  teardown, preventing a second join attempt.
+- 679 total tests passing (643 non-admin + 36 elevated administrator tests against real NTFS and USN APIs);
+- 679/679 tests passing under native Debug|x64 instrumentation;
+- Managed coverage: MFTLib package is 100% line, 99.33% branch, 100% method (overall solution 99.73% line, 98.49% branch, 100% method);
+- Native coverage: MFTLibNative is 98.8% line and 100% branch (uncovered lines are the documented-unreachable set from PR #55; zero exclusions);
+- `aislop ci .` is 100/100 with zero score-affecting findings;
+- `scripts/release.ps1` dry run resolves MSBuild via `vswhere` and packs `MFTLib.0.3.0.nupkg` and `.snupkg` successfully with the managed DLL, native runtime DLL, build targets, README, and license.
 
-Validation on the integrated tree:
-
-- 383 non-admin tests passed;
-- 34 attended administrator tests passed against real NTFS and USN APIs;
-- managed coverage is 100% line, branch, and method;
-- native coverage is 100% line and branch;
-- `aislop ci .` is 100/100 with zero findings;
-- `MFTLib.0.3.0.nupkg` and `.snupkg` pack successfully with the managed DLL,
-  native runtime DLL, build targets, README, and license.
-
-0.3.0 is not published and `v0.3.0` is not tagged. file-wizard and git-wizard
-still need final validation against the merged MFTLib commit before publication.
+0.3.0 is built, validated, and packable, but not yet published to nuget.org and `v0.3.0` is not tagged.
 
 ## Release checklist
 
-### 1. Merge the coverage follow-up and synchronize mirrors
+### 1. Synchronize mirrors
 
-Merge `fix/native-coverage-100` to Gitea `main` after its Windows, Linux, and
-quality-gate jobs pass. Then mirror the exact merged history to GitHub so SourceLink
-can resolve the commit that will be packed:
+Ensure the exact merged history on Gitea `main` is mirrored to GitHub so SourceLink
+(`PublishRepositoryUrl=true` + `SourceLink.GitHub`) can resolve the commit that will be packed:
 
 ```bash
 git switch main
@@ -45,51 +34,54 @@ git pull --ff-only gitea main
 git push origin main
 ```
 
-### 2. Validate downstream consumers
+### 2. Validate downstream consumers (pre-publish sanity check)
 
-- **file-wizard broker smoke**: update its submodule to merged MFTLib `main`; run a
+- **file-wizard broker smoke**: verify the submodule / bridge against merged MFTLib `main`; run a
   CLI cold scan with one UAC prompt; verify MAUI scan, live changes, and Shift+Rescan
   reuse the same broker without a second prompt.
 - **git-wizard watch smoke**: build against merged MFTLib `main`; run
   `git-wizard --watch`, change a file inside a tracked repository, and verify the
   corresponding `changed:` notification.
 
-The MFTLib attended coverage run itself is complete and does not need repeating
-unless MFTLib changes again.
+The MFTLib attended coverage run itself is complete and recorded in `TEST-REPORT.md`.
 
 ### 3. Release dry run
+
+On Windows (`chonkers`):
 
 ```powershell
 .\scripts\release.ps1
 ```
 
-This requires a clean tree and no existing `v0.3.0` tag. It reruns attended coverage
+This requires a clean tree and no existing `v0.3.0` tag. It verifies coverage
 and packs without publishing.
 
-### 4. Publish
+### 4. Publish (Owner only)
+
+On Windows (`chonkers`):
 
 ```powershell
 .\scripts\release.ps1 -Publish
 ```
 
-Publishing requires the NuGet key at `~/nugetkey`, authenticated GitHub tooling,
+Publishing requires the NuGet key at `C:\Users\mtsch\nugetkey` (`~/nugetkey`), authenticated GitHub tooling (`gh`),
 and the exact release commit already pushed to GitHub. The script pushes the package
-to nuget.org, tags `v0.3.0`, pushes the tag, and creates the GitHub release.
+to nuget.org, tags `v0.3.0`, pushes the tag to `origin`, and creates the GitHub release with `CHANGELOG.md` release notes.
 
 ### 5. Replace temporary consumer bridges
+
+Once 0.3.0 is live on nuget.org:
 
 **file-wizard:** remove the `external/MFTLib` submodule and its solution entries,
 delete the temporary root `Directory.Build.targets`, add
 `<PackageReference Include="MFTLib" Version="0.3.0" />` to
 `FileWizard/FileWizard.csproj`, and remove the CI native-submodule build step.
 
-**git-wizard:** follow `lib/MFTLib/README.md`: add the package reference, delete the
+**git-wizard:** follow `lib/MFTLib/README.md`: add the package reference `<PackageReference Include="MFTLib" Version="0.3.0" />`, delete the
 vendored DLL bridge and root `Directory.Build.targets`, restore release workflow
 triggers, and verify required checks.
 
-## Known issue
+## Known issues (resolved)
 
-Attended coverage historically could hang after tests passed while the parent shell
-waited for the elevated process. The 2026-07-13 run completed normally. Keep the
-existing diagnostic note in `.plan` until repeated release runs establish that the
-hang is no longer reproducible.
+- **Elevated build-start hang**: Resolved in PR #56 / #57 by resolving MSBuild via `vswhere` in `scripts/release.ps1` and `scripts/native-coverage.ps1`.
+- **Admin test exit hang**: Historic intermittent UAC exit hang was not reproduced across recent attended runs.
