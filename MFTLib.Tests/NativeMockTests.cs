@@ -18,7 +18,7 @@ public class NativeMockTests
     [TestMethod]
     public void ParseMFTFromFile_NullReturn_ThrowsInvalidOperation()
     {
-        MFTLibNative.ParseMFTFromFile = (_, _, _, _) => IntPtr.Zero;
+        MFTLibNative._parseMftFromFile = (_, _, _, _) => IntPtr.Zero;
 
         Assert.ThrowsException<InvalidOperationException>(() =>
             MftVolume.ParseMFTFromFile("fake.bin", out _));
@@ -36,8 +36,8 @@ public class NativeMockTests
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(errorResult, resultPtr, false);
 
-        MFTLibNative.ParseMFTFromFile = (_, _, _, _) => resultPtr;
-        MFTLibNative.FreeMftResult = _ => Marshal.FreeHGlobal(resultPtr);
+        MFTLibNative._parseMftFromFile = (_, _, _, _) => resultPtr;
+        MFTLibNative._freeMftResult = _ => Marshal.FreeHGlobal(resultPtr);
 
         var ex = Assert.ThrowsException<InvalidOperationException>(() =>
             MftVolume.ParseMFTFromFile("fake.bin", out _));
@@ -47,7 +47,7 @@ public class NativeMockTests
     [TestMethod]
     public void GenerateSyntheticMFT_ReturnsFalse_ThrowsInvalidOperation()
     {
-        MFTLibNative.GenerateSyntheticMFT = (_, _, _) => false;
+        MFTLibNative._generateSyntheticMft = (_, _, _) => false;
 
         Assert.ThrowsException<InvalidOperationException>(() =>
             MftVolume.GenerateSyntheticMFT("fake.bin", 100));
@@ -56,8 +56,8 @@ public class NativeMockTests
     [TestMethod]
     public void StreamRecords_NullReturn_ThrowsInvalidOperation()
     {
-        FileUtilities.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        MFTLibNative.ParseMFTRecords = (_, _, _, _) => IntPtr.Zero;
+        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+        MFTLibNative._parseMftRecords = (_, _, _, _) => IntPtr.Zero;
 
         using var volume = MftVolume.Open("C");
         // ReSharper disable once AccessToDisposedClosure
@@ -67,7 +67,7 @@ public class NativeMockTests
     [TestMethod]
     public unsafe void FindRecords_NullFullPath_FallsBackToFileName()
     {
-        FileUtilities.GetVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
 
         // Build a synthetic MftParseResult with one compact entry and string pool
         var entrySize = (int)MFTLibNative.NativeCompactEntrySize;
@@ -103,8 +103,8 @@ public class NativeMockTests
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
 
-        MFTLibNative.ParseMFTRecords = (_, _, _, _) => resultPtr;
-        MFTLibNative.FreeMftResult = _ => Marshal.FreeHGlobal(resultPtr);
+        MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+        MFTLibNative._freeMftResult = _ => Marshal.FreeHGlobal(resultPtr);
 
         using var volume = MftVolume.Open("C");
         var paths = volume.FindRecords("test").ToList();

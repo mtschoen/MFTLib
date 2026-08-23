@@ -14,7 +14,7 @@ public sealed partial class JournalBrokerClient
     // the demux down (a wedged or dead broker that never replies). Internal and
     // mutable (rather than a readonly constant) so tests can shrink the window
     // instead of sleeping for the real production timeout.
-    internal static TimeSpan EndWatchAckTimeout = TimeSpan.FromSeconds(5);
+    internal static TimeSpan _endWatchAckTimeout = TimeSpan.FromSeconds(5);
 
     readonly Dictionary<string, Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>> _liveChannels =
         new(StringComparer.OrdinalIgnoreCase);
@@ -143,7 +143,7 @@ public sealed partial class JournalBrokerClient
             _ = exception;
         }
 
-        using (var timeout = new CancellationTokenSource(EndWatchAckTimeout))
+        using (var timeout = new CancellationTokenSource(_endWatchAckTimeout))
         {
             // Task.Delay faults with TaskCanceledException when the timeout fires, but
             // Task.WhenAny never throws, so reading the winner is safe.

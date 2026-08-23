@@ -16,29 +16,32 @@ sealed class ScenarioMetricAccumulator
 
 public partial class BenchmarkRunner
 {
-    internal int RunMeasure(string[] arguments)
+    int RunMeasure(string[] arguments)
     {
         if (arguments.Length < 2)
         {
-            WriteLineToConsole("Usage: Benchmark.exe measure <compat|bounded|broker-stream> <mftPath> [iterations]");
+            _writeLineToConsole("Usage: Benchmark.exe measure <compat|bounded|broker-stream> <mftPath> [iterations]");
             return 1;
         }
 
         var scenario = arguments[0].ToLowerInvariant();
         var mftPath = arguments[1];
-        var iterations = arguments.Length > 2 && int.TryParse(arguments[2], CultureInfo.InvariantCulture, out var parsedIterations) && parsedIterations > 0
+        var iterations = arguments.Length > 2 &&
+                         int.TryParse(arguments[2], CultureInfo.InvariantCulture, out var parsedIterations) &&
+                         parsedIterations > 0
             ? parsedIterations
             : 3;
 
-        if (!FileExists(mftPath))
+        if (!_fileExists(mftPath))
         {
-            WriteLineToConsole($"Error: MFT file not found: {mftPath}");
+            _writeLineToConsole($"Error: MFT file not found: {mftPath}");
             return 1;
         }
 
         if (scenario != "compat" && scenario != "bounded" && scenario != "broker-stream")
         {
-            WriteLineToConsole($"Error: Unknown scenario '{scenario}'. Expected 'compat', 'bounded', or 'broker-stream'.");
+            _writeLineToConsole(
+                $"Error: Unknown scenario '{scenario}'. Expected 'compat', 'bounded', or 'broker-stream'.");
             return 1;
         }
 
@@ -48,9 +51,10 @@ public partial class BenchmarkRunner
     int ExecuteMeasure(string scenario, string mftPath, int iterations)
     {
         var output = new StringBuilder();
+
         void Log(string line = "")
         {
-            WriteLineToConsole(line);
+            _writeLineToConsole(line);
             output.AppendLine(line);
         }
 
@@ -75,32 +79,33 @@ public partial class BenchmarkRunner
     }
 
     void ExecuteMeasureIteration(
-        string scenario, string mftPath, int iteration, int iterations, StringBuilder output, ScenarioMetricAccumulator metrics)
+        string scenario, string mftPath, int iteration, int iterations, StringBuilder output,
+        ScenarioMetricAccumulator metrics)
     {
-        WriteToConsole($"  Iteration {iteration + 1}/{iterations}... ");
+        _writeToConsole($"  Iteration {iteration + 1}/{iterations}... ");
         try
         {
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            var startAllocated = GetTotalAllocatedBytes();
+            var startAllocated = _getTotalAllocatedBytes();
             var stopwatch = Stopwatch.StartNew();
 
             var (recordsCount, nativeBytes) = scenario switch
             {
-                "compat" => ParseCompat(mftPath),
-                "bounded" => ParseBounded(mftPath, 4096),
-                "broker-stream" => ParseBrokerStream(mftPath, 4096),
+                "compat" => _parseCompat(mftPath),
+                "bounded" => _parseBounded(mftPath, 4096),
+                "broker-stream" => _parseBrokerStream(mftPath, 4096),
                 _ => throw new InvalidOperationException($"Unknown scenario: {scenario}")
             };
 
             stopwatch.Stop();
-            var endAllocated = GetTotalAllocatedBytes();
-            var elapsedMs = GetStopwatchElapsedMs(stopwatch);
+            var endAllocated = _getTotalAllocatedBytes();
+            var elapsedMs = _getStopwatchElapsedMs(stopwatch);
             var managedAllocated = Math.Max(0L, endAllocated - startAllocated);
-            var peakWorkingSet = GetPeakWorkingSet64();
-            var peakPrivateBytes = GetPeakPrivateBytes64();
+            var peakWorkingSet = _getPeakWorkingSet64();
+            var peakPrivateBytes = _getPeakPrivateBytes64();
 
             metrics.WallClocks.Add(elapsedMs);
             metrics.RecordCounts.Add(recordsCount);
@@ -110,14 +115,16 @@ public partial class BenchmarkRunner
             metrics.NativeCompactBytesList.Add(nativeBytes);
 
             var iterationLine = $"{elapsedMs:F0}ms ({recordsCount:N0} records)";
-            WriteLineToConsole(iterationLine);
-            output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {iterationLine}").AppendLine();
+            _writeLineToConsole(iterationLine);
+            output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {iterationLine}")
+                .AppendLine();
         }
         catch (Exception exception)
         {
             var failLine = $"FAILED: {exception.GetType().Name}: {exception.Message}";
-            WriteLineToConsole(failLine);
-            output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {failLine}").AppendLine();
+            _writeLineToConsole(failLine);
+            output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {failLine}")
+                .AppendLine();
         }
     }
 

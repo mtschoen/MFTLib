@@ -214,7 +214,8 @@ public static class ScanPayload
 
         if (currentOffset != byteLength)
         {
-            throw new InvalidDataException($"Trailing or incomplete data in payload: offset is {currentOffset}, expected {byteLength}");
+            throw new InvalidDataException(
+                $"Trailing or incomplete data in payload: offset is {currentOffset}, expected {byteLength}");
         }
 
         if (currentBatch.Count > 0)
@@ -252,7 +253,8 @@ public static class ScanPayload
         var payloadByteLength = BinaryPrimitives.ReadInt64LittleEndian(header.AsSpan(16));
         if (payloadByteLength != expectedByteLength)
         {
-            throw new InvalidDataException($"Scan payload byte length mismatch: header has {payloadByteLength}, expected {expectedByteLength}");
+            throw new InvalidDataException(
+                $"Scan payload byte length mismatch: header has {payloadByteLength}, expected {expectedByteLength}");
         }
 
         return recordCount;
@@ -287,12 +289,12 @@ public static class ScanPayload
         var nameByteLength = BinaryPrimitives.ReadInt32LittleEndian(span[40..]);
         var pathByteLength = BinaryPrimitives.ReadInt32LittleEndian(span[44..]);
 
-        if (nameByteLength < 0 || (nameByteLength % 2) != 0)
+        if (nameByteLength < 0 || nameByteLength % 2 != 0)
         {
             throw new InvalidDataException($"Invalid name byte length {nameByteLength} in record {recordIndex}");
         }
 
-        if (pathByteLength < 0 || (pathByteLength % 2) != 0)
+        if (pathByteLength < 0 || pathByteLength % 2 != 0)
         {
             throw new InvalidDataException($"Invalid path byte length {pathByteLength} in record {recordIndex}");
         }
@@ -341,7 +343,7 @@ public static class ScanPayload
 
     public static IEnumerable<ScanRecord> ReadAll(byte[] source)
     {
-        using var stream = new MemoryStream(source, writable: false);
+        using var stream = new MemoryStream(source, false);
         foreach (var batch in ReadBatches(stream, source.Length, 4096, CancellationToken.None))
         {
             foreach (var record in batch)

@@ -1,4 +1,8 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using MFTLib.Interop;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests;
 
@@ -33,17 +37,17 @@ public class MftScanProgressTests
     [TestMethod]
     public unsafe void ReadRecordBatches_WithProgress_ReportsNativeProgress()
     {
-        MFTLibNative.GetMftNativeAbiVersion = () => MFTLibNative.ExpectedMftNativeAbiVersion;
-        FileUtilities.GetVolumeHandle = _ => new Microsoft.Win32.SafeHandles.SafeFileHandle(new IntPtr(1), false);
+        MFTLibNative._getMftNativeAbiVersion = () => MFTLibNative.ExpectedMftNativeAbiVersion;
+        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
 
         var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
-        var entryBuf = System.Runtime.InteropServices.Marshal.AllocHGlobal((int)stride);
+        var entryBuf = Marshal.AllocHGlobal((int)stride);
         new Span<byte>((void*)entryBuf, (int)stride).Clear();
-        System.Runtime.CompilerServices.Unsafe.WriteUnaligned((byte*)entryBuf, 100UL);
-        System.Runtime.CompilerServices.Unsafe.WriteUnaligned((byte*)entryBuf + 28, (ushort)1);
-        System.Runtime.CompilerServices.Unsafe.WriteUnaligned((byte*)entryBuf + 30, (ushort)0);
+        Unsafe.WriteUnaligned((byte*)entryBuf, 100UL);
+        Unsafe.WriteUnaligned((byte*)entryBuf + 28, (ushort)1);
+        Unsafe.WriteUnaligned((byte*)entryBuf + 30, (ushort)0);
 
-        var parseResult = new Interop.MftParseResult
+        var parseResult = new MftParseResult
         {
             TotalRecords = 1,
             UsedRecords = 1,
@@ -53,25 +57,25 @@ public class MftScanProgressTests
             AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
             EntryStride = MFTLibNative.NativeCompactEntrySize
         };
-        var parsePtr = System.Runtime.InteropServices.Marshal.AllocHGlobal(System.Runtime.InteropServices.Marshal.SizeOf<Interop.MftParseResult>());
-        System.Runtime.InteropServices.Marshal.StructureToPtr(parseResult, parsePtr, false);
+        var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+        Marshal.StructureToPtr(parseResult, parsePtr, false);
 
-        MFTLibNative.ParseMFTRecordsWithProgress = (_, _, _, _, callback, context) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
         {
             callback?.Invoke(1, 10, 15.0, context);
             return parsePtr;
         };
-        MFTLibNative.FreeMftResult = ptr =>
+        MFTLibNative._freeMftResult = ptr =>
         {
-            System.Runtime.InteropServices.Marshal.FreeHGlobal(entryBuf);
-            System.Runtime.InteropServices.Marshal.FreeHGlobal(ptr);
+            Marshal.FreeHGlobal(entryBuf);
+            Marshal.FreeHGlobal(ptr);
         };
 
         var reported = new List<MftScanProgress>();
         var directProgress = new DirectMftProgress(reported.Add);
 
         using var volume = MftVolume.Open("C");
-        var batches = volume.ReadRecordBatches(resolvePaths: false, batchSize: 4096, progress: directProgress).ToList();
+        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
 
         Assert.AreEqual(1, batches.Count);
         Assert.AreEqual(1, reported.Count);
@@ -79,18 +83,11 @@ public class MftScanProgressTests
         Assert.AreEqual(10L, reported[0].TotalRecords);
     }
 
-    sealed class DirectMftProgress : IProgress<MftScanProgress>
+    sealed class DirectMftProgress(Action<MftScanProgress> handler) : IProgress<MftScanProgress>
     {
-        readonly Action<MftScanProgress> _handler;
-
-        public DirectMftProgress(Action<MftScanProgress> handler)
-        {
-            _handler = handler;
-        }
-
         public void Report(MftScanProgress value)
         {
-            _handler(value);
+            handler(value);
         }
     }
 }

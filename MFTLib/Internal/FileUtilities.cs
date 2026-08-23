@@ -5,11 +5,11 @@ namespace MFTLib;
 
 static class FileUtilities
 {
-    internal static Func<string, SafeFileHandle> GetVolumeHandle = NativeGetVolumeHandle;
+    internal static Func<string, SafeFileHandle> _getVolumeHandle = NativeGetVolumeHandle;
 
     static SafeFileHandle NativeGetVolumeHandle(string volume)
     {
-        var volumeHandle = Kernel32.CreateFile(
+        var volumeHandle = Kernel32._createFile(
             volume,
             GENERIC_READ,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -28,7 +28,7 @@ static class FileUtilities
 
     internal static void ResetToDefaults()
     {
-        GetVolumeHandle = NativeGetVolumeHandle;
+        _getVolumeHandle = NativeGetVolumeHandle;
     }
 
     // ReSharper disable InconsistentNaming

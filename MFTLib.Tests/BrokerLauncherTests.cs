@@ -18,7 +18,7 @@ public class BrokerLauncherTests
     [SupportedOSPlatform("windows")]
     public void Launch_NullProcessPath_Throws()
     {
-        BrokerLauncher.GetProcessPathFunc = () => null;
+        BrokerLauncher._getProcessPathFunc = () => null;
         Assert.ThrowsException<InvalidOperationException>(() => BrokerLauncher.Launch("--broker"));
     }
 
@@ -26,11 +26,11 @@ public class BrokerLauncherTests
     [SupportedOSPlatform("windows")]
     public void Launch_ProcessStarts_ReturnsTrue()
     {
-        BrokerLauncher.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
+        BrokerLauncher._getProcessPathFunc = () => @"C:\app\MyApp.exe";
         // GetCurrentProcess() is a live Process handle obtained without spawning a
         // child - enough to exercise the "process != null" success path with no
         // real UAC prompt or elevated launch.
-        BrokerLauncher.StartProcess = _ => Process.GetCurrentProcess();
+        BrokerLauncher._startProcess = _ => Process.GetCurrentProcess();
 
         Assert.IsTrue(BrokerLauncher.Launch("--broker --pipe p"));
     }
@@ -39,8 +39,8 @@ public class BrokerLauncherTests
     [SupportedOSPlatform("windows")]
     public void Launch_ProcessReturnsNull_ReturnsFalse()
     {
-        BrokerLauncher.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
-        BrokerLauncher.StartProcess = _ => null;
+        BrokerLauncher._getProcessPathFunc = () => @"C:\app\MyApp.exe";
+        BrokerLauncher._startProcess = _ => null;
 
         Assert.IsFalse(BrokerLauncher.Launch("--broker --pipe p"));
     }
@@ -49,8 +49,8 @@ public class BrokerLauncherTests
     [SupportedOSPlatform("windows")]
     public void Launch_Win32Exception1223_ReturnsFalse()
     {
-        BrokerLauncher.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
-        BrokerLauncher.StartProcess = _ => throw new Win32Exception(1223);
+        BrokerLauncher._getProcessPathFunc = () => @"C:\app\MyApp.exe";
+        BrokerLauncher._startProcess = _ => throw new Win32Exception(1223);
 
         Assert.IsFalse(BrokerLauncher.Launch("--broker --pipe p"));
     }

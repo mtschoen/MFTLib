@@ -7,20 +7,20 @@ namespace Benchmark;
 
 class SystemInfo
 {
-    internal Func<string> GetBuildConfiguration = DefaultGetBuildConfiguration;
-    internal Func<string, string> GetDiskModel;
-    internal Func<int> GetInstalledMemoryGB;
-    internal Func<string, string, string> GetWmiValue = DefaultGetWmiValue;
-    internal Func<string, string?> QueryDiskModelForPartition = DefaultQueryDiskModelForPartition;
+    internal Func<string> _getBuildConfiguration = DefaultGetBuildConfiguration;
+    internal Func<string, string> _getDiskModel;
+    internal Func<int> _getInstalledMemoryGb;
+    internal Func<string, string, string> _getWmiValue = DefaultGetWmiValue;
+    internal Func<string, string?> _queryDiskModelForPartition = DefaultQueryDiskModelForPartition;
 
     // Injectable WMI query functions used by the default implementations
-    internal Func<IEnumerable<long>> QueryMemoryCapacities = DefaultQueryMemoryCapacities;
-    internal Func<string, IEnumerable<string>> QueryPartitionIds = DefaultQueryPartitionIds;
+    internal Func<IEnumerable<long>> _queryMemoryCapacities = DefaultQueryMemoryCapacities;
+    internal Func<string, IEnumerable<string>> _queryPartitionIds = DefaultQueryPartitionIds;
 
     internal SystemInfo()
     {
-        GetInstalledMemoryGB = ComputeInstalledMemoryGB;
-        GetDiskModel = ComputeDiskModel;
+        _getInstalledMemoryGb = ComputeInstalledMemoryGB;
+        _getDiskModel = ComputeDiskModel;
     }
 
     // Coalesce a WMI property value (object, nullable ToString) to a trimmed
@@ -57,12 +57,12 @@ class SystemInfo
 #endif
     }
 
-    internal int ComputeInstalledMemoryGB()
+    int ComputeInstalledMemoryGB()
     {
         try
         {
             long total = 0;
-            foreach (var capacity in QueryMemoryCapacities())
+            foreach (var capacity in _queryMemoryCapacities())
             {
                 total += capacity;
             }
@@ -80,16 +80,16 @@ class SystemInfo
         return 0;
     }
 
-    internal string ComputeDiskModel(string path)
+    string ComputeDiskModel(string path)
     {
         try
         {
             var root = Path.GetPathRoot(path);
             var drive = string.IsNullOrEmpty(root) ? "C" : root[..1];
 
-            foreach (var partitionId in QueryPartitionIds(drive))
+            foreach (var partitionId in _queryPartitionIds(drive))
             {
-                var model = QueryDiskModelForPartition(partitionId);
+                var model = _queryDiskModelForPartition(partitionId);
                 if (model != null)
                 {
                     return model;

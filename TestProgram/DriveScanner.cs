@@ -6,15 +6,14 @@ namespace TestProgram;
 
 class DriveScanner
 {
-    internal Func<uint, IntPtr> AcrtIobFunc = AcrtIobFuncNative;
-    internal Func<bool> CanSelfElevate = ElevationUtilities.CanSelfElevate;
-    internal Func<string?> GetProcessPath = ElevationUtilities.GetProcessPath;
-    internal Func<bool> IsElevated = ElevationUtilities.IsElevated;
-    internal Func<string, MftVolume> OpenVolume = letter => MftVolume.Open(letter);
-    internal Func<string, bool> TryRunElevated = arguments => ElevationUtilities.TryRunElevated(arguments);
-    internal Func<string, string, IntPtr, IntPtr> WFreopen = WFreopenNative;
-    internal Action<string> Write = Console.Write;
-    internal Action<string> WriteLine = Console.WriteLine;
+    internal Func<uint, IntPtr> _acrtIobFunc = AcrtIobFuncNative;
+    internal Func<bool> _canSelfElevate = ElevationUtilities.CanSelfElevate;
+    internal Func<string?> _getProcessPath = ElevationUtilities.GetProcessPath;
+    internal Func<bool> _isElevated = ElevationUtilities.IsElevated;
+    internal Func<string, MftVolume> _openVolume = letter => MftVolume.Open(letter);
+    internal Func<string, bool> _tryRunElevated = arguments => ElevationUtilities.TryRunElevated(arguments);
+    internal Func<string, string, IntPtr, IntPtr> _wFreopen = WFreopenNative;
+    internal Action<string> _writeLine = Console.WriteLine;
 
     internal static string FormatArguments(string[] arguments)
     {
@@ -23,11 +22,11 @@ class DriveScanner
 
     internal int Run(string[] arguments)
     {
-        if (!IsElevated())
+        if (!_isElevated())
         {
             var formattedArguments = FormatArguments(arguments);
-            WriteLine("Not running as administrator. Attempting to self-elevate...");
-            if (CanSelfElevate() && TryRunElevated(formattedArguments))
+            _writeLine("Not running as administrator. Attempting to self-elevate...");
+            if (_canSelfElevate() && _tryRunElevated(formattedArguments))
             {
                 return 0;
             }
@@ -46,17 +45,17 @@ class DriveScanner
             ScanDrive(drive);
         }
 
-        WriteLine($"Completed at {DateTime.Now}");
+        _writeLine($"Completed at {DateTime.Now}");
         return 0;
     }
 
     internal void ScanDrive(string drive)
     {
         var letter = drive.TrimEnd(':');
-        WriteLine($"=== Drive {letter}: ===");
+        _writeLine($"=== Drive {letter}: ===");
         try
         {
-            using var volume = OpenVolume(letter);
+            using var volume = _openVolume(letter);
 
             var stopwatch = Stopwatch.StartNew();
             var records = volume.FindByName(".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths, out var timings);
@@ -64,45 +63,45 @@ class DriveScanner
 
             var gitDirectories = records.Where(record => record.IsDirectory).ToArray();
 
-            WriteLine($"Found {gitDirectories.Length} .git directories in {stopwatch.Elapsed}");
-            WriteLine(string.Empty);
-            WriteLine("Performance breakdown:");
-            WriteLine($"  {timings}");
-            WriteLine($"  Wall clock: {stopwatch.Elapsed.TotalMilliseconds:F1}ms");
-            WriteLine($"  Matched {records.Length} records (marshalled), {gitDirectories.Length} directories");
-            WriteLine(string.Empty);
+            _writeLine($"Found {gitDirectories.Length} .git directories in {stopwatch.Elapsed}");
+            _writeLine(string.Empty);
+            _writeLine("Performance breakdown:");
+            _writeLine($"  {timings}");
+            _writeLine($"  Wall clock: {stopwatch.Elapsed.TotalMilliseconds:F1}ms");
+            _writeLine($"  Matched {records.Length} records (marshalled), {gitDirectories.Length} directories");
+            _writeLine(string.Empty);
 
             foreach (var directory in gitDirectories)
             {
-                WriteLine($"  {directory.FullPath}");
+                _writeLine($"  {directory.FullPath}");
             }
 
-            WriteLine($"=== Drive {letter}: done ===");
+            _writeLine($"=== Drive {letter}: done ===");
         }
         catch (Exception exception)
         {
-            WriteLine($"Error on drive {letter}: {exception.Message}");
+            _writeLine($"Error on drive {letter}: {exception.Message}");
         }
 
-        WriteLine(string.Empty);
+        _writeLine(string.Empty);
     }
 
     void PrintElevationFailure(string[] arguments)
     {
         var formattedArguments = FormatArguments(arguments);
-        WriteLine("------------------------------------------------------------------");
-        WriteLine("AUTOMATIC ELEVATION FAILED.");
-        WriteLine("This program requires Administrative privileges to read the MFT.");
-        WriteLine("Please run this command from an ELEVATED terminal:");
-        WriteLine(string.Empty);
-        WriteLine($"  {GetProcessPath()} {formattedArguments}");
-        WriteLine("------------------------------------------------------------------");
+        _writeLine("------------------------------------------------------------------");
+        _writeLine("AUTOMATIC ELEVATION FAILED.");
+        _writeLine("This program requires Administrative privileges to read the MFT.");
+        _writeLine("Please run this command from an ELEVATED terminal:");
+        _writeLine(string.Empty);
+        _writeLine($"  {_getProcessPath()} {formattedArguments}");
+        _writeLine("------------------------------------------------------------------");
     }
 
     void RedirectStdout(string logPath)
     {
-        var stdout = AcrtIobFunc(1);
-        WFreopen(logPath, "w", stdout);
+        var stdout = _acrtIobFunc(1);
+        _wFreopen(logPath, "w", stdout);
     }
 
     [DllImport("ucrtbase.dll", EntryPoint = "_wfreopen", CharSet = CharSet.Unicode,

@@ -20,7 +20,7 @@ public sealed partial class MftVolume
     public UsnJournalCursor QueryUsnJournal()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var infoPtr = MFTLibNative.QueryUsnJournal(_volumeHandle);
+        var infoPtr = MFTLibNative._queryUsnJournal(_volumeHandle);
         if (infoPtr == IntPtr.Zero)
         {
             throw new InvalidOperationException("QueryUsnJournal returned null");
@@ -38,7 +38,7 @@ public sealed partial class MftVolume
         }
         finally
         {
-            MFTLibNative.FreeUsnJournalInfo(infoPtr);
+            MFTLibNative._freeUsnJournalInfo(infoPtr);
         }
     }
 
@@ -46,12 +46,12 @@ public sealed partial class MftVolume
     ///     Read USN journal entries since the given cursor.
     ///     Returns entries and an updated cursor for the next call.
     ///     Throws InvalidOperationException if the journal was recreated or entries
-    ///     were overwritten — caller should fall back to a full MFT rescan.
+    ///     were overwritten - caller should fall back to a full MFT rescan.
     /// </summary>
     public (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor) ReadUsnJournal(UsnJournalCursor since)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var resultPtr = MFTLibNative.ReadUsnJournal(_volumeHandle, since.NextUsn, since.JournalId);
+        var resultPtr = MFTLibNative._readUsnJournal(_volumeHandle, since.NextUsn, since.JournalId);
         if (resultPtr == IntPtr.Zero)
         {
             throw new InvalidOperationException("ReadUsnJournal returned null");
@@ -71,7 +71,7 @@ public sealed partial class MftVolume
         }
         finally
         {
-            MFTLibNative.FreeUsnJournalResult(resultPtr);
+            MFTLibNative._freeUsnJournalResult(resultPtr);
         }
     }
 
@@ -116,7 +116,7 @@ public sealed partial class MftVolume
     /// <summary>
     ///     Yields batches of USN journal entries as filesystem changes arrive.
     ///     Blocks on the kernel (zero CPU) until new entries appear.
-    ///     Cancel the token to stop watching — unblocks the kernel wait via CancelIoEx.
+    ///     Cancel the token to stop watching - unblocks the kernel wait via CancelIoEx.
     /// </summary>
     public async IAsyncEnumerable<UsnJournalEntry[]> WatchUsnJournal(
         UsnJournalCursor since,
@@ -126,8 +126,8 @@ public sealed partial class MftVolume
         var nextUsn = since.NextUsn;
         var journalId = since.JournalId;
 
-        using var registration = cancellationToken.Register(() =>
-            MFTLibNative.CancelUsnJournalWatch(_volumeHandle));
+        await using var registration = cancellationToken.Register(() =>
+            MFTLibNative._cancelUsnJournalWatch(_volumeHandle));
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -135,7 +135,7 @@ public sealed partial class MftVolume
 
             var currentUsn = nextUsn;
             var resultPtr = await Task.Run(
-                () => MFTLibNative.WatchUsnJournalBatch(_volumeHandle, currentUsn, journalId),
+                () => MFTLibNative._watchUsnJournalBatch(_volumeHandle, currentUsn, journalId),
                 cancellationToken).ConfigureAwait(false);
 
             if (resultPtr == IntPtr.Zero)
@@ -157,7 +157,7 @@ public sealed partial class MftVolume
             }
             finally
             {
-                MFTLibNative.FreeUsnJournalResult(resultPtr);
+                MFTLibNative._freeUsnJournalResult(resultPtr);
             }
 
             if (entries.Length == 0)
@@ -187,8 +187,8 @@ public sealed partial class MftVolume
         var nextUsn = since.NextUsn;
         var journalId = since.JournalId;
 
-        using var registration = cancellationToken.Register(() =>
-            MFTLibNative.CancelUsnJournalWatch(_volumeHandle));
+        await using var registration = cancellationToken.Register(() =>
+            MFTLibNative._cancelUsnJournalWatch(_volumeHandle));
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -196,7 +196,7 @@ public sealed partial class MftVolume
 
             var currentUsn = nextUsn;
             var resultPtr = await Task.Run(
-                () => MFTLibNative.WatchUsnJournalBatch(_volumeHandle, currentUsn, journalId),
+                () => MFTLibNative._watchUsnJournalBatch(_volumeHandle, currentUsn, journalId),
                 cancellationToken).ConfigureAwait(false);
 
             if (resultPtr == IntPtr.Zero)
@@ -220,7 +220,7 @@ public sealed partial class MftVolume
             }
             finally
             {
-                MFTLibNative.FreeUsnJournalResult(resultPtr);
+                MFTLibNative._freeUsnJournalResult(resultPtr);
             }
 
             if (entries.Length == 0)

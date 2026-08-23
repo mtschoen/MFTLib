@@ -17,7 +17,8 @@ public sealed partial class JournalBrokerScanSession
         IReadOnlyList<string> drives,
         CancellationToken cancellationToken = default)
     {
-        return StartAsync(launchBroker, drives, BrokerScanProfile.Full, static (_, _) => ValueTask.CompletedTask, null, cancellationToken);
+        return StartAsync(launchBroker, drives, BrokerScanProfile.Full, static (_, _) => ValueTask.CompletedTask, null,
+            cancellationToken);
     }
 
     /// <summary>

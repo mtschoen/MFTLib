@@ -57,11 +57,13 @@ public sealed partial class JournalBrokerHost
             () => RunProgressPumpAsync(stream, progressChannel.Reader, writeLock, cancellationToken),
             CancellationToken.None);
 
-        (UsnJournalCursor cursor, MmfWriteResult writeResult, TimeSpan scanElapsed, long maxRecordsProcessed, long? totalRecords) scanOutput;
+        (UsnJournalCursor cursor, MmfWriteResult writeResult, TimeSpan scanElapsed, long maxRecordsProcessed, long?
+            totalRecords) scanOutput;
         try
         {
             scanOutput = await Task.Run(
-                () => ExecuteDriveScanAsync(stream, mmfWriter, request, keepFileNames, progressChannel.Writer, writeLock, cancellationToken),
+                () => ExecuteDriveScanAsync(stream, mmfWriter, request, keepFileNames, progressChannel.Writer,
+                    writeLock, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -69,7 +71,8 @@ public sealed partial class JournalBrokerHost
             await pumpTask.ConfigureAwait(false);
         }
 
-        await EmitScanCompletionFramesAsync(stream, request, scanOutput, writeLock, cancellationToken).ConfigureAwait(false);
+        await EmitScanCompletionFramesAsync(stream, request, scanOutput, writeLock, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     static async Task RunProgressPumpAsync(
@@ -89,7 +92,7 @@ public sealed partial class JournalBrokerHost
                 while (reader.TryRead(out var progress))
                 {
                     var now = stopwatch.Elapsed;
-                    if (first || now - lastEmit >= ProgressThrottleInterval)
+                    if (first || now - lastEmit >= _progressThrottleInterval)
                     {
                         first = false;
                         lastEmit = now;
@@ -107,7 +110,8 @@ public sealed partial class JournalBrokerHost
         }
     }
 
-    async Task<(UsnJournalCursor cursor, MmfWriteResult writeResult, TimeSpan scanElapsed, long maxRecordsProcessed, long? totalRecords)> ExecuteDriveScanAsync(
+    async Task<(UsnJournalCursor cursor, MmfWriteResult writeResult, TimeSpan scanElapsed, long maxRecordsProcessed,
+        long? totalRecords)> ExecuteDriveScanAsync(
         Stream stream,
         IMmfWriter mmfWriter,
         ScanDriveRequest request,
@@ -181,11 +185,12 @@ public sealed partial class JournalBrokerHost
     async Task EmitScanCompletionFramesAsync(
         Stream stream,
         ScanDriveRequest request,
-        (UsnJournalCursor cursor, MmfWriteResult writeResult, TimeSpan scanElapsed, long maxRecordsProcessed, long? totalRecords) scanOutput,
+        (UsnJournalCursor cursor, MmfWriteResult writeResult, TimeSpan scanElapsed, long maxRecordsProcessed, long?
+            totalRecords) scanOutput,
         SemaphoreSlim writeLock,
         CancellationToken cancellationToken)
     {
-        long finalRecords = scanOutput.totalRecords ?? scanOutput.writeResult.RecordCount;
+        var finalRecords = scanOutput.totalRecords ?? scanOutput.writeResult.RecordCount;
         if (finalRecords < scanOutput.maxRecordsProcessed)
         {
             finalRecords = scanOutput.maxRecordsProcessed;
@@ -210,7 +215,8 @@ public sealed partial class JournalBrokerHost
             cancellationToken).ConfigureAwait(false);
 
         await WriteFrameAsync(stream, writeLock,
-            writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, scanOutput.writeResult.RecordCount, scanOutput.writeResult.ByteLength),
+            writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, scanOutput.writeResult.RecordCount,
+                scanOutput.writeResult.ByteLength),
             cancellationToken).ConfigureAwait(false);
 
         var (entries, updated) = CatchUp(request.Letter, scanOutput.cursor);
@@ -258,10 +264,10 @@ public sealed partial class JournalBrokerHost
     internal static ScanRecord[] ApplyScanProfile(
         ScanRecord[] records, BrokerScanProfile profile, IReadOnlyCollection<string> keepFileNames)
     {
-        return FilterScanProfile(new[] { records }, profile, keepFileNames).Single().ToArray();
+        return FilterScanProfile([records], profile, keepFileNames).Single().ToArray();
     }
 
-    internal static IEnumerable<IReadOnlyList<ScanRecord>> FilterScanProfile(
+    static IEnumerable<IReadOnlyList<ScanRecord>> FilterScanProfile(
         IEnumerable<IReadOnlyList<ScanRecord>> batches,
         BrokerScanProfile profile,
         IReadOnlyCollection<string>? keepFileNames)

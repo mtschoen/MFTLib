@@ -32,7 +32,7 @@ BOOL UsnDeviceIoControl(HANDLE handle, DWORD ioControlCode, IoBuffer input, IoBu
 }
 
 // Wraps GetOverlappedResult so tests can simulate a cancelled (aborted) wait
-// without a real pending IOCTL — pairs with SetUsnIoFailError(ERROR_IO_PENDING).
+// without a real pending IOCTL - pairs with SetUsnIoFailError(ERROR_IO_PENDING).
 BOOL UsnGetOverlappedResult(HANDLE handle, LPOVERLAPPED overlapped, LPDWORD bytesReturned, BOOL wait) {
     if (UsnIoShouldAbortOverlapped()) {
         SetLastError(ERROR_OPERATION_ABORTED);

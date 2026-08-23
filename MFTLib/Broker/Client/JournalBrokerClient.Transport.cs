@@ -40,7 +40,7 @@ public sealed partial class JournalBrokerClient
         }
 
         _demuxCts?.Dispose();
-        await _pipe.DisposeAsync().ConfigureAwait(false);
+        await pipe.DisposeAsync().ConfigureAwait(false);
 
         List<IDisposable> lifetimes;
         lock (_mmfLifetimesLock)
@@ -48,7 +48,6 @@ public sealed partial class JournalBrokerClient
             lifetimes = new List<IDisposable>(_mmfLifetimes.Values);
             _mmfLifetimes.Clear();
         }
-
 
         foreach (var lifetime in lifetimes)
         {
@@ -71,7 +70,7 @@ public sealed partial class JournalBrokerClient
     async Task<BrokerFrame?> ReadFrameAsync(CancellationToken cancellationToken)
     {
         var header = new byte[4];
-        if (!await ReadExactAsync(_pipe, header, cancellationToken).ConfigureAwait(false))
+        if (!await ReadExactAsync(pipe, header, cancellationToken).ConfigureAwait(false))
         {
             SignalBrokerDeath("Pipe EOF");
             return null;
@@ -80,7 +79,7 @@ public sealed partial class JournalBrokerClient
         var totalLength = BinaryPrimitives.ReadInt32LittleEndian(header);
         var frameBytes = new byte[4 + totalLength];
         header.CopyTo(frameBytes.AsMemory());
-        if (!await ReadExactAsync(_pipe, frameBytes.AsMemory(4, totalLength), cancellationToken).ConfigureAwait(false))
+        if (!await ReadExactAsync(pipe, frameBytes.AsMemory(4, totalLength), cancellationToken).ConfigureAwait(false))
         {
             throw new EndOfStreamException("Truncated broker frame on pipe");
         }
@@ -114,8 +113,8 @@ public sealed partial class JournalBrokerClient
         try
         {
             transmissionStarted?.Invoke();
-            await _pipe.WriteAsync(buffer.WrittenMemory, cancellationToken).ConfigureAwait(false);
-            await _pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await pipe.WriteAsync(buffer.WrittenMemory, cancellationToken).ConfigureAwait(false);
+            await pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {

@@ -11,27 +11,17 @@ namespace MFTLib;
 ///     testable without real elevation; <see cref="CreateDefault" /> wires the real
 ///     MFTLib seams.
 /// </summary>
+public sealed partial class JournalBrokerHost(
+    UsnJournalCursorQuery queryCursor,
+    ProgressStreamingDriveScanSource scanDrive,
+    UsnJournalCatchUpSource readJournal,
+    JournalBatchSource? watchDrive = null)
+{
+    internal static TimeSpan _progressThrottleInterval = TimeSpan.FromMilliseconds(250);
+}
+
 public sealed partial class JournalBrokerHost
 {
-    readonly UsnJournalCursorQuery _queryCursor;
-    readonly UsnJournalCatchUpSource _readJournal;
-    readonly ProgressStreamingDriveScanSource _scanDrive;
-    readonly JournalBatchSource? _watchDrive;
-
-    internal static TimeSpan ProgressThrottleInterval = TimeSpan.FromMilliseconds(250);
-
-    public JournalBrokerHost(
-        UsnJournalCursorQuery queryCursor,
-        ProgressStreamingDriveScanSource scanDrive,
-        UsnJournalCatchUpSource readJournal,
-        JournalBatchSource? watchDrive = null)
-    {
-        _queryCursor = queryCursor;
-        _scanDrive = scanDrive;
-        _readJournal = readJournal;
-        _watchDrive = watchDrive;
-    }
-
     public JournalBrokerHost(
         UsnJournalCursorQuery queryCursor,
         StreamingDriveScanSource scanDrive,
@@ -52,7 +42,7 @@ public sealed partial class JournalBrokerHost
         JournalBatchSource? watchDrive = null)
         : this(
             queryCursor,
-            (drive, _, _) => new[] { scanDrive(drive) },
+            (drive, _, _) => [scanDrive(drive)],
             readJournal,
             watchDrive)
     {
@@ -65,22 +55,22 @@ public sealed partial class JournalBrokerHost
     /// </summary>
     public (UsnJournalCursor Cursor, ScanRecord[] Records) ArmAndScan(string driveLetter)
     {
-        var cursor = _queryCursor(driveLetter); // strictly before the scan
-        var records = _scanDrive(driveLetter, null, CancellationToken.None).SelectMany(b => b).ToArray();
+        var cursor = queryCursor(driveLetter); // strictly before the scan
+        var records = scanDrive(driveLetter, null, CancellationToken.None).SelectMany(b => b).ToArray();
         return (cursor, records);
     }
 
     public (UsnJournalCursor Cursor, IEnumerable<IReadOnlyList<ScanRecord>> Batches) ArmAndScanBatches(
         string driveLetter, IProgress<MmfWriteProgress>? progress = null, CancellationToken cancellationToken = default)
     {
-        var cursor = _queryCursor(driveLetter);
-        var batches = _scanDrive(driveLetter, progress, cancellationToken);
+        var cursor = queryCursor(driveLetter);
+        var batches = scanDrive(driveLetter, progress, cancellationToken);
         return (cursor, batches);
     }
 
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) CatchUp(string driveLetter, UsnJournalCursor since)
     {
-        return _readJournal(driveLetter, since);
+        return readJournal(driveLetter, since);
     }
 
 
@@ -100,7 +90,7 @@ public sealed partial class JournalBrokerHost
     async Task StreamWatchAsync(Stream stream, string drive, UsnJournalCursor since,
         SemaphoreSlim writeLock, CancellationToken cancellationToken)
     {
-        if (_watchDrive == null)
+        if (watchDrive == null)
         {
             await WriteFrameAsync(stream, writeLock,
                     writer => BrokerProtocol.WriteError(writer, drive, "Broker has no watch source"), cancellationToken)
@@ -113,13 +103,13 @@ public sealed partial class JournalBrokerHost
             // A (0,0) cursor means the caller had no cached cursor for this drive (a warm
             // start with an unknown cursor). Resolve the current cursor and watch from
             // now so the live watch still works; only the pre-launch gap is lost.
-            var effectiveSince = since.JournalId == 0 ? _queryCursor(drive) : since;
+            var effectiveSince = since.JournalId == 0 ? queryCursor(drive) : since;
 
             // No `.WithCancellation(cancellationToken)` here: cancellationToken is
             // already passed as the explicit third argument above, which the
             // production implementation's `[EnumeratorCancellation]` parameter binds
             // directly - adding it again on the same token is redundant.
-            await foreach (var (entries, cursor) in _watchDrive(drive, effectiveSince, cancellationToken)
+            await foreach (var (entries, cursor) in watchDrive(drive, effectiveSince, cancellationToken)
                                .ConfigureAwait(false))
             {
                 await WriteFrameAsync(stream, writeLock,
@@ -244,14 +234,10 @@ public sealed partial class JournalBrokerHost
         // thread-pool dispatch delays and ensure TotalRecords is captured reliably.
         var mftProgress = progress != null
             ? new DirectProgress<MftScanProgress>(p =>
-                progress.Report(new MmfWriteProgress(
-                    p.RecordsScanned,
-                    0,
-                    p.TotalRecords,
-                    null)))
+                progress.Report(new MmfWriteProgress(p.RecordsScanned, 0, p.TotalRecords, null)))
             : null;
 
-        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, batchSize: 4096, progress: mftProgress))
+        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, 4096, mftProgress))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var scanRecords = ToScanRecords(batch);
@@ -314,19 +300,17 @@ public sealed partial class JournalBrokerHost
     // one, an EndWatch (or session end) tears it down; see ServeAsync.
     sealed class WatchGeneration
     {
-        public readonly List<Task> Tasks = new();
+        public readonly List<Task> Tasks = [];
         public CancellationTokenSource? Cancellation;
     }
 
-    sealed class DirectProgress<T> : IProgress<T>
+    sealed class DirectProgress<T>(Action<T> handler) : IProgress<T>
     {
-        readonly Action<T> _handler;
+        readonly Action<T> _handler = handler ?? throw new ArgumentNullException(nameof(handler));
 
-        public DirectProgress(Action<T> handler)
+        public void Report(T value)
         {
-            _handler = handler ?? throw new ArgumentNullException(nameof(handler));
+            _handler(value);
         }
-
-        public void Report(T value) => _handler(value);
     }
 }

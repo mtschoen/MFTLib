@@ -33,28 +33,28 @@ public class ElevationProviderTests
     [TestMethod]
     public void DefaultProvider_IsElevated_DelegatesToStatic()
     {
-        ElevationUtilities.IsWindows = () => false;
+        ElevationUtilities._isWindows = () => false;
         Assert.IsFalse(ElevationUtilities.DefaultProvider.IsElevated());
     }
 
     [TestMethod]
     public void DefaultProvider_CanSelfElevate_NormalExe_ReturnsTrue()
     {
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
         Assert.IsTrue(ElevationUtilities.DefaultProvider.CanSelfElevate());
     }
 
     [TestMethod]
     public void DefaultProvider_CanSelfElevate_NullProcessPath_ReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => null;
+        ElevationUtilities._getProcessPathFunc = () => null;
         Assert.IsFalse(ElevationUtilities.DefaultProvider.CanSelfElevate());
     }
 
     [TestMethod]
     public void DefaultProvider_TryRunElevated_NullProcessPath_ReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => null;
+        ElevationUtilities._getProcessPathFunc = () => null;
         Assert.IsFalse(ElevationUtilities.DefaultProvider.TryRunElevated("--test"));
     }
 
@@ -63,9 +63,9 @@ public class ElevationProviderTests
     {
         var isPosix = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ||
                       RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
-        ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
-        ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo(
+        ElevationUtilities._getProcessPathFunc = () => "C:/app/MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
+        ElevationUtilities._startProcess = _ => Process.Start(new ProcessStartInfo(
                 isPosix ? "true" : "cmd.exe",
                 isPosix ? string.Empty : "/c exit 0"
             )

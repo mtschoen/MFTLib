@@ -20,4 +20,3 @@ public delegate IEnumerable<IReadOnlyList<ScanRecord>> StreamingDriveScanSource(
 /// </summary>
 public delegate IEnumerable<IReadOnlyList<ScanRecord>> ProgressStreamingDriveScanSource(
     string driveLetter, IProgress<MmfWriteProgress>? progress, CancellationToken cancellationToken);
-

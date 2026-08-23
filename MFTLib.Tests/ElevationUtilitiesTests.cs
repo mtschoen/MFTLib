@@ -24,7 +24,7 @@ public class ElevationUtilitiesTests
     [TestMethod]
     public void IsElevated_NonWindows_ReturnsFalse()
     {
-        ElevationUtilities.IsWindows = () => false;
+        ElevationUtilities._isWindows = () => false;
         Assert.IsFalse(ElevationUtilities.IsElevated());
     }
 
@@ -41,14 +41,14 @@ public class ElevationUtilitiesTests
     [TestMethod]
     public void CanSelfElevate_NullProcessPath_ReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => null;
+        ElevationUtilities._getProcessPathFunc = () => null;
         Assert.IsFalse(ElevationUtilities.CanSelfElevate());
     }
 
     [TestMethod]
     public void CanSelfElevate_EmptyProcessPath_ReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => "";
+        ElevationUtilities._getProcessPathFunc = () => "";
         Assert.IsFalse(ElevationUtilities.CanSelfElevate());
     }
 
@@ -56,14 +56,14 @@ public class ElevationUtilitiesTests
     public void CanSelfElevate_DotnetExe_ReturnsFalse()
     {
         // Use forward slashes so Path.GetFileNameWithoutExtension works on both Windows and Linux
-        ElevationUtilities.GetProcessPathFunc = () => "C:/dotnet/dotnet.exe";
+        ElevationUtilities._getProcessPathFunc = () => "C:/dotnet/dotnet.exe";
         Assert.IsFalse(ElevationUtilities.CanSelfElevate());
     }
 
     [TestMethod]
     public void CanSelfElevate_NormalExe_ReturnsTrue()
     {
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
         Assert.IsTrue(ElevationUtilities.CanSelfElevate());
     }
 
@@ -72,33 +72,33 @@ public class ElevationUtilitiesTests
     [TestMethod]
     public void TryRunElevated_NullProcessPath_ReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => null;
+        ElevationUtilities._getProcessPathFunc = () => null;
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
     [TestMethod]
     public void TryRunElevated_DotnetExe_ReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\dotnet\dotnet.exe";
+        ElevationUtilities._getProcessPathFunc = () => @"C:\dotnet\dotnet.exe";
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
     [TestMethod]
     public void TryRunElevated_ProcessReturnsNull_ReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
-        ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ => null;
+        ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
+        ElevationUtilities._startProcess = _ => null;
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
     [TestMethod]
     public void TryRunElevated_ProcessExitsZero_ReturnsTrue()
     {
-        ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
-        ElevationUtilities.IsUserInteractive = () => true;
+        ElevationUtilities._getProcessPathFunc = () => "C:/app/MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
         // Use cross-platform command: 'true' on POSIX, 'cmd /c exit 0' on Windows
-        ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo(
+        ElevationUtilities._startProcess = _ => Process.Start(new ProcessStartInfo(
                 RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
                     ? "true"
                     : "cmd.exe",
@@ -113,9 +113,9 @@ public class ElevationUtilitiesTests
     [TestMethod]
     public void TryRunElevated_ProcessExitsNonZero_ReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
-        ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ => Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 1")
+        ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
+        ElevationUtilities._startProcess = _ => Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 1")
         { CreateNoWindow = true });
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
@@ -123,36 +123,36 @@ public class ElevationUtilitiesTests
     [TestMethod]
     public void TryRunElevated_Timeout_KillsProcessAndReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
-        ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ => Process.Start(LongRunningProcessStartInfo());
+        ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
+        ElevationUtilities._startProcess = _ => Process.Start(LongRunningProcessStartInfo());
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", 100));
     }
 
     [TestMethod]
     public void TryRunElevated_Win32Exception1223_ReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
-        ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ => throw new Win32Exception(1223);
+        ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
+        ElevationUtilities._startProcess = _ => throw new Win32Exception(1223);
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
     [TestMethod]
     public void TryRunElevated_GenericException_ReturnsFalse()
     {
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
-        ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ => throw new InvalidOperationException("test");
+        ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
+        ElevationUtilities._startProcess = _ => throw new InvalidOperationException("test");
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
     [TestMethod]
     public void TryRunElevated_NotUserInteractive_ReturnsFalseWithoutStartingProcess()
     {
-        ElevationUtilities.GetProcessPathFunc = () => @"C:\app\MyApp.exe";
-        ElevationUtilities.IsUserInteractive = () => false;
-        ElevationUtilities.StartProcess = _ => throw new InvalidOperationException("should not be called");
+        ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => false;
+        ElevationUtilities._startProcess = _ => throw new InvalidOperationException("should not be called");
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 

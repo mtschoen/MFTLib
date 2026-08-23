@@ -118,7 +118,7 @@ public class UsnJournalLiveTests
         });
 
         await Task.Delay(200);
-        File.WriteAllText(tempPath, "watch test");
+        await File.WriteAllTextAsync(tempPath, "watch test", CancellationToken.None);
 
         try
         {

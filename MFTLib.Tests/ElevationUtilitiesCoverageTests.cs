@@ -25,7 +25,7 @@ public class ElevationUtilitiesCoverageTests
     {
         // Exercises the dotnet.exe check in TryRunElevated.
         // The process path is "dotnet" so the method returns false before entering the try block.
-        ElevationUtilities.GetProcessPathFunc = () => "C:/dotnet/dotnet.exe";
+        ElevationUtilities._getProcessPathFunc = () => "C:/dotnet/dotnet.exe";
         var result = ElevationUtilities.TryRunElevated("--test");
         Assert.IsFalse(result);
     }
@@ -38,9 +38,9 @@ public class ElevationUtilitiesCoverageTests
         // Exercises the exit code check at line 87 of TryRunElevated.
         // Uses a non-dotnet exe path so the dotnet check passes,
         // then mocks StartProcess to return a process that exits with code 0.
-        ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
-        ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ =>
+        ElevationUtilities._getProcessPathFunc = () => "C:/app/MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
+        ElevationUtilities._startProcess = _ =>
         {
             var psi = new ProcessStartInfo(
                     RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
@@ -62,9 +62,9 @@ public class ElevationUtilitiesCoverageTests
     public void TryRunElevated_ExitCodeNonZero_ReturnsFalse()
     {
         // Exercises the exit code check at line 87 of TryRunElevated for non-zero exit codes.
-        ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
-        ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ =>
+        ElevationUtilities._getProcessPathFunc = () => "C:/app/MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
+        ElevationUtilities._startProcess = _ =>
         {
             var psi = new ProcessStartInfo(
                     RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
@@ -88,9 +88,9 @@ public class ElevationUtilitiesCoverageTests
         // Exercises the timeout path at lines 81, 83, 84 of TryRunElevated.
         // Starts a process that takes longer than the timeout, so WaitForExit returns false,
         // then Kill() is called and the method returns false.
-        ElevationUtilities.GetProcessPathFunc = () => "C:/app/MyApp.exe";
-        ElevationUtilities.IsUserInteractive = () => true;
-        ElevationUtilities.StartProcess = _ => Process.Start(ElevationUtilitiesTests.LongRunningProcessStartInfo());
+        ElevationUtilities._getProcessPathFunc = () => "C:/app/MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
+        ElevationUtilities._startProcess = _ => Process.Start(ElevationUtilitiesTests.LongRunningProcessStartInfo());
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", 100));
     }
 }

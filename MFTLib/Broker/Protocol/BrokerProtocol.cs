@@ -408,8 +408,8 @@ public static class BrokerProtocol
         long? totalBytes = totalBytesRaw >= 0 ? totalBytesRaw : null;
         var elapsed = TimeSpan.FromTicks(elapsedTicks);
 
-        var progress = new BrokerScanProgress(drive, recordsProcessed, bytesProcessed, totalRecords, totalBytes, elapsed);
+        var progress =
+            new BrokerScanProgress(drive, recordsProcessed, bytesProcessed, totalRecords, totalBytes, elapsed);
         return BrokerFrame.ScanProgress(progress);
     }
 }
-

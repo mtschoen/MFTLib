@@ -45,4 +45,3 @@ public interface IStreamingMmfWriter : IMmfWriter
         IProgress<MmfWriteProgress>? progress,
         CancellationToken cancellationToken);
 }
-

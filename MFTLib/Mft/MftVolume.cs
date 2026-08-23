@@ -34,7 +34,7 @@ public sealed partial class MftVolume : IDisposable
     public static MftVolume Open(string volumePath, uint bufferSizeRecords = 262144)
     {
         var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
-        var handle = FileUtilities.GetVolumeHandle(normalizedPath);
+        var handle = FileUtilities._getVolumeHandle(normalizedPath);
 
         var driveLetter = ExtractDriveLetter(normalizedPath);
 
@@ -92,25 +92,26 @@ public sealed partial class MftVolume : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         MFTLibNative.EnsureCompatibleNativeAbi();
 
-        List<MftScanProgress>? queue = progress != null ? new List<MftScanProgress>() : null;
-        MFTLibNative.NativeMftProgressCallback? nativeCallback = queue != null ? (recordsScanned, totalRecords, elapsedMs, _) =>
-        {
-            try
+        var queue = progress != null ? new List<MftScanProgress>() : null;
+        MFTLibNative.NativeMftProgressCallback? nativeCallback = queue != null
+            ? (recordsScanned, totalRecords, elapsedMs, _) =>
             {
-                lock (queue)
+                try
                 {
-                    queue.Add(new MftScanProgress((long)recordsScanned, (long)totalRecords,
-                        TimeSpan.FromMilliseconds(elapsedMs)));
+                    lock (queue)
+                    {
+                        queue.Add(new MftScanProgress((long)recordsScanned, (long)totalRecords,
+                            TimeSpan.FromMilliseconds(elapsedMs)));
+                    }
+                }
+                catch
+                {
+                    // Non-throwing adapter: never throw across unmanaged boundary
                 }
             }
-            catch
-            {
-                // Non-throwing adapter: never throw across unmanaged boundary
-            }
-        }
         : null;
 
-        var resultPtr = MFTLibNative.ParseMFTRecordsWithProgress(
+        var resultPtr = MFTLibNative._parseMftRecordsWithProgress(
             _volumeHandle, filter, matchFlags, _bufferSizeRecords, nativeCallback, IntPtr.Zero);
         GC.KeepAlive(nativeCallback);
 
@@ -161,7 +162,7 @@ public sealed partial class MftVolume : IDisposable
 
     public static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords = 262144)
     {
-        if (!MFTLibNative.GenerateSyntheticMFT(filePath, recordCount, bufferSizeRecords))
+        if (!MFTLibNative._generateSyntheticMft(filePath, recordCount, bufferSizeRecords))
         {
             throw new InvalidOperationException("Failed to generate synthetic MFT file");
         }
@@ -170,7 +171,7 @@ public sealed partial class MftVolume : IDisposable
     public static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords,
         uint recordSize)
     {
-        if (!MFTLibNative.GenerateSyntheticMFTSized(filePath, recordCount, bufferSizeRecords, recordSize))
+        if (!MFTLibNative._generateSyntheticMftSized(filePath, recordCount, bufferSizeRecords, recordSize))
         {
             throw new InvalidOperationException("Failed to generate synthetic MFT file");
         }
@@ -189,10 +190,11 @@ public sealed partial class MftVolume : IDisposable
     }
 
     public static MftResult StreamMFTFromFile(
-        string filePath, string? filter = null, MatchFlags matchFlags = MatchFlags.None, uint bufferSizeRecords = 262144)
+        string filePath, string? filter = null, MatchFlags matchFlags = MatchFlags.None,
+        uint bufferSizeRecords = 262144)
     {
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative.ParseMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords);
+        var resultPtr = MFTLibNative._parseMftFromFile(filePath, filter, matchFlags, bufferSizeRecords);
 
         if (resultPtr == IntPtr.Zero)
         {

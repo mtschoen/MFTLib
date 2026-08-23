@@ -31,7 +31,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 5000, 256);
             MFTLibNative.NativeSetMaxThreads(1);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -41,7 +41,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -63,7 +63,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 5000, 256);
             MFTLibNative.NativeSetMaxThreads(1);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, ".git", MatchFlags.ExactMatch, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, ".git", MatchFlags.ExactMatch, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -72,7 +72,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -94,7 +94,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 5000, 256);
             MFTLibNative.NativeSetMaxThreads(1);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.ResolvePaths, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -104,7 +104,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -127,7 +127,7 @@ public class NativeCoverageTests
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 5000, 256);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.ResolvePaths, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -137,7 +137,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -204,7 +204,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 5000, 256);
             MFTLibNative.NativeSetNamePoolCapacityOverride(16);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.ResolvePaths, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -214,7 +214,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -236,7 +236,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 100, 256);
             MFTLibNative.NativeSetAllocFailCountdown(7);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.ResolvePaths, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -246,7 +246,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -269,7 +269,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
             MFTLibNative.NativeSetFailFileSize(1);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -279,7 +279,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -297,7 +297,7 @@ public class NativeCoverageTests
         // WideCharToMultiByte returning <= 0 — defensive error path. The conversion
         // fails before the file is touched, so the path need not exist.
         MFTLibNative.NativeSetFailPathConversion(1);
-        var resultPointer = MFTLibNative.ParseMFTFromFile(@"C:\does_not_matter.mft", null, MatchFlags.None, 256);
+        var resultPointer = MFTLibNative._parseMftFromFile(@"C:\does_not_matter.mft", null, MatchFlags.None, 256);
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
         {
@@ -307,7 +307,7 @@ public class NativeCoverageTests
         }
         finally
         {
-            MFTLibNative.FreeMftResult(resultPointer);
+            MFTLibNative._freeMftResult(resultPointer);
         }
     }
 
@@ -324,7 +324,7 @@ public class NativeCoverageTests
 
             // Fail the first calloc (result allocation)
             MFTLibNative.NativeSetAllocFailCountdown(1);
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreEqual(IntPtr.Zero, resultPointer);
         }
         finally
@@ -347,7 +347,7 @@ public class NativeCoverageTests
 
             // Fail the second alloc (lookup.init when resolving paths)
             MFTLibNative.NativeSetAllocFailCountdown(2);
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.ResolvePaths, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -357,7 +357,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -381,7 +381,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
             MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, matchFlags, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -391,7 +391,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -415,7 +415,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
             MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, matchFlags, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -425,7 +425,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -449,7 +449,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
             MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, matchFlags, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -459,7 +459,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -487,7 +487,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 4000, 8192);
 
             MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, matchFlags, 8192);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 8192);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -497,7 +497,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -519,7 +519,7 @@ public class NativeCoverageTests
         {
             File.Delete(path);
             MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
-            var success = MFTLibNative.GenerateSyntheticMFT(path, 10, 256);
+            var success = MFTLibNative._generateSyntheticMft(path, 10, 256);
             Assert.IsFalse(success);
         }
         finally
@@ -542,7 +542,7 @@ public class NativeCoverageTests
     public void GenerateSyntheticMFT_InvalidDirectory_ReturnsFalse()
     {
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "missing", "fixture.mft");
-        Assert.IsFalse(MFTLibNative.GenerateSyntheticMFT(path, 10, 256));
+        Assert.IsFalse(MFTLibNative._generateSyntheticMft(path, 10, 256));
     }
 
     [TestMethod]
@@ -553,7 +553,7 @@ public class NativeCoverageTests
         {
             File.Delete(path);
             MFTLibNative.NativeSetFailPathConversion(1);
-            Assert.IsFalse(MFTLibNative.GenerateSyntheticMFT(path, 10, 256));
+            Assert.IsFalse(MFTLibNative._generateSyntheticMft(path, 10, 256));
         }
         finally
         {
@@ -578,7 +578,7 @@ public class NativeCoverageTests
 
             // Fail the first ReadFile in FileReadChunk
             MFTLibNative.NativeSetReadFailCountdown(1);
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -587,7 +587,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -622,7 +622,7 @@ public class NativeCoverageTests
         }
         finally
         {
-            MFTLibNative.FreeMftResult(resultPointer);
+            MFTLibNative._freeMftResult(resultPointer);
         }
     }
 
@@ -647,7 +647,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -681,7 +681,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -698,7 +698,7 @@ public class NativeCoverageTests
     [TestMethod]
     public void ParseFromFile_NonexistentFile_ReturnsErrorMessage()
     {
-        var resultPointer = MFTLibNative.ParseMFTFromFile(
+        var resultPointer = MFTLibNative._parseMftFromFile(
             @"C:\nonexistent_file_12345.mft", null, MatchFlags.None, 256);
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
@@ -709,7 +709,7 @@ public class NativeCoverageTests
         }
         finally
         {
-            MFTLibNative.FreeMftResult(resultPointer);
+            MFTLibNative._freeMftResult(resultPointer);
         }
     }
 
@@ -740,7 +740,7 @@ public class NativeCoverageTests
             data[sectorEnd + 1] = (byte)(badValue >> 8);
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -750,7 +750,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -776,9 +776,9 @@ public class NativeCoverageTests
             data[recordOffset + 0x17] = 0;
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            MFTLibNative.FreeMftResult(resultPointer);
+            MFTLibNative._freeMftResult(resultPointer);
         }
         finally
         {
@@ -803,9 +803,9 @@ public class NativeCoverageTests
             data[recordOffset + 7] = 0;
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            MFTLibNative.FreeMftResult(resultPointer);
+            MFTLibNative._freeMftResult(resultPointer);
         }
         finally
         {
@@ -858,7 +858,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -942,7 +942,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -976,7 +976,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1028,7 +1028,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1079,7 +1079,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1108,7 +1108,7 @@ public class NativeCoverageTests
             // 4=entries malloc, 5=strings malloc, 6=realloc when capacity exceeded
             MFTLibNative.NativeSetAllocFailCountdown(6);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -1119,7 +1119,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1146,7 +1146,7 @@ public class NativeCoverageTests
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 5000, 4096);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 4096);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 4096);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -1156,7 +1156,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1180,7 +1180,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 5000, 4096);
 
             // Substring match on "file" should match all synthetic records
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, "file", MatchFlags.Contains, 4096);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, "file", MatchFlags.Contains, 4096);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -1189,7 +1189,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1259,7 +1259,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1294,7 +1294,7 @@ public class NativeCoverageTests
             var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            MFTLibNative.FreeMftResult(resultPointer);
+            MFTLibNative._freeMftResult(resultPointer);
         }
         finally
         {
@@ -1342,7 +1342,7 @@ public class NativeCoverageTests
             var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            MFTLibNative.FreeMftResult(resultPointer);
+            MFTLibNative._freeMftResult(resultPointer);
         }
         finally
         {
@@ -1402,7 +1402,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1449,7 +1449,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1499,7 +1499,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1543,7 +1543,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1610,7 +1610,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1627,7 +1627,7 @@ public class NativeCoverageTests
     [TestMethod]
     public void FreeMftResult_NullPointer_DoesNotThrow()
     {
-        MFTLibNative.FreeMftResult(IntPtr.Zero);
+        MFTLibNative._freeMftResult(IntPtr.Zero);
     }
 
     // --- Platform pread/pwrite failure branches (platform_win32.cpp) ---
@@ -1644,7 +1644,7 @@ public class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 100, 256);
             MFTLibNative.NativeSetFailPlatformRead(1); // fail the first positioned read
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -1653,7 +1653,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1675,7 +1675,7 @@ public class NativeCoverageTests
         {
             File.Delete(path);
             MFTLibNative.NativeSetFailPlatformWrite(1);
-            var success = MFTLibNative.GenerateSyntheticMFT(path, 600, 256);
+            var success = MFTLibNative._generateSyntheticMft(path, 600, 256);
             Assert.IsFalse(success, "Generation should report failure when the write fails");
         }
         finally
@@ -1753,7 +1753,7 @@ public class NativeCoverageTests
         data[offset + 2] = 0x4C;
         data[offset + 3] = 0x45;
         // USA offset = 48, USA size = (recordSize / 512) + 1
-        var usaSize = (ushort)((recordSize / 512) + 1);
+        var usaSize = (ushort)(recordSize / 512 + 1);
         data[offset + 4] = 0x30;
         data[offset + 5] = 0x00;
         data[offset + 6] = (byte)(usaSize & 0xFF);
@@ -1853,7 +1853,7 @@ public class NativeCoverageTests
             BitConverter.GetBytes(1024u).CopyTo(data, 0x1C);
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -1862,7 +1862,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1893,7 +1893,7 @@ public class NativeCoverageTests
             BitConverter.GetBytes(recordSize).CopyTo(data, 0x1C);
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -1902,7 +1902,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1928,7 +1928,7 @@ public class NativeCoverageTests
             BitConverter.GetBytes(1024u).CopyTo(data, 0x1C);
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative.ParseMFTFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -1937,7 +1937,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -1973,7 +1973,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -2014,7 +2014,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -2055,7 +2055,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally
@@ -2096,7 +2096,7 @@ public class NativeCoverageTests
             }
             finally
             {
-                MFTLibNative.FreeMftResult(resultPointer);
+                MFTLibNative._freeMftResult(resultPointer);
             }
         }
         finally

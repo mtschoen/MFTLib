@@ -42,6 +42,7 @@ dotnet_style_require_accessibility_modifiers = omit_if_default:suggestion
 dotnet_style_readonly_field = true:suggestion
 dotnet_style_object_initializer = true:suggestion
 dotnet_style_collection_initializer = true:suggestion
+dotnet_style_prefer_collection_expression = true:suggestion
 dotnet_style_coalesce_expression = true:suggestion
 dotnet_style_null_propagation = true:suggestion
 dotnet_style_prefer_auto_properties = true:suggestion
@@ -59,6 +60,8 @@ csharp_style_expression_bodied_properties = true:suggestion
 csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
 csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
 csharp_prefer_simple_using_statement = true:suggestion
+csharp_style_prefer_method_group_conversion = true:suggestion
+csharp_style_prefer_primary_constructors = true:suggestion
 
 #### Naming ####
 # Convention: PascalCase types/methods/properties/events/namespaces/enums;
@@ -146,6 +149,9 @@ dotnet_naming_rule.parameters_locals_camel.severity = warning
 # https://www.jetbrains.com/help/resharper/ClassCannotBeInstantiated.html
 resharper_class_cannot_be_instantiated_highlighting = none
 
+# CheckNamespace: the flat MFTLib namespace is deliberate public API design.
+resharper_check_namespace_highlighting = none
+
 #### Per-project relaxations ####
 # Test project: CA1707 (underscores in member names) is the NUnit
 # Method_Scenario_Expected convention, and CA1861 (constant-array-arg perf) is
@@ -154,3 +160,21 @@ resharper_class_cannot_be_instantiated_highlighting = none
 [MFTLib.Tests/**.cs]
 dotnet_diagnostic.CA1707.severity = none
 dotnet_diagnostic.CA1861.severity = none
+
+# These public members are consumed by file-wizard and git-wizard.
+[MFTLib/Journal/UsnReason.cs]
+resharper_unused_member_global_highlighting = none
+
+[MFTLib/Broker/Client/JournalBrokerScanSession.Start.cs]
+resharper_unused_member_global_highlighting = none
+resharper_member_can_be_private_global_highlighting = none
+
+[MFTLib/Broker/Client/JournalBrokerScanSession.Rescan.cs]
+resharper_unused_member_global_highlighting = none
+resharper_member_can_be_private_global_highlighting = none
+
+[MFTLib/Broker/Client/JournalBrokerClient.cs]
+resharper_member_can_be_private_global_highlighting = none
+
+[MFTLib/Broker/SharedMemory/IMmfWriter.cs]
+resharper_unused_member_in_super_global_highlighting = none

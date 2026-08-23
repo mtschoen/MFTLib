@@ -12,10 +12,10 @@ namespace MFTLib.Tests;
 [TestClass]
 public class JournalBrokerScanSessionTests
 {
-    static readonly string[] BareDriveC = { "C" };
-    static readonly string[] DriveC = { "C:\\" };
-    static readonly string[] DriveD = { "D:\\" };
-    static readonly string[] DrivesCAndD = { "C:\\", "D:\\" };
+    static readonly string[] BareDriveC = ["C"];
+    static readonly string[] DriveC = ["C:\\"];
+    static readonly string[] DriveD = ["D:\\"];
+    static readonly string[] DrivesCAndD = ["C:\\", "D:\\"];
 
     [TestMethod]
     public async Task StartAsync_Scans_ParksWithLatestScanResult()
@@ -30,7 +30,7 @@ public class JournalBrokerScanSessionTests
 
         var client = new JournalBrokerClient(
             clientSide,
-            new FakeMmfReader(new[] { scanRecord }),
+            new FakeMmfReader([scanRecord]),
             (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
 
         var brokerTask = Task.Run(async () =>
@@ -40,7 +40,7 @@ public class JournalBrokerScanSessionTests
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(response, "C", armedCursor);
             BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 1, 1);
-            BrokerProtocol.WriteJournalBatch(response, "C", advancedCursor, new[] { catchUpEntry });
+            BrokerProtocol.WriteJournalBatch(response, "C", advancedCursor, [catchUpEntry]);
             BrokerProtocol.WriteError(response, "D", "journal wrapped");
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
@@ -77,7 +77,7 @@ public class JournalBrokerScanSessionTests
 
         var client = new JournalBrokerClient(
             clientSide,
-            new FakeMmfReader(new[] { scanRecord }),
+            new FakeMmfReader([scanRecord]),
             (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
 
         var brokerTask = Task.Run(async () =>
@@ -87,7 +87,7 @@ public class JournalBrokerScanSessionTests
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(response, "C", armedCursor);
             BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 1, 1);
-            BrokerProtocol.WriteJournalBatch(response, "C", advancedCursor, new[] { catchUpEntry });
+            BrokerProtocol.WriteJournalBatch(response, "C", advancedCursor, [catchUpEntry]);
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -123,10 +123,13 @@ public class JournalBrokerScanSessionTests
             await ReadOneFrameAsync(serverSide); // ArmAndScan
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 100L));
-            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 50, 1000, 100, 2000, TimeSpan.FromMilliseconds(50)));
-            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromMilliseconds(100)));
+            BrokerProtocol.WriteScanProgress(response,
+                new BrokerScanProgress("C", 50, 1000, 100, 2000, TimeSpan.FromMilliseconds(50)));
+            BrokerProtocol.WriteScanProgress(response,
+                new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromMilliseconds(100)));
             BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 100, 2000);
-            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 200L), Array.Empty<UsnJournalEntry>());
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 200L),
+                Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -162,9 +165,11 @@ public class JournalBrokerScanSessionTests
             await ReadOneFrameAsync(serverSide);
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 100L));
-            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromMilliseconds(100)));
+            BrokerProtocol.WriteScanProgress(response,
+                new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromMilliseconds(100)));
             BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 100, 2000);
-            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 200L), Array.Empty<UsnJournalEntry>());
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 200L),
+                Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -173,7 +178,7 @@ public class JournalBrokerScanSessionTests
         var options = new BrokerScanOptions
         {
             Profile = BrokerScanProfile.DirectoryIndex,
-            KeepFileNames = new[] { ".git" },
+            KeepFileNames = [".git"],
             Progress = progress
         };
 
@@ -279,7 +284,7 @@ public class JournalBrokerScanSessionTests
         var brokerTask = Task.Run(async () =>
         {
             await ReadOneFrameAsync(serverSide); // ArmAndScan request
-            serverSide.Dispose(); // EOF before any drive responds
+            await serverSide.DisposeAsync(); // EOF before any drive responds
         });
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
@@ -298,7 +303,7 @@ public class JournalBrokerScanSessionTests
         var (clientSide, _) = DuplexStream.CreatePair();
         var client = MakeMinimalFakeClient(clientSide);
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Assert.ThrowsExceptionAsync<OperationCanceledException> requires an exact type
         // match, but the concrete exception the BCL throws for an already-cancelled token
@@ -381,7 +386,7 @@ public class JournalBrokerScanSessionTests
 
         await session.DisposeAsync();
 
-        Assert.ThrowsException<ObjectDisposedException>(() => session.EnsureOperable());
+        Assert.ThrowsException<ObjectDisposedException>(session.EnsureOperable);
     }
 
     [TestMethod]
@@ -499,7 +504,7 @@ public class JournalBrokerScanSessionTests
 
         RaiseBrokerDied(client, "broker crashed");
 
-        var exception = Assert.ThrowsException<InvalidOperationException>(() => session.EnsureOperable());
+        var exception = Assert.ThrowsException<InvalidOperationException>(session.EnsureOperable);
         Assert.AreEqual("broker crashed", exception.Message);
 
         await session.DisposeAsync();
@@ -535,7 +540,7 @@ public class JournalBrokerScanSessionTests
             var pipeName = parts[Array.IndexOf(parts, "--pipe") + 1];
             brokerTask = Task.Run(async () =>
             {
-                using var pipe = new NamedPipeClientStream(
+                await using var pipe = new NamedPipeClientStream(
                     ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
                 await pipe.ConnectAsync(5000);
 
@@ -648,7 +653,7 @@ public class JournalBrokerScanSessionTests
         var cursor = new UsnJournalCursor(7UL, 210L);
         var entry = JournalEntryFactory.Create(1, 110, "f.txt");
         var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteJournalBatch(response, "C", cursor, new[] { entry });
+        BrokerProtocol.WriteJournalBatch(response, "C", cursor, [entry]);
         BrokerProtocol.WriteEndWatchAck(response);
         await serverSide.WriteAsync(response.WrittenMemory);
         await serverSide.FlushAsync();
@@ -730,7 +735,7 @@ public class JournalBrokerScanSessionTests
         await scanTask;
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Assert.ThrowsExceptionAsync<OperationCanceledException> requires an exact type
         // match, but the concrete exception the BCL throws for an already-cancelled
@@ -748,7 +753,7 @@ public class JournalBrokerScanSessionTests
         Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
 
         var watchFrameTask = ReadOneFrameAsync(serverSide);
-        await session.StartWatchAsync();
+        await session.StartWatchAsync(CancellationToken.None);
         var watchFrame = await watchFrameTask;
 
         Assert.AreEqual(BrokerFrameKind.StartWatch, watchFrame.Kind);
@@ -771,7 +776,7 @@ public class JournalBrokerScanSessionTests
         using var cts = new CancellationTokenSource();
         var startTask = session.StartWatchAsync(cts.Token);
         await gate.Entered;
-        cts.Cancel();
+        await cts.CancelAsync();
         gate.Release();
 
         try
@@ -786,7 +791,8 @@ public class JournalBrokerScanSessionTests
 
         try
         {
-            await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => session.StartWatchAsync());
+            await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() =>
+                session.StartWatchAsync(CancellationToken.None));
             Assert.AreEqual(JournalBrokerSessionState.Disposed, session.State);
         }
         finally
@@ -807,8 +813,8 @@ public class JournalBrokerScanSessionTests
         // right after the demux reads the header+body of the one live JournalBatch frame
         // written below (the 8th ReadAsync call), landing the cancellation between
         // while-loop iterations instead of racing an already-blocked read.
-        // aislop-ignore-next-line AccessToDisposedClosure -- cts is disposed only after the demux has finished (awaited via DisposeAsync), so this closure never touches a disposed instance
-        var wrapped = new CancelAfterReadsStream(clientSide, 8, () => cts.Cancel());
+        Action cancel = cts.Cancel;
+        var wrapped = new CancelAfterReadsStream(clientSide, 8, cancel);
         var client = MakeMinimalFakeClient(wrapped);
         var scanTask = RespondToArmAndScanAsync(serverSide, "C");
 
@@ -822,9 +828,9 @@ public class JournalBrokerScanSessionTests
 
         var entry = JournalEntryFactory.Create(1, 10, "a");
         var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 110L), new[] { entry });
-        await serverSide.WriteAsync(response.WrittenMemory);
-        await serverSide.FlushAsync();
+        BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 110L), [entry]);
+        await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
+        await serverSide.FlushAsync(CancellationToken.None);
 
         var received = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -983,7 +989,7 @@ public class JournalBrokerScanSessionTests
             var entry = JournalEntryFactory.Create(1, 110, "after-restart.txt");
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteJournalBatch(
-                response, "C", new UsnJournalCursor(7UL, 110L), new[] { entry });
+                response, "C", new UsnJournalCursor(7UL, 110L), [entry]);
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
             return endWatchCount;
@@ -1001,7 +1007,7 @@ public class JournalBrokerScanSessionTests
 
         var endWatchCount = await brokerTask;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await using var batches = session.WatchDriveAsync("C", timeout.Token).GetAsyncEnumerator();
+        await using var batches = session.WatchDriveAsync("C", timeout.Token).GetAsyncEnumerator(timeout.Token);
 
         Assert.AreEqual(1, endWatchCount);
         Assert.IsTrue(await batches.MoveNextAsync());
@@ -1013,7 +1019,7 @@ public class JournalBrokerScanSessionTests
     [TestCleanup]
     public void Cleanup()
     {
-        JournalBrokerClient.EndWatchAckTimeout = TimeSpan.FromSeconds(5);
+        JournalBrokerClient._endWatchAckTimeout = TimeSpan.FromSeconds(5);
     }
 
     [TestMethod]
@@ -1074,7 +1080,7 @@ public class JournalBrokerScanSessionTests
     [TestMethod]
     public async Task StopWatch_DisposedDuringHandshake_ThrowsObjectDisposed_DoesNotResurrectParked()
     {
-        JournalBrokerClient.EndWatchAckTimeout = TimeSpan.FromMilliseconds(50);
+        JournalBrokerClient._endWatchAckTimeout = TimeSpan.FromMilliseconds(50);
 
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var gate = new GateFrameWriteStream(clientSide, BrokerFrameKind.EndWatch);
@@ -1337,10 +1343,13 @@ public class JournalBrokerScanSessionTests
             await ReadOneFrameAsync(serverSide); // ArmAndScan for Rescan
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 300L));
-            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 25, 500, 100, 2000, TimeSpan.FromMilliseconds(25)));
-            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("C", 75, 1500, 100, 2000, TimeSpan.FromMilliseconds(75)));
+            BrokerProtocol.WriteScanProgress(response,
+                new BrokerScanProgress("C", 25, 500, 100, 2000, TimeSpan.FromMilliseconds(25)));
+            BrokerProtocol.WriteScanProgress(response,
+                new BrokerScanProgress("C", 75, 1500, 100, 2000, TimeSpan.FromMilliseconds(75)));
             BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 100, 2000);
-            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 400L), Array.Empty<UsnJournalEntry>());
+            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 400L),
+                Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -1375,14 +1384,17 @@ public class JournalBrokerScanSessionTests
             await ReadOneFrameAsync(serverSide); // ArmAndScan for Rescan
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(response, "D", new UsnJournalCursor(7UL, 300L));
-            BrokerProtocol.WriteScanProgress(response, new BrokerScanProgress("D", 50, 1000, 100, 2000, TimeSpan.FromMilliseconds(50)));
+            BrokerProtocol.WriteScanProgress(response,
+                new BrokerScanProgress("D", 50, 1000, 100, 2000, TimeSpan.FromMilliseconds(50)));
             BrokerProtocol.WriteScanReady(response, "mftlib-null-D", 100, 2000);
-            BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(7UL, 400L), Array.Empty<UsnJournalEntry>());
+            BrokerProtocol.WriteJournalBatch(response, "D", new UsnJournalCursor(7UL, 400L),
+                Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
 
-        await session.RescanAsync(DriveD, new BrokerScanOptions { Profile = BrokerScanProfile.DirectoryIndex, Progress = progress });
+        await session.RescanAsync(DriveD,
+            new BrokerScanOptions { Profile = BrokerScanProfile.DirectoryIndex, Progress = progress });
         await rescanBrokerTask;
 
         Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
@@ -1497,7 +1509,7 @@ public class JournalBrokerScanSessionTests
         var rescanTask = Task.Run(async () =>
         {
             await ReadOneFrameAsync(serverSide); // ArmAndScan request
-            serverSide.Dispose(); // EOF before any drive responds
+            await serverSide.DisposeAsync(); // EOF before any drive responds
         });
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => session.RescanAsync());
@@ -1522,7 +1534,7 @@ public class JournalBrokerScanSessionTests
         await scanTask;
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Assert.ThrowsExceptionAsync<OperationCanceledException> requires an exact
         // type match, but the concrete exception the BCL throws for an already-
@@ -1559,9 +1571,9 @@ public class JournalBrokerScanSessionTests
             Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await ReadOneFrameAsync(serverSide)).Kind);
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 0L));
-            await serverSide.WriteAsync(response.WrittenMemory);
-            await serverSide.FlushAsync();
-        });
+            await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
+            await serverSide.FlushAsync(CancellationToken.None);
+        }, CancellationToken.None);
 
         try
         {
@@ -1577,7 +1589,8 @@ public class JournalBrokerScanSessionTests
 
         try
         {
-            await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => session.StartWatchAsync());
+            await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() =>
+                session.StartWatchAsync(CancellationToken.None));
             Assert.AreEqual(JournalBrokerSessionState.Disposed, session.State);
         }
         finally
@@ -1605,7 +1618,7 @@ public class JournalBrokerScanSessionTests
         RaiseBrokerDied(client, "broker crashed mid-rescan");
         Assert.AreEqual(JournalBrokerSessionState.Faulted, session.State);
 
-        serverSide.Dispose(); // let the rescan's read loop observe EOF once unblocked
+        await serverSide.DisposeAsync(); // let the rescan's read loop observe EOF once unblocked
         gate.Release();
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => rescanTask);
@@ -1804,7 +1817,7 @@ public class JournalBrokerScanSessionTests
         var liveCursor = new UsnJournalCursor(7UL, 260L);
         var entry = JournalEntryFactory.Create(1, 210, "warm.txt");
         var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteJournalBatch(response, "C", liveCursor, new[] { entry });
+        BrokerProtocol.WriteJournalBatch(response, "C", liveCursor, [entry]);
         BrokerProtocol.WriteEndWatchAck(response);
         await serverSide.WriteAsync(response.WrittenMemory);
         await serverSide.FlushAsync();
@@ -1851,7 +1864,7 @@ public class JournalBrokerScanSessionTests
             0, 0x10, true, "C:", "C:\\");
         var client = new JournalBrokerClient(
             clientSide,
-            new FakeMmfReader(new[] { scanRecord }),
+            new FakeMmfReader([scanRecord]),
             (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
         var keepFileNames = new[] { "note.txt" };
 
@@ -1903,7 +1916,7 @@ public class JournalBrokerScanSessionTests
         var scanRecord = new ScanRecord(5, 5, 0, 0, 0x10, true, "C:", "C:\\");
         var client = new JournalBrokerClient(
             clientSide,
-            new FakeMmfReader(new[] { scanRecord }),
+            new FakeMmfReader([scanRecord]),
             (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
 
         var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 200L) };
@@ -1989,7 +2002,7 @@ public class JournalBrokerScanSessionTests
         using var cts = new CancellationTokenSource();
         var startTask = session.StartWatchAsync(cts.Token);
         await gate.Entered;
-        cts.Cancel();
+        await cts.CancelAsync();
         gate.Release();
 
         try
@@ -2004,7 +2017,8 @@ public class JournalBrokerScanSessionTests
 
         try
         {
-            await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => session.StartWatchAsync());
+            await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() =>
+                session.StartWatchAsync(CancellationToken.None));
             Assert.AreEqual(JournalBrokerSessionState.Disposed, session.State);
         }
         finally
@@ -2028,7 +2042,7 @@ public class JournalBrokerScanSessionTests
             var pipeName = parts[Array.IndexOf(parts, "--pipe") + 1];
             brokerTask = Task.Run(async () =>
             {
-                using var pipe = new NamedPipeClientStream(
+                await using var pipe = new NamedPipeClientStream(
                     ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
                 await pipe.ConnectAsync(5000);
 
@@ -2051,7 +2065,7 @@ public class JournalBrokerScanSessionTests
         Assert.IsNull(session.LatestScan);
 
         await session.StartWatchAsync(cts.Token);
-        await using var batches = session.WatchDriveAsync("C", cts.Token).GetAsyncEnumerator();
+        await using var batches = session.WatchDriveAsync("C", cts.Token).GetAsyncEnumerator(cts.Token);
         Assert.IsTrue(await batches.MoveNextAsync());
         Assert.AreEqual("warm.txt", batches.Current.Entries.Single().FileName);
 
@@ -2175,18 +2189,11 @@ public class JournalBrokerScanSessionTests
         handler?.Invoke(reason);
     }
 
-    sealed class FakeMmfReader : IMmfReader
+    sealed class FakeMmfReader(ScanRecord[] records) : IMmfReader
     {
-        readonly ScanRecord[] _records;
-
-        public FakeMmfReader(ScanRecord[] records)
-        {
-            _records = records;
-        }
-
         public ScanRecord[] Read(string mmfName, long byteLength)
         {
-            return _records;
+            return records;
         }
     }
 
@@ -2202,19 +2209,12 @@ public class JournalBrokerScanSessionTests
     // Wraps a stream and records whether it was disposed, so a test can assert the
     // session disposed its owned client without depending on the underlying stream's
     // own post-dispose exception semantics.
-    sealed class DisposeTrackingStream : Stream
+    sealed class DisposeTrackingStream(Stream inner) : Stream
     {
-        readonly Stream _inner;
-
-        public DisposeTrackingStream(Stream inner)
-        {
-            _inner = inner;
-        }
-
         public bool Disposed { get; private set; }
 
-        public override bool CanRead => _inner.CanRead;
-        public override bool CanWrite => _inner.CanWrite;
+        public override bool CanRead => inner.CanRead;
+        public override bool CanWrite => inner.CanWrite;
         public override bool CanSeek => false;
         public override long Length => throw new NotSupportedException();
 
@@ -2226,32 +2226,32 @@ public class JournalBrokerScanSessionTests
 
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            return _inner.ReadAsync(buffer, cancellationToken);
+            return inner.ReadAsync(buffer, cancellationToken);
         }
 
         public override int Read(byte[] buffer, int offset, int count)
         {
-            return _inner.Read(buffer, offset, count);
+            return inner.Read(buffer, offset, count);
         }
 
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            return _inner.WriteAsync(buffer, cancellationToken);
+            return inner.WriteAsync(buffer, cancellationToken);
         }
 
         public override void Write(byte[] buffer, int offset, int count)
         {
-            _inner.Write(buffer, offset, count);
+            inner.Write(buffer, offset, count);
         }
 
         public override void Flush()
         {
-            _inner.Flush();
+            inner.Flush();
         }
 
         public override Task FlushAsync(CancellationToken cancellationToken)
         {
-            return _inner.FlushAsync(cancellationToken);
+            return inner.FlushAsync(cancellationToken);
         }
 
         public override long Seek(long offset, SeekOrigin origin)
@@ -2269,7 +2269,7 @@ public class JournalBrokerScanSessionTests
             Disposed = true;
             if (disposing)
             {
-                _inner.Dispose();
+                inner.Dispose();
             }
 
             base.Dispose(disposing);
@@ -2278,7 +2278,7 @@ public class JournalBrokerScanSessionTests
 
     sealed class SyncProgress<T> : IProgress<T>
     {
-        public List<T> Reports { get; } = new();
+        public List<T> Reports { get; } = [];
 
         public void Report(T value)
         {

@@ -11,18 +11,18 @@ namespace MFTLib.Tests;
 [TestClass]
 public class JournalBrokerHostTests
 {
-    static readonly string[] ExpectedQueryThenScanCalls = { "query:C:", "scan:C:" };
+    static readonly string[] ExpectedQueryThenScanCalls = ["query:C:", "scan:C:"];
 
-    static readonly string[] KeepFileNamesGit = { ".git" };
-    static readonly string[] KeepFileNamesGitUppercase = { ".GIT" };
-    static readonly string[] KeepFileNamesNonMatching = { "other.txt" };
+    static readonly string[] KeepFileNamesGit = [".git"];
+    static readonly string[] KeepFileNamesGitUppercase = [".GIT"];
+    static readonly string[] KeepFileNamesNonMatching = ["other.txt"];
 
     static readonly ScanRecord[] DirectoryIndexSampleRecords =
-    {
+    [
         new(100, 5, 0, 0, 0x10, true, "repo", @"C:\repo"),
         new(101, 100, 0, 0, 0x20, false, ".git", @"C:\repo\.git"),
         new(102, 100, 0, 0, 0x20, false, "file.txt", @"C:\repo\file.txt")
-    };
+    ];
 
     [TestMethod]
     public void ArmAndScan_QueriesCursorBeforeScanning()
@@ -76,7 +76,7 @@ public class JournalBrokerHostTests
     public async Task ServeOnce_ArmAndScan_EmitsCursorScanReadyAndCatchUp()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var host = MakeFakeHost(new[] { SampleRecord() }, new[] { SampleEntry() });
+        var host = MakeFakeHost([SampleRecord()], [SampleEntry()]);
 
         var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-scan-C");
@@ -85,7 +85,7 @@ public class JournalBrokerHostTests
 
         var writeMmf = new RecordingMmfWriter();
         await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
-        serverSide.Dispose(); // signal EOF so the client read side completes
+        await serverSide.DisposeAsync(); // signal EOF so the client read side completes
 
         var frames = ReadAllFrames(clientSide);
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
@@ -105,11 +105,11 @@ public class JournalBrokerHostTests
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var host = new JournalBrokerHost(
             _ => new UsnJournalCursor(7UL, 0L),
-            (_, _) => new[]
-            {
-                new[] { new ScanRecord(1, 0, 100, 0, 0x20, false, "batch1.txt", @"C:\batch1.txt") },
-                new[] { new ScanRecord(2, 0, 200, 0, 0x20, false, "batch2.txt", @"C:\batch2.txt") }
-            },
+            (_, _) =>
+            [
+                [new ScanRecord(1, 0, 100, 0, 0x20, false, "batch1.txt", @"C:\batch1.txt")],
+                [new ScanRecord(2, 0, 200, 0, 0x20, false, "batch2.txt", @"C:\batch2.txt")]
+            ],
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
 
         var request = new ArrayBufferWriter<byte>();
@@ -119,7 +119,7 @@ public class JournalBrokerHostTests
 
         var writeMmf = new RecordingMmfWriter();
         await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
-        serverSide.Dispose();
+        await serverSide.DisposeAsync();
 
         var frames = ReadAllFrames(clientSide);
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
@@ -136,11 +136,11 @@ public class JournalBrokerHostTests
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var host = new JournalBrokerHost(
             _ => new UsnJournalCursor(7UL, 0L),
-            (_, _) => new[]
-            {
-                new[] { new ScanRecord(1, 0, 100, 0, 0x20, false, "b1.txt", @"C:\b1.txt") },
-                new[] { new ScanRecord(2, 0, 200, 0, 0x20, false, "b2.txt", @"C:\b2.txt") }
-            },
+            (_, _) =>
+            [
+                [new ScanRecord(1, 0, 100, 0, 0x20, false, "b1.txt", @"C:\b1.txt")],
+                [new ScanRecord(2, 0, 200, 0, 0x20, false, "b2.txt", @"C:\b2.txt")]
+            ],
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
 
         var request = new ArrayBufferWriter<byte>();
@@ -150,7 +150,7 @@ public class JournalBrokerHostTests
 
         var legacyWriter = new LegacyMmfWriterDouble();
         await host.ServeAsync(serverSide, legacyWriter, true, CancellationToken.None);
-        serverSide.Dispose();
+        await serverSide.DisposeAsync();
 
         var frames = ReadAllFrames(clientSide);
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
@@ -158,17 +158,6 @@ public class JournalBrokerHostTests
         var scanReady = frames.Single(f => f.Kind == BrokerFrameKind.ScanReady);
         Assert.AreEqual(2, scanReady.RecordCount);
         Assert.AreEqual(2, legacyWriter.LastRecords.Length);
-    }
-
-    sealed class LegacyMmfWriterDouble : IMmfWriter
-    {
-        public ScanRecord[] LastRecords { get; private set; } = Array.Empty<ScanRecord>();
-
-        public long Write(string mmfName, ScanRecord[] records)
-        {
-            LastRecords = records;
-            return 1234;
-        }
     }
 
     [TestMethod]
@@ -232,7 +221,7 @@ public class JournalBrokerHostTests
     public async Task ServeOnce_UnknownProfileToken_ThrowsInvalidDataException()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var host = MakeFakeHost(new[] { SampleRecord() }, Array.Empty<UsnJournalEntry>());
+        var host = MakeFakeHost([SampleRecord()], Array.Empty<UsnJournalEntry>());
 
         var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-scan-C:99");
@@ -268,7 +257,7 @@ public class JournalBrokerHostTests
         await clientSide.FlushAsync();
 
         await host.ServeAsync(serverSide, new RecordingMmfWriter(), true, CancellationToken.None);
-        serverSide.Dispose();
+        await serverSide.DisposeAsync();
 
         var frames = ReadAllFrames(clientSide);
         Assert.AreEqual(1, frames.Count);
@@ -290,7 +279,7 @@ public class JournalBrokerHostTests
 
         // oneShot false: only Shutdown should end the loop.
         await host.ServeAsync(serverSide, new RecordingMmfWriter(), false, CancellationToken.None);
-        serverSide.Dispose();
+        await serverSide.DisposeAsync();
 
         Assert.AreEqual(0, ReadAllFrames(clientSide).Count);
     }
@@ -329,7 +318,7 @@ public class JournalBrokerHostTests
         var batches = new[]
         {
             (new[] { SampleEntry() }, new UsnJournalCursor(7UL, 110L)),
-            (new[] { SampleEntry() }, new UsnJournalCursor(7UL, 120L))
+            ([SampleEntry()], new UsnJournalCursor(7UL, 120L))
         };
         var host = new JournalBrokerHost(
             _ => default,
@@ -340,8 +329,8 @@ public class JournalBrokerHostTests
         using var cts = new CancellationTokenSource();
         var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteStartWatch(request, "C:7:100");
-        await clientSide.WriteAsync(request.WrittenMemory);
-        await clientSide.FlushAsync();
+        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
 
         var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
 
@@ -354,7 +343,7 @@ public class JournalBrokerHostTests
         Assert.AreEqual(new UsnJournalCursor(7UL, 110L), first.Cursor);
         Assert.AreEqual(new UsnJournalCursor(7UL, 120L), second.Cursor);
 
-        cts.Cancel();
+        await cts.CancelAsync();
         await serveTask; // returns cleanly once cancelled
     }
 
@@ -370,15 +359,15 @@ public class JournalBrokerHostTests
             (_, since, cancellationToken) =>
             {
                 watchedFrom = since;
-                return FakeWatch(new[] { (new[] { SampleEntry() }, new UsnJournalCursor(9UL, 510L)) },
+                return FakeWatch([([SampleEntry()], new UsnJournalCursor(9UL, 510L))],
                     cancellationToken);
             });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteStartWatch(request, "C:0:0"); // no cached cursor -> sentinel
-        await clientSide.WriteAsync(request.WrittenMemory);
-        await clientSide.FlushAsync();
+        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
 
         var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
 
@@ -386,7 +375,7 @@ public class JournalBrokerHostTests
         Assert.AreEqual(BrokerFrameKind.JournalBatch, first.Kind);
         Assert.AreEqual(new UsnJournalCursor(9UL, 500L), watchedFrom);
 
-        cts.Cancel();
+        await cts.CancelAsync();
         await serveTask;
     }
 
@@ -405,7 +394,7 @@ public class JournalBrokerHostTests
             (_, _, cancellationToken) =>
             {
                 watchStarted.TrySetResult();
-                return FakeWatch(new[] { (new[] { SampleEntry() }, new UsnJournalCursor(7UL, 110L)) },
+                return FakeWatch([([SampleEntry()], new UsnJournalCursor(7UL, 110L))],
                     cancellationToken);
             });
 
@@ -447,10 +436,10 @@ public class JournalBrokerHostTests
         var (_, serverSide) = DuplexStream.CreatePair();
         var host = MakeFakeHost(Array.Empty<ScanRecord>(), Array.Empty<UsnJournalEntry>());
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
-        var finished = await Task.WhenAny(serveTask, Task.Delay(TimeSpan.FromSeconds(5)));
+        var finished = await Task.WhenAny(serveTask, Task.Delay(TimeSpan.FromSeconds(5), CancellationToken.None));
 
         Assert.AreSame(serveTask, finished);
         await serveTask;
@@ -466,7 +455,7 @@ public class JournalBrokerHostTests
         BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-scan-C");
         await clientSide.WriteAsync(request.WrittenMemory);
         await clientSide.FlushAsync();
-        clientSide.Dispose(); // close before Shutdown - the host's second read hits clean EOF
+        await clientSide.DisposeAsync(); // close before Shutdown - the host's second read hits clean EOF
 
         // oneShot: false so ServeAsync loops back and must observe the EOF itself.
         await host.ServeAsync(serverSide, new RecordingMmfWriter(), false, CancellationToken.None);
@@ -483,7 +472,7 @@ public class JournalBrokerHostTests
         await clientSide.WriteAsync(header);
         await clientSide.WriteAsync(new byte[] { 1, 2, 3 }); // delivers only 3
         await clientSide.FlushAsync();
-        clientSide.Dispose(); // EOF partway through the frame body
+        await clientSide.DisposeAsync(); // EOF partway through the frame body
 
         await Assert.ThrowsExceptionAsync<EndOfStreamException>(() =>
             host.ServeAsync(serverSide, new RecordingMmfWriter(), false, CancellationToken.None));
@@ -502,7 +491,7 @@ public class JournalBrokerHostTests
         BinaryPrimitives.WriteInt32LittleEndian(header, 10);
         await clientSide.WriteAsync(header);
         await clientSide.FlushAsync();
-        clientSide.Dispose();
+        await clientSide.DisposeAsync();
 
         await Assert.ThrowsExceptionAsync<EndOfStreamException>(() =>
             host.ServeAsync(serverSide, new RecordingMmfWriter(), false, CancellationToken.None));
@@ -517,7 +506,7 @@ public class JournalBrokerHostTests
             _ => Array.Empty<ScanRecord>(),
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
             (_, _, cancellationToken) =>
-                FakeWatch(new[] { (new[] { SampleEntry() }, new UsnJournalCursor(7UL, 110L)) }, cancellationToken));
+                FakeWatch([([SampleEntry()], new UsnJournalCursor(7UL, 110L))], cancellationToken));
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var first = new ArrayBufferWriter<byte>();
@@ -569,7 +558,7 @@ public class JournalBrokerHostTests
         Assert.AreEqual("C", frame.Drive);
         Assert.AreEqual("Broker has no watch source", frame.Message);
 
-        cts.Cancel();
+        await cts.CancelAsync();
         await serveTask;
     }
 
@@ -581,7 +570,7 @@ public class JournalBrokerHostTests
             _ => default,
             _ => Array.Empty<ScanRecord>(),
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            (_, _, _) => FiniteWatch(new[] { (new[] { SampleEntry() }, new UsnJournalCursor(7UL, 110L)) }));
+            (_, _, _) => FiniteWatch([([SampleEntry()], new UsnJournalCursor(7UL, 110L))]));
 
         var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteStartWatch(request, "C:7:100");
@@ -596,8 +585,8 @@ public class JournalBrokerHostTests
 
         var shutdown = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteShutdown(shutdown);
-        await clientSide.WriteAsync(shutdown.WrittenMemory);
-        await clientSide.FlushAsync();
+        await clientSide.WriteAsync(shutdown.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
         await serveTask;
     }
 
@@ -626,8 +615,8 @@ public class JournalBrokerHostTests
 
         var shutdown = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteShutdown(shutdown);
-        await clientSide.WriteAsync(shutdown.WrittenMemory);
-        await clientSide.FlushAsync();
+        await clientSide.WriteAsync(shutdown.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
         await serveTask;
     }
 
@@ -658,17 +647,12 @@ public class JournalBrokerHostTests
         await Task.CompletedTask;
     }
 
-    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> ThrowingWatch()
+    static IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> ThrowingWatch()
     {
-        await Task.Yield();
-        throw new InvalidOperationException("journal wrapped mid-stream");
-#pragma warning disable CS0162
-        // Required so the compiler emits the iterator state machine for
-        // IAsyncEnumerable; the throw above is unconditional and intentional (a test
-        // double for a watch source that fails immediately).
-        // aislop-ignore-next-line HeuristicUnreachableCode -- unreachable but required so the compiler emits the iterator state machine for IAsyncEnumerable
-        yield break;
-#pragma warning restore CS0162
+        var channel = System.Threading.Channels.Channel.CreateUnbounded<
+            (UsnJournalEntry[], UsnJournalCursor)>();
+        channel.Writer.TryComplete(new InvalidOperationException("journal wrapped mid-stream"));
+        return channel.Reader.ReadAllAsync();
     }
 
     static async Task<BrokerFrame> ReadOneFrameAsync(Stream stream)
@@ -699,11 +683,11 @@ public class JournalBrokerHostTests
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var host = new JournalBrokerHost(
             _ => new UsnJournalCursor(7UL, 0L),
-            (_, _) => new[]
-            {
-                new[] { new ScanRecord(1, 0, 100, 0, 0x20, false, "r1.txt", @"C:\r1.txt") },
-                new[] { new ScanRecord(2, 0, 200, 0, 0x20, false, "r2.txt", @"C:\r2.txt") }
-            },
+            (_, _) =>
+            [
+                [new ScanRecord(1, 0, 100, 0, 0x20, false, "r1.txt", @"C:\r1.txt")],
+                [new ScanRecord(2, 0, 200, 0, 0x20, false, "r2.txt", @"C:\r2.txt")]
+            ],
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
 
         var request = new ArrayBufferWriter<byte>();
@@ -713,7 +697,7 @@ public class JournalBrokerHostTests
 
         var writeMmf = new RecordingMmfWriter();
         await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
-        serverSide.Dispose();
+        await serverSide.DisposeAsync();
 
         var frames = ReadAllFrames(clientSide);
         Assert.IsTrue(frames.Count >= 3, "Expected at least Cursor, ScanProgress, and ScanReady frames");
@@ -722,7 +706,8 @@ public class JournalBrokerHostTests
         var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
         Assert.IsTrue(scanReadyIndex > 0, "ScanReady frame must be present");
         var finalProgressIndex = scanReadyIndex - 1;
-        Assert.AreEqual(BrokerFrameKind.ScanProgress, frames[finalProgressIndex].Kind, "Final progress frame must immediately precede ScanReady");
+        Assert.AreEqual(BrokerFrameKind.ScanProgress, frames[finalProgressIndex].Kind,
+            "Final progress frame must immediately precede ScanReady");
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[scanReadyIndex + 1].Kind);
 
         var progress = frames[finalProgressIndex].Progress;
@@ -737,10 +722,10 @@ public class JournalBrokerHostTests
     [TestMethod]
     public async Task ServeOnce_ScanProgress_ThrottlesNonFinalFrames()
     {
-        var originalThrottle = JournalBrokerHost.ProgressThrottleInterval;
+        var originalThrottle = JournalBrokerHost._progressThrottleInterval;
         try
         {
-            JournalBrokerHost.ProgressThrottleInterval = TimeSpan.FromMinutes(10);
+            JournalBrokerHost._progressThrottleInterval = TimeSpan.FromMinutes(10);
 
             var (clientSide, serverSide) = DuplexStream.CreatePair();
             var host = new JournalBrokerHost(
@@ -751,8 +736,9 @@ public class JournalBrokerHostTests
                     for (var i = 0; i < 20; i++)
                     {
                         progress?.Report(new MmfWriteProgress(i, i * 100, 20, 2000));
-                        batches.Add(new[] { new ScanRecord((ulong)i, 0, 100, 0, 0x20, false, $"r{i}.txt", $@"C:\r{i}.txt") });
+                        batches.Add([new ScanRecord((ulong)i, 0, 100, 0, 0x20, false, $"r{i}.txt", $@"C:\r{i}.txt")]);
                     }
+
                     return batches;
                 },
                 (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
@@ -764,21 +750,23 @@ public class JournalBrokerHostTests
 
             var writeMmf = new RecordingMmfWriter();
             await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
-            serverSide.Dispose();
+            await serverSide.DisposeAsync();
 
             var frames = ReadAllFrames(clientSide);
             var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
             // With a 10-minute throttle interval, the rapid burst of 20 reports emits at most 1 initial non-final frame
             // plus 1 final synthetic frame before ScanReady (at most 2 total progress frames).
             Assert.IsTrue(progressFrames.Count >= 1, "At least one progress frame must be emitted");
-            Assert.IsTrue(progressFrames.Count <= 2, $"Expected at most 2 progress frames due to throttling, but got {progressFrames.Count}");
+            Assert.IsTrue(progressFrames.Count <= 2,
+                $"Expected at most 2 progress frames due to throttling, but got {progressFrames.Count}");
             var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
             var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
-            Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "Final progress frame must immediately precede ScanReady");
+            Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex,
+                "Final progress frame must immediately precede ScanReady");
         }
         finally
         {
-            JournalBrokerHost.ProgressThrottleInterval = originalThrottle;
+            JournalBrokerHost._progressThrottleInterval = originalThrottle;
         }
     }
 
@@ -794,12 +782,12 @@ public class JournalBrokerHostTests
 
         var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-cancel-C");
-        await clientSide.WriteAsync(request.WrittenMemory);
-        await clientSide.FlushAsync();
+        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
 
         var writeMmf = new RecordingMmfWriter();
         await host.ServeAsync(serverSide, writeMmf, true, cts.Token);
-        serverSide.Dispose();
+        await serverSide.DisposeAsync();
 
         var frames = ReadAllFrames(clientSide);
         Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Error),
@@ -810,13 +798,13 @@ public class JournalBrokerHostTests
     [TestMethod]
     public async Task ServeOnce_ScanProgress_MonotonicAcrossParseAndWritePhases()
     {
-        var originalThrottle = JournalBrokerHost.ProgressThrottleInterval;
+        var originalThrottle = JournalBrokerHost._progressThrottleInterval;
         try
         {
             // Zero, not a small interval: a non-zero throttle makes emission depend on
             // real elapsed time between reports, which is what made this test flake on
             // CI. With Zero the pump emits every value it manages to read.
-            JournalBrokerHost.ProgressThrottleInterval = TimeSpan.Zero;
+            JournalBrokerHost._progressThrottleInterval = TimeSpan.Zero;
 
             var (clientSide, serverSide) = DuplexStream.CreatePair();
             var host = new JournalBrokerHost(
@@ -832,12 +820,12 @@ public class JournalBrokerHostTests
                             null));
                     }
 
-                    return new[]
-                    {
-                        new[] { new ScanRecord(1, 0, 100, 0, 0x20, false, "r1.txt", @"C:\r1.txt") },
-                        new[] { new ScanRecord(2, 0, 200, 0, 0x20, false, "r2.txt", @"C:\r2.txt") },
-                        new[] { new ScanRecord(3, 0, 300, 0, 0x20, false, "r3.txt", @"C:\r3.txt") }
-                    };
+                    return
+                    [
+                        [new ScanRecord(1, 0, 100, 0, 0x20, false, "r1.txt", @"C:\r1.txt")],
+                        [new ScanRecord(2, 0, 200, 0, 0x20, false, "r2.txt", @"C:\r2.txt")],
+                        [new ScanRecord(3, 0, 300, 0, 0x20, false, "r3.txt", @"C:\r3.txt")]
+                    ];
                 },
                 (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
 
@@ -848,7 +836,7 @@ public class JournalBrokerHostTests
 
             var writeMmf = new RecordingMmfWriter();
             await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
-            serverSide.Dispose();
+            await serverSide.DisposeAsync();
 
             var frames = ReadAllFrames(clientSide);
             var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
@@ -862,7 +850,8 @@ public class JournalBrokerHostTests
 
             var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
             var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
-            Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "Final progress frame must immediately precede ScanReady");
+            Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex,
+                "Final progress frame must immediately precede ScanReady");
 
             long previousRecords = 0;
             var previousElapsed = TimeSpan.Zero;
@@ -888,7 +877,7 @@ public class JournalBrokerHostTests
         }
         finally
         {
-            JournalBrokerHost.ProgressThrottleInterval = originalThrottle;
+            JournalBrokerHost._progressThrottleInterval = originalThrottle;
         }
     }
 
@@ -903,7 +892,7 @@ public class JournalBrokerHostTests
             (_, p, _) =>
             {
                 p?.Report(new MmfWriteProgress(500, 10000, 1500, 30000));
-                return new[] { new[] { SampleRecord() } };
+                return [[SampleRecord()]];
             },
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
 
@@ -941,18 +930,22 @@ public class JournalBrokerHostTests
         return frames;
     }
 
-    sealed class DirectProgress : IProgress<MmfWriteProgress>
+    sealed class LegacyMmfWriterDouble : IMmfWriter
     {
-        readonly Action<MmfWriteProgress> _handler;
+        public ScanRecord[] LastRecords { get; private set; } = Array.Empty<ScanRecord>();
 
-        public DirectProgress(Action<MmfWriteProgress> handler)
+        public long Write(string mmfName, ScanRecord[] records)
         {
-            _handler = handler;
+            LastRecords = records;
+            return 1234;
         }
+    }
 
+    sealed class DirectProgress(Action<MmfWriteProgress> handler) : IProgress<MmfWriteProgress>
+    {
         public void Report(MmfWriteProgress value)
         {
-            _handler(value);
+            handler(value);
         }
     }
 }

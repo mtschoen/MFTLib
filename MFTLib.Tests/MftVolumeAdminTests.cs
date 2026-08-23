@@ -301,7 +301,7 @@ public class MftVolumeAdminTests
     public void GetVolumeHandle_ValidVolume_ReturnsValidHandle()
     {
         RequireElevation();
-        using var handle = FileUtilities.GetVolumeHandle(@"\\.\C:");
+        using var handle = FileUtilities._getVolumeHandle(@"\\.\C:");
         Assert.IsFalse(handle.IsInvalid);
         Assert.IsFalse(handle.IsClosed);
     }
@@ -310,7 +310,7 @@ public class MftVolumeAdminTests
     public void GetVolumeHandle_InvalidVolume_Throws()
     {
         RequireElevation();
-        Assert.ThrowsException<IOException>(() => FileUtilities.GetVolumeHandle(@"\\.\Q:"));
+        Assert.ThrowsException<IOException>(() => FileUtilities._getVolumeHandle(@"\\.\Q:"));
     }
 
     [TestMethod]
@@ -337,7 +337,7 @@ public class MftVolumeAdminTests
         var result = volume.StreamRecords();
         result.Dispose();
 
-        Assert.ThrowsException<ObjectDisposedException>(() => result.ToArray());
+        Assert.ThrowsException<ObjectDisposedException>(result.ToArray);
     }
 
     [TestMethod]
@@ -437,7 +437,7 @@ public class MftVolumeAdminTests
         RequireElevation();
         using var volume = MftVolume.Open("C");
         var batches = new List<MftRecord[]>();
-        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, batchSize: 100))
+        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, 100))
         {
             batches.Add(batch);
             if (batches.Count == 2)

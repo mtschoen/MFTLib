@@ -83,7 +83,7 @@ public class MftResultTests
     [TestMethod]
     public void GetMftNativeAbiVersion_ReturnsVersion2()
     {
-        var version = MFTLibNative.GetMftNativeAbiVersion();
+        var version = MFTLibNative._getMftNativeAbiVersion();
         Assert.AreEqual(2U, version);
     }
 
@@ -99,7 +99,7 @@ public class MftResultTests
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
-        MFTLibNative.FreeMftResult = Marshal.FreeHGlobal;
+        MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
         var ex = Assert.ThrowsException<InvalidOperationException>(() =>
             new MftResult(resultPtr, "C", 0));
@@ -118,7 +118,7 @@ public class MftResultTests
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
-        MFTLibNative.FreeMftResult = Marshal.FreeHGlobal;
+        MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
         var ex = Assert.ThrowsException<InvalidOperationException>(() =>
             new MftResult(resultPtr, "C", 0));
@@ -152,7 +152,7 @@ public class MftResultTests
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(result, resultPtr, false);
-            MFTLibNative.FreeMftResult = Marshal.FreeHGlobal;
+            MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr, "C", 0);
             var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToArray);
@@ -192,7 +192,7 @@ public class MftResultTests
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(result, resultPtr, false);
-            MFTLibNative.FreeMftResult = Marshal.FreeHGlobal;
+            MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr, "C", 0);
             var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToArray);
@@ -232,7 +232,7 @@ public class MftResultTests
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(result, resultPtr, false);
-            MFTLibNative.FreeMftResult = Marshal.FreeHGlobal;
+            MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr, "C", 0);
             var records = mftResult.ToArray();
@@ -276,7 +276,7 @@ public class MftResultTests
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(result, resultPtr, false);
-            MFTLibNative.FreeMftResult = Marshal.FreeHGlobal;
+            MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr, "C", 0);
             var records = mftResult.ToArray();
@@ -325,7 +325,7 @@ public class MftResultTests
             };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(result, resultPtr, false);
-            MFTLibNative.FreeMftResult = Marshal.FreeHGlobal;
+            MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
             using var mftResult = new MftResult(resultPtr, "C", 0);
             var records = mftResult.ToArray();
@@ -343,10 +343,9 @@ public class MftResultTests
     [TestMethod]
     public void MftVolume_EnsureCompatibleNativeAbi_ThrowsOnMismatch()
     {
-        MFTLibNative.GetMftNativeAbiVersion = () => 999;
+        MFTLibNative._getMftNativeAbiVersion = () => 999;
 
-        var ex = Assert.ThrowsException<InvalidOperationException>(() =>
-            MFTLibNative.EnsureCompatibleNativeAbi());
+        var ex = Assert.ThrowsException<InvalidOperationException>(MFTLibNative.EnsureCompatibleNativeAbi);
         Assert.IsTrue(ex.Message.Contains("ABI mismatch"));
     }
 
@@ -358,7 +357,7 @@ public class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
 
         Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
         {
@@ -372,7 +371,7 @@ public class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
         var result = new MftResult(resultPtr, string.Empty, 0);
         result.Dispose();
 
@@ -385,7 +384,7 @@ public class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
         using var result = new MftResult(resultPtr, string.Empty, 0);
 
         var expectedRecordNumbers = result.Select(r => r.RecordNumber).ToArray();
@@ -405,7 +404,7 @@ public class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
         using var result = new MftResult(resultPtr, string.Empty, 0);
 
         const int batchSize = 64;
@@ -416,6 +415,7 @@ public class MftResultTests
         {
             Assert.AreEqual(batchSize, batches[i].Length);
         }
+
         Assert.IsTrue(batches[^1].Length <= batchSize);
 
         var expectedRecordNumbers = result.Select(r => r.RecordNumber).ToArray();
@@ -428,10 +428,10 @@ public class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, 256);
         using var result = new MftResult(resultPtr, "C", 0);
 
-        var batches = result.MaterializeBatches(batchSize: 50).ToList();
+        var batches = result.MaterializeBatches(50).ToList();
         var withPaths = batches.SelectMany(b => b).Where(r => r.FullPath != null).ToArray();
         Assert.IsTrue(withPaths.Length > 0);
     }
@@ -441,10 +441,10 @@ public class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
         using var result = new MftResult(resultPtr, string.Empty, 0);
 
-        using var enumerator = result.MaterializeBatches(batchSize: 10).GetEnumerator();
+        using var enumerator = result.MaterializeBatches(10).GetEnumerator();
         Assert.IsTrue(enumerator.MoveNext());
         var firstBatch = enumerator.Current;
         var firstBatchNames = firstBatch.Select(r => r.FileName).ToArray();
@@ -464,11 +464,11 @@ public class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative.ParseMFTFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
         using var result = new MftResult(resultPtr, string.Empty, 0);
         var expectedRecords = result.ToArray();
 
-        var batches = result.MaterializeBatches(batchSize: 128).ToList();
+        var batches = result.MaterializeBatches(128).ToList();
         var actualRecords = batches.SelectMany(b => b).ToArray();
 
         Assert.AreEqual(expectedRecords.Length, actualRecords.Length);

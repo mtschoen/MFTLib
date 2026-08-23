@@ -16,13 +16,13 @@ public static class BrokerLauncher
     // Swappable dependencies for testability - a real UAC prompt and a real elevated
     // launch cannot be exercised from an in-process unit test, so tests substitute
     // these to reach the success, null-process, and declined-prompt branches.
-    internal static Func<string?> GetProcessPathFunc = () => Environment.ProcessPath;
-    internal static Func<ProcessStartInfo, Process?> StartProcess = Process.Start;
+    internal static Func<string?> _getProcessPathFunc = () => Environment.ProcessPath;
+    internal static Func<ProcessStartInfo, Process?> _startProcess = Process.Start;
 
     internal static void ResetToDefaults()
     {
-        GetProcessPathFunc = () => Environment.ProcessPath;
-        StartProcess = Process.Start;
+        _getProcessPathFunc = () => Environment.ProcessPath;
+        _startProcess = Process.Start;
     }
 
     /// <summary>
@@ -32,7 +32,7 @@ public static class BrokerLauncher
     [SupportedOSPlatform("windows")]
     public static bool Launch(string brokerArgs)
     {
-        var exePath = GetProcessPathFunc()
+        var exePath = _getProcessPathFunc()
                       ?? throw new InvalidOperationException(
                           "Cannot determine the current executable path to launch the broker");
 
@@ -47,7 +47,7 @@ public static class BrokerLauncher
 
         try
         {
-            var process = StartProcess(startInfo);
+            var process = _startProcess(startInfo);
             return process != null;
         }
         catch (Win32Exception)

@@ -89,23 +89,24 @@ public class JournalBrokerHostRealSeamsTests
     [TestMethod]
     public void ArmAndScanAndCatchUp_UseRealMftVolumeSeams()
     {
-        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeHandle();
 
         var queryInfo = new UsnJournalInfoNative { JournalId = 0xABCD, NextUsn = 5000 };
         var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
         Marshal.StructureToPtr(queryInfo, queryPtr, false);
-        MFTLibNative.QueryUsnJournal = _ => queryPtr;
-        MFTLibNative.FreeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
+        MFTLibNative._queryUsnJournal = _ => queryPtr;
+        MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
 
         var parsePtr = BuildThreePathRecordsResult();
-        MFTLibNative.ParseMFTRecords = (_, _, _, _) => parsePtr;
-        MFTLibNative.FreeMftResult = ptr =>
+        MFTLibNative._parseMftRecords = (_, _, _, _) => parsePtr;
+        MFTLibNative._freeMftResult = ptr =>
         {
             var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
             if (parsed.PathEntries != IntPtr.Zero)
             {
                 Marshal.FreeHGlobal(parsed.PathEntries);
             }
+
             if (parsed.PathStrings != IntPtr.Zero)
             {
                 Marshal.FreeHGlobal(parsed.PathStrings);
@@ -134,8 +135,8 @@ public class JournalBrokerHostRealSeamsTests
         };
         var readPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
         Marshal.StructureToPtr(readResult, readPtr, false);
-        MFTLibNative.ReadUsnJournal = (_, _, _) => readPtr;
-        MFTLibNative.FreeUsnJournalResult = _ => Marshal.FreeHGlobal(readPtr);
+        MFTLibNative._readUsnJournal = (_, _, _) => readPtr;
+        MFTLibNative._freeUsnJournalResult = _ => Marshal.FreeHGlobal(readPtr);
 
         var (entries, updated) = host.CatchUp("C", cursor);
         Assert.AreEqual(0, entries.Length);
@@ -145,24 +146,24 @@ public class JournalBrokerHostRealSeamsTests
     [TestMethod]
     public async Task ServeAsync_StartWatch_UsesRealWatchAndDisposeSeam()
     {
-        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeHandle();
 
         var callCount = 0;
-        MFTLibNative.WatchUsnJournalBatch = (_, startUsn, journalId) =>
+        MFTLibNative._watchUsnJournalBatch = (_, startUsn, journalId) =>
         {
             callCount++;
             return callCount == 1
                 ? BuildEmptyWatchResult(journalId, startUsn)
                 : BuildSingleEntryWatchResult(journalId, startUsn + 100, "watched.txt", 0x100 /* FileCreate */);
         };
-        MFTLibNative.CancelUsnJournalWatch = _ => true;
-        MFTLibNative.FreeUsnJournalResult = ptr => Marshal.FreeHGlobal(ptr);
+        MFTLibNative._cancelUsnJournalWatch = _ => true;
+        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
 
         var host = JournalBrokerHost.CreateDefault();
         var (clientSide, serverSide) = DuplexStream.CreatePair();
 
         // A non-zero JournalId means the host uses this cursor directly instead of
-        // calling queryCursor (which would need MFTLibNative.QueryUsnJournal mocked
+        // calling queryCursor (which would need MFTLibNative._queryUsnJournal mocked
         // too) - keeps this test focused on the watch seam.
         var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteStartWatch(request, "C:7:100");
@@ -176,39 +177,39 @@ public class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
         Assert.AreEqual("watched.txt", frame.Entries[0].FileName);
 
-        cts.Cancel();
+        await cts.CancelAsync();
         await serveTask; // ServeAsync swallows OperationCanceledException internally
     }
 
     [TestMethod]
     public async Task ServeAsync_StartWatch_CancelledBetweenEmptyBatches_EndsWatchCleanly()
     {
-        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeHandle();
         // Not a `using var`: the token is captured by the WatchUsnJournalBatch mock
         // below, so it is disposed explicitly at the end instead - safe because that
         // Dispose() runs only after ServeAsync (which drives the mock) completes.
         var cts = new CancellationTokenSource();
+        Action cancel = cts.Cancel;
 
-        MFTLibNative.WatchUsnJournalBatch = (_, startUsn, journalId) =>
+        MFTLibNative._watchUsnJournalBatch = (_, startUsn, journalId) =>
         {
             // Simulate cancellation racing the kernel wait: cancel, then return an
             // empty batch. MftVolume.WatchUsnJournalWithCursor treats "empty batch +
             // already cancelled" as a clean `yield break`, distinct from a cancelled
             // Task.Run throwing OperationCanceledException.
-            // aislop-ignore-next-line AccessToDisposedClosure -- cts is disposed only after ServeAsync (which invokes this mock synchronously) completes, so this closure never touches a disposed instance
-            cts.Cancel();
+            cancel();
             return BuildEmptyWatchResult(journalId, startUsn);
         };
-        MFTLibNative.CancelUsnJournalWatch = _ => true;
-        MFTLibNative.FreeUsnJournalResult = ptr => Marshal.FreeHGlobal(ptr);
+        MFTLibNative._cancelUsnJournalWatch = _ => true;
+        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
 
         var host = JournalBrokerHost.CreateDefault();
         var (clientSide, serverSide) = DuplexStream.CreatePair();
 
         var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteStartWatch(request, "C:7:100");
-        await clientSide.WriteAsync(request.WrittenMemory);
-        await clientSide.FlushAsync();
+        await clientSide.WriteAsync(request.WrittenMemory, cts.Token);
+        await clientSide.FlushAsync(cts.Token);
 
         // ServeAsync's own token is the same source: once the watch ends cleanly,
         // the outer serve loop unwinds too (its blocked read gets cancelled).

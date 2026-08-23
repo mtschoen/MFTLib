@@ -6,18 +6,18 @@ namespace Benchmark;
 
 public partial class BenchmarkRunner
 {
-    internal int RunCompare(string[] arguments)
+    int RunCompare(string[] arguments)
     {
         if (arguments.Length < 2)
         {
-            WriteLineToConsole("Usage: Benchmark.exe compare <before.txt> <after.txt>");
+            _writeLineToConsole("Usage: Benchmark.exe compare <before.txt> <after.txt>");
             return 1;
         }
 
-        return RunCompare(arguments[0], arguments[1], WriteLineToConsole, new StringBuilder());
+        return RunCompare(arguments[0], arguments[1], _writeLineToConsole, new StringBuilder());
     }
 
-    internal int RunCompare(string beforePath, string afterPath, Action<string> log, StringBuilder output)
+    int RunCompare(string beforePath, string afterPath, Action<string> log, StringBuilder output)
     {
         void LogLine(string line = "")
         {
@@ -25,31 +25,32 @@ public partial class BenchmarkRunner
             output.AppendLine(line);
         }
 
-        if (!FileExists(beforePath))
+        if (!_fileExists(beforePath))
         {
             LogLine($"Error: Baseline before file not found: {beforePath}");
             return 1;
         }
 
-        if (!FileExists(afterPath))
+        if (!_fileExists(afterPath))
         {
             LogLine($"Error: Benchmark after file not found: {afterPath}");
             return 1;
         }
 
-        return CompareTexts(ReadAllText(beforePath), ReadAllText(afterPath), LogLine);
+        return CompareTexts(_readAllText(beforePath), _readAllText(afterPath), LogLine);
     }
 
     // Compares against the report text held in memory rather than re-reading a file the same run
     // just wrote, so the thresholds are evaluated on the measurements actually taken.
-    internal int RunCompare(string beforePath, string afterText, Action<string> log)
+    int RunCompare(string beforePath, string afterText, Action<string> log)
     {
-        return CompareTexts(ReadAllText(beforePath), afterText, log);
+        return CompareTexts(_readAllText(beforePath), afterText, log);
     }
 
     static int CompareTexts(string beforeText, string afterText, Action<string> log)
     {
-        if (!ValidateBeforeBaseline(beforeText, log, out var beforeGitSha, out var beforePeakPrivateBytes, out var beforeThroughput))
+        if (!ValidateBeforeBaseline(beforeText, log, out var beforeGitSha, out var beforePeakPrivateBytes,
+                out var beforeThroughput))
         {
             return 1;
         }
@@ -65,7 +66,8 @@ public partial class BenchmarkRunner
     }
 
     static bool ValidateBeforeBaseline(
-        string beforeText, Action<string> log, out string beforeGitSha, out long beforePeakPrivateBytes, out double beforeThroughput)
+        string beforeText, Action<string> log, out string beforeGitSha, out long beforePeakPrivateBytes,
+        out double beforeThroughput)
     {
         beforeGitSha = string.Empty;
         beforePeakPrivateBytes = 0;
@@ -77,22 +79,28 @@ public partial class BenchmarkRunner
             log("Error: Baseline before file validation failed: missing 40-character hex Git SHA.");
             return false;
         }
+
         beforeGitSha = gitShaMatch.Groups[1].Value;
 
         var beforePeakPrivateMatch = Regex.Match(beforeText, @"Peak private bytes:\s*([0-9,]+)");
-        if (!beforePeakPrivateMatch.Success || !long.TryParse(beforePeakPrivateMatch.Groups[1].Value.Replace(",", ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out beforePeakPrivateBytes) || beforePeakPrivateBytes <= 0)
+        if (!beforePeakPrivateMatch.Success || !long.TryParse(beforePeakPrivateMatch.Groups[1].Value.Replace(",", ""),
+                NumberStyles.Integer, CultureInfo.InvariantCulture, out beforePeakPrivateBytes) ||
+            beforePeakPrivateBytes <= 0)
         {
             log("Error: Baseline before file validation failed: missing or invalid Peak private bytes.");
             return false;
         }
 
-        var beforeThroughputMatch = Regex.Match(beforeText, @"(?:Throughput:\s*|\s+)([0-9,]+)\s*records/sec\s*\(wall clock\)");
+        var beforeThroughputMatch =
+            Regex.Match(beforeText, @"(?:Throughput:\s*|\s+)([0-9,]+)\s*records/sec\s*\(wall clock\)");
         if (!beforeThroughputMatch.Success)
         {
             beforeThroughputMatch = Regex.Match(beforeText, @"Throughput:\s*([0-9,]+)\s*records/sec");
         }
 
-        if (!beforeThroughputMatch.Success || !double.TryParse(beforeThroughputMatch.Groups[1].Value.Replace(",", ""), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out beforeThroughput) || beforeThroughput <= 0)
+        if (!beforeThroughputMatch.Success || !double.TryParse(beforeThroughputMatch.Groups[1].Value.Replace(",", ""),
+                NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out beforeThroughput) ||
+            beforeThroughput <= 0)
         {
             log("Error: Baseline before file validation failed: missing or invalid Throughput.");
             return false;
@@ -102,15 +110,16 @@ public partial class BenchmarkRunner
     }
 
     static int EvaluateThresholds(
-        string beforeGitSha, long beforePeakPrivateBytes, double beforeThroughput, ReportMetrics metrics, Action<string> log)
+        string beforeGitSha, long beforePeakPrivateBytes, double beforeThroughput, ReportMetrics metrics,
+        Action<string> log)
     {
         var throughputRegressionPercentage = beforeThroughput > 0
-            ? ((beforeThroughput - metrics.CompatThroughput) / beforeThroughput) * 100.0
+            ? (beforeThroughput - metrics.CompatThroughput) / beforeThroughput * 100.0
             : 0.0;
         var throughputPass = throughputRegressionPercentage <= 10.0;
 
         var privateBytesReductionPercentage = beforePeakPrivateBytes > 0
-            ? ((beforePeakPrivateBytes - metrics.CompatPeakPrivateBytes) / (double)beforePeakPrivateBytes) * 100.0
+            ? (beforePeakPrivateBytes - metrics.CompatPeakPrivateBytes) / (double)beforePeakPrivateBytes * 100.0
             : 0.0;
         var privateBytesPass = privateBytesReductionPercentage >= 40.0;
 
@@ -129,8 +138,10 @@ public partial class BenchmarkRunner
         log($"  Bounded peak private bytes:   {metrics.BoundedPeakPrivateBytes,14:N0} bytes");
         log($"  Broker-stream peak private:   {metrics.BrokerStreamPeakPrivateBytes,14:N0} bytes");
         log(string.Empty);
-        log($"  Throughput regression:        {throughputRegressionPercentage,14:F1}% (limit: <= 10.0%) -> {(throughputPass ? "PASS" : "FAIL")}");
-        log($"  Peak private bytes reduction: {privateBytesReductionPercentage,14:F1}% (limit: >= 40.0%) -> {(privateBytesPass ? "PASS" : "FAIL")}");
+        log(
+            $"  Throughput regression:        {throughputRegressionPercentage,14:F1}% (limit: <= 10.0%) -> {(throughputPass ? "PASS" : "FAIL")}");
+        log(
+            $"  Peak private bytes reduction: {privateBytesReductionPercentage,14:F1}% (limit: >= 40.0%) -> {(privateBytesPass ? "PASS" : "FAIL")}");
         log($"  Bounded <= Compat peak:       {(boundedPass ? "PASS" : "FAIL")}");
         log($"  Broker-stream <= Compat peak: {(brokerPass ? "PASS" : "FAIL")}");
         log(string.Empty);
@@ -142,7 +153,8 @@ public partial class BenchmarkRunner
 
     static string? ExtractScenarioBlock(string reportText, string scenarioName)
     {
-        var match = Regex.Match(reportText, $@"(?:^|\r?\n)--- (?:Scenario:\s*)?{scenarioName}\s*---(?:\r?\n)([\s\S]*?)(?=(?:^|\r?\n)--- |\z)");
+        var match = Regex.Match(reportText,
+            $@"(?:^|\r?\n)--- (?:Scenario:\s*)?{scenarioName}\s*---(?:\r?\n)([\s\S]*?)(?=(?:^|\r?\n)--- |\z)");
         return match.Success ? match.Groups[1].Value : null;
     }
 
@@ -168,22 +180,27 @@ public partial class BenchmarkRunner
             return null;
         }
 
-        if (!double.TryParse(compatThroughputMatch.Groups[1].Value.Replace(",", ""), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var compatThroughput))
+        if (!double.TryParse(compatThroughputMatch.Groups[1].Value.Replace(",", ""),
+                NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture,
+                out var compatThroughput))
         {
             return null;
         }
 
-        if (!long.TryParse(compatPeakPrivateMatch.Groups[1].Value.Replace(",", ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out var compatPeakPrivate))
+        if (!long.TryParse(compatPeakPrivateMatch.Groups[1].Value.Replace(",", ""), NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out var compatPeakPrivate))
         {
             return null;
         }
 
-        if (!long.TryParse(boundedPeakPrivateMatch.Groups[1].Value.Replace(",", ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out var boundedPeakPrivate))
+        if (!long.TryParse(boundedPeakPrivateMatch.Groups[1].Value.Replace(",", ""), NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out var boundedPeakPrivate))
         {
             return null;
         }
 
-        if (!long.TryParse(brokerPeakPrivateMatch.Groups[1].Value.Replace(",", ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out var brokerPeakPrivate))
+        if (!long.TryParse(brokerPeakPrivateMatch.Groups[1].Value.Replace(",", ""), NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out var brokerPeakPrivate))
         {
             return null;
         }

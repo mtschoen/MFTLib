@@ -20,14 +20,14 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 
         if (!string.IsNullOrEmpty(_result.ErrorMessage))
         {
-            MFTLibNative.FreeMftResult(resultPtr);
+            MFTLibNative._freeMftResult(resultPtr);
             _resultPtr = IntPtr.Zero;
             throw new InvalidOperationException(_result.ErrorMessage);
         }
 
         if (_result.AbiVersion != MFTLibNative.ExpectedMftNativeAbiVersion)
         {
-            MFTLibNative.FreeMftResult(resultPtr);
+            MFTLibNative._freeMftResult(resultPtr);
             _resultPtr = IntPtr.Zero;
             throw new InvalidOperationException(
                 $"MFTLib managed/native ABI mismatch: managed expects {MFTLibNative.ExpectedMftNativeAbiVersion}, native reports {_result.AbiVersion}.");
@@ -35,7 +35,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 
         if (_result.EntryStride != MFTLibNative.NativeCompactEntrySize)
         {
-            MFTLibNative.FreeMftResult(resultPtr);
+            MFTLibNative._freeMftResult(resultPtr);
             _resultPtr = IntPtr.Zero;
             throw new InvalidOperationException(
                 $"MFTLib managed/native ABI mismatch: managed expects stride {MFTLibNative.NativeCompactEntrySize}, native reports {_result.EntryStride}.");
@@ -47,26 +47,26 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     }
 
     /// <summary>
-    /// Total number of MFT records examined during the parse pass.
-    /// Remains readable after <see cref="Dispose"/>.
+    ///     Total number of MFT records examined during the parse pass.
+    ///     Remains readable after <see cref="Dispose" />.
     /// </summary>
     public ulong TotalRecords => _result.TotalRecords;
 
     /// <summary>
-    /// Number of active or matching records returned in the result set.
-    /// Remains readable after <see cref="Dispose"/>.
+    ///     Number of active or matching records returned in the result set.
+    ///     Remains readable after <see cref="Dispose" />.
     /// </summary>
     public ulong UsedRecords => _result.UsedRecords;
 
     /// <summary>
-    /// Detailed phase timings for the parse pass.
-    /// Remains readable after <see cref="Dispose"/>.
+    ///     Detailed phase timings for the parse pass.
+    ///     Remains readable after <see cref="Dispose" />.
     /// </summary>
     public MftParseTimings Timings { get; }
 
     /// <summary>
-    /// Total bytes occupied by the native compact entry buffers and UTF-16 string pools.
-    /// Cached from the parsed result header and remains readable after <see cref="Dispose"/>.
+    ///     Total bytes occupied by the native compact entry buffers and UTF-16 string pools.
+    ///     Cached from the parsed result header and remains readable after <see cref="Dispose" />.
     /// </summary>
     public ulong NativeCompactBytes
     {
@@ -95,7 +95,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         {
             if (_resultPtr != IntPtr.Zero)
             {
-                MFTLibNative.FreeMftResult(_resultPtr);
+                MFTLibNative._freeMftResult(_resultPtr);
                 _resultPtr = IntPtr.Zero;
             }
 
@@ -107,6 +107,11 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return EnumerateRecords();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
     }
 
     IEnumerator<MftRecord> EnumerateRecords()
@@ -121,11 +126,6 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     {
         var active = GetActiveTableAndPool();
         return GetCompactEntry(active.Table, active.Pool, active.PoolUnits, index, active.IsPath, _driveLetter);
-    }
-
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
     }
 
     public IEnumerable<MftRecord[]> MaterializeBatches(int batchSize = 4096)
@@ -160,20 +160,14 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         return records;
     }
 
-    readonly unsafe struct ActivePool(byte* table, ushort* pool, ulong poolUnits, bool isPath)
-    {
-        public readonly byte* Table = table;
-        public readonly ushort* Pool = pool;
-        public readonly ulong PoolUnits = poolUnits;
-        public readonly bool IsPath = isPath;
-    }
-
     unsafe ActivePool GetActiveTableAndPool()
     {
         if (_result.PathEntries != IntPtr.Zero && _result.PathStrings != IntPtr.Zero)
         {
-            return new ActivePool((byte*)_result.PathEntries, (ushort*)_result.PathStrings, _result.PathStringUnits, true);
+            return new ActivePool((byte*)_result.PathEntries, (ushort*)_result.PathStrings, _result.PathStringUnits,
+                true);
         }
+
         return new ActivePool((byte*)_result.Entries, (ushort*)_result.EntryStrings, _result.EntryStringUnits, false);
     }
 
@@ -198,5 +192,13 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
             ? new NativeStrings(IntPtr.Zero, 0, pointer, stringLength)
             : new NativeStrings(pointer, stringLength, IntPtr.Zero, 0);
         return new MftRecord(recordNumber, parentRecordNumber, flags, fileAttributes, strings, driveLetter);
+    }
+
+    readonly unsafe struct ActivePool(byte* table, ushort* pool, ulong poolUnits, bool isPath)
+    {
+        public readonly byte* Table = table;
+        public readonly ushort* Pool = pool;
+        public readonly ulong PoolUnits = poolUnits;
+        public readonly bool IsPath = isPath;
     }
 }

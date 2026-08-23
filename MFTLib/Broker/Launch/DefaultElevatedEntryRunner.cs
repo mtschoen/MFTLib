@@ -12,14 +12,14 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
 {
     // Exiting the process cannot be exercised from an in-process unit test (it would
     // kill the test host), so tests inject a fake. Production always uses Environment.Exit.
-    internal static Action<int> ExitProcess = Environment.Exit;
+    internal static Action<int> _exitProcess = Environment.Exit;
 
     [SupportedOSPlatform("windows")]
     public void RunBroker(string? pipeName, bool oneShot)
     {
         if (pipeName == null)
         {
-            ExitProcess(1);
+            _exitProcess(1);
             return;
         }
 
@@ -40,11 +40,11 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
             // aislop-ignore-next-line csharp-sync-over-async -- a console entry point has no SynchronizationContext to resume onto, so GetAwaiter().GetResult() cannot deadlock here
             .GetAwaiter().GetResult();
 
-        ExitProcess(0);
+        _exitProcess(0);
     }
 
     internal static void ResetToDefaults()
     {
-        ExitProcess = Environment.Exit;
+        _exitProcess = Environment.Exit;
     }
 }

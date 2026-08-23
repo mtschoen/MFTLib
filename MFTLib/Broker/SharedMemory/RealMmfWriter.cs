@@ -13,7 +13,7 @@ public sealed class RealMmfWriter : IStreamingMmfWriter
 {
     public long Write(string mmfName, ScanRecord[] records)
     {
-        var result = Write(mmfName, new[] { records }, CancellationToken.None);
+        var result = Write(mmfName, [records], CancellationToken.None);
         return result.ByteLength;
     }
 
@@ -34,4 +34,3 @@ public sealed class RealMmfWriter : IStreamingMmfWriter
         return ScanPayload.Write(view, batches, progress, cancellationToken);
     }
 }
-

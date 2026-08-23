@@ -3,22 +3,12 @@ namespace MFTLib.Tests.TestSupport;
 // Wraps a stream and invokes a callback once its ReadAsync has been called
 // `threshold` times - used to inject cancellation deterministically between two
 // frame reads instead of racing an already-blocked read.
-public sealed class CancelAfterReadsStream : Stream
+public sealed class CancelAfterReadsStream(Stream inner, int threshold, Action onThreshold) : Stream
 {
-    readonly Stream _inner;
-    readonly Action _onThreshold;
-    readonly int _threshold;
     int _reads;
 
-    public CancelAfterReadsStream(Stream inner, int threshold, Action onThreshold)
-    {
-        _inner = inner;
-        _threshold = threshold;
-        _onThreshold = onThreshold;
-    }
-
-    public override bool CanRead => _inner.CanRead;
-    public override bool CanWrite => _inner.CanWrite;
+    public override bool CanRead => inner.CanRead;
+    public override bool CanWrite => inner.CanWrite;
     public override bool CanSeek => false;
     public override long Length => throw new NotSupportedException();
 
@@ -30,10 +20,10 @@ public sealed class CancelAfterReadsStream : Stream
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        var count = await _inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-        if (Interlocked.Increment(ref _reads) == _threshold)
+        var count = await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+        if (Interlocked.Increment(ref _reads) == threshold)
         {
-            _onThreshold();
+            onThreshold();
         }
 
         return count;
@@ -41,27 +31,27 @@ public sealed class CancelAfterReadsStream : Stream
 
     public override int Read(byte[] buffer, int offset, int count)
     {
-        return _inner.Read(buffer, offset, count);
+        return inner.Read(buffer, offset, count);
     }
 
     public override void Write(byte[] buffer, int offset, int count)
     {
-        _inner.Write(buffer, offset, count);
+        inner.Write(buffer, offset, count);
     }
 
     public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        return _inner.WriteAsync(buffer, cancellationToken);
+        return inner.WriteAsync(buffer, cancellationToken);
     }
 
     public override void Flush()
     {
-        _inner.Flush();
+        inner.Flush();
     }
 
     public override Task FlushAsync(CancellationToken cancellationToken)
     {
-        return _inner.FlushAsync(cancellationToken);
+        return inner.FlushAsync(cancellationToken);
     }
 
     public override long Seek(long offset, SeekOrigin origin)
@@ -78,7 +68,7 @@ public sealed class CancelAfterReadsStream : Stream
     {
         if (disposing)
         {
-            _inner.Dispose();
+            inner.Dispose();
         }
 
         base.Dispose(disposing);

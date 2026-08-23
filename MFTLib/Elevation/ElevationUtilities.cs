@@ -8,13 +8,13 @@ namespace MFTLib;
 
 public static class ElevationUtilities
 {
-    // Swappable dependencies for testability — tests replace these to exercise
+    // Swappable dependencies for testability - tests replace these to exercise
     // defensive branches (non-Windows, null process path, process start failures)
     // that cannot be triggered in a normal Windows test environment.
-    internal static Func<bool> IsWindows = () => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-    internal static Func<string?> GetProcessPathFunc = () => Environment.ProcessPath;
-    internal static Func<ProcessStartInfo, Process?> StartProcess = Process.Start;
-    internal static Func<bool> IsUserInteractive = () => Environment.UserInteractive;
+    internal static Func<bool> _isWindows = () => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    internal static Func<string?> _getProcessPathFunc = () => Environment.ProcessPath;
+    internal static Func<ProcessStartInfo, Process?> _startProcess = Process.Start;
+    internal static Func<bool> _isUserInteractive = () => Environment.UserInteractive;
 
     /// <summary>
     ///     Default <see cref="IElevationProvider" /> backed by the static methods below.
@@ -24,16 +24,16 @@ public static class ElevationUtilities
 
     internal static void ResetToDefaults()
     {
-        IsWindows = () => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-        GetProcessPathFunc = () => Environment.ProcessPath;
-        StartProcess = Process.Start;
-        IsUserInteractive = () => Environment.UserInteractive;
+        _isWindows = () => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        _getProcessPathFunc = () => Environment.ProcessPath;
+        _startProcess = Process.Start;
+        _isUserInteractive = () => Environment.UserInteractive;
     }
 
     [SuppressMessage("Interoperability", "CA1416", Justification = "Guarded by IsWindows() runtime check")]
     public static bool IsElevated()
     {
-        if (!IsWindows())
+        if (!_isWindows())
         {
             return false;
         }
@@ -45,11 +45,11 @@ public static class ElevationUtilities
 
     public static string? GetProcessPath()
     {
-        return GetProcessPathFunc();
+        return _getProcessPathFunc();
     }
 
     /// <summary>
-    ///     Returns true if the current process can self-elevate via UAC — i.e., there is a
+    ///     Returns true if the current process can self-elevate via UAC - i.e., there is a
     ///     resolvable executable path and the host is not dotnet.exe.
     /// </summary>
     public static bool CanSelfElevate()
@@ -87,7 +87,7 @@ public static class ElevationUtilities
         // ShellExecuteEx with the "runas" verb needs an interactive desktop to show
         // the UAC consent dialog. Without one (Session 0 services, CI runners) it
         // fails unpredictably instead of cleanly declining, so bail out up front.
-        if (!IsUserInteractive())
+        if (!_isUserInteractive())
         {
             return false;
         }
@@ -103,7 +103,7 @@ public static class ElevationUtilities
                 CreateNoWindow = true
             };
 
-            var process = StartProcess(startInfo);
+            var process = _startProcess(startInfo);
             if (process == null)
             {
                 return false;

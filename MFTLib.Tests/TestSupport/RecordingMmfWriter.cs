@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
@@ -9,11 +11,11 @@ public sealed class RecordingMmfWriter : IStreamingMmfWriter
 {
     public long LastPayloadRecordCount { get; private set; }
     public string? LastMmfName { get; private set; }
-    public List<IReadOnlyList<ScanRecord>> WrittenBatches { get; } = new();
+    public List<IReadOnlyList<ScanRecord>> WrittenBatches { get; } = [];
 
     public long Write(string mmfName, ScanRecord[] records)
     {
-        var result = Write(mmfName, new[] { records }, CancellationToken.None);
+        var result = Write(mmfName, [records], CancellationToken.None);
         return result.ByteLength;
     }
 
@@ -42,8 +44,8 @@ public sealed class RecordingMmfWriter : IStreamingMmfWriter
             foreach (var record in batch)
             {
                 byteLength += ScanPayload.FixedRecordHeaderSize +
-                              System.Text.Encoding.Unicode.GetByteCount(record.Name) +
-                              System.Text.Encoding.Unicode.GetByteCount(record.Path);
+                              Encoding.Unicode.GetByteCount(record.Name) +
+                              Encoding.Unicode.GetByteCount(record.Path);
             }
 
             progress?.Report(new MmfWriteProgress(recordCount, byteLength, null, null));
@@ -54,4 +56,3 @@ public sealed class RecordingMmfWriter : IStreamingMmfWriter
         return new MmfWriteResult(recordCount, byteLength);
     }
 }
-

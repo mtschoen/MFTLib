@@ -23,8 +23,8 @@ public class BrokerLiveWatchErrorTests
 
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteError(response, "C", "journal wrapped");
-        await serverSide.WriteAsync(response.WrittenMemory);
-        await serverSide.FlushAsync();
+        await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
+        await serverSide.FlushAsync(CancellationToken.None);
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
@@ -52,10 +52,10 @@ public class BrokerLiveWatchErrorTests
 
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteError(response, "D", "journal wrapped");
-        BrokerProtocol.WriteJournalBatch(response, "C", cursor, new[] { entry });
+        BrokerProtocol.WriteJournalBatch(response, "C", cursor, [entry]);
         BrokerProtocol.WriteEndWatchAck(response);
-        await serverSide.WriteAsync(response.WrittenMemory);
-        await serverSide.FlushAsync();
+        await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
+        await serverSide.FlushAsync(CancellationToken.None);
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
@@ -87,8 +87,8 @@ public class BrokerLiveWatchErrorTests
 
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteError(response, "C", "journal wrapped");
-        await serverSide.WriteAsync(response.WrittenMemory);
-        await serverSide.FlushAsync();
+        await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
+        await serverSide.FlushAsync(CancellationToken.None);
 
         // Give the demux a moment to read and route the Error frame before the first
         // subscriber for "C" registers, so the channel is faulted before it exists.

@@ -49,7 +49,7 @@ public class UsnJournalSyntheticTests
 
     static void UseFakeHandle()
     {
-        FileUtilities.GetVolumeHandle = _ => FakeHandle();
+        FileUtilities._getVolumeHandle = _ => FakeHandle();
     }
 
     // Queues a synthetic IOCTL success buffer; keeps it alive until cleanup.
@@ -380,9 +380,9 @@ public class UsnJournalSyntheticTests
         QueueSuccess(BuildReadBuffer(2500, (300, 5, 2400, 0x00000100u, "watched.txt")));
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.AreEqual(1UL, result.EntryCount);
         Assert.AreEqual(2500L, result.NextUsn);
     }
@@ -397,10 +397,10 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeSetUsnIoFailError(997 /*ERROR_IO_PENDING*/, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         Assert.AreNotEqual(IntPtr.Zero, resultPtr);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.AreEqual(0UL, result.EntryCount);
     }
 
@@ -425,7 +425,7 @@ public class UsnJournalSyntheticTests
     {
         // Covers CancelUsnJournalWatch (CancelIoEx). On a handle with no pending
         // I/O it returns false (ERROR_NOT_FOUND) — we only need the call covered.
-        MFTLibNative.CancelUsnJournalWatch(FakeHandle());
+        MFTLibNative._cancelUsnJournalWatch(FakeHandle());
     }
 
     [TestMethod]
@@ -438,9 +438,9 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeSetUsnOverlappedAbort();
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.AreEqual(0UL, result.EntryCount);
         Assert.IsTrue(string.IsNullOrEmpty(result.ErrorMessage));
     }
@@ -451,10 +451,10 @@ public class UsnJournalSyntheticTests
         UseFakeHandle();
         QueueSuccess(BuildZeroLengthRecordBuffer(2500));
         using var volume = MftVolume.Open("C");
-        var resultPointer = MFTLibNative.WatchUsnJournalBatch(
+        var resultPointer = MFTLibNative._watchUsnJournalBatch(
             volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPointer);
-        MFTLibNative.FreeUsnJournalResult(resultPointer);
+        MFTLibNative._freeUsnJournalResult(resultPointer);
         Assert.AreEqual(0UL, result.EntryCount);
         Assert.AreEqual(2500L, result.NextUsn);
     }
@@ -466,9 +466,9 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeSetAllocFailCountdown(1); // fail read buffer alloc
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("allocate"));
     }
 
@@ -479,9 +479,9 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeSetAllocFailCountdown(2); // skip read buffer, fail CreateEvent
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("event") || result.ErrorMessage.Contains("Error"));
     }
 
@@ -492,10 +492,10 @@ public class UsnJournalSyntheticTests
         QueueSuccess(BuildReadBuffer(2500, (300, 5, 2400, 0x00000100u, "watched.txt")));
         MFTLibNative.NativeSetAllocFailCountdown(3);
         using var volume = MftVolume.Open("C");
-        var resultPointer = MFTLibNative.WatchUsnJournalBatch(
+        var resultPointer = MFTLibNative._watchUsnJournalBatch(
             volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPointer);
-        MFTLibNative.FreeUsnJournalResult(resultPointer);
+        MFTLibNative._freeUsnJournalResult(resultPointer);
         Assert.AreEqual(0UL, result.EntryCount);
         Assert.AreEqual(2500L, result.NextUsn);
     }
@@ -507,9 +507,9 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("not active"));
     }
 
@@ -520,9 +520,9 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("deletion"));
     }
 
@@ -533,9 +533,9 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("rescan"));
     }
 
@@ -546,9 +546,9 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.AreEqual(0UL, result.EntryCount);
         Assert.IsTrue(string.IsNullOrEmpty(result.ErrorMessage));
     }
@@ -560,9 +560,9 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeSetUsnIoFailError(5, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative.WatchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-        MFTLibNative.FreeUsnJournalResult(resultPtr);
+        MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("Error: 5"));
     }
 }

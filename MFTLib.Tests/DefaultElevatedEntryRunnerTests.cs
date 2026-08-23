@@ -19,7 +19,7 @@ public class DefaultElevatedEntryRunnerTests
     public void RunBroker_NullPipeName_ExitsWithCode1_WithoutConnecting()
     {
         int? exitCode = null;
-        DefaultElevatedEntryRunner.ExitProcess = code => exitCode = code;
+        DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
 
         new DefaultElevatedEntryRunner().RunBroker(null, false);
 
@@ -31,11 +31,11 @@ public class DefaultElevatedEntryRunnerTests
     public async Task RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilShutdown_ExitsWithCode0()
     {
         var pipeName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
-        using var server = new NamedPipeServerStream(
+        await using var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
 
         int? exitCode = null;
-        DefaultElevatedEntryRunner.ExitProcess = code => exitCode = code;
+        DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
 
         // RunBroker blocks synchronously (.GetAwaiter().GetResult()) for the whole
         // session, so drive it from a background thread while this thread plays the

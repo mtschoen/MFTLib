@@ -1,4 +1,4 @@
-// platform.h — minimal cross-platform abstractions used by the MFT parser.
+// platform.h - minimal cross-platform abstractions used by the MFT parser.
 // Win32 uses native APIs; POSIX uses open/pread + posix_memalign.
 #pragma once
 

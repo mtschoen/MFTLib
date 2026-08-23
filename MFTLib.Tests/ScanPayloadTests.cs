@@ -20,7 +20,7 @@ public class ScanPayloadTests
         };
 
         using var stream = new MemoryStream();
-        var result = ScanPayload.Write(stream, new[] { records }, CancellationToken.None);
+        var result = ScanPayload.Write(stream, [records], CancellationToken.None);
 
         Assert.AreEqual(2L, result.RecordCount);
         Assert.AreEqual(stream.Length, result.ByteLength);
@@ -42,7 +42,7 @@ public class ScanPayloadTests
     {
         var records = Array.Empty<ScanRecord>();
         using var stream = new MemoryStream();
-        var result = ScanPayload.Write(stream, new[] { records }, CancellationToken.None);
+        var result = ScanPayload.Write(stream, [records], CancellationToken.None);
 
         Assert.AreEqual(0L, result.RecordCount);
         Assert.AreEqual(24L, result.ByteLength);
@@ -76,7 +76,7 @@ public class ScanPayloadTests
         var allRecords = batch1.Concat(batch2).Concat(batch3).ToArray();
 
         using var stream = new MemoryStream();
-        var result = ScanPayload.Write(stream, new[] { batch1, batch2, batch3 }, CancellationToken.None);
+        var result = ScanPayload.Write(stream, [batch1, batch2, batch3], CancellationToken.None);
 
         Assert.AreEqual(5L, result.RecordCount);
 
@@ -103,7 +103,7 @@ public class ScanPayloadTests
         };
 
         using var stream = new MemoryStream();
-        var result = ScanPayload.Write(stream, new[] { records }, CancellationToken.None);
+        var result = ScanPayload.Write(stream, [records], CancellationToken.None);
 
         stream.Position = 0;
         var read = ScanPayload.ReadBatches(stream, result.ByteLength, 4096, CancellationToken.None).Single();
@@ -277,7 +277,7 @@ public class ScanPayloadTests
         var batch2 = new[] { new ScanRecord(2, 0, 200, 2000, 0x20, false, "b", "C:\\b") };
 
         using var stream = new MemoryStream();
-        var result = ScanPayload.Write(stream, new[] { batch1, batch2 }, CancellationToken.None);
+        var result = ScanPayload.Write(stream, [batch1, batch2], CancellationToken.None);
 
         stream.Position = 0;
         using var cts = new CancellationTokenSource();
@@ -315,7 +315,7 @@ public class ScanPayloadTests
             new ScanRecord(1, 0, 512, 100, 0x20, false, "test.txt", "C:\\test.txt")
         };
         using var stream = new MemoryStream();
-        ScanPayload.Write(stream, new[] { records }, CancellationToken.None);
+        ScanPayload.Write(stream, [records], CancellationToken.None);
         return stream.ToArray();
     }
 }

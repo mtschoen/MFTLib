@@ -92,7 +92,10 @@ public sealed partial class JournalBrokerScanSession
         }, cancellationToken);
     }
 
-    /// <summary>Rescan a different set of drives (same profile and keepFileNames) on the same broker, streaming records to <paramref name="consumeRecords" />.</summary>
+    /// <summary>
+    ///     Rescan a different set of drives (same profile and keepFileNames) on the same broker, streaming records to
+    ///     <paramref name="consumeRecords" />.
+    /// </summary>
     public Task RescanAsync(
         IReadOnlyList<string> drives,
         ScanRecordBatchConsumer consumeRecords,
@@ -128,7 +131,10 @@ public sealed partial class JournalBrokerScanSession
         }, cancellationToken);
     }
 
-    /// <summary>Rescan a different set of drives with a different profile and keepFileNames on the same broker, streaming records to <paramref name="consumeRecords" />.</summary>
+    /// <summary>
+    ///     Rescan a different set of drives with a different profile and keepFileNames on the same broker, streaming
+    ///     records to <paramref name="consumeRecords" />.
+    /// </summary>
     public Task RescanAsync(
         IReadOnlyList<string> drives,
         BrokerScanProfile profile,
@@ -144,7 +150,10 @@ public sealed partial class JournalBrokerScanSession
         }, cancellationToken);
     }
 
-    /// <summary>Rescan a different set of drives with caller-specified <paramref name="options" /> (profile, consumer, keepFileNames, progress) on the same broker.</summary>
+    /// <summary>
+    ///     Rescan a different set of drives with caller-specified <paramref name="options" /> (profile, consumer,
+    ///     keepFileNames, progress) on the same broker.
+    /// </summary>
     public async Task RescanAsync(
         IReadOnlyList<string> drives,
         BrokerScanOptions? options,

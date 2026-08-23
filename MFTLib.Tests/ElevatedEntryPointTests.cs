@@ -5,13 +5,13 @@ namespace MFTLib.Tests;
 [TestClass]
 public class ElevatedEntryPointTests
 {
-    static readonly string[] BrokerWithOnceArgs = { "--broker", "--pipe", "mftlib-pipe-123", "--once" };
-    static readonly string[] BrokerWithoutOnceArgs = { "--broker", "--pipe", "p" };
-    static readonly string[] LeadingExecutablePathArgs = { @"C:\apps\SomeApp.exe", "--broker", "--pipe", "p" };
-    static readonly string[] ScanOnlyArgs = { "--scan-only" };
-    static readonly string[] BrokerWithDiagArgs = { "--broker", "--pipe", "p", "--diag" };
-    static readonly string[] PipeFlagWithNoValueArgs = { "--broker", "--pipe" };
-    static readonly string[] NoPipeFlagArgs = { "--broker" };
+    static readonly string[] BrokerWithOnceArgs = ["--broker", "--pipe", "mftlib-pipe-123", "--once"];
+    static readonly string[] BrokerWithoutOnceArgs = ["--broker", "--pipe", "p"];
+    static readonly string[] LeadingExecutablePathArgs = [@"C:\apps\SomeApp.exe", "--broker", "--pipe", "p"];
+    static readonly string[] ScanOnlyArgs = ["--scan-only"];
+    static readonly string[] BrokerWithDiagArgs = ["--broker", "--pipe", "p", "--diag"];
+    static readonly string[] PipeFlagWithNoValueArgs = ["--broker", "--pipe"];
+    static readonly string[] NoPipeFlagArgs = ["--broker"];
 
     [TestMethod]
     public void TryHandle_BrokerMode_RoutesPipeName_AndReturnsTrue()

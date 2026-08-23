@@ -41,19 +41,19 @@ public class BrokerDeathTests
         // explicitly at the end instead - safe because that Dispose() runs only after
         // the lambda's task has already been awaited to completion below.
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var cancellationToken = cts.Token;
 
         // Act: close the broker side so the client reads EOF.
         var enumerateTask = Task.Run(async () =>
         {
-            // aislop-ignore-next-line AccessToDisposedClosure -- cts is disposed only after enumerateTask is awaited to completion below, so this closure never reads it post-dispose
-            await foreach (var _ in batchSource("C:\\", default, cts.Token))
+            await foreach (var _ in batchSource("C:\\", default, cancellationToken))
             {
             }
-        }, cts.Token);
+        }, cancellationToken);
 
         // Give the enumerate task a moment to start before closing the pipe.
-        await Task.Delay(20, cts.Token);
-        serverSide.Dispose();
+        await Task.Delay(20, cancellationToken);
+        await serverSide.DisposeAsync();
 
         // Assert: the enumerate task must throw InvalidOperationException (not complete normally).
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => enumerateTask);
@@ -82,7 +82,7 @@ public class BrokerDeathTests
         var batchSource = client.CreateBatchSource();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
-        serverSide.Dispose(); // EOF -> demux detects death and latches it
+        await serverSide.DisposeAsync(); // EOF -> demux detects death and latches it
 
         // A subscriber for a drive that never had a channel must still fault (the latch
         // hands it an already-completed channel) rather than awaiting a batch forever.
