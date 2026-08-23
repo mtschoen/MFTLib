@@ -50,6 +50,7 @@
 - Reworked the README and added a broker integration guide covering installation, API selection, memory lifetime, race-free scan/catch-up, live watch, rescans, recovery, and deployment
 - Fixed native `bool` marshaling for synthetic generation so conversion failures reliably propagate to managed callers
 - Fixed synthetic generator teardown after an asynchronous write failure so the completed writer is joined exactly once
+- Added a bounded, configurable connection timeout to `JournalBrokerClient.SpawnAndConnectAsync` (`DefaultConnectTimeout`, default 30 seconds) that throws a descriptive `TimeoutException` if the elevated child process fails to connect to the named pipe after launch
 
 ### Tests
 

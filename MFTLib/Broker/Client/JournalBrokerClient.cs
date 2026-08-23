@@ -32,7 +32,7 @@ public delegate ValueTask ScanRecordBatchConsumer(
 /// <remarks>
 ///     The pipe must already be connected. Production code builds the pipe, launches
 ///     the elevated broker, and waits for the connection via
-///     <see cref="SpawnAndConnectAsync" />; tests pass a connected in-memory duplex stream.
+///     <see cref="SpawnAndConnectAsync(Func{string,bool},CancellationToken)" />; tests pass a connected in-memory duplex stream.
 /// </remarks>
 public sealed partial class JournalBrokerClient(
     Stream pipe,

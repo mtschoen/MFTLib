@@ -7,17 +7,62 @@ namespace MFTLib;
 public sealed partial class JournalBrokerClient
 {
     /// <summary>
+    ///     Default timeout for waiting for the elevated broker child process to connect
+    ///     to the named pipe after launching (30 seconds).
+    /// </summary>
+    public static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromSeconds(30);
+
+    // How long SpawnAndConnectAsync waits for the elevated child process to connect
+    // to the named pipe before throwing TimeoutException. Internal and mutable so tests
+    // can shrink the window instead of waiting for the real production timeout.
+    internal static TimeSpan _connectTimeout = DefaultConnectTimeout;
+
+    /// <summary>
+    ///     Reset internal timeout configuration and seams to their default values.
+    /// </summary>
+    internal static void ResetToDefaults()
+    {
+        _connectTimeout = DefaultConnectTimeout;
+        _endWatchAckTimeout = TimeSpan.FromSeconds(5);
+    }
+
+    /// <summary>
     ///     Build the named pipe, launch the elevated broker against it, wait for the broker
-    ///     to connect, and return a ready client wired to the real MMF reader and a
-    ///     page-file-backed per-drive MMF creator. <paramref name="launchBroker" /> receives
-    ///     the broker command line (e.g. "--broker --pipe NAME") and returns whether the
-    ///     launch started (false if the user declined the UAC prompt). Production passes
-    ///     <see cref="BrokerLauncher.Launch" />; tests pass a fake.
+    ///     to connect within <see cref="DefaultConnectTimeout" /> (or <c>_connectTimeout</c>), and
+    ///     return a ready client wired to the real MMF reader and a page-file-backed per-drive MMF creator.
+    ///     <paramref name="launchBroker" /> receives the broker command line (e.g. "--broker --pipe NAME")
+    ///     and returns whether the launch started (false if the user declined the UAC prompt).
+    ///     Throws <see cref="TimeoutException" /> if the broker is launched but does not connect within the timeout.
+    ///     Production passes <see cref="BrokerLauncher.Launch" />; tests pass a fake.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public static Task<JournalBrokerClient> SpawnAndConnectAsync(
+        Func<string, bool> launchBroker, CancellationToken cancellationToken = default)
+    {
+        return SpawnAndConnectAsync(launchBroker, _connectTimeout, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Build the named pipe, launch the elevated broker against it, wait up to
+    ///     <paramref name="connectTimeout" /> for the broker to connect, and return a ready client wired
+    ///     to the real MMF reader and a page-file-backed per-drive MMF creator.
+    ///     <paramref name="launchBroker" /> receives the broker command line (e.g. "--broker --pipe NAME")
+    ///     and returns whether the launch started (false if the user declined the UAC prompt).
+    ///     Throws <see cref="TimeoutException" /> if the broker is launched but does not connect within the timeout.
     /// </summary>
     [SupportedOSPlatform("windows")]
     public static async Task<JournalBrokerClient> SpawnAndConnectAsync(
-        Func<string, bool> launchBroker, CancellationToken cancellationToken = default)
+        Func<string, bool> launchBroker, TimeSpan connectTimeout, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(launchBroker);
+        if (connectTimeout < TimeSpan.Zero && connectTimeout != Timeout.InfiniteTimeSpan)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(connectTimeout),
+                connectTimeout,
+                "Connect timeout must be non-negative or Timeout.InfiniteTimeSpan.");
+        }
+
         var pipeName = "mftlib-broker-" + Guid.NewGuid().ToString("N");
         var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1,
@@ -35,7 +80,21 @@ public sealed partial class JournalBrokerClient
                     "Failed to launch the elevated broker (the UAC prompt was declined?)");
             }
 
-            await server.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
+            using var timeoutCts = new CancellationTokenSource(connectTimeout);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken);
+            try
+            {
+                await server.WaitForConnectionAsync(linkedCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                var durationStr = connectTimeout.TotalSeconds >= 1
+                    ? FormattableString.Invariant($"{connectTimeout.TotalSeconds:G}s")
+                    : FormattableString.Invariant($"{connectTimeout.TotalMilliseconds:G}ms");
+                throw new TimeoutException(FormattableString.Invariant(
+                    $"Timed out waiting {durationStr} for the elevated broker to connect to pipe '{pipeName}'. The broker process was launched, but never connected (headless session, unserviced UAC prompt, or broker crash before connect)."));
+            }
+
             return new JournalBrokerClient(server, new RealMmfReader(), CreateRealDriveMmf);
         }
         catch

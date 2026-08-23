@@ -374,7 +374,7 @@ public class JournalBrokerClientTests
     [TestCleanup]
     public void Cleanup()
     {
-        JournalBrokerClient._endWatchAckTimeout = TimeSpan.FromSeconds(5);
+        JournalBrokerClient.ResetToDefaults();
     }
 
     [TestMethod]
@@ -428,6 +428,81 @@ public class JournalBrokerClientTests
                 JournalBrokerClient.SpawnAndConnectAsync(launchBroker));
 
         StringAssert.Contains(exception.Message, "declined");
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task SpawnAndConnectAsync_NullLaunchBroker_ThrowsArgumentNullException()
+    {
+        await Assert.ThrowsExceptionAsync<ArgumentNullException>(() =>
+            JournalBrokerClient.SpawnAndConnectAsync(null!));
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task SpawnAndConnectAsync_NegativeTimeout_ThrowsArgumentOutOfRangeException()
+    {
+        var launchBroker = new Func<string, bool>(_ => true);
+
+        await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(() =>
+            JournalBrokerClient.SpawnAndConnectAsync(launchBroker, TimeSpan.FromSeconds(-5)));
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task SpawnAndConnectAsync_BrokerNeverConnects_TimesOutAndDisposesServer()
+    {
+        var launchBroker = new Func<string, bool>(_ => true); // launch started, but broker never connects
+
+        var exception =
+            await Assert.ThrowsExceptionAsync<TimeoutException>(() =>
+                JournalBrokerClient.SpawnAndConnectAsync(launchBroker, TimeSpan.FromMilliseconds(50)));
+
+        StringAssert.Contains(exception.Message, "Timed out waiting 50ms");
+        StringAssert.Contains(exception.Message, "mftlib-broker-");
+        StringAssert.Contains(exception.Message, "launched, but never connected");
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task SpawnAndConnectAsync_DefaultTimeoutOverridden_TimesOutAndDisposesServer()
+    {
+        try
+        {
+            JournalBrokerClient._connectTimeout = TimeSpan.FromMilliseconds(50);
+            var launchBroker = new Func<string, bool>(_ => true);
+
+            var exception =
+                await Assert.ThrowsExceptionAsync<TimeoutException>(() =>
+                    JournalBrokerClient.SpawnAndConnectAsync(launchBroker));
+
+            StringAssert.Contains(exception.Message, "Timed out waiting 50ms");
+            StringAssert.Contains(exception.Message, "mftlib-broker-");
+            StringAssert.Contains(exception.Message, "launched, but never connected");
+        }
+        finally
+        {
+            JournalBrokerClient.ResetToDefaults();
+        }
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task SpawnAndConnectAsync_CallerCancellationRequested_ThrowsOperationCanceledException()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel(); // pre-cancelled
+        var launchBroker = new Func<string, bool>(_ => true);
+
+        try
+        {
+            await JournalBrokerClient.SpawnAndConnectAsync(launchBroker, TimeSpan.FromSeconds(30), cts.Token);
+            Assert.Fail("Expected an OperationCanceledException");
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected.
+        }
     }
 
     [TestMethod]

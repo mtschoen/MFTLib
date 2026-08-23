@@ -1190,7 +1190,7 @@ public class JournalBrokerScanSessionTests
     [TestCleanup]
     public void Cleanup()
     {
-        JournalBrokerClient._endWatchAckTimeout = TimeSpan.FromSeconds(5);
+        JournalBrokerClient.ResetToDefaults();
     }
 
     [TestMethod]
