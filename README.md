@@ -25,6 +25,8 @@ It is specialized for NTFS metadata on Windows.
 ## Highlights
 
 - Direct MFT parsing through raw NTFS volume access
+- Runtime detection of the volume's MFT record size (1024 or 4096 bytes) instead of an
+  assumed fixed size
 - Native C++ I/O with parallel fixup, parsing, and path resolution
 - Double-buffered reads that overlap I/O and compute
 - Case-insensitive exact and substring filename filtering in native code
@@ -288,12 +290,12 @@ Run non-interactive managed coverage with:
 
 The source is organized by responsibility:
 
-- `MFTLib/Mft` — scans, records, results, filters, paths, and timings
-- `MFTLib/Journal` — USN cursor, entries, reasons, and `MftVolume` journal APIs
-- `MFTLib/Broker` — elevated host/client, protocol, payload, and diagnostics
-- `MFTLib/Elevation` — elevation detection and injectable provider
-- `MFTLib/Interop` — native result layouts
-- `MFTLib/Internal` — native bindings and internal volume utilities
+- `MFTLib/Mft` - scans, records, results, filters, paths, and timings
+- `MFTLib/Journal` - USN cursor, entries, reasons, and `MftVolume` journal APIs
+- `MFTLib/Broker` - elevated host/client, protocol, payload, and diagnostics
+- `MFTLib/Elevation` - elevation detection and injectable provider
+- `MFTLib/Interop` - native result layouts
+- `MFTLib/Internal` - native bindings and internal volume utilities
 
 ## License
 

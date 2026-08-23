@@ -49,7 +49,7 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 
 ### Test coverage
 
-**Managed (C#):** Run `scripts/run-coverage.ps1` — builds, runs all tests (including admin with UAC prompt), and reports coverage:
+**Managed (C#):** Run `scripts/run-coverage.ps1` - builds, runs all tests (including admin with UAC prompt), and reports coverage:
 ```powershell
 .\scripts\run-coverage.ps1                  # full run with admin tests (UAC prompt)
 .\scripts\run-coverage.ps1 -NonInteractive  # skip admin tests (CI / headless)
@@ -71,11 +71,12 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
 
 ## Architecture
 
-- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant.
+- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant. MFT record geometry (1024 or 4096-byte records) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through a versioned compact ABI (`MFT_NATIVE_ABI_VERSION`): packed `MftCompactEntry` rows plus separate UTF-16 string pools, with an allocation-failure fallback that preserves raw entries and filenames if path resolution cannot allocate.
 - **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop.
+    - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory.
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
-    - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`.
+    - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`; `MaterializeBatches`/`ReadRecordBatches` provide bounded-memory batch materialization over the same result.
     - **ElevationUtilities**: Shared logic for detecting and ensuring Administrative privileges.
     - **VolumeBroker**: `JournalBrokerHost`/`JournalBrokerClient` run elevated MFT scans and USN journal watches through one elevated child process over a named pipe (control/journal frames) plus a page-file-backed `MemoryMappedFile` (cold-scan payload) - one UAC prompt per consumer session. `ElevatedEntryPoint`/`BrokerLauncher` dispatch and launch the `--broker` child mode; `BrokerDiagnostics` provides opt-in frame tracing.
 - **TestProgram** (C# Console App) - CLI that reads MFT metadata for specified drives. Automatically self-elevates.
@@ -85,7 +86,7 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
 
 ### Native error messages
 
-Native exports write failure reasons into fixed-size `wchar_t errorMessage[256]` buffers on their result structs (`MftParseResult`, `UsnJournalInfo`, `UsnJournalResult`). Use the `SetErrorMessage` helper in `MFTLibNative/internal.h` — a variadic template that deduces buffer size, silently truncates via `_vsnwprintf_s(_TRUNCATE)`, and asserts in debug builds if a message doesn't fit. Avoid calling `swprintf_s` / `snprintf_s` directly at error-write sites; the helper keeps `cert-err33-c` silent and centralizes the truncation semantic.
+Native exports write failure reasons into fixed-size `wchar_t errorMessage[256]` buffers on their result structs (`MftParseResult`, `UsnJournalInfo`, `UsnJournalResult`). Use the `SetErrorMessage` helper in `MFTLibNative/internal.h` - a variadic template that deduces buffer size, silently truncates via `_vsnwprintf_s(_TRUNCATE)`, and asserts in debug builds if a message doesn't fit. Avoid calling `swprintf_s` / `snprintf_s` directly at error-write sites; the helper keeps `cert-err33-c` silent and centralizes the truncation semantic.
 
 ## Roadmap
 

@@ -169,7 +169,27 @@ await using var session = await JournalBrokerScanSession.StartAsync(
     cancellationToken);
 ```
 
-Progress updates are throttled on the broker host to at most once every 250ms per drive, and the final 100% frame is guaranteed immediately before the `ScanReady` frame. Late progress frames arriving during live watch are discarded safely.
+Progress updates travel over the pipe as `BrokerFrameKind.ScanProgress` (frame kind 11),
+carrying `DriveLetter`, `RecordsProcessed`, `BytesProcessed`, `TotalRecords`, `TotalBytes`,
+and `Elapsed`. The broker host throttles emission to at most once every 250ms per drive;
+`RecordsProcessed` is monotonically non-decreasing within a drive's scan. The final frame
+for each drive is written immediately before that drive's `ScanReady` frame and always
+carries `RecordsProcessed == TotalRecords`, so an `IProgress<BrokerScanProgress>` consumer
+can treat that equality as scan-complete for the drive without waiting on `ScanReady`
+itself. Late progress frames arriving during live watch are discarded safely.
+
+`IProgress<BrokerScanProgress>.Report` is invoked synchronously on the same task that is
+reading scan frames off the pipe inside `ArmScanAndCatchUpAsync` - a thread-pool
+continuation, not a UI thread and not marshaled through any captured
+`SynchronizationContext`. If the callback must run on a specific thread (for example a UI
+dispatcher), implement that marshaling in the callback itself, or pass a `System.Progress<T>`
+instance, which captures the calling thread's context when constructed. Cancelling the
+token passed to `StartAsync`/`RescanAsync`/`ArmScanAndCatchUpAsync` stops progress
+reporting cleanly: the host-side progress pump completes without emitting a partial final
+frame (and the client never receives a final equality frame on cancellation, so callers
+should not wait for `RecordsProcessed == TotalRecords`), and the client-side frame loop
+surfaces the cancellation as `OperationCanceledException` out of the call that started
+the scan.
 
 `ScanRecord.Size` and `ScanRecord.LastWriteTicks` are currently zero because those
 fields are reserved for a future MFT surface. Use `Name`, `Path`, `Attributes`,
