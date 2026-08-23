@@ -42,8 +42,16 @@ if (git tag -l $tag) {
 }
 
 # --- Clean and restore ---
+# Resolve MSBuild via vswhere: a fresh shell has no MSBuild on PATH (same fix
+# as run-coverage.ps1 / native-coverage.ps1).
+$vsInstallPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+    -products '*' -requires Microsoft.Component.MSBuild -property installationPath -latest 2>$null
+$msbuild = if ($vsInstallPath) {
+    Join-Path $vsInstallPath "MSBuild\Current\Bin\amd64\MSBuild.exe"
+} else { "MSBuild.exe" }
+
 Write-Host "Cleaning solution..." -ForegroundColor Cyan
-& MSBuild.exe "$repoRoot\MFTLib.sln" -t:Clean -p:Configuration=Release -p:Platform=x64 -v:q -nologo
+& $msbuild "$repoRoot\MFTLib.sln" -t:Clean -p:Configuration=Release -p:Platform=x64 -v:q -nologo
 
 Write-Host "Restoring NuGet packages..." -ForegroundColor Cyan
 dotnet restore "$repoRoot\MFTLib.sln"
@@ -64,7 +72,7 @@ Write-Host ""
 
 # --- Pack NuGet ---
 Write-Host "Packing NuGet package..." -ForegroundColor Cyan
-& MSBuild.exe "$repoRoot\MFTLib\MFTLib.csproj" -t:Pack -p:Configuration=Release -p:Platform=x64 -v:q -nologo
+& $msbuild "$repoRoot\MFTLib\MFTLib.csproj" -t:Pack -p:Configuration=Release -p:Platform=x64 -v:q -nologo
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Pack failed." -ForegroundColor Red
     exit 1
