@@ -5,8 +5,14 @@ this document tracks the remaining release sequence.
 
 ## Status
 
-`main` is at `a841998`. All 0.3.0 feature, broker, memory optimization, and test
+`main` is at `b725c14`. All 0.3.0 feature, broker, memory optimization, and test
 hardening work is merged and validated on both Windows and Linux.
+
+The validation below was recorded at `a841998`. Three PRs landed after it:
+#66 (doc hygiene), #67 (`SpawnAndConnectAsync` connect timeout), and #69
+(`CanSelfElevate` interactive-desktop guard). Each passed CI, coverage, and
+review, but the attended dry run (step 3 below) has not yet been re-run on the
+current tree; re-run it before treating the tree as release-validated.
 The public `MFTLib` namespace and API remain intact while source files are grouped
 by MFT, journal, broker, elevation, interop, and internal responsibilities.
 
