@@ -1,27 +1,30 @@
-MFTLib test report - 2026-08-24
+MFTLib test report - 2026-08-22
 ===========================================
 
 Status:   PASS
 Mode:     0.3.0 release verification (attended full managed run + separate elevated native run)
-Tests:    686 passed, 0 failed (650 non-admin + 36 elevated NTFS/USN, managed);
-          686 passed, 0 failed under native Debug|x64 instrumentation (full suite rerun)
-Git:      main at 0251ee9 (incorporating #66, #67, #69, #70)
+Tests:    679 passed, 0 failed (643 non-admin + 36 elevated NTFS/USN, managed);
+          679 passed, 0 failed under native Debug|x64 instrumentation (full suite rerun elevated)
+Git:      main at e26429f plus the MSBuild-resolution fix in
+          scripts/native-coverage.ps1 landing in this commit and the
+          elevated-wrapper marker fix in .claude/scripts/
+          native-coverage-elevated.ps1 (gitignored, lives outside the repo history)
 
 Managed coverage (`scripts/run-coverage.ps1`, full attended run):
-  Non-admin phase (650 tests):
+  Non-admin phase (643 tests):
     Module                  Line     Branch   Method
     Benchmark               98.74%   95.6%    100%
-    MFTLib                  100%     99.01%   100%
+    MFTLib                  100%     99.33%   100%
     MFTLibTestExtensions    100%     100%     100%
     TestProgram             100%     100%     100%
-    Total                   99.74%   98.26%   100%
+    Total                   99.73%   98.49%   100%
   Elevated admin phase (36 tests, merged into the same coverage run): every MFTLib
   class reports 100% line coverage. Aggregate totals are unchanged from the
   non-admin phase - Benchmark's uncovered lines are not admin-gated, so they
   still account for the total falling short of 100%.
   Exclusion annotations added by this run: 0
 
-Native coverage (`scripts/native-coverage.ps1`, 686 tests, 13m 29s):
+Native coverage (`scripts/native-coverage.ps1` via the elevated wrapper, 679 tests, 13m):
   MFTLibNative: 98.8% line, 100% branch
   Exclusion annotations added by this run: 0
 
@@ -42,13 +45,10 @@ suppressions added anywhere to reach these numbers):
 
 Release validation performed:
   - Full Release|x64 solution build, then Debug|x64 build for native instrumentation
-  - 650 non-admin managed tests plus 36 elevated tests against real NTFS MFT and
+  - 643 non-admin managed tests plus 36 elevated tests against real NTFS MFT and
     USN journal APIs
-  - Native coverage collection re-ran the full 686-test suite under
+  - Native coverage collection re-ran the full 679-test suite elevated under
     Debug|x64 instrumentation, reaching 98.8% line / 100% branch on MFTLibNative
-  - `aislop ci .` is 100/100 with zero score-affecting findings across 126 files
-  - `scripts/release.ps1` dry run successfully packed `MFTLib.0.3.0.nupkg`
-  - Linux build and test suite passing (15 native smoke + 372 managed unit tests passing)
   - No coverage exclusions or suppressions added anywhere
 
 Remaining outward checks:
@@ -57,5 +57,4 @@ Remaining outward checks:
 
 Commands:
   `.\scripts\run-coverage.ps1`
-  `.\scripts\native-coverage.ps1`
-  `.\scripts\release.ps1`
+  `.\.claude\scripts\native-coverage-elevated.ps1`
