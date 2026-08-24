@@ -65,6 +65,63 @@ Or add a package reference:
 <PackageReference Include="MFTLib" Version="0.3.0" />
 ```
 
+## Pre-release consumption (Gitea pin & CI recipe)
+
+Consumers of MFTLib (such as `file-wizard` and `git-wizard`) must never carry MFTLib as a git submodule. Instead, a consumer opts in to pre-release consumption using a pin file:
+
+1. **Pin file convention**: Place a one-line `.mftlib/pin` file at the consumer repository root on its default branch containing exactly one 40-character commit SHA from Gitea (`https://gitea.fleet.sticktoitive.net/schoen/MFTLib.git`).
+2. **Automated fan-out**: On push to `main` in MFTLib, `.gitea/workflows/sync-consumers.yml` executes `scripts/sync_consumers.sh`, enumerates `schoen/*` repos on Gitea, skips any without `.mftlib/pin`, and opens a `chore/mftlib-pin-bump` pull request as the `claude-code` bot (backed by the `MFTLIB_SYNC_TOKEN` Actions secret).
+3. **Local development**: Consumers resolve MFTLib via a relative sibling checkout (e.g. `../MFTLib`) or a prebuilt artifact path, never `external/MFTLib`.
+4. **Post-0.3.0 NuGet transition**: Once 0.3.0 is published on NuGet, consumers replace `.mftlib/pin` with standard `<PackageReference Include="MFTLib" Version="0.3.0" />` (automated package reference updates are planned for a future iteration of the fan-out workflow).
+
+### Consumer CI recipe
+
+In consumer CI workflows, validate the pin before exporting to `GITHUB_ENV`, clone MFTLib outside the workspace (e.g. into `$RUNNER_TEMP/MFTLib`), and build the native core and managed assemblies.
+
+#### Bash (Linux CI)
+
+```bash
+# Validate pin format (prevents env-injection vectors)
+commit=$(tr -d '[:space:]' < .mftlib/pin)
+if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ERROR: .mftlib/pin is not a single 40-char lowercase sha" >&2
+  exit 1
+fi
+echo "MFTLIB_PIN=$commit" >> "$GITHUB_ENV"
+
+# Clone from Gitea canonical source
+git clone https://gitea.fleet.sticktoitive.net/schoen/MFTLib.git "$RUNNER_TEMP/MFTLib"
+git -C "$RUNNER_TEMP/MFTLib" checkout "$MFTLIB_PIN"
+
+# Build native core and managed assemblies
+cmake -S "$RUNNER_TEMP/MFTLib/MFTLibNative" -B "$RUNNER_TEMP/MFTLib/build/linux" -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build "$RUNNER_TEMP/MFTLib/build/linux"
+dotnet build "$RUNNER_TEMP/MFTLib/MFTLib/MFTLib.csproj" -c Release -p:Platform=x64
+dotnet build "$RUNNER_TEMP/MFTLib/MFTLibTestExtensions/MFTLibTestExtensions.csproj" -c Release -p:Platform=x64
+```
+
+#### PowerShell (Windows CI)
+
+```powershell
+# Validate pin format
+$pin = (Get-Content .mftlib/pin -Raw).Trim()
+if ($pin -notmatch '^[0-9a-f]{40}$') {
+  Write-Error "ERROR: .mftlib/pin is not a single 40-char lowercase sha"
+  exit 1
+}
+"MFTLIB_PIN=$pin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+# Clone from Gitea canonical source
+git clone https://gitea.fleet.sticktoitive.net/schoen/MFTLib.git "$env:RUNNER_TEMP\MFTLib"
+git -C "$env:RUNNER_TEMP\MFTLib" checkout "$pin"
+
+# Build entire solution (native C++ DLL and managed assemblies; requires MSBuild with x64 platform)
+# Restore NuGet packages first (VS MSBuild does not auto-restore SDK-style projects)
+dotnet restore "$env:RUNNER_TEMP\MFTLib\MFTLib.sln"
+# Note: on host-mode act_runner, use the 64-bit amd64 MSBuild binary to avoid WOW64 path redirection
+MSBuild.exe "$env:RUNNER_TEMP\MFTLib\MFTLib.sln" -p:Configuration=Release -p:Platform=x64 -nologo -v:minimal
+```
+
 ## Choose an integration model
 
 | Scenario | Recommended API |

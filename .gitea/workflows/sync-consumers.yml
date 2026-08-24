@@ -1,0 +1,41 @@
+# .gitea/workflows/sync-consumers.yml
+name: sync-consumers
+# Keeps every consumer repo's MFTLib pin in sync with main.
+# Convention: a consumer repo carries .mftlib/pin (one line, the 40-char
+# commit sha of MFTLib its CI is pinned to). This workflow bumps that pin
+# across all opting-in consumer repositories on every push to main.
+#
+# Required one-time setup: create a Gitea Actions secret named
+# MFTLIB_SYNC_TOKEN on this repository, holding a personal access token for
+# the claude-code bot (scopes: write:repository, read:repository), and add
+# claude-code as a write collaborator on every consumer repository this
+# workflow is meant to update. This workflow does not and cannot create
+# that secret or that collaborator grant itself.
+#
+# Gitea only, never github.com: the push that triggers this workflow lands
+# on Gitea. The GitHub mirror can lag behind it, so every clone and fetch
+# targets gitea.fleet.sticktoitive.net.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: sync-consumers-${{ github.ref }}
+
+permissions:
+  contents: read
+
+jobs:
+  fan-out:
+    name: Bump consumer repo pins
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync consumer repos to the new MFTLib pin
+        env:
+          GITEA_TOKEN: ${{ secrets.MFTLIB_SYNC_TOKEN }}
+        run: |
+          bash scripts/sync_consumers.sh "${{ github.sha }}"
