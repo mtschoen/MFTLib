@@ -36,9 +36,9 @@ if ($gitSha -notmatch '^[0-9a-f]{40}$') {
     exit 1
 }
 
-$benchmarkExe = Join-Path $repoRoot "Benchmark\bin\x64\Release\net8.0\Benchmark.exe"
+$benchmarkExe = Join-Path $repoRoot "Benchmark\bin\x64\Release\net10.0\Benchmark.exe"
 if (-not (Test-Path $benchmarkExe)) {
-    $benchmarkExe = Join-Path $repoRoot "Benchmark\bin\Release\net8.0\Benchmark.exe"
+    $benchmarkExe = Join-Path $repoRoot "Benchmark\bin\Release\net10.0\Benchmark.exe"
 }
 if (-not (Test-Path $benchmarkExe)) {
     Write-Error "Benchmark.exe not found at $benchmarkExe. Please build the solution first with: MSBuild.exe MFTLib.sln -p:Configuration=Release -p:Platform=x64"

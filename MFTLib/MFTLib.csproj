@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -13,7 +13,7 @@
     <PackageId>MFTLib</PackageId>
     <Version>0.3.0</Version>
     <Authors>Matt Schoen</Authors>
-    <Description>Fast NTFS file indexing and change tracking for .NET 8 on Windows x64. Reads the Master File Table (MFT) through a native C++ core, resolves paths, filters filenames, follows the USN journal, and can isolate elevated volume access in one reusable broker process.</Description>
+    <Description>Fast NTFS file indexing and change tracking for .NET 10 on Windows x64. Reads the Master File Table (MFT) through a native C++ core, resolves paths, filters filenames, follows the USN journal, and can isolate elevated volume access in one reusable broker process.</Description>
     <PackageProjectUrl>https://github.com/mtschoen/MFTLib</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mtschoen/MFTLib</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -59,6 +59,9 @@
   <!-- Pack native DLL into the NuGet package (Windows only — Linux package not yet built) -->
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <None Include="..\x64\$(Configuration)\MFTLibNative.dll" Pack="true" PackagePath="runtimes/win-x64/native" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="build\MFTLib.targets" Pack="true" PackagePath="build" />
     <None Include="build\MFTLib.targets" Pack="true" PackagePath="buildTransitive" />
     <None Include="..\LICENSE.txt" Pack="true" PackagePath="" />

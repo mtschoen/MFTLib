@@ -4,6 +4,7 @@
 
 ### Breaking Changes
 
+- Targets net10.0; net8.0 consumers must upgrade.
 - Replaced the pre-release seven-argument `UsnJournalEntry.Create(...)` signature with `Create(UsnJournalEntryOptions)`; callers building against 0.3.0 previews must migrate to an object initializer
 
 ### Features

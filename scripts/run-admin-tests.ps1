@@ -18,11 +18,26 @@ if ($AllTests) { $Filter = "" }
 if (Test-Path $logFile) { Remove-Item $logFile }
 
 # Build first (doesn't need admin)
-Write-Host "Building solution..." -ForegroundColor Cyan
-& MSBuild.exe "$repoRoot\MFTLib.sln" -p:Configuration=$Configuration -p:Platform=x64 -v:q -nologo
+Write-Host "Building native project..." -ForegroundColor Cyan
+& MSBuild.exe "$repoRoot\MFTLibNative\MFTLibNative.vcxproj" -t:Build -p:Configuration=$Configuration -p:Platform=x64 -p:SolutionDir="$repoRoot\" -v:q -nologo
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Build failed." -ForegroundColor Red
+    Write-Host "Native build failed." -ForegroundColor Red
     exit 1
+}
+
+Write-Host "Building managed projects..." -ForegroundColor Cyan
+foreach ($proj in @(
+    "MFTLib\MFTLib.csproj",
+    "MFTLibTestExtensions\MFTLibTestExtensions.csproj",
+    "TestProgram\TestProgram.csproj",
+    "Benchmark\Benchmark.csproj",
+    "MFTLib.Tests\MFTLib.Tests.csproj"
+)) {
+    & dotnet build "$repoRoot\$proj" -c $Configuration -p:Platform=x64
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Build failed for $proj." -ForegroundColor Red
+        exit 1
+    }
 }
 
 # Construct the test command

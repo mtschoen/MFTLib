@@ -13,7 +13,7 @@ $ErrorActionPreference = "Stop"
 
 $coverageTool = "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\Extensions\Microsoft\CodeCoverage.Console\Microsoft.CodeCoverage.Console.exe"
 $solutionRoot = Split-Path -Parent $PSScriptRoot
-$nativeDll = Join-Path $solutionRoot "MFTLib.Tests\bin\x64\Debug\net8.0\MFTLibNative.dll"
+$nativeDll = Join-Path $solutionRoot "MFTLib.Tests\bin\x64\Debug\net10.0\MFTLibNative.dll"
 $testProject = Join-Path $solutionRoot "MFTLib.Tests\MFTLib.Tests.csproj"
 $coberturaOutput = Join-Path $solutionRoot "native-coverage.cobertura.xml"
 $settings = Join-Path $solutionRoot "native-coverage.runsettings"

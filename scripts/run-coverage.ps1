@@ -36,13 +36,11 @@ $reportDir    = Join-Path $coverageDir "coverage-report"
 #
 # Step 1 — dotnet restore: generates project.assets.json for C# projects.
 #   (VS MSBuild doesn't auto-restore; dotnet.exe is 64-bit so no WOW64 issue.)
-# Step 2 — 64-bit VS MSBuild builds the full solution.
-#   Use the amd64 binary: the workspace is under C:\Windows\System32\config\
-#   systemprofile\... which WOW64 redirects to SysWOW64 for 32-bit processes.
-#   Set MSBuildSDKsPath so the .NET SDK resolver finds Microsoft.NET.Sdk.
-#   Set MSBUILDENABLEWORKLOADRESOLVER=false to skip workload auto-import props
-#   which fail when no workloads are installed (standard for BuildTools-only CI).
-#   Override PlatformToolset=v143 since the vcxproj has v145 (not present here).
+# Step 2 — 64-bit VS MSBuild builds the native C++ project (MFTLibNative.vcxproj).
+#   Use the amd64 binary. Override PlatformToolset=v143 since the vcxproj has v145.
+#   Pass SolutionDir with trailing slash so post-build xcopy resolves correctly.
+# Step 3 — dotnet builds all managed projects against the built native binary.
+#   Directory.Build.targets drops the native ProjectReference during dotnet builds.
 
 Write-Host "Restoring NuGet packages..." -ForegroundColor Cyan
 $slnPath = Join-Path $repoRoot "MFTLib.sln"
@@ -59,17 +57,29 @@ $msbuild = if ($vsInstallPath) {
     Join-Path $vsInstallPath "MSBuild\Current\Bin\amd64\MSBuild.exe"
 } else { "MSBuild.exe" }
 
-$sdkEntry = & dotnet --list-sdks 2>$null | Where-Object { $_ -match '^8\.' } | Select-Object -Last 1
-if ($sdkEntry -match '^(\S+)\s+\[(.+)\]') {
-    $env:MSBuildSDKsPath = Join-Path (Join-Path $Matches[2] $Matches[1]) "Sdks"
-}
-$env:MSBUILDENABLEWORKLOADRESOLVER = "false"
-
-Write-Host "Building solution ($Configuration|x64)..." -ForegroundColor Cyan
-& $msbuild $slnPath -p:Configuration=$Configuration -p:Platform=x64 -p:PlatformToolset=v143 -v:q -nologo
+Write-Host "Building native project ($Configuration|x64)..." -ForegroundColor Cyan
+$nativeProj = Join-Path $repoRoot "MFTLibNative\MFTLibNative.vcxproj"
+& $msbuild $nativeProj -t:Build -p:Configuration=$Configuration -p:Platform=x64 -p:PlatformToolset=v143 -p:SolutionDir="$repoRoot\" -v:q -nologo
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Build failed." -ForegroundColor Red
+    Write-Host "Native build failed." -ForegroundColor Red
     exit 1
+}
+
+Write-Host "Building managed projects ($Configuration|x64)..." -ForegroundColor Cyan
+$managedProjects = @(
+    "MFTLib\MFTLib.csproj",
+    "MFTLibTestExtensions\MFTLibTestExtensions.csproj",
+    "TestProgram\TestProgram.csproj",
+    "Benchmark\Benchmark.csproj",
+    "MFTLib.Tests\MFTLib.Tests.csproj"
+)
+foreach ($proj in $managedProjects) {
+    $projPath = Join-Path $repoRoot $proj
+    & dotnet build $projPath -c $Configuration -p:Platform=x64 --no-restore
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Build failed for $proj." -ForegroundColor Red
+        exit 1
+    }
 }
 
 # Clean stale coverage

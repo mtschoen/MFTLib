@@ -1,0 +1,18 @@
+<Project>
+  <!-- When building with dotnet CLI (MSBuildRuntimeType == 'Core'), drop ProjectReference to native vcxproj
+       which dotnet cannot evaluate (MSB4278). VS MSBuild compiles MFTLibNative.vcxproj separately. -->
+  <ItemGroup Condition="'$(MSBuildRuntimeType)' == 'Core' And '$(MSBuildProjectExtension)' == '.csproj'">
+    <ProjectReference Remove="..\MFTLibNative\MFTLibNative.vcxproj" />
+  </ItemGroup>
+
+  <!-- Windows: copy built MFTLibNative.dll and pdb to output directory after managed build if present -->
+  <Target Name="CopyMFTLibNative" AfterTargets="Build"
+          Condition="'$(MSBuildProjectExtension)' == '.csproj' And '$(TargetFramework)' != '' And $([MSBuild]::IsOSPlatform('Windows'))">
+    <ItemGroup>
+      <_MFTLibNativeDll Include="$(MSBuildThisFileDirectory)x64\$(Configuration)\MFTLibNative.dll" Condition="Exists('$(MSBuildThisFileDirectory)x64\$(Configuration)\MFTLibNative.dll')" />
+      <_MFTLibNativePdb Include="$(MSBuildThisFileDirectory)x64\$(Configuration)\MFTLibNative.pdb" Condition="Exists('$(MSBuildThisFileDirectory)x64\$(Configuration)\MFTLibNative.pdb')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_MFTLibNativeDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="'@(_MFTLibNativeDll)' != ''" />
+    <Copy SourceFiles="@(_MFTLibNativePdb)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="'@(_MFTLibNativePdb)' != ''" />
+  </Target>
+</Project>

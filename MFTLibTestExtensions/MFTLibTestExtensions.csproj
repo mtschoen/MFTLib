@@ -8,7 +8,7 @@
        IsPackable is false for now: at NuGet-publish time this ships as a separate
        MFTLib.TestExtensions package, never folded into the MFTLib package. -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>

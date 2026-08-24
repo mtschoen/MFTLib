@@ -41,10 +41,10 @@ jobs:
       # "prepare": "tsdown" script; below that, tsdown dies on
       # Promise.withResolvers. Not aislop's runtime floor, which is still node 18.
 
-      - name: Setup .NET 8 SDK
+      - name: Setup .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.x'
+          dotnet-version: '10.0.x'
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -56,31 +56,35 @@ jobs:
           dotnet tool update -g JetBrains.ReSharper.GlobalTools --version 2026.2.0 --allow-downgrade
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
 
-      - name: Build MFTLib solution (native + managed; jb/roslynator load it)
+      - name: Build MFTLib (native + managed; jb/roslynator load it)
         shell: pwsh
-        env:
-          # VS BuildTools MSBuild auto-imports workload props that fail with no
-          # workloads installed (standard for BuildTools-only CI).
-          MSBUILDENABLEWORKLOADRESOLVER: 'false'
         run: |
           # Mixed C#/C++ build on the SYSTEM-account VS BuildTools runner. Mirrors
           # scripts/run-coverage.ps1 (the test job's proven build):
-          #  - the checkout lives under System32\...\hostexecutor, which WOW64
-          #    redirects away from 32-bit MSBuild, so pass the absolute
-          #    $env:GITHUB_WORKSPACE path AND use the 64-bit amd64 MSBuild;
           #  - dotnet restore first (VS MSBuild does not auto-restore);
-          #  - set MSBuildSDKsPath so the .NET SDK resolver is found;
-          #  - override PlatformToolset to v143 (the vcxproj pins v145, absent here).
+          #  - 64-bit VS MSBuild builds the native C++ project (MFTLibNative.vcxproj);
+          #  - override PlatformToolset to v143 (the vcxproj pins v145, absent here);
+          #  - dotnet builds each managed project against the built native library
+          #    (Directory.Build.targets drops the vcxproj ProjectReference for dotnet).
           $sln = "$env:GITHUB_WORKSPACE\MFTLib.sln"
           dotnet restore $sln
           if ($LASTEXITCODE -ne 0) { Write-Error "dotnet restore failed"; exit 1 }
           $vsInstallPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
             -products '*' -requires Microsoft.Component.MSBuild -property installationPath -latest
           $msbuild = if ($vsInstallPath) { Join-Path $vsInstallPath "MSBuild\Current\Bin\amd64\MSBuild.exe" } else { "MSBuild.exe" }
-          $sdkEntry = & dotnet --list-sdks | Where-Object { $_ -match '^8\.' } | Select-Object -Last 1
-          if ($sdkEntry -match '^(\S+)\s+\[(.+)\]') { $env:MSBuildSDKsPath = Join-Path (Join-Path $Matches[2] $Matches[1]) "Sdks" }
-          & $msbuild $sln -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -v:minimal -nologo
-          if ($LASTEXITCODE -ne 0) { Write-Error "msbuild failed"; exit 1 }
+          $native = "$env:GITHUB_WORKSPACE\MFTLibNative\MFTLibNative.vcxproj"
+          & $msbuild $native -t:Build -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -p:SolutionDir="$env:GITHUB_WORKSPACE\" -v:minimal -nologo
+          if ($LASTEXITCODE -ne 0) { Write-Error "msbuild MFTLibNative failed"; exit 1 }
+          foreach ($proj in @(
+            "MFTLib\MFTLib.csproj",
+            "MFTLibTestExtensions\MFTLibTestExtensions.csproj",
+            "TestProgram\TestProgram.csproj",
+            "Benchmark\Benchmark.csproj",
+            "MFTLib.Tests\MFTLib.Tests.csproj"
+          )) {
+            dotnet build "$env:GITHUB_WORKSPACE\$proj" -c Release -p:Platform=x64 --no-restore
+            if ($LASTEXITCODE -ne 0) { Write-Error "dotnet build $proj failed"; exit 1 }
+          }
 
       - name: Install aislop (latest fork main)
         shell: pwsh

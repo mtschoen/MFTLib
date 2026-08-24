@@ -357,7 +357,7 @@ Diagnostics are best-effort and disabled by default.
 
 ## Deployment checklist
 
-- Target .NET 8 and Windows x64.
+- Target .NET 10 and Windows x64.
 - Reference the `MFTLib` NuGet package; its transitive build target copies
   `MFTLibNative.dll` to the output directory.
 - Publish an executable app host and launch that `.exe`.

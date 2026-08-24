@@ -4,32 +4,29 @@ This file is the cross-tool source of truth for coding agents working in this re
 
 ## Build Commands
 
-**ALWAYS use MSBuild with `-p:Platform=x64`** - the native C++ DLL must be built with MSBuild, not `dotnet build`.
+**Use MSBuild with `-p:Platform=x64` for the native C++ DLL**, and `dotnet build` for managed projects:
 
 ```bash
-# Build entire solution
-MSBuild.exe MFTLib.sln -p:Configuration=Release -p:Platform=x64
+# Build native C++ DLL
+MSBuild.exe MFTLibNative\MFTLibNative.vcxproj -p:Configuration=Release -p:Platform=x64
 
-# Build just the test program (includes native dependency)
-# NOTE: Always build the solution, not individual projects. The native DLL post-build
-# xcopy only resolves $(SolutionDir) correctly when building the .sln.
-MSBuild.exe TestProgram\TestProgram.csproj -p:Configuration=Release -p:Platform=x64
+# Build managed projects (or test program)
+dotnet build -c Release -p:Platform=x64
+dotnet build TestProgram\TestProgram.csproj -c Release -p:Platform=x64
 ```
 
-Do NOT use `dotnet build` - it cannot build the native C++ dependency (MFTLibNative).
+`dotnet build` cannot build the native C++ project (`MFTLibNative.vcxproj`), which must be compiled with MSBuild.
 
 ### NuGet packaging
 
 ```bash
 # Build Release and pack the NuGet package
-MSBuild.exe MFTLib.sln -p:Configuration=Release -p:Platform=x64
-MSBuild.exe MFTLib\MFTLib.csproj -t:Pack -p:Configuration=Release -p:Platform=x64
+MSBuild.exe MFTLibNative\MFTLibNative.vcxproj -p:Configuration=Release -p:Platform=x64
+dotnet pack MFTLib\MFTLib.csproj -c Release -p:Platform=x64
 
 # Publish to nuget.org
 dotnet nuget push "MFTLib\bin\x64\Release\MFTLib.*.nupkg" --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json
 ```
-
-Use `MSBuild -t:Pack` (not `dotnet pack`) since `dotnet pack` can't handle the vcxproj reference.
 
 ### Running the test program
 
@@ -39,10 +36,10 @@ For the most reliable experience (proper UAC prompt handling), **run the compile
 
 ```bash
 # Launch directly (will trigger UAC prompt if not already elevated)
-.\TestProgram\bin\x64\Release\net8.0\TestProgram.exe C:
+.\TestProgram\bin\x64\Release\net10.0\TestProgram.exe C:
 
 # Results are written to output.log in the same directory
-cat .\TestProgram\bin\x64\Release\net8.0\output.log
+cat .\TestProgram\bin\x64\Release\net10.0\output.log
 ```
 
 If running via `dotnet TestProgram.dll`, the helper will still attempt to relaunch the process with `runas`, but running the `.exe` is preferred.

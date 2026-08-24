@@ -44,7 +44,7 @@ volume size, filtering, path resolution, and hardware.
 ## Requirements
 
 - Windows on an NTFS volume
-- .NET 8.0 or later
+- .NET 10.0 or later
 - x64 process architecture
 - Administrator access for direct raw-volume and USN operations
 
@@ -274,7 +274,7 @@ when the pipe closes or fails.
 
 ## Building from source
 
-Visual Studio 2022 with the Desktop development with C++ workload and .NET 8 SDK is
+Visual Studio 2022 with the Desktop development with C++ workload and .NET 10 SDK is
 required. Build the solution with 64-bit MSBuild; `dotnet build` cannot build the native
 C++ project:
 
