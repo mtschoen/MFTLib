@@ -1,26 +1,24 @@
 # Handoff: MFTLib 0.3.0 Release
 
-Updated 2026-08-23. `CHANGELOG.md` is the authoritative description of 0.3.0;
+Updated 2026-08-24. `CHANGELOG.md` is the authoritative description of 0.3.0;
 this document tracks the remaining release sequence.
 
 ## Status
 
-`main` is at `b725c14`. All 0.3.0 feature, broker, memory optimization, and test
+`main` is at `0251ee9`. All 0.3.0 feature, broker, memory optimization, and test
 hardening work is merged and validated on both Windows and Linux.
 
-The validation below was recorded at `a841998`. Three PRs landed after it:
-#66 (doc hygiene), #67 (`SpawnAndConnectAsync` connect timeout), and #69
-(`CanSelfElevate` interactive-desktop guard). Each passed CI, coverage, and
-review, but the attended dry run (step 3 below) has not yet been re-run on the
-current tree; re-run it before treating the tree as release-validated.
+The attended dry run (step 3 below) has been re-run and validated on the
+current integrated tree (including #66 doc hygiene, #67 `SpawnAndConnectAsync`
+connect timeout, #69 `CanSelfElevate` interactive-desktop guard, and #70).
 The public `MFTLib` namespace and API remain intact while source files are grouped
 by MFT, journal, broker, elevation, interop, and internal responsibilities.
 
 Validation on the integrated tree (`TEST-REPORT.md`):
 
-- 679 total tests passing (643 non-admin + 36 elevated administrator tests against real NTFS and USN APIs);
-- 679/679 tests passing under native Debug|x64 instrumentation;
-- Managed coverage: MFTLib package is 100% line, 99.33% branch, 100% method (overall solution 99.73% line, 98.49% branch, 100% method);
+- 686 total tests passing (650 non-admin + 36 elevated administrator tests against real NTFS and USN APIs);
+- 686/686 tests passing under native Debug|x64 instrumentation;
+- Managed coverage: MFTLib package is 100% line, 99.01% branch, 100% method (overall solution 99.74% line, 98.26% branch, 100% method);
 - Native coverage: MFTLibNative is 98.8% line and 100% branch (uncovered lines are the documented-unreachable set from PR #55; zero exclusions);
 - `aislop ci .` is 100/100 with zero score-affecting findings;
 - `scripts/release.ps1` dry run resolves MSBuild via `vswhere` and packs `MFTLib.0.3.0.nupkg` and `.snupkg` successfully with the managed DLL, native runtime DLL, build targets, README, and license.
