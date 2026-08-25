@@ -2,10 +2,10 @@
 #
 # `aislop ci` produces a whole-repo score (0-100); the Gitea Actions gate
 # (.gitea/workflows/aislop.yml) fails the build when the score is below
-# failBelow. The C# engine lives in the personal fork github.com/mtschoen/aislop
-# (the public npm aislop is Python-only); CI installs it as a commit-pinned git
-# dependency via `npm ci` (built on install), locked in package.json +
-# package-lock.json.
+# failBelow. The C# engine lives in the personal fork gitea.fleet.sticktoitive.net/
+# schoen/aislop (the public npm `aislop` scores just Python), so CI clones +
+# builds that fork at the commit pinned in .aislop/fork-commit and runs the
+# built CLI.
 # This config follows the conventional C# baseline (csharp.yml),
 # mirroring git-wizard.
 #

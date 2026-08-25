@@ -16,6 +16,13 @@ public sealed partial class JournalBrokerClient
     // instead of sleeping for the real production timeout.
     internal static TimeSpan _endWatchAckTimeout = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    ///     Indicates whether the most recent call to <see cref="StopLiveWatchAsync" /> timed out
+    ///     waiting for the host's <c>EndWatchAck</c> response and forced the demux loop down via
+    ///     cancellation, rather than completing via the normal ack handshake.
+    /// </summary>
+    internal bool LastStopTimedOut { get; private set; }
+
     readonly Dictionary<string, Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>> _liveChannels =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -152,7 +159,12 @@ public sealed partial class JournalBrokerClient
             if (finished != task)
             // No ack within the window (broker wedged): force the demux down.
             {
+                LastStopTimedOut = true;
                 await demuxCts.CancelAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                LastStopTimedOut = false;
             }
         }
 

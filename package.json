@@ -1,9 +1,0 @@
-{
-  "name": "mftlib-ci-tooling",
-  "version": "0.0.0",
-  "private": true,
-  "description": "CI-only tooling for MFTLib (not shipped). Installs the C#-capable aislop quality gate from github.com/mtschoen/aislop (git dependency, built on install). See .gitea/workflows/aislop.yml.",
-  "devDependencies": {
-    "aislop": "git+ssh://git@github.com/mtschoen/aislop.git#main"
-  }
-}

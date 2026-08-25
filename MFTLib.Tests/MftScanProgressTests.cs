@@ -17,6 +17,7 @@ public class MftScanProgressTests
 
         Assert.AreEqual(500L, progress.RecordsScanned);
         Assert.AreEqual(1000L, progress.TotalRecords);
+        // aislop-ignore-next-line ai-slop/test-wall-clock-assertion -- false positive: progress.Elapsed is the TimeSpan literal passed to the constructor, not a clock read (schoen/aislop#51)
         Assert.AreEqual(elapsed, progress.Elapsed);
 
         var same = new MftScanProgress(500, 1000, elapsed);

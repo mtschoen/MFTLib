@@ -862,6 +862,7 @@ public class JournalBrokerHostTests
                 Assert.AreEqual("C", p.DriveLetter);
                 Assert.IsTrue(p.RecordsProcessed >= previousRecords,
                     $"RecordsProcessed must be non-decreasing: got {p.RecordsProcessed}, previous was {previousRecords}");
+                // aislop-ignore-next-line ai-slop/test-wall-clock-assertion -- false positive: MftScanProgress.Elapsed is a constructor-injected TimeSpan carried in the frame, not a clock read (schoen/aislop#51)
                 Assert.IsTrue(p.Elapsed >= previousElapsed,
                     $"Elapsed must be non-decreasing: got {p.Elapsed}, previous was {previousElapsed}");
                 Assert.AreEqual(5000L, p.TotalRecords, "TotalRecords must stay 5000 throughout");

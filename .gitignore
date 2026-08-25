@@ -402,6 +402,8 @@ native-coverage.cobertura.xml
 .superpowers/
 
 # aislop runtime artifacts (session/history logs, caches, baselines).
-# Unanchored so nested project directories are covered too.
+# Ignore directory contents rather than the directory itself so config.yml and
+# the CI fork-pin file can be un-ignored.
 **/.aislop/*
 !**/.aislop/config.yml
+!**/.aislop/fork-commit

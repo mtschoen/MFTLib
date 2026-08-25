@@ -154,9 +154,10 @@ functions, etc.) across TS/JS, Python, Go, Rust, Ruby, PHP, Java, and C#.
 
 `aislop` is installed globally on this machine, pinned to a **specific commit** of
 the fork `mtschoen/aislop` (which adds the C# engine: roslynator + jb
-inspectcode; upstream npm `aislop` is Python-only). Call the installed binary
-directly - do NOT use `npx aislop`, which pulls upstream from npm with no C#
-support:
+inspectcode; upstream npm `aislop` is Python-only). Note that the local global
+installation pin and the CI commit pin (`.aislop/fork-commit`) are separate
+things to keep in rough sync. Call the installed binary directly - do NOT use
+`npx aislop`, which pulls upstream from npm with no C# support:
 
 - **Before declaring work complete**, run `aislop scan .` and address findings.
 - **Before committing**, run `aislop scan --staged` (staged files only).
@@ -174,10 +175,9 @@ includes the native `MFTLibNative.vcxproj`, which only loads/builds under
 MSBuild + MSVC, and both jb inspectcode and roslynator load the full solution.
 `lint.csharp.jbProjects` in `.aislop/config.yml` scopes jb inspection to the four
 C# projects so the C++ tree stays on its own clang-tidy/cppcheck gate. The
-workflow installs `aislop` from the `main` branch of the
-`github.com/mtschoen/aislop` fork (git+ssh URL in `package.json`) with
-`npm install` - which resolves the latest commit and builds it on install - and
-runs it with `npx --no-install`. It deliberately does NOT use `actions/setup-node`
+workflow installs `aislop` by cloning the `schoen/aislop` fork from Gitea at the
+commit pinned in `.aislop/fork-commit` (built with `pnpm`) and runs it via `node`.
+It deliberately does NOT use `actions/setup-node`
 (its 7zr extraction dies with exit code 2 on the host-mode act_runner). The
 build step also mirrors `run-coverage.ps1`'s 64-bit-amd64-MSBuild recipe (the
 checkout path is WOW64-virtualized away from 32-bit MSBuild). See the traps in
@@ -197,7 +197,4 @@ pnpm ls -g --depth 0            # or read the spec in pnpm's global package.json
 
 To move the global binary to a different commit or tag of the fork:
 `pnpm add -g --allow-build=aislop "github:mtschoen/aislop#<commit-ish>"`
-
-Note the asymmetry with CI, which installs from the branch head and is
-deliberately not pinned at all - so the gate you run locally and the gate CI runs
-can differ.
+(CI pin updates are separate and tracked in `.aislop/fork-commit`.)

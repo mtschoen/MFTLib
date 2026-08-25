@@ -16,27 +16,75 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pin-only PRs (a bump of .aislop/fork-commit, opened by the aislop fork's
+      # sync-consumers workflow) don't touch anything this job builds or tests.
+      # Detect that case and skip the rest of the job's steps (still SUCCESS,
+      # not skipped-as-failure, so branch protection's required check is
+      # satisfied) instead of paying for a full build+test cycle. Never use
+      # workflow-level paths/paths-ignore for this: on Gitea that leaves the
+      # required check permanently pending for any PR that doesn't touch the
+      # matched paths (gitea issue 36895).
+      - name: Determine changed files (pin-only PR early exit)
+        id: changed-files
+        shell: pwsh
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_AFTER: ${{ github.event.after }}
+        run: |
+          $pinOnly = $false
+          try {
+            if ($env:GITHUB_EVENT_NAME -eq "pull_request" -and $env:GITHUB_BASE_REF) {
+              git fetch --depth=1 origin $env:GITHUB_BASE_REF 2>$null
+              if ($LASTEXITCODE -eq 0) {
+                $changed = @(git diff --name-only FETCH_HEAD HEAD 2>$null)
+                Write-Host "Changed files vs $($env:GITHUB_BASE_REF):"
+                $changed | ForEach-Object { Write-Host $_ }
+                if ($changed.Count -eq 1 -and $changed[0] -eq ".aislop/fork-commit") {
+                  $pinOnly = $true
+                }
+              }
+            } elseif ($env:GITHUB_EVENT_NAME -eq "push" -and $env:EVENT_BEFORE -and $env:EVENT_BEFORE -ne "0000000000000000000000000000000000000000") {
+              git fetch --depth=1 origin $env:EVENT_BEFORE 2>$null
+              if ($LASTEXITCODE -eq 0) {
+                $changed = @(git diff --name-only $env:EVENT_BEFORE $env:EVENT_AFTER 2>$null)
+                Write-Host "Changed files ($($env:EVENT_BEFORE)..$($env:EVENT_AFTER)):"
+                $changed | ForEach-Object { Write-Host $_ }
+                if ($changed.Count -eq 1 -and $changed[0] -eq ".aislop/fork-commit") {
+                  $pinOnly = $true
+                }
+              }
+            }
+          } catch {
+            Write-Host "Changed-file detection failed, running the job in full: $_"
+            $pinOnly = $false
+          }
+          "pin_only=$($pinOnly.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Setup .NET 10 SDK
+        if: steps.changed-files.outputs.pin_only != 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
       - name: Setup MSBuild
+        if: steps.changed-files.outputs.pin_only != 'true'
         uses: microsoft/setup-msbuild@v2
 
       - name: Install reportgenerator
+        if: steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh
         run: |
           dotnet tool update --global dotnet-reportgenerator-globaltool
           echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Run coverage
+        if: steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh
         working-directory: ${{ github.workspace }}
         run: scripts\run-coverage.ps1 -NonInteractive
 
       - name: Upload coverage artifact
-        if: always()
+        if: always() && steps.changed-files.outputs.pin_only != 'true'
         uses: actions/upload-artifact@v3
         with:
           name: windows-coverage
@@ -45,7 +93,7 @@ jobs:
             MFTLib.Tests/coverage-report/**
 
       - name: Post coverage status
-        if: always()
+        if: always() && steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -72,7 +120,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pin-only PRs (a bump of .aislop/fork-commit, opened by the aislop fork's
+      # sync-consumers workflow) don't touch anything this job builds or tests.
+      # Detect that case and skip the rest of the job's steps (still SUCCESS,
+      # not skipped-as-failure, so branch protection's required check is
+      # satisfied) instead of paying for a full build+test cycle. Never use
+      # workflow-level paths/paths-ignore for this: on Gitea that leaves the
+      # required check permanently pending for any PR that doesn't touch the
+      # matched paths (gitea issue 36895).
+      - name: Determine changed files (pin-only PR early exit)
+        id: changed-files
+        shell: bash
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_AFTER: ${{ github.event.after }}
+        run: |
+          PIN_ONLY=false
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$GITHUB_BASE_REF" ]; then
+            if git fetch --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null; then
+              CHANGED=$(git diff --name-only FETCH_HEAD HEAD 2>/dev/null || true)
+              echo "Changed files vs $GITHUB_BASE_REF:"
+              echo "$CHANGED"
+              if [ "$CHANGED" = ".aislop/fork-commit" ]; then
+                PIN_ONLY=true
+              fi
+            fi
+          elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$EVENT_BEFORE" ] && [ "$EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            if git fetch --depth=1 origin "$EVENT_BEFORE" 2>/dev/null; then
+              CHANGED=$(git diff --name-only "$EVENT_BEFORE" "$EVENT_AFTER" 2>/dev/null || true)
+              echo "Changed files ($EVENT_BEFORE..$EVENT_AFTER):"
+              echo "$CHANGED"
+              if [ "$CHANGED" = ".aislop/fork-commit" ]; then
+                PIN_ONLY=true
+              fi
+            fi
+          fi
+          echo "pin_only=$PIN_ONLY" >> "$GITHUB_OUTPUT"
+
       - name: Install build deps
+        if: steps.changed-files.outputs.pin_only != 'true'
         # gcovr from apt (universe) instead of pip: the runner's egress to
         # pypi.org goes through a TLS-intercepting proxy whose CA isn't in pip's
         # bundled certifi, so `pip install gcovr` fails cert verification. apt
@@ -84,15 +170,17 @@ jobs:
           apt-get install -y cmake ninja-build gcovr
 
       - name: Setup .NET 10 SDK
+        if: steps.changed-files.outputs.pin_only != 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
       - name: Run coverage
+        if: steps.changed-files.outputs.pin_only != 'true'
         run: bash scripts/coverage-linux.sh
 
       - name: Upload coverage artifact
-        if: always()
+        if: always() && steps.changed-files.outputs.pin_only != 'true'
         uses: actions/upload-artifact@v3
         with:
           name: linux-coverage

@@ -1,7 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
-using System.Diagnostics;
 using System.IO.MemoryMappedFiles;
 using System.IO.Pipes;
 using System.Reflection;
@@ -301,14 +300,8 @@ public class JournalBrokerClientTests
 
         await client.SendStartWatchAsync(cursors);
 
-        var stopwatch = Stopwatch.StartNew();
         await client.StopLiveWatchAsync();
-        stopwatch.Stop();
-
-        // The handshake (EndWatch -> EndWatchAck) must complete fast, NOT via the 5s
-        // ack-timeout fallback.
-        Assert.IsTrue(stopwatch.Elapsed < TimeSpan.FromSeconds(2),
-            $"StopLiveWatchAsync took {stopwatch.Elapsed}, expected the fast ack handshake");
+        Assert.IsFalse(client.LastStopTimedOut, "StopLiveWatchAsync must complete via the EndWatchAck handshake, not the timeout fallback.");
 
         await brokerTask;
         CollectionAssert.AreEqual(new[] { BrokerFrameKind.StartWatch, BrokerFrameKind.EndWatch }, receivedKinds);
@@ -348,12 +341,8 @@ public class JournalBrokerClientTests
 
         await client.SendStartWatchAsync(cursors);
 
-        var stopwatch = Stopwatch.StartNew();
         await client.StopLiveWatchAsync();
-        stopwatch.Stop();
-
-        Assert.IsTrue(stopwatch.Elapsed < TimeSpan.FromSeconds(2),
-            $"StopLiveWatchAsync took {stopwatch.Elapsed}, expected the fast ack handshake despite the stray batch");
+        Assert.IsFalse(client.LastStopTimedOut, "StopLiveWatchAsync must complete via the EndWatchAck handshake despite the stray batch, not the timeout fallback.");
 
         await brokerTask;
 
@@ -573,12 +562,8 @@ public class JournalBrokerClientTests
 
         // The broker side never sends EndWatchAck (a wedged broker); StopLiveWatchAsync
         // must not hang - it forces the demux down once the (shrunk) timeout elapses.
-        var stopwatch = Stopwatch.StartNew();
         await client.StopLiveWatchAsync();
-        stopwatch.Stop();
-
-        Assert.IsTrue(stopwatch.Elapsed < TimeSpan.FromSeconds(2),
-            $"StopLiveWatchAsync took {stopwatch.Elapsed}, expected the shrunk timeout to force it down");
+        Assert.IsTrue(client.LastStopTimedOut, "StopLiveWatchAsync must force demux down via timeout when broker sends no ack.");
 
         await client.DisposeAsync();
         _ = serverSide;
@@ -616,7 +601,6 @@ public class JournalBrokerClientTests
         });
 
         await ReadOneFrameAsync(serverSide); // consume the StartWatch request
-        await Task.Delay(20); // give the subscriber a moment to register its channel
 
         var ack = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteEndWatchAck(ack);
@@ -1131,8 +1115,6 @@ public class JournalBrokerClientTests
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
 
-            // Delay before completing the scan
-            await Task.Delay(50);
             var completeResponse = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteScanReady(completeResponse, "mftlib-scan-C", 100, 2000);
             BrokerProtocol.WriteJournalBatch(completeResponse, "C", new UsnJournalCursor(7UL, 200L),
