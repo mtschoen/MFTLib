@@ -208,5 +208,6 @@ if ($missingPrerequisites.Count -gt 0) {
 
 if (-not $Build) {
     Write-Host ''
-    Write-Host 'Next: .\init.ps1 -Build, or .\scripts\run-coverage.ps1 for the full test run.'
+    Write-Host 'Next: .\init.ps1 -Build (.\init.bat -Build from cmd.exe),'
+    Write-Host '      or .\scripts\run-coverage.ps1 for the full test run.'
 }

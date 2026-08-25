@@ -95,6 +95,15 @@ git clean -ffxd && .\init.ps1          # restore only, a few seconds
 git clean -ffxd && .\init.ps1 -Build   # also build the solution Release|x64
 ```
 
+From `cmd.exe`, use `init.bat`, which forwards to the same script:
+
+```bat
+git clean -ffxd && .\init.bat
+git clean -ffxd && .\init.bat -Build
+```
+
+Keep the `.\` prefix. This machine sets `NoDefaultCurrentDirectoryInExePath=1`, so `cmd.exe` does not search the working directory for executables and a bare `init.bat` fails with "not recognized as an internal or external command".
+
 ```bash
 git clean -ffxd && ./init.sh           # restore only
 git clean -ffxd && ./init.sh --build   # also build native (cmake/ninja) + managed

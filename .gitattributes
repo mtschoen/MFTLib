@@ -10,6 +10,15 @@
 *.sh text eol=lf
 
 ###############################################################################
+# Batch files must check out with CRLF. cmd.exe tolerates LF for simple
+# line-by-line scripts, but mis-parses labels, goto targets, and multi-line
+# blocks, so an LF-only .bat works until someone adds one and then fails in a
+# way that reads as a logic bug rather than a line-ending problem.
+###############################################################################
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by
