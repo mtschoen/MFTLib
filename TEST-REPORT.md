@@ -7,8 +7,7 @@ Tests:    679 passed, 0 failed (643 non-admin + 36 elevated NTFS/USN, managed);
           679 passed, 0 failed under native Debug|x64 instrumentation (full suite rerun elevated)
 Git:      main at e26429f plus the MSBuild-resolution fix in
           scripts/native-coverage.ps1 landing in this commit and the
-          elevated-wrapper marker fix in .claude/scripts/
-          native-coverage-elevated.ps1 (gitignored, lives outside the repo history)
+          elevated-wrapper marker fix in scripts/native-coverage-elevated.ps1
 
 Managed coverage (`scripts/run-coverage.ps1`, full attended run):
   Non-admin phase (643 tests):
@@ -57,4 +56,4 @@ Remaining outward checks:
 
 Commands:
   `.\scripts\run-coverage.ps1`
-  `.\.claude\scripts\native-coverage-elevated.ps1`
+  `.\scripts\native-coverage-elevated.ps1`

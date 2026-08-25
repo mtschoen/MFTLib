@@ -4,6 +4,12 @@
 * text=auto
 
 ###############################################################################
+# Shell scripts must check out with LF on every platform. With CRLF endings a
+# script fails on Linux at the shebang: "bad interpreter: /usr/bin/env bash^M".
+###############################################################################
+*.sh text eol=lf
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by

@@ -375,6 +375,11 @@ MigrationBackup/
 FodyWeavers.xsd
 
 # Claude Code
+# .claude/AISLOP.md and .claude/CLAUDE.md are generated boilerplate written by
+# `aislop hook install claude --project` (a sentinel-fenced block that the
+# installer rewrites on upgrade), so they stay ignored - see AGENTS.md for the
+# restore command. settings.json is tracked because it carries the aislop hook
+# registration. Hand-written tooling belongs in scripts/, not here.
 .claude/*
 !.claude/settings.json
 
@@ -387,7 +392,11 @@ native-coverage-html/
 coverage*.xml
 native-coverage.cobertura.xml
 
-.maintenance.json
+# .maintenance.json is tracked here: it records which maintenance findings were
+# actioned and which were deliberately rejected, and nothing regenerates that.
+# The negation is needed because the machine-wide excludes file ignores it, and
+# a repository .gitignore takes precedence over that.
+!.maintenance.json
 
 # SDD scratch (subagent-driven-development ledger/briefs)
 .superpowers/

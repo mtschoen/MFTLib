@@ -1,0 +1,85 @@
+{
+  "tasks": {
+    "project-maintenance": {
+      "runs": [
+        {
+          "automated": [],
+          "head": "00b02c2",
+          "rejected": [],
+          "timestamp": "2026-06-20T00:20:00Z",
+          "user_authorized": [
+            {
+              "action": "Migrated root CLAUDE.md content to new AGENTS.md (cross-tool source of truth); reduced CLAUDE.md to @AGENTS.md import pointer",
+              "confidence": "high",
+              "finding": "agents_source_missing"
+            },
+            {
+              "action": "Ran aislop hook install claude --project: added PostToolUse + FileChanged aislop hooks to .claude/settings.json (enabledPlugins preserved), wrote .claude/AISLOP.md and .claude/CLAUDE.md (gitignored)",
+              "confidence": "low->done-per-user",
+              "finding": "missing_onsave_hook"
+            },
+            {
+              "action": "Unlinked missing/redundant location C:/Users/mtsch/source/repos/MFTLib (id 95) from project MFTLib",
+              "confidence": "high",
+              "finding": "stale_tracker_location"
+            },
+            {
+              "action": "Moved related repo MFTBenchCompare from source/repos to C:/Users/mtsch/MFTBenchCompare; unlinked old path and re-linked new path under MFTLib with role benchmark-comparison",
+              "confidence": "medium",
+              "finding": "misregistered_tracker_location"
+            },
+            {
+              "action": "Refreshed project_ci_pipeline.md: corrected retired host llamabox.internal -> gitea.llamabox.sticktoitive.net, softened GitHub-stale claim to can-lag (verified in sync at 84c3c66), dated still-open items as confirmed open",
+              "confidence": "low",
+              "finding": "stale_memory_ci_pipeline"
+            },
+            {
+              "action": "Branched chore/agents-md-migration-aislop-hook, committed (00b02c2), pushed to gitea, opened PR #14 as claude-code (aislop scan --staged clean, 100/100)",
+              "confidence": "high",
+              "finding": "commit_and_pr"
+            }
+          ]
+        },
+        {
+          "automated": [],
+          "head": "3a7dfe318b4b2c65ecd9df1a6b669407eb34ff4e",
+          "rejected": [
+            {
+              "action": "did not reconcile",
+              "detail": "gitea vs origin is 3/3 true divergence; origin has style/editorconfig work, gitea has two pr-crew fixes (#31, #33)",
+              "kind": "mirror_drift",
+              "reason": "both sides unique; needs cherry-pick or merge decision. origin is the NuGet/SourceLink publish target so v0.3.0 would ship without the pr-crew fixes"
+            },
+            {
+              "action": "not yet rewritten",
+              "detail": "LINTER-SETUP.md claims analyzers/clang-format/CI-lint/.claude settings are all absent; every one now exists",
+              "kind": "docs_content_drift",
+              "reason": "content edit queued for Tier D"
+            },
+            {
+              "action": "no action",
+              "detail": "feat/session-warm-start, feat/test-extensions - both mirrored on gitea, real diffs",
+              "kind": "unmerged_branch",
+              "reason": "needs owner decision on whether active"
+            },
+            {
+              "action": "not updated",
+              "detail": ".aislop/config.yml:42 TODO cites 49 fields + 4 constants; constants half is done, ~19 delegate fields remain",
+              "kind": "todo_comment",
+              "reason": "queued for Tier D"
+            }
+          ],
+          "timestamp": "2026-08-15T07:46:20Z",
+          "user_authorized": [
+            {
+              "action": "removed .claude/worktrees",
+              "detail": "empty untracked husk left by a removed worktree",
+              "kind": "empty_dir_husk"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "version": 1
+}

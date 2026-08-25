@@ -2,8 +2,8 @@
 # Builds Debug|x64 (linked with /PROFILE), instruments the DLL, runs tests, and reports.
 #
 # Usage:
-#   .\.claude\scripts\native-coverage.ps1
-#   .\.claude\scripts\native-coverage.ps1 -HtmlReport   # also generate HTML report
+#   .\scripts\native-coverage.ps1
+#   .\scripts\native-coverage.ps1 -HtmlReport   # also generate HTML report
 
 param(
     [switch]$HtmlReport
