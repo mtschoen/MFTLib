@@ -152,7 +152,7 @@ This project uses **aislop** as a deterministic quality gate for AI-written code
 (narrative comments, swallowed exceptions, `as any`, dead stubs, oversized
 functions, etc.) across TS/JS, Python, Go, Rust, Ruby, PHP, Java, and C#.
 
-`aislop` is installed globally on this machine, pinned to the **v0.12.3** tag of
+`aislop` is installed globally on this machine, pinned to a **specific commit** of
 the fork `mtschoen/aislop` (which adds the C# engine: roslynator + jb
 inspectcode; upstream npm `aislop` is Python-only). Call the installed binary
 directly - do NOT use `npx aislop`, which pulls upstream from npm with no C#
@@ -185,5 +185,19 @@ checkout path is WOW64-virtualized away from 32-bit MSBuild). See the traps in
 `aislop / quality-gate (pull_request)` to the branch-protection required checks
 on `main`.
 
-To refresh the pinned global binary to a newer fork release:
-`pnpm add -g --allow-build=aislop "github:mtschoen/aislop#v0.12.3"`
+The global pin is a commit-ish, not a version. Do not assume a tag: the `v0.14.1`
+tag and the commit currently installed both report version `0.14.1` but are
+different commits, so installing the tag would change the code that runs. Ask the
+binary what it is rather than trusting this file:
+
+```powershell
+aislop --version
+pnpm ls -g --depth 0            # or read the spec in pnpm's global package.json
+```
+
+To move the global binary to a different commit or tag of the fork:
+`pnpm add -g --allow-build=aislop "github:mtschoen/aislop#<commit-ish>"`
+
+Note the asymmetry with CI, which installs from the branch head and is
+deliberately not pinned at all - so the gate you run locally and the gate CI runs
+can differ.
