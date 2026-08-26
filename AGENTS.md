@@ -113,7 +113,7 @@ Both are idempotent, so they are safe to run at any time, not only after a clean
 
 They also make one optional call: if a settings-provisioning tool is on PATH, they ask it to re-apply the project-scope settings it owns, since a clean removes `.claude/settings.local.json`. The call names a single feature rather than running the tool's whole pipeline, and the step is skipped entirely when the tool is absent, so nothing here depends on it.
 
-They are separate scripts rather than one cross-platform script because the work genuinely differs: Windows resolves MSBuild through `vswhere` and builds `MFTLib.sln` (the same build Visual Studio runs, and the only one that can build `MFTLibNative.vcxproj`), while Linux drives cmake/Ninja through `scripts/build-linux.sh` and restores the managed projects individually, since the dotnet CLI cannot load the `.vcxproj` at all. This matches the existing split between `run-coverage.ps1` and `coverage-linux.sh`.
+They are separate scripts rather than one cross-platform script because the work genuinely differs: Windows resolves 64-bit MSBuild through `vswhere` to build `MFTLibNative.vcxproj` and builds the managed projects via `dotnet build` (mirroring `run-coverage.ps1`), while Linux drives cmake/Ninja through `scripts/build-linux.sh` and restores the managed projects individually, since the dotnet CLI cannot load the `.vcxproj` at all. This matches the existing split between `run-coverage.ps1` and `coverage-linux.sh`.
 
 Prerequisites checked but not installed - Windows: .NET SDK, Visual Studio with the MSVC C++ workload, aislop, reportgenerator (HTML coverage only). Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr (native coverage only).
 

@@ -173,9 +173,11 @@ if ($Build) {
         exit 1
     }
 
-    # The whole solution goes through MSBuild rather than `dotnet build`, which
-    # cannot build MFTLibNative.vcxproj. This is the same build Visual Studio runs.
-    # Use the amd64 binary: a 32-bit MSBuild is WOW64-redirected away from the checkout.
+    # Build strategy for mixed C#/C++ solution (mirrors scripts\run-coverage.ps1):
+    # 1. 64-bit VS MSBuild compiles the native C++ DLL (MFTLibNative.vcxproj).
+    #    (Use the amd64 binary: a 32-bit MSBuild is WOW64-redirected away from the checkout.)
+    # 2. dotnet CLI builds each managed project against the built native library.
+    #    (Directory.Build.targets drops the native vcxproj ProjectReference for dotnet.)
     $msbuild = Join-Path $visualStudioPath 'MSBuild\Current\Bin\amd64\MSBuild.exe'
     if (-not (Test-Path $msbuild)) {
         Write-Host "Cannot build: MSBuild not found at $msbuild" -ForegroundColor Red
@@ -183,11 +185,30 @@ if ($Build) {
     }
 
     Write-Host ''
-    Write-Host 'Building solution (Release|x64)...' -ForegroundColor Cyan
-    & $msbuild (Join-Path $repositoryRoot 'MFTLib.sln') -p:Configuration=Release -p:Platform=x64 -v:m -nologo
+    Write-Host 'Building native project (Release|x64)...' -ForegroundColor Cyan
+    $nativeProj = Join-Path $repositoryRoot 'MFTLibNative\MFTLibNative.vcxproj'
+    & $msbuild $nativeProj -t:Build -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -p:SolutionDir="$repositoryRoot\" -v:m -nologo
     if ($LASTEXITCODE -ne 0) {
-        Write-Host 'Build failed.' -ForegroundColor Red
+        Write-Host 'Native build failed.' -ForegroundColor Red
         exit 1
+    }
+
+    Write-Host ''
+    Write-Host 'Building managed projects (Release|x64)...' -ForegroundColor Cyan
+    $managedProjects = @(
+        'MFTLib\MFTLib.csproj',
+        'MFTLibTestExtensions\MFTLibTestExtensions.csproj',
+        'TestProgram\TestProgram.csproj',
+        'Benchmark\Benchmark.csproj',
+        'MFTLib.Tests\MFTLib.Tests.csproj'
+    )
+    foreach ($proj in $managedProjects) {
+        $projPath = Join-Path $repositoryRoot $proj
+        & dotnet build $projPath -c Release -p:Platform=x64 --no-restore
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Build failed for $proj." -ForegroundColor Red
+            exit 1
+        }
     }
     $completedSteps.Add('Solution built (Release|x64)')
 }
