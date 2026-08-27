@@ -15,7 +15,8 @@ public sealed partial class JournalBrokerHost(
     UsnJournalCursorQuery queryCursor,
     ProgressStreamingDriveScanSource scanDrive,
     UsnJournalCatchUpSource readJournal,
-    JournalBatchSource? watchDrive = null)
+    JournalBatchSource? watchDrive = null,
+    NtfsVolumeInformationQuery? queryVolumeInfo = null)
 {
     internal static TimeSpan _progressThrottleInterval = TimeSpan.FromMilliseconds(250);
 }
@@ -26,12 +27,14 @@ public sealed partial class JournalBrokerHost
         UsnJournalCursorQuery queryCursor,
         StreamingDriveScanSource scanDrive,
         UsnJournalCatchUpSource readJournal,
-        JournalBatchSource? watchDrive = null)
+        JournalBatchSource? watchDrive = null,
+        NtfsVolumeInformationQuery? queryVolumeInfo = null)
         : this(
             queryCursor,
             (drive, _, ct) => scanDrive(drive, ct),
             readJournal,
-            watchDrive)
+            watchDrive,
+            queryVolumeInfo)
     {
     }
 
@@ -39,12 +42,14 @@ public sealed partial class JournalBrokerHost
         UsnJournalCursorQuery queryCursor,
         DriveScanSource scanDrive,
         UsnJournalCatchUpSource readJournal,
-        JournalBatchSource? watchDrive = null)
+        JournalBatchSource? watchDrive = null,
+        NtfsVolumeInformationQuery? queryVolumeInfo = null)
         : this(
             queryCursor,
             (drive, _, _) => [scanDrive(drive)],
             readJournal,
-            watchDrive)
+            watchDrive,
+            queryVolumeInfo)
     {
     }
 
@@ -208,13 +213,29 @@ public sealed partial class JournalBrokerHost
             QueryCursor,
             ScanDriveBatches,
             ReadJournal,
-            WatchAndDisposeAsync);
+            WatchAndDisposeAsync,
+            QueryVolumeInfo);
     }
 
     static UsnJournalCursor QueryCursor(string drive)
     {
         using var volume = MftVolume.Open(Bare(drive));
         return volume.QueryUsnJournal();
+    }
+
+    // NtfsVolumeInformation.Query is [SupportedOSPlatform("windows")]; the explicit
+    // OperatingSystem.IsWindows() guard (rather than marking this method or its callers
+    // windows-only) lets a broker built for this cross-platform library still throw a
+    // clear PlatformNotSupportedException on a non-Windows host instead of failing to
+    // compile there - the native MFT scan and journal paths already tolerate Linux via
+    // the CMake-built shared library, and this keeps that tolerance for the rest of the
+    // host even though this one IOCTL is genuinely Windows-only.
+    static NtfsVolumeInformation QueryVolumeInfo(string drive)
+    {
+        return OperatingSystem.IsWindows()
+            ? NtfsVolumeInformation.Query(Bare(drive))
+            : throw new PlatformNotSupportedException(
+                "NTFS volume information queries require Windows (FSCTL_GET_NTFS_VOLUME_DATA).");
     }
 
     static IEnumerable<IReadOnlyList<ScanRecord>> ScanDriveBatches(

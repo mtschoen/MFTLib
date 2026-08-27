@@ -8,7 +8,10 @@ public sealed partial class JournalBrokerHost
     ///     each drive: arm the cursor, emit a <c>Cursor</c> frame, write the scan
     ///     payload into the caller-created map via <paramref name="mmfWriter" />, emit
     ///     <c>ScanReady</c>, run catch-up, emit a <c>JournalBatch</c>. Per-drive
-    ///     failures emit an <c>Error</c> frame and continue (non-fatal contract).
+    ///     failures emit an <c>Error</c> frame and continue (non-fatal contract). On
+    ///     <see cref="BrokerFrameKind.QueryVolumes" />, answers one <c>VolumeInfo</c> (or
+    ///     <c>Error</c>) frame per drive without arming a scan, then keeps serving - the
+    ///     caller can follow it with <c>ArmAndScan</c> on the same connection.
     ///     Returns on <c>Shutdown</c>, on EOF, or after one arm-and-scan when
     ///     <paramref name="oneShot" /> is set (a single-UAC CLI-style path).
     /// </summary>
@@ -61,6 +64,15 @@ public sealed partial class JournalBrokerHost
                     if (oneShot)
                     {
                         return;
+                    }
+
+                    break;
+
+                case BrokerFrameKind.QueryVolumes:
+                    if (frame.Value.DrivesSpec is { } queryVolumesSpec)
+                    {
+                        await HandleQueryVolumesAsync(stream, queryVolumesSpec, writeLock, cancellationToken)
+                            .ConfigureAwait(false);
                     }
 
                     break;

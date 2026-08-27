@@ -95,6 +95,8 @@ public static partial class BrokerProtocol
             BrokerFrameKind.Error => ReadErrorFrame(payload),
             BrokerFrameKind.ScanProgress => ReadScanProgressFrame(payload),
             BrokerFrameKind.Warning => ReadWarningFrame(payload),
+            BrokerFrameKind.QueryVolumes => BrokerFrame.QueryVolumes(ReadString(payload, 0, out _)),
+            BrokerFrameKind.VolumeInfo => ReadVolumeInfoFrame(payload),
             _ => throw new InvalidDataException($"Unknown frame kind: {kind}")
         };
     }
@@ -196,5 +198,16 @@ public static partial class BrokerProtocol
         var progress =
             new BrokerScanProgress(drive, recordsProcessed, bytesProcessed, totalRecords, totalBytes, elapsed);
         return BrokerFrame.ScanProgress(progress);
+    }
+
+    static BrokerFrame ReadVolumeInfoFrame(ReadOnlySpan<byte> payload)
+    {
+        var drive = ReadString(payload, 0, out var offset);
+        var mftRecordCount = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        offset += 8;
+        var bytesPerFileRecordSegment = BinaryPrimitives.ReadUInt32LittleEndian(payload[offset..]);
+        offset += 4;
+        var mftValidDataLength = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        return BrokerFrame.VolumeInfo(drive, mftRecordCount, bytesPerFileRecordSegment, mftValidDataLength);
     }
 }

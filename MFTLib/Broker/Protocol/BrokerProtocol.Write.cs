@@ -226,6 +226,38 @@ public static partial class BrokerProtocol
         writer.Advance(offset);
     }
 
+    public static void WriteQueryVolumes(IBufferWriter<byte> writer, string drivesSpec)
+    {
+        WriteFrameWithString(writer, BrokerFrameKind.QueryVolumes, drivesSpec);
+    }
+
+    public static void WriteVolumeInfo(
+        IBufferWriter<byte> writer, string drive, long mftRecordCount, uint bytesPerFileRecordSegment,
+        long mftValidDataLength)
+    {
+        var driveBytes = Encoding.Unicode.GetBytes(drive);
+        // payload: [driveLen int32][driveBytes][mftRecordCount i64][bytesPerFileRecordSegment u32][mftValidDataLength i64]
+        var payloadLength = 4 + driveBytes.Length + 8 + 4 + 8;
+        var totalLength = 1 + payloadLength;
+        var span = writer.GetSpan(4 + totalLength);
+        var offset = 0;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)BrokerFrameKind.VolumeInfo;
+        offset += 1;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
+        offset += 4;
+        driveBytes.CopyTo(span[offset..]);
+        offset += driveBytes.Length;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], mftRecordCount);
+        offset += 8;
+        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], bytesPerFileRecordSegment);
+        offset += 4;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], mftValidDataLength);
+        offset += 8;
+        writer.Advance(offset);
+    }
+
     // Private write helpers
 
     static void WriteFrameNoPayload(IBufferWriter<byte> writer, BrokerFrameKind kind)

@@ -188,9 +188,9 @@ public sealed partial class JournalBrokerScanSession
             }
             catch (OperationCanceledException) when (transmissionStarted)
             {
-                // Once ArmAndScan transmission begins, cancellation can leave scan
-                // responses unread. Close the client before reopening operations so
-                // no later request can consume frames from the cancelled scan.
+                // Once request transmission begins (QueryVolumes or ArmAndScan), cancellation
+                // can leave broker responses unread on the pipe. Close the client before reopening
+                // operations so no later request can consume frames from the cancelled exchange.
                 await DisposeAsync().ConfigureAwait(false);
                 throw;
             }

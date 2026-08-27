@@ -149,6 +149,8 @@ public sealed record BrokerScanOptions
     public ScanRecordBatchConsumer? ConsumeRecords { get; init; }
     public IReadOnlyCollection<string>? KeepFileNames { get; init; }
     public IProgress<BrokerScanProgress>? Progress { get; init; }
+    public long? MmfCapacityBytes { get; init; }
+    public Func<string, NtfsVolumeInformation?, long>? MmfCapacityPlanner { get; init; }
 }
 
 var progress = new Progress<BrokerScanProgress>(p =>
@@ -194,6 +196,43 @@ the scan.
 `ScanRecord.Size` and `ScanRecord.LastWriteTicks` are currently zero because those
 fields are reserved for a future MFT surface. Use `Name`, `Path`, `Attributes`,
 `IsDirectory`, `RecordNumber`, and `ParentRecordNumber` today.
+
+### Sizing the scan map
+
+Before a cold scan, `JournalBrokerClient` pre-creates one page-file-backed shared memory
+map per drive for the broker to write scan records into. `BrokerScanOptions.MmfCapacityBytes`
+sizes every drive's map the same way (default `JournalBrokerClient.DefaultMmfCapacity`, 2
+GiB); this is enough for most volumes, but a volume with several million deep paths can
+exceed it, and a caller cannot enumerate a volume's MFT record count in advance to know
+whether it will - a standard user's zero-access or `FILE_READ_ATTRIBUTES` volume handle
+cannot issue `FSCTL_GET_NTFS_VOLUME_DATA`.
+
+`BrokerScanOptions.MmfCapacityPlanner` sizes each drive's map from the elevated broker's
+own view of that volume instead of a single flat number. When set,
+`ArmScanAndCatchUpAsync` first sends a `QueryVolumes` request over the same connection
+(one extra round trip, no second UAC prompt) and calls the planner once per drive with the
+result - `NtfsVolumeInformation` when the broker could query that drive, `null` when it
+could not (the query itself failed). `JournalBrokerClient.DefaultCapacityPlanner` is a
+ready-made planner that estimates from `NtfsVolumeInformation.MftRecordCount`, rounds up to
+a 256 MiB multiple, and falls back to `DefaultMmfCapacity` when the count is unknown:
+
+```csharp
+await using var session = await JournalBrokerScanSession.StartAsync(
+    BrokerLauncher.Launch,
+    new[] { "C", "D" },
+    new BrokerScanOptions
+    {
+        MmfCapacityPlanner = JournalBrokerClient.DefaultCapacityPlanner
+    },
+    cancellationToken);
+```
+
+A volume's NTFS geometry and MFT sizing can also be queried directly, without arming a
+scan, via `JournalBrokerClient.QueryVolumesAsync` or (already elevated, no broker involved)
+`NtfsVolumeInformation.Query`. Note that `QueryVolumesAsync` populates only MFT sizing
+(`MftValidDataLength`, `BytesPerFileRecordSegment`, and derived `MftRecordCount`) for map
+capacity planning; cluster and sector geometry fields (`BytesPerSector`, `BytesPerCluster`,
+`TotalClusters`, `FreeClusters`) are not sent over the broker protocol and are set to zero.
 
 ### Warm start: resume watching from persisted cursors without a scan
 

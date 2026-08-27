@@ -13,7 +13,9 @@ public enum BrokerFrameKind : byte
     EndWatch = 9,
     EndWatchAck = 10,
     ScanProgress = 11,
-    Warning = 12
+    Warning = 12,
+    QueryVolumes = 13,
+    VolumeInfo = 14
 }
 
 public readonly record struct BrokerFrame
@@ -29,6 +31,8 @@ public readonly record struct BrokerFrame
     public string? DrivesSpec { get; private init; }
     public IReadOnlyList<string> KeepFileNames { get; private init; }
     public BrokerScanProgress? Progress { get; private init; }
+    public uint BytesPerFileRecordSegment { get; private init; }
+    public long MftValidDataLength { get; private init; }
 
     // Cursor/JournalBatch/Error frames always carry a real (possibly empty, never
     // null) drive string: BrokerProtocol.ReadFrame decodes it via a length-prefixed
@@ -168,6 +172,42 @@ public readonly record struct BrokerFrame
             Drive = drive,
             KeepFileNames = Array.Empty<string>(),
             Message = message
+        };
+    }
+
+    // A request for volume information on each drive in drivesSpec, without arming a
+    // scan or allocating any shared-memory map. drivesSpec uses the same watch-token
+    // shape as StartWatch ("letter:0:0" per drive, comma-joined) - the journalId/nextUsn
+    // fields are unused here, but reusing the shape lets the host parse both with the
+    // same ParseScanSpec helper.
+    public static BrokerFrame QueryVolumes(string drivesSpec)
+    {
+        return new BrokerFrame
+        {
+            Kind = BrokerFrameKind.QueryVolumes,
+            Entries = Array.Empty<UsnJournalEntry>(),
+            DrivesSpec = drivesSpec,
+            KeepFileNames = Array.Empty<string>()
+        };
+    }
+
+    // One drive's answer to a QueryVolumes request. mftRecordCount is the pre-computed
+    // NtfsVolumeInformation.MftRecordCount value; bytesPerFileRecordSegment and
+    // mftValidDataLength are the two raw fields it was derived from, carried alongside so
+    // a client can reconstruct NtfsVolumeInformation.MftRecordCount independently instead
+    // of trusting the transmitted count outright.
+    public static BrokerFrame VolumeInfo(
+        string drive, long mftRecordCount, uint bytesPerFileRecordSegment, long mftValidDataLength)
+    {
+        return new BrokerFrame
+        {
+            Kind = BrokerFrameKind.VolumeInfo,
+            Entries = Array.Empty<UsnJournalEntry>(),
+            Drive = drive,
+            RecordCount = mftRecordCount,
+            BytesPerFileRecordSegment = bytesPerFileRecordSegment,
+            MftValidDataLength = mftValidDataLength,
+            KeepFileNames = Array.Empty<string>()
         };
     }
 

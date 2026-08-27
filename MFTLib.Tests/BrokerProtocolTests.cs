@@ -539,4 +539,77 @@ public class BrokerProtocolTests
         Assert.AreEqual(progress, frame.Progress);
         Assert.AreEqual(0, frame.Entries.Length);
     }
+
+    // ---------------------------------------------------------------------------
+    // QueryVolumes / VolumeInfo (MFTLib#97)
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public void QueryVolumesFrame_RoundTrips_DrivesSpec()
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteQueryVolumes(buffer, "C:0:0,D:0:0");
+        var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
+
+        Assert.AreEqual(BrokerFrameKind.QueryVolumes, frame.Kind);
+        Assert.AreEqual("C:0:0,D:0:0", frame.DrivesSpec);
+        Assert.AreEqual(buffer.WrittenCount, consumed);
+    }
+
+    [TestMethod]
+    public void VolumeInfoFrame_RoundTrips_AllFields()
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteVolumeInfo(buffer, "C", 8_000_000, 1024, 8_192_000_000);
+        var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
+
+        Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
+        Assert.AreEqual("C", frame.Drive);
+        Assert.AreEqual(8_000_000L, frame.RecordCount);
+        Assert.AreEqual(1024U, frame.BytesPerFileRecordSegment);
+        Assert.AreEqual(8_192_000_000L, frame.MftValidDataLength);
+        Assert.AreEqual(buffer.WrittenCount, consumed);
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_QueryVolumesFrame()
+    {
+        AssertWireBytes(w => BrokerProtocol.WriteQueryVolumes(w, "C"),
+            [0x07, 0x00, 0x00, 0x00, 0x0D, 0x02, 0x00, 0x00, 0x00, 0x43, 0x00]);
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_VolumeInfoFrame()
+    {
+        AssertWireBytes(w => BrokerProtocol.WriteVolumeInfo(w, "C", 1, 2, 3),
+        [
+            0x1B, 0x00, 0x00, 0x00, // totalLength = 27 (1 + 6 + 8 + 4 + 8)
+            0x0E, // kind = VolumeInfo (14)
+            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mftRecordCount = 1
+            0x02, 0x00, 0x00, 0x00, // bytesPerFileRecordSegment = 2
+            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // mftValidDataLength = 3
+        ]);
+    }
+
+    [TestMethod]
+    public void Factory_QueryVolumes_PopulatesDrivesSpec()
+    {
+        var frame = BrokerFrame.QueryVolumes("C:0:0,D:0:0");
+        Assert.AreEqual(BrokerFrameKind.QueryVolumes, frame.Kind);
+        Assert.AreEqual("C:0:0,D:0:0", frame.DrivesSpec);
+        Assert.AreEqual(0, frame.Entries.Length);
+    }
+
+    [TestMethod]
+    public void Factory_VolumeInfo_PopulatesAllFields()
+    {
+        var frame = BrokerFrame.VolumeInfo("C", 8_000_000, 1024, 8_192_000_000);
+        Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
+        Assert.AreEqual("C", frame.Drive);
+        Assert.AreEqual(8_000_000L, frame.RecordCount);
+        Assert.AreEqual(1024U, frame.BytesPerFileRecordSegment);
+        Assert.AreEqual(8_192_000_000L, frame.MftValidDataLength);
+        Assert.AreEqual(0, frame.Entries.Length);
+    }
 }

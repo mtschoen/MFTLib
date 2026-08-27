@@ -16,6 +16,23 @@ public sealed record BrokerScanOptions
     ///     concurrently in one <see cref="JournalBrokerClient.ArmScanAndCatchUpAsync" /> call - size
     ///     it deliberately, and only when the caller knows the machine has the commit-charge headroom
     ///     (or is scanning few enough drives at once) to afford it. Must be positive when set.
+    ///     Ignored when <see cref="MmfCapacityPlanner" /> is set.
     /// </summary>
     public long? MmfCapacityBytes { get; init; }
+
+    /// <summary>
+    ///     Per-drive map-capacity planner: given a drive letter and its queried
+    ///     <see cref="NtfsVolumeInformation" /> (null when the volume query failed, or was
+    ///     not attempted, for that drive), returns the map capacity in bytes to request for
+    ///     that drive. When set, <see cref="JournalBrokerClient.ArmScanAndCatchUpAsync" />
+    ///     queries every drive's volume information from the broker first (one extra round
+    ///     trip before the scan begins) and calls this delegate per drive instead of using
+    ///     <see cref="MmfCapacityBytes" /> or the 2 GiB default. See
+    ///     <see cref="JournalBrokerClient.DefaultCapacityPlanner" /> for a ready-made
+    ///     record-count-based planner. Must return a positive value. Like
+    ///     <see cref="MmfCapacityBytes" />, this option is not persisted across parameterless
+    ///     <see cref="JournalBrokerScanSession.RescanAsync(CancellationToken)" /> calls;
+    ///     supply options explicitly to rescans if a planner is needed.
+    /// </summary>
+    public Func<string, NtfsVolumeInformation?, long>? MmfCapacityPlanner { get; init; }
 }
