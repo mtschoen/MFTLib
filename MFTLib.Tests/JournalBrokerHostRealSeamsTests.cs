@@ -331,4 +331,94 @@ public class JournalBrokerHostRealSeamsTests
         await stream.ReadExactlyAsync(frameBytes.AsMemory(4, totalLength));
         return BrokerProtocol.ReadFrame(frameBytes, out _);
     }
+
+    [TestMethod]
+    public void ArmAndScan_IncludesRootDirectoryRecord_InScanResults()
+    {
+        FileUtilities._getVolumeHandle = _ => FakeHandle();
+
+        var queryInfo = new UsnJournalInfoNative { JournalId = 0x1234, NextUsn = 1000 };
+        var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
+        Marshal.StructureToPtr(queryInfo, queryPtr, false);
+        MFTLibNative._queryUsnJournal = _ => queryPtr;
+        MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
+
+        var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
+        var entryBuf = Marshal.AllocHGlobal((int)stride * 2);
+        unsafe
+        {
+            new Span<byte>((void*)entryBuf, (int)stride * 2).Clear();
+
+            var childPath = "Users";
+            var stringBuf = Marshal.AllocHGlobal(childPath.Length * sizeof(char));
+            childPath.AsSpan().CopyTo(new Span<char>((void*)stringBuf, childPath.Length));
+
+            // Record 5: root directory (zero-length relative path)
+            var rootEntry = (byte*)entryBuf;
+            Unsafe.WriteUnaligned(rootEntry, 5UL);
+            Unsafe.WriteUnaligned(rootEntry + 8, 5UL);
+            Unsafe.WriteUnaligned(rootEntry + 16, 0UL);
+            Unsafe.WriteUnaligned(rootEntry + 24, (uint)FileAttributes.Directory);
+            Unsafe.WriteUnaligned(rootEntry + 28, (ushort)3); // InUse | Directory
+            Unsafe.WriteUnaligned(rootEntry + 30, (ushort)0); // zero-length path
+
+            // Record 100: child folder
+            var childEntry = (byte*)entryBuf + stride;
+            Unsafe.WriteUnaligned(childEntry, 100UL);
+            Unsafe.WriteUnaligned(childEntry + 8, 5UL);
+            Unsafe.WriteUnaligned(childEntry + 16, 0UL);
+            Unsafe.WriteUnaligned(childEntry + 24, (uint)FileAttributes.Directory);
+            Unsafe.WriteUnaligned(childEntry + 28, (ushort)3); // InUse | Directory
+            Unsafe.WriteUnaligned(childEntry + 30, (ushort)childPath.Length);
+
+            var parseResult = new MftParseResult
+            {
+                TotalRecords = 2,
+                UsedRecords = 2,
+                PathEntries = entryBuf,
+                PathStrings = stringBuf,
+                PathStringUnits = (ulong)childPath.Length,
+                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+                EntryStride = MFTLibNative.NativeCompactEntrySize
+            };
+            var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+            Marshal.StructureToPtr(parseResult, parsePtr, false);
+
+            MFTLibNative._parseMftRecords = (_, _, _, _) => parsePtr;
+            MFTLibNative._freeMftResult = ptr =>
+            {
+                var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
+                if (parsed.PathEntries != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(parsed.PathEntries);
+                }
+
+                if (parsed.PathStrings != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(parsed.PathStrings);
+                }
+
+                Marshal.FreeHGlobal(ptr);
+            };
+
+            var host = JournalBrokerHost.CreateDefault();
+            var (_, records) = host.ArmAndScan("C");
+
+            Assert.AreEqual(2, records.Length);
+
+            var rootRecord = records.FirstOrDefault(r => r.RecordNumber == 5);
+            Assert.AreEqual(5UL, rootRecord.RecordNumber);
+            Assert.AreEqual(5UL, rootRecord.ParentRecordNumber);
+            Assert.IsTrue(rootRecord.IsDirectory);
+            Assert.AreEqual(".", rootRecord.Name);
+            Assert.AreEqual(@"C:\", rootRecord.Path);
+
+            var childRecord = records.FirstOrDefault(r => r.RecordNumber == 100);
+            Assert.AreEqual(100UL, childRecord.RecordNumber);
+            Assert.AreEqual(5UL, childRecord.ParentRecordNumber);
+            Assert.IsTrue(childRecord.IsDirectory);
+            Assert.AreEqual("Users", childRecord.Name);
+            Assert.AreEqual(@"C:\Users", childRecord.Path);
+        }
+    }
 }

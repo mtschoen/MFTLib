@@ -18,6 +18,7 @@ public readonly struct MftRecord
     readonly ushort _nameLength;
     readonly ushort _pathLength;
     readonly char _driveLetter;
+    readonly bool _materialized;
 
     // These are either pointers to native memory (temporary) or materialized strings
     readonly IntPtr _namePtr;
@@ -44,6 +45,11 @@ public readonly struct MftRecord
     {
         get
         {
+            if (_materialized)
+            {
+                return _fileName ?? string.Empty;
+            }
+
             if (_fileName != null)
             {
                 return _fileName;
@@ -71,6 +77,11 @@ public readonly struct MftRecord
                 return new string(pathChars, start, _pathLength - start);
             }
 
+            if (RecordNumber == 5)
+            {
+                return ".";
+            }
+
             return string.Empty;
         }
     }
@@ -79,13 +90,28 @@ public readonly struct MftRecord
     {
         get
         {
+            if (_materialized)
+            {
+                return _fullPath;
+            }
+
             if (_fullPath != null)
             {
                 return _fullPath;
             }
 
-            if (_pathPtr == IntPtr.Zero || _pathLength == 0)
+            if (_pathPtr == IntPtr.Zero)
             {
+                return null;
+            }
+
+            if (_pathLength == 0)
+            {
+                if (RecordNumber == 5 && (_flags & 1) != 0)
+                {
+                    return _driveLetter == '\0' ? @"\" : $"{_driveLetter}:\\";
+                }
+
                 return null;
             }
 
@@ -108,6 +134,7 @@ public readonly struct MftRecord
         _driveLetter = driveLetter;
         _fileName = null;
         _fullPath = null;
+        _materialized = false;
     }
 
     /// <summary>
@@ -116,7 +143,7 @@ public readonly struct MftRecord
     /// </summary>
     public MftRecord Materialize()
     {
-        if (_fileName != null || (_namePtr == IntPtr.Zero && _pathPtr == IntPtr.Zero))
+        if (_materialized)
         {
             return this;
         }
@@ -138,6 +165,7 @@ public readonly struct MftRecord
         _pathPtr = IntPtr.Zero;
         _pathLength = 0;
         _driveLetter = '\0';
+        _materialized = true;
     }
 
     public override string ToString()

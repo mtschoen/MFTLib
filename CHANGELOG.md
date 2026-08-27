@@ -55,6 +55,7 @@
 - Fixed native `bool` marshaling for synthetic generation so conversion failures reliably propagate to managed callers
 - Fixed synthetic generator teardown after an asynchronous write failure so the completed writer is joined exactly once
 - Added a bounded, configurable connection timeout to `JournalBrokerClient.SpawnAndConnectAsync` (`DefaultConnectTimeout`, default 30 seconds) that throws a descriptive `TimeoutException` if the elevated child process fails to connect to the named pipe after launch
+- The root directory record (MFT record 5) now survives a path-resolved scan: `MftRecord.FullPath` returns the drive root (`C:\`, or `\` without a drive letter) and `FileName` returns `.`, so `ReadAllRecords`, `ReadRecordBatches`, and the broker `ScanPayload` keep the record and journal entries created directly under the root resolve their parent. A scan without `MatchFlags.ResolvePaths` still yields a `null` `FullPath` for record 5 because provenance now comes from which native string table was decoded, not from the string being empty
 
 ### Tests
 

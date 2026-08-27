@@ -98,6 +98,11 @@ public class MftVolumeTests
         Assert.IsTrue(records.Length > 0, "Expected records to be returned");
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
         Assert.IsTrue(withPaths.Length > 0, "Expected some records to have resolved paths");
+
+        var root = records.FirstOrDefault(r => r.RecordNumber == 5);
+        Assert.IsNotNull(root.FullPath, "Record 5 should have a resolved FullPath");
+        Assert.AreEqual(@"\", root.FullPath);
+        Assert.AreEqual(".", root.FileName);
     }
 
     [TestMethod]

@@ -320,10 +320,21 @@ bool test_path_resolution_and_fallback() {
     }
     // Path resolution success: matchFlags = 4 (ResolvePaths)
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 4, kDefaultBufferRecords);
+    bool hasRootEntry = false;
+    if (parseResult != nullptr && parseResult->pathEntries != nullptr) {
+        for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
+            if (parseResult->pathEntries[i].recordNumber == 5) {
+                hasRootEntry =
+                    (parseResult->pathEntries[i].parentRecordNumber == 5 &&
+                     parseResult->pathEntries[i].stringLength == 0 && (parseResult->pathEntries[i].flags & 1) != 0);
+                break;
+            }
+        }
+    }
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 && parseResult->pathEntries != nullptr &&
                       parseResult->pathStrings != nullptr && parseResult->pathStringUnits > 0 &&
                       parseResult->entries == nullptr && parseResult->entryStrings == nullptr &&
-                      parseResult->entryStringUnits == 0;
+                      parseResult->entryStringUnits == 0 && hasRootEntry;
     if (parseResult != nullptr) {
         FreeMftResult(parseResult);
     }

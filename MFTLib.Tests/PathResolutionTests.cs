@@ -36,6 +36,19 @@ public class PathResolutionTests
     }
 
     [TestMethod]
+    public void ResolvePath_RootRecord_ReturnsDriveRoot()
+    {
+        var records = new MftRecord[]
+        {
+            new(5, 5, 0x0003, ".", null),
+            new(100, 5, 0x0003, "folder", null)
+        };
+
+        var path = ResolveTestPath(records, 5, "C");
+        Assert.AreEqual(@"C:\", path);
+    }
+
+    [TestMethod]
     public void ResolvePath_CircularReference_DoesNotLoop()
     {
         // Simulate a circular parent reference (shouldn't happen but be safe)

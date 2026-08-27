@@ -187,7 +187,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
             throw new InvalidDataException("Native MFT string offset is outside its pool");
         }
 
-        var pointer = stringLength == 0 ? IntPtr.Zero : (IntPtr)(pool + stringOffset);
+        var pointer = (IntPtr)(pool + stringOffset);
         var strings = isPath
             ? new NativeStrings(IntPtr.Zero, 0, pointer, stringLength)
             : new NativeStrings(pointer, stringLength, IntPtr.Zero, 0);

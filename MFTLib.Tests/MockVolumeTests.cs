@@ -1040,6 +1040,110 @@ public class MockVolumeTests
     }
 
     [TestMethod]
+    public unsafe void MftVolume_StreamRecords_WithPaths_RootDirectory_ReturnsDriveRoot()
+    {
+        var entryBuf = (IntPtr)NativeMemory.AllocZeroed(MFTLibNative.NativeCompactEntrySize);
+        var stringBuf = (IntPtr)NativeMemory.AllocZeroed(sizeof(char));
+
+        try
+        {
+            var ptr = (byte*)entryBuf;
+            Unsafe.WriteUnaligned(ptr, 5UL); // recordNumber = 5
+            Unsafe.WriteUnaligned(ptr + 8, 5UL); // parent = 5
+            Unsafe.WriteUnaligned(ptr + 16, 0UL); // stringOffset
+            Unsafe.WriteUnaligned(ptr + 24, (uint)FileAttributes.Directory);
+            Unsafe.WriteUnaligned(ptr + 28, (ushort)3); // flags = InUse | Directory
+            Unsafe.WriteUnaligned(ptr + 30, (ushort)0); // zero-length path
+
+            var result = new MftParseResult
+            {
+                TotalRecords = 1,
+                UsedRecords = 1,
+                PathEntries = entryBuf,
+                PathStrings = stringBuf,
+                PathStringUnits = 0,
+                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+                EntryStride = MFTLibNative.NativeCompactEntrySize
+            };
+
+            var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+            Marshal.StructureToPtr(result, resultPtr, false);
+
+            FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+            MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+            MFTLibNative._freeMftResult = _ => { };
+
+            using var volume = MftVolume.Open("C");
+            using var stream = volume.StreamRecords();
+            var record = stream.First();
+
+            Assert.AreEqual(".", record.FileName);
+            Assert.AreEqual(@"C:\", record.FullPath);
+            Assert.IsTrue(record.IsDirectory);
+            Assert.IsTrue(record.InUse);
+        }
+        finally
+        {
+            NativeMemory.Free((void*)entryBuf);
+            NativeMemory.Free((void*)stringBuf);
+        }
+    }
+
+    [TestMethod]
+    public unsafe void MftVolume_StreamRecords_WithoutPaths_RootDirectory_ZeroLengthName_ReturnsNullFullPath()
+    {
+        var entryBuf = (IntPtr)NativeMemory.AllocZeroed(MFTLibNative.NativeCompactEntrySize);
+        var stringBuf = (IntPtr)NativeMemory.AllocZeroed(sizeof(char));
+
+        try
+        {
+            var ptr = (byte*)entryBuf;
+            Unsafe.WriteUnaligned(ptr, 5UL); // recordNumber = 5
+            Unsafe.WriteUnaligned(ptr + 8, 5UL); // parent = 5
+            Unsafe.WriteUnaligned(ptr + 16, 0UL); // stringOffset
+            Unsafe.WriteUnaligned(ptr + 24, (uint)FileAttributes.Directory);
+            Unsafe.WriteUnaligned(ptr + 28, (ushort)3); // flags = InUse | Directory
+            Unsafe.WriteUnaligned(ptr + 30, (ushort)0); // zero-length name
+
+            var result = new MftParseResult
+            {
+                TotalRecords = 1,
+                UsedRecords = 1,
+                Entries = entryBuf,
+                EntryStrings = stringBuf,
+                EntryStringUnits = 0,
+                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+                EntryStride = MFTLibNative.NativeCompactEntrySize
+            };
+
+            var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+            Marshal.StructureToPtr(result, resultPtr, false);
+
+            FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+            MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+            MFTLibNative._freeMftResult = _ => { };
+
+            using var volume = MftVolume.Open("C");
+            using var stream = volume.StreamRecords();
+            var record = stream.First();
+
+            Assert.AreEqual(".", record.FileName);
+            Assert.IsNull(record.FullPath);
+            Assert.IsTrue(record.IsDirectory);
+            Assert.IsTrue(record.InUse);
+
+            var materialized = record.Materialize();
+            Assert.AreEqual(".", materialized.FileName);
+            Assert.IsNull(materialized.FullPath);
+        }
+        finally
+        {
+            NativeMemory.Free((void*)entryBuf);
+            NativeMemory.Free((void*)stringBuf);
+        }
+    }
+
+    [TestMethod]
     public void MftRecord_FullPath_NoDriveLetter_ReturnsRelativePath()
     {
         var record = new MftRecord(0, 5, 1, "file.txt", "some\\path\\file.txt");

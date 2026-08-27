@@ -5,6 +5,10 @@ namespace MFTLib.Tests;
 [TestClass]
 public class MftRecordTests
 {
+    // A non-null string-pool pointer paired with a zero length: MftRecord must never dereference it,
+    // and a non-null path-slot pointer is how MftResult marks a row as coming from the resolved-path table.
+    static readonly IntPtr NonNullEmptyPoolPointer = 1;
+
     [TestMethod]
     public void Constructor_InUseFlag_SetsProperty()
     {
@@ -100,12 +104,101 @@ public class MftRecordTests
     public void Materialize_PreservesAllFields()
     {
         var record = new MftRecord(99, 7, 0x0003, "docs", @"C:\Users\docs");
-        var m = record.Materialize();
-        Assert.AreEqual(99UL, m.RecordNumber);
-        Assert.AreEqual(7UL, m.ParentRecordNumber);
-        Assert.IsTrue(m.InUse);
-        Assert.IsTrue(m.IsDirectory);
-        Assert.AreEqual("docs", m.FileName);
-        Assert.AreEqual(@"C:\Users\docs", m.FullPath);
+        var materialized = record.Materialize();
+        Assert.AreEqual(99UL, materialized.RecordNumber);
+        Assert.AreEqual(7UL, materialized.ParentRecordNumber);
+        Assert.IsTrue(materialized.InUse);
+        Assert.IsTrue(materialized.IsDirectory);
+        Assert.AreEqual("docs", materialized.FileName);
+        Assert.AreEqual(@"C:\Users\docs", materialized.FullPath);
+    }
+
+    [TestMethod]
+    public void UnmanagedRecord_Record5_WithResolvePaths_ReturnsDriveRoot()
+    {
+        var strings = new NativeStrings(IntPtr.Zero, 0, NonNullEmptyPoolPointer, 0);
+        var record = new MftRecord(5, 5, 0x0003, FileAttributes.Directory, strings, 'C');
+
+        Assert.AreEqual(".", record.FileName);
+        Assert.AreEqual(@"C:\", record.FullPath);
+        Assert.IsTrue(record.InUse);
+        Assert.IsTrue(record.IsDirectory);
+
+        var materialized = record.Materialize();
+        Assert.AreEqual(".", materialized.FileName);
+        Assert.AreEqual(@"C:\", materialized.FullPath);
+        Assert.AreEqual(5UL, materialized.RecordNumber);
+        Assert.AreEqual(5UL, materialized.ParentRecordNumber);
+        Assert.IsTrue(materialized.InUse);
+        Assert.IsTrue(materialized.IsDirectory);
+    }
+
+    [TestMethod]
+    public unsafe void UnmanagedRecord_Record5_WithoutResolvePaths_ReturnsNullFullPath()
+    {
+        fixed (char* dotPointer = ".")
+        {
+            var strings = new NativeStrings((IntPtr)dotPointer, 1, IntPtr.Zero, 0);
+            var record = new MftRecord(5, 5, 0x0003, FileAttributes.Directory, strings, 'C');
+
+            Assert.AreEqual(".", record.FileName);
+            Assert.IsNull(record.FullPath);
+
+            var materialized = record.Materialize();
+            Assert.AreEqual(".", materialized.FileName);
+            Assert.IsNull(materialized.FullPath);
+        }
+    }
+
+    [TestMethod]
+    public void UnmanagedRecord_Record5_WithoutResolvePaths_ZeroLengthName_ReturnsNullFullPath()
+    {
+        var strings = new NativeStrings(NonNullEmptyPoolPointer, 0, IntPtr.Zero, 0);
+        var record = new MftRecord(5, 5, 0x0003, FileAttributes.Directory, strings, 'C');
+
+        Assert.AreEqual(".", record.FileName);
+        Assert.IsNull(record.FullPath);
+
+        var materialized = record.Materialize();
+        Assert.AreEqual(".", materialized.FileName);
+        Assert.IsNull(materialized.FullPath);
+    }
+
+    [TestMethod]
+    public void UnmanagedRecord_Record5_NullPointers_ReturnsNullFullPath()
+    {
+        var strings = new NativeStrings(IntPtr.Zero, 0, IntPtr.Zero, 0);
+        var record = new MftRecord(5, 5, 0x0003, FileAttributes.Directory, strings, 'C');
+
+        Assert.AreEqual(".", record.FileName);
+        Assert.IsNull(record.FullPath);
+
+        var materialized = record.Materialize();
+        Assert.AreEqual(".", materialized.FileName);
+        Assert.IsNull(materialized.FullPath);
+    }
+
+    [TestMethod]
+    public void UnmanagedRecord_Record5_NoDriveLetter_WithResolvePaths_ReturnsBackslash()
+    {
+        var strings = new NativeStrings(IntPtr.Zero, 0, NonNullEmptyPoolPointer, 0);
+        var record = new MftRecord(5, 5, 0x0003, FileAttributes.Directory, strings);
+
+        Assert.AreEqual(".", record.FileName);
+        Assert.AreEqual(@"\", record.FullPath);
+
+        var materialized = record.Materialize();
+        Assert.AreEqual(".", materialized.FileName);
+        Assert.AreEqual(@"\", materialized.FullPath);
+    }
+
+    [TestMethod]
+    public void UnmanagedRecord_NonRecord5_EmptyPath_ReturnsNullFullPath()
+    {
+        var strings = new NativeStrings(IntPtr.Zero, 0, NonNullEmptyPoolPointer, 0);
+        var record = new MftRecord(100, 5, 0x0001, FileAttributes.Normal, strings, 'C');
+
+        Assert.AreEqual(string.Empty, record.FileName);
+        Assert.IsNull(record.FullPath);
     }
 }

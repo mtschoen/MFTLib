@@ -72,6 +72,13 @@ public class MftResultTests
         // FileName should be extractable from FullPath for path-resolved records
         foreach (var record in withPaths.Take(20))
         {
+            if (record.RecordNumber == 5)
+            {
+                Assert.AreEqual(".", record.FileName);
+                Assert.AreEqual(@"\", record.FullPath);
+                continue;
+            }
+
             var pathFileName = record.FullPath!.Contains('\\')
                 ? record.FullPath[(record.FullPath.LastIndexOf('\\') + 1)..]
                 : record.FullPath;
