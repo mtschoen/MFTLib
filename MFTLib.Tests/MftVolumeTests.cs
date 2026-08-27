@@ -378,12 +378,12 @@ public class MftVolumeTests
     [TestMethod]
     public unsafe void StreamRecords_ProgressCallbackElapsedMsIsNaN_SwallowsExceptionAndStillCompletes()
     {
-        // The native progress adapter in MftVolume.StreamRecords wraps queue.Add in a
+        // The native progress adapter in MftVolume.StreamRecords wraps progress.Report in a
         // bare try/catch specifically because it runs inside a delegate invoked from
         // unmanaged code: an exception must never cross that boundary. Feeding an
         // elapsedMs of NaN makes TimeSpan.FromMilliseconds throw while constructing the
         // MftScanProgress, exercising that catch. The malformed sample must be dropped
-        // (never reach queue.Add), while the parse itself still succeeds normally.
+        // (never reach progress.Report), while the parse itself still succeeds normally.
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
 
         var stride = (nuint)MFTLibNative.NativeCompactEntrySize;

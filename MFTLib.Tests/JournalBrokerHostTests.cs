@@ -988,6 +988,55 @@ public class JournalBrokerHostTests
         Assert.AreEqual(1500L, reportedProgress.Value.TotalRecords);
     }
 
+    [TestMethod]
+    public async Task ServeOnce_ScanProgress_WritePhase_PassesProgressToStreamingWriterAndReportsBytes()
+    {
+        var originalThrottle = JournalBrokerHost._progressThrottleInterval;
+        try
+        {
+            JournalBrokerHost._progressThrottleInterval = TimeSpan.Zero;
+
+            var (clientSide, serverSide) = DuplexStream.CreatePair();
+            var host = new JournalBrokerHost(
+                _ => new UsnJournalCursor(7UL, 0L),
+                (_, progress, _) =>
+                {
+                    progress?.Report(new MmfWriteProgress(100, 0, 1000, null));
+                    return
+                    [
+                        [new ScanRecord(1, 0, 100, 0, 0x20, false, "r1.txt", @"C:\r1.txt")],
+                        [new ScanRecord(2, 0, 200, 0, 0x20, false, "r2.txt", @"C:\r2.txt")]
+                    ];
+                },
+                (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+            var request = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-write-prog-C");
+            await clientSide.WriteAsync(request.WrittenMemory);
+            await clientSide.FlushAsync();
+
+            var writeMmf = new RecordingMmfWriter();
+            await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
+            await serverSide.DisposeAsync();
+
+            var frames = ReadAllFrames(clientSide);
+            var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
+
+            Assert.IsTrue(progressFrames.Count >= 2, "Expected intermediate parse and write progress frames");
+            Assert.IsTrue(progressFrames.Any(f => f.Progress?.BytesProcessed > 0),
+                "At least one progress frame must report BytesProcessed > 0 from the write phase");
+
+            var finalProgress = progressFrames.Last().Progress!.Value;
+            Assert.AreEqual(1000L, finalProgress.TotalRecords);
+            Assert.IsTrue(finalProgress.BytesProcessed > 0);
+            Assert.AreEqual(finalProgress.BytesProcessed, finalProgress.TotalBytes);
+        }
+        finally
+        {
+            JournalBrokerHost._progressThrottleInterval = originalThrottle;
+        }
+    }
+
     static JournalBrokerHost MakeFakeHost(ScanRecord[] records, UsnJournalEntry[] catchUp)
     {
         return new JournalBrokerHost(

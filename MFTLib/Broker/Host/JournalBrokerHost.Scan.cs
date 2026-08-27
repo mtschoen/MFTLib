@@ -133,7 +133,10 @@ public sealed partial class JournalBrokerHost
                 {
                     if (p.TotalRecords.HasValue)
                     {
-                        totalRecordsKnown = p.TotalRecords.Value;
+                        if (!totalRecordsKnown.HasValue || p.TotalRecords.Value > totalRecordsKnown.Value)
+                        {
+                            totalRecordsKnown = p.TotalRecords.Value;
+                        }
                     }
 
                     if (p.RecordsProcessed > maxRecordsProcessed)
@@ -161,7 +164,7 @@ public sealed partial class JournalBrokerHost
             MmfWriteResult writeResult;
             if (mmfWriter is IStreamingMmfWriter streamingWriter)
             {
-                writeResult = streamingWriter.Write(request.MmfName, filteredBatches, null, cancellationToken);
+                writeResult = streamingWriter.Write(request.MmfName, filteredBatches, progressReporter, cancellationToken);
             }
             else
             {

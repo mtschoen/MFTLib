@@ -92,17 +92,13 @@ public sealed partial class MftVolume : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         MFTLibNative.EnsureCompatibleNativeAbi();
 
-        var queue = progress != null ? new List<MftScanProgress>() : null;
-        MFTLibNative.NativeMftProgressCallback? nativeCallback = queue != null
+        MFTLibNative.NativeMftProgressCallback? nativeCallback = progress != null
             ? (recordsScanned, totalRecords, elapsedMs, _) =>
             {
                 try
                 {
-                    lock (queue)
-                    {
-                        queue.Add(new MftScanProgress((long)recordsScanned, (long)totalRecords,
-                            TimeSpan.FromMilliseconds(elapsedMs)));
-                    }
+                    progress.Report(new MftScanProgress((long)recordsScanned, (long)totalRecords,
+                        TimeSpan.FromMilliseconds(elapsedMs)));
                 }
                 catch
                 {
@@ -118,17 +114,6 @@ public sealed partial class MftVolume : IDisposable
         if (resultPtr == IntPtr.Zero)
         {
             throw new InvalidOperationException("ParseMFTRecords returned null");
-        }
-
-        if (queue != null && progress != null)
-        {
-            lock (queue)
-            {
-                foreach (var item in queue)
-                {
-                    progress.Report(item);
-                }
-            }
         }
 
         return new MftResult(resultPtr, _driveLetter, 0);
