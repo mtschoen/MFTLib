@@ -429,6 +429,41 @@ public class BrokerProtocolTests
     }
 
     [TestMethod]
+    public void WarningFrame_RoundTrips_PerDriveMessage()
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteWarning(buffer, "D:\\", "catch-up failed");
+        var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
+
+        Assert.AreEqual(BrokerFrameKind.Warning, frame.Kind);
+        Assert.AreEqual("D:\\", frame.Drive);
+        Assert.AreEqual("catch-up failed", frame.Message);
+        Assert.AreEqual(buffer.WrittenCount, consumed);
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_WarningFrame()
+    {
+        AssertWireBytes(w => BrokerProtocol.WriteWarning(w, "C", "D"),
+        [
+            0x0D, 0x00, 0x00, 0x00, // totalLength = 13
+            0x0C, // kind = Warning (12)
+            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
+            0x02, 0x00, 0x00, 0x00, 0x44, 0x00 // message "D"
+        ]);
+    }
+
+    [TestMethod]
+    public void Factory_Warning_PopulatesDriveAndMessage()
+    {
+        var frame = BrokerFrame.Warning("D", "catch-up failed");
+        Assert.AreEqual(BrokerFrameKind.Warning, frame.Kind);
+        Assert.AreEqual("D", frame.Drive);
+        Assert.AreEqual("catch-up failed", frame.Message);
+        Assert.AreEqual(0, frame.Entries.Length);
+    }
+
+    [TestMethod]
     public void ScanProgressFrame_RoundTrips_AllFields()
     {
         var progress = new BrokerScanProgress("C", 1000, 20480, 5000, 102400, TimeSpan.FromMilliseconds(150));

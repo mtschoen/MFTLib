@@ -107,6 +107,19 @@ public sealed partial class JournalBrokerClient
     // Production createDriveMmf: a uniquely named, page-file-backed map the elevated
     // broker opens by name and writes the cold scan into. The MemoryMappedFile handle
     // is the lifetime the client disposes once the scan has been read back.
+    //
+    // Deliberately NOT MemoryMappedFileOptions.DelayAllocatePages (SEC_RESERVE): a spike
+    // (see MFTLib#89) confirmed that pages reserved this way are not committed on first
+    // touch the way an ordinary SEC_COMMIT section's pages are. Writing through the
+    // stream-based view (CreateViewStream + Stream.Write, which is how RealMmfWriter and
+    // ScanPayload.Write operate) crashed the process with an unrecoverable
+    // AccessViolationException, even for a 1 KiB write to a mostly-empty map - the OS does
+    // not auto-commit SEC_RESERVE pages on write the way it does SEC_COMMIT pages; that
+    // requires explicit VirtualAlloc(MEM_COMMIT) calls tracking a write high-water mark,
+    // which is a materially bigger, riskier change than a flag swap and is not something
+    // the existing Stream-based writer seam supports. Capacity is therefore sized via the
+    // caller-controlled "capacity" parameter (see BrokerScanOptions.MmfCapacityBytes)
+    // rather than by requesting a huge reservation and hoping it stays cheap.
     [SupportedOSPlatform("windows")]
     static (string Name, IDisposable Lifetime) CreateRealDriveMmf(string driveLetter, long capacity)
     {

@@ -40,9 +40,19 @@ public sealed partial class JournalBrokerClient(
     Func<string, long, (string Name, IDisposable Lifetime)> createDriveMmf) : IAsyncDisposable
 {
     /// <summary>
-    ///     Default capacity for a per-drive MMF: generous enough for tens of millions
-    ///     of records (~2 GiB). The broker writes only the exact bytes it needs; the
-    ///     caller reads back exactly that many via the <c>ScanReady</c> byte-length field.
+    ///     Default capacity for a per-drive MMF (2 GiB). The broker writes only the exact
+    ///     bytes it needs; the caller reads back exactly that many via the <c>ScanReady</c>
+    ///     byte-length field. This default is NOT sized for every volume: a volume with
+    ///     several million deep paths can exceed it (each record costs 48 bytes plus
+    ///     UTF-16 name and path), producing a descriptive <see cref="InvalidOperationException" />
+    ///     from <see cref="ScanPayload.Write(Stream,IEnumerable{IReadOnlyList{ScanRecord}},CancellationToken)" />
+    ///     rather than silently losing the drive. It is kept at 2 GiB (rather than raised) because
+    ///     Windows commits a page-file-backed section's full requested capacity to the system commit
+    ///     charge at creation time regardless of how much is ever touched - measured via
+    ///     GlobalMemoryStatusEx, requesting 16 GiB with default (SEC_COMMIT) semantics raised commit
+    ///     charge by ~16 GiB immediately. A caller that knows a volume needs more room (and that the
+    ///     machine and drive count can afford the commit-charge cost) can override it per scan via
+    ///     <see cref="BrokerScanOptions.MmfCapacityBytes" />.
     /// </summary>
     public const long DefaultMmfCapacity = 2L * 1024 * 1024 * 1024; // 2 GiB
 

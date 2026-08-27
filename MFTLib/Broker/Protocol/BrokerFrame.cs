@@ -12,7 +12,8 @@ public enum BrokerFrameKind : byte
     Heartbeat = 8,
     EndWatch = 9,
     EndWatchAck = 10,
-    ScanProgress = 11
+    ScanProgress = 11,
+    Warning = 12
 }
 
 public readonly record struct BrokerFrame
@@ -148,6 +149,21 @@ public readonly record struct BrokerFrame
         return new BrokerFrame
         {
             Kind = BrokerFrameKind.Error,
+            Entries = Array.Empty<UsnJournalEntry>(),
+            Drive = drive,
+            KeepFileNames = Array.Empty<string>(),
+            Message = message
+        };
+    }
+
+    // A non-fatal, per-drive degradation: unlike Error, the drive still produced a
+    // usable result (the scan succeeded, or the watch is resuming from a fresh
+    // position) - the message explains what was lost, not that the drive failed.
+    public static BrokerFrame Warning(string drive, string message)
+    {
+        return new BrokerFrame
+        {
+            Kind = BrokerFrameKind.Warning,
             Entries = Array.Empty<UsnJournalEntry>(),
             Drive = drive,
             KeepFileNames = Array.Empty<string>(),

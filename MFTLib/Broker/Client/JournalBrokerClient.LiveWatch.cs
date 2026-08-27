@@ -230,22 +230,32 @@ public sealed partial class JournalBrokerClient
                 }
 
                 var value = frame.Value;
-                if (value.Kind == BrokerFrameKind.JournalBatch)
+                switch (value.Kind)
                 {
-                    GetOrAddLiveChannel(NormalizeDriveLetter(value.RequireDrive()))
-                        .Writer.TryWrite((value.Entries, value.Cursor));
+                    case BrokerFrameKind.JournalBatch:
+                        GetOrAddLiveChannel(NormalizeDriveLetter(value.RequireDrive()))
+                            .Writer.TryWrite((value.Entries, value.Cursor));
+                        break;
+
+                    case BrokerFrameKind.EndWatchAck:
+                        CompleteAllLiveChannels(null);
+                        return; // clean stop: the watch was ended at the client's request
+
+                    case BrokerFrameKind.Error:
+                        FaultLiveChannel(NormalizeDriveLetter(value.RequireDrive()),
+                            new InvalidOperationException(value.RequireMessage()));
+                        break;
+
+                    case BrokerFrameKind.Warning:
+                        // Non-fatal: the live watch has no per-drive warning channel, so
+                        // this is a diagnostics-only surface rather than a fault - the
+                        // drive's JournalBatch frames keep flowing normally.
+                        BrokerDiagnostics.Log(
+                            $"Warning frame for drive {value.RequireDrive()}: {value.RequireMessage()}");
+                        break;
+
+                        // Heartbeat / other frame kinds are not routed to a drive stream.
                 }
-                else if (value.Kind == BrokerFrameKind.EndWatchAck)
-                {
-                    CompleteAllLiveChannels(null);
-                    return; // clean stop: the watch was ended at the client's request
-                }
-                else if (value.Kind == BrokerFrameKind.Error)
-                {
-                    FaultLiveChannel(NormalizeDriveLetter(value.RequireDrive()),
-                        new InvalidOperationException(value.RequireMessage()));
-                }
-                // Heartbeat / other frame kinds are not routed to a drive stream.
             }
 
             // The loop can also exit because cancellation was observed at the top of

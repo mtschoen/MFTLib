@@ -378,12 +378,13 @@ public class MftVolumeTests
     [TestMethod]
     public unsafe void StreamRecords_ProgressCallbackElapsedMsIsNaN_SwallowsExceptionAndStillCompletes()
     {
-        // The native progress adapter in MftVolume.StreamRecords wraps progress.Report in a
-        // bare try/catch specifically because it runs inside a delegate invoked from
-        // unmanaged code: an exception must never cross that boundary. Feeding an
-        // elapsedMs of NaN makes TimeSpan.FromMilliseconds throw while constructing the
-        // MftScanProgress, exercising that catch. The malformed sample must be dropped
-        // (never reach progress.Report), while the parse itself still succeeds normally.
+        // The native progress adapter in MftVolume.StreamRecords wraps sample
+        // construction and the progress.Report call in a bare try/catch specifically
+        // because it runs inside a delegate invoked from unmanaged code: an exception
+        // must never cross that boundary. Feeding an elapsedMs of NaN makes
+        // TimeSpan.FromMilliseconds throw while constructing the MftScanProgress,
+        // exercising that catch. The malformed sample must be dropped (never reach
+        // progress.Report), while the parse itself still succeeds normally.
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
 
         var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
@@ -425,6 +426,127 @@ public class MftVolumeTests
 
         Assert.AreEqual(1, batches.Count, "The parse itself must still succeed despite the malformed progress sample");
         Assert.AreEqual(0, reported.Count, "The NaN-elapsed sample must be dropped, not reported");
+    }
+
+    [TestMethod]
+    public unsafe void StreamRecords_ProgressReportedLive_AllSamplesArriveBeforeNativeCallReturns()
+    {
+        // MftVolume.StreamRecords must call progress.Report(sample) directly from the
+        // native callback, not buffer samples into a queue and drain them only after
+        // MFTLibNative._parseMftRecordsWithProgress returns. The fake native function
+        // below invokes the callback three times and then, still inside that same
+        // delegate invocation (i.e. before the "native call" has returned to
+        // StreamRecords), snapshots how many samples the consumer has received. With
+        // live delivery that snapshot must already be 3.
+        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+
+        var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
+        var entryBuf = Marshal.AllocHGlobal((int)stride);
+        new Span<byte>((void*)entryBuf, (int)stride).Clear();
+        Unsafe.WriteUnaligned((byte*)entryBuf, 100UL);
+        Unsafe.WriteUnaligned((byte*)entryBuf + 28, (ushort)1);
+        Unsafe.WriteUnaligned((byte*)entryBuf + 30, (ushort)0);
+
+        var parseResult = new MftParseResult
+        {
+            TotalRecords = 1,
+            UsedRecords = 1,
+            Entries = entryBuf,
+            EntryStrings = IntPtr.Zero,
+            EntryStringUnits = 0,
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = MFTLibNative.NativeCompactEntrySize
+        };
+        var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+        Marshal.StructureToPtr(parseResult, parsePtr, false);
+
+        var receivedCount = 0;
+        var receivedCountAtReturn = -1;
+
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
+        {
+            callback?.Invoke(1, 3, 10, context);
+            callback?.Invoke(2, 3, 20, context);
+            callback?.Invoke(3, 3, 30, context);
+            receivedCountAtReturn = receivedCount;
+            return parsePtr;
+        };
+        MFTLibNative._freeMftResult = ptr =>
+        {
+            Marshal.FreeHGlobal(entryBuf);
+            Marshal.FreeHGlobal(ptr);
+        };
+
+        var directProgress = new DirectMftProgress(_ => receivedCount++);
+
+        using var volume = MftVolume.Open("C");
+        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
+
+        Assert.AreEqual(1, batches.Count);
+        Assert.AreEqual(3, receivedCountAtReturn,
+            "All three progress samples must reach the consumer before the native call returns");
+        Assert.AreEqual(3, receivedCount);
+    }
+
+    [TestMethod]
+    public unsafe void StreamRecords_ProgressConsumerThrows_DoesNotAbortParseAndLaterSamplesStillArrive()
+    {
+        // The never-throw-across-the-unmanaged-boundary guarantee must hold for a
+        // consumer that throws from Report, not just for a malformed sample: the parse
+        // must still complete, and later samples must still reach the consumer.
+        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+
+        var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
+        var entryBuf = Marshal.AllocHGlobal((int)stride);
+        new Span<byte>((void*)entryBuf, (int)stride).Clear();
+        Unsafe.WriteUnaligned((byte*)entryBuf, 100UL);
+        Unsafe.WriteUnaligned((byte*)entryBuf + 28, (ushort)1);
+        Unsafe.WriteUnaligned((byte*)entryBuf + 30, (ushort)0);
+
+        var parseResult = new MftParseResult
+        {
+            TotalRecords = 1,
+            UsedRecords = 1,
+            Entries = entryBuf,
+            EntryStrings = IntPtr.Zero,
+            EntryStringUnits = 0,
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = MFTLibNative.NativeCompactEntrySize
+        };
+        var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+        Marshal.StructureToPtr(parseResult, parsePtr, false);
+
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
+        {
+            callback?.Invoke(1, 2, 10, context);
+            callback?.Invoke(2, 2, 20, context);
+            return parsePtr;
+        };
+        MFTLibNative._freeMftResult = ptr =>
+        {
+            Marshal.FreeHGlobal(entryBuf);
+            Marshal.FreeHGlobal(ptr);
+        };
+
+        var reported = new List<MftScanProgress>();
+        var throwOnFirst = true;
+        var directProgress = new DirectMftProgress(sample =>
+        {
+            if (throwOnFirst)
+            {
+                throwOnFirst = false;
+                throw new InvalidOperationException("Consumer failure must not cross the unmanaged boundary");
+            }
+
+            reported.Add(sample);
+        });
+
+        using var volume = MftVolume.Open("C");
+        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
+
+        Assert.AreEqual(1, batches.Count, "The parse itself must still succeed despite the throwing consumer");
+        Assert.AreEqual(1, reported.Count, "The sample after the throwing report must still arrive");
+        Assert.AreEqual(2, reported[0].RecordsScanned);
     }
 
     sealed class DirectMftProgress(Action<MftScanProgress> handler) : IProgress<MftScanProgress>

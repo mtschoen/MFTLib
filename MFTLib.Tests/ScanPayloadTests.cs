@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -437,6 +438,57 @@ public class ScanPayloadTests
         Assert.AreEqual(result.ByteLength, finalReport.BytesProcessed);
         Assert.AreEqual(result.RecordCount, finalReport.TotalRecords);
         Assert.AreEqual(result.ByteLength, finalReport.TotalBytes);
+    }
+
+    [TestMethod]
+    public void ScanPayload_V2_Write_ExceedsCapacity_ThrowsDescriptiveInvalidOperationException()
+    {
+        // A fixed-capacity, non-expandable MemoryStream (wrapping a pre-sized array
+        // rather than growing its own buffer) throws the same NotSupportedException a
+        // MemoryMappedViewStream throws once a write would exceed its fixed capacity -
+        // this reproduces the overflow without needing a real named Windows MMF.
+        var records = new[]
+        {
+            new ScanRecord(1, 0, 100, 1000, 0x20, false, "aaaaaaaaaaaaaaaaaaaa.txt", "C:\\aaaaaaaaaaaaaaaaaaaa.txt"),
+            new ScanRecord(2, 0, 200, 2000, 0x20, false, "bbbbbbbbbbbbbbbbbbbb.txt", "C:\\bbbbbbbbbbbbbbbbbbbb.txt"),
+            new ScanRecord(3, 0, 300, 3000, 0x20, false, "cccccccccccccccccccc.txt", "C:\\cccccccccccccccccccc.txt")
+        };
+        // Room for the 24-byte header plus one full record, but not the second.
+        var tooSmall = new byte[24 + ScanPayload.FixedRecordHeaderSize + 200];
+
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var stream = new MemoryStream(tooSmall, true);
+            ScanPayload.Write(stream, [records], CancellationToken.None);
+        });
+
+        StringAssert.Contains(exception.Message, "for drive C");
+        StringAssert.Contains(exception.Message, "exceeded the shared-memory map capacity");
+        StringAssert.Contains(exception.Message, tooSmall.Length.ToString("N0", CultureInfo.InvariantCulture));
+        StringAssert.Contains(exception.Message, "BrokerScanOptions.MmfCapacityBytes");
+        Assert.IsInstanceOfType<NotSupportedException>(exception.InnerException);
+    }
+
+    [TestMethod]
+    public void ScanPayload_V2_Write_ExceedsCapacity_WithExplicitDrive_NamesExplicitDrive()
+    {
+        var records = new[]
+        {
+            new ScanRecord(1, 0, 100, 1000, 0x20, false, "a.txt", "a.txt"),
+            new ScanRecord(2, 0, 200, 2000, 0x20, false, "b.txt", "b.txt")
+        };
+        var tooSmall = new byte[24 + ScanPayload.FixedRecordHeaderSize + 50];
+
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            using var stream = new MemoryStream(tooSmall, true);
+            ScanPayload.Write(stream, [records], null, "D", CancellationToken.None);
+        });
+
+        StringAssert.Contains(exception.Message, "for drive D");
+        StringAssert.Contains(exception.Message, "exceeded the shared-memory map capacity");
+        StringAssert.Contains(exception.Message, "BrokerScanOptions.MmfCapacityBytes");
+        Assert.IsInstanceOfType<NotSupportedException>(exception.InnerException);
     }
 
     static byte[] CreateValidPayloadBytes()

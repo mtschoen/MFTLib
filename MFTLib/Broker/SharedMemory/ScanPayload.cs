@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Text;
 
 namespace MFTLib;
@@ -83,7 +84,7 @@ public static class ScanPayload
         IEnumerable<IReadOnlyList<ScanRecord>> batches,
         CancellationToken cancellationToken)
     {
-        return Write(destination, batches, null, cancellationToken);
+        return Write(destination, batches, null, null, cancellationToken);
     }
 
     public static MmfWriteResult Write(
@@ -92,41 +93,73 @@ public static class ScanPayload
         IProgress<MmfWriteProgress>? progress,
         CancellationToken cancellationToken)
     {
+        return Write(destination, batches, progress, null, cancellationToken);
+    }
+
+    public static MmfWriteResult Write(
+        Stream destination,
+        IEnumerable<IReadOnlyList<ScanRecord>> batches,
+        IProgress<MmfWriteProgress>? progress,
+        string? drive,
+        CancellationToken cancellationToken = default)
+    {
         var startPosition = destination.Position;
         Span<byte> headerBytes = stackalloc byte[HeaderSize];
-        destination.Write(headerBytes);
 
         long recordCount = 0;
         Span<byte> recordHeader = stackalloc byte[FixedRecordHeaderSize];
+        string? detectedDrive = drive;
 
-        foreach (var batch in batches)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            foreach (var record in batch)
+            destination.Write(headerBytes);
+
+            foreach (var batch in batches)
             {
-                recordCount++;
+                cancellationToken.ThrowIfCancellationRequested();
+                foreach (var record in batch)
+                {
+                    if (detectedDrive == null && !string.IsNullOrEmpty(record.Path))
+                    {
+                        var colonIndex = record.Path.IndexOf(':');
+                        if (colonIndex > 0)
+                        {
+                            detectedDrive = record.Path[..colonIndex];
+                        }
+                    }
 
-                BinaryPrimitives.WriteUInt64LittleEndian(recordHeader, record.RecordNumber);
-                BinaryPrimitives.WriteUInt64LittleEndian(recordHeader[8..], record.ParentRecordNumber);
-                BinaryPrimitives.WriteUInt64LittleEndian(recordHeader[16..], record.Size);
-                BinaryPrimitives.WriteInt64LittleEndian(recordHeader[24..], record.LastWriteTicks);
-                BinaryPrimitives.WriteUInt32LittleEndian(recordHeader[32..], record.Attributes);
-                recordHeader[36] = (byte)(record.IsDirectory ? 1 : 0);
-                recordHeader[37] = 0;
-                BinaryPrimitives.WriteUInt16LittleEndian(recordHeader[38..], 0);
+                    recordCount++;
 
-                var nameBytes = Encoding.Unicode.GetBytes(record.Name);
-                var pathBytes = Encoding.Unicode.GetBytes(record.Path);
-                BinaryPrimitives.WriteInt32LittleEndian(recordHeader[40..], nameBytes.Length);
-                BinaryPrimitives.WriteInt32LittleEndian(recordHeader[44..], pathBytes.Length);
+                    BinaryPrimitives.WriteUInt64LittleEndian(recordHeader, record.RecordNumber);
+                    BinaryPrimitives.WriteUInt64LittleEndian(recordHeader[8..], record.ParentRecordNumber);
+                    BinaryPrimitives.WriteUInt64LittleEndian(recordHeader[16..], record.Size);
+                    BinaryPrimitives.WriteInt64LittleEndian(recordHeader[24..], record.LastWriteTicks);
+                    BinaryPrimitives.WriteUInt32LittleEndian(recordHeader[32..], record.Attributes);
+                    recordHeader[36] = (byte)(record.IsDirectory ? 1 : 0);
+                    recordHeader[37] = 0;
+                    BinaryPrimitives.WriteUInt16LittleEndian(recordHeader[38..], 0);
 
-                destination.Write(recordHeader);
-                destination.Write(nameBytes);
-                destination.Write(pathBytes);
+                    var nameBytes = Encoding.Unicode.GetBytes(record.Name);
+                    var pathBytes = Encoding.Unicode.GetBytes(record.Path);
+                    BinaryPrimitives.WriteInt32LittleEndian(recordHeader[40..], nameBytes.Length);
+                    BinaryPrimitives.WriteInt32LittleEndian(recordHeader[44..], pathBytes.Length);
+
+                    destination.Write(recordHeader);
+                    destination.Write(nameBytes);
+                    destination.Write(pathBytes);
+                }
+
+                var currentBytes = destination.Position - startPosition;
+                progress?.Report(new MmfWriteProgress(recordCount, currentBytes, null, null));
             }
-
-            var currentBytes = destination.Position - startPosition;
-            progress?.Report(new MmfWriteProgress(recordCount, currentBytes, null, null));
+        }
+        catch (NotSupportedException exception)
+        {
+            // Thrown by a fixed-capacity Stream.Write (a MemoryMappedViewStream over a
+            // page-file-backed map, or a fixed MemoryStream) once the write would exceed
+            // the destination's capacity. Rethrow with the record count and capacity so
+            // the caller sees an actionable message instead of the stream's generic text.
+            throw CreateCapacityExceededException(destination, startPosition, recordCount, exception, detectedDrive);
         }
 
         var endPosition = destination.Position;
@@ -147,6 +180,40 @@ public static class ScanPayload
         return new MmfWriteResult(recordCount, totalBytes);
     }
 
+    // Builds the descriptive overflow message: how many records got written before the
+    // map ran out of room, and (when the stream exposes it) the map's total capacity -
+    // for a MemoryMappedViewStream, Length is the fixed view size requested at
+    // CreateViewStream, which is exactly the map capacity a caller would need to raise
+    // via BrokerScanOptions.MmfCapacityBytes. CanSeek/Length can themselves throw
+    // NotSupportedException on some stream types; that failure is swallowed so a
+    // best-effort capacity figure never masks the real overflow being reported.
+    static InvalidOperationException CreateCapacityExceededException(
+        Stream destination, long startPosition, long recordCount, Exception innerException, string? drive = null)
+    {
+        long? capacityBytes = null;
+        try
+        {
+            if (destination.CanSeek)
+            {
+                capacityBytes = destination.Length - startPosition;
+            }
+        }
+        catch (NotSupportedException)
+        {
+            // Capacity/Length unavailable on this stream type; the message omits it.
+        }
+
+        var capacityText = capacityBytes.HasValue
+            ? capacityBytes.Value.ToString("N0", CultureInfo.InvariantCulture) + " bytes"
+            : "unknown";
+
+        var drivePrefix = string.IsNullOrEmpty(drive) ? "Scan payload" : $"Scan payload for drive {drive}";
+
+        return new InvalidOperationException(
+            FormattableString.Invariant(
+                $"{drivePrefix} exceeded the shared-memory map capacity ({capacityText}) after {recordCount:N0} records; increase BrokerScanOptions.MmfCapacityBytes."),
+            innerException);
+    }
 
     public static long ReadCount(ReadOnlySpan<byte> source)
     {

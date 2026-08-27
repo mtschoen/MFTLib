@@ -267,6 +267,152 @@ public class JournalBrokerHostTests
     }
 
     [TestMethod]
+    public async Task ServeOnce_MmfCapacityExceeded_EmitsErrorFrameNamingDriveAndOptions()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var host = new JournalBrokerHost(
+            _ => new UsnJournalCursor(1UL, 100L),
+            (_, _) =>
+            [
+                [new ScanRecord(1, 0, 100, 0, 0x20, false, "overflow.txt", @"C:\overflow.txt")]
+            ],
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-scan-C");
+        await clientSide.WriteAsync(request.WrittenMemory);
+        await clientSide.FlushAsync();
+
+        var failingWriter = new FailingMmfWriterDouble(
+            new InvalidOperationException(
+                "Scan payload exceeded the shared-memory map capacity (100 bytes) after 1 records; increase BrokerScanOptions.MmfCapacityBytes."));
+
+        await host.ServeAsync(serverSide, failingWriter, true, CancellationToken.None);
+        await serverSide.DisposeAsync();
+
+        var frames = ReadAllFrames(clientSide);
+        var error = frames.Single(f => f.Kind == BrokerFrameKind.Error);
+        Assert.AreEqual("C", error.Drive);
+        StringAssert.Contains(error.Message, "for drive C");
+        StringAssert.Contains(error.Message, "exceeded the shared-memory map capacity");
+        StringAssert.Contains(error.Message, "BrokerScanOptions.MmfCapacityBytes");
+    }
+
+    [TestMethod]
+    public async Task ServeOnce_CatchUpThrows_EmitsWarningAndZeroEntryJournalBatch_OtherDriveUnaffected()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var queryCallCounts = new Dictionary<string, int>();
+        var armedCursorForC = new UsnJournalCursor(1UL, 100L);
+        var freshCursorForC = new UsnJournalCursor(1UL, 999L);
+        var cursorForD = new UsnJournalCursor(2UL, 200L);
+
+        UsnJournalCursor QueryCursor(string drive)
+        {
+            var count = queryCallCounts.TryGetValue(drive, out var existing) ? existing + 1 : 1;
+            queryCallCounts[drive] = count;
+            return drive switch
+            {
+                "C" => count == 1 ? armedCursorForC : freshCursorForC, // arm, then re-query after catch-up fails
+                "D" => cursorForD,
+                _ => throw new InvalidOperationException($"unexpected drive {drive}")
+            };
+        }
+
+        (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(string drive, UsnJournalCursor since)
+        {
+            if (drive == "C")
+            {
+                throw new InvalidOperationException("journal wrapped");
+            }
+
+            return (Array.Empty<UsnJournalEntry>(), since);
+        }
+
+        var host = new JournalBrokerHost(QueryCursor, _ => Array.Empty<ScanRecord>(), ReadJournal);
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-scan-C,D:0:0:mftlib-scan-D");
+        await clientSide.WriteAsync(request.WrittenMemory);
+        await clientSide.FlushAsync();
+
+        await host.ServeAsync(serverSide, new RecordingMmfWriter(), true, CancellationToken.None);
+        await serverSide.DisposeAsync();
+
+        var frames = ReadAllFrames(clientSide);
+
+        Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Error), "No Error frame for either drive");
+        Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
+        Assert.AreEqual("C", frames[0].Drive);
+
+        var warning = frames.Single(f => f.Kind == BrokerFrameKind.Warning);
+        Assert.AreEqual("C", warning.Drive);
+        StringAssert.Contains(warning.Message, "journal wrapped");
+        StringAssert.Contains(warning.Message, "watching from the current journal position");
+
+        var journalBatches = frames.Where(f => f.Kind == BrokerFrameKind.JournalBatch).ToList();
+        Assert.AreEqual(2, journalBatches.Count);
+
+        var batchC = journalBatches.Single(f => f.Drive == "C");
+        Assert.AreEqual(freshCursorForC, batchC.Cursor);
+        Assert.AreEqual(0, batchC.Entries.Length);
+
+        var batchD = journalBatches.Single(f => f.Drive == "D");
+        Assert.AreEqual(cursorForD, batchD.Cursor);
+        Assert.AreEqual(0, batchD.Entries.Length);
+
+        // Ordering for C: ScanReady precedes the Warning, which precedes the
+        // JournalBatch it substitutes for a normal successful catch-up.
+        var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady); // C is processed first
+        var warningIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.Warning && f.Drive == "C");
+        var batchCIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.JournalBatch && f.Drive == "C");
+        Assert.IsTrue(scanReadyIndex < warningIndex, "Warning must come after ScanReady");
+        Assert.IsTrue(warningIndex < batchCIndex, "Warning must come before its JournalBatch");
+    }
+
+    [TestMethod]
+    public async Task ServeOnce_CatchUpAndRequeryBothThrow_EmitsErrorFrameInstead()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var queryCallCount = 0;
+
+        UsnJournalCursor QueryCursor(string _)
+        {
+            queryCallCount++;
+            if (queryCallCount == 1)
+            {
+                return new UsnJournalCursor(1UL, 100L); // arm succeeds
+            }
+
+            throw new InvalidOperationException("volume closed"); // re-query also fails
+        }
+
+        var host = new JournalBrokerHost(
+            QueryCursor,
+            _ => Array.Empty<ScanRecord>(),
+            (_, _) => throw new InvalidOperationException("journal wrapped"));
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-scan-C");
+        await clientSide.WriteAsync(request.WrittenMemory);
+        await clientSide.FlushAsync();
+
+        await host.ServeAsync(serverSide, new RecordingMmfWriter(), true, CancellationToken.None);
+        await serverSide.DisposeAsync();
+
+        var frames = ReadAllFrames(clientSide);
+
+        Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Warning),
+            "No Warning frame when the re-query also fails");
+        Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.JournalBatch),
+            "No JournalBatch when the re-query also fails");
+
+        var error = frames.Single(f => f.Kind == BrokerFrameKind.Error);
+        Assert.AreEqual("C", error.Drive);
+        Assert.AreEqual("volume closed", error.Message);
+    }
+
+    [TestMethod]
     public async Task ServeAsync_Shutdown_ReturnsCleanly()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
@@ -883,6 +1029,59 @@ public class JournalBrokerHostTests
     }
 
     [TestMethod]
+    public async Task ServeOnce_ScanProgress_WritePhaseByteProgressFlowsThroughBeforeCompletion()
+    {
+        var originalThrottle = JournalBrokerHost._progressThrottleInterval;
+        try
+        {
+            JournalBrokerHost._progressThrottleInterval = TimeSpan.Zero;
+
+            var (clientSide, serverSide) = DuplexStream.CreatePair();
+            // The fake scan source reports no progress of its own (mirroring the
+            // production ScanDriveBatches parse-phase adapter, which always reports
+            // BytesProcessed = 0), so the only way a ScanProgress frame with
+            // BytesProcessed > 0 can reach the wire before the guaranteed completion
+            // frame is if ExecuteDriveScanAsync wires the same progress reporter into
+            // the streaming writer's Write call, letting the write phase's own
+            // per-batch byte progress (RecordingMmfWriter below) flow through.
+            var host = new JournalBrokerHost(
+                _ => new UsnJournalCursor(7UL, 0L),
+                (_, _, _) =>
+                [
+                    [new ScanRecord(1, 0, 100, 0, 0x20, false, "r1.txt", @"C:\r1.txt")],
+                    [new ScanRecord(2, 0, 200, 0, 0x20, false, "r2.txt", @"C:\r2.txt")]
+                ],
+                (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+            var request = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-writebytes-C");
+            await clientSide.WriteAsync(request.WrittenMemory);
+            await clientSide.FlushAsync();
+
+            var writeMmf = new RecordingMmfWriter();
+            await host.ServeAsync(serverSide, writeMmf, true, CancellationToken.None);
+            await serverSide.DisposeAsync();
+
+            var frames = ReadAllFrames(clientSide);
+            var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
+            Assert.IsTrue(scanReadyIndex > 0, "ScanReady frame must be present");
+            var finalProgressIndex = scanReadyIndex - 1;
+
+            var beforeCompletion = frames.Take(finalProgressIndex)
+                .Where(f => f.Kind == BrokerFrameKind.ScanProgress)
+                .ToList();
+            Assert.IsTrue(beforeCompletion.Count > 0,
+                "Expected a write-phase ScanProgress frame on the wire before the guaranteed completion frame");
+            Assert.IsTrue(beforeCompletion.All(f => f.Progress!.Value.BytesProcessed > 0),
+                "Write-phase progress frames must report nonzero bytes processed");
+        }
+        finally
+        {
+            JournalBrokerHost._progressThrottleInterval = originalThrottle;
+        }
+    }
+
+    [TestMethod]
     public async Task ServeOnce_ScanProgress_PumpCancelledBeforeAnyProgressReported_SwallowsCancellationInPump()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
@@ -1071,6 +1270,20 @@ public class JournalBrokerHostTests
             LastRecords = records;
             return 1234;
         }
+    }
+
+    sealed class FailingMmfWriterDouble(Exception exception) : IStreamingMmfWriter
+    {
+        public long Write(string mmfName, ScanRecord[] records) => throw exception;
+
+        public MmfWriteResult Write(
+            string mmfName, IEnumerable<IReadOnlyList<ScanRecord>> batches, CancellationToken cancellationToken) =>
+            throw exception;
+
+        public MmfWriteResult Write(
+            string mmfName, IEnumerable<IReadOnlyList<ScanRecord>> batches,
+            IProgress<MmfWriteProgress>? progress, CancellationToken cancellationToken) =>
+            throw exception;
     }
 
     sealed class DirectProgress(Action<MmfWriteProgress> handler) : IProgress<MmfWriteProgress>

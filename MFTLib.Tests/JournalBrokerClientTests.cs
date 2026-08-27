@@ -137,6 +137,43 @@ public class JournalBrokerClientTests
     }
 
     // ---------------------------------------------------------------------------
+    // Warning-frame path: broker degrades a drive (catch-up failed) instead of
+    // failing it outright - unlike Error, the drive still completes normally.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_WarningFrame_RecordsWarning_AndDriveStillCompletes()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var freshCursor = new UsnJournalCursor(1UL, 999L);
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteCursor(response, "D", new UsnJournalCursor(1UL, 100L));
+            BrokerProtocol.WriteWarning(response, "D",
+                "Catch-up after scan failed: journal wrapped; watching from the current journal position, " +
+                "changes made during the scan were not replayed");
+            BrokerProtocol.WriteJournalBatch(response, "D", freshCursor, Array.Empty<UsnJournalEntry>());
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        var client = MakeMinimalFakeClient(clientSide);
+        var result = await client.ArmScanAndCatchUpAsync(DriveD);
+        await brokerTask;
+
+        Assert.IsTrue(result.Warnings.ContainsKey("D"));
+        StringAssert.Contains(result.Warnings["D"], "journal wrapped");
+        Assert.IsFalse(result.Errors.ContainsKey("D"));
+        Assert.IsTrue(result.AdvancedCursors.ContainsKey("D"));
+        Assert.AreEqual(freshCursor, result.AdvancedCursors["D"]);
+
+        await client.DisposeAsync();
+    }
+
+    // ---------------------------------------------------------------------------
     // ArmScanAndCatchUpAsync(profile, keepFileNames): the wire frame carries both
     // ---------------------------------------------------------------------------
 
@@ -191,6 +228,90 @@ public class JournalBrokerClientTests
         await brokerTask;
 
         Assert.IsTrue(result.Errors.ContainsKey("D"));
+
+        await client.DisposeAsync();
+    }
+
+    // ---------------------------------------------------------------------------
+    // BrokerScanOptions.MmfCapacityBytes: per-drive MMF capacity override (MFTLib#89)
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_NoCapacityOverride_CreatesDriveMmfWithDefaultCapacity()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var capturedCapacities = new List<long>();
+
+        var client = new JournalBrokerClient(
+            clientSide,
+            new NullMmfReader(),
+            (letter, capacity) =>
+            {
+                capturedCapacities.Add(capacity);
+                return ($"mftlib-null-{letter}", NoOpDisposable.Instance);
+            });
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteError(response, "D", "unused");
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        await client.ArmScanAndCatchUpAsync(DriveD);
+        await brokerTask;
+
+        Assert.AreEqual(1, capturedCapacities.Count);
+        Assert.AreEqual(JournalBrokerClient.DefaultMmfCapacity, capturedCapacities[0]);
+
+        await client.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_CapacityOverrideSet_CreatesDriveMmfWithOverride()
+    {
+        const long overrideCapacity = 8L * 1024 * 1024 * 1024; // 8 GiB
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var capturedCapacities = new List<long>();
+
+        var client = new JournalBrokerClient(
+            clientSide,
+            new NullMmfReader(),
+            (letter, capacity) =>
+            {
+                capturedCapacities.Add(capacity);
+                return ($"mftlib-null-{letter}", NoOpDisposable.Instance);
+            });
+
+        var brokerTask = Task.Run(async () =>
+        {
+            await ReadOneFrameAsync(serverSide);
+            var response = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteError(response, "D", "unused");
+            await serverSide.WriteAsync(response.WrittenMemory);
+            await serverSide.FlushAsync();
+        });
+
+        await client.ArmScanAndCatchUpAsync(
+            DriveD, new BrokerScanOptions { MmfCapacityBytes = overrideCapacity });
+        await brokerTask;
+
+        Assert.AreEqual(1, capturedCapacities.Count);
+        Assert.AreEqual(overrideCapacity, capturedCapacities[0]);
+
+        await client.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task ArmScanAndCatchUpAsync_NonPositiveCapacityOverride_ThrowsArgumentOutOfRangeException()
+    {
+        var (clientSide, _) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+
+        await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(() =>
+            client.ArmScanAndCatchUpAsync(DriveD, new BrokerScanOptions { MmfCapacityBytes = 0 }));
 
         await client.DisposeAsync();
     }
@@ -813,6 +934,55 @@ public class JournalBrokerClientTests
         var client = await JournalBrokerClient.SpawnAndConnectAsync(launchBroker, cts.Token);
 
         var result = await client.ArmScanAndCatchUpAsync(DriveC, cancellationToken: cts.Token);
+
+        Assert.IsTrue(result.ArmedCursors.ContainsKey("C"));
+        Assert.AreEqual(0, result.Errors.Count);
+
+        await brokerTask!.WaitAsync(cts.Token);
+        await client.DisposeAsync();
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task SpawnAndConnectAsync_EndToEnd_CapacityOverride_CreatesOpenableLargerMap()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Named memory-mapped files and named pipes require Windows.");
+        }
+
+        // Exercises the real CreateRealDriveMmf seam (MemoryMappedFile.CreateNew) with a
+        // capacity well above JournalBrokerClient.DefaultMmfCapacity, confirming the
+        // BrokerScanOptions.MmfCapacityBytes override reaches production map creation and
+        // the broker can still open and write into the larger named map by name.
+        const long overrideCapacity = 4L * 1024 * 1024 * 1024; // 4 GiB, double the 2 GiB default
+        Task? brokerTask = null;
+
+        var launchBroker = new Func<string, bool>(args =>
+        {
+            var parts = args.Split(' ');
+            var pipeName = parts[Array.IndexOf(parts, "--pipe") + 1];
+            brokerTask = Task.Run(async () =>
+            {
+                await using var pipe = new NamedPipeClientStream(
+                    ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                await pipe.ConnectAsync(5000);
+
+                var fakeHost = new JournalBrokerHost(
+                    _ => new UsnJournalCursor(7UL, 0L),
+                    _ => Array.Empty<ScanRecord>(),
+                    (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+                await fakeHost.ServeAsync(pipe, new RealMmfWriter(), true, CancellationToken.None);
+            });
+            return true;
+        });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var client = await JournalBrokerClient.SpawnAndConnectAsync(launchBroker, cts.Token);
+
+        var result = await client.ArmScanAndCatchUpAsync(
+            DriveC, new BrokerScanOptions { MmfCapacityBytes = overrideCapacity }, cts.Token);
 
         Assert.IsTrue(result.ArmedCursors.ContainsKey("C"));
         Assert.AreEqual(0, result.Errors.Count);

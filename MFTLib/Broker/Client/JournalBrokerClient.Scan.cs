@@ -30,8 +30,9 @@ public sealed partial class JournalBrokerClient
     {
         var profile = options?.Profile ?? BrokerScanProfile.Full;
         var keepFileNames = options?.KeepFileNames;
+        var mmfCapacityBytes = options?.MmfCapacityBytes ?? DefaultMmfCapacity;
         var mmfNamesByDrive = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var drivesSpec = PrepareDriveScan(drives, profile, mmfNamesByDrive);
+        var drivesSpec = PrepareDriveScan(drives, profile, mmfCapacityBytes, mmfNamesByDrive);
 
         await WriteFrameAsync(
             writer => BrokerProtocol.WriteArmAndScan(writer, drivesSpec, keepFileNames),
@@ -64,14 +65,16 @@ public sealed partial class JournalBrokerClient
     }
 
     string PrepareDriveScan(
-        IReadOnlyList<string> drives, BrokerScanProfile profile,
+        IReadOnlyList<string> drives, BrokerScanProfile profile, long mmfCapacityBytes,
         Dictionary<string, string> mmfNamesByDrive)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(mmfCapacityBytes, 0);
+
         var specTokens = new List<string>(drives.Count);
         foreach (var drive in drives)
         {
             var letter = NormalizeDriveLetter(drive);
-            var (mmfName, lifetime) = createDriveMmf(letter, DefaultMmfCapacity);
+            var (mmfName, lifetime) = createDriveMmf(letter, mmfCapacityBytes);
             lock (_mmfLifetimesLock)
             {
                 _mmfLifetimes[mmfName] = lifetime;

@@ -17,6 +17,7 @@ public sealed partial class JournalBrokerClient
         readonly Dictionary<string, string> _errors = new(StringComparer.OrdinalIgnoreCase);
         readonly IProgress<BrokerScanProgress>? _progress = options?.Progress;
         readonly HashSet<string> _remaining = new(drives, StringComparer.OrdinalIgnoreCase);
+        readonly Dictionary<string, string> _warnings = new(StringComparer.OrdinalIgnoreCase);
 
         public bool IsComplete => _remaining.Count == 0;
     }
@@ -97,12 +98,19 @@ public sealed partial class JournalBrokerClient
                         _remaining.Remove(drive);
                         break;
                     }
+
+                // Non-fatal: the drive still completes via its subsequent JournalBatch
+                // frame, so this neither removes it from _remaining nor disposes its MMF
+                // lifetime (that happens on the ScanReady/Error paths above).
+                case BrokerFrameKind.Warning:
+                    _warnings[frame.RequireDrive()] = frame.RequireMessage();
+                    break;
             }
         }
 
         public BrokerScanResult ToResult()
         {
-            return new BrokerScanResult(_armedCursors, _advancedCursors, _catchUpEntries, _errors);
+            return new BrokerScanResult(_armedCursors, _advancedCursors, _catchUpEntries, _errors, _warnings);
         }
     }
 }

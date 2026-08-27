@@ -29,8 +29,15 @@ public sealed partial class JournalBrokerHost
             // per-drive error: let it propagate to end the session cleanly.
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
+                var message = exception.Message;
+                if (message.StartsWith("Scan payload exceeded ", StringComparison.Ordinal))
+                {
+                    message = FormattableString.Invariant(
+                        $"Scan payload for drive {request.Letter} {message["Scan payload ".Length..]}");
+                }
+
                 await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteError(writer, request.Letter, exception.Message),
+                        writer => BrokerProtocol.WriteError(writer, request.Letter, message),
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -131,7 +138,14 @@ public sealed partial class JournalBrokerHost
             {
                 lock (progressLock)
                 {
-                    if (p.TotalRecords.HasValue)
+                    // Non-decreasing, like maxRecordsProcessed below: the parse phase
+                    // reports the authoritative total record count for the whole
+                    // volume, while the write phase's own final report carries only
+                    // the count it actually wrote (smaller by construction, since
+                    // unused/deleted MFT entries are filtered out before writing). A
+                    // later, smaller total from the write phase must not overwrite an
+                    // already-known larger total from the parse phase.
+                    if (p.TotalRecords.HasValue && p.TotalRecords.Value > (totalRecordsKnown ?? 0))
                     {
                         if (!totalRecordsKnown.HasValue || p.TotalRecords.Value > totalRecordsKnown.Value)
                         {
@@ -222,7 +236,33 @@ public sealed partial class JournalBrokerHost
                 scanOutput.writeResult.ByteLength),
             cancellationToken).ConfigureAwait(false);
 
-        var (entries, updated) = CatchUp(request.Letter, scanOutput.cursor);
+        UsnJournalEntry[] entries;
+        UsnJournalCursor updated;
+        try
+        {
+            (entries, updated) = CatchUp(request.Letter, scanOutput.cursor);
+        }
+        // The armed cursor can fall outside the journal's live window by the time
+        // catch-up runs (a busy system volume's 32 MB journal wrapping past it
+        // during a long multi-drive scan). Degrade the same way a (0,0) warm-start
+        // cursor does in StreamWatchAsync: watch from the current journal position
+        // and tell the caller the gap was lost, instead of failing the whole drive
+        // with an Error frame even though the scan itself succeeded. Re-querying
+        // the cursor is not wrapped here - if it also throws, that propagates to
+        // HandleArmAndScanAsync's per-drive catch, which emits the existing Error
+        // frame.
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            var freshCursor = queryCursor(request.Letter);
+            await WriteFrameAsync(stream, writeLock,
+                writer => BrokerProtocol.WriteWarning(writer, request.Letter,
+                    $"Catch-up after scan failed: {exception.Message}; watching from the current journal " +
+                    "position, changes made during the scan were not replayed"),
+                cancellationToken).ConfigureAwait(false);
+            entries = Array.Empty<UsnJournalEntry>();
+            updated = freshCursor;
+        }
+
         await WriteFrameAsync(stream, writeLock,
             writer => BrokerProtocol.WriteJournalBatch(writer, request.Letter, updated, entries),
             cancellationToken).ConfigureAwait(false);

@@ -84,6 +84,20 @@ public sealed partial class MftVolume : IDisposable
         return MaterializeWithTimings(result, out timings);
     }
 
+    /// <summary>
+    ///     Parses MFT records, optionally reporting progress as the native scan runs.
+    /// </summary>
+    /// <param name="filter">An optional name filter passed to the native parser.</param>
+    /// <param name="matchFlags">Flags controlling how <paramref name="filter" /> is matched and whether paths are resolved.</param>
+    /// <param name="progress">
+    ///     Receives one <see cref="MftScanProgress" /> sample per native progress
+    ///     callback. <see cref="IProgress{T}.Report" /> is invoked synchronously on the
+    ///     native parse thread while the parse is still running, not after it
+    ///     completes, so the implementation must be cheap and must not throw:
+    ///     any exception raised while constructing a sample or reporting it is
+    ///     swallowed here to preserve the never-throw-across-the-unmanaged-boundary
+    ///     guarantee, and that sample is simply dropped.
+    /// </param>
     public MftResult StreamRecords(
         string? filter = null,
         MatchFlags matchFlags = MatchFlags.None,
@@ -97,12 +111,16 @@ public sealed partial class MftVolume : IDisposable
             {
                 try
                 {
-                    progress.Report(new MftScanProgress((long)recordsScanned, (long)totalRecords,
-                        TimeSpan.FromMilliseconds(elapsedMs)));
+                    var sample = new MftScanProgress((long)recordsScanned, (long)totalRecords,
+                        TimeSpan.FromMilliseconds(elapsedMs));
+                    progress.Report(sample);
                 }
                 catch
                 {
-                    // Non-throwing adapter: never throw across unmanaged boundary
+                    // Non-throwing adapter: never throw across unmanaged boundary. This
+                    // callback runs synchronously on the native parse thread, so a
+                    // malformed sample (e.g. NaN elapsedMs) or a throwing consumer must
+                    // not abort the parse - the sample is simply dropped.
                 }
             }
         : null;

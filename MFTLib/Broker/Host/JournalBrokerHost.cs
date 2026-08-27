@@ -225,9 +225,12 @@ public sealed partial class JournalBrokerHost
         // so drive scan progress flows to the host progress pump.
         //
         // This is the parse-phase source, reporting RecordsScanned climbing to
-        // TotalRecords with BytesProcessed = 0. The write phase reports bytes as
-        // batches land in the map via IStreamingMmfWriter.Write, and the final byte/record
-        // totals are emitted in the guaranteed final frame by EmitScanCompletionFramesAsync.
+        // TotalRecords with BytesProcessed = 0. ExecuteDriveScanAsync passes the same
+        // progress reporter into the streaming writer's Write call, so the write phase
+        // (which reports RecordsProcessed/BytesProcessed per batch written) feeds the
+        // same channel and the two phases interleave into one non-decreasing stream;
+        // the guaranteed final frame with the true byte/record totals is still emitted
+        // separately by EmitScanCompletionFramesAsync.
         //
         // DirectProgress invokes handlers synchronously on the calling thread to avoid
         // thread-pool dispatch delays and ensure TotalRecords is captured reliably.
