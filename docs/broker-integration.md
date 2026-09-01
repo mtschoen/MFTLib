@@ -173,7 +173,9 @@ await using var session = await JournalBrokerScanSession.StartAsync(
 
 Progress updates travel over the pipe as `BrokerFrameKind.ScanProgress` (frame kind 11),
 carrying `DriveLetter`, `RecordsProcessed`, `BytesProcessed`, `TotalRecords`, `TotalBytes`,
-and `Elapsed`. The broker host throttles emission to at most once every 250ms per drive;
+and `Elapsed`. The broker host throttles emission to at most once every 250ms per drive,
+and flushes the newest report held back by the throttle when a drive's progress stream
+completes, so the last pre-completion value always reaches the client;
 `RecordsProcessed` is monotonically non-decreasing within a drive's scan. The final frame
 for each drive is written immediately before that drive's `ScanReady` frame and always
 carries `RecordsProcessed == TotalRecords`, so an `IProgress<BrokerScanProgress>` consumer

@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.MemoryMappedFiles;
+using System.Threading.Channels;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using MFTLib.Tests.TestSupport;
@@ -1203,15 +1204,76 @@ public class JournalBrokerHostTests
 
             var frames = ReadAllFrames(clientSide);
             var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
-            // With a 10-minute throttle interval, the rapid burst of 20 reports emits at most 1 initial non-final frame
-            // plus 1 final synthetic frame before ScanReady (at most 2 total progress frames).
+            // With a 10-minute throttle interval, the rapid burst of 20 reports emits at most 1 initial non-final
+            // frame, plus at most 1 flush of the newest throttled report when the progress stream completes,
+            // plus 1 final synthetic frame before ScanReady (at most 3 total progress frames).
             Assert.IsTrue(progressFrames.Count >= 1, "At least one progress frame must be emitted");
-            Assert.IsTrue(progressFrames.Count <= 2,
-                $"Expected at most 2 progress frames due to throttling, but got {progressFrames.Count}");
+            Assert.IsTrue(progressFrames.Count <= 3,
+                $"Expected at most 3 progress frames due to throttling, but got {progressFrames.Count}");
             var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
             var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
             Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex,
                 "Final progress frame must immediately precede ScanReady");
+        }
+        finally
+        {
+            JournalBrokerHost._progressThrottleInterval = originalThrottle;
+        }
+    }
+
+    [TestMethod]
+    public async Task ProgressPump_ThrottledLastReportIsFlushedOnCompletion()
+    {
+        var originalThrottle = JournalBrokerHost._progressThrottleInterval;
+        try
+        {
+            JournalBrokerHost._progressThrottleInterval = TimeSpan.FromMinutes(10);
+
+            var channel = Channel.CreateBounded<BrokerScanProgress>(
+                new BoundedChannelOptions(1)
+                {
+                    FullMode = BoundedChannelFullMode.DropOldest,
+                    SingleReader = true,
+                    SingleWriter = false
+                });
+            using var writeLock = new SemaphoreSlim(1, 1);
+            using var stream = new MemoryStream();
+
+            var pump = JournalBrokerHost.RunProgressPumpAsync(
+                stream, channel.Reader, writeLock, CancellationToken.None);
+
+            Assert.IsTrue(channel.Writer.TryWrite(
+                new BrokerScanProgress("C", 5, 500, 20, 2000, TimeSpan.FromSeconds(1))));
+
+            // Wait until the first report is on the wire before writing the second, so the
+            // second deterministically lands inside the throttle window instead of racing
+            // the capacity-1 channel. Condition poll with a bounded number of attempts.
+            var firstEmitted = false;
+            for (var attempt = 0; attempt < 500 && !firstEmitted; attempt++)
+            {
+                await writeLock.WaitAsync();
+                firstEmitted = stream.Length > 0;
+                writeLock.Release();
+                if (!firstEmitted)
+                {
+                    await Task.Delay(10);
+                }
+            }
+
+            Assert.IsTrue(firstEmitted, "The first report must be emitted immediately");
+
+            Assert.IsTrue(channel.Writer.TryWrite(
+                new BrokerScanProgress("C", 19, 1900, 20, 2000, TimeSpan.FromSeconds(2))));
+            channel.Writer.TryComplete();
+            await pump;
+
+            using var replay = new MemoryStream(stream.ToArray());
+            var frames = ReadAllFrames(replay);
+            var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
+            Assert.IsTrue(progressFrames.Any(f => f.Progress!.Value.RecordsProcessed == 5),
+                "The first report in the window must be emitted immediately");
+            Assert.IsTrue(progressFrames.Any(f => f.Progress!.Value.RecordsProcessed == 19),
+                "The newest throttled report must be flushed when the progress stream completes");
         }
         finally
         {

@@ -82,7 +82,7 @@ public sealed partial class JournalBrokerHost
             .ConfigureAwait(false);
     }
 
-    static async Task RunProgressPumpAsync(
+    internal static async Task RunProgressPumpAsync(
         Stream stream,
         ChannelReader<BrokerScanProgress> reader,
         SemaphoreSlim writeLock,
@@ -91,6 +91,7 @@ public sealed partial class JournalBrokerHost
         var stopwatch = Stopwatch.StartNew();
         var lastEmit = TimeSpan.Zero;
         var first = true;
+        BrokerScanProgress? throttled = null;
 
         try
         {
@@ -103,12 +104,28 @@ public sealed partial class JournalBrokerHost
                     {
                         first = false;
                         lastEmit = now;
+                        throttled = null;
                         var progressToEmit = progress;
                         await WriteFrameAsync(stream, writeLock,
                             writer => BrokerProtocol.WriteScanProgress(writer, progressToEmit),
                             cancellationToken).ConfigureAwait(false);
                     }
+                    else
+                    {
+                        throttled = progress;
+                    }
                 }
+            }
+
+            // The channel completed normally: flush the newest report the throttle window
+            // held back (typically the parse phase's records == total report), so the last
+            // pre-completion value reaches the client instead of being dropped. Cancellation
+            // must not reach this flush - a cancelled scan emits no partial final frame.
+            if (throttled is { } pending)
+            {
+                await WriteFrameAsync(stream, writeLock,
+                    writer => BrokerProtocol.WriteScanProgress(writer, pending),
+                    cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
