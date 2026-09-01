@@ -39,8 +39,8 @@ void remove_fixture() { std::remove(kFixturePath); }
 
 bool test_abi_version() {
     uint32_t abiVersion = GetMftNativeAbiVersion();
-    if (abiVersion != 2) {
-        std::fprintf(stderr, "  FAIL: GetMftNativeAbiVersion() returned %u, expected 2\n", abiVersion);
+    if (abiVersion != 3) {
+        std::fprintf(stderr, "  FAIL: GetMftNativeAbiVersion() returned %u, expected 3\n", abiVersion);
         return false;
     }
     return true;
@@ -54,7 +54,7 @@ bool test_round_trip() {
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
     bool testPassed =
         (parseResult != nullptr) && parseResult->usedRecords > 0 && parseResult->errorMessage[0] == L'\0' &&
-        parseResult->abiVersion == 2 && parseResult->entryStride == 32 && parseResult->entries != nullptr &&
+        parseResult->abiVersion == 3 && parseResult->entryStride == 32 && parseResult->entries != nullptr &&
         parseResult->entryStrings != nullptr && parseResult->entryStringUnits < parseResult->usedRecords * 260;
     if (testPassed) {
         std::printf("  total=%llu used=%llu stringUnits=%llu ioMs=%.2f parseMs=%.2f totalMs=%.2f\n",
@@ -82,7 +82,7 @@ bool test_round_trip_4096() {
     }
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixture4096Path, nullptr, 0, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
-                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == 2 &&
+                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == 3 &&
                       parseResult->entryStride == 32;
     if (testPassed) {
         std::printf("  4096: total=%llu used=%llu ioMs=%.2f parseMs=%.2f totalMs=%.2f\n",
@@ -105,7 +105,7 @@ bool test_parse_missing_file() {
     MftParseResult* parseResult =
         ParseMFTFromFileUtf8("/tmp/does_not_exist_4f8e7c.mft", nullptr, 0, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->errorMessage[0] != L'\0' &&
-                      parseResult->usedRecords == 0 && parseResult->abiVersion == 2 && parseResult->entryStride == 32;
+                      parseResult->usedRecords == 0 && parseResult->abiVersion == 3 && parseResult->entryStride == 32;
     if (!testPassed) {
         std::fprintf(stderr, "  FAIL: expected errorMessage set; got result=%p err[0]=%d\n",
                      static_cast<void*>(parseResult),
@@ -126,7 +126,7 @@ bool test_parse_empty_file() {
     std::fclose(fileHandle);
 
     MftParseResult* parseResult = ParseMFTFromFileUtf8(path, nullptr, 0, kDefaultBufferRecords);
-    bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 && parseResult->abiVersion == 2 &&
+    bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 && parseResult->abiVersion == 3 &&
                       parseResult->entryStride == 32;
     if (!testPassed && parseResult != nullptr) {
         std::fprintf(stderr, "  FAIL: empty file got totalRecords=%llu\n",
@@ -318,8 +318,9 @@ bool test_path_resolution_and_fallback() {
     if (!generate_fixture()) {
         return false;
     }
-    // Path resolution success: matchFlags = 4 (ResolvePaths)
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 4, kDefaultBufferRecords);
+    // Path resolution success: matchFlags = MATCH_FLAG_RESOLVE_PATHS
+    MftParseResult* parseResult =
+        ParseMFTFromFileUtf8(kFixturePath, nullptr, MATCH_FLAG_RESOLVE_PATHS, kDefaultBufferRecords);
     bool hasRootEntry = false;
     if (parseResult != nullptr && parseResult->pathEntries != nullptr) {
         for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
@@ -343,7 +344,8 @@ bool test_path_resolution_and_fallback() {
     // Count of allocations before path allocation: result(1) + lookup(2) + buf0(3) + buf1(4) + entries(5) + strings(6)
     // -> paths.entries is 7
     SetAllocFailCountdown(7);
-    MftParseResult* fallbackResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 4, kDefaultBufferRecords);
+    MftParseResult* fallbackResult =
+        ParseMFTFromFileUtf8(kFixturePath, nullptr, MATCH_FLAG_RESOLVE_PATHS, kDefaultBufferRecords);
     bool fallbackPassed = (fallbackResult != nullptr) && fallbackResult->usedRecords > 0 &&
                           fallbackResult->pathEntries == nullptr && fallbackResult->pathStrings == nullptr &&
                           fallbackResult->entries != nullptr && fallbackResult->entryStrings != nullptr &&
@@ -363,6 +365,7 @@ bool test_path_resolution_and_fallback() {
 }
 
 struct ProgressReport {
+    MftScanPhase phase;
     uint64_t recordsScanned;
     uint64_t totalRecords;
     double elapsedMs;
@@ -373,34 +376,68 @@ bool test_progress_callback() {
         return false;
     }
     std::vector<ProgressReport> reports;
-    auto callback = [](uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs, void* context) {
+    auto callback = [](MftScanPhase phase, uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs,
+                       void* context) {
         auto* vec = static_cast<std::vector<ProgressReport>*>(context);
-        vec->push_back({recordsScanned, totalRecords, elapsedMs});
+        vec->push_back({phase, recordsScanned, totalRecords, elapsedMs});
     };
 
-    MftParseResult* result = ParseMFTFromFileUtf8WithProgress(kFixturePath, nullptr, 0, 1, callback, &reports);
+    MftParseResult* result =
+        ParseMFTFromFileUtf8WithProgress(kFixturePath, nullptr, MATCH_FLAG_RESOLVE_PATHS, 1, callback, &reports);
     bool ok = (result != nullptr && result->usedRecords > 0);
     if (ok) {
         if (reports.empty()) {
             std::fprintf(stderr, "  FAIL: no progress reports\n");
             ok = false;
         } else {
-            uint64_t prev = 0;
+            bool sawParsing = false;
+            bool sawResolving = false;
+            uint64_t prevParsing = 0;
+            uint64_t prevResolving = 0;
             for (const auto& r : reports) {
-                if (r.recordsScanned <= prev || r.recordsScanned > r.totalRecords) {
-                    std::fprintf(stderr, "  FAIL: progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
-                                 static_cast<unsigned long long>(prev),
-                                 static_cast<unsigned long long>(r.recordsScanned),
-                                 static_cast<unsigned long long>(r.totalRecords));
-                    ok = false;
-                    break;
+                if (r.phase == MftScanPhase::Parsing) {
+                    sawParsing = true;
+                    if (r.recordsScanned <= prevParsing || r.recordsScanned > r.totalRecords) {
+                        std::fprintf(stderr, "  FAIL: parsing progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
+                                     static_cast<unsigned long long>(prevParsing),
+                                     static_cast<unsigned long long>(r.recordsScanned),
+                                     static_cast<unsigned long long>(r.totalRecords));
+                        ok = false;
+                        break;
+                    }
+                    prevParsing = r.recordsScanned;
+                } else if (r.phase == MftScanPhase::ResolvingPaths) {
+                    sawResolving = true;
+                    if (r.recordsScanned < prevResolving || r.recordsScanned > r.totalRecords) {
+                        std::fprintf(stderr,
+                                     "  FAIL: resolving progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
+                                     static_cast<unsigned long long>(prevResolving),
+                                     static_cast<unsigned long long>(r.recordsScanned),
+                                     static_cast<unsigned long long>(r.totalRecords));
+                        ok = false;
+                        break;
+                    }
+                    prevResolving = r.recordsScanned;
                 }
-                prev = r.recordsScanned;
             }
-            if (ok && reports.back().recordsScanned != result->totalRecords) {
-                std::fprintf(stderr, "  FAIL: final report (%llu) != totalRecords (%llu)\n",
-                             static_cast<unsigned long long>(reports.back().recordsScanned),
+            if (ok && !sawParsing) {
+                std::fprintf(stderr, "  FAIL: no Parsing phase reports seen\n");
+                ok = false;
+            }
+            if (ok && !sawResolving) {
+                std::fprintf(stderr, "  FAIL: no ResolvingPaths phase reports seen\n");
+                ok = false;
+            }
+            if (ok && prevParsing != result->totalRecords) {
+                std::fprintf(stderr, "  FAIL: final parsing report (%llu) != totalRecords (%llu)\n",
+                             static_cast<unsigned long long>(prevParsing),
                              static_cast<unsigned long long>(result->totalRecords));
+                ok = false;
+            }
+            if (ok && prevResolving != result->usedRecords) {
+                std::fprintf(stderr, "  FAIL: final resolving report (%llu) != usedRecords (%llu)\n",
+                             static_cast<unsigned long long>(prevResolving),
+                             static_cast<unsigned long long>(result->usedRecords));
                 ok = false;
             }
         }
@@ -412,6 +449,74 @@ bool test_progress_callback() {
     return ok;
 }
 
+bool test_parallel_progress_monotonicity() {
+    constexpr const char* kFixtureParallel = "/tmp/mftlib_parallel_progress.mft";
+    constexpr uint64_t kRecordCount = 70000;
+    if (!GenerateSyntheticMFTSizedUtf8(kFixtureParallel, kRecordCount, 4096, 1024)) {
+        return false;
+    }
+    SetMaxThreads(8);
+    std::vector<ProgressReport> reports;
+    auto callback = [](MftScanPhase phase, uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs,
+                       void* context) {
+        auto* vec = static_cast<std::vector<ProgressReport>*>(context);
+        vec->push_back({phase, recordsScanned, totalRecords, elapsedMs});
+    };
+
+    MftParseResult* result =
+        ParseMFTFromFileUtf8WithProgress(kFixtureParallel, nullptr, MATCH_FLAG_RESOLVE_PATHS, 4096, callback, &reports);
+    SetMaxThreads(0);
+    ResetTestState();
+
+    bool ok = (result != nullptr && result->usedRecords > 0 && !reports.empty());
+    if (ok) {
+        uint64_t prevParsing = 0;
+        uint64_t prevResolving = 0;
+        uint64_t resolvingReportCount = 0;
+        bool sawResolving = false;
+        for (const auto& r : reports) {
+            if (r.phase == MftScanPhase::Parsing) {
+                if (r.recordsScanned < prevParsing || r.recordsScanned > r.totalRecords) {
+                    std::fprintf(stderr, "  FAIL: parallel parsing progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
+                                 static_cast<unsigned long long>(prevParsing),
+                                 static_cast<unsigned long long>(r.recordsScanned),
+                                 static_cast<unsigned long long>(r.totalRecords));
+                    ok = false;
+                    break;
+                }
+                prevParsing = r.recordsScanned;
+            } else if (r.phase == MftScanPhase::ResolvingPaths) {
+                sawResolving = true;
+                resolvingReportCount++;
+                if (r.recordsScanned < prevResolving || r.recordsScanned > r.totalRecords) {
+                    std::fprintf(stderr,
+                                 "  FAIL: parallel resolving progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
+                                 static_cast<unsigned long long>(prevResolving),
+                                 static_cast<unsigned long long>(r.recordsScanned),
+                                 static_cast<unsigned long long>(r.totalRecords));
+                    ok = false;
+                    break;
+                }
+                prevResolving = r.recordsScanned;
+            }
+        }
+        if (ok && !sawResolving) {
+            std::fprintf(stderr, "  FAIL: no parallel ResolvingPaths phase reports seen\n");
+            ok = false;
+        }
+        if (ok && resolvingReportCount < 16) {
+            std::fprintf(stderr, "  FAIL: too few parallel resolving reports (%llu, expected at least 16)\n",
+                         static_cast<unsigned long long>(resolvingReportCount));
+            ok = false;
+        }
+    }
+    if (result != nullptr) {
+        FreeMftResult(result);
+    }
+    std::remove(kFixtureParallel);
+    return ok;
+}
+
 struct TestCase {
     const char* name;
     bool (*fn)();
@@ -420,7 +525,7 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 15> tests = {{
+    const std::array<TestCase, 16> tests = {{
         {"abi_version", test_abi_version},
         {"round_trip", test_round_trip},
         {"round_trip_4096", test_round_trip_4096},
@@ -436,6 +541,7 @@ int main() {
         {"zero_length_file_name", test_zero_length_file_name},
         {"path_resolution_and_fallback", test_path_resolution_and_fallback},
         {"progress_callback", test_progress_callback},
+        {"parallel_progress_monotonicity", test_parallel_progress_monotonicity},
     }};
 
     int passedCount = 0;

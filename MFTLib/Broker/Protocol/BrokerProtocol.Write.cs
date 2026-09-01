@@ -199,9 +199,10 @@ public static partial class BrokerProtocol
 
     public static void WriteScanProgress(IBufferWriter<byte> writer, BrokerScanProgress progress)
     {
+        ArgumentException.ThrowIfNullOrEmpty(progress.DriveLetter, nameof(progress.DriveLetter));
         var driveBytes = Encoding.Unicode.GetBytes(progress.DriveLetter);
-        // payload: [driveLen int32][driveBytes][recordsProcessed i64][bytesProcessed i64][totalRecordsOrMinusOne i64][totalBytesOrMinusOne i64][elapsedTicks i64]
-        var payloadLength = 4 + driveBytes.Length + 8 + 8 + 8 + 8 + 8;
+        // payload: [driveLen int32][driveBytes][phase int32][recordsProcessed i64][bytesProcessed i64][totalRecordsOrMinusOne i64][totalBytesOrMinusOne i64][elapsedTicks i64]
+        var payloadLength = 4 + driveBytes.Length + 4 + 8 + 8 + 8 + 8 + 8;
         var totalLength = 1 + payloadLength;
         var span = writer.GetSpan(4 + totalLength);
         var offset = 0;
@@ -213,6 +214,8 @@ public static partial class BrokerProtocol
         offset += 4;
         driveBytes.CopyTo(span[offset..]);
         offset += driveBytes.Length;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], (int)progress.Phase);
+        offset += 4;
         BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.RecordsProcessed);
         offset += 8;
         BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.BytesProcessed);

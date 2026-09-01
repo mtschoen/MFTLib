@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -151,11 +153,55 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
     return true;
 }
 
-void PopulatePathSlice(uint64_t start, uint64_t end, const CompactOutput& source, const PathLookup& lookup,
-                       uint64_t totalRecords, SliceResult& slice) {
+struct ProgressHook {
+    MftProgressCallback callback = nullptr;
+    void* context = nullptr;
+    SteadyClock::time_point wallStart;
+};
+
+struct ResolveProgressState {
+    MftProgressCallback callback = nullptr;
+    void* context = nullptr;
+    SteadyClock::time_point wallStart;
+    uint64_t totalEntries = 0;
+    uint64_t entriesResolved = 0;
+    std::mutex callbackMutex;
+
+    void reportBatch(uint64_t batchCount) {
+        if (callback == nullptr) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        entriesResolved += batchCount;
+        uint64_t resolved = entriesResolved;
+        if (resolved > totalEntries) {
+            resolved = totalEntries;
+        }
+        if (resolved < totalEntries) {
+            double elapsedMs = ElapsedMs(wallStart, SteadyClock::now());
+            callback(MftScanPhase::ResolvingPaths, resolved, totalEntries, elapsedMs, context);
+        }
+    }
+
+    void reportFinal() {
+        if (callback == nullptr) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        entriesResolved = totalEntries;
+        double elapsedMs = ElapsedMs(wallStart, SteadyClock::now());
+        callback(MftScanPhase::ResolvingPaths, totalEntries, totalEntries, elapsedMs, context);
+    }
+};
+
+void PopulatePathSlice(SliceRange range, const CompactOutput& source, const PathLookup& lookup, uint64_t totalRecords,
+                       SliceResult& slice, ResolveProgressState* progressState) {
     std::vector<uint16_t> pathBuffer;
-    slice.entries.reserve(end - start);
-    for (uint64_t i = start; i < end; i++) {
+    slice.entries.reserve(range.end - range.start);
+    constexpr uint64_t kReportInterval = 4096;
+    uint64_t localCount = 0;
+
+    for (uint64_t i = range.start; i < range.end; i++) {
         const auto& src = source.entries[i];
         ParsedEntry entry{};
         entry.recordNumber = src.recordNumber;
@@ -170,12 +216,21 @@ void PopulatePathSlice(uint64_t start, uint64_t end, const CompactOutput& source
             entry.nameLength = 0;
         }
         slice.append(entry);
+
+        if (progressState != nullptr && ++localCount >= kReportInterval) {
+            progressState->reportBatch(localCount);
+            localCount = 0;
+        }
+    }
+
+    if (progressState != nullptr && localCount > 0) {
+        progressState->reportBatch(localCount);
     }
 }
 
 // Resolve a full path for every parsed entry, fanning out across numThreads workers.
 void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned numThreads, ParseState& state,
-                     MftParseResult* result) {
+                     MftParseResult* result, const ProgressHook& progress) {
     uint64_t usedCount = state.output.entryCount;
     if (usedCount == 0) {
         return;
@@ -200,6 +255,12 @@ void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned n
         return;
     }
 
+    ResolveProgressState progressState;
+    progressState.callback = progress.callback;
+    progressState.context = progress.context;
+    progressState.wallStart = progress.wallStart;
+    progressState.totalEntries = usedCount;
+
     std::vector<SliceResult> pathSlices(numThreads);
     if (numThreads > 1) {
         uint64_t perThread = (usedCount + numThreads - 1) / numThreads;
@@ -207,14 +268,14 @@ void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned n
         for (unsigned ti = 0; ti < numThreads; ti++) {
             uint64_t start = (std::min)(static_cast<uint64_t>(ti) * perThread, usedCount);
             uint64_t end = (std::min)(start + perThread, usedCount);
-            workers.emplace_back(PopulatePathSlice, start, end, std::cref(state.output), std::cref(lookup),
-                                 totalRecords, std::ref(pathSlices[ti]));
+            workers.emplace_back(PopulatePathSlice, SliceRange{start, end}, std::cref(state.output), std::cref(lookup),
+                                 totalRecords, std::ref(pathSlices[ti]), &progressState);
         }
         for (auto& worker : workers) {
             worker.join();
         }
     } else {
-        PopulatePathSlice(0, usedCount, state.output, lookup, totalRecords, pathSlices[0]);
+        PopulatePathSlice(SliceRange{0, usedCount}, state.output, lookup, totalRecords, pathSlices[0], &progressState);
     }
 
     std::array<wchar_t, 256> dummyError{};
@@ -240,17 +301,12 @@ void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned n
     free(state.output.strings);
     state.output.entries = nullptr;
     state.output.strings = nullptr;
+    progressState.reportFinal();
     state.output.entryCount = 0;
     state.output.stringUnits = 0;
     state.output.entryCapacity = 0;
     state.output.stringCapacity = 0;
 }
-
-struct ProgressHook {
-    MftProgressCallback callback = nullptr;
-    void* context = nullptr;
-    SteadyClock::time_point wallStart;
-};
 
 // Drive the double-buffered read/parse loop over every chunk. Returns false if a
 // chunk's merge ran out of memory (result error already set; buffers freed by caller).
@@ -298,7 +354,7 @@ bool ParseAllChunks(ChunkReader& reader, unsigned numThreads, const ScanContext&
 
         if (progress.callback != nullptr) {
             double elapsedMs = ElapsedMs(progress.wallStart, SteadyClock::now());
-            progress.callback(recordIndex, scan.totalRecords, elapsedMs, progress.context);
+            progress.callback(MftScanPhase::Parsing, recordIndex, scan.totalRecords, elapsedMs, progress.context);
             lastReportedRecords = recordIndex;
         }
 
@@ -311,7 +367,7 @@ bool ParseAllChunks(ChunkReader& reader, unsigned numThreads, const ScanContext&
 
     if (progress.callback != nullptr && lastReportedRecords < scan.totalRecords) {
         double elapsedMs = ElapsedMs(progress.wallStart, SteadyClock::now());
-        progress.callback(scan.totalRecords, scan.totalRecords, elapsedMs, progress.context);
+        progress.callback(MftScanPhase::Parsing, scan.totalRecords, scan.totalRecords, elapsedMs, progress.context);
     }
 
     return true;
@@ -381,7 +437,7 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
 
     uint64_t parsedCount = state.output.entryCount;
     if (resolvePaths && parsedCount > 0) {
-        ResolveAllPaths(totalRecords, lookup, numThreads, state, result);
+        ResolveAllPaths(totalRecords, lookup, numThreads, state, result, progress);
         lookup.cleanup();
     }
 

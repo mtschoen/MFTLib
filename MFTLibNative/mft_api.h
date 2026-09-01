@@ -9,9 +9,20 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 2;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 3;
 
-using MftProgressCallback = void (*)(uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs, void* context);
+constexpr uint32_t MATCH_FLAG_NONE = 0;
+constexpr uint32_t MATCH_FLAG_EXACT_MATCH = 1;
+constexpr uint32_t MATCH_FLAG_CONTAINS = 2;
+constexpr uint32_t MATCH_FLAG_RESOLVE_PATHS = 4;
+
+enum class MftScanPhase : uint8_t {
+    Parsing = 0,
+    ResolvingPaths = 1,
+};
+
+using MftProgressCallback = void (*)(MftScanPhase phase, uint64_t recordsScanned, uint64_t totalRecords,
+                                     double elapsedMs, void* context);
 
 #pragma pack(push, 1)
 

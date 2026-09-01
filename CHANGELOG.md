@@ -43,7 +43,8 @@
 ### Improvements
 
 - MFT file record geometry is now detected at runtime instead of assumed to be 1024 bytes: native volume parsing queries the volume's actual record size (`FSCTL_GET_NTFS_VOLUME_DATA`) at parse time, and parsing an exported MFT file reads the record size out of record 0's header. Both 1024-byte and 4096-byte record sizes are supported
-- Versioned Compact Native ABI (version 2): replaced fixed 536/2072-byte entry buffers with 32-byte packed `MftCompactEntry` and separate string pools (`MftParseResult`), reducing native parse and path-resolution memory footprint
+- Versioned Compact Native ABI (version 3): replaced ABI version 2 with version 3, adding phase discriminators (`MftScanPhase` / `BrokerScanPhase`) to native callbacks, managed interop, and broker protocol frames
+- Native path resolution pass now reports live progress (`MftScanPhase.ResolvingPaths` / `BrokerScanPhase.ResolvingPaths`) across worker threads instead of stalling silently
 - Native path resolution now supports variable-length paths up to 32767 UTF-16 units without truncation at 1024-character boundaries
 - Graceful allocation-failure fallback in path resolution: out-of-memory during path resolution preserves raw parsed file entries and filenames without raising errors
 - Added native and managed ABI compatibility checks via `GetMftNativeAbiVersion()` and `EnsureCompatibleNativeAbi()`

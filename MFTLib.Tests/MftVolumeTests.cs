@@ -414,7 +414,7 @@ public class MftVolumeTests
 
         MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
         {
-            callback?.Invoke(1, 10, double.NaN, context);
+            callback?.Invoke(MftScanPhase.Parsing, 1, 10, double.NaN, context);
             return parsePtr;
         };
         MFTLibNative._freeMftResult = ptr =>
@@ -470,9 +470,9 @@ public class MftVolumeTests
 
         MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
         {
-            callback?.Invoke(1, 3, 10, context);
-            callback?.Invoke(2, 3, 20, context);
-            callback?.Invoke(3, 3, 30, context);
+            callback?.Invoke(MftScanPhase.Parsing, 1, 3, 10, context);
+            callback?.Invoke(MftScanPhase.Parsing, 2, 3, 20, context);
+            callback?.Invoke(MftScanPhase.Parsing, 3, 3, 30, context);
             receivedCountAtReturn = receivedCount;
             return parsePtr;
         };
@@ -523,8 +523,8 @@ public class MftVolumeTests
 
         MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
         {
-            callback?.Invoke(1, 2, 10, context);
-            callback?.Invoke(2, 2, 20, context);
+            callback?.Invoke(MftScanPhase.Parsing, 1, 2, 10, context);
+            callback?.Invoke(MftScanPhase.Parsing, 2, 2, 20, context);
             return parsePtr;
         };
         MFTLibNative._freeMftResult = ptr =>

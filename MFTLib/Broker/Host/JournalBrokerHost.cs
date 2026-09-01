@@ -306,7 +306,12 @@ public sealed partial class JournalBrokerHost
         // thread-pool dispatch delays and ensure TotalRecords is captured reliably.
         var mftProgress = progress != null
             ? new DirectProgress<MftScanProgress>(p =>
-                progress.Report(new MmfWriteProgress(p.RecordsScanned, 0, p.TotalRecords, null)))
+                progress.Report(new MmfWriteProgress(
+                    p.RecordsScanned,
+                    0,
+                    p.TotalRecords,
+                    null,
+                    p.Phase == MftScanPhase.ResolvingPaths ? BrokerScanPhase.ResolvingPaths : BrokerScanPhase.Parsing)))
             : null;
 
         foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, 4096, mftProgress))

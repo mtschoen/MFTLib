@@ -466,7 +466,16 @@ public class BrokerProtocolTests
     [TestMethod]
     public void ScanProgressFrame_RoundTrips_AllFields()
     {
-        var progress = new BrokerScanProgress("C", 1000, 20480, 5000, 102400, TimeSpan.FromMilliseconds(150));
+        var progress = new BrokerScanProgress
+        {
+            DriveLetter = "C",
+            Phase = BrokerScanPhase.ResolvingPaths,
+            RecordsProcessed = 1000,
+            BytesProcessed = 20480,
+            TotalRecords = 5000,
+            TotalBytes = 102400,
+            Elapsed = TimeSpan.FromMilliseconds(150)
+        };
         var buffer = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteScanProgress(buffer, progress);
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
@@ -475,13 +484,23 @@ public class BrokerProtocolTests
         Assert.AreEqual("C", frame.Drive);
         Assert.IsNotNull(frame.Progress);
         Assert.AreEqual(progress, frame.Progress.Value);
+        Assert.AreEqual(BrokerScanPhase.ResolvingPaths, frame.Progress.Value.Phase);
         Assert.AreEqual(buffer.WrittenCount, consumed);
     }
 
     [TestMethod]
     public void ScanProgressFrame_RoundTrips_NullableFieldsAsMinusOne()
     {
-        var progress = new BrokerScanProgress("D", 500, 10240, null, null, TimeSpan.FromMilliseconds(50));
+        var progress = new BrokerScanProgress
+        {
+            DriveLetter = "D",
+            Phase = BrokerScanPhase.Transferring,
+            RecordsProcessed = 500,
+            BytesProcessed = 10240,
+            TotalRecords = null,
+            TotalBytes = null,
+            Elapsed = TimeSpan.FromMilliseconds(50)
+        };
         var buffer = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteScanProgress(buffer, progress);
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
@@ -490,6 +509,7 @@ public class BrokerProtocolTests
         Assert.AreEqual("D", frame.Drive);
         Assert.IsNotNull(frame.Progress);
         Assert.AreEqual(progress, frame.Progress.Value);
+        Assert.AreEqual(BrokerScanPhase.Transferring, frame.Progress.Value.Phase);
         Assert.IsNull(frame.Progress.Value.TotalRecords);
         Assert.IsNull(frame.Progress.Value.TotalBytes);
         Assert.AreEqual(buffer.WrittenCount, consumed);
@@ -498,12 +518,22 @@ public class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_ScanProgressFrame()
     {
-        var progress = new BrokerScanProgress("C", 100, 200, 300, 400, TimeSpan.FromTicks(500));
+        var progress = new BrokerScanProgress
+        {
+            DriveLetter = "C",
+            Phase = BrokerScanPhase.Parsing,
+            RecordsProcessed = 100,
+            BytesProcessed = 200,
+            TotalRecords = 300,
+            TotalBytes = 400,
+            Elapsed = TimeSpan.FromTicks(500)
+        };
         AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, progress),
         [
-            0x2F, 0x00, 0x00, 0x00, // totalLength = 47 (1 + 4 + 2 + 8*5 = 47)
+            0x33, 0x00, 0x00, 0x00, // totalLength = 51 (1 + 4 + 2 + 4 + 8*5 = 51)
             0x0B, // kind = ScanProgress (11)
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C" (UTF-16)
+            0x00, 0x00, 0x00, 0x00, // phase = Parsing (0)
             0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 100
             0xC8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 200
             0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // totalRecords = 300
@@ -515,12 +545,22 @@ public class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_ScanProgressFrame_NullTotals()
     {
-        var progress = new BrokerScanProgress("C", 1, 2, null, null, TimeSpan.FromTicks(3));
+        var progress = new BrokerScanProgress
+        {
+            DriveLetter = "C",
+            Phase = BrokerScanPhase.Parsing,
+            RecordsProcessed = 1,
+            BytesProcessed = 2,
+            TotalRecords = null,
+            TotalBytes = null,
+            Elapsed = TimeSpan.FromTicks(3)
+        };
         AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, progress),
         [
-            0x2F, 0x00, 0x00, 0x00, // totalLength = 47
+            0x33, 0x00, 0x00, 0x00, // totalLength = 51
             0x0B, // kind = ScanProgress (11)
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
+            0x00, 0x00, 0x00, 0x00, // phase = Parsing (0)
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 1
             0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 2
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalRecords = -1
@@ -537,7 +577,70 @@ public class BrokerProtocolTests
         Assert.AreEqual(BrokerFrameKind.ScanProgress, frame.Kind);
         Assert.AreEqual("E", frame.Drive);
         Assert.AreEqual(progress, frame.Progress);
+        Assert.AreEqual(BrokerScanPhase.Parsing, frame.Progress!.Value.Phase);
         Assert.AreEqual(0, frame.Entries.Length);
+    }
+
+    [TestMethod]
+    public void ReadFrame_ScanProgress_InvalidPhase_ThrowsInvalidDataException()
+    {
+        // Wire bytes with invalid phase = 99
+        byte[] payload =
+        [
+            0x33, 0x00, 0x00, 0x00, // totalLength = 51
+            0x0B, // kind = ScanProgress (11)
+            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
+            0x63, 0x00, 0x00, 0x00, // phase = 99 (invalid)
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 1
+            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 2
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalRecords = -1
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalBytes = -1
+            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // elapsedTicks = 3
+        ];
+
+        Assert.ThrowsException<InvalidDataException>(() =>
+            BrokerProtocol.ReadFrame(payload, out _));
+    }
+
+    [TestMethod]
+    public void ReadFrame_ScanProgress_PhaseOutsideByteRange_ThrowsInvalidDataException()
+    {
+        byte[] payload =
+        [
+            0x33, 0x00, 0x00, 0x00,
+            0x0B,
+            0x02, 0x00, 0x00, 0x00, 0x43, 0x00,
+            0x00, 0x01, 0x00, 0x00,
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        ];
+
+        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(payload, out _));
+    }
+
+    [TestMethod]
+    public void WriteScanProgress_DefaultValue_ThrowsArgumentNullException()
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+
+        var exception = Assert.ThrowsException<ArgumentNullException>(() =>
+            BrokerProtocol.WriteScanProgress(buffer, default));
+
+        StringAssert.Contains(exception.Message, "DriveLetter");
+    }
+
+    [TestMethod]
+    public void WriteScanProgress_EmptyDriveLetter_ThrowsArgumentException()
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+
+        var exception = Assert.ThrowsException<ArgumentException>(() =>
+            BrokerProtocol.WriteScanProgress(buffer, new BrokerScanProgress { DriveLetter = string.Empty }));
+
+        StringAssert.Contains(exception.Message, "DriveLetter");
     }
 
     // ---------------------------------------------------------------------------

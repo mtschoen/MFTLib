@@ -91,9 +91,10 @@ public sealed partial class MftVolume : IDisposable
     /// <param name="matchFlags">Flags controlling how <paramref name="filter" /> is matched and whether paths are resolved.</param>
     /// <param name="progress">
     ///     Receives one <see cref="MftScanProgress" /> sample per native progress
-    ///     callback. <see cref="IProgress{T}.Report" /> is invoked synchronously on the
-    ///     native parse thread while the parse is still running, not after it
-    ///     completes, so the implementation must be cheap and must not throw:
+    ///     callback. <see cref="IProgress{T}.Report" /> is invoked synchronously while
+    ///     the parse and resolution passes run (serialized across native parse and
+    ///     resolve worker threads), not after they complete, so consumers must be
+    ///     thread-safe, implementations must be cheap, and must not throw:
     ///     any exception raised while constructing a sample or reporting it is
     ///     swallowed here to preserve the never-throw-across-the-unmanaged-boundary
     ///     guarantee, and that sample is simply dropped.
@@ -107,11 +108,11 @@ public sealed partial class MftVolume : IDisposable
         MFTLibNative.EnsureCompatibleNativeAbi();
 
         MFTLibNative.NativeMftProgressCallback? nativeCallback = progress != null
-            ? (recordsScanned, totalRecords, elapsedMs, _) =>
+            ? (phase, recordsScanned, totalRecords, elapsedMs, _) =>
             {
                 try
                 {
-                    var sample = new MftScanProgress((long)recordsScanned, (long)totalRecords,
+                    var sample = new MftScanProgress(phase, (long)recordsScanned, (long)totalRecords,
                         TimeSpan.FromMilliseconds(elapsedMs));
                     progress.Report(sample);
                 }

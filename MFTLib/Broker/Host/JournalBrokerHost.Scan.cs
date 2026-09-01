@@ -147,7 +147,9 @@ public sealed partial class JournalBrokerHost
         try
         {
             var scanStopwatch = Stopwatch.StartNew();
-            long maxRecordsProcessed = 0;
+            long maxParsingRecordsProcessed = 0;
+            long maxResolvingRecordsProcessed = 0;
+            long maxTransferringRecordsProcessed = 0;
             long? totalRecordsKnown = null;
             var progressLock = new object();
 
@@ -155,33 +157,65 @@ public sealed partial class JournalBrokerHost
             {
                 lock (progressLock)
                 {
-                    // Non-decreasing, like maxRecordsProcessed below: the parse phase
-                    // reports the authoritative total record count for the whole
-                    // volume, while the write phase's own final report carries only
-                    // the count it actually wrote (smaller by construction, since
-                    // unused/deleted MFT entries are filtered out before writing). A
-                    // later, smaller total from the write phase must not overwrite an
-                    // already-known larger total from the parse phase.
-                    if (p.TotalRecords.HasValue && p.TotalRecords.Value > (totalRecordsKnown ?? 0))
+                    long recordsReported;
+                    long? totalRecordsReported;
+
+                    switch (p.Phase)
                     {
-                        if (!totalRecordsKnown.HasValue || p.TotalRecords.Value > totalRecordsKnown.Value)
-                        {
-                            totalRecordsKnown = p.TotalRecords.Value;
-                        }
+                        case BrokerScanPhase.Parsing:
+                            // Non-decreasing, like maxParsingRecordsProcessed below: the parse phase
+                            // reports the authoritative total record count for the whole
+                            // volume, while the write phase's own final report carries only
+                            // the count it actually wrote (smaller by construction, since
+                            // unused/deleted MFT entries are filtered out before writing). A
+                            // later, smaller total from the write phase must not overwrite an
+                            // already-known larger total from the parse phase.
+                            if (p.TotalRecords.HasValue && (!totalRecordsKnown.HasValue || p.TotalRecords.Value > totalRecordsKnown.Value))
+                            {
+                                totalRecordsKnown = p.TotalRecords.Value;
+                            }
+
+                            if (p.RecordsProcessed > maxParsingRecordsProcessed)
+                            {
+                                maxParsingRecordsProcessed = p.RecordsProcessed;
+                            }
+
+                            recordsReported = maxParsingRecordsProcessed;
+                            totalRecordsReported = totalRecordsKnown;
+                            break;
+
+                        case BrokerScanPhase.ResolvingPaths:
+                            if (p.RecordsProcessed > maxResolvingRecordsProcessed)
+                            {
+                                maxResolvingRecordsProcessed = p.RecordsProcessed;
+                            }
+
+                            recordsReported = maxResolvingRecordsProcessed;
+                            totalRecordsReported = p.TotalRecords ?? totalRecordsKnown;
+                            break;
+
+                        case BrokerScanPhase.Transferring:
+                        default:
+                            if (p.RecordsProcessed > maxTransferringRecordsProcessed)
+                            {
+                                maxTransferringRecordsProcessed = p.RecordsProcessed;
+                            }
+
+                            recordsReported = maxTransferringRecordsProcessed;
+                            totalRecordsReported = p.TotalRecords;
+                            break;
                     }
 
-                    if (p.RecordsProcessed > maxRecordsProcessed)
+                    progressWriter.TryWrite(new BrokerScanProgress
                     {
-                        maxRecordsProcessed = p.RecordsProcessed;
-                    }
-
-                    progressWriter.TryWrite(new BrokerScanProgress(
-                        request.Letter,
-                        maxRecordsProcessed,
-                        p.BytesProcessed,
-                        totalRecordsKnown,
-                        p.TotalBytes,
-                        scanStopwatch.Elapsed));
+                        DriveLetter = request.Letter,
+                        Phase = p.Phase,
+                        RecordsProcessed = recordsReported,
+                        BytesProcessed = p.BytesProcessed,
+                        TotalRecords = totalRecordsReported,
+                        TotalBytes = p.TotalBytes,
+                        Elapsed = scanStopwatch.Elapsed
+                    });
                 }
             });
 
@@ -207,7 +241,7 @@ public sealed partial class JournalBrokerHost
             scanStopwatch.Stop();
             lock (progressLock)
             {
-                return (cursor, writeResult, scanStopwatch.Elapsed, maxRecordsProcessed, totalRecordsKnown);
+                return (cursor, writeResult, scanStopwatch.Elapsed, maxParsingRecordsProcessed, totalRecordsKnown);
             }
         }
         finally
@@ -236,13 +270,16 @@ public sealed partial class JournalBrokerHost
             finalTotalRecords = finalRecords;
         }
 
-        var finalProgress = new BrokerScanProgress(
-            request.Letter,
-            finalRecords,
-            scanOutput.writeResult.ByteLength,
-            finalTotalRecords,
-            scanOutput.writeResult.ByteLength,
-            scanOutput.scanElapsed);
+        var finalProgress = new BrokerScanProgress
+        {
+            DriveLetter = request.Letter,
+            Phase = BrokerScanPhase.Transferring,
+            RecordsProcessed = finalRecords,
+            BytesProcessed = scanOutput.writeResult.ByteLength,
+            TotalRecords = finalTotalRecords,
+            TotalBytes = scanOutput.writeResult.ByteLength,
+            Elapsed = scanOutput.scanElapsed
+        };
 
         await WriteFrameAsync(stream, writeLock,
             writer => BrokerProtocol.WriteScanProgress(writer, finalProgress),

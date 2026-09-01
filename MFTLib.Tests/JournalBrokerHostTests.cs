@@ -1,9 +1,9 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.MemoryMappedFiles;
-using System.Threading.Channels;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using System.Threading.Channels;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -1328,7 +1328,8 @@ public class JournalBrokerHostTests
                             i * 1000,
                             0,
                             5000,
-                            null));
+                            null,
+                            BrokerScanPhase.Parsing));
                     }
 
                     return
@@ -1364,21 +1365,32 @@ public class JournalBrokerHostTests
             Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex,
                 "Final progress frame must immediately precede ScanReady");
 
-            long previousRecords = 0;
+            long previousParsingRecords = 0;
+            long previousTransferringRecords = 0;
             var previousElapsed = TimeSpan.Zero;
             foreach (var frame in progressFrames)
             {
                 Assert.IsNotNull(frame.Progress);
                 var p = frame.Progress.Value;
                 Assert.AreEqual("C", p.DriveLetter);
-                Assert.IsTrue(p.RecordsProcessed >= previousRecords,
-                    $"RecordsProcessed must be non-decreasing: got {p.RecordsProcessed}, previous was {previousRecords}");
                 // aislop-ignore-next-line ai-slop/test-wall-clock-assertion -- false positive: MftScanProgress.Elapsed is a constructor-injected TimeSpan carried in the frame, not a clock read (schoen/aislop#51)
                 Assert.IsTrue(p.Elapsed >= previousElapsed,
                     $"Elapsed must be non-decreasing: got {p.Elapsed}, previous was {previousElapsed}");
-                Assert.AreEqual(5000L, p.TotalRecords, "TotalRecords must stay 5000 throughout");
-                previousRecords = p.RecordsProcessed;
                 previousElapsed = p.Elapsed;
+
+                if (p.Phase == BrokerScanPhase.Parsing)
+                {
+                    Assert.IsTrue(p.RecordsProcessed >= previousParsingRecords,
+                        $"Parsing RecordsProcessed must be non-decreasing: got {p.RecordsProcessed}, previous was {previousParsingRecords}");
+                    Assert.AreEqual(5000L, p.TotalRecords, "Parsing TotalRecords must stay 5000 throughout");
+                    previousParsingRecords = p.RecordsProcessed;
+                }
+                else if (p.Phase == BrokerScanPhase.Transferring)
+                {
+                    Assert.IsTrue(p.RecordsProcessed >= previousTransferringRecords,
+                        $"Transferring RecordsProcessed must be non-decreasing: got {p.RecordsProcessed}");
+                    previousTransferringRecords = p.RecordsProcessed;
+                }
             }
 
             var finalProgress = progressFrames.Last().Progress!.Value;
@@ -1447,6 +1459,124 @@ public class JournalBrokerHostTests
     }
 
     [TestMethod]
+    public async Task ProgressPump_ScanProgress_EmitsAllThreePhases()
+    {
+        var originalThrottle = JournalBrokerHost._progressThrottleInterval;
+        try
+        {
+            JournalBrokerHost._progressThrottleInterval = TimeSpan.Zero;
+            using var stream = new MemoryStream();
+            using var writeLock = new SemaphoreSlim(1, 1);
+            var channel = Channel.CreateUnbounded<BrokerScanProgress>();
+
+            channel.Writer.TryWrite(new BrokerScanProgress
+            {
+                DriveLetter = "C",
+                Phase = BrokerScanPhase.Parsing,
+                RecordsProcessed = 500,
+                BytesProcessed = 0,
+                TotalRecords = 1000,
+                TotalBytes = null,
+                Elapsed = TimeSpan.FromMilliseconds(10)
+            });
+            channel.Writer.TryWrite(new BrokerScanProgress
+            {
+                DriveLetter = "C",
+                Phase = BrokerScanPhase.ResolvingPaths,
+                RecordsProcessed = 300,
+                BytesProcessed = 0,
+                TotalRecords = 1000,
+                TotalBytes = null,
+                Elapsed = TimeSpan.FromMilliseconds(20)
+            });
+            channel.Writer.TryWrite(new BrokerScanProgress
+            {
+                DriveLetter = "C",
+                Phase = BrokerScanPhase.Transferring,
+                RecordsProcessed = 200,
+                BytesProcessed = 1024,
+                TotalRecords = 200,
+                TotalBytes = 1024,
+                Elapsed = TimeSpan.FromMilliseconds(30)
+            });
+            channel.Writer.TryComplete();
+
+            await JournalBrokerHost.RunProgressPumpAsync(stream, channel.Reader, writeLock, CancellationToken.None);
+
+            using var replay = new MemoryStream(stream.ToArray());
+            var frames = ReadAllFrames(replay);
+            var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
+
+            Assert.AreEqual(3, progressFrames.Count);
+            Assert.AreEqual(BrokerScanPhase.Parsing, progressFrames[0].Progress!.Value.Phase);
+            Assert.AreEqual(500L, progressFrames[0].Progress!.Value.RecordsProcessed);
+            Assert.AreEqual(1000L, progressFrames[0].Progress!.Value.TotalRecords);
+
+            Assert.AreEqual(BrokerScanPhase.ResolvingPaths, progressFrames[1].Progress!.Value.Phase);
+            Assert.AreEqual(300L, progressFrames[1].Progress!.Value.RecordsProcessed);
+            Assert.AreEqual(1000L, progressFrames[1].Progress!.Value.TotalRecords);
+
+            Assert.AreEqual(BrokerScanPhase.Transferring, progressFrames[2].Progress!.Value.Phase);
+            Assert.AreEqual(200L, progressFrames[2].Progress!.Value.RecordsProcessed);
+            Assert.AreEqual(200L, progressFrames[2].Progress!.Value.TotalRecords);
+            Assert.AreEqual(1024L, progressFrames[2].Progress!.Value.BytesProcessed);
+        }
+        finally
+        {
+            JournalBrokerHost._progressThrottleInterval = originalThrottle;
+        }
+    }
+
+    [TestMethod]
+    public async Task ServeOnce_ScanProgress_ResolvingPathsFlowsThroughExecuteDriveScan()
+    {
+        var originalThrottle = JournalBrokerHost._progressThrottleInterval;
+        var allowScanToFinish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            JournalBrokerHost._progressThrottleInterval = TimeSpan.Zero;
+            var (clientSide, serverSide) = DuplexStream.CreatePair();
+            var host = new JournalBrokerHost(
+                _ => new UsnJournalCursor(7UL, 0L),
+                (_, progress, cancellationToken) =>
+                {
+                    progress?.Report(new MmfWriteProgress(
+                        321,
+                        0,
+                        987,
+                        null,
+                        BrokerScanPhase.ResolvingPaths));
+                    allowScanToFinish.Task.Wait(cancellationToken);
+                    return Array.Empty<IReadOnlyList<ScanRecord>>();
+                },
+                (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+
+            var request = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-resolving-C");
+            await clientSide.WriteAsync(request.WrittenMemory);
+            await clientSide.FlushAsync();
+
+            var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), true, CancellationToken.None);
+            var progressFrame = await ReadOneFrameAsync(clientSide);
+
+            Assert.AreEqual(BrokerFrameKind.ScanProgress, progressFrame.Kind);
+            Assert.IsNotNull(progressFrame.Progress);
+            Assert.AreEqual(BrokerScanPhase.ResolvingPaths, progressFrame.Progress.Value.Phase);
+            Assert.AreEqual(321L, progressFrame.Progress.Value.RecordsProcessed);
+            Assert.AreEqual(987L, progressFrame.Progress.Value.TotalRecords);
+
+            allowScanToFinish.TrySetResult();
+            await serveTask;
+            await serverSide.DisposeAsync();
+        }
+        finally
+        {
+            allowScanToFinish.TrySetResult();
+            JournalBrokerHost._progressThrottleInterval = originalThrottle;
+        }
+    }
+
+    [TestMethod]
     public async Task ServeOnce_ScanProgress_PumpCancelledBeforeAnyProgressReported_SwallowsCancellationInPump()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
@@ -1500,7 +1630,7 @@ public class JournalBrokerHostTests
                 // TotalRecords estimate, so EmitScanCompletionFramesAsync's clamp has to
                 // bump both finalRecords and finalTotalRecords up to maxRecordsProcessed
                 // instead of trusting the last reported total.
-                progress?.Report(new MmfWriteProgress(10, 500, 5, 1000));
+                progress?.Report(new MmfWriteProgress(10, 500, 5, 1000, BrokerScanPhase.Parsing));
                 return
                 [
                     [new ScanRecord(1, 0, 100, 0, 0x20, false, "r1.txt", @"C:\r1.txt")]
@@ -1538,7 +1668,7 @@ public class JournalBrokerHostTests
             _ => new UsnJournalCursor(7UL, 0L),
             (_, p, _) =>
             {
-                p?.Report(new MmfWriteProgress(500, 10000, 1500, 30000));
+                p?.Report(new MmfWriteProgress(500, 10000, 1500, 30000, BrokerScanPhase.Parsing));
                 return [[SampleRecord()]];
             },
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
@@ -1565,7 +1695,7 @@ public class JournalBrokerHostTests
                 _ => new UsnJournalCursor(7UL, 0L),
                 (_, progress, _) =>
                 {
-                    progress?.Report(new MmfWriteProgress(100, 0, 1000, null));
+                    progress?.Report(new MmfWriteProgress(100, 0, 1000, null, BrokerScanPhase.Parsing));
                     return
                     [
                         [new ScanRecord(1, 0, 100, 0, 0x20, false, "r1.txt", @"C:\r1.txt")],

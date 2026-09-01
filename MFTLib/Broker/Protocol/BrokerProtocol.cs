@@ -181,6 +181,17 @@ public static partial class BrokerProtocol
     static BrokerFrame ReadScanProgressFrame(ReadOnlySpan<byte> payload)
     {
         var drive = ReadString(payload, 0, out var offset);
+        var phaseRaw = BinaryPrimitives.ReadInt32LittleEndian(payload[offset..]);
+        if (phaseRaw < byte.MinValue || phaseRaw > byte.MaxValue)
+        {
+            throw new InvalidDataException($"Unknown broker scan phase: {phaseRaw}");
+        }
+        var phase = (BrokerScanPhase)phaseRaw;
+        if (!Enum.IsDefined(phase))
+        {
+            throw new InvalidDataException($"Unknown broker scan phase: {phaseRaw}");
+        }
+        offset += 4;
         var recordsProcessed = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
         offset += 8;
         var bytesProcessed = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
@@ -195,8 +206,16 @@ public static partial class BrokerProtocol
         long? totalBytes = totalBytesRaw >= 0 ? totalBytesRaw : null;
         var elapsed = TimeSpan.FromTicks(elapsedTicks);
 
-        var progress =
-            new BrokerScanProgress(drive, recordsProcessed, bytesProcessed, totalRecords, totalBytes, elapsed);
+        var progress = new BrokerScanProgress
+        {
+            DriveLetter = drive,
+            Phase = phase,
+            RecordsProcessed = recordsProcessed,
+            BytesProcessed = bytesProcessed,
+            TotalRecords = totalRecords,
+            TotalBytes = totalBytes,
+            Elapsed = elapsed
+        };
         return BrokerFrame.ScanProgress(progress);
     }
 

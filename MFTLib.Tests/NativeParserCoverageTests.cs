@@ -310,9 +310,9 @@ public class NativeParserCoverageTests
 
             File.WriteAllBytes(path, data);
 
-            var invocations = new List<(ulong Scanned, ulong Total)>();
-            MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _, _) =>
-                invocations.Add((scanned, total));
+            var invocations = new List<(MftScanPhase Phase, ulong Scanned, ulong Total)>();
+            MFTLibNative.NativeMftProgressCallback callback = (phase, scanned, total, _, _) =>
+                invocations.Add((phase, scanned, total));
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
@@ -323,6 +323,7 @@ public class NativeParserCoverageTests
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
                 Assert.IsTrue(result.TotalRecords > 0);
                 Assert.IsTrue(invocations.Count >= 1, "Expected at least one in-loop progress report");
+                Assert.AreEqual(MftScanPhase.Parsing, invocations[0].Phase);
                 Assert.IsTrue(
                     invocations[^1].Scanned == result.TotalRecords && invocations[^1].Total == result.TotalRecords,
                     "Last reported chunk must reach the full record count");
@@ -363,9 +364,9 @@ public class NativeParserCoverageTests
 
             File.WriteAllBytes(path, data);
 
-            var invocations = new List<(ulong Scanned, ulong Total)>();
-            MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _, _) =>
-                invocations.Add((scanned, total));
+            var invocations = new List<(MftScanPhase Phase, ulong Scanned, ulong Total)>();
+            MFTLibNative.NativeMftProgressCallback callback = (phase, scanned, total, _, _) =>
+                invocations.Add((phase, scanned, total));
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             // Fail the 3rd Read: 1=boot sector, 2=record 0, 3=VolumeReadChunk's

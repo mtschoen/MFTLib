@@ -9,7 +9,7 @@ static class MFTLibNative
     //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
-    internal const uint ExpectedMftNativeAbiVersion = 2;
+    internal const uint ExpectedMftNativeAbiVersion = 3;
     internal const uint NativeCompactEntrySize = 32;
 
     // Swappable function pointers - default to the native P/Invoke implementations.
@@ -172,6 +172,6 @@ static class MFTLibNative
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void NativeMftProgressCallback(ulong recordsScanned, ulong totalRecords, double elapsedMs,
-        IntPtr context);
+    internal delegate void NativeMftProgressCallback(MftScanPhase phase, ulong recordsScanned, ulong totalRecords,
+        double elapsedMs, IntPtr context);
 }

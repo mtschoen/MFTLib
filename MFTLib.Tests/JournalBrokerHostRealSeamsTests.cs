@@ -161,7 +161,8 @@ public class JournalBrokerHostRealSeamsTests
         var parsePtr = BuildThreePathRecordsResult();
         MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
         {
-            callback?.Invoke(2, 3, 42.0, context);
+            callback?.Invoke(MftScanPhase.Parsing, 2, 3, 42.0, context);
+            callback?.Invoke(MftScanPhase.ResolvingPaths, 3, 3, 45.0, context);
             return parsePtr;
         };
         MFTLibNative._freeMftResult = ptr =>
@@ -190,11 +191,16 @@ public class JournalBrokerHostRealSeamsTests
         // Only the "kept" record survives ToScanRecords' InUse/FullPath filter, so
         // exactly one non-empty batch is yielded.
         Assert.AreEqual(1, materialized.Count);
-        Assert.AreEqual(1, reported.Count);
+        Assert.AreEqual(2, reported.Count);
         Assert.AreEqual(2L, reported[0].RecordsProcessed);
         Assert.AreEqual(3L, reported[0].TotalRecords);
         Assert.AreEqual(0L, reported[0].BytesProcessed);
         Assert.IsNull(reported[0].TotalBytes);
+        Assert.AreEqual(BrokerScanPhase.Parsing, reported[0].Phase);
+
+        Assert.AreEqual(3L, reported[1].RecordsProcessed);
+        Assert.AreEqual(3L, reported[1].TotalRecords);
+        Assert.AreEqual(BrokerScanPhase.ResolvingPaths, reported[1].Phase);
     }
 
     sealed class RecordingProgress(Action<MmfWriteProgress> handler) : IProgress<MmfWriteProgress>
