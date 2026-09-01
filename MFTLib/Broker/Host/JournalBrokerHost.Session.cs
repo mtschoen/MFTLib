@@ -139,4 +139,12 @@ public sealed partial class JournalBrokerHost
         watch.Cancellation.Dispose();
         watch.Cancellation = null;
     }
+
+    // Holds the live watch generation's CTS and per-drive tasks. A StartWatch creates
+    // one, an EndWatch (or session end) tears it down; see ServeAsync.
+    sealed class WatchGeneration
+    {
+        public readonly List<Task> Tasks = [];
+        public CancellationTokenSource? Cancellation;
+    }
 }

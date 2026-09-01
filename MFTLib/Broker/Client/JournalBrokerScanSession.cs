@@ -209,6 +209,17 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     Fired when a non-fatal warning is received from the broker (e.g. during live watch
+    ///     when a cached cursor could not be resumed and the drive fell back to watching
+    ///     from the current journal position). Carries the drive letter and warning message.
+    /// </summary>
+    public event Action<string, string>? WarningReceived
+    {
+        add => _client.WarningReceived += value;
+        remove => _client.WarningReceived -= value;
+    }
+
     // Throws if the session cannot currently accept a state-changing operation:
     // ObjectDisposedException once disposed, InvalidOperationException (carrying
     // FaultReason) once faulted. The queries above never call this - they stay safe to

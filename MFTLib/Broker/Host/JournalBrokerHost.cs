@@ -11,18 +11,30 @@ namespace MFTLib;
 ///     testable without real elevation; <see cref="CreateDefault" /> wires the real
 ///     MFTLib seams.
 /// </summary>
-public sealed partial class JournalBrokerHost(
-    UsnJournalCursorQuery queryCursor,
-    ProgressStreamingDriveScanSource scanDrive,
-    UsnJournalCatchUpSource readJournal,
-    JournalBatchSource? watchDrive = null,
-    NtfsVolumeInformationQuery? queryVolumeInfo = null)
-{
-    internal static TimeSpan _progressThrottleInterval = TimeSpan.FromMilliseconds(250);
-}
-
 public sealed partial class JournalBrokerHost
 {
+    readonly UsnJournalCursorQuery _queryCursor;
+    readonly ProgressStreamingDriveScanSource _scanDrive;
+    readonly UsnJournalCatchUpSource _readJournal;
+    readonly JournalBatchSource? _watchDrive;
+    readonly NtfsVolumeInformationQuery? _queryVolumeInfo;
+
+    internal static TimeSpan _progressThrottleInterval = TimeSpan.FromMilliseconds(250);
+
+    public JournalBrokerHost(
+        UsnJournalCursorQuery queryCursor,
+        ProgressStreamingDriveScanSource scanDrive,
+        UsnJournalCatchUpSource readJournal,
+        JournalBatchSource? watchDrive = null,
+        NtfsVolumeInformationQuery? queryVolumeInfo = null)
+    {
+        _queryCursor = queryCursor;
+        _scanDrive = scanDrive;
+        _readJournal = readJournal;
+        _watchDrive = watchDrive;
+        _queryVolumeInfo = queryVolumeInfo;
+    }
+
     public JournalBrokerHost(
         UsnJournalCursorQuery queryCursor,
         StreamingDriveScanSource scanDrive,
@@ -60,22 +72,22 @@ public sealed partial class JournalBrokerHost
     /// </summary>
     public (UsnJournalCursor Cursor, ScanRecord[] Records) ArmAndScan(string driveLetter)
     {
-        var cursor = queryCursor(driveLetter); // strictly before the scan
-        var records = scanDrive(driveLetter, null, CancellationToken.None).SelectMany(b => b).ToArray();
+        var cursor = _queryCursor(driveLetter); // strictly before the scan
+        var records = _scanDrive(driveLetter, null, CancellationToken.None).SelectMany(b => b).ToArray();
         return (cursor, records);
     }
 
     public (UsnJournalCursor Cursor, IEnumerable<IReadOnlyList<ScanRecord>> Batches) ArmAndScanBatches(
         string driveLetter, IProgress<MmfWriteProgress>? progress = null, CancellationToken cancellationToken = default)
     {
-        var cursor = queryCursor(driveLetter);
-        var batches = scanDrive(driveLetter, progress, cancellationToken);
+        var cursor = _queryCursor(driveLetter);
+        var batches = _scanDrive(driveLetter, progress, cancellationToken);
         return (cursor, batches);
     }
 
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) CatchUp(string driveLetter, UsnJournalCursor since)
     {
-        return readJournal(driveLetter, since);
+        return _readJournal(driveLetter, since);
     }
 
 
@@ -95,7 +107,7 @@ public sealed partial class JournalBrokerHost
     async Task StreamWatchAsync(Stream stream, string drive, UsnJournalCursor since,
         SemaphoreSlim writeLock, CancellationToken cancellationToken)
     {
-        if (watchDrive == null)
+        if (_watchDrive == null)
         {
             await WriteFrameAsync(stream, writeLock,
                     writer => BrokerProtocol.WriteError(writer, drive, "Broker has no watch source"), cancellationToken)
@@ -108,18 +120,55 @@ public sealed partial class JournalBrokerHost
             // A (0,0) cursor means the caller had no cached cursor for this drive (a warm
             // start with an unknown cursor). Resolve the current cursor and watch from
             // now so the live watch still works; only the pre-launch gap is lost.
-            var effectiveSince = since.JournalId == 0 ? queryCursor(drive) : since;
+            var effectiveSince = since.JournalId == 0 ? _queryCursor(drive) : since;
 
-            // No `.WithCancellation(cancellationToken)` here: cancellationToken is
-            // already passed as the explicit third argument above, which the
-            // production implementation's `[EnumeratorCancellation]` parameter binds
-            // directly - adding it again on the same token is redundant.
-            await foreach (var (entries, cursor) in watchDrive(drive, effectiveSince, cancellationToken)
-                               .ConfigureAwait(false))
+            var yieldedAny = false;
+            try
             {
+                // No `.WithCancellation(cancellationToken)` here: cancellationToken is
+                // already passed as the explicit third argument above, which the
+                // production implementation's `[EnumeratorCancellation]` parameter binds
+                // directly - adding it again on the same token is redundant.
+                await foreach (var (entries, cursor) in _watchDrive(drive, effectiveSince, cancellationToken)
+                                   .ConfigureAwait(false))
+                {
+                    yieldedAny = true;
+                    await WriteFrameAsync(stream, writeLock,
+                            writer => BrokerProtocol.WriteJournalBatch(writer, drive, cursor, entries), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+            // A cached cursor can fall outside the journal's live window before StartWatch
+            // is called (for instance, a default 32 MB journal wrapping within minutes on
+            // a busy system drive, or the journal being recreated with a new ID). If
+            // watch fails at start before yielding any batch because the cached cursor is
+            // stale or invalidated, degrade the same way catch-up does: re-query the cursor,
+            // emit a Warning frame so the consumer knows the replay gap was lost and a rescan
+            // is recommended, and keep streaming from the fresh cursor.
+            // Genuine access, volume, allocation, or protocol failures must not be retried as
+            // a cursor degradation; they propagate to the outer catch to emit an Error.
+            catch (Exception exception) when (!yieldedAny && since.JournalId != 0 && !IsNonRetryableStartupException(exception))
+            {
+                var freshCursor = _queryCursor(drive);
+                if (freshCursor == effectiveSince ||
+                    (freshCursor.JournalId == effectiveSince.JournalId && !IsJournalCursorException(exception)))
+                {
+                    throw;
+                }
+
                 await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteJournalBatch(writer, drive, cursor, entries), cancellationToken)
-                    .ConfigureAwait(false);
+                    writer => BrokerProtocol.WriteWarning(writer, drive,
+                        $"Watch from cached cursor failed: {exception.Message}; watching from the current " +
+                        "journal position, replay gap was lost and a rescan is recommended"),
+                    cancellationToken).ConfigureAwait(false);
+
+                await foreach (var (entries, cursor) in _watchDrive(drive, freshCursor, cancellationToken)
+                                   .ConfigureAwait(false))
+                {
+                    await WriteFrameAsync(stream, writeLock,
+                            writer => BrokerProtocol.WriteJournalBatch(writer, drive, cursor, entries), cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
         }
         catch (OperationCanceledException)
@@ -319,12 +368,36 @@ public sealed partial class JournalBrokerHost
         return result.ToArray();
     }
 
-    // Holds the live watch generation's CTS and per-drive tasks. A StartWatch creates
-    // one, an EndWatch (or session end) tears it down; see ServeAsync.
-    sealed class WatchGeneration
+    static bool IsNonRetryableStartupException(Exception exception)
     {
-        public readonly List<Task> Tasks = [];
-        public CancellationTokenSource? Cancellation;
+        if (exception is OperationCanceledException or UnauthorizedAccessException or OutOfMemoryException)
+        {
+            return true;
+        }
+
+        var message = exception.Message;
+        return !string.IsNullOrEmpty(message) &&
+               (message.Contains("Access is denied", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("access denied", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("Failed to allocate", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("Failed to create event", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("PlatformNotSupported", StringComparison.OrdinalIgnoreCase));
+    }
+
+    static bool IsJournalCursorException(Exception exception)
+    {
+        var message = exception.Message;
+        return !string.IsNullOrEmpty(message) &&
+               (message.Contains("deleted", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("wrapped", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("rescan", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("not active", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("deletion", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("recreated", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("cursor", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("1181", StringComparison.Ordinal) ||
+                message.Contains("1179", StringComparison.Ordinal) ||
+                message.Contains("1178", StringComparison.Ordinal));
     }
 
     sealed class DirectProgress<T>(Action<T> handler) : IProgress<T>

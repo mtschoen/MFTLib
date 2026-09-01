@@ -263,9 +263,12 @@ Because no scan ran, `LatestScan` is `null` until the first `RescanAsync`. A war
 still rescans on the same broker (no second UAC prompt) using the `profile` and
 `keepFileNames` passed to `StartFromCursorsAsync` (the overload with those parameters); after
 a rescan, `LatestScan` is populated and a subsequent `StartWatchAsync` resumes from the fresh
-advanced cursors instead of the originally supplied ones. All other lifecycle guarantees -
-fault latching, terminal-state checks, single-flight operation discipline, and idempotent
-disposal - are identical to a scanned session.
+advanced cursors instead of the originally supplied ones. If starting a live watch with a
+cached cursor fails because the journal wrapped or its ID changed, the broker re-queries the
+volume's current cursor, fires `session.WarningReceived` (`client.WarningReceived`) with the
+drive and warning message, and continues streaming live batches from the fresh cursor position.
+All other lifecycle guarantees - fault latching, terminal-state checks, single-flight operation
+discipline, and idempotent disposal - are identical to a scanned session.
 
 ## 3. Stop watching, rescan, and restart
 

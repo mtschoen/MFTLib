@@ -247,11 +247,27 @@ public sealed partial class JournalBrokerClient
                         break;
 
                     case BrokerFrameKind.Warning:
-                        // Non-fatal: the live watch has no per-drive warning channel, so
-                        // this is a diagnostics-only surface rather than a fault - the
-                        // drive's JournalBatch frames keep flowing normally.
+                        var warningDrive = NormalizeDriveLetter(value.RequireDrive());
+                        var warningMessage = value.RequireMessage();
                         BrokerDiagnostics.Log(
-                            $"Warning frame for drive {value.RequireDrive()}: {value.RequireMessage()}");
+                            $"Warning frame for drive {warningDrive}: {warningMessage}");
+                        var warningHandlers = WarningReceived;
+                        if (warningHandlers != null)
+                        {
+                            foreach (var handler in warningHandlers.GetInvocationList())
+                            {
+                                try
+                                {
+                                    ((Action<string, string>)handler)(warningDrive, warningMessage);
+                                }
+                                catch (Exception subscriberException)
+                                {
+                                    BrokerDiagnostics.Log(
+                                        $"WarningReceived subscriber threw an exception: {subscriberException.Message}");
+                                }
+                            }
+                        }
+
                         break;
 
                         // Heartbeat / other frame kinds are not routed to a drive stream.

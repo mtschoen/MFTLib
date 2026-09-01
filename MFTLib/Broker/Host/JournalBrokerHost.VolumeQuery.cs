@@ -10,7 +10,7 @@ public sealed partial class JournalBrokerHost
     {
         foreach (var request in ParseScanSpec(drivesSpec)) // volume-query tokens omit the map name, like watch tokens
         {
-            if (queryVolumeInfo == null)
+            if (_queryVolumeInfo == null)
             {
                 await WriteFrameAsync(stream, writeLock,
                         writer => BrokerProtocol.WriteError(writer, request.Letter,
@@ -22,7 +22,7 @@ public sealed partial class JournalBrokerHost
 
             try
             {
-                var info = queryVolumeInfo(request.Letter);
+                var info = _queryVolumeInfo(request.Letter);
                 await WriteFrameAsync(stream, writeLock,
                         writer => BrokerProtocol.WriteVolumeInfo(
                             writer, request.Letter, info.MftRecordCount, info.BytesPerFileRecordSegment,

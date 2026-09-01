@@ -253,7 +253,7 @@ public sealed partial class JournalBrokerHost
         // frame.
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            var freshCursor = queryCursor(request.Letter);
+            var freshCursor = _queryCursor(request.Letter);
             await WriteFrameAsync(stream, writeLock,
                 writer => BrokerProtocol.WriteWarning(writer, request.Letter,
                     $"Catch-up after scan failed: {exception.Message}; watching from the current journal " +

@@ -843,6 +843,105 @@ public class JournalBrokerScanSessionTests
     }
 
     [TestMethod]
+    public async Task WatchDrive_WarningFrame_FiresSessionWarningReceivedEvent()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        string? receivedWarningDrive = null;
+        string? receivedWarningMessage = null;
+        session.WarningReceived += (drive, message) =>
+        {
+            receivedWarningDrive = drive;
+            receivedWarningMessage = message;
+        };
+
+        var watchFrameTask = ReadOneFrameAsync(serverSide);
+        await session.StartWatchAsync();
+        await watchFrameTask;
+
+        var cursor = new UsnJournalCursor(7UL, 210L);
+        var entry = JournalEntryFactory.Create(1, 110, "f.txt");
+        var response = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteWarning(response, "C", "Watch from cached cursor failed: journal wrapped");
+        BrokerProtocol.WriteJournalBatch(response, "C", cursor, [entry]);
+        BrokerProtocol.WriteEndWatchAck(response);
+        await serverSide.WriteAsync(response.WrittenMemory);
+        await serverSide.FlushAsync();
+
+        var received = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await foreach (var batch in session.WatchDriveAsync("C", timeout.Token))
+        {
+            received.Add(batch);
+        }
+
+        Assert.AreEqual(1, received.Count);
+        Assert.AreEqual(cursor, received[0].Cursor);
+        Assert.AreEqual("C", receivedWarningDrive);
+        Assert.AreEqual("Watch from cached cursor failed: journal wrapped", receivedWarningMessage);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task WatchDrive_WarningFrame_SubscriberExceptionDoesNotFaultSession()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
+
+        var session = await JournalBrokerScanSession.StartAsync(
+            _ => Task.FromResult(client), DriveC, BrokerScanProfile.Full, cancellationToken: CancellationToken.None);
+        await scanTask;
+
+        var firstInvoked = false;
+        var secondInvoked = false;
+        session.WarningReceived += (_, _) =>
+        {
+            firstInvoked = true;
+            throw new InvalidOperationException("Boom from subscriber");
+        };
+        session.WarningReceived += (_, _) =>
+        {
+            secondInvoked = true;
+        };
+
+        var watchFrameTask = ReadOneFrameAsync(serverSide);
+        await session.StartWatchAsync();
+        await watchFrameTask;
+
+        var cursor = new UsnJournalCursor(7UL, 210L);
+        var entry = JournalEntryFactory.Create(1, 110, "f.txt");
+        var response = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteWarning(response, "C", "Watch from cached cursor failed: journal wrapped");
+        BrokerProtocol.WriteJournalBatch(response, "C", cursor, [entry]);
+        BrokerProtocol.WriteEndWatchAck(response);
+        await serverSide.WriteAsync(response.WrittenMemory);
+        await serverSide.FlushAsync();
+
+        var received = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await foreach (var batch in session.WatchDriveAsync("C", timeout.Token))
+        {
+            received.Add(batch);
+        }
+
+        Assert.IsTrue(firstInvoked, "First subscriber throwing must execute");
+        Assert.IsTrue(secondInvoked, "Second subscriber must still execute");
+        Assert.IsFalse(session.IsFaulted, "Session must not fault from subscriber exception");
+        Assert.AreEqual(1, received.Count);
+        Assert.AreEqual(cursor, received[0].Cursor);
+
+        await session.DisposeAsync();
+    }
+
+    [TestMethod]
     public async Task WatchDrive_UnarmedDrive_ThrowsArgumentException()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();

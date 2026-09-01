@@ -73,4 +73,10 @@ public sealed partial class JournalBrokerClient(
     ///     readers detect the same death.
     /// </summary>
     public event Action<string>? BrokerDied;
+
+    /// <summary>
+    ///     Fired when a non-fatal <see cref="BrokerFrameKind.Warning" /> frame arrives from the broker.
+    ///     Carries the drive letter and warning message.
+    /// </summary>
+    public event Action<string, string>? WarningReceived;
 }

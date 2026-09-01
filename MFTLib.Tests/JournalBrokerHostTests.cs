@@ -737,14 +737,173 @@ public class JournalBrokerHostTests
     }
 
     [TestMethod]
-    public async Task StartWatch_WatchSourceThrows_EmitsErrorFrame_SessionContinues()
+    public async Task StartWatch_CachedCursorThrowsAtStart_EmitsWarning_AndStreamsFromFreshCursor()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var queryCallCount = 0;
+        var freshCursor = new UsnJournalCursor(1UL, 999L);
+        (UsnJournalEntry[], UsnJournalCursor)[] expectedBatch = [([SampleEntry()], new UsnJournalCursor(1UL, 1010L))];
+
+        UsnJournalCursor QueryCursor(string drive)
+        {
+            queryCallCount++;
+            return freshCursor;
+        }
+
+        IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> WatchDrive(
+            string drive, UsnJournalCursor since, CancellationToken cancellationToken)
+        {
+            if (since.JournalId == 7UL)
+            {
+                // Cached cursor was from journal 7 which was recreated / wrapped
+                throw new InvalidOperationException("USN journal entries have been deleted; full rescan needed");
+            }
+
+            return FakeWatch(expectedBatch, cancellationToken);
+        }
+
+        var host = new JournalBrokerHost(
+            QueryCursor,
+            _ => Array.Empty<ScanRecord>(),
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
+            WatchDrive);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteStartWatch(request, "C:7:100");
+        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+
+        var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
+
+        var firstFrame = await ReadOneFrameAsync(clientSide);
+        Assert.AreEqual(BrokerFrameKind.Warning, firstFrame.Kind);
+        Assert.AreEqual("C", firstFrame.Drive);
+        StringAssert.Contains(firstFrame.Message, "USN journal entries have been deleted");
+        StringAssert.Contains(firstFrame.Message, "replay gap was lost and a rescan is recommended");
+        StringAssert.Contains(firstFrame.Message, "watching from the current journal position");
+
+        var secondFrame = await ReadOneFrameAsync(clientSide);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, secondFrame.Kind);
+        Assert.AreEqual("C", secondFrame.Drive);
+        Assert.AreEqual(new UsnJournalCursor(1UL, 1010L), secondFrame.Cursor);
+        Assert.AreEqual(1, secondFrame.Entries.Length);
+
+        Assert.AreEqual(1, queryCallCount);
+
+        await cts.CancelAsync();
+        await serveTask;
+    }
+
+    [TestMethod]
+    public async Task StartWatch_CachedCursorThrowsAndRequeryBothThrow_EmitsErrorFrameInstead()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+
+        UsnJournalCursor QueryCursor(string drive)
+        {
+            throw new InvalidOperationException("volume unmounted");
+        }
+
+        IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> WatchDrive(
+            string drive, UsnJournalCursor since, CancellationToken cancellationToken)
+        {
+            throw new InvalidOperationException("USN journal entries have been deleted; full rescan needed");
+        }
+
+        var host = new JournalBrokerHost(
+            QueryCursor,
+            _ => Array.Empty<ScanRecord>(),
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
+            WatchDrive);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteStartWatch(request, "C:7:100");
+        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+
+        var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
+
+        var frame = await ReadOneFrameAsync(clientSide);
+        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
+        Assert.AreEqual("C", frame.Drive);
+        Assert.AreEqual("volume unmounted", frame.Message);
+
+        var shutdown = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteShutdown(shutdown);
+        await clientSide.WriteAsync(shutdown.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+        await serveTask;
+    }
+
+    [TestMethod]
+    public async Task StartWatch_CachedCursorThrowsAtStart_OneDriveDegrades_OtherDriveStreamsNormally()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var freshCursorC = new UsnJournalCursor(1UL, 999L);
+        (UsnJournalEntry[], UsnJournalCursor)[] batchC = [([SampleEntry()], new UsnJournalCursor(1UL, 1010L))];
+        (UsnJournalEntry[], UsnJournalCursor)[] batchD = [([SampleEntry()], new UsnJournalCursor(2UL, 210L))];
+
+        UsnJournalCursor QueryCursor(string drive)
+        {
+            return drive == "C" ? freshCursorC : throw new InvalidOperationException("unexpected query");
+        }
+
+        IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> WatchDrive(
+            string drive, UsnJournalCursor since, CancellationToken cancellationToken)
+        {
+            if (drive == "C" && since.JournalId == 7UL)
+            {
+                throw new InvalidOperationException("USN journal entries have been deleted; full rescan needed");
+            }
+
+            return FakeWatch(drive == "C" ? batchC : batchD, cancellationToken);
+        }
+
+        var host = new JournalBrokerHost(
+            QueryCursor,
+            _ => Array.Empty<ScanRecord>(),
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
+            WatchDrive);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteStartWatch(request, "C:7:100,D:2:200");
+        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+
+        var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
+
+        var frames = new List<BrokerFrame>();
+        for (var i = 0; i < 3; i++)
+        {
+            frames.Add(await ReadOneFrameAsync(clientSide));
+        }
+
+        Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Error), "No Error frames");
+        var warning = frames.Single(f => f.Kind == BrokerFrameKind.Warning);
+        Assert.AreEqual("C", warning.Drive);
+        StringAssert.Contains(warning.Message, "USN journal entries have been deleted");
+
+        var batches = frames.Where(f => f.Kind == BrokerFrameKind.JournalBatch).ToList();
+        Assert.AreEqual(2, batches.Count);
+        Assert.IsTrue(batches.Any(b => b.Drive == "C" && b.Cursor == new UsnJournalCursor(1UL, 1010L)));
+        Assert.IsTrue(batches.Any(b => b.Drive == "D" && b.Cursor == new UsnJournalCursor(2UL, 210L)));
+
+        await cts.CancelAsync();
+        await serveTask;
+    }
+
+    [TestMethod]
+    public async Task StartWatch_MidStreamThrows_EmitsErrorFrame_SessionContinues()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var host = new JournalBrokerHost(
             _ => default,
             _ => Array.Empty<ScanRecord>(),
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            (_, _, _) => ThrowingWatch());
+            (_, _, _) => ThrowingWatchMidStream());
 
         var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteStartWatch(request, "C:7:100");
@@ -754,15 +913,160 @@ public class JournalBrokerHostTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
 
-        var frame = await ReadOneFrameAsync(clientSide);
-        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
-        Assert.AreEqual("C", frame.Drive);
-        Assert.AreEqual("journal wrapped mid-stream", frame.Message);
+        var batch = await ReadOneFrameAsync(clientSide);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
+        Assert.AreEqual("C", batch.Drive);
+
+        var error = await ReadOneFrameAsync(clientSide);
+        Assert.AreEqual(BrokerFrameKind.Error, error.Kind);
+        Assert.AreEqual("C", error.Drive);
+        Assert.AreEqual("journal wrapped mid-stream", error.Message);
 
         var shutdown = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteShutdown(shutdown);
         await clientSide.WriteAsync(shutdown.WrittenMemory, CancellationToken.None);
         await clientSide.FlushAsync(CancellationToken.None);
+        await serveTask;
+    }
+
+    [TestMethod]
+    public async Task StartWatch_GenericStartupFailure_WithSuccessfulQueryCursor_EmitsErrorFrame_DoesNotEmitWarning()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var freshCursor = new UsnJournalCursor(7UL, 200L);
+
+        var host = new JournalBrokerHost(
+            _ => freshCursor,
+            _ => Array.Empty<ScanRecord>(),
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
+            (_, _, _) => throw new InvalidOperationException("Access is denied"));
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteStartWatch(request, "C:7:100");
+        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
+
+        var frame = await ReadOneFrameAsync(clientSide);
+        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
+        Assert.AreEqual("C", frame.Drive);
+        Assert.AreEqual("Access is denied", frame.Message);
+
+        var shutdown = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteShutdown(shutdown);
+        await clientSide.WriteAsync(shutdown.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+        await serveTask;
+    }
+
+    [TestMethod]
+    public async Task StartWatch_CachedCursorSameAsCurrentCursor_Fails_EmitsErrorFrame_DoesNotEmitWarning()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var cursor = new UsnJournalCursor(7UL, 100L);
+
+        var host = new JournalBrokerHost(
+            _ => cursor,
+            _ => Array.Empty<ScanRecord>(),
+            (_, c) => (Array.Empty<UsnJournalEntry>(), c),
+            (_, _, _) => throw new InvalidOperationException("Cannot open volume"));
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteStartWatch(request, "C:7:100");
+        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
+
+        var frame = await ReadOneFrameAsync(clientSide);
+        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
+        Assert.AreEqual("C", frame.Drive);
+        Assert.AreEqual("Cannot open volume", frame.Message);
+
+        var shutdown = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteShutdown(shutdown);
+        await clientSide.WriteAsync(shutdown.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+        await serveTask;
+    }
+
+    [TestMethod]
+    public async Task StartWatch_CachedCursorFails_RequeryThrows_EmitsErrorFrame_DoesNotEmitWarning()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+
+        var host = new JournalBrokerHost(
+            _ => throw new InvalidOperationException("Volume disappeared"),
+            _ => Array.Empty<ScanRecord>(),
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
+            (_, _, _) => throw new InvalidOperationException("USN journal entries have been deleted; full rescan needed"));
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteStartWatch(request, "C:7:100");
+        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
+
+        var frame = await ReadOneFrameAsync(clientSide);
+        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
+        Assert.AreEqual("C", frame.Drive);
+        Assert.AreEqual("Volume disappeared", frame.Message);
+
+        var shutdown = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteShutdown(shutdown);
+        await clientSide.WriteAsync(shutdown.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+        await serveTask;
+    }
+
+    [TestMethod]
+    public async Task StartWatch_CachedCursorJournalIdMismatch_DegradesToWarningAndStreams()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var freshCursor = new UsnJournalCursor(8UL, 50L);
+        (UsnJournalEntry[], UsnJournalCursor)[] batches = [([SampleEntry()], new UsnJournalCursor(8UL, 60L))];
+
+        IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> WatchDrive(
+            string drive, UsnJournalCursor since, CancellationToken cancellationToken)
+        {
+            if (since.JournalId == 7UL)
+            {
+                throw new InvalidOperationException("Journal ID mismatch");
+            }
+
+            return FakeWatch(batches, cancellationToken);
+        }
+
+        var host = new JournalBrokerHost(
+            _ => freshCursor,
+            _ => Array.Empty<ScanRecord>(),
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
+            WatchDrive);
+
+        var request = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteStartWatch(request, "C:7:100");
+        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
+        await clientSide.FlushAsync(CancellationToken.None);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
+
+        var warning = await ReadOneFrameAsync(clientSide);
+        Assert.AreEqual(BrokerFrameKind.Warning, warning.Kind);
+        Assert.AreEqual("C", warning.Drive);
+        StringAssert.Contains(warning.Message, "Journal ID mismatch");
+
+        var batch = await ReadOneFrameAsync(clientSide);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
+        Assert.AreEqual("C", batch.Drive);
+        Assert.AreEqual(new UsnJournalCursor(8UL, 60L), batch.Cursor);
+
+        await cts.CancelAsync();
         await serveTask;
     }
 
@@ -793,12 +1097,11 @@ public class JournalBrokerHostTests
         await Task.CompletedTask;
     }
 
-    static IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> ThrowingWatch()
+    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> ThrowingWatchMidStream()
     {
-        var channel = System.Threading.Channels.Channel.CreateUnbounded<
-            (UsnJournalEntry[], UsnJournalCursor)>();
-        channel.Writer.TryComplete(new InvalidOperationException("journal wrapped mid-stream"));
-        return channel.Reader.ReadAllAsync();
+        yield return ([SampleEntry()], new UsnJournalCursor(7UL, 110L));
+        await Task.Yield();
+        throw new InvalidOperationException("journal wrapped mid-stream");
     }
 
     static async Task<BrokerFrame> ReadOneFrameAsync(Stream stream)
