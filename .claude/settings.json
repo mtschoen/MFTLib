@@ -1,7 +1,6 @@
 {
   "enabledPlugins": {
     "csharp-lsp@claude-plugins-official": true,
-    "microsoft-docs@claude-plugins-official": true,
     "clangd-lsp@claude-plugins-official": true
   },
   "hooks": {
