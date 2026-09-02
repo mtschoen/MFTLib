@@ -122,11 +122,28 @@ public sealed partial class JournalBrokerClient
         }
     }
 
-    // Normalize a drive path ("C:\\", "C:", "C") to the bare single letter ("C").
+    // Normalize a drive path ("C:\\", "C:", "C", @"\\.\C:") to the bare single uppercase letter ("C").
     // The broker spec tokens and frame Drive fields use the bare letter.
     internal static string NormalizeDriveLetter(string drive)
     {
-        return drive.TrimEnd(':', '\\', '/');
+        ArgumentNullException.ThrowIfNull(drive);
+        var span = drive.AsSpan().Trim();
+        if (span.StartsWith(@"\\.\", StringComparison.OrdinalIgnoreCase))
+        {
+            span = span[4..];
+        }
+
+        while (span.Length > 0 && (span[^1] == ':' || span[^1] == '\\' || span[^1] == '/'))
+        {
+            span = span[..^1];
+        }
+
+        if (span.Length != 1 || !char.IsAsciiLetter(span[0]))
+        {
+            throw new ArgumentException($"'{drive}' is not a valid drive letter.", nameof(drive));
+        }
+
+        return char.ToUpperInvariant(span[0]).ToString();
     }
 
     // Fill buffer fully. Returns false on clean EOF before any byte; throws on truncated data.

@@ -1344,6 +1344,39 @@ public class JournalBrokerClientTests
         await client.DisposeAsync();
     }
 
+    [TestMethod]
+    public void NormalizeDriveLetter_ValidDriveFormats_ReturnsUppercaseLetter()
+    {
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter("C"));
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter("c"));
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter("C:"));
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter("c:"));
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter(@"C:\"));
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter(@"c:\"));
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter("C:/"));
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter("c:/"));
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter(@"\\.\C:"));
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter(@"\\.\c:"));
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter(@"\\.\C"));
+        Assert.AreEqual("C", JournalBrokerClient.NormalizeDriveLetter("  C:  "));
+    }
+
+    [TestMethod]
+    public void NormalizeDriveLetter_InvalidInputs_ThrowsArgumentException()
+    {
+        Assert.ThrowsException<ArgumentNullException>(() => JournalBrokerClient.NormalizeDriveLetter(null!));
+        Assert.ThrowsException<ArgumentException>(() => JournalBrokerClient.NormalizeDriveLetter(""));
+        Assert.ThrowsException<ArgumentException>(() => JournalBrokerClient.NormalizeDriveLetter("   "));
+        Assert.ThrowsException<ArgumentException>(() => JournalBrokerClient.NormalizeDriveLetter("C:garbage"));
+        Assert.ThrowsException<ArgumentException>(() => JournalBrokerClient.NormalizeDriveLetter("C,D"));
+        Assert.ThrowsException<ArgumentException>(() => JournalBrokerClient.NormalizeDriveLetter("1"));
+        Assert.ThrowsException<ArgumentException>(() => JournalBrokerClient.NormalizeDriveLetter("1:"));
+        Assert.ThrowsException<ArgumentException>(() => JournalBrokerClient.NormalizeDriveLetter("CD"));
+        Assert.ThrowsException<ArgumentException>(() => JournalBrokerClient.NormalizeDriveLetter("$$"));
+        Assert.ThrowsException<ArgumentException>(() => JournalBrokerClient.NormalizeDriveLetter(@"\\.\Volume{12345678-1234-1234-1234-123456789012}"));
+        Assert.ThrowsException<ArgumentException>(() => JournalBrokerClient.NormalizeDriveLetter(@"C:\dir\file.txt"));
+    }
+
     // Test double: IMmfReader that returns an empty array (for tests that do not
     // need real MMF data and inject an Error path instead).
     sealed class NullMmfReader : IMmfReader

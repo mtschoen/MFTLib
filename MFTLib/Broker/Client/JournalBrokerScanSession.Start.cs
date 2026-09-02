@@ -181,6 +181,8 @@ public sealed partial class JournalBrokerScanSession
     ///     then. <see cref="BrokerScanProfile.Full" /> and no keep-file names apply to a later
     ///     <see cref="RescanAsync(CancellationToken)" />; use the overload below to set them.
     /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="launchBroker" /> or <paramref name="cursorsByDrive" /> is null.</exception>
+    /// <exception cref="ArgumentException">Thrown when a key in <paramref name="cursorsByDrive" /> is not a valid drive letter.</exception>
     [SupportedOSPlatform("windows")]
     public static Task<JournalBrokerScanSession> StartFromCursorsAsync(
         Func<string, bool> launchBroker,
@@ -197,6 +199,8 @@ public sealed partial class JournalBrokerScanSession
     ///     but with the explicit <paramref name="profile" /> and optional
     ///     <paramref name="keepFileNames" /> a later <see cref="RescanAsync(CancellationToken)" /> uses.
     /// </summary>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="launchBroker" /> or <paramref name="cursorsByDrive" /> is null.</exception>
+    /// <exception cref="ArgumentException">Thrown when a key in <paramref name="cursorsByDrive" /> is not a valid drive letter.</exception>
     [SupportedOSPlatform("windows")]
     public static Task<JournalBrokerScanSession> StartFromCursorsAsync(
         Func<string, bool> launchBroker,
@@ -232,9 +236,15 @@ public sealed partial class JournalBrokerScanSession
     static Dictionary<string, UsnJournalCursor> NormalizeCursors(
         IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive)
     {
+        ArgumentNullException.ThrowIfNull(cursorsByDrive);
         var normalized = new Dictionary<string, UsnJournalCursor>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in cursorsByDrive)
         {
+            if (pair.Key == null)
+            {
+                throw new ArgumentException("Drive key cannot be null", nameof(cursorsByDrive));
+            }
+
             normalized[JournalBrokerClient.NormalizeDriveLetter(pair.Key)] = pair.Value;
         }
 

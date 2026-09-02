@@ -6,6 +6,65 @@ namespace MFTLib;
 public sealed partial class JournalBrokerScanSession
 {
     /// <summary>
+    ///     Snapshot of the cursors the session will use for live watching, keyed by normalized
+    ///     drive letter. Safe to read at any time, including after fault or disposal. For a
+    ///     scanned session this defaults to the scan's advanced cursors; for a warm session it
+    ///     is the initial supplied cursors. Can be replaced via <see cref="ReplaceWatchCursors" />.
+    ///     Note that <see cref="RescanAsync(CancellationToken)" /> overwrites this set with the
+    ///     rescan's advanced cursors; call <see cref="ReplaceWatchCursors" /> again after a rescan
+    ///     to preserve any custom narrowing.
+    /// </summary>
+    public IReadOnlyDictionary<string, UsnJournalCursor> WatchCursors
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return new Dictionary<string, UsnJournalCursor>(_watchCursors, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Replace the session's watch cursors with a caller-supplied set. Allowed only in
+    ///     <see cref="JournalBrokerSessionState.Parked" /> and when no operation is in flight.
+    ///     Keys are normalized with <see cref="JournalBrokerClient.NormalizeDriveLetter" />
+    ///     (last writer wins on duplicate normalized keys). This replaces the existing watch
+    ///     cursors entirely rather than merging with them. An empty dictionary is accepted,
+    ///     in which case a subsequent <see cref="StartWatchAsync" /> will throw.
+    ///     Note that <see cref="RescanAsync(CancellationToken)" /> overwrites this set with the
+    ///     rescan's advanced cursors; call <see cref="ReplaceWatchCursors" /> again after a rescan
+    ///     if you wish to keep a narrowed set.
+    /// </summary>
+    /// <param name="cursors">The new set of drive cursors to watch.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="cursors" /> is null.</exception>
+    /// <exception cref="ArgumentException">Thrown when a key in <paramref name="cursors" /> is not a valid drive letter.</exception>
+    /// <exception cref="ObjectDisposedException">Thrown when the session has been disposed.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when the session is faulted, not parked, or another session operation is in progress.
+    /// </exception>
+    public void ReplaceWatchCursors(IReadOnlyDictionary<string, UsnJournalCursor> cursors)
+    {
+        ArgumentNullException.ThrowIfNull(cursors);
+        EnsureOperable();
+        var normalized = NormalizeCursors(cursors);
+        lock (_stateLock)
+        {
+            EnsureOperableLocked();
+            if (_state != JournalBrokerSessionState.Parked)
+            {
+                throw new InvalidOperationException("Live watch has already been started for this session");
+            }
+
+            if (_operationInFlight)
+            {
+                throw new InvalidOperationException("Another session operation is in progress");
+            }
+
+            _watchCursors = normalized;
+        }
+    }
+    /// <summary>
     ///     Begin live watching every drive in the session's watch cursor set - a scanned
     ///     session's successfully armed drives (from <see cref="LatestScan" />), or a warm
     ///     session's supplied cursors - resuming each from its cursor. Legal only in
@@ -101,6 +160,7 @@ public sealed partial class JournalBrokerScanSession
         string driveLetter, CancellationToken cancellationToken = default)
     {
         EnsureOperable();
+        var normalizedDrive = JournalBrokerClient.NormalizeDriveLetter(driveLetter);
 
         // The Watching check, the cursor lookup, and the _batchSource read must
         // happen in one critical section: StopWatchAsync clears _batchSource under
@@ -115,7 +175,7 @@ public sealed partial class JournalBrokerScanSession
                 throw new InvalidOperationException("Not currently watching; call StartWatchAsync first");
             }
 
-            if (!_watchCursors.TryGetValue(driveLetter, out cursor))
+            if (!_watchCursors.TryGetValue(normalizedDrive, out cursor))
             {
                 throw new ArgumentException($"Drive '{driveLetter}' is not being watched", nameof(driveLetter));
             }
@@ -128,7 +188,7 @@ public sealed partial class JournalBrokerScanSession
                           ?? throw new InvalidOperationException("Watching state has no cached batch source");
         }
 
-        return batchSource(driveLetter, cursor, cancellationToken);
+        return batchSource(normalizedDrive, cursor, cancellationToken);
     }
 
     /// <summary>

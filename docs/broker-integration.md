@@ -273,6 +273,28 @@ drive and warning message, and continues streaming live batches from the fresh c
 All other lifecycle guarantees - fault latching, terminal-state checks, single-flight operation
 discipline, and idempotent disposal - are identical to a scanned session.
 
+### Customizing watch cursors: ReplaceWatchCursors and WatchCursors
+
+By default, `StartWatchAsync` watches every drive armed during the latest scan (or supplied at warm start) using its advanced cursor. `ReplaceWatchCursors` lets an application replace the complete watch set while parked - for example, when a user selects or deselects individual drives:
+
+```csharp
+// Read back what the session is currently configured to watch:
+IReadOnlyDictionary<string, UsnJournalCursor> current = session.WatchCursors;
+
+// Replace with a custom or narrowed set:
+session.ReplaceWatchCursors(new Dictionary<string, UsnJournalCursor>
+{
+    ["C"] = cachedCursorC,
+    ["D"] = advancedCursorD
+});
+
+await session.StartWatchAsync(cancellationToken);
+```
+
+Keys passed to `ReplaceWatchCursors` are normalized (bare letter, case-insensitive) and the call replaces rather than merges the previous set. An empty dictionary is accepted, in which case `StartWatchAsync` will throw `InvalidOperationException` ("No drives to watch"). Keys that do not represent a valid drive letter (e.g. malformed paths, null keys, delimiters, non-letter strings) throw `ArgumentException`.
+
+Note the interaction with rescans: `RescanAsync` overwrites the watch set with its own scan result's `AdvancedCursors`. A consumer that maintains a narrowed or custom drive selection should call `ReplaceWatchCursors` again after each rescan to preserve the selection.
+
 ## 3. Stop watching, rescan, and restart
 
 `StopWatchAsync` and `RescanAsync` reuse the same elevated broker; neither triggers a
