@@ -23,6 +23,7 @@ static class MFTLibNative
     internal static Action<IntPtr> _freeMftResult = NativeFreeMftResult;
     internal static Func<string, ulong, uint, bool> _generateSyntheticMft = NativeGenerateSyntheticMFT;
     internal static Func<string, ulong, uint, uint, bool> _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
+    internal static Func<string, bool> _generateFixtureMft = NativeGenerateFixtureMFT;
     internal static Func<string, string?, MatchFlags, uint, IntPtr> _parseMftFromFile = NativeParseMFTFromFile;
     internal static Func<SafeHandle, IntPtr> _queryUsnJournal = NativeQueryUsnJournal;
     internal static Action<IntPtr> _freeUsnJournalInfo = NativeFreeUsnJournalInfo;
@@ -70,6 +71,11 @@ static class MFTLibNative
     [return: MarshalAs(UnmanagedType.I1)]
     static extern bool NativeGenerateSyntheticMFTSized(string filePath, ulong recordCount, uint bufferSizeRecords,
         uint recordSize);
+
+    [DllImport(LibraryName, EntryPoint = "GenerateFixtureMFT", CallingConvention = CallingConvention.Cdecl,
+        CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    static extern bool NativeGenerateFixtureMFT(string filePath);
 
     [DllImport(LibraryName, EntryPoint = "ParseMFTFromFile", CallingConvention = CallingConvention.Cdecl,
         CharSet = CharSet.Unicode)]
@@ -162,6 +168,7 @@ static class MFTLibNative
         _freeMftResult = NativeFreeMftResult;
         _generateSyntheticMft = NativeGenerateSyntheticMFT;
         _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
+        _generateFixtureMft = NativeGenerateFixtureMFT;
         _parseMftFromFile = NativeParseMFTFromFile;
         _queryUsnJournal = NativeQueryUsnJournal;
         _freeUsnJournalInfo = NativeFreeUsnJournalInfo;

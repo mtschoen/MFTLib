@@ -14,6 +14,7 @@
 extern "C" bool GenerateSyntheticMFTUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords);
 extern "C" bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
                                               uint32_t recordSize);
+extern "C" bool GenerateFixtureMFTUtf8(const char* filePath);
 extern "C" MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,
                                                 uint32_t bufferSizeRecords);
 extern "C" MftParseResult* ParseMFTFromFileUtf8WithProgress(const char* filePath, const wchar_t* filter,
@@ -154,6 +155,29 @@ bool test_parse_filter_returns_error() {
     }
     remove_fixture();
     return testPassed;
+}
+
+bool test_fixture_round_trip() {
+    constexpr const char* kFixturePathName = "/tmp/mftlib_fixture.mft";
+    if (!GenerateFixtureMFTUtf8(kFixturePathName)) {
+        std::fprintf(stderr, "  setup FAIL: GenerateFixtureMFTUtf8 returned false\n");
+        return false;
+    }
+    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePathName, nullptr, 0, 4096);
+    // Records 0, 5, 6, 7, 8, 9, and 10 are in use and non-extension; 1 to 4 and 11 are
+    // zeroed, so the parser reports twelve total and seven used.
+    bool passed = parseResult != nullptr && parseResult->errorMessage[0] == L'\0' &&
+                  parseResult->totalRecords == 12 && parseResult->usedRecords == 7;
+    if (!passed && parseResult != nullptr) {
+        std::fprintf(stderr, "  FAIL: total=%llu used=%llu\n",
+                     static_cast<unsigned long long>(parseResult->totalRecords),
+                     static_cast<unsigned long long>(parseResult->usedRecords));
+    }
+    if (parseResult != nullptr) {
+        FreeMftResult(parseResult);
+    }
+    std::remove(kFixturePathName);
+    return passed;
 }
 
 bool test_alloc_failure_path() {
@@ -525,10 +549,11 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 16> tests = {{
+    const std::array<TestCase, 17> tests = {{
         {"abi_version", test_abi_version},
         {"round_trip", test_round_trip},
         {"round_trip_4096", test_round_trip_4096},
+        {"fixture_round_trip", test_fixture_round_trip},
         {"parse_missing_file", test_parse_missing_file},
         {"parse_empty_file", test_parse_empty_file},
         {"parse_filter_returns_error", test_parse_filter_returns_error},

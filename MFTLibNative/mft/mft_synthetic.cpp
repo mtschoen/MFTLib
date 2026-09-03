@@ -11,6 +11,8 @@
 #include "../ntfs.h"
 #include "../internal.h"
 #include "../core/platform.h"
+// aislop-ignore-next-line CppUnusedIncludeDirective -- constants consumed by the included fixture fragment
+#include "mft_fixture.h"
 
 #ifdef _WIN32
     #include <stringapiset.h>
@@ -374,6 +376,11 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
     mftlib::platform::close_file(hFile);
     return writeOk;
 }
+
+#define AISLOP_TU_FRAGMENT_SYNTHETIC
+// NOLINTNEXTLINE(bugprone-suspicious-include) -- component-as-TU pattern, see mft.cpp
+#include "mft_synthetic.fixture.cpp"
+#undef AISLOP_TU_FRAGMENT_SYNTHETIC
 }  // namespace
 
 extern "C" {
@@ -398,6 +405,19 @@ EXPORT bool GenerateSyntheticMFTSized(const wchar_t* filePath, uint64_t recordCo
 EXPORT bool GenerateSyntheticMFT(const wchar_t* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
     return GenerateSyntheticMFTSized(filePath, recordCount, bufferSizeRecords, DEFAULT_FILE_RECORD_SIZE);
 }
+
+EXPORT bool GenerateFixtureMFT(const wchar_t* filePath) {
+    if (ShouldFailPathConversion()) {
+        return false;
+    }
+    int utf8Length = WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
+    if (utf8Length <= 0) {
+        return false;
+    }
+    std::string utf8(static_cast<size_t>(utf8Length - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, filePath, -1, utf8.data(), utf8Length, nullptr, nullptr);
+    return GenerateFixtureMFTImpl(utf8.c_str());
+}
 #endif
 
 #ifndef _WIN32
@@ -412,5 +432,7 @@ EXPORT bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordC
 EXPORT bool GenerateSyntheticMFTUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
     return GenerateSyntheticMFTSizedUtf8(filePath, recordCount, bufferSizeRecords, DEFAULT_FILE_RECORD_SIZE);
 }
+
+EXPORT bool GenerateFixtureMFTUtf8(const char* filePath) { return GenerateFixtureMFTImpl(filePath); }
 #endif
 }
