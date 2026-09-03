@@ -119,6 +119,36 @@ public class BlockFileTests
     }
 
     [TestMethod]
+    public void Open_NameDescriptorPastUsedPool_IsRejectedWithoutThrowing()
+    {
+        using var builder = new SyntheticBlockBuilder();
+        builder.AddRoot();
+        var childRow = builder.AddRow("report.pdf", 0, RowFlags.InUse, 4096, ScanMoment);
+        builder.Complete(ScanMoment);
+        builder.MutateNameDescriptor(childRow, uint.MaxValue - 1, ushort.MaxValue);
+
+        using var block = builder.OpenForReading(out var validation);
+
+        Assert.AreEqual(BlockValidationResult.InvalidNameDescriptor, validation);
+        Assert.IsNull(block);
+    }
+
+    [TestMethod]
+    public void Open_NameDescriptorWithOddByteOffset_IsRejectedWithoutThrowing()
+    {
+        using var builder = new SyntheticBlockBuilder();
+        builder.AddRoot();
+        var childRow = builder.AddRow("report.pdf", 0, RowFlags.InUse, 4096, ScanMoment);
+        builder.Complete(ScanMoment);
+        builder.MutateNameDescriptor(childRow, nameOffsetBytes: 1, nameLengthUnits: 1);
+
+        using var block = builder.OpenForReading(out var validation);
+
+        Assert.AreEqual(BlockValidationResult.InvalidNameDescriptor, validation);
+        Assert.IsNull(block);
+    }
+
+    [TestMethod]
     public void DeleteOnClose_RemovesTheFileWhenDisposed()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");

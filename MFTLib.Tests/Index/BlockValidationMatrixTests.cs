@@ -125,6 +125,18 @@ public class BlockValidationMatrixTests
         await AssertColdScansAsync(Options(), BlockValidationResult.InconsistentRegions);
     }
 
+    [TestMethod]
+    public async Task NameDescriptorPastUsedPool_ColdScans()
+    {
+        await SeedCacheAsync();
+        var bytes = await File.ReadAllBytesAsync(BlockPath());
+        var rowOneNameOffset = BlockLayout.RowRegionOffset + BlockLayout.RowBytes + 8;
+        BitConverter.GetBytes(uint.MaxValue - 1).CopyTo(bytes, rowOneNameOffset);
+        await File.WriteAllBytesAsync(BlockPath(), bytes);
+
+        await AssertColdScansAsync(Options(), BlockValidationResult.InvalidNameDescriptor);
+    }
+
     // Resolves to the same reason as CorruptedMagic: BlockFile.Open rejects any file shorter
     // than the header page before it ever reads a magic value, so an empty file and a file with
     // a corrupted magic both surface as WrongMagic even though the underlying defect differs.

@@ -75,6 +75,15 @@ internal sealed class SyntheticBlockBuilder : IDisposable
         return rowIndex;
     }
 
+    public void MutateNameDescriptor(uint rowIndex, uint nameOffsetBytes, ushort nameLengthUnits)
+    {
+        ref var row = ref _block.Rows[(int)rowIndex];
+        var descriptor = FileRow.ReadDescriptorWord(in row);
+        FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, nameLengthUnits,
+            FileRow.DescriptorFlags(descriptor));
+        _block.Flush();
+    }
+
     public void MutateHeader(HeaderMutation mutation)
     {
         ArgumentNullException.ThrowIfNull(mutation);

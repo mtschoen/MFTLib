@@ -13,5 +13,6 @@ public enum BlockValidationResult
     Incomplete,
     WrongVolumeSerial,
     InconsistentRegions,
-    WrongRootDirectory
+    WrongRootDirectory,
+    InvalidNameDescriptor
 }

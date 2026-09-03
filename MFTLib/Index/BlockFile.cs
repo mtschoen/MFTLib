@@ -206,6 +206,11 @@ public sealed unsafe class BlockFile : IDisposable
             validation = BlockHeader.Validate(in block.Header, expectedVolumeSerial, length);
             if (validation == BlockValidationResult.Valid)
             {
+                validation = block.ValidateNameDescriptors();
+            }
+
+            if (validation == BlockValidationResult.Valid)
+            {
                 return block;
             }
 
@@ -278,6 +283,24 @@ public sealed unsafe class BlockFile : IDisposable
         {
             // Same reasoning as the IOException case above.
         }
+    }
+
+    BlockValidationResult ValidateNameDescriptors()
+    {
+        var usedBytes = (ulong)Header.NamePoolUsed;
+        var rows = Rows;
+        for (var rowIndex = 0u; rowIndex < Header.RowCount; rowIndex++)
+        {
+            var descriptor = FileRow.ReadDescriptorWord(in rows[(int)rowIndex]);
+            var offsetBytes = FileRow.DescriptorNameOffsetBytes(descriptor);
+            var lengthBytes = (ulong)FileRow.DescriptorNameLengthUnits(descriptor) * sizeof(char);
+            if ((offsetBytes & (sizeof(char) - 1)) != 0 || (ulong)offsetBytes + lengthBytes > usedBytes)
+            {
+                return BlockValidationResult.InvalidNameDescriptor;
+            }
+        }
+
+        return BlockValidationResult.Valid;
     }
 
     void InitializeHeader(BlockFileCreateOptions options)
