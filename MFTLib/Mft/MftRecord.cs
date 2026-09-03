@@ -12,6 +12,31 @@ readonly struct NativeStrings(IntPtr namePtr, ushort nameLength, IntPtr pathPtr,
     public readonly ushort PathLength = pathLength;
 }
 
+internal readonly struct MftRecordFields(
+    ushort flags, FileAttributes fileAttributes = 0, long size = 0, long modifiedFileTime = 0)
+{
+    public readonly ushort Flags = flags;
+    public readonly FileAttributes FileAttributes = fileAttributes;
+    public readonly long Size = size;
+    public readonly long ModifiedFileTime = modifiedFileTime;
+}
+
+/// <summary>
+///     Every column a test needs to mint a materialized record. Grouped into one value so
+///     the factory stays inside the parameter limit as the row gains columns.
+/// </summary>
+internal sealed record MftRecordTestValues
+{
+    public required ulong RecordNumber { get; init; }
+    public required ulong ParentRecordNumber { get; init; }
+    public required ushort Flags { get; init; }
+    public required string FileName { get; init; }
+    public string? FullPath { get; init; }
+    public FileAttributes FileAttributes { get; init; }
+    public long Size { get; init; }
+    public long ModifiedFileTime { get; init; }
+}
+
 public readonly struct MftRecord
 {
     readonly ushort _flags;
@@ -19,6 +44,13 @@ public readonly struct MftRecord
     readonly ushort _pathLength;
     readonly char _driveLetter;
     readonly bool _materialized;
+    readonly long _size;
+    readonly long _modifiedFileTime;
+
+    const ushort SizeUnknownFlag = 0x8000;
+
+    // DateTime.MaxValue as a FILETIME. Anything past it makes FromFileTimeUtc throw.
+    static readonly long MaximumFileTime = DateTime.MaxValue.ToFileTimeUtc();
 
     // These are either pointers to native memory (temporary) or materialized strings
     readonly IntPtr _namePtr;
@@ -40,6 +72,33 @@ public readonly struct MftRecord
     public bool InUse => (_flags & 1) != 0;
     public bool IsDirectory => (_flags & 2) != 0;
     public FileAttributes FileAttributes { get; }
+
+    /// <summary>
+    ///     Size in bytes of the unnamed data stream. Zero for a directory, and zero when
+    ///     <see cref="SizeKnown" /> is false, which means the record's data attribute lives
+    ///     in an extension record this parser does not follow.
+    /// </summary>
+    public long Size => _size;
+
+    public bool SizeKnown => (_flags & SizeUnknownFlag) == 0;
+
+    /// <summary>
+    ///     Last modification time from <c>$STANDARD_INFORMATION</c>. A value the runtime
+    ///     cannot represent reads as <see cref="DateTime.MinValue" /> rather than throwing,
+    ///     so one corrupt record never fails a whole scan.
+    /// </summary>
+    public DateTime ModifiedUtc
+    {
+        get
+        {
+            if (_modifiedFileTime <= 0 || _modifiedFileTime > MaximumFileTime)
+            {
+                return DateTime.MinValue;
+            }
+
+            return DateTime.FromFileTimeUtc(_modifiedFileTime);
+        }
+    }
 
     public unsafe string FileName
     {
@@ -120,13 +179,15 @@ public readonly struct MftRecord
         }
     }
 
-    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, ushort flags, FileAttributes fileAttributes,
+    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, MftRecordFields fields,
         NativeStrings strings, char driveLetter = '\0')
     {
         RecordNumber = recordNumber;
         ParentRecordNumber = parentRecordNumber;
-        _flags = flags;
-        FileAttributes = fileAttributes;
+        _flags = fields.Flags;
+        FileAttributes = fields.FileAttributes;
+        _size = fields.Size;
+        _modifiedFileTime = fields.ModifiedFileTime;
         _namePtr = strings.NamePtr;
         _nameLength = strings.NameLength;
         _pathPtr = strings.PathPtr;
@@ -148,16 +209,19 @@ public readonly struct MftRecord
             return this;
         }
 
-        return new MftRecord(RecordNumber, ParentRecordNumber, _flags, FileName, FullPath, FileAttributes);
+        var fields = new MftRecordFields(_flags, FileAttributes, _size, _modifiedFileTime);
+        return new MftRecord(RecordNumber, ParentRecordNumber, fields, FileName, FullPath);
     }
 
-    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, ushort flags, string? fileName, string? fullPath,
-        FileAttributes fileAttributes = 0)
+    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, MftRecordFields fields, string? fileName,
+        string? fullPath)
     {
         RecordNumber = recordNumber;
         ParentRecordNumber = parentRecordNumber;
-        _flags = flags;
-        FileAttributes = fileAttributes;
+        _flags = fields.Flags;
+        FileAttributes = fields.FileAttributes;
+        _size = fields.Size;
+        _modifiedFileTime = fields.ModifiedFileTime;
         _fileName = fileName;
         _fullPath = fullPath;
         _namePtr = IntPtr.Zero;
@@ -166,6 +230,12 @@ public readonly struct MftRecord
         _pathLength = 0;
         _driveLetter = '\0';
         _materialized = true;
+    }
+
+    internal static MftRecord CreateForTest(MftRecordTestValues values)
+    {
+        var fields = new MftRecordFields(values.Flags, values.FileAttributes, values.Size, values.ModifiedFileTime);
+        return new MftRecord(values.RecordNumber, values.ParentRecordNumber, fields, values.FileName, values.FullPath);
     }
 
     public override string ToString()

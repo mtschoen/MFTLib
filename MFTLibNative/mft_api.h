@@ -9,7 +9,14 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 3;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 4;
+
+// Parser-synthesized, not an on-disk NTFS record flag. The flags field carries the
+// raw FILE_RECORD_SEGMENT_HEADER flags, whose defined bits are 0x0001 (in use) and
+// 0x0002 (directory); the parser sets this top bit when a non-directory record has
+// no unnamed $DATA attribute in its base segment, so the size column holds zero
+// because the size is unknown rather than because the file is empty.
+constexpr uint16_t MFT_ENTRY_FLAG_SIZE_UNKNOWN = 0x8000;
 
 constexpr uint32_t MATCH_FLAG_NONE = 0;
 constexpr uint32_t MATCH_FLAG_EXACT_MATCH = 1;
@@ -33,6 +40,8 @@ struct MftCompactEntry {
     uint32_t fileAttributes;
     uint16_t flags;
     uint16_t stringLength;  // UTF-16 code units; zero is valid
+    int64_t size;           // bytes; zero for a directory or a size-unknown record
+    int64_t modifiedTime;   // FILETIME, 100-nanosecond intervals since 1601-01-01 UTC
 };
 
 struct MftParseResult {

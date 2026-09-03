@@ -181,6 +181,8 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         var fileAttributes = (FileAttributes)Unsafe.ReadUnaligned<uint>(row + 24);
         var flags = Unsafe.ReadUnaligned<ushort>(row + 28);
         var stringLength = Unsafe.ReadUnaligned<ushort>(row + 30);
+        var size = Unsafe.ReadUnaligned<long>(row + 32);
+        var modifiedFileTime = Unsafe.ReadUnaligned<long>(row + 40);
 
         if (stringOffset > poolUnits || stringLength > poolUnits - stringOffset)
         {
@@ -191,7 +193,8 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         var strings = isPath
             ? new NativeStrings(IntPtr.Zero, 0, pointer, stringLength)
             : new NativeStrings(pointer, stringLength, IntPtr.Zero, 0);
-        return new MftRecord(recordNumber, parentRecordNumber, flags, fileAttributes, strings, driveLetter);
+        var fields = new MftRecordFields(flags, fileAttributes, size, modifiedFileTime);
+        return new MftRecord(recordNumber, parentRecordNumber, fields, strings, driveLetter);
     }
 
     readonly unsafe struct ActivePool(byte* table, ushort* pool, ulong poolUnits, bool isPath)

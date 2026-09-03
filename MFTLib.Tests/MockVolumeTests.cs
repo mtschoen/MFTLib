@@ -352,9 +352,9 @@ public class MockVolumeTests
         using var volume = MftVolume.Open("C");
         using var stream = volume.StreamRecords();
 
-        // 3 records * 32 bytes + string units (file0.txt=9, file1.txt=9, file2.txt=9 = 27 units * 2 bytes = 54)
-        // 96 + 54 = 150 bytes
-        Assert.AreEqual(150UL, stream.NativeCompactBytes);
+        // 3 records * 48 bytes + string units (file0.txt=9, file1.txt=9, file2.txt=9 = 27 units * 2 bytes = 54)
+        // 144 + 54 = 198 bytes
+        Assert.AreEqual(198UL, stream.NativeCompactBytes);
     }
 
     [TestMethod]
@@ -365,9 +365,9 @@ public class MockVolumeTests
         using var volume = MftVolume.Open("C");
         using var stream = volume.StreamRecords();
 
-        // With paths: pathEntries (3*32 = 96) + pathStrings (dir\file0.txt=13, 13, 13 = 39 units * 2 bytes = 78)
-        // 96 + 78 = 174 bytes
-        Assert.AreEqual(174UL, stream.NativeCompactBytes);
+        // With paths: pathEntries (3*48 = 144) + pathStrings (dir\file0.txt=13, 13, 13 = 39 units * 2 bytes = 78)
+        // 144 + 78 = 222 bytes
+        Assert.AreEqual(222UL, stream.NativeCompactBytes);
     }
 
     [TestMethod]
@@ -381,7 +381,7 @@ public class MockVolumeTests
 
         Assert.AreEqual(3UL, stream.TotalRecords);
         Assert.AreEqual(3UL, stream.UsedRecords);
-        Assert.AreEqual(150UL, stream.NativeCompactBytes);
+        Assert.AreEqual(198UL, stream.NativeCompactBytes);
         Assert.IsNotNull(stream.Timings);
     }
 
@@ -1146,7 +1146,7 @@ public class MockVolumeTests
     [TestMethod]
     public void MftRecord_FullPath_NoDriveLetter_ReturnsRelativePath()
     {
-        var record = new MftRecord(0, 5, 1, "file.txt", "some\\path\\file.txt");
+        var record = new MftRecord(0, 5, new MftRecordFields(1), "file.txt", "some\\path\\file.txt");
         Assert.AreEqual("some\\path\\file.txt", record.FullPath);
         Assert.AreEqual("file.txt", record.FileName);
     }
@@ -1154,7 +1154,7 @@ public class MockVolumeTests
     [TestMethod]
     public void MftRecord_FileName_NoPathNoName_ReturnsEmpty()
     {
-        var record = new MftRecord(0, 5, 1, null, null);
+        var record = new MftRecord(0, 5, new MftRecordFields(1), null, null);
         Assert.AreEqual(string.Empty, record.FileName);
         Assert.IsNull(record.FullPath);
     }
@@ -1162,17 +1162,18 @@ public class MockVolumeTests
     [TestMethod]
     public void MftRecord_ToString_ReturnsFullPathOrFileName()
     {
-        var withPath = new MftRecord(0, 5, 1, "file.txt", "dir\\file.txt");
+        var withPath = new MftRecord(0, 5, new MftRecordFields(1), "file.txt", "dir\\file.txt");
         Assert.AreEqual("dir\\file.txt", withPath.ToString());
 
-        var withoutPath = new MftRecord(0, 5, 1, "orphan.txt", null);
+        var withoutPath = new MftRecord(0, 5, new MftRecordFields(1), "orphan.txt", null);
         Assert.AreEqual("orphan.txt", withoutPath.ToString());
     }
 
     [TestMethod]
     public void MftRecord_FileAttributes_ReturnsStoredValue()
     {
-        var record = new MftRecord(0, 5, 1, "test.txt", null, FileAttributes.Hidden | FileAttributes.ReadOnly);
+        var fields = new MftRecordFields(1, FileAttributes.Hidden | FileAttributes.ReadOnly);
+        var record = new MftRecord(0, 5, fields, "test.txt", null);
         Assert.AreEqual(FileAttributes.Hidden | FileAttributes.ReadOnly, record.FileAttributes);
     }
 }

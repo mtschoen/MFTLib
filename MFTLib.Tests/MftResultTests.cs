@@ -88,10 +88,10 @@ public class MftResultTests
     }
 
     [TestMethod]
-    public void GetMftNativeAbiVersion_ReturnsVersion3()
+    public void GetMftNativeAbiVersion_ReturnsVersion4()
     {
         var version = MFTLibNative._getMftNativeAbiVersion();
-        Assert.AreEqual(3U, version);
+        Assert.AreEqual(4U, version);
     }
 
     [TestMethod]
@@ -101,7 +101,7 @@ public class MftResultTests
         {
             TotalRecords = 1,
             UsedRecords = 1,
-            AbiVersion = 1, // Mismatch (expected 3)
+            AbiVersion = 1, // Mismatch (expected 4)
             EntryStride = MFTLibNative.NativeCompactEntrySize
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
@@ -121,7 +121,7 @@ public class MftResultTests
             TotalRecords = 1,
             UsedRecords = 1,
             AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
-            EntryStride = 40 // Mismatch (expected 32)
+            EntryStride = 32 // Mismatch (expected 48)
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(result, resultPtr, false);
