@@ -126,7 +126,7 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
 ## Architecture
 
 - **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant. MFT record geometry (1024 or 4096-byte records) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through a versioned compact ABI (`MFT_NATIVE_ABI_VERSION`): packed `MftCompactEntry` rows plus separate UTF-16 string pools, with an allocation-failure fallback that preserves raw entries and filenames if path resolution cannot allocate.
-- **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop.
+- **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop. The `MFTLib.Index` namespace provides a substrate-neutral columnar block format and query engine; see `docs/index-format.md`.
     - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory.
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
