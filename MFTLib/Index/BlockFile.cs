@@ -289,7 +289,7 @@ public sealed unsafe class BlockFile : IDisposable
         header.ProducerKind = options.ProducerKind;
         header.Flags = BlockFlags.None;
         header.VolumeSerial = options.VolumeSerial;
-        header.ReservedPadding = 0;
+        header.RootRow = 0;
         header.SlotCapacity = options.SlotCapacity;
         header.NamePoolCapacity = options.NamePoolCapacity;
         header.RowRegionOffset = BlockLayout.RowRegionOffset;

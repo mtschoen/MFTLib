@@ -150,6 +150,7 @@ public class EnumerationProducerTests
         var snapshot = Produce(out var block, out _);
         try
         {
+            Assert.AreEqual(0u, block.Header.RootRow);
             Assert.AreEqual(0u, block.Rows[0].ParentRow);
             Assert.IsTrue(block.Rows[0].IsDirectory);
             Assert.AreEqual(_treeRoot.Length, block.Rows[0].NameLengthUnits);

@@ -120,6 +120,38 @@ public class LookupEngineTests
     {
         Assert.ThrowsException<ArgumentException>(() => LookupEngineTestAccess.Root(_snapshot, 'Z'));
     }
+
+    [TestMethod]
+    public void RootAndFind_UseTheRootRowDeclaredByTheBlockHeader()
+    {
+        using var builder = new SyntheticBlockBuilder('V');
+        for (var metadataRow = 0u; metadataRow < 5; metadataRow++)
+        {
+            builder.AddRow($"metadata-{metadataRow}", metadataRow, RowFlags.InUse, 0, Moment);
+        }
+
+        var rootRow = builder.AddRow("", 5, RowFlags.InUse | RowFlags.Directory, 0, Moment);
+        var documentsRow = builder.AddRow("Documents", rootRow,
+            RowFlags.InUse | RowFlags.Directory, 0, Moment);
+        builder.AddRow("report.pdf", documentsRow, RowFlags.InUse, 4096, Moment);
+        builder.MutateHeader((ref BlockHeader header) => header.RootRow = rootRow);
+        builder.Complete(Moment);
+
+        var block = builder.OpenForReading(out var validation)!;
+        Assert.AreEqual(BlockValidationResult.Valid, validation);
+        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block, deleteFileOnRelease: false)]);
+        try
+        {
+            Assert.AreEqual(rootRow, LookupEngineTestAccess.Root(snapshot, 'V').RowIndexForTest());
+            var entry = LookupEngineTestAccess.Find(snapshot, @"V:\Documents\report.pdf");
+            Assert.IsTrue(entry.HasValue);
+            Assert.AreEqual("report.pdf", entry.Value.Name);
+        }
+        finally
+        {
+            snapshot.ReleaseNow();
+        }
+    }
 }
 
 static class LookupEngineTestAccess

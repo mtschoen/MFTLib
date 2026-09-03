@@ -16,7 +16,7 @@ public class BlockHeaderTests
             ProducerKind = ProducerKind.Enumeration,
             Flags = BlockFlags.Complete,
             VolumeSerial = 0xDEADBEEF,
-            ReservedPadding = 0,
+            RootRow = 0,
             ScanTimestampTicks = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc).Ticks,
             RowCount = 10,
             SlotCapacity = 100,
@@ -60,6 +60,7 @@ public class BlockHeaderTests
         Assert.AreEqual(8, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.ProducerKind)));
         Assert.AreEqual(12, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.Flags)));
         Assert.AreEqual(16, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.VolumeSerial)));
+        Assert.AreEqual(20, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.RootRow)));
         Assert.AreEqual(32, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.RowCount)));
         Assert.AreEqual(36, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.SlotCapacity)));
         Assert.AreEqual(40, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.NamePoolUsed)));
@@ -114,6 +115,15 @@ public class BlockHeaderTests
     {
         var header = ValidHeader();
         header.RowCount = header.SlotCapacity + 1;
+        Assert.AreEqual(BlockValidationResult.InconsistentRegions,
+            BlockHeader.Validate(in header, 0xDEADBEEF, ValidFileLength()));
+    }
+
+    [TestMethod]
+    public void Validate_RootRowOutsidePublishedRows_IsInconsistent()
+    {
+        var header = ValidHeader();
+        header.RootRow = header.RowCount;
         Assert.AreEqual(BlockValidationResult.InconsistentRegions,
             BlockHeader.Validate(in header, 0xDEADBEEF, ValidFileLength()));
     }

@@ -16,7 +16,7 @@ internal static class LookupEngine
             throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
         }
 
-        return FileEntry.Create(snapshot, driveBlock.DriveOrdinal, 0);
+        return FileEntry.Create(snapshot, driveBlock.DriveOrdinal, driveBlock.Block.Header.RootRow);
     }
 
     internal static bool TryParseDriveLetter(string fullPath, out char driveLetter,
@@ -45,7 +45,7 @@ internal static class LookupEngine
             return null;
         }
 
-        var currentRow = 0u;
+        var currentRow = driveBlock.Block.Header.RootRow;
         foreach (var segmentRange in remainder.SplitAny(['\\', '/']))
         {
             var segment = remainder[segmentRange];

@@ -6,8 +6,8 @@ namespace MFTLib.Index;
 /// <summary>
 ///     The single header page of a block, laid out explicitly so the on-disk bytes are
 ///     independent of the runtime's field packing. Field order matches the format
-///     specification; <see cref="ReservedPadding" /> exists only so the 64-bit fields that
-///     follow are 8-byte aligned and must always be written as zero.
+///     specification. <see cref="RootRow" /> identifies the volume root in the dense row
+///     region: zero for enumeration blocks and the NTFS root record for MFT blocks.
 /// </summary>
 [StructLayout(LayoutKind.Explicit, Size = BlockLayout.HeaderFieldBytes)]
 public struct BlockHeader
@@ -17,7 +17,7 @@ public struct BlockHeader
     [FieldOffset(8)] public ProducerKind ProducerKind;
     [FieldOffset(12)] public BlockFlags Flags;
     [FieldOffset(16)] public uint VolumeSerial;
-    [FieldOffset(20)] public uint ReservedPadding;
+    [FieldOffset(20)] public uint RootRow;
     [FieldOffset(24)] public long ScanTimestampTicks;
     [FieldOffset(32)] public uint RowCount;
     [FieldOffset(36)] public uint SlotCapacity;
@@ -71,7 +71,8 @@ public struct BlockHeader
         Justification = "BlockHeader is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
     static BlockValidationResult ValidateRegions(in BlockHeader header, long fileLength)
     {
-        if (header.RowCount > header.SlotCapacity || header.NamePoolUsed > header.NamePoolCapacity)
+        if (header.RowCount > header.SlotCapacity || header.NamePoolUsed > header.NamePoolCapacity ||
+            header.RootRow >= header.RowCount)
         {
             return BlockValidationResult.InconsistentRegions;
         }

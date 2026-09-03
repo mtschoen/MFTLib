@@ -30,7 +30,7 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 8 | producer kind | u32 | 1 = MFT, 2 = enumeration |
 | 12 | flags | u32 | 1 = complete, 2 = compaction needed |
 | 16 | volume serial | u32 | |
-| 20 | reserved padding | u32 | Always zero; aligns the fields below |
+| 20 | root row | u32 | Row index of the volume root; 0 for enumeration, normally 5 for MFT |
 | 24 | scan timestamp | i64 | UTC ticks |
 | 32 | row count | u32 | Highest used slot plus one |
 | 36 | slot capacity | u32 | Rows region size, in rows |
@@ -44,6 +44,11 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 
 The complete flag is written last. A producer that dies mid-write leaves a block
 without it, which a reader rejects.
+
+The root row is a row index, not a producer-independent constant. Enumeration
+blocks assign the volume root to row 0. MFT blocks preserve NTFS record indexes,
+so the volume root is normally row 5. Readers begin root lookup and path descent
+at this header value.
 
 ## Row
 
