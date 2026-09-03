@@ -135,7 +135,7 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
     - **VolumeBroker**: `JournalBrokerHost`/`JournalBrokerClient` run elevated MFT scans and USN journal watches through one elevated child process over a named pipe (control/journal frames) plus a page-file-backed `MemoryMappedFile` (cold-scan payload) - one UAC prompt per consumer session. `ElevatedEntryPoint`/`BrokerLauncher` dispatch and launch the `--broker` child mode; `BrokerDiagnostics` provides opt-in frame tracing.
 - **TestProgram** (C# Console App) - CLI that reads MFT metadata for specified drives. Automatically self-elevates.
 - **Benchmark** (C# Console App) - Performance benchmark using synthetic MFT generation.
-- **MFTLib.Tests** (C# xUnit) - Unit tests for record mapping and path resolution.
+- **MFTLib.Tests** (C# MSTest) - Unit tests for record mapping and path resolution.
 - **MFTLibTestExtensions** (C# Library) - Public, consumer-facing test harness (`ScanSessionTestHarness`) over MFTLib's internal `JournalBrokerScanSession` construction seams, so consumer test assemblies can build a session over a fake client without MFTLib friend-listing them. Ships as the separate `MFTLib.TestExtensions` NuGet package at publish time; never folded into the `MFTLib` package.
 
 ### Native error messages
