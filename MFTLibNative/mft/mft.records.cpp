@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -92,23 +93,33 @@ bool TryExtractFileName(const ATTRIBUTE_RECORD_HEADER* attribute, PFILE_NAME* ou
     return true;
 }
 
-// Reports the unnamed $DATA size for one attribute, or false when this attribute is
-// not the one that carries it: a named stream, or a non-resident record whose lowest
-// virtual cluster number is nonzero, for which the reference states the file size
-// field is not valid.
-bool TryExtractDataSize(const ATTRIBUTE_RECORD_HEADER* attribute, int64_t* size) {
+enum class DataSizeExtractionResult {
+    NotPresent,
+    Present,
+    Malformed,
+};
+
+// Reports the unnamed $DATA size for one attribute. Named streams and non-resident
+// records whose lowest virtual cluster number is nonzero do not carry the base size.
+DataSizeExtractionResult TryExtractDataSize(const ATTRIBUTE_RECORD_HEADER* attribute, size_t remainingRecordBytes,
+                                            int64_t* size) {
     if (attribute->NameLength != 0) {
-        return false;
+        return DataSizeExtractionResult::NotPresent;
     }
     if (attribute->FormCode == 0) {
         *size = static_cast<int64_t>(attribute->Form.Resident.ValueLength);
-        return true;
+        return DataSizeExtractionResult::Present;
+    }
+    constexpr size_t kNonresidentHeaderSize = offsetof(ATTRIBUTE_RECORD_HEADER, Form.Nonresident.ValidDataLength) +
+                                              sizeof(attribute->Form.Nonresident.ValidDataLength);
+    if (attribute->RecordLength < kNonresidentHeaderSize || attribute->RecordLength > remainingRecordBytes) {
+        return DataSizeExtractionResult::Malformed;
     }
     if (attribute->Form.Nonresident.LowestVcn.QuadPart != 0) {
-        return false;
+        return DataSizeExtractionResult::NotPresent;
     }
     *size = attribute->Form.Nonresident.FileSize;
-    return true;
+    return DataSizeExtractionResult::Present;
 }
 
 bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geometry,
@@ -144,9 +155,13 @@ bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geom
             if (recordAttributes->nameAttribute == nullptr && nameAttribute->Flags != 2) {
                 recordAttributes->nameAttribute = nameAttribute;
             }
-        } else if (attribute->TypeCode == Data && !recordAttributes->dataPresent &&
-                   TryExtractDataSize(attribute, &recordAttributes->dataSize)) {
-            recordAttributes->dataPresent = true;
+        } else if (attribute->TypeCode == Data && !recordAttributes->dataPresent) {
+            const auto dataSizeResult =
+                TryExtractDataSize(attribute, geometry.recordSize - offset, &recordAttributes->dataSize);
+            if (dataSizeResult == DataSizeExtractionResult::Malformed) {
+                return false;
+            }
+            recordAttributes->dataPresent = dataSizeResult == DataSizeExtractionResult::Present;
         }
         attribute =
             reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(attribute) + attribute->RecordLength);

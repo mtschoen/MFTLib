@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "mft_api.h"
+#include "ntfs.h"
 
 extern "C" bool GenerateSyntheticMFTUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords);
 extern "C" bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
@@ -363,6 +364,53 @@ bool test_malformed_attribute_offset() {
     return testPassed;
 }
 
+bool test_malformed_nonresident_data_length() {
+    constexpr const char* kFixtureMalformedPath = "/tmp/mftlib_malformed_nonresident_data_length.mft";
+    constexpr long kFixtureRecordSize = 4096;
+    constexpr long kTargetRecordNumber = 7;
+    constexpr long kDataAttributeOffset = 0x110;
+    constexpr uint32_t kShortAttributeLength = 24;
+    if (!GenerateFixtureMFTUtf8(kFixtureMalformedPath)) {
+        return false;
+    }
+    FILE* fileHandle = std::fopen(kFixtureMalformedPath, "r+b");
+    if (fileHandle == nullptr) {
+        return false;
+    }
+
+    ATTRIBUTE_RECORD_HEADER malformedAttribute{};
+    malformedAttribute.TypeCode = Data;
+    malformedAttribute.RecordLength = kShortAttributeLength;
+    malformedAttribute.FormCode = 1;
+    malformedAttribute.NameLength = 0;
+    malformedAttribute.Form.Nonresident.LowestVcn.QuadPart = 0;
+    const long attributeFileOffset = (kTargetRecordNumber * kFixtureRecordSize) + kDataAttributeOffset;
+    std::fseek(fileHandle, attributeFileOffset, SEEK_SET);
+    std::fwrite(&malformedAttribute, 1, kShortAttributeLength, fileHandle);
+
+    const uint32_t endMarker = static_cast<uint32_t>(EndMarker);
+    std::fseek(fileHandle, attributeFileOffset + kShortAttributeLength, SEEK_SET);
+    std::fwrite(&endMarker, 1, sizeof(endMarker), fileHandle);
+    std::fclose(fileHandle);
+
+    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixtureMalformedPath, nullptr, 0, 256);
+    bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 && parseResult->errorMessage[0] == L'\0';
+    if (testPassed) {
+        for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
+            if (parseResult->entries[i].recordNumber == static_cast<uint64_t>(kTargetRecordNumber)) {
+                std::fprintf(stderr, "  FAIL: malformed record %ld was accepted\n", kTargetRecordNumber);
+                testPassed = false;
+                break;
+            }
+        }
+    }
+    if (parseResult != nullptr) {
+        FreeMftResult(parseResult);
+    }
+    std::remove(kFixtureMalformedPath);
+    return testPassed;
+}
+
 bool test_zero_length_file_name() {
     constexpr const char* kFixtureZeroNamePath = "/tmp/mftlib_zero_name.mft";
     if (!GenerateSyntheticMFTSizedUtf8(kFixtureZeroNamePath, 20, 256, 1024)) {
@@ -622,7 +670,7 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 19> tests = {{
+    const std::array<TestCase, 20> tests = {{
         {"abi_version", test_abi_version},
         {"round_trip", test_round_trip},
         {"round_trip_4096", test_round_trip_4096},
@@ -638,6 +686,7 @@ int main() {
         {"generate_unwritable_path", test_generate_unwritable_path},
         {"max_threads_clamping", test_max_threads_clamping},
         {"malformed_attribute_offset", test_malformed_attribute_offset},
+        {"malformed_nonresident_data_length", test_malformed_nonresident_data_length},
         {"zero_length_file_name", test_zero_length_file_name},
         {"path_resolution_and_fallback", test_path_resolution_and_fallback},
         {"progress_callback", test_progress_callback},
