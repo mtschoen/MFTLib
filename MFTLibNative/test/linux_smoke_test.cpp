@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "mft/mft_fixture.h"
 #include "mft_api.h"
 #include "ntfs.h"
 
@@ -364,17 +365,68 @@ bool test_malformed_attribute_offset() {
     return testPassed;
 }
 
+// Locates the offset, within one on-disk record buffer, of the first unnamed
+// $DATA attribute by walking the attribute chain from the record header's
+// FirstAttributeOffset. Returns false when no such attribute is found before the
+// end marker or the record buffer runs out, leaving *outOffset unset.
+bool FindUnnamedDataAttributeOffset(const std::vector<uint8_t>& recordBuffer, uint16_t* outOffset) {
+    const auto* header = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(recordBuffer.data());
+    uint16_t attributeOffset = header->FirstAttributeOffset;
+    while (static_cast<size_t>(attributeOffset) + sizeof(uint32_t) <= recordBuffer.size()) {
+        const auto* attribute = reinterpret_cast<const ATTRIBUTE_RECORD_HEADER*>(recordBuffer.data() + attributeOffset);
+        if (attribute->TypeCode == EndMarker) {
+            return false;
+        }
+        if (attribute->TypeCode == Data && attribute->NameLength == 0) {
+            *outOffset = attributeOffset;
+            return true;
+        }
+        if (attribute->RecordLength == 0) {
+            return false;
+        }
+        attributeOffset = static_cast<uint16_t>(attributeOffset + attribute->RecordLength);
+    }
+    return false;
+}
+
+// Regression for the guard in TryExtractDataSize (mft.records.cpp) that rejects a
+// non-resident $DATA attribute too short to hold Form.Nonresident.FileSize. Record 7's
+// real unnamed $DATA attribute is truncated to 24 bytes in place, which leaves the
+// leftover, untouched bytes at the attribute's real FileSize offset (48-56) still
+// holding the fixture's original 1234567 value. The pre-fix parser has no guard
+// against a short non-resident attribute and reads that leftover FileSize, silently
+// accepting the malformed record with the original size. The fixed parser rejects any
+// non-resident attribute whose RecordLength cannot hold FileSize, so record 7 is
+// dropped entirely. The attribute's real offset is found at runtime by walking the
+// attribute chain rather than hard-coded, because it depends on the fixture's record
+// layout (name length, preceding attribute sizes) and drifts silently if that layout
+// changes.
 bool test_malformed_nonresident_data_length() {
     constexpr const char* kFixtureMalformedPath = "/tmp/mftlib_malformed_nonresident_data_length.mft";
-    constexpr long kFixtureRecordSize = 4096;
-    constexpr long kTargetRecordNumber = 7;
-    constexpr long kDataAttributeOffset = 0x110;
+    constexpr uint64_t kTargetRecordNumber = 7;
     constexpr uint32_t kShortAttributeLength = 24;
     if (!GenerateFixtureMFTUtf8(kFixtureMalformedPath)) {
         return false;
     }
+
+    const long recordFileOffset = static_cast<long>(kTargetRecordNumber * kFixtureRecordSize);
+    std::vector<uint8_t> recordBuffer(kFixtureRecordSize);
     FILE* fileHandle = std::fopen(kFixtureMalformedPath, "r+b");
     if (fileHandle == nullptr) {
+        std::remove(kFixtureMalformedPath);
+        return false;
+    }
+    std::fseek(fileHandle, recordFileOffset, SEEK_SET);
+    bool readOk = std::fread(recordBuffer.data(), 1, recordBuffer.size(), fileHandle) == recordBuffer.size();
+
+    uint16_t dataAttributeOffset = 0;
+    if (!readOk || !FindUnnamedDataAttributeOffset(recordBuffer, &dataAttributeOffset)) {
+        std::fprintf(stderr,
+                     "  FAIL: malformed_nonresident_data_length: could not locate record %llu's "
+                     "unnamed $DATA attribute\n",
+                     static_cast<unsigned long long>(kTargetRecordNumber));
+        std::fclose(fileHandle);
+        std::remove(kFixtureMalformedPath);
         return false;
     }
 
@@ -384,7 +436,7 @@ bool test_malformed_nonresident_data_length() {
     malformedAttribute.FormCode = 1;
     malformedAttribute.NameLength = 0;
     malformedAttribute.Form.Nonresident.LowestVcn.QuadPart = 0;
-    const long attributeFileOffset = (kTargetRecordNumber * kFixtureRecordSize) + kDataAttributeOffset;
+    const long attributeFileOffset = recordFileOffset + dataAttributeOffset;
     std::fseek(fileHandle, attributeFileOffset, SEEK_SET);
     std::fwrite(&malformedAttribute, 1, kShortAttributeLength, fileHandle);
 
@@ -394,11 +446,18 @@ bool test_malformed_nonresident_data_length() {
     std::fclose(fileHandle);
 
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixtureMalformedPath, nullptr, 0, 256);
-    bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 && parseResult->errorMessage[0] == L'\0';
+    bool testPassed = (parseResult != nullptr) && parseResult->errorMessage[0] == L'\0';
+    if (!testPassed) {
+        std::fprintf(stderr, "  FAIL: malformed_nonresident_data_length: usedRecords=%llu errorMessage[0]=%d\n",
+                     parseResult != nullptr ? static_cast<unsigned long long>(parseResult->usedRecords) : 0ULL,
+                     parseResult != nullptr ? static_cast<int>(parseResult->errorMessage[0]) : -1);
+    }
     if (testPassed) {
         for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
-            if (parseResult->entries[i].recordNumber == static_cast<uint64_t>(kTargetRecordNumber)) {
-                std::fprintf(stderr, "  FAIL: malformed record %ld was accepted\n", kTargetRecordNumber);
+            if (parseResult->entries[i].recordNumber == kTargetRecordNumber) {
+                std::fprintf(stderr, "  FAIL: malformed record %llu was accepted (size=%lld)\n",
+                             static_cast<unsigned long long>(kTargetRecordNumber),
+                             static_cast<long long>(parseResult->entries[i].size));
                 testPassed = false;
                 break;
             }
