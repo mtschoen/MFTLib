@@ -118,6 +118,16 @@ public sealed unsafe class BlockFile : IDisposable
     }
 
     /// <summary>
+    ///     Builds a block over an already-built mapping and view without touching the header,
+    ///     used by an opener (such as an elevated broker) that writes rows into a section created
+    ///     by another process.
+    /// </summary>
+    internal BlockFile(MemoryMappedFile mappedFile, MemoryMappedViewAccessor view, long length)
+        : this(string.Empty, length, deleteOnClose: false, mappedFile, view)
+    {
+    }
+
+    /// <summary>
     ///     Maps an existing block and validates it. A rejected block returns null with the reason
     ///     in <paramref name="validation" />, and the caller discards the file and rescans. A
     ///     missing or unreadable file reports <see cref="BlockValidationResult.WrongMagic" />
@@ -263,7 +273,7 @@ public sealed unsafe class BlockFile : IDisposable
         }
     }
 
-    static void TryDeleteFailedCreate(string path)
+    internal static void TryDeleteFailedCreate(string path)
     {
         try
         {
