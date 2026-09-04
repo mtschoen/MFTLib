@@ -1,85 +1,77 @@
-# Handoff: packed index plan 2 (native size and modified time)
+# Handoff: packed index plan 2 (native size and modified time, producer seam)
 
-Written by a `/wrap --fast` on 2026-09-04. Branch `feat/index-mft-producer`,
-worktree `C:\Users\mtsch\MFTLib-worktrees\mft-producer`. Plan:
-`docs/superpowers/plans/2026-09-03-packed-index-mft-producer.md` (20 tasks,
-5 phases). Issue: MFTLib#128.
+Branch `feat/index-mft-producer`, worktree `C:\Users\mtsch\MFTLib-worktrees\mft-producer`.
+Plan: `docs/superpowers/plans/2026-09-03-packed-index-mft-producer.md` (20 tasks, 5 phases).
+Tracking issue: MFTLib#128 (owns #116). No PR yet. Last verified state: 2026-09-04 evening.
 
 ## Where the five-plan train stands
 
-Plan 1 (`MFTLib.Index`: block format, FileIndex, snapshots, queries, mutation,
-enumeration producer) merged as MFTLib#115, commit `607e553` on main. Plans 3
-(file-wizard port), 4 (git-wizard port), and 5 (docs, aislop rule, measurement)
-have not started. The prerequisite file-wizard#345 merged 2026-09-02.
+Plan 1 (`MFTLib.Index`) merged as MFTLib#115, main `607e553`. Plans 3 (file-wizard
+port), 4 (git-wizard port), and 5 (docs, aislop rule, measurement) have not started.
 
-## Where plan 2 stands
+## Plan 2: landed on the branch, all reviewed
 
-Committed on the branch, in order:
+| Task | Commit | Note |
+| --- | --- | --- |
+| 1 fixture | `fc07f46` | |
+| 2 compact entry v4 | `bebd0a1` | `MftRecordFields` struct per the maxParams ruling |
+| 3 modified time | `da3c5a4` + `bb6d918` | clang-format follow-up |
+| 4 size from `$DATA` | `5102605` + `cc16d58` | see the open item below |
+| 6 root row header field (#116) | `e65b6ce` | |
+| 5 broker record mapping | `0f9dfe5` | |
+| 7 named block sections | `4696fea` | one parked finding, see below |
+| 8 MFT producer seam | `12f684b` | |
+| 10 block capacity planner | `5e88e35` | |
 
-- `124cca4` plan document
-- `26b7251` the three orchestrator decisions confirmed
-- `fc07f46` Task 1, deterministic size and modified-time synthetic MFT fixture
-  (`MFTLibNative/mft/mft_synthetic.fixture.cpp`)
-- `bebd0a1` Task 2, `MftCompactEntry` widened with size and modified time,
-  native interface bumped to version 4
+Verified: Windows full filtered suite green at every integration point (1042/0/3 at
+`4696fea`, 1051/0/3 at `cc16d58` from the fix lane); Linux (llamabox) smoke and
+`coverage-linux.sh` green at `4696fea` (19/19, 753/0/51). Red states for tasks 3
+and 4 were demonstrated on Linux by swapping the pre-task parser in.
 
-Everything through Task 2 is pushed to `gitea/feat/index-mft-producer`. No PR is
-open yet.
+## Open item: Task 4 fix round 2 (native regression test)
 
-## Uncommitted work in the tree: Task 3, unverified
+Task 4's review found a real plan defect: the brief's `TryExtractDataSize` snippet
+read the non-resident `FileSize` (bytes 48 to 56) under a 24-byte guard. `cc16d58`
+adds a 64-byte non-resident header guard (re-review confirmed the constant and that
+the fixture's valid attributes still pass) plus a native regression case
+`malformed_nonresident_data_length`. That case FAILS on Linux with and without the
+fix (19 passed / 1 failed both ways): it fails before its own assertion, most likely
+because it hard-codes record 7's `$DATA` at record offset 0x110 while the fixture
+lays attributes out dynamically. Fix round 2 was dispatched to locate the attribute
+at runtime and to observe RED and GREEN on llamabox directly. If the branch tip is
+still `cc16d58`, that round did not land: redo it from
+`.superpowers/sdd/2026-09-03-packed-index-mft-producer/task-4-fix2-dispatch.md`
+(git-ignored SDD workspace in the worktree; the ledger `progress.md` beside it is
+the recovery map). The guard itself is fine; only the test is wrong.
 
-Task 3 (extract modified time from `$STANDARD_INFORMATION`) is **written but was
-never built and never run**. Three dirty files:
+## Parked for the owner
 
-- `MFTLibNative/mft/mft.records.cpp` - the real change. `TryExtractStandardInformation`
-  and `FindNamedAttribute` were refactored from a pair of out-parameters
-  (`siAttributes` / `sawStandardInformation`) to a `StandardInformationValues`
-  struct carrying `fileAttributes`, `modifiedTime`, and `present`. Modified time
-  is read at offset 8 of the `$STANDARD_INFORMATION` body ("last altered"), and
-  `ScanRecordForEntry` now populates `outEntry->modifiedTime`, falling back to
-  the `$FILE_NAME` attribute's `ModificationTime` when `$STANDARD_INFORMATION`
-  is absent.
-- `MFTLib.Tests/MftFixtureTests.cs` - managed assertions over the fixture.
-- `MFTLibNative/test/linux_smoke_test.cpp` - native smoke assertions.
+- Task 7: `NamedBlockSection.Create` returns `(Block, Lifetime)` that alias one
+  `MemoryMappedFile`, exactly as the brief mandates. Task 14's usage (keep the block
+  view, dispose only the lifetime after `ScanReady`) works because a view accessor
+  outlives its `MemoryMappedFile`; disposing the block before the broker opens the
+  name would close the section. Needs a doc comment stating the disposal order, and
+  the owner's confirmation that the aliasing is intended.
+- Deferred minors are listed in the ledger (`Task N: minor (deferred)` lines) for the
+  final whole-branch review.
 
-**First action for the next session is to build and run, not to write more code.**
-The existing 36-byte guard in `TryExtractStandardInformation` is claimed in a
-comment to cover both the offset-8 and offset-32 reads; that claim is reasoned,
-not yet demonstrated by a passing test. Per the plan's own TDD steps, the tests
-were supposed to be run failing first, and that did not happen here.
+## Next
 
-Task 4 (extract size from the unnamed `$DATA` attribute, plan lines 857-1043) has
-not been started. `outEntry->size` is still left at zero. Tasks 5 through 20
-(root row header field MFTLib#116, named block sections, the producer seam, the
-broker block write path, attended real-drive verification, `ScanPayload` and
-`ScanRecord` deletion, docs, coverage gate) are untouched.
+Task 9 (FileIndex selects the producer; context staged at `task-9-context.md`,
+brief at `task-9-brief.md`), then tasks 11 to 20 in plan order. Task 16 is an
+attended elevated checkpoint on chonkers. Tasks 17 and 18 break file-wizard and
+git-wizard until plans 3 and 4.
 
-## Steamdeck cutover: attempted, not achieved
+## Lanes
 
-The intent was to continue this work from the Steam Deck while travelling. It is
-**not ready**, and the setup is more than a few minutes of work:
+Codex `gpt-5.3-codex-spark` weekly cap is exhausted until 2026-09-08 03:29;
+`gpt-5.6-sol` works. agy `gemini-3.8-flash-high` works with the fixed driver
+(`lanes/dispatch-lane.sh`). kimi is out for the week. Sonnet subagents did the
+reviews. Lane worktrees are created from the current feature tip with the native
+DLL copied into `x64\Release`; managed-only tasks never build native.
 
-- `ssh deck@steamdeck` works from chonkers. A bare `ssh steamdeck` does not: it
-  sends the Windows username and fails with `Permission denied (publickey,password)`.
-- There is **no MFTLib checkout** on the Deck.
-- There is **no `claude` CLI** on the Deck host. Whether one exists inside the
-  `cpp-dev` distrobox was not checked.
-- The `cpp-dev` distrobox (Ubuntu 24.04, the only C/C++ toolchain on the
-  immutable SteamOS rootfs) has been **stopped for seven weeks** and would need
-  starting and probably refreshing.
-- The Deck suspends aggressively; an established SSH session dropped mid-command
-  during this session.
+## Steamdeck cutover: not ready
 
-Phase 1 of this plan is genuinely Linux-testable, so the Deck is a reasonable
-target once provisioned. Provisioning it is its own task.
-
-## Also open
-
-Plan 1 landed with eleven follow-up issues against `MFTLib.Index`, MFTLib#117
-through MFTLib#127. None block plan 2. The ones with teeth are MFTLib#126
-(snapshot rollback can unmap blocks still held) and MFTLib#127 (spurious
-`Deleted` change for a record that was never in use).
-
-`file-wizard` has an uncommitted submodule pointer move on `external/MFTLib`
-(`bd2536b` to `9b7046d`). It predates this session and is stale against MFTLib
-main either way; plan 3 supersedes it.
+`ssh deck@steamdeck` works (bare `ssh steamdeck` does not); no MFTLib checkout, no
+`claude` CLI on the host, `cpp-dev` distrobox stopped for weeks, aggressive suspend
+drops sessions. Provisioning it is its own task.
