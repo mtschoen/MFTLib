@@ -50,8 +50,7 @@ struct StandardInformationValues {
     bool present = false;
 };
 
-bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute,
-                                   StandardInformationValues* values) {
+bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, StandardInformationValues* values) {
     constexpr size_t kResidentHeaderSize = 0x18;
     constexpr size_t kMinStandardInformationSize = 36;
     if (attribute->Form.Resident.ValueOffset < kResidentHeaderSize ||
@@ -169,11 +168,10 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
     outEntry->recordNumber = recordIndex;
     outEntry->parentRecordNumber = parent;
     outEntry->flags = rec->Flags;
-    outEntry->fileAttributes = standardInformation.present ? standardInformation.fileAttributes
-                                                           : nameAttr->FileAttributes;
-    outEntry->modifiedTime = standardInformation.present
-                                 ? standardInformation.modifiedTime
-                                 : static_cast<int64_t>(nameAttr->ModificationTime);
+    outEntry->fileAttributes =
+        standardInformation.present ? standardInformation.fileAttributes : nameAttr->FileAttributes;
+    outEntry->modifiedTime = standardInformation.present ? standardInformation.modifiedTime
+                                                         : static_cast<int64_t>(nameAttr->ModificationTime);
     outEntry->name = nameAttr->FileName;
     outEntry->nameLength = nameAttr->FileNameLength;
     return true;
