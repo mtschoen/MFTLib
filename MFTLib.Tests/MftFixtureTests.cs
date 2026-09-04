@@ -90,4 +90,48 @@ public class MftFixtureTests
             Assert.AreEqual(expected, record.ModifiedUtc, $"record {recordNumber}");
         }
     }
+
+    [TestMethod]
+    public void Fixture_ResidentData_SizeIsTheValueLength()
+    {
+        if (SkipOnNonWindows())
+        {
+            return;
+        }
+
+        var records = MftVolume.ParseMFTFromFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
+        Assert.AreEqual(37L, records[6].Size);
+        Assert.IsTrue(records[6].SizeKnown);
+    }
+
+    [TestMethod]
+    public void Fixture_NonResidentData_SizeComesFromTheLowestVcnZeroRun()
+    {
+        if (SkipOnNonWindows())
+        {
+            return;
+        }
+
+        var records = MftVolume.ParseMFTFromFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
+        Assert.AreEqual(1234567L, records[7].Size);
+        // Record 10's first $DATA has a nonzero lowest virtual cluster number, whose file
+        // size field is not valid; the parser must take the second one.
+        Assert.AreEqual(4096L, records[10].Size);
+        Assert.IsTrue(records[10].SizeKnown);
+    }
+
+    [TestMethod]
+    public void Fixture_DirectoriesAndMissingData_ReportZeroWithTheRightKnownFlag()
+    {
+        if (SkipOnNonWindows())
+        {
+            return;
+        }
+
+        var records = MftVolume.ParseMFTFromFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
+        Assert.AreEqual(0L, records[8].Size);
+        Assert.IsTrue(records[8].SizeKnown, "a directory has a known size of zero");
+        Assert.AreEqual(0L, records[9].Size);
+        Assert.IsFalse(records[9].SizeKnown, "the data attribute lives in an extension record");
+    }
 }

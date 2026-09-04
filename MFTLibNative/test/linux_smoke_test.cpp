@@ -166,8 +166,8 @@ bool test_fixture_round_trip() {
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePathName, nullptr, 0, 4096);
     // Records 0, 5, 6, 7, 8, 9, and 10 are in use and non-extension; 1 to 4 and 11 are
     // zeroed, so the parser reports twelve total and seven used.
-    bool passed = parseResult != nullptr && parseResult->errorMessage[0] == L'\0' &&
-                  parseResult->totalRecords == 12 && parseResult->usedRecords == 7;
+    bool passed = parseResult != nullptr && parseResult->errorMessage[0] == L'\0' && parseResult->totalRecords == 12 &&
+                  parseResult->usedRecords == 7;
     if (!passed && parseResult != nullptr) {
         std::fprintf(stderr, "  FAIL: total=%llu used=%llu\n",
                      static_cast<unsigned long long>(parseResult->totalRecords),
@@ -195,6 +195,53 @@ bool test_fixture_modified_time() {
                 std::fprintf(stderr, "  FAIL: record %llu modifiedTime %lld, expected %lld\n",
                              static_cast<unsigned long long>(entry.recordNumber),
                              static_cast<long long>(entry.modifiedTime), static_cast<long long>(expected));
+                passed = false;
+            }
+        }
+    }
+    if (parseResult != nullptr) {
+        FreeMftResult(parseResult);
+    }
+    std::remove(kFixturePathName);
+    return passed;
+}
+
+struct ExpectedSize {
+    uint64_t recordNumber;
+    int64_t size;
+    bool sizeUnknown;
+};
+
+bool test_fixture_sizes() {
+    constexpr const char* kFixturePathName = "/tmp/mftlib_fixture_sizes.mft";
+    const std::array<ExpectedSize, 7> expected = {{
+        {0, 65536, false},
+        {5, 0, false},
+        {6, 37, false},
+        {7, 1234567, false},
+        {8, 0, false},
+        {9, 0, true},
+        {10, 4096, false},
+    }};
+    if (!GenerateFixtureMFTUtf8(kFixturePathName)) {
+        return false;
+    }
+    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePathName, nullptr, 0, 4096);
+    bool passed = parseResult != nullptr && parseResult->usedRecords == expected.size();
+    if (passed) {
+        for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
+            const MftCompactEntry& entry = parseResult->entries[i];
+            const ExpectedSize* match = nullptr;
+            for (const auto& candidate : expected) {
+                if (candidate.recordNumber == entry.recordNumber) {
+                    match = &candidate;
+                }
+            }
+            bool unknown = (entry.flags & MFT_ENTRY_FLAG_SIZE_UNKNOWN) != 0;
+            if (match == nullptr || entry.size != match->size || unknown != match->sizeUnknown) {
+                std::fprintf(stderr, "  FAIL: record %llu size %lld unknown %d\n",
+                             static_cast<unsigned long long>(entry.recordNumber), static_cast<long long>(entry.size),
+                             static_cast<int>(unknown));
                 passed = false;
             }
         }
@@ -527,10 +574,10 @@ bool test_parallel_progress_monotonicity() {
         for (const auto& r : reports) {
             if (r.phase == MftScanPhase::Parsing) {
                 if (r.recordsScanned < prevParsing || r.recordsScanned > r.totalRecords) {
-                    std::fprintf(stderr, "  FAIL: parallel parsing progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
-                                 static_cast<unsigned long long>(prevParsing),
-                                 static_cast<unsigned long long>(r.recordsScanned),
-                                 static_cast<unsigned long long>(r.totalRecords));
+                    std::fprintf(
+                        stderr, "  FAIL: parallel parsing progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
+                        static_cast<unsigned long long>(prevParsing), static_cast<unsigned long long>(r.recordsScanned),
+                        static_cast<unsigned long long>(r.totalRecords));
                     ok = false;
                     break;
                 }
@@ -575,12 +622,13 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 18> tests = {{
+    const std::array<TestCase, 19> tests = {{
         {"abi_version", test_abi_version},
         {"round_trip", test_round_trip},
         {"round_trip_4096", test_round_trip_4096},
         {"fixture_round_trip", test_fixture_round_trip},
         {"fixture_modified_time", test_fixture_modified_time},
+        {"fixture_sizes", test_fixture_sizes},
         {"parse_missing_file", test_parse_missing_file},
         {"parse_empty_file", test_parse_empty_file},
         {"parse_filter_returns_error", test_parse_filter_returns_error},

@@ -50,6 +50,13 @@ struct StandardInformationValues {
     bool present = false;
 };
 
+struct RecordAttributes {
+    PFILE_NAME nameAttribute = nullptr;
+    StandardInformationValues standardInformation{};
+    int64_t dataSize = 0;
+    bool dataPresent = false;
+};
+
 bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, StandardInformationValues* values) {
     constexpr size_t kResidentHeaderSize = 0x18;
     constexpr size_t kMinStandardInformationSize = 36;
@@ -85,48 +92,66 @@ bool TryExtractFileName(const ATTRIBUTE_RECORD_HEADER* attribute, PFILE_NAME* ou
     return true;
 }
 
-// Walk a record's attributes, populating *standardInformation when
-// $STANDARD_INFORMATION is seen, and stop at the first resident, non-DOS
-// FileName attribute. Returns that FileName attribute, or nullptr if the record
-// has none.
-PFILE_NAME FindNamedAttribute(PFILE_RECORD_SEGMENT_HEADER rec, ParseGeometry geometry,
-                              StandardInformationValues* standardInformation) {
-    *standardInformation = {};
-    auto* recordPointer = reinterpret_cast<uint8_t*>(rec);
-    if (rec->FirstAttributeOffset < 42 || rec->FirstAttributeOffset + sizeof(uint32_t) > geometry.recordSize) {
-        return nullptr;
+// Reports the unnamed $DATA size for one attribute, or false when this attribute is
+// not the one that carries it: a named stream, or a non-resident record whose lowest
+// virtual cluster number is nonzero, for which the reference states the file size
+// field is not valid.
+bool TryExtractDataSize(const ATTRIBUTE_RECORD_HEADER* attribute, int64_t* size) {
+    if (attribute->NameLength != 0) {
+        return false;
     }
-    auto* attribute = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(recordPointer + rec->FirstAttributeOffset);
+    if (attribute->FormCode == 0) {
+        *size = static_cast<int64_t>(attribute->Form.Resident.ValueLength);
+        return true;
+    }
+    if (attribute->Form.Nonresident.LowestVcn.QuadPart != 0) {
+        return false;
+    }
+    *size = attribute->Form.Nonresident.FileSize;
+    return true;
+}
+
+bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geometry,
+                          RecordAttributes* recordAttributes) {
+    *recordAttributes = {};
+    auto* recordPointer = reinterpret_cast<uint8_t*>(record);
+    if (record->FirstAttributeOffset < 42 || record->FirstAttributeOffset + sizeof(uint32_t) > geometry.recordSize) {
+        return false;
+    }
+    auto* attribute = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(recordPointer + record->FirstAttributeOffset);
     constexpr size_t kResidentHeaderSize = 0x18;
     while (true) {
         const auto offset = static_cast<size_t>(reinterpret_cast<uint8_t*>(attribute) - recordPointer);
         if (offset + sizeof(uint32_t) > geometry.recordSize) {
-            return nullptr;
+            return false;
         }
         if (attribute->TypeCode == EndMarker) {
             break;
         }
         if (offset + kResidentHeaderSize > geometry.recordSize || attribute->RecordLength < kResidentHeaderSize ||
             offset + attribute->RecordLength > geometry.recordSize) {
-            return nullptr;
+            return false;
         }
         if (attribute->TypeCode == StandardInformation && attribute->FormCode == 0) {
-            if (!TryExtractStandardInformation(attribute, standardInformation)) {
-                return nullptr;
+            if (!TryExtractStandardInformation(attribute, &recordAttributes->standardInformation)) {
+                return false;
             }
         } else if (attribute->TypeCode == FileName && attribute->FormCode == 0) {
-            PFILE_NAME nameAttr = nullptr;
-            if (!TryExtractFileName(attribute, &nameAttr)) {
-                return nullptr;
+            PFILE_NAME nameAttribute = nullptr;
+            if (!TryExtractFileName(attribute, &nameAttribute)) {
+                return false;
             }
-            if (nameAttr->Flags != 2) {
-                return nameAttr;
+            if (recordAttributes->nameAttribute == nullptr && nameAttribute->Flags != 2) {
+                recordAttributes->nameAttribute = nameAttribute;
             }
+        } else if (attribute->TypeCode == Data && !recordAttributes->dataPresent &&
+                   TryExtractDataSize(attribute, &recordAttributes->dataSize)) {
+            recordAttributes->dataPresent = true;
         }
         attribute =
             reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(attribute) + attribute->RecordLength);
     }
-    return nullptr;
+    return true;
 }
 
 // Scan one file record. If it is an in-use, non-extension record with a non-DOS
@@ -148,10 +173,21 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
         return false;
     }
 
-    StandardInformationValues standardInformation{};
-    auto* nameAttr = FindNamedAttribute(rec, scan.geometry, &standardInformation);
-    if (nameAttr == nullptr) {
+    RecordAttributes attributes{};
+    if (!ScanRecordAttributes(rec, scan.geometry, &attributes) || attributes.nameAttribute == nullptr) {
         return false;
+    }
+    auto* nameAttr = attributes.nameAttribute;
+
+    bool isDirectory = (rec->Flags & 0x0002) != 0;
+    outEntry->flags = rec->Flags;
+    if (isDirectory) {
+        outEntry->size = 0;
+    } else if (attributes.dataPresent) {
+        outEntry->size = attributes.dataSize;
+    } else {
+        outEntry->size = 0;
+        outEntry->flags |= MFT_ENTRY_FLAG_SIZE_UNKNOWN;
     }
 
     uint64_t parent = static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberLowPart) |
@@ -167,11 +203,10 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
 
     outEntry->recordNumber = recordIndex;
     outEntry->parentRecordNumber = parent;
-    outEntry->flags = rec->Flags;
-    outEntry->fileAttributes =
-        standardInformation.present ? standardInformation.fileAttributes : nameAttr->FileAttributes;
-    outEntry->modifiedTime = standardInformation.present ? standardInformation.modifiedTime
-                                                         : static_cast<int64_t>(nameAttr->ModificationTime);
+    outEntry->fileAttributes = attributes.standardInformation.present ? attributes.standardInformation.fileAttributes
+                                                                      : nameAttr->FileAttributes;
+    outEntry->modifiedTime = attributes.standardInformation.present ? attributes.standardInformation.modifiedTime
+                                                                    : static_cast<int64_t>(nameAttr->ModificationTime);
     outEntry->name = nameAttr->FileName;
     outEntry->nameLength = nameAttr->FileNameLength;
     return true;
