@@ -24,5 +24,12 @@ public sealed record FileIndexOptions
 
     public ProducerPolicy ProducerPolicy { get; init; } = ProducerPolicy.Auto;
 
+    /// <summary>
+    ///     Supplies MFT-derived blocks. Null means no MFT producer is available, so
+    ///     <see cref="ProducerPolicy.Auto" /> uses enumeration and
+    ///     <see cref="ProducerPolicy.MftOnly" /> is an error.
+    /// </summary>
+    public MftBlockProducer? MftProducer { get; init; }
+
     public IProgress<IndexScanProgress>? Progress { get; init; }
 }
