@@ -30,7 +30,7 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 8 | producer kind | u32 | 1 = MFT, 2 = enumeration |
 | 12 | flags | u32 | 1 = complete, 2 = compaction needed |
 | 16 | volume serial | u32 | |
-| 20 | reserved padding | u32 | Always zero; aligns the fields below |
+| 20 | root row | u32 | Row index of the volume root; 0 for enumeration, 5 for MFT |
 | 24 | scan timestamp | i64 | UTC ticks |
 | 32 | row count | u32 | Highest used slot plus one |
 | 36 | slot capacity | u32 | Rows region size, in rows |

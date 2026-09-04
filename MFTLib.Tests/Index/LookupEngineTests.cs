@@ -120,6 +120,35 @@ public class LookupEngineTests
     {
         Assert.ThrowsException<ArgumentException>(() => LookupEngineTestAccess.Root(_snapshot, 'Z'));
     }
+
+    [TestMethod]
+    public void Root_UsesTheHeaderRootRow_NotRowZero()
+    {
+        using var builder = SyntheticBlockBuilder.MftShaped();
+        using var block = builder.OpenForReading(out var validation)!;
+        Assert.AreEqual(BlockValidationResult.Valid, validation);
+        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false, rootDirectoryPath: @"T:\");
+        var snapshot = Snapshot.Create([driveBlock]);
+
+        var root = LookupEngine.Root(snapshot, 'T');
+
+        Assert.AreEqual(5u, root.RowIndex);
+    }
+
+    [TestMethod]
+    public void Find_DescendsFromTheHeaderRootRow_NotRowZero()
+    {
+        using var builder = SyntheticBlockBuilder.MftShaped();
+        using var block = builder.OpenForReading(out _)!;
+        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false, rootDirectoryPath: @"T:\");
+        var snapshot = Snapshot.Create([driveBlock]);
+
+        var found = LookupEngine.Find(snapshot, @"T:\documents\notes.txt");
+
+        Assert.IsNotNull(found);
+        Assert.AreEqual("notes.txt", found.Value.Name);
+        Assert.AreEqual(99L, found.Value.Size);
+    }
 }
 
 static class LookupEngineTestAccess

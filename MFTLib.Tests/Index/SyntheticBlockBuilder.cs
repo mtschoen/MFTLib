@@ -48,10 +48,24 @@ internal sealed class SyntheticBlockBuilder : IDisposable
             modifiedUtc: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
     }
 
+    public uint AddRow(string name, in RowColumns columns)
+    {
+        return AddRowAt(_nextRow, name, in columns);
+    }
+
     public uint AddRow(string name, uint parentRow, RowFlags flags, long size, DateTime modifiedUtc,
         uint attributes = 0)
     {
-        var rowIndex = _nextRow++;
+        return AddRow(name, new RowColumns(parentRow, flags, attributes, size, modifiedUtc.Ticks));
+    }
+
+    public uint AddRowAt(uint rowIndex, string name, in RowColumns columns)
+    {
+        if (_nextRow <= rowIndex)
+        {
+            _nextRow = rowIndex + 1;
+        }
+
         ref var header = ref _block.Header;
         var nameOffsetBytes = header.NamePoolUsed;
         var poolCharacterIndex = (int)(nameOffsetBytes / sizeof(char));
@@ -61,18 +75,41 @@ internal sealed class SyntheticBlockBuilder : IDisposable
         ref var row = ref _block.Rows[(int)rowIndex];
         row = new FileRow
         {
-            ParentRow = parentRow,
-            Attributes = attributes,
-            Size = size,
-            ModifiedTicks = modifiedUtc.Ticks
+            ParentRow = columns.ParentRow,
+            Attributes = columns.Attributes,
+            Size = columns.Size,
+            ModifiedTicks = columns.ModifiedTicks
         };
 
         // Goes through the descriptor-word helper for the same reason the production writer
         // does: the name offset, the name length, and the flags are one 64-bit value.
-        FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, (ushort)name.Length, flags);
+        FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, (ushort)name.Length, columns.Flags);
 
-        header.RowCount = rowIndex + 1;
+        if (header.RowCount <= rowIndex)
+        {
+            header.RowCount = rowIndex + 1;
+        }
+
         return rowIndex;
+    }
+
+    public static SyntheticBlockBuilder MftShaped()
+    {
+        var moment = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
+        var builder = new SyntheticBlockBuilder();
+        builder.MutateHeader((ref header) =>
+        {
+            header.ProducerKind = ProducerKind.Mft;
+            header.RootRow = 5;
+        });
+
+        builder.AddRowAt(0, "$MFT", new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0, ModifiedTicks: moment.Ticks));
+        builder.AddRowAt(5, ".", new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0, ModifiedTicks: moment.Ticks));
+        builder.AddRowAt(6, "documents", new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0, ModifiedTicks: moment.Ticks));
+        builder.AddRowAt(7, "notes.txt", new RowColumns(ParentRow: 6, Flags: RowFlags.InUse, Attributes: 0, Size: 99, ModifiedTicks: moment.Ticks));
+
+        builder.Complete(moment);
+        return builder;
     }
 
     public void MutateHeader(HeaderMutation mutation)

@@ -16,7 +16,7 @@ public class BlockHeaderTests
             ProducerKind = ProducerKind.Enumeration,
             Flags = BlockFlags.Complete,
             VolumeSerial = 0xDEADBEEF,
-            ReservedPadding = 0,
+            RootRow = 0,
             ScanTimestampTicks = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc).Ticks,
             RowCount = 10,
             SlotCapacity = 100,
@@ -143,5 +143,29 @@ public class BlockHeaderTests
         Assert.IsFalse(header.IsCompactionNeeded);
         header.Flags |= BlockFlags.CompactionNeeded;
         Assert.IsTrue(header.IsCompactionNeeded);
+    }
+
+    [TestMethod]
+    public void RootRow_SitsAtHeaderOffsetTwenty()
+    {
+        Assert.AreEqual(20, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.RootRow)));
+    }
+
+    [TestMethod]
+    public void BlockFileCreateOptions_SetsRootRowInHeader()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"mftlib-test-{Guid.NewGuid():N}.mlix");
+        var options = new BlockFileCreateOptions
+        {
+            Path = path,
+            VolumeSerial = 0x12345678,
+            ProducerKind = ProducerKind.Mft,
+            SlotCapacity = 256,
+            NamePoolCapacity = 4096,
+            RootRow = 5,
+            DeleteOnClose = true
+        };
+        using var block = BlockFile.Create(options);
+        Assert.AreEqual(5u, block.Header.RootRow);
     }
 }
