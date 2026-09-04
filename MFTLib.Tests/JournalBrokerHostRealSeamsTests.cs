@@ -339,6 +339,29 @@ public class JournalBrokerHostRealSeamsTests
     }
 
     [TestMethod]
+    public void ToScanRecords_CarriesSizeAndModifiedTimeFromTheMftRecord()
+    {
+        var modified = new DateTime(2026, 3, 4, 5, 6, 7, DateTimeKind.Utc);
+        var record = MftRecord.CreateForTest(new MftRecordTestValues
+        {
+            RecordNumber = 42,
+            ParentRecordNumber = 5,
+            Flags = 1,
+            FileName = "a.txt",
+            FullPath = @"C:\a.txt",
+            FileAttributes = FileAttributes.Archive,
+            Size = 4321,
+            ModifiedFileTime = modified.ToFileTimeUtc()
+        });
+
+        var scanRecords = JournalBrokerHost.ToScanRecordsForTest([record]);
+
+        Assert.AreEqual(1, scanRecords.Length);
+        Assert.AreEqual(4321ul, scanRecords[0].Size);
+        Assert.AreEqual(modified.Ticks, scanRecords[0].LastWriteTicks);
+    }
+
+    [TestMethod]
     public void ArmAndScan_IncludesRootDirectoryRecord_InScanResults()
     {
         FileUtilities._getVolumeHandle = _ => FakeHandle();

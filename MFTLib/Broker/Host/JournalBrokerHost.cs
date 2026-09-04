@@ -350,10 +350,10 @@ public sealed partial class JournalBrokerHost
         }
     }
 
-    // MftRecord does not carry Size or LastWriteTime on the current MFTLib surface
-    // (the in-process MFT scan likewise records Size = 0); ScanRecord keeps those
-    // fields for forward compatibility and they are zero from the MFT path. Skip
-    // free and path-less records to mirror the direct-scan filter.
+    // The MFT path fills Size and LastWriteTicks from the record's own columns. It cannot
+    // express a size-unknown record: the scan payload format has no such flag, so such a
+    // record writes zero here and reads as an empty file. The block write path carries the
+    // flag properly; this limitation belongs to the format being retired.
     static ScanRecord[] ToScanRecords(MftRecord[] records)
     {
         var result = new List<ScanRecord>(records.Length);
@@ -365,12 +365,17 @@ public sealed partial class JournalBrokerHost
             }
 
             result.Add(new ScanRecord(
-                record.RecordNumber, record.ParentRecordNumber, 0,
-                0, (uint)record.FileAttributes, record.IsDirectory,
+                record.RecordNumber, record.ParentRecordNumber, (ulong)Math.Max(record.Size, 0),
+                record.ModifiedUtc.Ticks, (uint)record.FileAttributes, record.IsDirectory,
                 record.FileName, record.FullPath));
         }
 
         return result.ToArray();
+    }
+
+    internal static ScanRecord[] ToScanRecordsForTest(MftRecord[] records)
+    {
+        return ToScanRecords(records);
     }
 
     static bool IsNonRetryableStartupException(Exception exception)
