@@ -16,7 +16,7 @@ port), 4 (git-wizard port), and 5 (docs, aislop rule, measurement) have not star
 | 1 fixture | `fc07f46` | |
 | 2 compact entry v4 | `bebd0a1` | `MftRecordFields` struct per the maxParams ruling |
 | 3 modified time | `da3c5a4` + `bb6d918` | clang-format follow-up |
-| 4 size from `$DATA` | `5102605` + `cc16d58` | see the open item below |
+| 4 size from `$DATA` | `5102605` + `cc16d58` + `72ade77` | plan defect fixed, see below |
 | 6 root row header field (#116) | `e65b6ce` | |
 | 5 broker record mapping | `0f9dfe5` | |
 | 7 named block sections | `4696fea` | one parked finding, see below |
@@ -24,25 +24,19 @@ port), 4 (git-wizard port), and 5 (docs, aislop rule, measurement) have not star
 | 10 block capacity planner | `5e88e35` | |
 
 Verified: Windows full filtered suite green at every integration point (1042/0/3 at
-`4696fea`, 1051/0/3 at `cc16d58` from the fix lane); Linux (llamabox) smoke and
-`coverage-linux.sh` green at `4696fea` (19/19, 753/0/51). Red states for tasks 3
-and 4 were demonstrated on Linux by swapping the pre-task parser in.
+`4696fea`, 1051/0/3 at `72ade77`); Linux (llamabox) smoke 20/20 at `72ade77` and
+`coverage-linux.sh` 753/0/51 at `4696fea`. Red states for tasks 3 and 4 and for the
+Task 4 regression test were demonstrated on Linux by swapping the pre-fix parser in.
 
-## Open item: Task 4 fix round 2 (native regression test)
+## Task 4: a plan defect, fixed
 
-Task 4's review found a real plan defect: the brief's `TryExtractDataSize` snippet
-read the non-resident `FileSize` (bytes 48 to 56) under a 24-byte guard. `cc16d58`
-adds a 64-byte non-resident header guard (re-review confirmed the constant and that
-the fixture's valid attributes still pass) plus a native regression case
-`malformed_nonresident_data_length`. That case FAILS on Linux with and without the
-fix (19 passed / 1 failed both ways): it fails before its own assertion, most likely
-because it hard-codes record 7's `$DATA` at record offset 0x110 while the fixture
-lays attributes out dynamically. Fix round 2 was dispatched to locate the attribute
-at runtime and to observe RED and GREEN on llamabox directly. If the branch tip is
-still `cc16d58`, that round did not land: redo it from
-`.superpowers/sdd/2026-09-03-packed-index-mft-producer/task-4-fix2-dispatch.md`
-(git-ignored SDD workspace in the worktree; the ledger `progress.md` beside it is
-the recovery map). The guard itself is fine; only the test is wrong.
+The brief's `TryExtractDataSize` snippet read the non-resident `FileSize` (bytes 48
+to 56 of the attribute) under a 24-byte guard. `cc16d58` adds a 64-byte non-resident
+header guard on the existing whole-record rejection path; `72ade77` adds the native
+regression case `malformed_nonresident_data_length`, which locates record 7's unnamed
+`$DATA` at runtime (the fixture uses 1024-byte records, `$DATA` at 0x100) and fails
+on the pre-fix parser with "malformed record 7 was accepted (size=1234567)". Nothing
+is open on Task 4.
 
 ## Parked for the owner
 
