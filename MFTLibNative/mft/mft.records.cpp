@@ -44,8 +44,14 @@ bool FileNameMatches(const WCHAR* name, uint8_t nameLen, const FilterSpec& filte
     return false;
 }
 
-bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, uint32_t* siAttributes,
-                                   bool* sawStandardInformation) {
+struct StandardInformationValues {
+    uint32_t fileAttributes = 0;
+    int64_t modifiedTime = 0;
+    bool present = false;
+};
+
+bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute,
+                                   StandardInformationValues* values) {
     constexpr size_t kResidentHeaderSize = 0x18;
     constexpr size_t kMinStandardInformationSize = 36;
     if (attribute->Form.Resident.ValueOffset < kResidentHeaderSize ||
@@ -53,9 +59,13 @@ bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, uin
             attribute->RecordLength) {
         return false;
     }
-    const auto* siValue = reinterpret_cast<const uint8_t*>(attribute) + attribute->Form.Resident.ValueOffset;
-    *siAttributes = *reinterpret_cast<const uint32_t*>(siValue + 32);
-    *sawStandardInformation = true;
+    const auto* value = reinterpret_cast<const uint8_t*>(attribute) + attribute->Form.Resident.ValueOffset;
+    // $STANDARD_INFORMATION body: 0x00 creation, 0x08 last altered, 0x10 MFT changed,
+    // 0x18 last read, 0x20 DOS file permissions. The 36-byte guard above covers all of
+    // these, so neither read needs a further bounds check.
+    memcpy(&values->modifiedTime, value + 8, sizeof(int64_t));
+    memcpy(&values->fileAttributes, value + 32, sizeof(uint32_t));
+    values->present = true;
     return true;
 }
 
@@ -76,14 +86,13 @@ bool TryExtractFileName(const ATTRIBUTE_RECORD_HEADER* attribute, PFILE_NAME* ou
     return true;
 }
 
-// Walk a record's attributes, accumulating the StandardInformation file
-// attributes into *siAttributes (*sawStandardInformation set if seen), and stop
-// at the first resident, non-DOS FileName attribute. Returns that FileName
-// attribute, or nullptr if the record has none.
-PFILE_NAME FindNamedAttribute(PFILE_RECORD_SEGMENT_HEADER rec, ParseGeometry geometry, uint32_t* siAttributes,
-                              bool* sawStandardInformation) {
-    *siAttributes = 0;
-    *sawStandardInformation = false;
+// Walk a record's attributes, populating *standardInformation when
+// $STANDARD_INFORMATION is seen, and stop at the first resident, non-DOS
+// FileName attribute. Returns that FileName attribute, or nullptr if the record
+// has none.
+PFILE_NAME FindNamedAttribute(PFILE_RECORD_SEGMENT_HEADER rec, ParseGeometry geometry,
+                              StandardInformationValues* standardInformation) {
+    *standardInformation = {};
     auto* recordPointer = reinterpret_cast<uint8_t*>(rec);
     if (rec->FirstAttributeOffset < 42 || rec->FirstAttributeOffset + sizeof(uint32_t) > geometry.recordSize) {
         return nullptr;
@@ -103,7 +112,7 @@ PFILE_NAME FindNamedAttribute(PFILE_RECORD_SEGMENT_HEADER rec, ParseGeometry geo
             return nullptr;
         }
         if (attribute->TypeCode == StandardInformation && attribute->FormCode == 0) {
-            if (!TryExtractStandardInformation(attribute, siAttributes, sawStandardInformation)) {
+            if (!TryExtractStandardInformation(attribute, standardInformation)) {
                 return nullptr;
             }
         } else if (attribute->TypeCode == FileName && attribute->FormCode == 0) {
@@ -140,9 +149,8 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
         return false;
     }
 
-    uint32_t siAttributes = 0;
-    bool sawStandardInformation = false;
-    auto* nameAttr = FindNamedAttribute(rec, scan.geometry, &siAttributes, &sawStandardInformation);
+    StandardInformationValues standardInformation{};
+    auto* nameAttr = FindNamedAttribute(rec, scan.geometry, &standardInformation);
     if (nameAttr == nullptr) {
         return false;
     }
@@ -161,7 +169,11 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
     outEntry->recordNumber = recordIndex;
     outEntry->parentRecordNumber = parent;
     outEntry->flags = rec->Flags;
-    outEntry->fileAttributes = sawStandardInformation ? siAttributes : nameAttr->FileAttributes;
+    outEntry->fileAttributes = standardInformation.present ? standardInformation.fileAttributes
+                                                           : nameAttr->FileAttributes;
+    outEntry->modifiedTime = standardInformation.present
+                                 ? standardInformation.modifiedTime
+                                 : static_cast<int64_t>(nameAttr->ModificationTime);
     outEntry->name = nameAttr->FileName;
     outEntry->nameLength = nameAttr->FileNameLength;
     return true;

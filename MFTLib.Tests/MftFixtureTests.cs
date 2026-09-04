@@ -72,4 +72,22 @@ public class MftFixtureTests
         Assert.IsTrue(records[8].IsDirectory);
         Assert.IsFalse(records[7].IsDirectory);
     }
+
+    [TestMethod]
+    public void Fixture_ModifiedTime_ComesFromStandardInformation()
+    {
+        if (SkipOnNonWindows())
+        {
+            return;
+        }
+
+        var records = MftVolume.ParseMFTFromFile(_fixturePath, out _)
+            .ToDictionary(record => record.RecordNumber);
+        foreach (var (recordNumber, record) in records)
+        {
+            var expected = DateTime.FromFileTimeUtc(
+                ModifiedBaseFileTime + (long)recordNumber * ModifiedStepFileTime);
+            Assert.AreEqual(expected, record.ModifiedUtc, $"record {recordNumber}");
+        }
+    }
 }

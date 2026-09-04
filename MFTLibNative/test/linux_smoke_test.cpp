@@ -180,6 +180,32 @@ bool test_fixture_round_trip() {
     return passed;
 }
 
+bool test_fixture_modified_time() {
+    constexpr const char* kFixturePathName = "/tmp/mftlib_fixture_time.mft";
+    if (!GenerateFixtureMFTUtf8(kFixturePathName)) {
+        return false;
+    }
+    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePathName, nullptr, 0, 4096);
+    bool passed = parseResult != nullptr && parseResult->entries != nullptr;
+    if (passed) {
+        for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
+            const MftCompactEntry& entry = parseResult->entries[i];
+            auto expected = static_cast<int64_t>(132000000000000000ULL + entry.recordNumber * 10000000ULL);
+            if (entry.modifiedTime != expected) {
+                std::fprintf(stderr, "  FAIL: record %llu modifiedTime %lld, expected %lld\n",
+                             static_cast<unsigned long long>(entry.recordNumber),
+                             static_cast<long long>(entry.modifiedTime), static_cast<long long>(expected));
+                passed = false;
+            }
+        }
+    }
+    if (parseResult != nullptr) {
+        FreeMftResult(parseResult);
+    }
+    std::remove(kFixturePathName);
+    return passed;
+}
+
 bool test_alloc_failure_path() {
     if (!generate_fixture()) {
         return false;
@@ -549,11 +575,12 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 17> tests = {{
+    const std::array<TestCase, 18> tests = {{
         {"abi_version", test_abi_version},
         {"round_trip", test_round_trip},
         {"round_trip_4096", test_round_trip_4096},
         {"fixture_round_trip", test_fixture_round_trip},
+        {"fixture_modified_time", test_fixture_modified_time},
         {"parse_missing_file", test_parse_missing_file},
         {"parse_empty_file", test_parse_empty_file},
         {"parse_filter_returns_error", test_parse_filter_returns_error},
