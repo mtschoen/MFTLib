@@ -62,10 +62,8 @@ public sealed partial class FileIndex
         }
         else
         {
-            var scanResult = await Task
-                .Run(() => ScanDrive(drive, driveOrdinal, ComputeScanBlockPath(drive), _options.NoCache,
-                    cancellationToken), cancellationToken)
-                .ConfigureAwait(false);
+            var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, ComputeScanBlockPath(drive),
+                cancellationToken).ConfigureAwait(false);
             driveBlock = scanResult.DriveBlock;
             lock (_stateLock)
             {
@@ -81,9 +79,148 @@ public sealed partial class FileIndex
 
     readonly record struct WarmStartResult(DriveBlock? DriveBlock, BlockValidationResult? DiscardedBlock);
 
-    readonly record struct ScanDriveResult(DriveBlock DriveBlock, int AccessDeniedSubtreeCount);
+    /// <summary>
+    ///     <paramref name="JournalId" /> and <paramref name="NextUsn" /> are the journal cursor
+    ///     armed before the block was built, already durable in the adopted block's own header
+    ///     (an MFT producer stamps them before its own completion flush; an enumeration block has
+    ///     no journal cursor, so these stay zero, matching the header's initialized default). A
+    ///     later watch starts from this cursor.
+    /// </summary>
+    readonly record struct ScanDriveResult(
+        DriveBlock DriveBlock,
+        int AccessDeniedSubtreeCount,
+        ulong JournalId = 0,
+        long NextUsn = 0);
 
     readonly record struct BlockScanResult(BlockFile Block, EnumerationResult Result);
+
+    /// <summary>
+    ///     Picks the producer for one drive's cold scan according to
+    ///     <see cref="FileIndexOptions.ProducerPolicy" />. <see cref="ProducerPolicy.MftOnly" />
+    ///     requires <see cref="FileIndexOptions.MftProducer" /> and lets a producer failure
+    ///     propagate, because the caller asked for exactly one producer.
+    ///     <see cref="ProducerPolicy.Auto" /> prefers the MFT producer when one is set, but a
+    ///     failure there is not fatal: it is recorded on the drive status and the drive falls
+    ///     back to the enumeration producer instead, so no drive is ever left unindexed because
+    ///     of its substrate. <see cref="ProducerPolicy.EnumerationOnly" /> ignores
+    ///     <see cref="FileIndexOptions.MftProducer" /> entirely. Cancellation is never treated as
+    ///     a producer failure: it always propagates rather than triggering a fallback.
+    /// </summary>
+    async Task<ScanDriveResult> ProduceDriveBlockAsync(IndexedDrive drive, ushort driveOrdinal, string blockPath,
+        CancellationToken cancellationToken)
+    {
+        if (_options.ProducerPolicy == ProducerPolicy.MftOnly)
+        {
+            var producer = _options.MftProducer ?? throw new InvalidOperationException(
+                $"{nameof(ProducerPolicy)}.{nameof(ProducerPolicy.MftOnly)} requires " +
+                $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.MftProducer)} to be set.");
+            return await RunMftProducerAsync(drive, driveOrdinal, blockPath, producer, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (_options.ProducerPolicy == ProducerPolicy.Auto && _options.MftProducer is { } mftProducer)
+        {
+            try
+            {
+                var mftScanResult = await RunMftProducerAsync(drive, driveOrdinal, blockPath, mftProducer,
+                    cancellationToken).ConfigureAwait(false);
+
+                // A genuine MFT-producer success replaces whatever this ordinal's dictionary
+                // entry recorded from an earlier failed attempt (AddDriveAsync's first scan or a
+                // prior RescanAsync): DriveStatus.MftProducerFailureMessage's doc comment promises
+                // null once the current block came from the MFT producer, so a recovered drive
+                // must not keep reporting a stale failure. The catch block below is the only other
+                // writer of this ordinal's entry, and it runs on a different path than this one, so
+                // clearing here never erases a message that same call just set.
+                lock (_stateLock)
+                {
+                    _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
+                }
+
+                return mftScanResult;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                lock (_stateLock)
+                {
+                    _mftProducerFailureMessagesByOrdinal[driveOrdinal] = exception.Message;
+                }
+            }
+        }
+
+        return await Task
+            .Run(() => ScanDrive(drive, driveOrdinal, blockPath, _options.NoCache, cancellationToken),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    ///     Runs the MFT producer for one drive and adopts its finished block exactly as a warm
+    ///     start or an enumeration scan would: ownership passes to a new reference-counted
+    ///     <see cref="DriveBlock" />. <paramref name="producer" />'s own
+    ///     <see cref="MftBlockProduceResult.SkippedRecordCount" /> is surfaced as this drive's
+    ///     access-denied subtree count, the same warning slot an enumeration walk uses for
+    ///     records it could not place. <see cref="MftBlockProduceResult.JournalId" /> and
+    ///     <see cref="MftBlockProduceResult.NextUsn" /> are already durable in the returned
+    ///     <see cref="MftBlockProduceResult.Block" />'s header by the time it gets here (the
+    ///     producer stamps them before its own <c>Complete()</c> call, the one flush-safe place to
+    ///     do it), so this method does not write them again.
+    ///     <see cref="MftBlockProduceResult.CompactionNeeded" /> is intentionally not read here
+    ///     either: <see cref="DescribeDrive" /> derives <see cref="DriveStatus.CompactionNeeded" />
+    ///     from the header's own <see cref="BlockFlags.CompactionNeeded" /> flag, which the
+    ///     producer sets on the block directly (the same way <see cref="EnumerationProducer" />
+    ///     does via <see cref="BlockWriter.MarkCompactionNeeded" />), so this result field would be
+    ///     a redundant second copy of that same flag rather than a value this method needs to act
+    ///     on. The cursor is instead used for a consistency check once <see cref="ScanDriveResult" />
+    ///     is built: a producer that reports one cursor but stamped a different one into the block
+    ///     it built violated its own contract, and that must not go unnoticed any more than an
+    ///     on-disk block that fails validation would. It is treated as a producer failure, not
+    ///     adopted as a warning on an otherwise-trusted block.
+    /// </summary>
+    async Task<ScanDriveResult> RunMftProducerAsync(IndexedDrive drive, ushort driveOrdinal, string blockPath,
+        MftBlockProducer producer, CancellationToken cancellationToken)
+    {
+        var request = new MftBlockProduceRequest
+        {
+            DriveLetter = drive.DriveLetter,
+            VolumeSerial = drive.VolumeSerial,
+            BlockPath = blockPath,
+            DeleteOnClose = _options.NoCache,
+            Progress = _options.Progress
+        };
+
+        var produceResult = await producer(request, cancellationToken).ConfigureAwait(false);
+
+        // produceResult.Block's ownership passes directly to the DriveBlock built here, which
+        // releases it through the reference-counted Release() (see DriveBlock's own summary),
+        // not through IDisposable.
+        var driveBlock = new DriveBlock(drive.DriveLetter, driveOrdinal, produceResult.Block,
+            deleteFileOnRelease: _options.NoCache, rootDirectoryPath: drive.RootDirectory);
+        var scanResult = new ScanDriveResult(driveBlock, produceResult.SkippedRecordCount, produceResult.JournalId,
+            produceResult.NextUsn);
+
+        var header = driveBlock.Block.Header;
+        if (header.UsnJournalId != scanResult.JournalId || header.UsnNextUsn != scanResult.NextUsn)
+        {
+            // The block was already adopted into driveBlock above, but never handed to
+            // _driveBlocks (reference count is still zero), so it is released the same way
+            // ReleaseUnpublishedBlocks unwinds an unpublished block: disposing Block directly,
+            // not through the reference-counted Release().
+            driveBlock.Block.Dispose();
+
+            // The producer already Complete()d this block before this check ran, so it would
+            // pass BlockHeader.Validate like any other valid block. Deleting it here, mirroring
+            // BuildAndInitialize and RestoreRetiredFile, keeps a later TryOpenExistingBlock from
+            // warm-starting off a block whose cursor invariant was just rejected.
+            BlockFile.TryDeleteFailedCreate(blockPath);
+            throw new InvalidOperationException(
+                $"The MFT producer's block header carries journal cursor ({header.UsnJournalId}, " +
+                $"{header.UsnNextUsn}) but its result reported cursor ({scanResult.JournalId}, " +
+                $"{scanResult.NextUsn}). A producer that contradicts its own block cannot be trusted.");
+        }
+
+        return scanResult;
+    }
 
     WarmStartResult TryOpenExistingBlock(IndexedDrive drive, ushort driveOrdinal)
     {
@@ -171,13 +308,7 @@ public sealed partial class FileIndex
     {
         var estimatedRows = EnumerationProducer.EstimateRowCount(drive.RootDirectory);
 
-        // block's fate is unambiguous on every path: returned directly on success, disposed in
-        // the catch below on failure. A disposal-tracking analyzer still flags this declaration,
-        // because it cannot follow a try/catch whose success path returns the value rather than
-        // disposing it locally; every restructuring tried here (inlining, moving the return
-        // inside the try, extracting this very helper) hits the same limit. This is a documented
-        // false positive, not a leak.
-        var block = BlockFile.Create(new BlockFileCreateOptions
+        BlockFile? block = BlockFile.Create(new BlockFileCreateOptions
         {
             Path = blockPath,
             VolumeSerial = drive.VolumeSerial,
@@ -187,7 +318,6 @@ public sealed partial class FileIndex
                 BlockLayout.ComputeNamePoolCapacity(EnumerationProducer.EstimateNamePoolBytes(estimatedRows)),
             DeleteOnClose = deleteOnClose
         });
-
         try
         {
             var writer = new BlockWriter(block);
@@ -199,75 +329,14 @@ public sealed partial class FileIndex
 
             var result = producer.Produce(writer, _options.Progress, cancellationToken);
             writer.Complete(DateTime.UtcNow);
-            return new BlockScanResult(block, result);
+            var completed = new BlockScanResult(block, result);
+            block = null;
+            return completed;
         }
-        catch
+        finally
         {
-            block.Dispose();
-            throw;
+            block?.Dispose();
         }
     }
 
-    void CleanupRetiredSiblings(char driveLetter, uint volumeSerial)
-    {
-        var pattern = CacheDirectory.BlockFileName(driveLetter, volumeSerial) + ".retired-*";
-        try
-        {
-            foreach (var path in Directory.EnumerateFiles(CacheDirectoryPath, pattern))
-            {
-                TryDeleteBestEffort(path);
-            }
-        }
-        catch (IOException)
-        {
-            // Best effort: an inaccessible cache directory is reported by the warm-start
-            // attempt that follows, not here.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Same reasoning as the IOException case above.
-        }
-    }
-
-    static void CleanupStaleNoCacheBlocks(char driveLetter, uint volumeSerial)
-    {
-        var pattern = $"mftlib-nocache-*-{CacheDirectory.BlockFileName(driveLetter, volumeSerial)}";
-        try
-        {
-            foreach (var path in Directory.EnumerateFiles(Path.GetTempPath(), pattern))
-            {
-                TryDeleteBestEffort(path);
-            }
-        }
-        catch (IOException)
-        {
-            // Guards Directory.EnumerateFiles itself (for example the temp directory is
-            // briefly inaccessible), not the deletes it drives: a leftover another running
-            // instance still has mapped is not a concern here, because BlockFile opens with
-            // FileShare.Delete, so unlinking it succeeds and that instance keeps reading its
-            // own mapping undisturbed. A leftover that genuinely cannot be deleted is retried
-            // on the next open.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Same reasoning as the IOException case above.
-        }
-    }
-
-    static void TryDeleteBestEffort(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (IOException)
-        {
-            // Whatever still needs this file surfaces its own error; a leftover here is either
-            // rejected again next time or, for a leftover still in use, simply left alone.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Same reasoning as the IOException case above.
-        }
-    }
 }

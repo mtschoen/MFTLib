@@ -5,8 +5,8 @@ public sealed partial class JournalBrokerHost
     /// <summary>
     ///     Serve a broker session over <paramref name="stream" /> (the pipe). Reads
     ///     request frames in a loop. On <see cref="BrokerFrameKind.ArmAndScan" />, for
-    ///     each drive: arm the cursor, emit a <c>Cursor</c> frame, write the scan
-    ///     payload into the caller-created map via <paramref name="mmfWriter" />, emit
+    ///     each drive: arm the cursor, emit a <c>Cursor</c> frame, write packed index rows via
+    ///     <paramref name="blockSectionWriter" /> into the caller-created map, emit
     ///     <c>ScanReady</c>, run catch-up, emit a <c>JournalBatch</c>. Per-drive
     ///     failures emit an <c>Error</c> frame and continue (non-fatal contract). On
     ///     <see cref="BrokerFrameKind.QueryVolumes" />, answers one <c>VolumeInfo</c> (or
@@ -15,15 +15,24 @@ public sealed partial class JournalBrokerHost
     ///     Returns on <c>Shutdown</c>, on EOF, or after one arm-and-scan when
     ///     <paramref name="oneShot" /> is set (a single-UAC CLI-style path).
     /// </summary>
-    public async Task ServeAsync(Stream stream, IMmfWriter mmfWriter, bool oneShot, CancellationToken cancellationToken)
+    /// <param name="stream">The connected pipe to serve.</param>
+    /// <param name="blockSectionWriter">
+    ///     Writes packed rows into the client-created section. Null serves a watch-only
+    ///     session; an <c>ArmAndScan</c> on such a session then fails with one <c>Error</c>
+    ///     frame per requested drive rather than one argument failure up front.
+    /// </param>
+    /// <param name="oneShot">Return after a single arm-and-scan instead of serving on.</param>
+    /// <param name="cancellationToken">Stops serving.</param>
+    public async Task ServeAsync(Stream stream, IBlockSectionWriter? blockSectionWriter, bool oneShot,
+        CancellationToken cancellationToken)
     {
         // The pipe is shared by concurrent watch tasks; guard writes so frames
         // never interleave on the wire.
-        var writeLock = new SemaphoreSlim(1, 1);
+        using var writeLock = new SemaphoreSlim(1, 1);
         var watch = new WatchGeneration();
         try
         {
-            await ServeFramesAsync(stream, mmfWriter, oneShot, writeLock, watch, cancellationToken)
+            await ServeFramesAsync(stream, blockSectionWriter, oneShot, writeLock, watch, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -38,7 +47,7 @@ public sealed partial class JournalBrokerHost
 
     async Task ServeFramesAsync(
         Stream stream,
-        IMmfWriter mmfWriter,
+        IBlockSectionWriter? blockSectionWriter,
         bool oneShot,
         SemaphoreSlim writeLock,
         WatchGeneration watch,
@@ -57,7 +66,7 @@ public sealed partial class JournalBrokerHost
                 case BrokerFrameKind.ArmAndScan:
                     if (frame.Value.DrivesSpec is { } drivesSpec)
                     {
-                        await HandleArmAndScanAsync(stream, mmfWriter, drivesSpec, frame.Value.KeepFileNames,
+                        await HandleArmAndScanAsync(stream, blockSectionWriter, drivesSpec, frame.Value.KeepFileNames,
                             writeLock, cancellationToken).ConfigureAwait(false);
                     }
 

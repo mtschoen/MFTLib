@@ -115,6 +115,22 @@ in traversal order with the parent column in the same shape. Nothing downstream
 can tell the difference except the producer kind and the absence of a journal
 cursor, which is why a `FileId` from such a block reports `IsSynthetic`.
 
+## MFT blocks
+
+Rows are dense by NTFS record number: row i is record i, with unused slots left
+empty and the volume root at row 5 (`BlockHeader.RootRow`). `RowCount` is the
+highest written slot plus one, not the number of live records. A size-unknown
+row carries `RowFlags.SizeUnknown` and a zero size when no usable data size was
+found in the base record, including data in an extension record that the parser
+does not follow or a negative non-resident data size. A known zero size means an
+empty file or a directory.
+
+The non-elevated client plans capacities from `NtfsVolumeInformation` and creates
+the block file and its named section. The elevated broker opens that section and
+writes rows and names directly from parse batches, without resolving full paths.
+It stamps the armed journal cursor and writes the completed header last; a crash
+before completion leaves a block the client discards.
+
 ## Sidecars
 
 A follow-up children table or name index is a separate file next to the block,

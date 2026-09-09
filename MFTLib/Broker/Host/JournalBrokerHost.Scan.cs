@@ -4,11 +4,12 @@ using System.Threading.Channels;
 
 namespace MFTLib;
 
+/// <summary>Serves per-drive block scans and journal catch-up while isolating drive failures.</summary>
 public sealed partial class JournalBrokerHost
 {
     async Task HandleArmAndScanAsync(
         Stream stream,
-        IMmfWriter mmfWriter,
+        IBlockSectionWriter? blockSectionWriter,
         string drivesSpec,
         IReadOnlyList<string> keepFileNames,
         SemaphoreSlim writeLock,
@@ -18,7 +19,7 @@ public sealed partial class JournalBrokerHost
         {
             try
             {
-                await ProcessDriveScanAsync(stream, mmfWriter, request, keepFileNames, writeLock, cancellationToken)
+                await ProcessDriveScanAsync(stream, blockSectionWriter, request, keepFileNames, writeLock, cancellationToken)
                     .ConfigureAwait(false);
             }
             // Deliberate per-drive boundary: any failure on one drive (journal
@@ -30,12 +31,6 @@ public sealed partial class JournalBrokerHost
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 var message = exception.Message;
-                if (message.StartsWith("Scan payload exceeded ", StringComparison.Ordinal))
-                {
-                    message = FormattableString.Invariant(
-                        $"Scan payload for drive {request.Letter} {message["Scan payload ".Length..]}");
-                }
-
                 await WriteFrameAsync(stream, writeLock,
                         writer => BrokerProtocol.WriteError(writer, request.Letter, message),
                         cancellationToken)
@@ -46,7 +41,7 @@ public sealed partial class JournalBrokerHost
 
     async Task ProcessDriveScanAsync(
         Stream stream,
-        IMmfWriter mmfWriter,
+        IBlockSectionWriter? blockSectionWriter,
         ScanDriveRequest request,
         IReadOnlyList<string> keepFileNames,
         SemaphoreSlim writeLock,
@@ -64,12 +59,12 @@ public sealed partial class JournalBrokerHost
             () => RunProgressPumpAsync(stream, progressChannel.Reader, writeLock, cancellationToken),
             CancellationToken.None);
 
-        (UsnJournalCursor cursor, MmfWriteResult writeResult, TimeSpan scanElapsed, long maxRecordsProcessed, long?
+        (UsnJournalCursor cursor, BlockWriteResult writeResult, TimeSpan scanElapsed, long maximumRecordsProcessed, long?
             totalRecords) scanOutput;
         try
         {
             scanOutput = await Task.Run(
-                () => ExecuteDriveScanAsync(stream, mmfWriter, request, keepFileNames, progressChannel.Writer,
+                () => ExecuteDriveScanAsync(stream, blockSectionWriter, new ScanDriveInput(request, keepFileNames), progressChannel.Writer,
                     writeLock, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
@@ -134,115 +129,31 @@ public sealed partial class JournalBrokerHost
         }
     }
 
-    async Task<(UsnJournalCursor cursor, MmfWriteResult writeResult, TimeSpan scanElapsed, long maxRecordsProcessed,
+    async Task<(UsnJournalCursor cursor, BlockWriteResult writeResult, TimeSpan scanElapsed, long maximumRecordsProcessed,
         long? totalRecords)> ExecuteDriveScanAsync(
         Stream stream,
-        IMmfWriter mmfWriter,
-        ScanDriveRequest request,
-        IReadOnlyList<string> keepFileNames,
+        IBlockSectionWriter? blockSectionWriter,
+        ScanDriveInput input,
         ChannelWriter<BrokerScanProgress> progressWriter,
         SemaphoreSlim writeLock,
         CancellationToken cancellationToken)
     {
         try
         {
-            var scanStopwatch = Stopwatch.StartNew();
-            long maxParsingRecordsProcessed = 0;
-            long maxResolvingRecordsProcessed = 0;
-            long maxTransferringRecordsProcessed = 0;
-            long? totalRecordsKnown = null;
-            var progressLock = new object();
+            var progressState = new ScanProgressState();
+            var progressReporter = new DirectProgress<BlockWriteProgress>(value =>
+                progressState.Report(input.Request.Letter, value, progressWriter));
 
-            var progressReporter = new DirectProgress<MmfWriteProgress>(p =>
+            Task EmitCursorAsync(UsnJournalCursor armedCursor)
             {
-                lock (progressLock)
-                {
-                    long recordsReported;
-                    long? totalRecordsReported;
-
-                    switch (p.Phase)
-                    {
-                        case BrokerScanPhase.Parsing:
-                            // Non-decreasing, like maxParsingRecordsProcessed below: the parse phase
-                            // reports the authoritative total record count for the whole
-                            // volume, while the write phase's own final report carries only
-                            // the count it actually wrote (smaller by construction, since
-                            // unused/deleted MFT entries are filtered out before writing). A
-                            // later, smaller total from the write phase must not overwrite an
-                            // already-known larger total from the parse phase.
-                            if (p.TotalRecords.HasValue && (!totalRecordsKnown.HasValue || p.TotalRecords.Value > totalRecordsKnown.Value))
-                            {
-                                totalRecordsKnown = p.TotalRecords.Value;
-                            }
-
-                            if (p.RecordsProcessed > maxParsingRecordsProcessed)
-                            {
-                                maxParsingRecordsProcessed = p.RecordsProcessed;
-                            }
-
-                            recordsReported = maxParsingRecordsProcessed;
-                            totalRecordsReported = totalRecordsKnown;
-                            break;
-
-                        case BrokerScanPhase.ResolvingPaths:
-                            if (p.RecordsProcessed > maxResolvingRecordsProcessed)
-                            {
-                                maxResolvingRecordsProcessed = p.RecordsProcessed;
-                            }
-
-                            recordsReported = maxResolvingRecordsProcessed;
-                            totalRecordsReported = p.TotalRecords ?? totalRecordsKnown;
-                            break;
-
-                        case BrokerScanPhase.Transferring:
-                        default:
-                            if (p.RecordsProcessed > maxTransferringRecordsProcessed)
-                            {
-                                maxTransferringRecordsProcessed = p.RecordsProcessed;
-                            }
-
-                            recordsReported = maxTransferringRecordsProcessed;
-                            totalRecordsReported = p.TotalRecords;
-                            break;
-                    }
-
-                    progressWriter.TryWrite(new BrokerScanProgress
-                    {
-                        DriveLetter = request.Letter,
-                        Phase = p.Phase,
-                        RecordsProcessed = recordsReported,
-                        BytesProcessed = p.BytesProcessed,
-                        TotalRecords = totalRecordsReported,
-                        TotalBytes = p.TotalBytes,
-                        Elapsed = scanStopwatch.Elapsed
-                    });
-                }
-            });
-
-            var (cursor, batches) = ArmAndScanBatches(request.Letter, progressReporter, cancellationToken);
-            var filteredBatches = FilterScanProfile(batches, request.Profile, keepFileNames);
-
-            await WriteFrameAsync(stream, writeLock,
-                writer => BrokerProtocol.WriteCursor(writer, request.Letter, cursor),
-                cancellationToken).ConfigureAwait(false);
-
-            MmfWriteResult writeResult;
-            if (mmfWriter is IStreamingMmfWriter streamingWriter)
-            {
-                writeResult = streamingWriter.Write(request.MmfName, filteredBatches, progressReporter, cancellationToken);
-            }
-            else
-            {
-                var allRecords = filteredBatches.SelectMany(b => b).ToArray();
-                var byteLength = mmfWriter.Write(request.MmfName, allRecords);
-                writeResult = new MmfWriteResult(allRecords.Length, byteLength);
+                return WriteFrameAsync(stream, writeLock,
+                    writer => BrokerProtocol.WriteCursor(writer, input.Request.Letter, armedCursor), cancellationToken);
             }
 
-            scanStopwatch.Stop();
-            lock (progressLock)
-            {
-                return (cursor, writeResult, scanStopwatch.Elapsed, maxParsingRecordsProcessed, totalRecordsKnown);
-            }
+            var (cursor, writeResult) = await ExecuteBlockScanAsync(input, blockSectionWriter, progressReporter,
+                EmitCursorAsync, cancellationToken).ConfigureAwait(false);
+
+            return progressState.Complete(cursor, writeResult);
         }
         finally
         {
@@ -250,21 +161,23 @@ public sealed partial class JournalBrokerHost
         }
     }
 
+    readonly record struct ScanDriveInput(ScanDriveRequest Request, IReadOnlyList<string> KeepFileNames);
+
     async Task EmitScanCompletionFramesAsync(
         Stream stream,
         ScanDriveRequest request,
-        (UsnJournalCursor cursor, MmfWriteResult writeResult, TimeSpan scanElapsed, long maxRecordsProcessed, long?
+        (UsnJournalCursor cursor, BlockWriteResult writeResult, TimeSpan scanElapsed, long maximumRecordsProcessed, long?
             totalRecords) scanOutput,
         SemaphoreSlim writeLock,
         CancellationToken cancellationToken)
     {
-        var finalRecords = scanOutput.totalRecords ?? scanOutput.writeResult.RecordCount;
-        if (finalRecords < scanOutput.maxRecordsProcessed)
+        var finalRecords = scanOutput.totalRecords ?? scanOutput.writeResult.RowCount;
+        if (finalRecords < scanOutput.maximumRecordsProcessed)
         {
-            finalRecords = scanOutput.maxRecordsProcessed;
+            finalRecords = scanOutput.maximumRecordsProcessed;
         }
 
-        long? finalTotalRecords = scanOutput.totalRecords ?? scanOutput.writeResult.RecordCount;
+        long? finalTotalRecords = scanOutput.totalRecords ?? scanOutput.writeResult.RowCount;
         if (finalTotalRecords.HasValue && finalTotalRecords.Value < finalRecords)
         {
             finalTotalRecords = finalRecords;
@@ -275,9 +188,9 @@ public sealed partial class JournalBrokerHost
             DriveLetter = request.Letter,
             Phase = BrokerScanPhase.Transferring,
             RecordsProcessed = finalRecords,
-            BytesProcessed = scanOutput.writeResult.ByteLength,
+            BytesProcessed = scanOutput.writeResult.NamePoolUsedBytes,
             TotalRecords = finalTotalRecords,
-            TotalBytes = scanOutput.writeResult.ByteLength,
+            TotalBytes = scanOutput.writeResult.NamePoolUsedBytes,
             Elapsed = scanOutput.scanElapsed
         };
 
@@ -286,8 +199,8 @@ public sealed partial class JournalBrokerHost
             cancellationToken).ConfigureAwait(false);
 
         await WriteFrameAsync(stream, writeLock,
-            writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, scanOutput.writeResult.RecordCount,
-                scanOutput.writeResult.ByteLength),
+            writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, scanOutput.writeResult.RowCount,
+                scanOutput.writeResult.NamePoolUsedBytes, scanOutput.writeResult.SkippedRecordCount),
             cancellationToken).ConfigureAwait(false);
 
         UsnJournalEntry[] entries;
@@ -322,8 +235,10 @@ public sealed partial class JournalBrokerHost
             cancellationToken).ConfigureAwait(false);
     }
 
-    // Spec tokens are comma-joined "letter:journalId:nextUsn:mmfName". The watch
-    // spec omits the map name (three fields); MmfName is then empty.
+    internal static ScanDriveRequest[] ParseScanSpecForTest(string spec) => ParseScanSpec(spec).ToArray();
+
+    // Scan tokens are comma-joined "letter:journalId:nextUsn:sectionName:profile".
+    // Watch tokens use three fields; absent section and profile default to empty and Full.
     static IEnumerable<ScanDriveRequest> ParseScanSpec(string spec)
     {
         foreach (var token in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
@@ -334,9 +249,7 @@ public sealed partial class JournalBrokerHost
                 ulong.Parse(parts[1], CultureInfo.InvariantCulture),
                 long.Parse(parts[2], CultureInfo.InvariantCulture),
                 parts.Length > 3 ? parts[3] : string.Empty,
-                parts.Length > 4
-                    ? ParseScanProfile(parts[4])
-                    : BrokerScanProfile.Full);
+                parts.Length > 4 ? ParseScanProfile(parts[4]) : BrokerScanProfile.Full);
         }
     }
 
@@ -351,59 +264,10 @@ public sealed partial class JournalBrokerHost
         return profile;
     }
 
-    // internal: ParseScanProfile already rejects undefined values before a request
-    // reaches here, so the default arm is unreachable from the wire path; it exists
-    // as an exhaustiveness guard for future profile values and is tested directly.
-    // keepFileNames is ignored under Full (the complete inventory already includes
-    // every file); under DirectoryIndex it names non-directory files to keep
-    // alongside every directory, matched case-insensitively against NTFS's default
-    // case-insensitive name comparison.
-    internal static ScanRecord[] ApplyScanProfile(
-        ScanRecord[] records, BrokerScanProfile profile, IReadOnlyCollection<string> keepFileNames)
-    {
-        return FilterScanProfile([records], profile, keepFileNames).Single().ToArray();
-    }
-
-    static IEnumerable<IReadOnlyList<ScanRecord>> FilterScanProfile(
-        IEnumerable<IReadOnlyList<ScanRecord>> batches,
-        BrokerScanProfile profile,
-        IReadOnlyCollection<string>? keepFileNames)
-    {
-        HashSet<string>? keepSet = null;
-        if (profile == BrokerScanProfile.DirectoryIndex && keepFileNames != null && keepFileNames.Count > 0)
-        {
-            keepSet = new HashSet<string>(keepFileNames, StringComparer.OrdinalIgnoreCase);
-        }
-
-        foreach (var batch in batches)
-        {
-            yield return profile switch
-            {
-                BrokerScanProfile.Full => batch,
-                BrokerScanProfile.DirectoryIndex => FilterDirectoryIndexBatch(batch, keepSet),
-                _ => throw new InvalidDataException($"Unknown broker scan profile: {profile}")
-            };
-        }
-    }
-
-    static ScanRecord[] FilterDirectoryIndexBatch(IReadOnlyList<ScanRecord> batch, HashSet<string>? keepSet)
-    {
-        var result = new List<ScanRecord>(batch.Count);
-        foreach (var record in batch)
-        {
-            if (record.IsDirectory || (keepSet != null && keepSet.Contains(record.Name)))
-            {
-                result.Add(record);
-            }
-        }
-
-        return result.ToArray();
-    }
-
     // A per-drive arm-and-scan request: bare drive letter, the resume cursor
     // (unused for arm-and-scan, which queries fresh), the caller-created map name,
-    // and an optional cold-scan record profile.
-    readonly record struct ScanDriveRequest(
+    // and optional cold-scan record profile.
+    internal readonly record struct ScanDriveRequest(
         string Letter,
         ulong JournalId,
         long NextUsn,

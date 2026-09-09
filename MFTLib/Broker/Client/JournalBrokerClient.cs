@@ -1,17 +1,12 @@
-namespace MFTLib;
+using MFTLib.Index;
 
-/// <summary>
-///     Callback invoked per batch of <see cref="ScanRecord" />s as they are streamed
-///     from the broker's shared memory map.
-/// </summary>
-public delegate ValueTask ScanRecordBatchConsumer(
-    IReadOnlyList<ScanRecord> records,
-    CancellationToken cancellationToken);
+namespace MFTLib;
 
 /// <summary>
 ///     UI-side client for the elevated journal broker. Owns the pipe (server end:
 ///     the non-elevated caller creates it and passes the name to the broker) and the
-///     per-drive page-file-backed MMFs (caller pre-creates; broker opens and writes).
+///     per-drive MMF lifetimes (caller pre-creates; broker opens and writes). Finished
+///     packed blocks pass to the caller through BrokerScanResult.BlockOutcomes.
 ///     All external seams are injected so the class is fully testable without a
 ///     real child process, real named pipe, or real named MMF.
 /// </summary>
@@ -23,11 +18,12 @@ public delegate ValueTask ScanRecordBatchConsumer(
 ///     the caller created and the broker connected to. Tests pass an in-memory
 ///     duplex stream.
 /// </param>
-/// <param name="mmfReader">Seam for reading the cold-scan MMF after the broker writes it.</param>
-/// <param name="createDriveMmf">
-///     Seam for pre-creating a per-drive page-file-backed MMF before sending
-///     <c>ArmAndScan</c>. Receives the drive letter and capacity; returns the map
-///     name and a lifetime handle.
+/// <param name="createDriveBlockSection">
+///     Creates a named section, its block view, and its section lifetime for a drive. The
+///     production implementation returns a lifetime that aliases the block's own memory-mapped
+///     file handle, so disposing the lifetime early does not invalidate the block; any other
+///     implementation of this seam must preserve that property, since callers dispose the
+///     lifetime independently of the block.
 /// </param>
 /// <remarks>
 ///     The pipe must already be connected. Production code builds the pipe, launches
@@ -36,28 +32,11 @@ public delegate ValueTask ScanRecordBatchConsumer(
 /// </remarks>
 public sealed partial class JournalBrokerClient(
     Stream pipe,
-    IMmfReader mmfReader,
-    Func<string, long, (string Name, IDisposable Lifetime)> createDriveMmf) : IAsyncDisposable
+    Func<string, BlockFileCreateOptions, (string SectionName, BlockFile Block, IDisposable Lifetime)> createDriveBlockSection) : IAsyncDisposable
 {
-    /// <summary>
-    ///     Default capacity for a per-drive MMF (2 GiB). The broker writes only the exact
-    ///     bytes it needs; the caller reads back exactly that many via the <c>ScanReady</c>
-    ///     byte-length field. This default is NOT sized for every volume: a volume with
-    ///     several million deep paths can exceed it (each record costs 48 bytes plus
-    ///     UTF-16 name and path), producing a descriptive <see cref="InvalidOperationException" />
-    ///     from <see cref="ScanPayload.Write(Stream,IEnumerable{IReadOnlyList{ScanRecord}},CancellationToken)" />
-    ///     rather than silently losing the drive. It is kept at 2 GiB (rather than raised) because
-    ///     Windows commits a page-file-backed section's full requested capacity to the system commit
-    ///     charge at creation time regardless of how much is ever touched - measured via
-    ///     GlobalMemoryStatusEx, requesting 16 GiB with default (SEC_COMMIT) semantics raised commit
-    ///     charge by ~16 GiB immediately. A caller that knows a volume needs more room (and that the
-    ///     machine and drive count can afford the commit-charge cost) can override it per scan via
-    ///     <see cref="BrokerScanOptions.MmfCapacityBytes" />.
-    /// </summary>
-    public const long DefaultMmfCapacity = 2L * 1024 * 1024 * 1024; // 2 GiB
-
     // Lifetimes of MMFs pre-created per ArmScanAndCatchUpAsync call, keyed by map name.
     readonly Dictionary<string, IDisposable> _mmfLifetimes = new(StringComparer.Ordinal);
+    readonly Dictionary<string, BlockFile> _pendingBlocks = new(StringComparer.Ordinal);
     readonly object _mmfLifetimesLock = new();
     // Pipe write mutex: only ArmScanAndCatchUpAsync and DisposeAsync write to the pipe,
     // and DisposeAsync waits for ArmScanAndCatchUpAsync to finish before writing Shutdown.

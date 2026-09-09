@@ -296,7 +296,8 @@ if (ElevatedEntryPoint.TryHandle(
 }
 ```
 
-The non-elevated side then creates one client:
+The non-elevated side then creates one client. Given an existing `cacheDirectory` and
+the discovered `uint volumeSerial` for C, supply the destination for that drive:
 
 ```csharp
 await using var broker = await JournalBrokerClient.SpawnAndConnectAsync(
@@ -305,13 +306,24 @@ await using var broker = await JournalBrokerClient.SpawnAndConnectAsync(
 
 var scan = await broker.ArmScanAndCatchUpAsync(
     new[] { "C" },
+    new BrokerScanOptions
+    {
+        BlockTargets = new Dictionary<string, BlockScanTarget>
+        {
+            ["C"] = new(Path.Combine(cacheDirectory, $"C-{volumeSerial:X8}.mlix"), volumeSerial, false)
+        }
+    },
     cancellationToken);
 ```
 
+Completed blocks in `scan.BlockOutcomes` belong to the caller and must be disposed
+separately when scanning through `JournalBrokerClient` directly like this.
+
 `JournalBrokerScanSession` wraps this same client into one owned scan-to-watch object
-(`StartAsync` through discovery, live watch, rescan, and disposal) so scan results can
-never outlive the client that produced them; prefer it unless your process is already
-elevated. See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
+(`StartAsync` through discovery, live watch, rescan, and disposal). A session owns the
+blocks it publishes: those in `session.LatestScan.BlockOutcomes` are disposed by the next
+rescan and by the session's own disposal, so take a block out of the result first if it
+has to outlive either. The session also owns the client. See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
 for startup dispatch, result handling, live watch, rescans, recovery, and diagnostics.
 
 ## Errors and recovery
@@ -349,7 +361,7 @@ The source is organized by responsibility:
 
 - `MFTLib/Mft` - scans, records, results, filters, paths, and timings
 - `MFTLib/Journal` - USN cursor, entries, reasons, and `MftVolume` journal APIs
-- `MFTLib/Broker` - elevated host/client, protocol, payload, and diagnostics
+- `MFTLib/Broker` - elevated host/client, protocol, block writing, and diagnostics
 - `MFTLib/Elevation` - elevation detection and injectable provider
 - `MFTLib/Interop` - native result layouts
 - `MFTLib/Internal` - native bindings and internal volume utilities

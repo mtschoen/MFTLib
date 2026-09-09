@@ -4,8 +4,8 @@ public sealed partial class JournalBrokerClient
 {
     /// <summary>
     ///     Queries elevated-side NTFS volume information for each drive without arming a
-    ///     scan or allocating any shared-memory map - useful for sizing a scan's map
-    ///     before committing to it via <see cref="BrokerScanOptions.MmfCapacityPlanner" />.
+    ///     scan or allocating a block section. The client uses this information to
+    ///     size each destination before creating its section.
     ///     A drive the broker could not query appears in
     ///     <see cref="NtfsVolumeQueryResult.Errors" /> instead of
     ///     <see cref="NtfsVolumeQueryResult.Volumes" />; both are keyed by bare drive
@@ -94,26 +94,4 @@ public sealed partial class JournalBrokerClient
         return new NtfsVolumeQueryResult(volumes, errors);
     }
 
-    /// <summary>
-    ///     Default <see cref="BrokerScanOptions.MmfCapacityPlanner" />: sizes a drive's map
-    ///     from its queried MFT record count when known, otherwise falls back to
-    ///     <see cref="DefaultMmfCapacity" />. Each scan-payload record costs roughly 384
-    ///     bytes on average (the fixed row plus UTF-16 name and path); that estimate is
-    ///     inflated by 25% headroom, rounded up to the next 256 MiB multiple, and floored
-    ///     at 256 MiB so a small volume still gets a sane minimum map.
-    /// </summary>
-    public static long DefaultCapacityPlanner(string driveLetter, NtfsVolumeInformation? info)
-    {
-        if (info is not { MftRecordCount: > 0 } volumeInfo)
-        {
-            return DefaultMmfCapacity;
-        }
-
-        const long bytesPerRecordEstimate = 480; // 384-byte baseline record cost with 25% headroom folded in (384 * 5 / 4)
-        const long roundingMultiple = 256L * 1024 * 1024; // 256 MiB
-
-        var estimatedBytes = checked(volumeInfo.MftRecordCount * bytesPerRecordEstimate);
-        var roundedUp = ((estimatedBytes + roundingMultiple - 1) / roundingMultiple) * roundingMultiple;
-        return Math.Max(roundedUp, roundingMultiple);
-    }
 }

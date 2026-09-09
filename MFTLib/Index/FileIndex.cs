@@ -17,6 +17,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly List<DriveStatus> _offlineDrives = [];
     readonly Dictionary<ushort, BlockValidationResult> _discardedBlocksByOrdinal = [];
     readonly Dictionary<ushort, int> _accessDeniedSubtreeCountByOrdinal = [];
+    readonly Dictionary<ushort, string> _mftProducerFailureMessagesByOrdinal = [];
     readonly List<WeakReference<Snapshot>> _retiredSnapshots = [];
     readonly FileIndexOptions _options;
     readonly SemaphoreSlim _swapGate = new(1, 1);
@@ -82,11 +83,6 @@ public sealed partial class FileIndex : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
-        if (options.ProducerPolicy == ProducerPolicy.MftOnly)
-        {
-            throw new NotSupportedException(
-                "The MFT producer is not available in this build; use ProducerPolicy.Auto or EnumerationOnly.");
-        }
 
         var cacheDirectoryPath = options.CacheDirectory ?? CacheDirectory.ResolveDefaultPath();
         CacheDirectory.EnsureCreated(cacheDirectoryPath);
@@ -207,7 +203,9 @@ public sealed partial class FileIndex : IAsyncDisposable
                 : (BlockValidationResult?)null;
             var accessDeniedSubtreeCount =
                 _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal);
-            return DescribeDrive(driveBlock, discardedBlock, accessDeniedSubtreeCount);
+            var mftProducerFailureMessage =
+                _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal);
+            return DescribeDrive(driveBlock, discardedBlock, accessDeniedSubtreeCount, mftProducerFailureMessage);
         }
 
         return null;
@@ -228,7 +226,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     }
 
     static DriveStatus DescribeDrive(DriveBlock driveBlock, BlockValidationResult? discardedBlock,
-        int accessDeniedSubtreeCount)
+        int accessDeniedSubtreeCount, string? mftProducerFailureMessage)
     {
         ref readonly var header = ref driveBlock.Block.Header;
         return new DriveStatus
@@ -241,7 +239,8 @@ public sealed partial class FileIndex : IAsyncDisposable
             CompactionNeeded = header.IsCompactionNeeded,
             WatchSupported = driveBlock.ProducerKind == ProducerKind.Mft,
             AccessDeniedSubtreeCount = accessDeniedSubtreeCount,
-            DiscardedBlock = discardedBlock
+            DiscardedBlock = discardedBlock,
+            MftProducerFailureMessage = mftProducerFailureMessage
         };
     }
 }

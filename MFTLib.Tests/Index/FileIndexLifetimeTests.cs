@@ -118,9 +118,9 @@ public class FileIndexLifetimeTests
     }
 
     [TestMethod]
-    public async Task OpenAsync_MftOnlyPolicy_ThrowsUntilTheMftProducerLands()
+    public async Task OpenAsync_MftOnlyPolicyWithNoProducer_Throws()
     {
-        await Assert.ThrowsExceptionAsync<NotSupportedException>(
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => FileIndex.OpenAsync(Options(policy: ProducerPolicy.MftOnly), CancellationToken.None));
     }
 

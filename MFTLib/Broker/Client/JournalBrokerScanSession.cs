@@ -22,14 +22,12 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     JournalBatchSource? _batchSource;
     int _disposed;
 
-    // Drives/profile/keepFileNames the session was started or last rescanned with;
-    // guarded by _stateLock like the rest of the mutable state below. RescanAsync
-    // overloads that omit an argument read these to repeat the prior scan.
+    // Drives and profile from the latest scan or warm start, guarded by _stateLock.
+    // RescanAsync without a drive list reuses _drives and requires explicit options.
     IReadOnlyList<string> _drives;
     string? _faultReason;
     Action<string>? _faultedHandlers;
     bool _isFaulted;
-    IReadOnlyCollection<string>? _keepFileNames;
 
     BrokerScanResult? _latestScan;
 
@@ -60,12 +58,11 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     IReadOnlyDictionary<string, UsnJournalCursor> _watchCursors;
 
     JournalBrokerScanSession(JournalBrokerClient client, IReadOnlyList<string> drives, BrokerScanProfile profile,
-        IReadOnlyCollection<string>? keepFileNames, IReadOnlyDictionary<string, UsnJournalCursor> watchCursors)
+        IReadOnlyDictionary<string, UsnJournalCursor> watchCursors)
     {
         _client = client;
         _drives = drives;
         _profile = profile;
-        _keepFileNames = keepFileNames;
         // Null until a scan populates it. The StartAsync seam overwrites _latestScan and
         // _watchCursors with the initial scan result before the session escapes; a warm
         // session (StartFromCursorsAsync) leaves _latestScan null until the first RescanAsync.
@@ -91,8 +88,16 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
     ///     <see cref="StartFromCursorsAsync(Func{string,bool},IReadOnlyDictionary{string,UsnJournalCursor},CancellationToken)" />
     ///     )
     ///     that has not yet rescanned. Set by the initial scan and replaced by each rescan.
-    ///     Immutable between rescans; exposes armed and advanced cursors,
-    ///     catch-up entries, and per-drive errors.
+    ///     Immutable between rescans; exposes armed and advanced cursors, catch-up entries,
+    ///     per-drive errors and warnings, and the per-drive
+    ///     <see cref="BrokerScanResult.BlockOutcomes" />.
+    ///     <para>
+    ///         The session owns those blocks for as long as it holds this result. A rescan
+    ///         disposes the blocks of the result it replaces, and
+    ///         <see cref="DisposeAsync" /> disposes the blocks of the result held at that
+    ///         point, so a block that must outlive the next rescan or the session has to be
+    ///         copied or taken out of this result before then.
+    ///     </para>
     /// </summary>
     public BrokerScanResult? LatestScan
     {
@@ -155,8 +160,10 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
 
     /// <summary>
     ///     Dispose the session: stop any live watch, send the broker <c>Shutdown</c>, close
-    ///     the pipe, and release memory maps. Idempotent - the underlying client is disposed
-    ///     exactly once no matter how many times this is called.
+    ///     the pipe, and dispose the blocks of the <see cref="LatestScan" /> the session is
+    ///     still holding. Idempotent - the underlying client is disposed exactly once no
+    ///     matter how many times this is called. A block a caller wants to outlive the
+    ///     session must be taken from <see cref="LatestScan" /> before this runs.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
@@ -165,12 +172,36 @@ public sealed partial class JournalBrokerScanSession : IAsyncDisposable
             return;
         }
 
+        BrokerScanResult? held;
         lock (_stateLock)
         {
             _state = JournalBrokerSessionState.Disposed;
+            held = _latestScan;
         }
 
+        DisposeScanBlocks(held);
         await _client.DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    ///     Releases the blocks of a scan result the session owns and is giving up: one
+    ///     superseded by a rescan, one rejected because the session went terminal while the
+    ///     scan was in flight, or the one still held at disposal. Each of those results has
+    ///     left the client's pending collection, so nothing else would ever release its
+    ///     mappings and <c>DeleteOnClose</c> files. Safe on a null result and on a result
+    ///     whose blocks are already disposed, since <c>BlockFile.Dispose</c> is idempotent.
+    /// </summary>
+    static void DisposeScanBlocks(BrokerScanResult? scan)
+    {
+        if (scan == null)
+        {
+            return;
+        }
+
+        foreach (var outcome in scan.BlockOutcomes.Values)
+        {
+            outcome.Block.Dispose();
+        }
     }
 
     /// <summary>

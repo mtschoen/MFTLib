@@ -9,11 +9,14 @@
 #include <unistd.h>
 #include <vector>
 
+#include "mft/mft_fixture.h"
 #include "mft_api.h"
+#include "ntfs.h"
 
 extern "C" bool GenerateSyntheticMFTUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords);
 extern "C" bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
                                               uint32_t recordSize);
+extern "C" bool GenerateFixtureMFTUtf8(const char* filePath);
 extern "C" MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,
                                                 uint32_t bufferSizeRecords);
 extern "C" MftParseResult* ParseMFTFromFileUtf8WithProgress(const char* filePath, const wchar_t* filter,
@@ -39,8 +42,8 @@ void remove_fixture() { std::remove(kFixturePath); }
 
 bool test_abi_version() {
     uint32_t abiVersion = GetMftNativeAbiVersion();
-    if (abiVersion != 3) {
-        std::fprintf(stderr, "  FAIL: GetMftNativeAbiVersion() returned %u, expected 3\n", abiVersion);
+    if (abiVersion != 4) {
+        std::fprintf(stderr, "  FAIL: GetMftNativeAbiVersion() returned %u, expected 4\n", abiVersion);
         return false;
     }
     return true;
@@ -54,7 +57,7 @@ bool test_round_trip() {
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
     bool testPassed =
         (parseResult != nullptr) && parseResult->usedRecords > 0 && parseResult->errorMessage[0] == L'\0' &&
-        parseResult->abiVersion == 3 && parseResult->entryStride == 32 && parseResult->entries != nullptr &&
+        parseResult->abiVersion == 4 && parseResult->entryStride == 48 && parseResult->entries != nullptr &&
         parseResult->entryStrings != nullptr && parseResult->entryStringUnits < parseResult->usedRecords * 260;
     if (testPassed) {
         std::printf("  total=%llu used=%llu stringUnits=%llu ioMs=%.2f parseMs=%.2f totalMs=%.2f\n",
@@ -82,8 +85,8 @@ bool test_round_trip_4096() {
     }
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixture4096Path, nullptr, 0, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
-                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == 3 &&
-                      parseResult->entryStride == 32;
+                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == 4 &&
+                      parseResult->entryStride == 48;
     if (testPassed) {
         std::printf("  4096: total=%llu used=%llu ioMs=%.2f parseMs=%.2f totalMs=%.2f\n",
                     static_cast<unsigned long long>(parseResult->totalRecords),
@@ -105,7 +108,7 @@ bool test_parse_missing_file() {
     MftParseResult* parseResult =
         ParseMFTFromFileUtf8("/tmp/does_not_exist_4f8e7c.mft", nullptr, 0, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->errorMessage[0] != L'\0' &&
-                      parseResult->usedRecords == 0 && parseResult->abiVersion == 3 && parseResult->entryStride == 32;
+                      parseResult->usedRecords == 0 && parseResult->abiVersion == 4 && parseResult->entryStride == 48;
     if (!testPassed) {
         std::fprintf(stderr, "  FAIL: expected errorMessage set; got result=%p err[0]=%d\n",
                      static_cast<void*>(parseResult),
@@ -126,8 +129,8 @@ bool test_parse_empty_file() {
     std::fclose(fileHandle);
 
     MftParseResult* parseResult = ParseMFTFromFileUtf8(path, nullptr, 0, kDefaultBufferRecords);
-    bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 && parseResult->abiVersion == 3 &&
-                      parseResult->entryStride == 32;
+    bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 && parseResult->abiVersion == 4 &&
+                      parseResult->entryStride == 48;
     if (!testPassed && parseResult != nullptr) {
         std::fprintf(stderr, "  FAIL: empty file got totalRecords=%llu\n",
                      static_cast<unsigned long long>(parseResult->totalRecords));
@@ -154,6 +157,103 @@ bool test_parse_filter_returns_error() {
     }
     remove_fixture();
     return testPassed;
+}
+
+bool test_fixture_round_trip() {
+    constexpr const char* kFixturePathName = "/tmp/mftlib_fixture.mft";
+    if (!GenerateFixtureMFTUtf8(kFixturePathName)) {
+        std::fprintf(stderr, "  setup FAIL: GenerateFixtureMFTUtf8 returned false\n");
+        return false;
+    }
+    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePathName, nullptr, 0, 4096);
+    // Records 0 and 5 to 11 are in use and non-extension; 1 to 4 are zeroed,
+    // so the parser reports twelve total and eight used.
+    bool passed = parseResult != nullptr && parseResult->errorMessage[0] == L'\0' && parseResult->totalRecords == 12 &&
+                  parseResult->usedRecords == 8;
+    if (!passed && parseResult != nullptr) {
+        std::fprintf(stderr, "  FAIL: total=%llu used=%llu\n",
+                     static_cast<unsigned long long>(parseResult->totalRecords),
+                     static_cast<unsigned long long>(parseResult->usedRecords));
+    }
+    if (parseResult != nullptr) {
+        FreeMftResult(parseResult);
+    }
+    std::remove(kFixturePathName);
+    return passed;
+}
+
+bool test_fixture_modified_time() {
+    constexpr const char* kFixturePathName = "/tmp/mftlib_fixture_time.mft";
+    if (!GenerateFixtureMFTUtf8(kFixturePathName)) {
+        return false;
+    }
+    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePathName, nullptr, 0, 4096);
+    bool passed = parseResult != nullptr && parseResult->entries != nullptr;
+    if (passed) {
+        for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
+            const MftCompactEntry& entry = parseResult->entries[i];
+            auto expected = static_cast<int64_t>(132000000000000000ULL + entry.recordNumber * 10000000ULL);
+            if (entry.modifiedTime != expected) {
+                std::fprintf(stderr, "  FAIL: record %llu modifiedTime %lld, expected %lld\n",
+                             static_cast<unsigned long long>(entry.recordNumber),
+                             static_cast<long long>(entry.modifiedTime), static_cast<long long>(expected));
+                passed = false;
+            }
+        }
+    }
+    if (parseResult != nullptr) {
+        FreeMftResult(parseResult);
+    }
+    std::remove(kFixturePathName);
+    return passed;
+}
+
+struct ExpectedSize {
+    uint64_t recordNumber;
+    int64_t size;
+    bool sizeUnknown;
+};
+
+bool test_fixture_sizes() {
+    constexpr const char* kFixturePathName = "/tmp/mftlib_fixture_sizes.mft";
+    const std::array<ExpectedSize, 8> expected = {{
+        {0, 65536, false},
+        {5, 0, false},
+        {6, 37, false},
+        {7, 1234567, false},
+        {8, 0, false},
+        {9, 0, true},
+        {10, 4096, false},
+        {11, 0, true},
+    }};
+    if (!GenerateFixtureMFTUtf8(kFixturePathName)) {
+        return false;
+    }
+    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePathName, nullptr, 0, 4096);
+    bool passed = parseResult != nullptr && parseResult->usedRecords == expected.size();
+    if (passed) {
+        for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
+            const MftCompactEntry& entry = parseResult->entries[i];
+            const ExpectedSize* match = nullptr;
+            for (const auto& candidate : expected) {
+                if (candidate.recordNumber == entry.recordNumber) {
+                    match = &candidate;
+                }
+            }
+            bool unknown = (entry.flags & MFT_ENTRY_FLAG_SIZE_UNKNOWN) != 0;
+            if (match == nullptr || entry.size != match->size || unknown != match->sizeUnknown) {
+                std::fprintf(stderr, "  FAIL: record %llu size %lld unknown %d\n",
+                             static_cast<unsigned long long>(entry.recordNumber), static_cast<long long>(entry.size),
+                             static_cast<int>(unknown));
+                passed = false;
+            }
+        }
+    }
+    if (parseResult != nullptr) {
+        FreeMftResult(parseResult);
+    }
+    std::remove(kFixturePathName);
+    return passed;
 }
 
 bool test_alloc_failure_path() {
@@ -259,6 +359,111 @@ bool test_malformed_attribute_offset() {
 
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixtureMalformedPath, nullptr, 0, 256);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 && parseResult->errorMessage[0] == L'\0';
+    if (parseResult != nullptr) {
+        FreeMftResult(parseResult);
+    }
+    std::remove(kFixtureMalformedPath);
+    return testPassed;
+}
+
+// Locates the offset, within one on-disk record buffer, of the first unnamed
+// $DATA attribute by walking the attribute chain from the record header's
+// FirstAttributeOffset. Returns false when no such attribute is found before the
+// end marker or the record buffer runs out, leaving *outOffset unset.
+bool FindUnnamedDataAttributeOffset(const std::vector<uint8_t>& recordBuffer, uint16_t* outOffset) {
+    const auto* header = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(recordBuffer.data());
+    uint16_t attributeOffset = header->FirstAttributeOffset;
+    while (static_cast<size_t>(attributeOffset) + sizeof(uint32_t) <= recordBuffer.size()) {
+        const auto* attribute = reinterpret_cast<const ATTRIBUTE_RECORD_HEADER*>(recordBuffer.data() + attributeOffset);
+        if (attribute->TypeCode == EndMarker) {
+            return false;
+        }
+        if (attribute->TypeCode == Data && attribute->NameLength == 0) {
+            *outOffset = attributeOffset;
+            return true;
+        }
+        if (attribute->RecordLength == 0) {
+            return false;
+        }
+        attributeOffset = static_cast<uint16_t>(attributeOffset + attribute->RecordLength);
+    }
+    return false;
+}
+
+// Regression for the guard in TryExtractDataSize (mft.records.cpp) that rejects a
+// non-resident $DATA attribute too short to hold Form.Nonresident.FileSize. Record 7's
+// real unnamed $DATA attribute is truncated to 24 bytes in place, which leaves the
+// leftover, untouched bytes at the attribute's real FileSize offset (48-56) still
+// holding the fixture's original 1234567 value. The pre-fix parser has no guard
+// against a short non-resident attribute and reads that leftover FileSize, silently
+// accepting the malformed record with the original size. The fixed parser rejects any
+// non-resident attribute whose RecordLength cannot hold FileSize, so record 7 is
+// dropped entirely. The attribute's real offset is found at runtime by walking the
+// attribute chain rather than hard-coded, because it depends on the fixture's record
+// layout (name length, preceding attribute sizes) and drifts silently if that layout
+// changes.
+bool test_malformed_nonresident_data_length() {
+    constexpr const char* kFixtureMalformedPath = "/tmp/mftlib_malformed_nonresident_data_length.mft";
+    constexpr uint64_t kTargetRecordNumber = 7;
+    constexpr uint32_t kShortAttributeLength = 24;
+    if (!GenerateFixtureMFTUtf8(kFixtureMalformedPath)) {
+        return false;
+    }
+
+    const long recordFileOffset = static_cast<long>(kTargetRecordNumber * kFixtureRecordSize);
+    std::vector<uint8_t> recordBuffer(kFixtureRecordSize);
+    FILE* fileHandle = std::fopen(kFixtureMalformedPath, "r+b");
+    if (fileHandle == nullptr) {
+        std::remove(kFixtureMalformedPath);
+        return false;
+    }
+    std::fseek(fileHandle, recordFileOffset, SEEK_SET);
+    bool readOk = std::fread(recordBuffer.data(), 1, recordBuffer.size(), fileHandle) == recordBuffer.size();
+
+    uint16_t dataAttributeOffset = 0;
+    if (!readOk || !FindUnnamedDataAttributeOffset(recordBuffer, &dataAttributeOffset)) {
+        std::fprintf(stderr,
+                     "  FAIL: malformed_nonresident_data_length: could not locate record %llu's "
+                     "unnamed $DATA attribute\n",
+                     static_cast<unsigned long long>(kTargetRecordNumber));
+        std::fclose(fileHandle);
+        std::remove(kFixtureMalformedPath);
+        return false;
+    }
+
+    ATTRIBUTE_RECORD_HEADER malformedAttribute{};
+    malformedAttribute.TypeCode = Data;
+    malformedAttribute.RecordLength = kShortAttributeLength;
+    malformedAttribute.FormCode = 1;
+    malformedAttribute.NameLength = 0;
+    malformedAttribute.Form.Nonresident.LowestVcn.QuadPart = 0;
+    const long attributeFileOffset = recordFileOffset + dataAttributeOffset;
+    std::fseek(fileHandle, attributeFileOffset, SEEK_SET);
+    std::fwrite(&malformedAttribute, 1, kShortAttributeLength, fileHandle);
+
+    const uint32_t endMarker = static_cast<uint32_t>(EndMarker);
+    std::fseek(fileHandle, attributeFileOffset + kShortAttributeLength, SEEK_SET);
+    std::fwrite(&endMarker, 1, sizeof(endMarker), fileHandle);
+    std::fclose(fileHandle);
+
+    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixtureMalformedPath, nullptr, 0, 256);
+    bool testPassed = (parseResult != nullptr) && parseResult->errorMessage[0] == L'\0';
+    if (!testPassed) {
+        std::fprintf(stderr, "  FAIL: malformed_nonresident_data_length: usedRecords=%llu errorMessage[0]=%d\n",
+                     parseResult != nullptr ? static_cast<unsigned long long>(parseResult->usedRecords) : 0ULL,
+                     parseResult != nullptr ? static_cast<int>(parseResult->errorMessage[0]) : -1);
+    }
+    if (testPassed) {
+        for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
+            if (parseResult->entries[i].recordNumber == kTargetRecordNumber) {
+                std::fprintf(stderr, "  FAIL: malformed record %llu was accepted (size=%lld)\n",
+                             static_cast<unsigned long long>(kTargetRecordNumber),
+                             static_cast<long long>(parseResult->entries[i].size));
+                testPassed = false;
+                break;
+            }
+        }
+    }
     if (parseResult != nullptr) {
         FreeMftResult(parseResult);
     }
@@ -477,10 +682,10 @@ bool test_parallel_progress_monotonicity() {
         for (const auto& r : reports) {
             if (r.phase == MftScanPhase::Parsing) {
                 if (r.recordsScanned < prevParsing || r.recordsScanned > r.totalRecords) {
-                    std::fprintf(stderr, "  FAIL: parallel parsing progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
-                                 static_cast<unsigned long long>(prevParsing),
-                                 static_cast<unsigned long long>(r.recordsScanned),
-                                 static_cast<unsigned long long>(r.totalRecords));
+                    std::fprintf(
+                        stderr, "  FAIL: parallel parsing progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
+                        static_cast<unsigned long long>(prevParsing), static_cast<unsigned long long>(r.recordsScanned),
+                        static_cast<unsigned long long>(r.totalRecords));
                     ok = false;
                     break;
                 }
@@ -525,10 +730,13 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 16> tests = {{
+    const std::array<TestCase, 20> tests = {{
         {"abi_version", test_abi_version},
         {"round_trip", test_round_trip},
         {"round_trip_4096", test_round_trip_4096},
+        {"fixture_round_trip", test_fixture_round_trip},
+        {"fixture_modified_time", test_fixture_modified_time},
+        {"fixture_sizes", test_fixture_sizes},
         {"parse_missing_file", test_parse_missing_file},
         {"parse_empty_file", test_parse_empty_file},
         {"parse_filter_returns_error", test_parse_filter_returns_error},
@@ -538,6 +746,7 @@ int main() {
         {"generate_unwritable_path", test_generate_unwritable_path},
         {"max_threads_clamping", test_max_threads_clamping},
         {"malformed_attribute_offset", test_malformed_attribute_offset},
+        {"malformed_nonresident_data_length", test_malformed_nonresident_data_length},
         {"zero_length_file_name", test_zero_length_file_name},
         {"path_resolution_and_fallback", test_path_resolution_and_fallback},
         {"progress_callback", test_progress_callback},

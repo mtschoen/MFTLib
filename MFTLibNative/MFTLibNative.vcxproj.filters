@@ -48,6 +48,9 @@
     <ClInclude Include="mft\mft.internal.h">
       <Filter>Source Files\mft</Filter>
     </ClInclude>
+    <ClInclude Include="mft\mft_fixture.h">
+      <Filter>Source Files\mft</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -69,6 +72,9 @@
       <Filter>Source Files\mft</Filter>
     <ExcludedFromBuild>true</ExcludedFromBuild></ClCompile>
     <ClCompile Include="mft\mft.records.cpp">
+      <Filter>Source Files\mft</Filter>
+    <ExcludedFromBuild>true</ExcludedFromBuild></ClCompile>
+    <ClCompile Include="mft\mft_synthetic.fixture.cpp">
       <Filter>Source Files\mft</Filter>
     <ExcludedFromBuild>true</ExcludedFromBuild></ClCompile>
     <ClCompile Include="mft\mft_synthetic.cpp">

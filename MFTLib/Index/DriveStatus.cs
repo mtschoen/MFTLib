@@ -27,4 +27,12 @@ public sealed record DriveStatus
     ///     first-ever scan with nothing to reject.
     /// </summary>
     public BlockValidationResult? DiscardedBlock { get; init; }
+
+    /// <summary>
+    ///     Set when <see cref="ProducerPolicy.Auto" />'s MFT producer threw while this drive was
+    ///     opened, so the drive fell back to the enumeration producer instead. Null when the
+    ///     current block came from the MFT producer, from enumeration chosen by explicit policy,
+    ///     or from a warm start.
+    /// </summary>
+    public string? MftProducerFailureMessage { get; init; }
 }

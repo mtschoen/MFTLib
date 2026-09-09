@@ -12,10 +12,10 @@ public class PathResolutionTests
         // Build: C:\Users\test\file.txt
         var records = new MftRecord[]
         {
-            new(5, 5, 0x0003, ".", null), // root
-            new(100, 5, 0x0003, "Users", null), // Users under root
-            new(200, 100, 0x0003, "test", null), // test under Users
-            new(300, 200, 0x0001, "file.txt", null) // file.txt under test
+            new(5, 5, new MftRecordFields(0x0003), ".", null), // root
+            new(100, 5, new MftRecordFields(0x0003), "Users", null), // Users under root
+            new(200, 100, new MftRecordFields(0x0003), "test", null), // test under Users
+            new(300, 200, new MftRecordFields(0x0001), "file.txt", null) // file.txt under test
         };
 
         var path = ResolveTestPath(records, 300, "C");
@@ -27,8 +27,8 @@ public class PathResolutionTests
     {
         var records = new MftRecord[]
         {
-            new(5, 5, 0x0003, ".", null),
-            new(100, 5, 0x0003, "folder", null)
+            new(5, 5, new MftRecordFields(0x0003), ".", null),
+            new(100, 5, new MftRecordFields(0x0003), "folder", null)
         };
 
         var path = ResolveTestPath(records, 100, "D");
@@ -40,8 +40,8 @@ public class PathResolutionTests
     {
         var records = new MftRecord[]
         {
-            new(5, 5, 0x0003, ".", null),
-            new(100, 5, 0x0003, "folder", null)
+            new(5, 5, new MftRecordFields(0x0003), ".", null),
+            new(100, 5, new MftRecordFields(0x0003), "folder", null)
         };
 
         var path = ResolveTestPath(records, 5, "C");
@@ -54,8 +54,8 @@ public class PathResolutionTests
         // Simulate a circular parent reference (shouldn't happen but be safe)
         var records = new MftRecord[]
         {
-            new(10, 20, 0x0003, "a", null),
-            new(20, 10, 0x0003, "b", null)
+            new(10, 20, new MftRecordFields(0x0003), "a", null),
+            new(20, 10, new MftRecordFields(0x0003), "b", null)
         };
 
         // Should terminate without infinite loop
@@ -68,7 +68,7 @@ public class PathResolutionTests
     {
         var records = new MftRecord[]
         {
-            new(5, 5, 0x0003, ".", null)
+            new(5, 5, new MftRecordFields(0x0003), ".", null)
         };
 
         // Record 999 doesn't exist in the lookup
@@ -81,8 +81,8 @@ public class PathResolutionTests
     {
         var records = new MftRecord[]
         {
-            new(5, 5, 0x0003, ".", null),
-            new(50, 5, 0x0001, "boot.ini", null)
+            new(5, 5, new MftRecordFields(0x0003), ".", null),
+            new(50, 5, new MftRecordFields(0x0001), "boot.ini", null)
         };
 
         var path = ResolveTestPath(records, 50, "C");
@@ -94,12 +94,12 @@ public class PathResolutionTests
     {
         var records = new MftRecord[]
         {
-            new(5, 5, 0x0003, ".", null),
-            new(10, 5, 0x0003, "a", null),
-            new(20, 10, 0x0003, "b", null),
-            new(30, 20, 0x0003, "c", null),
-            new(40, 30, 0x0003, "d", null),
-            new(50, 40, 0x0001, "file.txt", null)
+            new(5, 5, new MftRecordFields(0x0003), ".", null),
+            new(10, 5, new MftRecordFields(0x0003), "a", null),
+            new(20, 10, new MftRecordFields(0x0003), "b", null),
+            new(30, 20, new MftRecordFields(0x0003), "c", null),
+            new(40, 30, new MftRecordFields(0x0003), "d", null),
+            new(50, 40, new MftRecordFields(0x0001), "file.txt", null)
         };
 
         var path = ResolveTestPath(records, 50, "X");
@@ -112,7 +112,7 @@ public class PathResolutionTests
         // A record whose parent is itself (other than root record 5)
         var records = new MftRecord[]
         {
-            new(10, 10, 0x0003, "loop", null)
+            new(10, 10, new MftRecordFields(0x0003), "loop", null)
         };
 
         var path = ResolveTestPath(records, 10, "C");
@@ -124,8 +124,8 @@ public class PathResolutionTests
     {
         var records = new MftRecord[]
         {
-            new(5, 5, 0x0003, ".", null),
-            new(10, 5, 0x0001, "data.db", null)
+            new(5, 5, new MftRecordFields(0x0003), ".", null),
+            new(10, 5, new MftRecordFields(0x0001), "data.db", null)
         };
 
         Assert.AreEqual(@"D:\data.db", ResolveTestPath(records, 10, "D"));

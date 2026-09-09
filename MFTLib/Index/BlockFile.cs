@@ -118,6 +118,16 @@ public sealed unsafe class BlockFile : IDisposable
     }
 
     /// <summary>
+    ///     Builds a block over an already-built mapping and view without touching the header,
+    ///     used by an opener (such as an elevated broker) that writes rows into a section created
+    ///     by another process.
+    /// </summary>
+    internal BlockFile(MemoryMappedFile mappedFile, MemoryMappedViewAccessor view, long length)
+        : this(string.Empty, length, deleteOnClose: false, mappedFile, view)
+    {
+    }
+
+    /// <summary>
     ///     Maps an existing block and validates it. A rejected block returns null with the reason
     ///     in <paramref name="validation" />, and the caller discards the file and rescans. A
     ///     missing or unreadable file reports <see cref="BlockValidationResult.WrongMagic" />
@@ -268,7 +278,7 @@ public sealed unsafe class BlockFile : IDisposable
         }
     }
 
-    static void TryDeleteFailedCreate(string path)
+    internal static void TryDeleteFailedCreate(string path)
     {
         try
         {
@@ -294,7 +304,7 @@ public sealed unsafe class BlockFile : IDisposable
             var descriptor = FileRow.ReadDescriptorWord(in rows[(int)rowIndex]);
             var offsetBytes = FileRow.DescriptorNameOffsetBytes(descriptor);
             var lengthBytes = (ulong)FileRow.DescriptorNameLengthUnits(descriptor) * sizeof(char);
-            if ((offsetBytes & (sizeof(char) - 1)) != 0 || (ulong)offsetBytes + lengthBytes > usedBytes)
+            if ((offsetBytes & (sizeof(char) - 1)) != 0 || offsetBytes + lengthBytes > usedBytes)
             {
                 return BlockValidationResult.InvalidNameDescriptor;
             }
@@ -312,7 +322,7 @@ public sealed unsafe class BlockFile : IDisposable
         header.ProducerKind = options.ProducerKind;
         header.Flags = BlockFlags.None;
         header.VolumeSerial = options.VolumeSerial;
-        header.RootRow = 0;
+        header.RootRow = options.RootRow;
         header.SlotCapacity = options.SlotCapacity;
         header.NamePoolCapacity = options.NamePoolCapacity;
         header.RowRegionOffset = BlockLayout.RowRegionOffset;

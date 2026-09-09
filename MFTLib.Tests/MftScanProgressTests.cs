@@ -80,7 +80,7 @@ public class MftScanProgressTests
         var initProgress = new BrokerScanProgress
         {
             DriveLetter = "D",
-            Phase = BrokerScanPhase.ResolvingPaths,
+            Phase = BrokerScanPhase.Parsing,
             RecordsProcessed = 400,
             BytesProcessed = 500,
             TotalRecords = 600,
@@ -88,29 +88,29 @@ public class MftScanProgressTests
             Elapsed = elapsed
         };
         Assert.AreEqual("D", initProgress.DriveLetter);
-        Assert.AreEqual(BrokerScanPhase.ResolvingPaths, initProgress.Phase);
+        Assert.AreEqual(BrokerScanPhase.Parsing, initProgress.Phase);
         Assert.AreEqual(400L, initProgress.RecordsProcessed);
         Assert.AreEqual(500L, initProgress.BytesProcessed);
         Assert.AreEqual(600L, initProgress.TotalRecords);
         Assert.AreEqual(700L, initProgress.TotalBytes);
 
-        var mmfProgress = new MmfWriteProgress(10, 20, 30, 40);
-        var (mRec4, mBytes4, mTotRec4, mTotBytes4) = mmfProgress;
+        var blockProgress = new BlockWriteProgress(10, 20, 30, 40);
+        var (mRec4, mBytes4, mTotRec4, mTotBytes4) = blockProgress;
         Assert.AreEqual(10L, mRec4);
         Assert.AreEqual(20L, mBytes4);
         Assert.AreEqual(30L, mTotRec4);
         Assert.AreEqual(40L, mTotBytes4);
 
-        Assert.IsTrue(mmfProgress is (10L, 20L, 30L, 40L));
+        Assert.IsTrue(blockProgress is (10L, 20L, 30L, 40L));
 
-        var (mRec5, mBytes5, mTotRec5, mTotBytes5, mPhase5) = mmfProgress;
+        var (mRec5, mBytes5, mTotRec5, mTotBytes5, mPhase5) = blockProgress;
         Assert.AreEqual(10L, mRec5);
         Assert.AreEqual(20L, mBytes5);
         Assert.AreEqual(30L, mTotRec5);
         Assert.AreEqual(40L, mTotBytes5);
         Assert.AreEqual(BrokerScanPhase.Transferring, mPhase5);
 
-        Assert.IsTrue(mmfProgress is (10L, 20L, 30L, 40L, BrokerScanPhase.Transferring));
+        Assert.IsTrue(blockProgress is (10L, 20L, 30L, 40L, BrokerScanPhase.Transferring));
     }
 
     [TestCleanup]

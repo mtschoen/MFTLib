@@ -134,7 +134,7 @@ public class LookupEngineTests
         var documentsRow = builder.AddRow("Documents", rootRow,
             RowFlags.InUse | RowFlags.Directory, 0, Moment);
         builder.AddRow("report.pdf", documentsRow, RowFlags.InUse, 4096, Moment);
-        builder.MutateHeader((ref BlockHeader header) => header.RootRow = rootRow);
+        builder.MutateHeader((ref header) => header.RootRow = rootRow);
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out var validation)!;
@@ -151,6 +151,35 @@ public class LookupEngineTests
         {
             snapshot.ReleaseNow();
         }
+    }
+
+    [TestMethod]
+    public void Root_UsesTheHeaderRootRow_NotRowZero()
+    {
+        using var builder = SyntheticBlockBuilder.MftShaped();
+        using var block = builder.OpenForReading(out var validation)!;
+        Assert.AreEqual(BlockValidationResult.Valid, validation);
+        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false, rootDirectoryPath: @"T:\");
+        var snapshot = Snapshot.Create([driveBlock]);
+
+        var root = LookupEngine.Root(snapshot, 'T');
+
+        Assert.AreEqual(5u, root.RowIndex);
+    }
+
+    [TestMethod]
+    public void Find_DescendsFromTheHeaderRootRow_NotRowZero()
+    {
+        using var builder = SyntheticBlockBuilder.MftShaped();
+        using var block = builder.OpenForReading(out _)!;
+        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false, rootDirectoryPath: @"T:\");
+        var snapshot = Snapshot.Create([driveBlock]);
+
+        var found = LookupEngine.Find(snapshot, @"T:\documents\notes.txt");
+
+        Assert.IsNotNull(found);
+        Assert.AreEqual("notes.txt", found.Value.Name);
+        Assert.AreEqual(99L, found.Value.Size);
     }
 }
 

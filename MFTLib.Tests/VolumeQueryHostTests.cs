@@ -10,7 +10,7 @@ namespace MFTLib.Tests;
 ///     <see cref="JournalBrokerHost.HandleQueryVolumesAsync" /> via <see cref="JournalBrokerHost.ServeAsync" />.
 /// </summary>
 [TestClass]
-public class VolumeQueryHostTests
+public class VolumeQueryHostTests : BrokerBlockTestBase
 {
     [TestMethod]
     public async Task QueryVolumes_TwoDrives_OneSeamThrows_EmitsVolumeInfoAndError()
@@ -18,7 +18,7 @@ public class VolumeQueryHostTests
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var host = new JournalBrokerHost(
             _ => default,
-            _ => Array.Empty<ScanRecord>(),
+            (_, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
             queryVolumeInfo: drive => drive == "C"
                 ? new NtfsVolumeInformation(8_192_000_000L, 1024, 512, 4096, 1_000_000, 500_000)
@@ -34,7 +34,7 @@ public class VolumeQueryHostTests
         await clientSide.WriteAsync(shutdown.WrittenMemory);
         await clientSide.FlushAsync();
 
-        await host.ServeAsync(serverSide, new RecordingMmfWriter(), false, CancellationToken.None);
+        await host.ServeAsync(serverSide, CreateSectionWriter(), false, CancellationToken.None);
         await serverSide.DisposeAsync();
 
         var frames = ReadAllFrames(clientSide);
@@ -55,7 +55,7 @@ public class VolumeQueryHostTests
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var host = new JournalBrokerHost(
             _ => default,
-            _ => Array.Empty<ScanRecord>(),
+            (_, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
         // queryVolumeInfo omitted -> null
 
@@ -65,7 +65,7 @@ public class VolumeQueryHostTests
         await clientSide.FlushAsync();
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var serveTask = host.ServeAsync(serverSide, new RecordingMmfWriter(), false, cts.Token);
+        var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
 
         var frame = await ReadOneFrameAsync(clientSide);
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
@@ -85,7 +85,7 @@ public class VolumeQueryHostTests
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var host = new JournalBrokerHost(
             _ => new UsnJournalCursor(7UL, 0L),
-            _ => Array.Empty<ScanRecord>(),
+            (_, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
             queryVolumeInfo: _ => new NtfsVolumeInformation(1024, 1024, 512, 4096, 1, 1));
 
@@ -100,7 +100,7 @@ public class VolumeQueryHostTests
         await clientSide.FlushAsync();
 
         // oneShot: true ends the session after the ArmAndScan that follows the query.
-        await host.ServeAsync(serverSide, new RecordingMmfWriter(), true, CancellationToken.None);
+        await host.ServeAsync(serverSide, CreateSectionWriter(), true, CancellationToken.None);
         await serverSide.DisposeAsync();
 
         var frames = ReadAllFrames(clientSide);

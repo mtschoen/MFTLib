@@ -32,7 +32,11 @@ public static class ScanSessionTestHarness
     ///     client per call, never a shared one.
     /// </param>
     /// <param name="drives">Drives to arm and scan.</param>
-    /// <param name="options">Cold-scan options (profile, consumer, keepFileNames, progress).</param>
+    /// <param name="options">
+    ///     Cold-scan options: required per-drive <see cref="BrokerScanOptions.BlockTargets" />,
+    ///     profile, keep-file names, and progress. The caller owns the blocks in the returned
+    ///     session's <see cref="JournalBrokerScanSession.LatestScan" /> and must dispose them.
+    /// </param>
     /// <param name="cancellationToken">Cancels the connect and scan.</param>
     public static Task<JournalBrokerScanSession> StartScannedAsync(
         Func<CancellationToken, Task<JournalBrokerClient>> connectAsync,
@@ -44,50 +48,13 @@ public static class ScanSessionTestHarness
     }
 
     /// <summary>
-    ///     Start a scanned session: connect via <paramref name="connectAsync" />, arm and scan
-    ///     <paramref name="drives" /> with <paramref name="profile" />, and return the session
-    ///     parked on the scan result - the same behaviour as the shipping
-    ///     <c>JournalBrokerScanSession.StartAsync</c> with a fake client in place of the
-    ///     elevated broker.
-    /// </summary>
-    /// <param name="connectAsync">
-    ///     Factory yielding a fresh, connected <see cref="JournalBrokerClient" />. The session
-    ///     takes exclusive ownership of the returned client and disposes it; return a new
-    ///     client per call, never a shared one.
-    /// </param>
-    /// <param name="drives">Drives to arm and scan.</param>
-    /// <param name="profile">Cold-scan record profile.</param>
-    /// <param name="keepFileNames">
-    ///     Non-directory file names to keep alongside every directory record; consulted only
-    ///     under <see cref="BrokerScanProfile.DirectoryIndex" />.
-    /// </param>
-    /// <param name="cancellationToken">Cancels the connect and scan.</param>
-    public static Task<JournalBrokerScanSession> StartScannedAsync(
-        Func<CancellationToken, Task<JournalBrokerClient>> connectAsync,
-        IReadOnlyList<string> drives,
-        BrokerScanProfile profile,
-        IReadOnlyCollection<string>? keepFileNames = null,
-        CancellationToken cancellationToken = default)
-    {
-        return JournalBrokerScanSession.StartAsync(
-            connectAsync,
-            drives,
-            new BrokerScanOptions
-            {
-                Profile = profile,
-                KeepFileNames = keepFileNames
-            },
-            cancellationToken);
-    }
-
-    /// <summary>
     ///     Start a warm session from persisted <paramref name="cursorsByDrive" />: connect via
     ///     <paramref name="connectAsync" /> and park directly on the supplied cursors with no
     ///     scan - the same behaviour as the shipping
     ///     <c>JournalBrokerScanSession.StartFromCursorsAsync</c> with a fake client in place of
     ///     the elevated broker. <see cref="JournalBrokerScanSession.LatestScan" /> stays null
-    ///     until the first rescan; <paramref name="profile" /> and
-    ///     <paramref name="keepFileNames" /> apply to a later rescan.
+    ///     until the first rescan. Each later rescan requires <see cref="BrokerScanOptions" />
+    ///     with block targets, profile, and keep-file names supplied explicitly.
     /// </summary>
     /// <param name="connectAsync">
     ///     Factory yielding a fresh, connected <see cref="JournalBrokerClient" />. The session
@@ -95,17 +62,15 @@ public static class ScanSessionTestHarness
     ///     client per call, never a shared one.
     /// </param>
     /// <param name="cursorsByDrive">Per-drive resume cursors to park on.</param>
-    /// <param name="profile">Cold-scan record profile a later rescan uses.</param>
-    /// <param name="keepFileNames">Keep-file names a later rescan uses.</param>
+    /// <param name="profile">Initial session profile; rescan options select the rescan profile.</param>
     /// <param name="cancellationToken">Cancels the connect.</param>
     public static Task<JournalBrokerScanSession> StartFromCursorsAsync(
         Func<CancellationToken, Task<JournalBrokerClient>> connectAsync,
         IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
         BrokerScanProfile profile,
-        IReadOnlyCollection<string>? keepFileNames = null,
         CancellationToken cancellationToken = default)
     {
-        return JournalBrokerScanSession.StartFromCursorsAsync(connectAsync, cursorsByDrive, profile, keepFileNames,
-            cancellationToken);
+        return JournalBrokerScanSession.StartFromCursorsAsync(connectAsync, cursorsByDrive, profile,
+            cancellationToken: cancellationToken);
     }
 }

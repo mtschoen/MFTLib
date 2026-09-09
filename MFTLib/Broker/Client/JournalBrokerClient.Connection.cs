@@ -1,6 +1,6 @@
-using System.IO.MemoryMappedFiles;
 using System.IO.Pipes;
 using System.Runtime.Versioning;
+using MFTLib.Index;
 
 namespace MFTLib;
 
@@ -29,7 +29,7 @@ public sealed partial class JournalBrokerClient
     /// <summary>
     ///     Build the named pipe, launch the elevated broker against it, wait for the broker
     ///     to connect within <see cref="DefaultConnectTimeout" /> (or <c>_connectTimeout</c>), and
-    ///     return a ready client wired to the real MMF reader and a page-file-backed per-drive MMF creator.
+    ///     return a ready client that creates named block sections for each drive.
     ///     <paramref name="launchBroker" /> receives the broker command line (e.g. "--broker --pipe NAME")
     ///     and returns whether the launch started (false if the user declined the UAC prompt).
     ///     Throws <see cref="TimeoutException" /> if the broker is launched but does not connect within the timeout.
@@ -45,7 +45,7 @@ public sealed partial class JournalBrokerClient
     /// <summary>
     ///     Build the named pipe, launch the elevated broker against it, wait up to
     ///     <paramref name="connectTimeout" /> for the broker to connect, and return a ready client wired
-    ///     to the real MMF reader and a page-file-backed per-drive MMF creator.
+    ///     to the real named block section factory.
     ///     <paramref name="launchBroker" /> receives the broker command line (e.g. "--broker --pipe NAME")
     ///     and returns whether the launch started (false if the user declined the UAC prompt).
     ///     Throws <see cref="TimeoutException" /> if the broker is launched but does not connect within the timeout.
@@ -64,7 +64,7 @@ public sealed partial class JournalBrokerClient
         }
 
         var pipeName = "mftlib-broker-" + Guid.NewGuid().ToString("N");
-        var server = new NamedPipeServerStream(
+        NamedPipeServerStream? server = new(
             pipeName, PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         try
@@ -95,36 +95,33 @@ public sealed partial class JournalBrokerClient
                     $"Timed out waiting {durationStr} for the elevated broker to connect to pipe '{pipeName}'. The broker process was launched, but never connected (headless session, unserviced UAC prompt, or broker crash before connect)."));
             }
 
-            return new JournalBrokerClient(server, new RealMmfReader(), CreateRealDriveMmf);
+            var client = new JournalBrokerClient(server, CreateRealDriveBlockSection);
+            server = null;
+            return client;
         }
-        catch
+        finally
         {
-            await server.DisposeAsync().ConfigureAwait(false);
-            throw;
+            server?.Dispose();
         }
     }
 
-    // Production createDriveMmf: a uniquely named, page-file-backed map the elevated
-    // broker opens by name and writes the cold scan into. The MemoryMappedFile handle
-    // is the lifetime the client disposes once the scan has been read back.
-    //
-    // Deliberately NOT MemoryMappedFileOptions.DelayAllocatePages (SEC_RESERVE): a spike
-    // (see MFTLib#89) confirmed that pages reserved this way are not committed on first
-    // touch the way an ordinary SEC_COMMIT section's pages are. Writing through the
-    // stream-based view (CreateViewStream + Stream.Write, which is how RealMmfWriter and
-    // ScanPayload.Write operate) crashed the process with an unrecoverable
-    // AccessViolationException, even for a 1 KiB write to a mostly-empty map - the OS does
-    // not auto-commit SEC_RESERVE pages on write the way it does SEC_COMMIT pages; that
-    // requires explicit VirtualAlloc(MEM_COMMIT) calls tracking a write high-water mark,
-    // which is a materially bigger, riskier change than a flag swap and is not something
-    // the existing Stream-based writer seam supports. Capacity is therefore sized via the
-    // caller-controlled "capacity" parameter (see BrokerScanOptions.MmfCapacityBytes)
-    // rather than by requesting a huge reservation and hoping it stays cheap.
+    // The returned Lifetime is the same MemoryMappedFile instance already held by the
+    // returned Block (see NamedBlockSection.Create), not an independent resource. Disposing
+    // it early, as the block scan arm does on ScanReady, only unpublishes the named section
+    // so no other process can open it by name; it does not tear down the mapping, because the
+    // Block's own view accessor holds its own reference and Windows keeps a memory-mapped
+    // section alive while any view of it remains mapped. The Block disposes the same
+    // MemoryMappedFile again in its own Dispose, which is safe because a second dispose of an
+    // already-disposed safe handle is a no-op. A future implementation of this seam must
+    // preserve that property: it must never return a lifetime whose disposal also invalidates
+    // the block's view, since callers are entitled to dispose the lifetime while still using
+    // the block.
     [SupportedOSPlatform("windows")]
-    static (string Name, IDisposable Lifetime) CreateRealDriveMmf(string driveLetter, long capacity)
+    static (string SectionName, BlockFile Block, IDisposable Lifetime) CreateRealDriveBlockSection(
+        string driveLetter, BlockFileCreateOptions options)
     {
-        var name = "mftlib-scan-" + driveLetter + "-" + Guid.NewGuid().ToString("N");
-        var map = MemoryMappedFile.CreateNew(name, capacity);
-        return (name, map);
+        var sectionName = NamedBlockSection.BuildSectionName(driveLetter[0]);
+        var (block, lifetime) = NamedBlockSection.Create(options, sectionName);
+        return (sectionName, block, lifetime);
     }
 }

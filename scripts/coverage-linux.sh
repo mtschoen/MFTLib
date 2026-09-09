@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# coverage-linux.sh — build with --coverage, run native + managed tests, produce reports.
+# coverage-linux.sh  -  build with --coverage, run native + managed tests, produce reports.
 #
 # Outputs:
-#   coverage-report/index.html             — native (gcovr) HTML
-#   coverage-report/summary.txt            — native text summary
-#   coverage-report/managed/coverage.cobertura.xml  — managed (coverlet) cobertura
+#   coverage-report/index.html              -  native (gcovr) HTML
+#   coverage-report/summary.txt             -  native text summary
+#   coverage-report/managed/coverage.cobertura.xml   -  managed (coverlet) cobertura
 #
 # Flags:
 #   --no-managed   skip the dotnet test pass (native-only run)
@@ -69,15 +69,7 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     #   ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse
     #   ElevationUtilitiesTests.TryRunElevated_ProcessExitsZero_ReturnsTrue
     #   MockVolumeTests.GetVolumeHandle_InvalidVolume_ThrowsIOException
-    #   JournalBrokerHostTests.RealMmfWriter_WritesPayload_UiCanReadItBack (real named MMF)
-    #   JournalBrokerClientTests.ArmScanAndCatchUpAsync_ReturnsRecords_ArmedCursor_AndCatchUpEntries (real named MMF)
     #   DefaultElevatedEntryRunnerTests.RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilShutdown_ExitsWithCode0 (real named pipe)
-    #   JournalBrokerClientTests.SpawnAndConnectAsync_EndToEnd_UsesRealPipeAndRealMmfSeams (real named pipe + real named MMF)
-    #   JournalBrokerScanSessionTests.PublicStartAsync_InProcessBroker_EndToEnd (real named pipe + real named MMF)
-    #   JournalBrokerScanSessionTests.PublicStartAsync_WithRecordConsumer_InProcessBroker_StreamsRecords (real named pipe + real named MMF)
-    #   JournalBrokerScanSessionTests.PublicStartAsync_WithProfileAndKeepFileNames_InProcessBroker_ParksWithRequestedProfile (real named pipe + real named MMF)
-    #   JournalBrokerScanSessionTests.PublicStartAsync_WithOptions_InProcessBroker_ParksWithRequestedProfile (real named pipe + real named MMF)
-    #   JournalBrokerScanSessionTests.PublicStartFromCursors_InProcessBroker_EndToEnd (real named pipe + real named MMF)
     # Coverlet only writes output when the run is green, so failing tests must be filtered.
     FILTER='FullyQualifiedName!~MftResultTests'
     FILTER+='&FullyQualifiedName!~MftVolumeTests'
@@ -87,15 +79,7 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.ElevationUtilitiesTests.TryRunElevated_ProcessExitsZero_ReturnsTrue'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.MockVolumeTests.GetVolumeHandle_InvalidVolume_ThrowsIOException'
-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerHostTests.RealMmfWriter_WritesPayload_UiCanReadItBack'
-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerClientTests.ArmScanAndCatchUpAsync_ReturnsRecords_ArmedCursor_AndCatchUpEntries'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.DefaultElevatedEntryRunnerTests.RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilShutdown_ExitsWithCode0'
-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerClientTests.SpawnAndConnectAsync_EndToEnd_UsesRealPipeAndRealMmfSeams'
-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerScanSessionTests.PublicStartAsync_InProcessBroker_EndToEnd'
-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerScanSessionTests.PublicStartAsync_WithRecordConsumer_InProcessBroker_StreamsRecords'
-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerScanSessionTests.PublicStartAsync_WithProfileAndKeepFileNames_InProcessBroker_ParksWithRequestedProfile'
-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerScanSessionTests.PublicStartAsync_WithOptions_InProcessBroker_ParksWithRequestedProfile'
-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.JournalBrokerScanSessionTests.PublicStartFromCursors_InProcessBroker_EndToEnd'
 
     echo
     echo "==> [managed] dotnet test with coverlet"

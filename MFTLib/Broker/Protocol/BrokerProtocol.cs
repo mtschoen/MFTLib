@@ -130,10 +130,12 @@ public static partial class BrokerProtocol
     static BrokerFrame ReadScanReadyFrame(ReadOnlySpan<byte> payload)
     {
         var mmfName = ReadString(payload, 0, out var offset);
-        var recordCount = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        var rowCount = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
         offset += 8;
-        var byteLength = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        return BrokerFrame.ScanReady(mmfName, recordCount, byteLength);
+        var namePoolUsedBytes = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        offset += 8;
+        var skippedRecordCount = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        return BrokerFrame.ScanReady(mmfName, rowCount, namePoolUsedBytes, skippedRecordCount);
     }
 
     static BrokerFrame ReadCursorFrame(ReadOnlySpan<byte> payload)

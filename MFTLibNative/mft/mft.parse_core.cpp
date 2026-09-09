@@ -208,6 +208,8 @@ void PopulatePathSlice(SliceRange range, const CompactOutput& source, const Path
         entry.parentRecordNumber = src.parentRecordNumber;
         entry.flags = src.flags;
         entry.fileAttributes = src.fileAttributes;
+        entry.size = src.size;
+        entry.modifiedTime = src.modifiedTime;
         if (ResolvePath(src.recordNumber, lookup, totalRecords, pathBuffer)) {
             entry.name = reinterpret_cast<const WCHAR*>(pathBuffer.data());
             entry.nameLength = static_cast<uint16_t>(pathBuffer.size());

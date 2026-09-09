@@ -11,12 +11,7 @@ public enum BrokerScanPhase : byte
     Parsing = 0,
 
     /// <summary>
-    ///     Resolving full directory paths across parsed entries.
-    /// </summary>
-    ResolvingPaths = 1,
-
-    /// <summary>
     ///     Transferring records into shared memory for the client.
     /// </summary>
-    Transferring = 2
+    Transferring = 1
 }

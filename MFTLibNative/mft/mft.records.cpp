@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -44,8 +45,20 @@ bool FileNameMatches(const WCHAR* name, uint8_t nameLen, const FilterSpec& filte
     return false;
 }
 
-bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, uint32_t* siAttributes,
-                                   bool* sawStandardInformation) {
+struct StandardInformationValues {
+    uint32_t fileAttributes = 0;
+    int64_t modifiedTime = 0;
+    bool present = false;
+};
+
+struct RecordAttributes {
+    PFILE_NAME nameAttribute = nullptr;
+    StandardInformationValues standardInformation{};
+    int64_t dataSize = 0;
+    bool dataPresent = false;
+};
+
+bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, StandardInformationValues* values) {
     constexpr size_t kResidentHeaderSize = 0x18;
     constexpr size_t kMinStandardInformationSize = 36;
     if (attribute->Form.Resident.ValueOffset < kResidentHeaderSize ||
@@ -53,9 +66,13 @@ bool TryExtractStandardInformation(const ATTRIBUTE_RECORD_HEADER* attribute, uin
             attribute->RecordLength) {
         return false;
     }
-    const auto* siValue = reinterpret_cast<const uint8_t*>(attribute) + attribute->Form.Resident.ValueOffset;
-    *siAttributes = *reinterpret_cast<const uint32_t*>(siValue + 32);
-    *sawStandardInformation = true;
+    const auto* value = reinterpret_cast<const uint8_t*>(attribute) + attribute->Form.Resident.ValueOffset;
+    // $STANDARD_INFORMATION body: 0x00 creation, 0x08 last altered, 0x10 MFT changed,
+    // 0x18 last read, 0x20 DOS file permissions. The 36-byte guard above covers all of
+    // these, so neither read needs a further bounds check.
+    memcpy(&values->modifiedTime, value + 8, sizeof(int64_t));
+    memcpy(&values->fileAttributes, value + 32, sizeof(uint32_t));
+    values->present = true;
     return true;
 }
 
@@ -76,49 +93,80 @@ bool TryExtractFileName(const ATTRIBUTE_RECORD_HEADER* attribute, PFILE_NAME* ou
     return true;
 }
 
-// Walk a record's attributes, accumulating the StandardInformation file
-// attributes into *siAttributes (*sawStandardInformation set if seen), and stop
-// at the first resident, non-DOS FileName attribute. Returns that FileName
-// attribute, or nullptr if the record has none.
-PFILE_NAME FindNamedAttribute(PFILE_RECORD_SEGMENT_HEADER rec, ParseGeometry geometry, uint32_t* siAttributes,
-                              bool* sawStandardInformation) {
-    *siAttributes = 0;
-    *sawStandardInformation = false;
-    auto* recordPointer = reinterpret_cast<uint8_t*>(rec);
-    if (rec->FirstAttributeOffset < 42 || rec->FirstAttributeOffset + sizeof(uint32_t) > geometry.recordSize) {
-        return nullptr;
+enum class DataSizeExtractionResult {
+    NotPresent,
+    Present,
+    Malformed,
+};
+
+// Reports the unnamed $DATA size for one attribute. Named streams and non-resident
+// records whose lowest virtual cluster number is nonzero do not carry the base size.
+DataSizeExtractionResult TryExtractDataSize(const ATTRIBUTE_RECORD_HEADER* attribute, size_t remainingRecordBytes,
+                                            int64_t* size) {
+    if (attribute->NameLength != 0) {
+        return DataSizeExtractionResult::NotPresent;
     }
-    auto* attribute = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(recordPointer + rec->FirstAttributeOffset);
+    if (attribute->FormCode == 0) {
+        *size = static_cast<int64_t>(attribute->Form.Resident.ValueLength);
+        return DataSizeExtractionResult::Present;
+    }
+    constexpr size_t kNonresidentHeaderSize = offsetof(ATTRIBUTE_RECORD_HEADER, Form.Nonresident.ValidDataLength) +
+                                              sizeof(attribute->Form.Nonresident.ValidDataLength);
+    if (attribute->RecordLength < kNonresidentHeaderSize || attribute->RecordLength > remainingRecordBytes) {
+        return DataSizeExtractionResult::Malformed;
+    }
+    if (attribute->Form.Nonresident.LowestVcn.QuadPart != 0 || attribute->Form.Nonresident.FileSize < 0) {
+        return DataSizeExtractionResult::NotPresent;
+    }
+    *size = attribute->Form.Nonresident.FileSize;
+    return DataSizeExtractionResult::Present;
+}
+
+bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geometry,
+                          RecordAttributes* recordAttributes) {
+    *recordAttributes = {};
+    auto* recordPointer = reinterpret_cast<uint8_t*>(record);
+    if (record->FirstAttributeOffset < 42 || record->FirstAttributeOffset + sizeof(uint32_t) > geometry.recordSize) {
+        return false;
+    }
+    auto* attribute = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(recordPointer + record->FirstAttributeOffset);
     constexpr size_t kResidentHeaderSize = 0x18;
     while (true) {
         const auto offset = static_cast<size_t>(reinterpret_cast<uint8_t*>(attribute) - recordPointer);
         if (offset + sizeof(uint32_t) > geometry.recordSize) {
-            return nullptr;
+            return false;
         }
         if (attribute->TypeCode == EndMarker) {
             break;
         }
         if (offset + kResidentHeaderSize > geometry.recordSize || attribute->RecordLength < kResidentHeaderSize ||
             offset + attribute->RecordLength > geometry.recordSize) {
-            return nullptr;
+            return false;
         }
         if (attribute->TypeCode == StandardInformation && attribute->FormCode == 0) {
-            if (!TryExtractStandardInformation(attribute, siAttributes, sawStandardInformation)) {
-                return nullptr;
+            if (!TryExtractStandardInformation(attribute, &recordAttributes->standardInformation)) {
+                return false;
             }
         } else if (attribute->TypeCode == FileName && attribute->FormCode == 0) {
-            PFILE_NAME nameAttr = nullptr;
-            if (!TryExtractFileName(attribute, &nameAttr)) {
-                return nullptr;
+            PFILE_NAME nameAttribute = nullptr;
+            if (!TryExtractFileName(attribute, &nameAttribute)) {
+                return false;
             }
-            if (nameAttr->Flags != 2) {
-                return nameAttr;
+            if (recordAttributes->nameAttribute == nullptr && nameAttribute->Flags != 2) {
+                recordAttributes->nameAttribute = nameAttribute;
             }
+        } else if (attribute->TypeCode == Data && !recordAttributes->dataPresent) {
+            const auto dataSizeResult =
+                TryExtractDataSize(attribute, geometry.recordSize - offset, &recordAttributes->dataSize);
+            if (dataSizeResult == DataSizeExtractionResult::Malformed) {
+                return false;
+            }
+            recordAttributes->dataPresent = dataSizeResult == DataSizeExtractionResult::Present;
         }
         attribute =
             reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(attribute) + attribute->RecordLength);
     }
-    return nullptr;
+    return true;
 }
 
 // Scan one file record. If it is an in-use, non-extension record with a non-DOS
@@ -140,11 +188,21 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
         return false;
     }
 
-    uint32_t siAttributes = 0;
-    bool sawStandardInformation = false;
-    auto* nameAttr = FindNamedAttribute(rec, scan.geometry, &siAttributes, &sawStandardInformation);
-    if (nameAttr == nullptr) {
+    RecordAttributes attributes{};
+    if (!ScanRecordAttributes(rec, scan.geometry, &attributes) || attributes.nameAttribute == nullptr) {
         return false;
+    }
+    auto* nameAttr = attributes.nameAttribute;
+
+    bool isDirectory = (rec->Flags & 0x0002) != 0;
+    outEntry->flags = rec->Flags;
+    if (isDirectory) {
+        outEntry->size = 0;
+    } else if (attributes.dataPresent) {
+        outEntry->size = attributes.dataSize;
+    } else {
+        outEntry->size = 0;
+        outEntry->flags |= MFT_ENTRY_FLAG_SIZE_UNKNOWN;
     }
 
     uint64_t parent = static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberLowPart) |
@@ -160,8 +218,10 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
 
     outEntry->recordNumber = recordIndex;
     outEntry->parentRecordNumber = parent;
-    outEntry->flags = rec->Flags;
-    outEntry->fileAttributes = sawStandardInformation ? siAttributes : nameAttr->FileAttributes;
+    outEntry->fileAttributes = attributes.standardInformation.present ? attributes.standardInformation.fileAttributes
+                                                                      : nameAttr->FileAttributes;
+    outEntry->modifiedTime = attributes.standardInformation.present ? attributes.standardInformation.modifiedTime
+                                                                    : static_cast<int64_t>(nameAttr->ModificationTime);
     outEntry->name = nameAttr->FileName;
     outEntry->nameLength = nameAttr->FileNameLength;
     return true;

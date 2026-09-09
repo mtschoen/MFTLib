@@ -14,7 +14,7 @@ namespace MFTLib;
 public sealed partial class JournalBrokerHost
 {
     readonly UsnJournalCursorQuery _queryCursor;
-    readonly ProgressStreamingDriveScanSource _scanDrive;
+    readonly MftRecordBatchSource _scanDrive;
     readonly UsnJournalCatchUpSource _readJournal;
     readonly JournalBatchSource? _watchDrive;
     readonly NtfsVolumeInformationQuery? _queryVolumeInfo;
@@ -23,7 +23,7 @@ public sealed partial class JournalBrokerHost
 
     public JournalBrokerHost(
         UsnJournalCursorQuery queryCursor,
-        ProgressStreamingDriveScanSource scanDrive,
+        MftRecordBatchSource scanDrive,
         UsnJournalCatchUpSource readJournal,
         JournalBatchSource? watchDrive = null,
         NtfsVolumeInformationQuery? queryVolumeInfo = null)
@@ -35,61 +35,10 @@ public sealed partial class JournalBrokerHost
         _queryVolumeInfo = queryVolumeInfo;
     }
 
-    public JournalBrokerHost(
-        UsnJournalCursorQuery queryCursor,
-        StreamingDriveScanSource scanDrive,
-        UsnJournalCatchUpSource readJournal,
-        JournalBatchSource? watchDrive = null,
-        NtfsVolumeInformationQuery? queryVolumeInfo = null)
-        : this(
-            queryCursor,
-            (drive, _, ct) => scanDrive(drive, ct),
-            readJournal,
-            watchDrive,
-            queryVolumeInfo)
-    {
-    }
-
-    public JournalBrokerHost(
-        UsnJournalCursorQuery queryCursor,
-        DriveScanSource scanDrive,
-        UsnJournalCatchUpSource readJournal,
-        JournalBatchSource? watchDrive = null,
-        NtfsVolumeInformationQuery? queryVolumeInfo = null)
-        : this(
-            queryCursor,
-            (drive, _, _) => [scanDrive(drive)],
-            readJournal,
-            watchDrive,
-            queryVolumeInfo)
-    {
-    }
-
-    /// <summary>
-    ///     Arm the journal cursor, then scan. The cursor is captured strictly before
-    ///     the scan begins so any file changes that race the scan are caught by the
-    ///     subsequent catch-up read instead of being silently missed.
-    /// </summary>
-    public (UsnJournalCursor Cursor, ScanRecord[] Records) ArmAndScan(string driveLetter)
-    {
-        var cursor = _queryCursor(driveLetter); // strictly before the scan
-        var records = _scanDrive(driveLetter, null, CancellationToken.None).SelectMany(b => b).ToArray();
-        return (cursor, records);
-    }
-
-    public (UsnJournalCursor Cursor, IEnumerable<IReadOnlyList<ScanRecord>> Batches) ArmAndScanBatches(
-        string driveLetter, IProgress<MmfWriteProgress>? progress = null, CancellationToken cancellationToken = default)
-    {
-        var cursor = _queryCursor(driveLetter);
-        var batches = _scanDrive(driveLetter, progress, cancellationToken);
-        return (cursor, batches);
-    }
-
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) CatchUp(string driveLetter, UsnJournalCursor since)
     {
         return _readJournal(driveLetter, since);
     }
-
 
     List<Task> StartWatchTasks(Stream stream, string watchSpec, SemaphoreSlim writeLock,
         CancellationToken cancellationToken)
@@ -260,7 +209,7 @@ public sealed partial class JournalBrokerHost
     {
         return new JournalBrokerHost(
             QueryCursor,
-            ScanDriveBatches,
+            ScanDriveRecordBatches,
             ReadJournal,
             WatchAndDisposeAsync,
             QueryVolumeInfo);
@@ -287,44 +236,6 @@ public sealed partial class JournalBrokerHost
                 "NTFS volume information queries require Windows (FSCTL_GET_NTFS_VOLUME_DATA).");
     }
 
-    static IEnumerable<IReadOnlyList<ScanRecord>> ScanDriveBatches(
-        string drive, IProgress<MmfWriteProgress>? progress, CancellationToken cancellationToken)
-    {
-        using var volume = MftVolume.Open(Bare(drive));
-        // Adapt MftScanProgress from the native MFT volume parser into MmfWriteProgress
-        // so drive scan progress flows to the host progress pump.
-        //
-        // This is the parse-phase source, reporting RecordsScanned climbing to
-        // TotalRecords with BytesProcessed = 0. ExecuteDriveScanAsync passes the same
-        // progress reporter into the streaming writer's Write call, so the write phase
-        // (which reports RecordsProcessed/BytesProcessed per batch written) feeds the
-        // same channel and the two phases interleave into one non-decreasing stream;
-        // the guaranteed final frame with the true byte/record totals is still emitted
-        // separately by EmitScanCompletionFramesAsync.
-        //
-        // DirectProgress invokes handlers synchronously on the calling thread to avoid
-        // thread-pool dispatch delays and ensure TotalRecords is captured reliably.
-        var mftProgress = progress != null
-            ? new DirectProgress<MftScanProgress>(p =>
-                progress.Report(new MmfWriteProgress(
-                    p.RecordsScanned,
-                    0,
-                    p.TotalRecords,
-                    null,
-                    p.Phase == MftScanPhase.ResolvingPaths ? BrokerScanPhase.ResolvingPaths : BrokerScanPhase.Parsing)))
-            : null;
-
-        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, 4096, mftProgress))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var scanRecords = ToScanRecords(batch);
-            if (scanRecords.Length > 0)
-            {
-                yield return scanRecords;
-            }
-        }
-    }
-
     static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(string drive, UsnJournalCursor since)
     {
         using var volume = MftVolume.Open(Bare(drive));
@@ -348,29 +259,6 @@ public sealed partial class JournalBrokerHost
         {
             yield return batch;
         }
-    }
-
-    // MftRecord does not carry Size or LastWriteTime on the current MFTLib surface
-    // (the in-process MFT scan likewise records Size = 0); ScanRecord keeps those
-    // fields for forward compatibility and they are zero from the MFT path. Skip
-    // free and path-less records to mirror the direct-scan filter.
-    static ScanRecord[] ToScanRecords(MftRecord[] records)
-    {
-        var result = new List<ScanRecord>(records.Length);
-        foreach (var record in records)
-        {
-            if (!record.InUse || string.IsNullOrEmpty(record.FullPath))
-            {
-                continue;
-            }
-
-            result.Add(new ScanRecord(
-                record.RecordNumber, record.ParentRecordNumber, 0,
-                0, (uint)record.FileAttributes, record.IsDirectory,
-                record.FileName, record.FullPath));
-        }
-
-        return result.ToArray();
     }
 
     static bool IsNonRetryableStartupException(Exception exception)

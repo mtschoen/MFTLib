@@ -46,9 +46,7 @@ public sealed partial class FileIndex
             ScanDriveResult scanResult;
             try
             {
-                scanResult = await Task
-                    .Run(() => ScanDrive(drive, driveOrdinal, blockPath, _options.NoCache, cancellationToken),
-                        cancellationToken)
+                scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, blockPath, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch
@@ -114,12 +112,8 @@ public sealed partial class FileIndex
         {
             if (File.Exists(retiredPath))
             {
-                // ScanDrive's own failure cleanup disposes the failed attempt's partial block
-                // without deleting it (a cache-mode block is never created with delete-on-close,
-                // since a successful one must not self-delete), so an incomplete file can be
-                // sitting at the canonical path. It is worthless - the next open would reject it
-                // as Incomplete anyway - and must not block reclaiming the name for the retired
-                // file, which still holds the last good scan.
+                // A failed producer can leave an incomplete file at the canonical path after
+                // releasing its mapping. Remove it before restoring the last good scan.
                 if (File.Exists(canonicalPath))
                 {
                     File.Delete(canonicalPath);

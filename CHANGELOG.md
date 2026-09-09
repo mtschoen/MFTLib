@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased
+
+### Breaking Changes
+
+- Native ABI bumped from 3 to 4: compact entries are 48 bytes, with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, and size-unknown flags bit `0x8000`; managed and native binaries must be upgraded together
+- Removed `IMmfWriter`, `IStreamingMmfWriter`, `IMmfReader`, and `IStreamingMmfReader`
+- Removed `RealMmfWriter`, `RealMmfReader`, and `MmfWriteResult`
+- Removed `BrokerScanOutputFormat`, `ScanPayload`, `ScanRecord`, and `ScanRecordBatchConsumer`; cold scans return packed blocks only
+- Removed `DriveScanSource`, `StreamingDriveScanSource`, and `ProgressStreamingDriveScanSource`; `JournalBrokerHost` takes `MftRecordBatchSource` as its scan source
+- Renamed `MmfWriteProgress` to `BlockWriteProgress`, preserving its fields and constructors
+- Removed `BrokerScanPhase.ResolvingPaths`; the broker parses without path resolution
+- Removed `BrokerScanOptions.ConsumeRecords`, `OutputFormat`, `MmfCapacityBytes`, and `MmfCapacityPlanner`
+- Removed `JournalBrokerClient.DefaultMmfCapacity` and `DefaultCapacityPlanner`; block sizing uses `MftBlockCapacity`
+- `JournalBrokerClient` now requires `Func<string, BlockFileCreateOptions, (string SectionName, BlockFile Block, IDisposable Lifetime)> createDriveBlockSection` immediately after the stream, replacing `IMmfReader` and `createDriveMmf`
+- Removed `JournalBrokerHost.ArmAndScan` and `ArmAndScanBatches`; `ServeAsync` takes `IBlockSectionWriter?` for block output
+- Removed the sixth (output-format) field from each `ArmAndScan` spec token
+- `ScanReady` replaces record count and byte length with `RowCount`, `NamePoolUsedBytes`, and `SkippedRecordCount` (three int64 fields)
+- `BlockScanOutcome` carries `SectionName`, `Block`, `RowCount`, `NamePoolUsedBytes`, and `SkippedRecordCount`; the caller owns the block
+- Removed `JournalBrokerScanSession.StartAsync` and `RescanAsync` overloads without `BrokerScanOptions`; every scan requires per-drive `BlockTargets`
+- `MFTLibTestExtensions.ScanSessionTestHarness.StartScannedAsync` requires `BlockTargets` in its options; `StartFromCursorsAsync` remains a warm start and removes the unused `keepFileNames` parameter, with later rescans taking explicit options
+- Removed the unused `keepFileNames` parameter from `JournalBrokerScanSession.StartFromCursorsAsync`; a rescan's explicit options supply the keep-file names
+- `BrokerScanOptions` is a required, non-nullable parameter on `JournalBrokerClient.ArmScanAndCatchUpAsync` and `JournalBrokerScanSession.RescanAsync`; passing none used to compile and then throw at runtime, because every scan requires per-drive `BlockTargets`
+- `BrokerScanResult`'s `warnings` and `blockOutcomes` constructor parameters lost their `null` defaults; every cold scan produces both
+- `BrokerMftBlockProducer`'s `scanCompleted` callback runs only after the block passes validation, so it no longer fires for a drive that errored or a block that was rejected
+
+### Features
+
+- `MftRecord.Size`, `SizeKnown`, and `ModifiedUtc` expose unnamed data-stream size and modification time from the native parser
+- `BlockHeader.RootRow` stores the volume root at offset 20: row 5 for MFT blocks and row 0 for enumeration blocks
+- `RowFlags.SizeUnknown` marks a zero size whose data attribute lives in an extension record the parser does not follow
+- `FileIndexOptions.ProducerPolicy` and `MftProducer`, with `ProducerPolicy`, select MFT or enumeration for initial scans and rescans
+- `MftBlockProducer`, `MftBlockProduceRequest`, and `MftBlockProduceResult` let `FileIndex` adopt a completed block and its armed journal cursor
+- `BrokerMftBlockProducer` supplies the producer delegate, validates completed blocks, and transfers block ownership to the index while the caller retains client ownership
+- `NamedBlockSection`, `IBlockSectionWriter`, `RealBlockSectionWriter`, and `MftBlockRowWriter` write packed rows directly into client-created file-backed sections and complete the header last
+- `MftBlockCapacity` plans row and name capacities from `NtfsVolumeInformation`; `BlockScanTarget` and `BrokerScanOptions.BlockTargets` supply each drive's destination
+- `DriveStatus.ProducerKind`, `MftProducerFailureMessage`, and `DiscardedBlock` report the selected producer, MFT failure, and rejected cache validation result
+- `BlockWriteProgress` reports parsing and transfer progress for block scans
+
 ## 0.3.0
 
 ### Breaking Changes

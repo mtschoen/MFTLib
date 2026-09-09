@@ -46,7 +46,9 @@ public sealed partial class JournalBrokerClient
         lock (_mmfLifetimesLock)
         {
             lifetimes = new List<IDisposable>(_mmfLifetimes.Values);
+            lifetimes.AddRange(_pendingBlocks.Values);
             _mmfLifetimes.Clear();
+            _pendingBlocks.Clear();
         }
 
         foreach (var lifetime in lifetimes)

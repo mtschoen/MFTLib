@@ -2,12 +2,10 @@ namespace MFTLib;
 
 public sealed partial class JournalBrokerClient
 {
-    /// <summary>
-    ///     Arms, scans, and catches up each drive with optional scan profile, consumer, marker files, and progress callback.
-    /// </summary>
+    /// <summary>Arms, writes blocks, and catches up each drive using the requested destinations and profile.</summary>
     public Task<BrokerScanResult> ArmScanAndCatchUpAsync(
         IReadOnlyList<string> drives,
-        BrokerScanOptions? options = null,
+        BrokerScanOptions options,
         CancellationToken cancellationToken = default)
     {
         return ArmScanAndCatchUpCoreAsync(drives, options, null, cancellationToken);
@@ -15,7 +13,7 @@ public sealed partial class JournalBrokerClient
 
     internal Task<BrokerScanResult> ArmScanAndCatchUpAsync(
         IReadOnlyList<string> drives,
-        BrokerScanOptions? options,
+        BrokerScanOptions options,
         Action? transmissionStarted,
         CancellationToken cancellationToken)
     {
@@ -24,96 +22,65 @@ public sealed partial class JournalBrokerClient
 
     async Task<BrokerScanResult> ArmScanAndCatchUpCoreAsync(
         IReadOnlyList<string> drives,
-        BrokerScanOptions? options,
+        BrokerScanOptions options,
         Action? transmissionStarted,
         CancellationToken cancellationToken)
     {
-        var profile = options?.Profile ?? BrokerScanProfile.Full;
-        var keepFileNames = options?.KeepFileNames;
-        var planner = options?.MmfCapacityPlanner;
-        var mmfCapacityBytes = options?.MmfCapacityBytes ?? DefaultMmfCapacity;
-        var mmfNamesByDrive = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        // A planner needs each drive's volume information before any map can be sized, so
-        // this round trip (a separate request/response exchange over the same pipe) must
-        // complete before ArmAndScan is written. A drive the query fails for is not in
-        // volumeInfoByDrive, and the planner receives null for it below.
-        IReadOnlyDictionary<string, NtfsVolumeInformation>? volumeInfoByDrive = null;
-        if (planner != null)
+        var blockTargets = ValidateBlockTargets(drives, options);
+        var sectionNamesByDrive = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var volumeQuery = await QueryVolumesAsync(drives, transmissionStarted, cancellationToken).ConfigureAwait(false);
+        var collector = new ScanCollector(sectionNamesByDrive, drives.Select(NormalizeDriveLetter), options, TakeMmfLifetime)
         {
-            var volumeQuery = await QueryVolumesAsync(drives, transmissionStarted, cancellationToken).ConfigureAwait(false);
-            volumeInfoByDrive = volumeQuery.Volumes;
-        }
-
-        var drivesSpec = PrepareDriveScan(
-            drives, profile, mmfCapacityBytes, planner, volumeInfoByDrive, mmfNamesByDrive);
-
-        await WriteFrameAsync(
-            writer => BrokerProtocol.WriteArmAndScan(writer, drivesSpec, keepFileNames),
-            transmissionStarted, cancellationToken).ConfigureAwait(false);
-
-        var collector = new ScanCollector(
-            mmfReader, mmfNamesByDrive, drives.Select(NormalizeDriveLetter),
-            options, TakeMmfLifetime, cancellationToken);
-
-        while (!collector.IsComplete)
+            TakePendingBlock = TakePendingBlock
+        };
+        try
         {
-            var frame = await ReadFrameAsync(cancellationToken).ConfigureAwait(false);
-            if (frame == null)
+            var drivesSpec = PrepareDriveScan(drives, options, volumeQuery.Volumes, sectionNamesByDrive, blockTargets);
+            await WriteFrameAsync(
+                writer => BrokerProtocol.WriteArmAndScan(writer, drivesSpec, options.KeepFileNames),
+                transmissionStarted, cancellationToken).ConfigureAwait(false);
+            while (!collector.IsComplete)
             {
-                break;
+                var frame = await ReadFrameAsync(cancellationToken).ConfigureAwait(false)
+                    ?? throw new EndOfStreamException("Broker disconnected before block scan and catch-up completed.");
+                collector.Apply(frame);
             }
 
-            await collector.ApplyAsync(frame.Value).ConfigureAwait(false);
+            return collector.ToResult();
         }
-
-        return collector.ToResult();
+        catch
+        {
+            collector.DisposeBlocks();
+            throw;
+        }
+        finally
+        {
+            ReleasePendingBlocks(sectionNamesByDrive.Values);
+        }
     }
 
-    IDisposable? TakeMmfLifetime(string mmfName)
+    IDisposable? TakeMmfLifetime(string sectionName)
     {
         lock (_mmfLifetimesLock)
         {
-            return _mmfLifetimes.Remove(mmfName, out var lifetime) ? lifetime : null;
+            return _mmfLifetimes.Remove(sectionName, out var lifetime) ? lifetime : null;
         }
     }
 
     string PrepareDriveScan(
-        IReadOnlyList<string> drives, BrokerScanProfile profile, long mmfCapacityBytes,
-        Func<string, NtfsVolumeInformation?, long>? planner,
-        IReadOnlyDictionary<string, NtfsVolumeInformation>? volumeInfoByDrive,
-        Dictionary<string, string> mmfNamesByDrive)
+        IReadOnlyList<string> drives, BrokerScanOptions options,
+        IReadOnlyDictionary<string, NtfsVolumeInformation> volumeInformationByDrive,
+        Dictionary<string, string> sectionNamesByDrive,
+        Dictionary<string, BlockScanTarget> blockTargets)
     {
-        // mmfCapacityBytes is the fallback for every drive when no planner is set, so it
-        // is validated eagerly; a planner's per-drive result is validated as each drive is
-        // sized below instead, since mmfCapacityBytes itself is unused in that mode.
-        if (planner == null)
-        {
-            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(mmfCapacityBytes, 0);
-        }
-
+        var profile = options.Profile;
         var specTokens = new List<string>(drives.Count);
         foreach (var drive in drives)
         {
             var letter = NormalizeDriveLetter(drive);
-            var capacity = mmfCapacityBytes;
-            if (planner != null)
-            {
-                var info = volumeInfoByDrive != null && volumeInfoByDrive.TryGetValue(letter, out var found)
-                    ? (NtfsVolumeInformation?)found
-                    : null;
-                capacity = planner(letter, info);
-                ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(capacity, 0);
-            }
-
-            var (mmfName, lifetime) = createDriveMmf(letter, capacity);
-            lock (_mmfLifetimesLock)
-            {
-                _mmfLifetimes[mmfName] = lifetime;
-            }
-
-            mmfNamesByDrive[letter] = mmfName;
-            specTokens.Add(FormattableString.Invariant($"{letter}:0:0:{mmfName}:{(int)profile}"));
+            var sectionName = PrepareDriveBlock(letter, blockTargets[letter], volumeInformationByDrive);
+            sectionNamesByDrive[letter] = sectionName;
+            specTokens.Add(FormattableString.Invariant($"{letter}:0:0:{sectionName}:{(int)profile}"));
         }
 
         return string.Join(",", specTokens);

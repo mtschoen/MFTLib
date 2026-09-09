@@ -1,8 +1,6 @@
 namespace MFTLib;
 
-// QueryVolumes handling: answers one VolumeInfo (or Error) frame per requested drive
-// without arming a scan or touching any shared-memory map. See JournalBrokerHost.Scan.cs
-// for the sibling ArmAndScan handler and ParseScanSpec, which this reuses.
+/// <summary>Answers volume sizing queries without arming a scan or opening a block section.</summary>
 public sealed partial class JournalBrokerHost
 {
     async Task HandleQueryVolumesAsync(

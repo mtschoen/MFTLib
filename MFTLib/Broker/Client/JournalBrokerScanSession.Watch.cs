@@ -10,7 +10,7 @@ public sealed partial class JournalBrokerScanSession
     ///     drive letter. Safe to read at any time, including after fault or disposal. For a
     ///     scanned session this defaults to the scan's advanced cursors; for a warm session it
     ///     is the initial supplied cursors. Can be replaced via <see cref="ReplaceWatchCursors" />.
-    ///     Note that <see cref="RescanAsync(CancellationToken)" /> overwrites this set with the
+    ///     Note that <see cref="RescanAsync(BrokerScanOptions,CancellationToken)" /> overwrites this set with the
     ///     rescan's advanced cursors; call <see cref="ReplaceWatchCursors" /> again after a rescan
     ///     to preserve any custom narrowing.
     /// </summary>
@@ -32,7 +32,7 @@ public sealed partial class JournalBrokerScanSession
     ///     (last writer wins on duplicate normalized keys). This replaces the existing watch
     ///     cursors entirely rather than merging with them. An empty dictionary is accepted,
     ///     in which case a subsequent <see cref="StartWatchAsync" /> will throw.
-    ///     Note that <see cref="RescanAsync(CancellationToken)" /> overwrites this set with the
+    ///     Note that <see cref="RescanAsync(BrokerScanOptions,CancellationToken)" /> overwrites this set with the
     ///     rescan's advanced cursors; call <see cref="ReplaceWatchCursors" /> again after a rescan
     ///     if you wish to keep a narrowed set.
     /// </summary>

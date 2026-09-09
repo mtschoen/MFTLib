@@ -154,4 +154,28 @@ public class BlockHeaderTests
         header.Flags |= BlockFlags.CompactionNeeded;
         Assert.IsTrue(header.IsCompactionNeeded);
     }
+
+    [TestMethod]
+    public void RootRow_SitsAtHeaderOffsetTwenty()
+    {
+        Assert.AreEqual(20, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.RootRow)));
+    }
+
+    [TestMethod]
+    public void BlockFileCreateOptions_SetsRootRowInHeader()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"mftlib-test-{Guid.NewGuid():N}.mlix");
+        var options = new BlockFileCreateOptions
+        {
+            Path = path,
+            VolumeSerial = 0x12345678,
+            ProducerKind = ProducerKind.Mft,
+            SlotCapacity = 256,
+            NamePoolCapacity = 4096,
+            RootRow = 5,
+            DeleteOnClose = true
+        };
+        using var block = BlockFile.Create(options);
+        Assert.AreEqual(5u, block.Header.RootRow);
+    }
 }

@@ -1,13 +1,14 @@
 namespace MFTLib;
 
-public readonly record struct MmfWriteProgress(
+/// <summary>Reports record and byte counts for parsing or transferring a drive's packed block.</summary>
+public readonly record struct BlockWriteProgress(
     long RecordsProcessed,
     long BytesProcessed,
     long? TotalRecords,
     long? TotalBytes,
     BrokerScanPhase Phase = BrokerScanPhase.Transferring)
 {
-    public MmfWriteProgress(
+    public BlockWriteProgress(
         long recordsProcessed,
         long bytesProcessed,
         long? totalRecords,

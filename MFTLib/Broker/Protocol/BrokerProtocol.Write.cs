@@ -67,11 +67,11 @@ public static partial class BrokerProtocol
         WriteFrameNoPayload(writer, BrokerFrameKind.EndWatchAck);
     }
 
-    public static void WriteScanReady(IBufferWriter<byte> writer, string mmfName, long recordCount, long byteLength)
+    public static void WriteScanReady(IBufferWriter<byte> writer, string mmfName, long rowCount, long namePoolUsedBytes, long skippedRecordCount)
     {
         var nameBytes = Encoding.Unicode.GetBytes(mmfName);
-        // payload: [nameLen int32][nameBytes][recordCount int64][byteLength int64]
-        var payloadLength = 4 + nameBytes.Length + 8 + 8;
+        // payload: [nameLen int32][nameBytes][rowCount int64][namePoolUsedBytes int64][skippedRecordCount int64]
+        var payloadLength = 4 + nameBytes.Length + 8 + 8 + 8;
         var totalLength = 1 + payloadLength; // kind byte + payload
         var span = writer.GetSpan(4 + totalLength);
         var offset = 0;
@@ -83,9 +83,11 @@ public static partial class BrokerProtocol
         offset += 4;
         nameBytes.CopyTo(span[offset..]);
         offset += nameBytes.Length;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], recordCount);
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], rowCount);
         offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], byteLength);
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], namePoolUsedBytes);
+        offset += 8;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], skippedRecordCount);
         offset += 8;
         writer.Advance(offset);
     }

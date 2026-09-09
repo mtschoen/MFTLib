@@ -181,6 +181,21 @@ public sealed partial class MftVolume : IDisposable
         }
     }
 
+    /// <summary>
+    ///     Writes the deterministic size and modified-time fixture: twelve 1024-byte records
+    ///     with hand-authored sizes, timestamps, and attribute shapes, covering resident and
+    ///     non-resident data, directories, a record whose data attribute lives in an extension
+    ///     record, and a non-resident record whose first data attribute has a nonzero lowest
+    ///     virtual cluster number. Test support, not a production entry point.
+    /// </summary>
+    public static void GenerateFixtureMFT(string filePath)
+    {
+        if (!MFTLibNative._generateFixtureMft(filePath))
+        {
+            throw new InvalidOperationException($"GenerateFixtureMFT failed for {filePath}");
+        }
+    }
+
     public static MftRecord[] ParseMFTFromFile(string filePath, out MftParseTimings timings)
     {
         return ParseMFTFromFile(filePath, null, MatchFlags.None, out timings);

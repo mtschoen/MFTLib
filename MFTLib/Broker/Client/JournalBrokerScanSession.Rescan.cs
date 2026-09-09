@@ -3,35 +3,8 @@ namespace MFTLib;
 public sealed partial class JournalBrokerScanSession
 {
     /// <summary>
-    ///     Rescan the same drives, profile, and <c>keepFileNames</c> the session was
-    ///     started or last rescanned with, on the same elevated broker (no second UAC
-    ///     prompt), replacing <see cref="LatestScan" />. Legal only in
-    ///     <see cref="JournalBrokerSessionState.Parked" />; call <see cref="StopWatchAsync" />
-    ///     first if watching. Throws <see cref="InvalidOperationException" /> if the broker
-    ///     dies during the rescan.
-    /// </summary>
-    public Task RescanAsync(CancellationToken cancellationToken = default)
-    {
-        IReadOnlyList<string> drives;
-        BrokerScanProfile profile;
-        IReadOnlyCollection<string>? keepFileNames;
-        lock (_stateLock)
-        {
-            drives = _drives;
-            profile = _profile;
-            keepFileNames = _keepFileNames;
-        }
-
-        return RescanAsync(drives, new BrokerScanOptions
-        {
-            Profile = profile,
-            KeepFileNames = keepFileNames
-        }, cancellationToken);
-    }
-
-    /// <summary>
     ///     Rescan the same drives with caller-specified <paramref name="options" /> (profile,
-    ///     consumer, keepFileNames, progress) on the same elevated broker (no second UAC
+    ///     block destinations, keepFileNames, progress) on the same elevated broker (no second UAC
     ///     prompt), replacing <see cref="LatestScan" />.
     /// </summary>
     public Task RescanAsync(
@@ -48,115 +21,12 @@ public sealed partial class JournalBrokerScanSession
     }
 
     /// <summary>
-    ///     Rescan the same drives, profile, and <c>keepFileNames</c> the session was
-    ///     started or last rescanned with, streaming records to <paramref name="consumeRecords" />
-    ///     on the same elevated broker (no second UAC prompt), replacing <see cref="LatestScan" />.
-    /// </summary>
-    public Task RescanAsync(
-        ScanRecordBatchConsumer consumeRecords,
-        CancellationToken cancellationToken = default)
-    {
-        IReadOnlyList<string> drives;
-        BrokerScanProfile profile;
-        IReadOnlyCollection<string>? keepFileNames;
-        lock (_stateLock)
-        {
-            drives = _drives;
-            profile = _profile;
-            keepFileNames = _keepFileNames;
-        }
-
-        return RescanAsync(drives, new BrokerScanOptions
-        {
-            Profile = profile,
-            ConsumeRecords = consumeRecords,
-            KeepFileNames = keepFileNames
-        }, cancellationToken);
-    }
-
-    /// <summary>Rescan a different set of drives (same profile and keepFileNames) on the same broker.</summary>
-    public Task RescanAsync(IReadOnlyList<string> drives, CancellationToken cancellationToken = default)
-    {
-        BrokerScanProfile profile;
-        IReadOnlyCollection<string>? keepFileNames;
-        lock (_stateLock)
-        {
-            profile = _profile;
-            keepFileNames = _keepFileNames;
-        }
-
-        return RescanAsync(drives, new BrokerScanOptions
-        {
-            Profile = profile,
-            KeepFileNames = keepFileNames
-        }, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Rescan a different set of drives (same profile and keepFileNames) on the same broker, streaming records to
-    ///     <paramref name="consumeRecords" />.
-    /// </summary>
-    public Task RescanAsync(
-        IReadOnlyList<string> drives,
-        ScanRecordBatchConsumer consumeRecords,
-        CancellationToken cancellationToken = default)
-    {
-        BrokerScanProfile profile;
-        IReadOnlyCollection<string>? keepFileNames;
-        lock (_stateLock)
-        {
-            profile = _profile;
-            keepFileNames = _keepFileNames;
-        }
-
-        return RescanAsync(drives, new BrokerScanOptions
-        {
-            Profile = profile,
-            ConsumeRecords = consumeRecords,
-            KeepFileNames = keepFileNames
-        }, cancellationToken);
-    }
-
-    /// <summary>Rescan a different set of drives with a different profile and keepFileNames on the same broker.</summary>
-    public Task RescanAsync(
-        IReadOnlyList<string> drives,
-        BrokerScanProfile profile,
-        IReadOnlyCollection<string>? keepFileNames = null,
-        CancellationToken cancellationToken = default)
-    {
-        return RescanAsync(drives, new BrokerScanOptions
-        {
-            Profile = profile,
-            KeepFileNames = keepFileNames
-        }, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Rescan a different set of drives with a different profile and keepFileNames on the same broker, streaming
-    ///     records to <paramref name="consumeRecords" />.
-    /// </summary>
-    public Task RescanAsync(
-        IReadOnlyList<string> drives,
-        BrokerScanProfile profile,
-        ScanRecordBatchConsumer consumeRecords,
-        IReadOnlyCollection<string>? keepFileNames = null,
-        CancellationToken cancellationToken = default)
-    {
-        return RescanAsync(drives, new BrokerScanOptions
-        {
-            Profile = profile,
-            ConsumeRecords = consumeRecords,
-            KeepFileNames = keepFileNames
-        }, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Rescan a different set of drives with caller-specified <paramref name="options" /> (profile, consumer,
+    ///     Rescan a different set of drives with caller-specified <paramref name="options" /> (profile, block destinations,
     ///     keepFileNames, progress) on the same broker.
     /// </summary>
     public async Task RescanAsync(
         IReadOnlyList<string> drives,
-        BrokerScanOptions? options,
+        BrokerScanOptions options,
         CancellationToken cancellationToken = default)
     {
         EnsureOperable();
@@ -199,16 +69,25 @@ public sealed partial class JournalBrokerScanSession
             // flight; recheck under the lock and only commit the new scan if the
             // session is still operable, so a terminal state already recorded
             // elsewhere is never overwritten by a stale or incomplete rescan result.
-            var profile = options?.Profile ?? BrokerScanProfile.Full;
-            var keepFileNames = options?.KeepFileNames;
             lock (_stateLock)
             {
-                EnsureOperableLocked();
+                try
+                {
+                    EnsureOperableLocked();
+                }
+                catch
+                {
+                    // Publication is refused, so this completed result keeps LatestScan
+                    // unchanged and no one else ever takes ownership of its blocks.
+                    DisposeScanBlocks(result);
+                    throw;
+                }
+
+                DisposeScanBlocks(_latestScan);
                 _latestScan = result;
                 _watchCursors = result.AdvancedCursors;
                 _drives = drives;
-                _profile = profile;
-                _keepFileNames = keepFileNames;
+                _profile = options.Profile;
             }
         }
         finally

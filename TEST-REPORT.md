@@ -1,59 +1,34 @@
-MFTLib test report - 2026-08-22
-===========================================
+# MFTLib - Test Report
 
-Status:   PASS
-Mode:     0.3.0 release verification (attended full managed run + separate elevated native run)
-Tests:    679 passed, 0 failed (643 non-admin + 36 elevated NTFS/USN, managed);
-          679 passed, 0 failed under native Debug|x64 instrumentation (full suite rerun elevated)
-Git:      main at e26429f plus the MSBuild-resolution fix in
-          scripts/native-coverage.ps1 landing in this commit and the
-          elevated-wrapper marker fix in scripts/native-coverage-elevated.ps1
+2026-09-08T20:16:10-07:00
 
-Managed coverage (`scripts/run-coverage.ps1`, full attended run):
-  Non-admin phase (643 tests):
-    Module                  Line     Branch   Method
-    Benchmark               98.74%   95.6%    100%
-    MFTLib                  100%     99.33%   100%
-    MFTLibTestExtensions    100%     100%     100%
-    TestProgram             100%     100%     100%
-    Total                   99.73%   98.49%   100%
-  Elevated admin phase (36 tests, merged into the same coverage run): every MFTLib
-  class reports 100% line coverage. Aggregate totals are unchanged from the
-  non-admin phase - Benchmark's uncovered lines are not admin-gated, so they
-  still account for the total falling short of 100%.
-  Exclusion annotations added by this run: 0
+| Field | Value |
+| --- | --- |
+| Status | PASS for Task 20 Windows coverage and zero findings in branch-touched files; whole-repository CI remains below 100 |
+| Mode | best-effort, scoped by the Task 20 controller rulings |
+| Tests | 1062 total: 1059 passed, 0 failed, 3 skipped |
+| Git | feat/index-mft-producer, 32d2478 plus Task 20 ownership and style fixes |
+| Coverage | MFTLib: 96.92% line, 92.63% branch, 99.3% method. All managed modules: 4232/4354 lines, 122 uncovered; 1370/1471 branches; 738/743 methods. No exclusions added. |
+| Lint | aislop 0.16.0: 99/100, 0 errors, 2 inherited warnings, 7 inherited informational findings, 0 formatting findings; 0 findings in files touched since 1c58b2d |
+| Baseline | Restored throwaway worktree at 1c58b2d: 88/100, 0 errors, 32 warnings, 11 informational findings. Initial feature tip: 89/100, 34 warnings, 7 informational findings. |
+| Analyzer execution | Roslynator solution loading failed; fallback ran for all 5 restored managed projects. TestExtensions reported 0 diagnostics without producing a report. |
+| Native binary | Rebuilt Release/x64 with MSBuild; test-output DLL LastWriteTime 2026-09-08T20:09:04.3966167-07:00 |
+| Linux | Coverage and native smoke test not run locally; controller verification pending |
 
-Native coverage (`scripts/native-coverage.ps1` via the elevated wrapper, 679 tests, 13m):
-  MFTLibNative: 98.8% line, 100% branch
-  Exclusion annotations added by this run: 0
+## Commands
 
-Documented unreachable (carried forward from PR #55; no coverage exclusions or
-suppressions added anywhere to reach these numbers):
-  - BenchmarkRunner: 6 locations dead under the Process.Start contract
-    (UseShellExecute=false throws instead of returning null) or requiring the
-    compiled Benchmark.exe as the test host process.
-  - JournalBrokerHost DirectProgress constructor null-check: private class,
-    both call sites pass literal lambdas.
-  - mft.records.cpp integer-overflow prechecks: a requested capacity near the
-    size-type maximum is not constructible.
-  - ResolvePath path-length guard (records.cpp:209): the maximum constructible
-    total path length is exactly MAX_NTFS_PATH_UNITS (32767), given depth <= 128
-    and per-level names <= 255 bytes (NTFS single-byte FileNameLength), so the
-    > branch is mathematically dead. parse_core.cpp:169-170 and :181 are dead
-    by the same construction and by caller gating.
+```powershell
+dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --filter "TestCategory!=RequiresAdmin"
+pwsh -NoProfile -File scripts/run-coverage.ps1 -NonInteractive
+aislop scan . --json
+aislop ci .
+aislop scan --staged --json
+```
 
-Release validation performed:
-  - Full Release|x64 solution build, then Debug|x64 build for native instrumentation
-  - 643 non-admin managed tests plus 36 elevated tests against real NTFS MFT and
-    USN journal APIs
-  - Native coverage collection re-ran the full 679-test suite elevated under
-    Debug|x64 instrumentation, reaching 98.8% line / 100% branch on MFTLibNative
-  - No coverage exclusions or suppressions added anywhere
+## Remaining gate limitations
 
-Remaining outward checks:
-  - Tag and publish 0.3.0 per docs/handoff-release-0.3.0.md - the only step not
-    yet done in the NuGet publish checklist
+`aislop scan` and `aislop ci` return 1 at 99/100. The controller explicitly leaves findings in untouched files out of scope: AsyncFixer02 in `MFTLib.Tests/Index/BlockValidationMatrixTests.cs:158`, IDISP001 in `MFTLib.Tests/MftVolumeAdminTests.cs:401`, and seven informational punctuation findings in `scripts/dump-volume.sh` and `scripts/run-coverage.ps1`. No rule configuration or suppressions changed. Format, code-quality, and security engines reported zero findings; lint reported two and ai-slop reported seven.
 
-Commands:
-  `.\scripts\run-coverage.ps1`
-  `.\scripts\native-coverage-elevated.ps1`
+The coverage script prints the inherited NU1503 warning when `dotnet restore` skips the native vcxproj. The native MSBuild rebuild and all five managed builds succeeded without compiler warnings. Expected native failure-path diagnostics appear in the test log. No UAC prompt occurred. The Windows script does not print native coverage percentages; these remain unmeasured locally. The three skipped tests exercise Unix cache-directory permissions.
+
+The progress-test fix checks native totals of 300 in the final transfer frame despite only three emitted rows. It no longer assumes that a coalesced intermediate parsing report reaches the pipe. Existing real named-section, broker, block-adoption, and enumeration-lifetime tests exercised the ownership cleanup changes.

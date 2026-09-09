@@ -15,7 +15,7 @@ namespace MFTLib.Tests;
 ///     </list>
 /// </summary>
 [TestClass]
-public class BrokerDeathTests
+public class BrokerDeathTests : BrokerBlockTestBase
 {
     [TestMethod]
     public async Task BatchSource_PipeDeath_FiresBrokerDiedOnce_AndThrowsInvalidOperation()
@@ -107,25 +107,15 @@ public class BrokerDeathTests
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    static JournalBrokerClient MakeMinimalFakeClient(Stream pipe)
+    JournalBrokerClient MakeMinimalFakeClient(Stream pipe)
     {
-        return new JournalBrokerClient(pipe,
-            new NullMmfReader(),
-            (letter, _) => ($"mftlib-null-{letter}", NoOpDisposable.Instance));
+        return new JournalBrokerClient(pipe, (letter, options) => ($"mftlib-null-{letter}", CreateBlock(options), NoOpDisposable.Instance));
     }
 
     // Cursor map for SendStartWatchAsync in the death tests (values are not asserted).
     static Dictionary<string, UsnJournalCursor> WatchCursors(params string[] drives)
     {
         return drives.ToDictionary(d => d, _ => new UsnJournalCursor(7UL, 0L), StringComparer.OrdinalIgnoreCase);
-    }
-
-    sealed class NullMmfReader : IMmfReader
-    {
-        public ScanRecord[] Read(string mmfName, long byteLength)
-        {
-            return Array.Empty<ScanRecord>();
-        }
     }
 
     sealed class NoOpDisposable : IDisposable

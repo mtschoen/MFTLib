@@ -26,7 +26,9 @@ public readonly record struct BrokerFrame
     public UsnJournalEntry[] Entries { get; private init; }
     public string? MmfName { get; private init; }
     public long RecordCount { get; private init; }
-    public long ByteLength { get; private init; }
+    public long RowCount { get; private init; }
+    public long NamePoolUsedBytes { get; private init; }
+    public long SkippedRecordCount { get; private init; }
     public string? Message { get; private init; }
     public string? DrivesSpec { get; private init; }
     public IReadOnlyList<string> KeepFileNames { get; private init; }
@@ -99,15 +101,16 @@ public readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.EndWatchAck);
     }
 
-    public static BrokerFrame ScanReady(string mmfName, long recordCount, long byteLength)
+    public static BrokerFrame ScanReady(string mmfName, long rowCount, long namePoolUsedBytes, long skippedRecordCount)
     {
         return new BrokerFrame
         {
             Kind = BrokerFrameKind.ScanReady,
             Entries = Array.Empty<UsnJournalEntry>(),
             MmfName = mmfName,
-            RecordCount = recordCount,
-            ByteLength = byteLength,
+            RowCount = rowCount,
+            NamePoolUsedBytes = namePoolUsedBytes,
+            SkippedRecordCount = skippedRecordCount,
             KeepFileNames = Array.Empty<string>()
         };
     }

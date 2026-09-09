@@ -12,6 +12,12 @@ public sealed record BlockFileCreateOptions
 
     public required ProducerKind ProducerKind { get; init; }
 
+    /// <summary>
+    ///     Row index of the volume root. Leave at zero for an enumeration producer, which
+    ///     writes its root at row 0; the MFT producer sets 5.
+    /// </summary>
+    public uint RootRow { get; init; }
+
     /// <summary>Rows the region can hold. Use <see cref="BlockLayout.ComputeSlotCapacity" />.</summary>
     public required uint SlotCapacity { get; init; }
 

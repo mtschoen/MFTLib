@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.IO.MemoryMappedFiles;
+using MFTLib.Index;
 using System.Runtime.InteropServices;
 using MFTLib;
 
@@ -75,40 +75,38 @@ public partial class BenchmarkRunner
         return (count, result.NativeCompactBytes);
     };
 
-    // Mirrors the production broker transport: a page-file-backed named map written through
-    // RealMmfWriter and read back through RealMmfReader. An earlier revision buffered the whole
-    // payload in a MemoryStream, which measured the benchmark's own managed heap rather than the
-    // broker path, and reported the broker scenario as using more memory than compat.
+    // Measures the production named-section block transfer.
     internal Func<string, int, (int RecordCount, ulong NativeCompactBytes)> _parseBrokerStream = (path, batchSize) =>
     {
         using var result = MftVolume.StreamMFTFromFile(path);
-        var nativeBytes = result.NativeCompactBytes;
-
-        var scanBatches = result.MaterializeBatches(batchSize)
-            .Select(batch => (IReadOnlyList<ScanRecord>)batch.Select(record => new ScanRecord(
-                record.RecordNumber,
-                record.ParentRecordNumber,
-                0,
-                0,
-                (uint)record.FileAttributes,
-                record.IsDirectory,
-                record.FileName,
-                record.FullPath ?? record.FileName)).ToArray());
-
-        var mmfName = "mftlib-benchmark-" + Guid.NewGuid().ToString("N");
-        var capacity = EstimateScanPayloadCapacity(result.UsedRecords);
-        using var map = MemoryMappedFile.CreateNew(mmfName, capacity);
-
-        var writeResult = new RealMmfWriter().Write(mmfName, scanBatches, CancellationToken.None);
-
-        var count = 0;
-        foreach (var batch in new RealMmfReader().ReadBatches(
-                     mmfName, writeResult.ByteLength, batchSize, CancellationToken.None))
+        var sectionName = NamedBlockSection.BuildSectionName('C');
+        var slotCapacity = checked((uint)Math.Max(6UL, result.TotalRecords));
+        var (block, lifetime) = NamedBlockSection.Create(new BlockFileCreateOptions
         {
-            count += batch.Length;
-        }
+            Path = Path.Combine(Path.GetTempPath(), $"mftlib-benchmark-{Guid.NewGuid():N}.bin"),
+            VolumeSerial = 0,
+            ProducerKind = ProducerKind.Mft,
+            RootRow = 5,
+            SlotCapacity = slotCapacity,
+            NamePoolCapacity = checked(slotCapacity * 512),
+            DeleteOnClose = true
+        }, sectionName);
+        using (block)
+        using (lifetime)
+        {
+            new RealBlockSectionWriter().Write(sectionName, default, result.MaterializeBatches(batchSize),
+                MftBlockRowFilter.Full, null, CancellationToken.None);
+            var count = 0;
+            for (var row = 0; row < block.Header.RowCount; row++)
+            {
+                if ((block.Rows[row].Flags & RowFlags.InUse) != 0)
+                {
+                    count++;
+                }
+            }
 
-        return (count, nativeBytes);
+            return (count, result.NativeCompactBytes);
+        }
     };
 
     internal Func<string, (int RecordCount, ulong NativeCompactBytes)> _parseCompat = path =>
@@ -185,14 +183,6 @@ public partial class BenchmarkRunner
     // Console output seams
     internal Action<string> _writeLineToConsole = Console.WriteLine;
     internal Action<string> _writeToConsole = Console.Write;
-
-    // The production client sizes the map from the record count before the scan is read back.
-    static long EstimateScanPayloadCapacity(ulong recordCount)
-    {
-        const long bytesPerRecordEstimate = 512;
-        const long minimumCapacity = 1L * 1024 * 1024;
-        return Math.Max(minimumCapacity, ((long)recordCount + 1L) * bytesPerRecordEstimate);
-    }
 
     public int Run(string[] arguments)
     {
