@@ -353,9 +353,9 @@ public class MockVolumeTests
         using var volume = MftVolume.Open("C");
         using var stream = volume.StreamRecords();
 
-        // 3 records * 48 bytes + string units (file0.txt=9, file1.txt=9, file2.txt=9 = 27 units * 2 bytes = 54)
-        // 144 + 54 = 198 bytes
-        Assert.AreEqual(198UL, stream.NativeCompactBytes);
+        // 3 records * 50 bytes + string units (file0.txt=9, file1.txt=9, file2.txt=9 = 27 units * 2 bytes = 54)
+        // 150 + 54 = 204 bytes
+        Assert.AreEqual(204UL, stream.NativeCompactBytes);
     }
 
     [TestMethod]
@@ -366,9 +366,9 @@ public class MockVolumeTests
         using var volume = MftVolume.Open("C");
         using var stream = volume.StreamRecords();
 
-        // With paths: pathEntries (3*48 = 144) + pathStrings (dir\file0.txt=13, 13, 13 = 39 units * 2 bytes = 78)
-        // 144 + 78 = 222 bytes
-        Assert.AreEqual(222UL, stream.NativeCompactBytes);
+        // With paths: pathEntries (3 * 50 = 150) + pathStrings (dir\file0.txt=13, 13, 13 = 39 units * 2 bytes = 78)
+        // 150 + 78 = 228 bytes
+        Assert.AreEqual(228UL, stream.NativeCompactBytes);
     }
 
     [TestMethod]
@@ -382,7 +382,7 @@ public class MockVolumeTests
 
         Assert.AreEqual(3UL, stream.TotalRecords);
         Assert.AreEqual(3UL, stream.UsedRecords);
-        Assert.AreEqual(198UL, stream.NativeCompactBytes);
+        Assert.AreEqual(204UL, stream.NativeCompactBytes);
         Assert.IsNotNull(stream.Timings);
     }
 
@@ -651,7 +651,7 @@ public class MockVolumeTests
         {
             TotalRecords = 1,
             UsedRecords = 1,
-            AbiVersion = 1,
+            AbiVersion = 999,
             EntryStride = MFTLibNative.NativeCompactEntrySize
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());

@@ -215,7 +215,7 @@ public class MftProducerEndToEndTests
     {
         Drives = [new IndexedDrive('C', _rootDirectory, 123)],
         CacheDirectory = _cacheDirectory,
-        ProducerPolicy = ProducerPolicy.MftOnly,
+        ProducerPolicy = ProducerPolicy.Mft,
         MftProducer = producer
     };
 

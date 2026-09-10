@@ -25,14 +25,14 @@ public class IndexNavigationTests
     {
         _builder = new SyntheticBlockBuilder();
         _rootRow = _builder.AddRoot();
-        _documentsRow = _builder.AddRow("Documents", _rootRow, RowFlags.InUse | RowFlags.Directory, 0, Moment);
-        _projectsRow = _builder.AddRow("Projects", _documentsRow, RowFlags.InUse | RowFlags.Directory, 0, Moment);
-        _reportRow = _builder.AddRow("report.pdf", _projectsRow, RowFlags.InUse, 4096, Moment);
-        _notesRow = _builder.AddRow("notes.txt", _documentsRow, RowFlags.InUse, 128, Moment);
+        _documentsRow = _builder.AddRow("Documents", _rootRow, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        _projectsRow = _builder.AddRow("Projects", _documentsRow, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        _reportRow = _builder.AddRow("report.pdf", _projectsRow, RowFlags.InUse, 4096, Moment, sequenceNumber: 0);
+        _notesRow = _builder.AddRow("notes.txt", _documentsRow, RowFlags.InUse, 128, Moment, sequenceNumber: 0);
         _builder.Complete(Moment);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block, deleteFileOnRelease: false)]);
+        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block)]);
     }
 
     [TestCleanup]
@@ -109,11 +109,11 @@ public class IndexNavigationTests
     {
         using var builder = new SyntheticBlockBuilder('Y');
         var root = builder.AddRoot();
-        var deletedRow = builder.AddRow("gone.tmp", root, RowFlags.InUse | RowFlags.Tombstone, 10, Moment);
+        var deletedRow = builder.AddRow("gone.tmp", root, RowFlags.InUse | RowFlags.Tombstone, 10, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block)]);
         try
         {
             var entry = FileEntry.Create(snapshot, 0, deletedRow);
@@ -132,12 +132,12 @@ public class IndexNavigationTests
         using var builder = new SyntheticBlockBuilder('V');
         var root = builder.AddRoot();
         var deletedDirectoryRow = builder.AddRow("Old", root, RowFlags.InUse | RowFlags.Directory | RowFlags.Tombstone,
-            0, Moment);
-        var liveFileRow = builder.AddRow("survivor.txt", deletedDirectoryRow, RowFlags.InUse, 5, Moment);
+            0, Moment, sequenceNumber: 0);
+        var liveFileRow = builder.AddRow("survivor.txt", deletedDirectoryRow, RowFlags.InUse, 5, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block)]);
         try
         {
             var liveFile = FileEntry.Create(snapshot, 0, liveFileRow);
@@ -157,12 +157,12 @@ public class IndexNavigationTests
     {
         using var builder = new SyntheticBlockBuilder('U');
         var root = builder.AddRoot();
-        var liveRow = builder.AddRow("live.txt", root, RowFlags.InUse, 1, Moment);
-        builder.AddRow("dead.txt", root, RowFlags.InUse | RowFlags.Tombstone, 1, Moment);
+        var liveRow = builder.AddRow("live.txt", root, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
+        builder.AddRow("dead.txt", root, RowFlags.InUse | RowFlags.Tombstone, 1, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('U', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('U', 0, block)]);
         try
         {
             var children = FileEntry.Create(snapshot, 0, root).Children();
@@ -181,12 +181,12 @@ public class IndexNavigationTests
     {
         using var builder = new SyntheticBlockBuilder('W');
         builder.AddRoot();
-        var first = builder.AddRow("a", 2, RowFlags.InUse | RowFlags.Directory, 0, Moment);
-        var second = builder.AddRow("b", first, RowFlags.InUse | RowFlags.Directory, 0, Moment);
+        var first = builder.AddRow("a", 2, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        var second = builder.AddRow("b", first, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('W', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('W', 0, block)]);
         try
         {
             // Rows 1 and 2 point at each other. The walk must stop rather than loop.
@@ -208,13 +208,13 @@ public class IndexNavigationTests
         var parent = root;
         for (var level = 0; level < BlockLayout.MaximumPathDepth + 20; level++)
         {
-            parent = builder.AddRow($"d{level}", parent, RowFlags.InUse | RowFlags.Directory, 0, Moment);
+            parent = builder.AddRow($"d{level}", parent, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
         }
 
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('X', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('X', 0, block)]);
         try
         {
             var path = FileEntry.Create(snapshot, 0, parent).Path;

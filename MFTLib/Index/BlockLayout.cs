@@ -11,12 +11,12 @@ public static class BlockLayout
     public const uint Magic = 0x58494C4D;
 
     /// <summary>A mismatch means discard the block and rescan. There is no migration path.</summary>
-    public const uint FormatVersion = 1;
+    public const uint FormatVersion = 2;
 
     public const int PageSize = 4096;
 
     /// <summary>Bytes actually occupied by header fields. The header region is padded to a page.</summary>
-    public const int HeaderFieldBytes = 88;
+    public const int HeaderFieldBytes = 104;
 
     public const int HeaderRegionBytes = PageSize;
 
@@ -30,6 +30,8 @@ public static class BlockLayout
 
     /// <summary>Mirrors the native resolver's cap so a corrupt parent column cannot loop forever.</summary>
     public const int MaximumPathDepth = 128;
+
+    public const int SequenceBytes = 2;
 
     /// <summary>
     ///     Fixed, not computed: the header region is exactly one page, so this can never be
@@ -62,9 +64,19 @@ public static class BlockLayout
         return AlignUp((long)slotCapacity * RowBytes, PageSize);
     }
 
-    public static long NamePoolOffset(uint slotCapacity)
+    public static long SequenceRegionOffset(uint slotCapacity)
     {
         return RowRegionOffset + RowRegionBytes(slotCapacity);
+    }
+
+    public static long SequenceRegionBytes(uint slotCapacity)
+    {
+        return AlignUp((long)slotCapacity * SequenceBytes, PageSize);
+    }
+
+    public static long NamePoolOffset(uint slotCapacity)
+    {
+        return SequenceRegionOffset(slotCapacity) + SequenceRegionBytes(slotCapacity);
     }
 
     public static long TotalBlockBytes(uint slotCapacity, uint namePoolCapacity)

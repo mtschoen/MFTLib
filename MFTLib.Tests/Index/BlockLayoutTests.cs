@@ -47,9 +47,28 @@ public class BlockLayoutTests
     [TestMethod]
     public void NamePoolOffset_IsPageAlignedAfterRows()
     {
-        // 100 rows * 32 bytes = 3200, aligned up to 4096, after the 4096 header page.
-        Assert.AreEqual(8192L, BlockLayout.NamePoolOffset(100));
+        // 100 rows * 32 bytes = 3200, aligned up to 4096, then plus a
+        // 100 * 2-byte sequence region aligned to 4096.
+        Assert.AreEqual(12288L, BlockLayout.NamePoolOffset(100));
         Assert.AreEqual(0L, BlockLayout.NamePoolOffset(100) % BlockLayout.PageSize);
+    }
+
+    [TestMethod]
+    public void SequenceRegion_SitsBetweenTheRowRegionAndTheNamePool()
+    {
+        const uint slotCapacity = 1000;
+        var sequenceOffset = BlockLayout.SequenceRegionOffset(slotCapacity);
+        Assert.AreEqual(BlockLayout.RowRegionOffset + BlockLayout.RowRegionBytes(slotCapacity), sequenceOffset);
+        Assert.AreEqual(0L, sequenceOffset % BlockLayout.PageSize);
+        Assert.AreEqual(sequenceOffset + BlockLayout.SequenceRegionBytes(slotCapacity),
+            BlockLayout.NamePoolOffset(slotCapacity));
+    }
+
+    [TestMethod]
+    public void SequenceRegion_IsTwoBytesPerSlotRoundedToAPage()
+    {
+        Assert.AreEqual(BlockLayout.PageSize, BlockLayout.SequenceRegionBytes(1));
+        Assert.AreEqual(12288, BlockLayout.SequenceRegionBytes(4097));
     }
 
     [TestMethod]

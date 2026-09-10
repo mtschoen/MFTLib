@@ -25,8 +25,8 @@ public partial class JournalBrokerScanSessionTests
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(response, "C", armedCursor);
             BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 1, 1, 0);
-            BrokerProtocol.WriteJournalBatch(response, "C", advancedCursor, [catchUpEntry]);
-            BrokerProtocol.WriteError(response, "D", "journal wrapped");
+            BrokerProtocol.WriteJournalBatch(response, "C", BrokerFrame.NoArmEpoch, advancedCursor, [catchUpEntry]);
+            BrokerProtocol.WriteError(response, "D", BrokerFrame.NoArmEpoch, "journal wrapped");
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -63,7 +63,7 @@ public partial class JournalBrokerScanSessionTests
             BrokerProtocol.WriteScanProgress(response,
                 new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromMilliseconds(100)));
             BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 100, 2000, 0);
-            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 200L),
+            BrokerProtocol.WriteJournalBatch(response, "C", BrokerFrame.NoArmEpoch, new UsnJournalCursor(7UL, 200L),
                 Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
@@ -104,7 +104,7 @@ public partial class JournalBrokerScanSessionTests
             BrokerProtocol.WriteScanProgress(response,
                 new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromMilliseconds(100)));
             BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 100, 2000, 0);
-            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 200L),
+            BrokerProtocol.WriteJournalBatch(response, "C", BrokerFrame.NoArmEpoch, new UsnJournalCursor(7UL, 200L),
                 Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
@@ -144,7 +144,7 @@ public partial class JournalBrokerScanSessionTests
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 0L));
             BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 0, 0, 0);
-            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 0L),
+            BrokerProtocol.WriteJournalBatch(response, "C", BrokerFrame.NoArmEpoch, new UsnJournalCursor(7UL, 0L),
                 Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
@@ -171,7 +171,7 @@ public partial class JournalBrokerScanSessionTests
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(response, "C", new UsnJournalCursor(7UL, 0L));
             BrokerProtocol.WriteScanReady(response, "mftlib-null-C", 0, 0, 0);
-            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 0L),
+            BrokerProtocol.WriteJournalBatch(response, "C", BrokerFrame.NoArmEpoch, new UsnJournalCursor(7UL, 0L),
                 Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();

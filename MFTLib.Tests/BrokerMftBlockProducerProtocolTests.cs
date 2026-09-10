@@ -123,7 +123,7 @@ public class BrokerMftBlockProducerProtocolTests
             var response = new ArrayBufferWriter<byte>();
             if (queryFails)
             {
-                BrokerProtocol.WriteError(response, "C", "query failed");
+                BrokerProtocol.WriteError(response, "C", BrokerFrame.NoArmEpoch, "query failed");
             }
             else
             {
@@ -161,11 +161,11 @@ public class BrokerMftBlockProducerProtocolTests
 
             if (fault == "ErrorAfterReady")
             {
-                BrokerProtocol.WriteError(response, "C", "scan failed after ready");
+                BrokerProtocol.WriteError(response, "C", BrokerFrame.NoArmEpoch, "scan failed after ready");
             }
             else if (!disconnect)
             {
-                BrokerProtocol.WriteJournalBatch(response, "C", Cursor, []);
+                BrokerProtocol.WriteJournalBatch(response, "C", BrokerFrame.NoArmEpoch, Cursor, []);
             }
 
             await _server.WriteAsync(response.WrittenMemory, _timeout.Token);

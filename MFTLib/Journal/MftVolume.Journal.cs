@@ -8,9 +8,9 @@ public sealed partial class MftVolume
 {
     // Native UsnJournalEntry layout (pack 1):
     //   recordNumber(8) + parentRecordNumber(8) + usn(8) + timestamp(8) +
-    //   reason(4) + fileAttributes(4) + fileNameLength(2) + fileName(260*2=520)
-    //   = 562 bytes
-    internal const int NativeUsnEntrySize = 562;
+    //   reason(4) + fileAttributes(4) + fileNameLength(2) + fileName(260*2=520) +
+    //   sequenceNumber(2) = 564 bytes
+    internal const int NativeUsnEntrySize = 564;
 
     /// <summary>
     ///     Query the USN journal to get the current cursor position.
@@ -97,11 +97,13 @@ public sealed partial class MftVolume
             var fileAttributes = *(uint*)(ptr + 36);
             var fileNameLength = *(ushort*)(ptr + 40);
             var fileName = new string((char*)(ptr + 42), 0, fileNameLength);
+            var sequenceNumber = *(ushort*)(ptr + 562);
 
             entries[i] = new UsnJournalEntry(new NativeUsnJournalEntryData
             {
                 RecordNumber = recordNumber,
                 ParentRecordNumber = parentRecordNumber,
+                SequenceNumber = sequenceNumber,
                 Usn = usn,
                 FileTimeTimestamp = timestamp,
                 Reason = reason,

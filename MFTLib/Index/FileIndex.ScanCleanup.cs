@@ -23,31 +23,6 @@ public sealed partial class FileIndex
         }
     }
 
-    static void CleanupStaleNoCacheBlocks(char driveLetter, uint volumeSerial)
-    {
-        var pattern = $"mftlib-nocache-*-{CacheDirectory.BlockFileName(driveLetter, volumeSerial)}";
-        try
-        {
-            foreach (var path in Directory.EnumerateFiles(Path.GetTempPath(), pattern))
-            {
-                TryDeleteBestEffort(path);
-            }
-        }
-        catch (IOException)
-        {
-            // Guards Directory.EnumerateFiles itself (for example the temp directory is
-            // briefly inaccessible), not the deletes it drives: a leftover another running
-            // instance still has mapped is not a concern here, because BlockFile opens with
-            // FileShare.Delete, so unlinking it succeeds and that instance keeps reading its
-            // own mapping undisturbed. A leftover that genuinely cannot be deleted is retried
-            // on the next open.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Same reasoning as the IOException case above.
-        }
-    }
-
     static void TryDeleteBestEffort(string path)
     {
         try

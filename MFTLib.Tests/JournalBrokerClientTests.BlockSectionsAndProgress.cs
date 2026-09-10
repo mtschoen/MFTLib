@@ -121,7 +121,7 @@ public partial class JournalBrokerClientTests
 
             // Complete C's catchup
             var catchupC = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteJournalBatch(catchupC, "C", new UsnJournalCursor(7UL, 110L),
+            BrokerProtocol.WriteJournalBatch(catchupC, "C", BrokerFrame.NoArmEpoch, new UsnJournalCursor(7UL, 110L),
                 Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(catchupC.WrittenMemory);
             await serverSide.FlushAsync();
@@ -130,7 +130,7 @@ public partial class JournalBrokerClientTests
             var responseD = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteCursor(responseD, "D", new UsnJournalCursor(8UL, 200L));
             BrokerProtocol.WriteScanReady(responseD, "mmf-D", 1, 100, 0);
-            BrokerProtocol.WriteJournalBatch(responseD, "D", new UsnJournalCursor(8UL, 210L),
+            BrokerProtocol.WriteJournalBatch(responseD, "D", BrokerFrame.NoArmEpoch, new UsnJournalCursor(8UL, 210L),
                 Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(responseD.WrittenMemory);
             await serverSide.FlushAsync();
@@ -161,7 +161,7 @@ public partial class JournalBrokerClientTests
         {
             await ReadOneFrameAsync(serverSide); // Read ArmAndScan
             var response = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteError(response, "D", "drive failed");
+            BrokerProtocol.WriteError(response, "D", BrokerFrame.NoArmEpoch, "drive failed");
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -174,6 +174,39 @@ public partial class JournalBrokerClientTests
         Assert.IsTrue(result.Errors.ContainsKey("D"));
 
         await client.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_WithAScanStillInFlight_DisposesTheLeftoverBlockAndLifetime()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var tracker = RegisterResource(new TrackingDisposable());
+
+        var client = new JournalBrokerClient(
+            clientSide, (_, options) => ("mmf-C", CreateBlock(options), tracker));
+
+        using var hangGuard = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var scanCancellation = new CancellationTokenSource();
+        var brokerTask = Task.Run(() => ReadOneFrameAsync(serverSide)); // ArmAndScan; never replied to
+
+        // PrepareDriveBlock has already registered the lifetime and pending block by the
+        // time the ArmAndScan frame reaches the wire, so once this scan call is blocked
+        // waiting for a broker reply that never arrives, its own finally has not run and
+        // both are still live for DisposeAsync to find.
+        var scanTask = client.ArmScanAndCatchUpAsync(DriveC, CreateOptions(), scanCancellation.Token);
+        await brokerTask.WaitAsync(hangGuard.Token);
+
+        await client.DisposeAsync().AsTask().WaitAsync(hangGuard.Token);
+
+        Assert.IsTrue(tracker.IsDisposed,
+            "a lifetime left over from an in-flight scan must be disposed when the client is disposed.");
+
+        // The scan task's own pending read does not react to the client's dispose, only
+        // to its own token, so cancel it explicitly to let it unwind rather than leaving
+        // it pending forever against an already-disposed pipe.
+        await scanCancellation.CancelAsync();
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(
+            () => scanTask.WaitAsync(hangGuard.Token));
     }
 
     [TestMethod]
@@ -192,7 +225,7 @@ public partial class JournalBrokerClientTests
             BrokerProtocol.WriteScanProgress(response,
                 new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromMilliseconds(100)));
             BrokerProtocol.WriteScanReady(response, "mftlib-progress-C", 100, 2000, 0);
-            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 200L),
+            BrokerProtocol.WriteJournalBatch(response, "C", BrokerFrame.NoArmEpoch, new UsnJournalCursor(7UL, 200L),
                 Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
@@ -236,7 +269,7 @@ public partial class JournalBrokerClientTests
 
             var completeResponse = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteScanReady(completeResponse, "mftlib-scan-C", 100, 2000, 0);
-            BrokerProtocol.WriteJournalBatch(completeResponse, "C", new UsnJournalCursor(7UL, 200L),
+            BrokerProtocol.WriteJournalBatch(completeResponse, "C", BrokerFrame.NoArmEpoch, new UsnJournalCursor(7UL, 200L),
                 Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(completeResponse.WrittenMemory);
             await serverSide.FlushAsync();
@@ -262,12 +295,13 @@ public partial class JournalBrokerClientTests
 
         var brokerTask = Task.Run(async () =>
         {
-            await ReadOneFrameAsync(serverSide); // StartWatch
+            var startWatch = await ReadOneFrameAsync(serverSide);
+            var epochC = WatchSpecArmEpochs.ForDrive(startWatch, "C");
             var response = new ArrayBufferWriter<byte>();
             // Late progress frame arriving during live watch
             BrokerProtocol.WriteScanProgress(response,
                 new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromSeconds(1)));
-            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 110L),
+            BrokerProtocol.WriteJournalBatch(response, "C", epochC, new UsnJournalCursor(7UL, 110L),
                 [JournalEntryFactory.Create(1, 110, "live.txt")]);
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();

@@ -151,8 +151,10 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public void ParseScanSpec_FiveFields_CarriesSectionAndProfile()
     {
-        var requests = JournalBrokerHost.ParseScanSpecForTest("C:0:0:map-name:0");
+        var requests = JournalBrokerHost.ParseScanSpecForTest("C:7:100:map-name:0");
         Assert.AreEqual(1, requests.Length);
+        Assert.AreEqual(7UL, requests[0].JournalId);
+        Assert.AreEqual(100L, requests[0].NextUsn);
         Assert.AreEqual("map-name", requests[0].MmfName);
         Assert.AreEqual(BrokerScanProfile.Full, requests[0].Profile);
     }

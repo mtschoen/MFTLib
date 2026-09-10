@@ -8,7 +8,7 @@ namespace MFTLib.Tests;
 public partial class JournalBrokerScanSessionTests
 {
     [TestMethod]
-    public async Task WatchDrive_WarningFrame_SubscriberExceptionDoesNotFaultSession()
+    public async Task WatchDrive_StaleCursorError_FaultsThatDriveWithTheRescanMessage()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var client = MakeMinimalFakeClient(clientSide);
@@ -17,43 +17,30 @@ public partial class JournalBrokerScanSessionTests
         var session = await JournalBrokerScanSession.StartAsync(_ => Task.FromResult(client), DriveC, CreateOptions(), cancellationToken: CancellationToken.None);
         await scanTask;
 
-        var firstInvoked = false;
-        var secondInvoked = false;
-        session.WarningReceived += (_, _) =>
-        {
-            firstInvoked = true;
-            throw new InvalidOperationException("Boom from subscriber");
-        };
-        session.WarningReceived += (_, _) =>
-        {
-            secondInvoked = true;
-        };
-
         var watchFrameTask = ReadOneFrameAsync(serverSide);
         await session.StartWatchAsync();
-        await watchFrameTask;
+        var watchFrame = await watchFrameTask;
 
-        var cursor = new UsnJournalCursor(7UL, 210L);
-        var entry = JournalEntryFactory.Create(1, 110, "f.txt");
         var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteWarning(response, "C", "Watch from cached cursor failed: journal wrapped");
-        BrokerProtocol.WriteJournalBatch(response, "C", cursor, [entry]);
-        BrokerProtocol.WriteEndWatchAck(response);
+        BrokerProtocol.WriteError(response, "C", WatchSpecArmEpochs.ForDrive(watchFrame, "C"), "Drive C cannot resume its live watch from journal cursor 7:100: journal wrapped. " +
+            "The records are gone, so this drive needs a rescan before it can be watched again.");
         await serverSide.WriteAsync(response.WrittenMemory);
         await serverSide.FlushAsync();
 
-        var received = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
+        var deliveredBatchCount = 0;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await foreach (var batch in session.WatchDriveAsync("C", timeout.Token))
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
         {
-            received.Add(batch);
-        }
+            await foreach (var _ in session.WatchDriveAsync("C", timeout.Token))
+            {
+                deliveredBatchCount++;
+            }
+        });
 
-        Assert.IsTrue(firstInvoked, "First subscriber throwing must execute");
-        Assert.IsTrue(secondInvoked, "Second subscriber must still execute");
-        Assert.IsFalse(session.IsFaulted, "Session must not fault from subscriber exception");
-        Assert.AreEqual(1, received.Count);
-        Assert.AreEqual(cursor, received[0].Cursor);
+        StringAssert.Contains(exception.Message, "7:100");
+        StringAssert.Contains(exception.Message, "rescan");
+        Assert.AreEqual(0, deliveredBatchCount);
+        Assert.IsFalse(session.IsFaulted, "One drive's failure must not fault the session");
 
         await session.DisposeAsync();
     }
@@ -89,10 +76,10 @@ public partial class JournalBrokerScanSessionTests
 
         var watchFrameTask = ReadOneFrameAsync(serverSide);
         await session.StartWatchAsync();
-        await watchFrameTask;
+        var watchFrame = await watchFrameTask;
 
         var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteError(response, "C", "journal wrapped");
+        BrokerProtocol.WriteError(response, "C", WatchSpecArmEpochs.ForDrive(watchFrame, "C"), "journal wrapped");
         await serverSide.WriteAsync(response.WrittenMemory);
         await serverSide.FlushAsync();
 
@@ -206,11 +193,12 @@ public partial class JournalBrokerScanSessionTests
 
         var watchFrameTask = ReadOneFrameAsync(serverSide);
         await session.StartWatchAsync(cts.Token);
-        await watchFrameTask;
+        var watchFrame = await watchFrameTask;
 
         var entry = JournalEntryFactory.Create(1, 10, "a");
         var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 110L), [entry]);
+        BrokerProtocol.WriteJournalBatch(response, "C", WatchSpecArmEpochs.ForDrive(watchFrame, "C"),
+            new UsnJournalCursor(7UL, 110L), [entry]);
         await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
         await serverSide.FlushAsync(CancellationToken.None);
 

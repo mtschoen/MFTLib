@@ -45,6 +45,18 @@ public class MftBlockRowWriterTests
     }
 
     [TestMethod]
+    public void WriteBatches_CopiesSequenceNumberIntoItsRecordSlot()
+    {
+        using var block = CreateBlock();
+        var record = new MftRecord(20, 5, new MftRecordFields(1, sequenceNumber: 37), "record", null);
+
+        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [[record]],
+            MftBlockRowFilter.Full, null, CancellationToken.None);
+
+        Assert.AreEqual((ushort)37, block.SequenceNumbers[20]);
+    }
+
+    [TestMethod]
     public void WriteBatches_SlotCapacityOverflowIsCountedAndMarksCompaction()
     {
         using var block = CreateBlock();
@@ -170,7 +182,7 @@ public class MftBlockRowWriterTests
     {
         using var block = CreateBlock();
         var writer = new BlockWriter(block);
-        Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse, 0, 0, 0)));
+        Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse, 0, 0, 0, 0)));
         writer.MarkCompactionNeeded();
 
         var result = MftBlockRowWriter.WriteBatches(writer, [], MftBlockRowFilter.Full, null, CancellationToken.None);

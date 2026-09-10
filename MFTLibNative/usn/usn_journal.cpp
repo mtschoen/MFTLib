@@ -67,6 +67,7 @@ uint16_t CopyUsnRecordToEntry(UsnJournalEntry& entry, const USN_RECORD_V2* usnRe
     memset(&entry, 0, sizeof(UsnJournalEntry));
     entry.recordNumber = usnRecord->FileReferenceNumber & fileRefMask;
     entry.parentRecordNumber = usnRecord->ParentFileReferenceNumber & fileRefMask;
+    entry.sequenceNumber = static_cast<uint16_t>(usnRecord->FileReferenceNumber >> 48);
     entry.usn = usnRecord->Usn;
     entry.timestamp = usnRecord->TimeStamp.QuadPart;
     entry.reason = usnRecord->Reason;

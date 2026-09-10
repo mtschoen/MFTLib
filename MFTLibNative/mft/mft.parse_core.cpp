@@ -208,6 +208,7 @@ void PopulatePathSlice(SliceRange range, const CompactOutput& source, const Path
         entry.parentRecordNumber = src.parentRecordNumber;
         entry.flags = src.flags;
         entry.fileAttributes = src.fileAttributes;
+        entry.sequenceNumber = src.sequenceNumber;
         entry.size = src.size;
         entry.modifiedTime = src.modifiedTime;
         if (ResolvePath(src.recordNumber, lookup, totalRecords, pathBuffer)) {

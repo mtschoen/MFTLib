@@ -96,7 +96,8 @@ public static class MftBlockRowWriter
         }
 
         var columns = new RowColumns((uint)record.ParentRecordNumber, flags,
-            (uint)record.FileAttributes, record.IsDirectory ? 0 : record.Size, record.ModifiedUtc.Ticks);
+            (uint)record.FileAttributes, record.IsDirectory ? 0 : record.Size, record.ModifiedUtc.Ticks,
+            record.SequenceNumber);
         return writer.TryWriteRow((uint)record.RecordNumber, name, in columns);
     }
 }

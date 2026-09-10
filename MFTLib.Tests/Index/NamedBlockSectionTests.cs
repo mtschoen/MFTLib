@@ -61,12 +61,54 @@ public class NamedBlockSectionTests
             using var openedBlock = NamedBlockSection.OpenExisting(sectionName, creatorBlock.Length);
             var writer = new BlockWriter(openedBlock);
             Assert.IsTrue(writer.TryWriteRow(5, ".", new RowColumns(5, RowFlags.InUse | RowFlags.Directory,
-                (uint)FileAttributes.Directory, 0, Moment.Ticks)));
+                (uint)FileAttributes.Directory, 0, Moment.Ticks, 0)));
 
             // The creator's mapping and the opener's mapping are the same pages, so the row
             // the opener wrote is visible through the creator's view with no flush.
             Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, creatorBlock.Rows[5].Flags);
             Assert.AreEqual(5u, creatorBlock.Header.RootRow);
+        }
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public void Create_MappingConstructionFails_DeletesTheFileAndDisposesTheStream()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Named memory-mapped sections require Windows.");
+            return;
+        }
+
+        var sectionName = NamedBlockSection.BuildSectionName('T');
+        var firstOptions = new BlockFileCreateOptions
+        {
+            Path = _blockPath,
+            VolumeSerial = 0x0BADF00D,
+            ProducerKind = ProducerKind.Mft,
+            SlotCapacity = 64,
+            NamePoolCapacity = 256
+        };
+        var (firstBlock, firstLifetime) = NamedBlockSection.Create(firstOptions, sectionName);
+        using (firstLifetime)
+        using (firstBlock)
+        {
+            // A second create under the same already-published section name makes
+            // MemoryMappedFile.CreateFromFile itself throw, before ownership transfers,
+            // exercising the branch that deletes the second file and disposes its stream.
+            var secondPath = Path.Combine(_directory, "second.mlix");
+            var secondOptions = new BlockFileCreateOptions
+            {
+                Path = secondPath,
+                VolumeSerial = 0x0BADF00E,
+                ProducerKind = ProducerKind.Mft,
+                SlotCapacity = 64,
+                NamePoolCapacity = 256
+            };
+
+            Assert.ThrowsException<IOException>(() => NamedBlockSection.Create(secondOptions, sectionName));
+
+            Assert.IsFalse(File.Exists(secondPath), "a failed create must not leave a header-less file behind");
         }
     }
 

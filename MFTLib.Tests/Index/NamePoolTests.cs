@@ -76,7 +76,7 @@ public class NamePoolTests
         using var builder = new SyntheticBlockBuilder();
         builder.AddRoot();
         var rowIndex = builder.AddRow("notes.txt", 0, RowFlags.InUse, 12,
-            new DateTime(2026, 5, 5, 0, 0, 0, DateTimeKind.Utc));
+            new DateTime(2026, 5, 5, 0, 0, 0, DateTimeKind.Utc), sequenceNumber: 0);
         builder.Complete(new DateTime(2026, 5, 5, 0, 0, 0, DateTimeKind.Utc));
 
         using var block = builder.OpenForReading(out _);

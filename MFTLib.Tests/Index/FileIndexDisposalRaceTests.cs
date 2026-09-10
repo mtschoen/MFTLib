@@ -51,6 +51,7 @@ public class FileIndexDisposalRaceTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration,
             Progress = progress
         };
     }

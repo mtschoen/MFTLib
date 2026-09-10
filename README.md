@@ -169,7 +169,10 @@ var byRecordNumber = records.ToDictionary(record => record.RecordNumber);
 `RecordNumber` and `ParentRecordNumber` are 48-bit MFT segment indexes with the NTFS
 sequence number removed. They match the corresponding identifiers on
 `UsnJournalEntry`, making them suitable for joining a scan with journal updates on the
-same volume.
+same volume. Each record's own sequence number is carried separately on
+`MftRecord.SequenceNumber` and `UsnJournalEntry.SequenceNumber`; combined with the record
+number as `(sequenceNumber << 48) | recordNumber`, it forms the NTFS file reference that
+detects an MFT record NTFS has since reused for a different file.
 
 ### Filter in native code
 
@@ -325,6 +328,28 @@ blocks it publishes: those in `session.LatestScan.BlockOutcomes` are disposed by
 rescan and by the session's own disposal, so take a block out of the result first if it
 has to outlive either. The session also owns the client. See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
 for startup dispatch, result handling, live watch, rescans, recovery, and diagnostics.
+
+## Build a live index with FileIndex
+
+`MFTLib.Index.FileIndex` builds a packed, substrate-neutral per-drive file index and
+keeps it current with a live USN watch it owns end to end: `StartWatchingAsync` arms
+every MFT-backed drive from its own block's journal cursor, `Changed` raises one event
+per applied change, and `WatchFaulted` reports a per-drive or whole-stream failure
+without tearing down the index. See [the block format](docs/index-format.md) for the
+on-disk layout and [the broker integration guide](docs/broker-integration.md) for how
+the live watch bridges to the elevated broker.
+
+`FileIndexOptions.ProducerPolicy` selects how each drive's block is built:
+`ProducerPolicy.Mft` (the default) reads the Master File Table through
+`FileIndexOptions.MftProducer`, and `ProducerPolicy.Enumeration` walks the directory
+tree instead. The two are never mixed within one open: a drive whose MFT scan fails is
+reported `DriveState.Failed` and never falls back to a directory walk, and the
+enumeration producer runs only when a caller chooses `ProducerPolicy.Enumeration`
+explicitly, never as an inherited fallback decision.
+
+`FileIndexOptions.NoCache` blocks are created with `FileOptions.DeleteOnClose`, so the
+operating system removes them when the last handle closes, including when the process
+is killed rather than shut down gracefully.
 
 ## Errors and recovery
 

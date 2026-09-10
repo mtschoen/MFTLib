@@ -30,13 +30,13 @@ public class DuplicateNameFinderTests
         var root = builder.AddRoot();
         for (var index = 0; index < UniqueNameCount; index++)
         {
-            builder.AddRow($"unique-{index}.bin", root, RowFlags.InUse, index, Moment);
+            builder.AddRow($"unique-{index}.bin", root, RowFlags.InUse, index, Moment, sequenceNumber: 0);
         }
 
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('U', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('U', 0, block)]);
         try
         {
             var groups = DuplicateNameFinder.Find(snapshot, ForcedSmallSieve, out var statistics);
@@ -76,18 +76,18 @@ public class DuplicateNameFinderTests
         var root = builder.AddRoot();
         for (var index = 0; index < UniqueNameCount; index++)
         {
-            builder.AddRow($"unique-{index}.bin", root, RowFlags.InUse, index, Moment);
+            builder.AddRow($"unique-{index}.bin", root, RowFlags.InUse, index, Moment, sequenceNumber: 0);
         }
 
-        builder.AddRow("dup-a.bin", root, RowFlags.InUse, 1, Moment);
-        builder.AddRow("dup-a.bin", root, RowFlags.InUse, 2, Moment);
-        builder.AddRow("dup-b.bin", root, RowFlags.InUse, 3, Moment);
-        builder.AddRow("dup-b.bin", root, RowFlags.InUse, 4, Moment);
-        builder.AddRow("dup-b.bin", root, RowFlags.InUse, 5, Moment);
+        builder.AddRow("dup-a.bin", root, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
+        builder.AddRow("dup-a.bin", root, RowFlags.InUse, 2, Moment, sequenceNumber: 0);
+        builder.AddRow("dup-b.bin", root, RowFlags.InUse, 3, Moment, sequenceNumber: 0);
+        builder.AddRow("dup-b.bin", root, RowFlags.InUse, 4, Moment, sequenceNumber: 0);
+        builder.AddRow("dup-b.bin", root, RowFlags.InUse, 5, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('D', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('D', 0, block)]);
         try
         {
             var groups = DuplicateNameFinder.Find(snapshot, ForcedSmallSieve, out _);

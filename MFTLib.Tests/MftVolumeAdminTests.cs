@@ -398,9 +398,8 @@ public class MftVolumeAdminTests
         using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch);
 
         // Cast to non-generic IEnumerable to hit the explicit interface implementation
-        IEnumerable enumerable = result;
         var count = 0;
-        foreach (var item in enumerable)
+        foreach (var item in (IEnumerable)result)
         {
             Assert.IsInstanceOfType<MftRecord>(item);
             count++;

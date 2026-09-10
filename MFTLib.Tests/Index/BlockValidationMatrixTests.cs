@@ -42,7 +42,8 @@ public class BlockValidationMatrixTests
         return new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', _treeRoot, volumeSerial)],
-            CacheDirectory = _cacheDirectory
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration
         };
     }
 
@@ -137,6 +138,17 @@ public class BlockValidationMatrixTests
         await AssertColdScansAsync(Options(), BlockValidationResult.InvalidNameDescriptor);
     }
 
+    [TestMethod]
+    public async Task SequenceRegionOffsetWrong_ColdScans()
+    {
+        await SeedCacheAsync();
+        var bytes = await File.ReadAllBytesAsync(BlockPath());
+        BitConverter.GetBytes(123ul).CopyTo(bytes, 96);
+        await File.WriteAllBytesAsync(BlockPath(), bytes);
+
+        await AssertColdScansAsync(Options(), BlockValidationResult.InconsistentRegions);
+    }
+
     // Resolves to the same reason as CorruptedMagic: BlockFile.Open rejects any file shorter
     // than the header page before it ever reads a magic value, so an empty file and a file with
     // a corrupted magic both surface as WrongMagic even though the underlying defect differs.
@@ -144,7 +156,7 @@ public class BlockValidationMatrixTests
     public async Task EmptyBlockFile_ColdScans()
     {
         await SeedCacheAsync();
-        File.WriteAllBytes(BlockPath(), []);
+        await File.WriteAllBytesAsync(BlockPath(), []);
 
         await AssertColdScansAsync(Options(), BlockValidationResult.WrongMagic);
     }
@@ -155,13 +167,14 @@ public class BlockValidationMatrixTests
         await SeedCacheAsync();
         var differentTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-other-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(differentTreeRoot, "Documents"));
-        File.WriteAllText(Path.Combine(differentTreeRoot, "Documents", "readme.md"), "hello");
+        await File.WriteAllTextAsync(Path.Combine(differentTreeRoot, "Documents", "readme.md"), "hello");
         try
         {
             var options = new FileIndexOptions
             {
                 Drives = [new IndexedDrive('T', differentTreeRoot, 0x0BADF00D)],
-                CacheDirectory = _cacheDirectory
+                CacheDirectory = _cacheDirectory,
+                ProducerPolicy = ProducerPolicy.Enumeration
             };
 
             await AssertColdScansAsync(options, BlockValidationResult.WrongRootDirectory);

@@ -8,21 +8,18 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed class DriveBlock
 {
-    readonly bool _deleteFileOnRelease;
     readonly Lock _gate = new();
     int _referenceCount;
     bool _released;
     string? _deleteAtPathOverride;
 
-    public DriveBlock(char driveLetter, ushort driveOrdinal, BlockFile block, bool deleteFileOnRelease,
-        string? rootDirectoryPath = null)
+    public DriveBlock(char driveLetter, ushort driveOrdinal, BlockFile block, string? rootDirectoryPath = null)
     {
         ArgumentNullException.ThrowIfNull(block);
         DriveLetter = driveLetter;
         DriveOrdinal = driveOrdinal;
         Block = block;
         ProducerKind = block.Header.ProducerKind;
-        _deleteFileOnRelease = deleteFileOnRelease;
         RootDirectoryPath = rootDirectoryPath;
     }
 
@@ -35,11 +32,13 @@ public sealed class DriveBlock
     public ProducerKind ProducerKind { get; }
 
     /// <summary>
-    ///     The real filesystem directory an enumeration producer scanned, or null when this
-    ///     block was constructed without one (every production enumeration block sets it; some
-    ///     synthetic test blocks do not, since they never call <see cref="FileEntry.Open" />).
-    ///     <see cref="FileEntry.Path" /> is a logical path rooted at <see cref="DriveLetter" />,
-    ///     which need not be a real filesystem root, so resolving a real file requires this.
+    ///     Required for <see cref="FileEntry.Open" /> on both producer kinds - null when this
+    ///     block was constructed without one (every production block sets it; some synthetic
+    ///     test blocks do not, since they never call <see cref="FileEntry.Open" />). Enumeration
+    ///     entries resolve a real file path from it: <see cref="FileEntry.Path" /> is a logical
+    ///     path rooted at <see cref="DriveLetter" />, which need not be a real filesystem root,
+    ///     so resolving a real file requires this. MFT entries instead use it as a handle on the
+    ///     target volume to open by file id.
     /// </summary>
     public string? RootDirectoryPath { get; }
 
@@ -87,10 +86,7 @@ public sealed class DriveBlock
     ///     Overrides the path deleted on release. A rescan renames the superseded block's file
     ///     aside before the replacement takes its canonical name, so <see cref="Block" />'s own
     ///     <see cref="BlockFile.Path" /> - fixed at construction and never updated by an external
-    ///     rename - no longer names the file that must be removed once this block is done. Calling
-    ///     this also makes the block delete on release even when it was constructed with
-    ///     <c>deleteFileOnRelease: false</c>, since a renamed-aside block is always meant to be
-    ///     cleaned up eventually, cache mode or not.
+    ///     rename - no longer names the file that must be removed once this block is done.
     /// </summary>
     internal void ScheduleDeleteAt(string path)
     {
@@ -144,7 +140,7 @@ public sealed class DriveBlock
 
         var path = deleteOverride ?? Block.Path;
         Block.Dispose();
-        if (!_deleteFileOnRelease && deleteOverride is null)
+        if (deleteOverride is null)
         {
             return;
         }

@@ -20,11 +20,11 @@ public class SnapshotSwapTests
     {
         using var builder = new SyntheticBlockBuilder();
         var root = builder.AddRoot();
-        builder.AddRow("kept.txt", root, RowFlags.InUse, 7, Moment);
+        builder.AddRow("kept.txt", root, RowFlags.InUse, 7, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false);
+        var driveBlock = new DriveBlock('T', 0, block);
         var oldSnapshot = Snapshot.Create([driveBlock]);
         var handle = FileEntry.Create(oldSnapshot, 0, 1);
 
@@ -59,7 +59,8 @@ public class SnapshotSwapTests
             await using var index = await FileIndex.OpenAsync(new FileIndexOptions
             {
                 Drives = [new IndexedDrive('T', treeRoot, 0x0BADF00D)],
-                CacheDirectory = cacheDirectory
+                CacheDirectory = cacheDirectory,
+                ProducerPolicy = ProducerPolicy.Enumeration
             }, CancellationToken.None);
 
             await index.RescanAsync('T', CancellationToken.None);

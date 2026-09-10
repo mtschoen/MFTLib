@@ -24,7 +24,7 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
             await ReadOneFrameAsync(serverSide); // QueryVolumes request
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteVolumeInfo(response, "C", 8_000_000, 1024, 8_192_000_000);
-            BrokerProtocol.WriteError(response, "G", "access denied");
+            BrokerProtocol.WriteError(response, "G", BrokerFrame.NoArmEpoch, "access denied");
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });

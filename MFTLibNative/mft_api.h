@@ -9,7 +9,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 4;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 1;
 
 // Parser-synthesized, not an on-disk NTFS record flag. The flags field carries the
 // raw FILE_RECORD_SEGMENT_HEADER flags, whose defined bits are 0x0001 (in use) and
@@ -39,9 +39,10 @@ struct MftCompactEntry {
     uint64_t stringOffset;  // UTF-16 code units from the selected pool base
     uint32_t fileAttributes;
     uint16_t flags;
-    uint16_t stringLength;  // UTF-16 code units; zero is valid
-    int64_t size;           // bytes; zero for a directory or a size-unknown record
-    int64_t modifiedTime;   // FILETIME, 100-nanosecond intervals since 1601-01-01 UTC
+    uint16_t stringLength;    // UTF-16 code units; zero is valid
+    int64_t size;             // bytes; zero for a directory or a size-unknown record
+    int64_t modifiedTime;     // FILETIME, 100-nanosecond intervals since 1601-01-01 UTC
+    uint16_t sequenceNumber;  // NTFS record sequence; combined with recordNumber it is the file reference
 };
 
 struct MftParseResult {
@@ -86,6 +87,7 @@ struct UsnJournalEntry {
     uint16_t fileNameLength;      // wchar_t count
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)
     wchar_t fileName[260];  // MAX_PATH, null-terminated
+    uint16_t sequenceNumber;
 };
 
 struct UsnJournalResult {

@@ -16,8 +16,8 @@ public partial class BrokerProtocolTests
         await using var client = new JournalBrokerClient(clientSide,
             (letter, creation) => ($"section-{letter}", BlockFile.Create(creation), new MemoryStream()));
         var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteError(response, "C", "Scan not needed for spec test");
-        BrokerProtocol.WriteError(response, "D", "Scan not needed for spec test");
+        BrokerProtocol.WriteError(response, "C", BrokerFrame.NoArmEpoch, "Scan not needed for spec test");
+        BrokerProtocol.WriteError(response, "D", BrokerFrame.NoArmEpoch, "Scan not needed for spec test");
         await server.WriteAsync(response.WrittenMemory);
         await server.WriteAsync(response.WrittenMemory);
         var options = new BrokerScanOptions

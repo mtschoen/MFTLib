@@ -25,7 +25,7 @@ public partial class BrokerProtocolTests
         {
             JournalEntryFactory.Create(1, 10, "a")
         };
-        var frame = BrokerFrame.JournalBatch("C", cursor, entries);
+        var frame = BrokerFrame.JournalBatch("C", BrokerFrame.NoArmEpoch, cursor, entries);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
         Assert.AreEqual("C", frame.Drive);
         Assert.AreEqual(cursor, frame.Cursor);
@@ -35,7 +35,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void Factory_Error_PopulatesDriveAndMessage()
     {
-        var frame = BrokerFrame.Error("D", "journal wrapped");
+        var frame = BrokerFrame.Error("D", BrokerFrame.NoArmEpoch, "journal wrapped");
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
         Assert.AreEqual("D", frame.Drive);
         Assert.AreEqual("journal wrapped", frame.Message);

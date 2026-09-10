@@ -6,12 +6,12 @@ public sealed partial class JournalBrokerHost
     async Task HandleQueryVolumesAsync(
         Stream stream, string drivesSpec, SemaphoreSlim writeLock, CancellationToken cancellationToken)
     {
-        foreach (var request in ParseScanSpec(drivesSpec)) // volume-query tokens omit the map name, like watch tokens
+        foreach (var request in ParseScanSpec(drivesSpec)) // volume-query tokens omit the section and profile
         {
             if (_queryVolumeInfo == null)
             {
                 await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteError(writer, request.Letter,
+                        writer => BrokerProtocol.WriteError(writer, request.Letter, BrokerFrame.NoArmEpoch,
                             "Broker has no volume information source"),
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -35,7 +35,7 @@ public sealed partial class JournalBrokerHost
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteError(writer, request.Letter, exception.Message),
+                        writer => BrokerProtocol.WriteError(writer, request.Letter, BrokerFrame.NoArmEpoch, exception.Message),
                         cancellationToken)
                     .ConfigureAwait(false);
             }

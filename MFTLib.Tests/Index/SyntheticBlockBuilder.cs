@@ -44,8 +44,9 @@ internal sealed class SyntheticBlockBuilder : IDisposable
     /// <summary>Adds the volume root at row 0. The root's parent is itself, per the format.</summary>
     public uint AddRoot(string name = "")
     {
-        return AddRow(name, parentRow: 0, RowFlags.InUse | RowFlags.Directory, size: 0,
-            modifiedUtc: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        return AddRow(name, new RowColumns(ParentRow: 0, Flags: RowFlags.InUse | RowFlags.Directory,
+            Attributes: 0, Size: 0, ModifiedTicks: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks,
+            SequenceNumber: 0));
     }
 
     public uint AddRow(string name, in RowColumns columns)
@@ -54,9 +55,9 @@ internal sealed class SyntheticBlockBuilder : IDisposable
     }
 
     public uint AddRow(string name, uint parentRow, RowFlags flags, long size, DateTime modifiedUtc,
-        uint attributes = 0)
+        ushort sequenceNumber)
     {
-        return AddRow(name, new RowColumns(parentRow, flags, attributes, size, modifiedUtc.Ticks));
+        return AddRow(name, new RowColumns(parentRow, flags, 0, size, modifiedUtc.Ticks, sequenceNumber));
     }
 
     public uint AddRowAt(uint rowIndex, string name, in RowColumns columns)
@@ -93,6 +94,13 @@ internal sealed class SyntheticBlockBuilder : IDisposable
         return rowIndex;
     }
 
+    /// <summary>Sets the sequence number column for a row, independent of its descriptor word.</summary>
+    public void SetSequenceNumber(uint rowIndex, ushort sequenceNumber)
+    {
+        _block.SequenceNumbers[(int)rowIndex] = sequenceNumber;
+        _block.Flush();
+    }
+
     public void MutateNameDescriptor(uint rowIndex, uint nameOffsetBytes, ushort nameLengthUnits)
     {
         ref var row = ref _block.Rows[(int)rowIndex];
@@ -112,10 +120,10 @@ internal sealed class SyntheticBlockBuilder : IDisposable
             header.RootRow = 5;
         });
 
-        builder.AddRowAt(0, "$MFT", new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0, ModifiedTicks: moment.Ticks));
-        builder.AddRowAt(5, ".", new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0, ModifiedTicks: moment.Ticks));
-        builder.AddRowAt(6, "documents", new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0, ModifiedTicks: moment.Ticks));
-        builder.AddRowAt(7, "notes.txt", new RowColumns(ParentRow: 6, Flags: RowFlags.InUse, Attributes: 0, Size: 99, ModifiedTicks: moment.Ticks));
+        builder.AddRowAt(0, "$MFT", new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0, ModifiedTicks: moment.Ticks, SequenceNumber: 0));
+        builder.AddRowAt(5, ".", new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0, ModifiedTicks: moment.Ticks, SequenceNumber: 0));
+        builder.AddRowAt(6, "documents", new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0, ModifiedTicks: moment.Ticks, SequenceNumber: 0));
+        builder.AddRowAt(7, "notes.txt", new RowColumns(ParentRow: 6, Flags: RowFlags.InUse, Attributes: 0, Size: 99, ModifiedTicks: moment.Ticks, SequenceNumber: 0));
 
         builder.Complete(moment);
         return builder;
@@ -131,6 +139,18 @@ internal sealed class SyntheticBlockBuilder : IDisposable
     public void Complete(DateTime scanTimestampUtc)
     {
         ref var header = ref _block.Header;
+        var liveRowCount = 0u;
+        for (var rowIndex = 0u; rowIndex < header.RowCount; rowIndex++)
+        {
+            var flags = FileRow.DescriptorFlags(
+                FileRow.ReadDescriptorWord(in _block.Rows[(int)rowIndex]));
+            if ((flags & RowFlags.InUse) != 0 && (flags & RowFlags.Tombstone) == 0)
+            {
+                liveRowCount++;
+            }
+        }
+
+        header.LiveRowCount = liveRowCount;
         header.ScanTimestampTicks = scanTimestampUtc.Ticks;
         header.Generation = 1;
         header.Flags |= BlockFlags.Complete;
@@ -140,6 +160,11 @@ internal sealed class SyntheticBlockBuilder : IDisposable
     public BlockFile? OpenForReading(out BlockValidationResult validation)
     {
         return BlockFile.Open(BlockPath, VolumeSerial, out validation);
+    }
+
+    public BlockFile OpenForWriting()
+    {
+        return _block;
     }
 
     public void Dispose()

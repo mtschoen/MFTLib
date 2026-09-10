@@ -13,6 +13,7 @@ public partial class BrokerProtocolTests
         {
             RecordNumber = 42,
             ParentRecordNumber = 7,
+            SequenceNumber = 169,
             Usn = 123456,
             Timestamp = new DateTime(2026, 6, 20, 1, 2, 3, DateTimeKind.Utc),
             Reason = UsnReason.FileCreate | UsnReason.Close,
@@ -27,6 +28,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(buffer.WrittenCount, consumed);
         Assert.AreEqual(entry.RecordNumber, read.RecordNumber);
         Assert.AreEqual(entry.ParentRecordNumber, read.ParentRecordNumber);
+        Assert.AreEqual(entry.SequenceNumber, read.SequenceNumber);
         Assert.AreEqual(entry.Usn, read.Usn);
         Assert.AreEqual(entry.Timestamp, read.Timestamp);
         Assert.AreEqual(entry.Reason, read.Reason);
@@ -45,7 +47,7 @@ public partial class BrokerProtocolTests
         var cursor = new UsnJournalCursor(99UL, 20L);
 
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteJournalBatch(buffer, "C:\\", cursor, entries);
+        BrokerProtocol.WriteJournalBatch(buffer, "C:\\", BrokerFrame.NoArmEpoch, cursor, entries);
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _);
 
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
@@ -72,7 +74,7 @@ public partial class BrokerProtocolTests
     public void ErrorFrame_RoundTrips_PerDriveMessage()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteError(buffer, "D:\\", "journal wrapped");
+        BrokerProtocol.WriteError(buffer, "D:\\", BrokerFrame.NoArmEpoch, "journal wrapped");
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _);
 
         Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
@@ -110,11 +112,11 @@ public partial class BrokerProtocolTests
     public void StartWatchFrame_RoundTrips_DrivesSpec()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(buffer, "C:1:100");
+        BrokerProtocol.WriteStartWatch(buffer, "C:1:100:1");
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
 
         Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
-        Assert.AreEqual("C:1:100", frame.DrivesSpec);
+        Assert.AreEqual("C:1:100:1", frame.DrivesSpec);
         Assert.AreEqual(buffer.WrittenCount, consumed);
     }
 
@@ -180,7 +182,7 @@ public partial class BrokerProtocolTests
     public void ReadFrame_SetsConsumedToFullFrameLength()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteError(buffer, "C:\\", "test");
+        BrokerProtocol.WriteError(buffer, "C:\\", BrokerFrame.NoArmEpoch, "test");
         BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
 
         Assert.AreEqual(buffer.WrittenCount, consumed);
@@ -191,7 +193,7 @@ public partial class BrokerProtocolTests
     {
         var cursor = new UsnJournalCursor(1UL, 0L);
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteJournalBatch(buffer, "C:\\", cursor, Array.Empty<UsnJournalEntry>());
+        BrokerProtocol.WriteJournalBatch(buffer, "C:\\", BrokerFrame.NoArmEpoch, cursor, Array.Empty<UsnJournalEntry>());
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
 
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
@@ -258,8 +260,6 @@ public partial class BrokerProtocolTests
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drivesSpec "C"
             0x00, 0x00, 0x00, 0x00 // keepFileNames count = 0
         ]);
-        AssertWireBytes(w => BrokerProtocol.WriteStartWatch(w, "C"),
-            [0x07, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00, 0x43, 0x00]);
     }
 
     [TestMethod]
@@ -303,34 +303,6 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void WireBytes_Golden_ErrorFrame()
-    {
-        AssertWireBytes(w => BrokerProtocol.WriteError(w, "C", "D"),
-        [
-            0x0D, 0x00, 0x00, 0x00, // totalLength = 13
-            0x07, // kind = Error
-            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
-            0x02, 0x00, 0x00, 0x00, 0x44, 0x00 // message "D"
-        ]);
-    }
-
-    [TestMethod]
-    public void WireBytes_Golden_JournalBatchFrame_EmptyEntries()
-    {
-        AssertWireBytes(
-            w => BrokerProtocol.WriteJournalBatch(w, "C", new UsnJournalCursor(1UL, 2L),
-                Array.Empty<UsnJournalEntry>()),
-            [
-                0x1B, 0x00, 0x00, 0x00, // totalLength = 27
-                0x06, // kind = JournalBatch
-                0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
-                0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // journalId = 1
-                0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // nextUsn = 2
-                0x00, 0x00, 0x00, 0x00 // entryCount = 0
-            ]);
-    }
-
-    [TestMethod]
     public void Factory_ArmAndScan_PopulatesDrivesSpecAndEmptyEntries()
     {
         var frame = BrokerFrame.ArmAndScan("C:0:0,D:7:42");
@@ -353,9 +325,9 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void Factory_StartWatch_PopulatesDrivesSpec()
     {
-        var frame = BrokerFrame.StartWatch("C:1:100");
+        var frame = BrokerFrame.StartWatch("C:1:100:1");
         Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
-        Assert.AreEqual("C:1:100", frame.DrivesSpec);
+        Assert.AreEqual("C:1:100:1", frame.DrivesSpec);
         Assert.AreEqual(0, frame.Entries.Length);
     }
 

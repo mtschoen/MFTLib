@@ -34,12 +34,12 @@ $reportDir    = Join-Path $coverageDir "coverage-report"
 
 # Build strategy for a mixed C#/C++ solution on VS BuildTools runner:
 #
-# Step 1 — dotnet restore: generates project.assets.json for C# projects.
+# Step 1 - dotnet restore: generates project.assets.json for C# projects.
 #   (VS MSBuild doesn't auto-restore; dotnet.exe is 64-bit so no WOW64 issue.)
-# Step 2 — 64-bit VS MSBuild builds the native C++ project (MFTLibNative.vcxproj).
+# Step 2 - 64-bit VS MSBuild builds the native C++ project (MFTLibNative.vcxproj).
 #   Use the amd64 binary. Override PlatformToolset=v143 since the vcxproj has v145.
 #   Pass SolutionDir with trailing slash so post-build xcopy resolves correctly.
-# Step 3 — dotnet builds all managed projects against the built native binary.
+# Step 3 - dotnet builds all managed projects against the built native binary.
 #   Directory.Build.targets drops the native ProjectReference during dotnet builds.
 
 Write-Host "Restoring NuGet packages..." -ForegroundColor Cyan
@@ -86,7 +86,7 @@ foreach ($proj in $managedProjects) {
 Remove-Item $jsonFile -ErrorAction SilentlyContinue
 Remove-Item $coberturaFile -ErrorAction SilentlyContinue
 
-# Run non-admin tests — output JSON for MergeWith compatibility (or cobertura if non-interactive)
+# Run non-admin tests - output JSON for MergeWith compatibility (or cobertura if non-interactive)
 if ($NonInteractive) {
     Write-Host "`nRunning tests (non-interactive, skipping admin tests)..." -ForegroundColor Cyan
     dotnet test "$testProject" --no-build -c $Configuration -p:Platform=x64 `
@@ -116,7 +116,7 @@ if ($NonInteractive) {
     }
     Write-Host "Non-admin coverage saved." -ForegroundColor Green
 
-    # Run admin tests elevated — write a temp script so output can be captured
+    # Run admin tests elevated - write a temp script so output can be captured
     Write-Host "`nLaunching elevated test runner for admin tests (UAC prompt)..." -ForegroundColor Yellow
 
     $adminLog = Join-Path $repoRoot "admin-test-output.log"

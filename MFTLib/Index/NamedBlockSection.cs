@@ -33,7 +33,8 @@ public static class NamedBlockSection
 
         var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NamePoolCapacity);
         var fileStream = new FileStream(options.Path, FileMode.Create, FileAccess.ReadWrite,
-            FileShare.ReadWrite | FileShare.Delete);
+            FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096,
+            options: options.DeleteOnClose ? FileOptions.DeleteOnClose : FileOptions.None);
         MemoryMappedFile? mappedFile = null;
         MemoryMappedViewAccessor? view = null;
         BlockFile? block = null;

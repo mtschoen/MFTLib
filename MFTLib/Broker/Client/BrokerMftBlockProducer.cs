@@ -4,8 +4,7 @@ namespace MFTLib;
 
 /// <summary>
 ///     Produces index blocks through a broker. Clients returned by connectAsync remain owned by
-///     the caller, which decides whether to share a client across drives. Index request
-///     progress cannot represent broker phases; configure BrokerScanOptions.Progress instead.
+///     the caller, which decides whether to share a client across drives.
 /// </summary>
 /// <param name="connectAsync">
 ///     Yields the client each scan runs on. The caller keeps ownership of what it returns.
@@ -27,11 +26,23 @@ public sealed class BrokerMftBlockProducer(
 {
     public MftBlockProducer CreateProducer() => ProduceAsync;
 
+    /// <summary>
+    ///     The live-watch half of this producer. The index starts one stream on it over every
+    ///     drive it wants watched, and arms and disarms single drives on that stream through the
+    ///     same object; the broker connection is the same borrowed one the producer used.
+    /// </summary>
+    public IIndexWatchSource CreateWatchSource()
+    {
+        return new BrokerIndexWatchSource(connectAsync);
+    }
+
     async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
         var drive = JournalBrokerClient.NormalizeDriveLetter(request.DriveLetter.ToString());
+        var brokerProgress = BrokerProgressAdapter.Create(request, scanOptions?.Progress);
         var options = (scanOptions ?? new BrokerScanOptions()) with
         {
+            Progress = brokerProgress,
             BlockTargets = new Dictionary<string, BlockScanTarget>
             {
                 [drive] = new(request.BlockPath, request.VolumeSerial, request.DeleteOnClose)

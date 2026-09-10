@@ -40,99 +40,76 @@ public sealed partial class JournalBrokerHost
         return _readJournal(driveLetter, since);
     }
 
-    List<Task> StartWatchTasks(Stream stream, string watchSpec, SemaphoreSlim writeLock,
+    async Task StreamWatchAsync(Stream stream, WatchDriveRequest request, SemaphoreSlim writeLock,
         CancellationToken cancellationToken)
     {
-        var tasks = new List<Task>();
-        foreach (var request in ParseScanSpec(watchSpec)) // watch tokens omit the map name
-        {
-            tasks.Add(StreamWatchAsync(stream, request.Letter,
-                new UsnJournalCursor(request.JournalId, request.NextUsn), writeLock, cancellationToken));
-        }
-
-        return tasks;
-    }
-
-    async Task StreamWatchAsync(Stream stream, string drive, UsnJournalCursor since,
-        SemaphoreSlim writeLock, CancellationToken cancellationToken)
-    {
+        var drive = request.Letter;
+        var since = new UsnJournalCursor(request.JournalId, request.NextUsn);
         if (_watchDrive == null)
         {
             await WriteFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteError(writer, drive, "Broker has no watch source"), cancellationToken)
+                    writer => BrokerProtocol.WriteError(writer, drive, request.ArmEpoch, "Broker has no watch source"), cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
 
+        var yieldedAny = false;
         try
         {
             // A (0,0) cursor means the caller had no cached cursor for this drive (a warm
             // start with an unknown cursor). Resolve the current cursor and watch from
-            // now so the live watch still works; only the pre-launch gap is lost.
+            // now so the live watch still works; only the pre-launch gap is lost, and
+            // there is no cached cursor that could have gone stale.
             var effectiveSince = since.JournalId == 0 ? _queryCursor(drive) : since;
 
-            var yieldedAny = false;
-            try
+            // No `.WithCancellation(cancellationToken)` here: cancellationToken is
+            // already passed as the explicit third argument above, which the
+            // production implementation's `[EnumeratorCancellation]` parameter binds
+            // directly - adding it again on the same token is redundant.
+            await foreach (var (entries, cursor) in _watchDrive(drive, effectiveSince, cancellationToken)
+                               .ConfigureAwait(false))
             {
-                // No `.WithCancellation(cancellationToken)` here: cancellationToken is
-                // already passed as the explicit third argument above, which the
-                // production implementation's `[EnumeratorCancellation]` parameter binds
-                // directly - adding it again on the same token is redundant.
-                await foreach (var (entries, cursor) in _watchDrive(drive, effectiveSince, cancellationToken)
-                                   .ConfigureAwait(false))
-                {
-                    yieldedAny = true;
-                    await WriteFrameAsync(stream, writeLock,
-                            writer => BrokerProtocol.WriteJournalBatch(writer, drive, cursor, entries), cancellationToken)
-                        .ConfigureAwait(false);
-                }
-            }
-            // A cached cursor can fall outside the journal's live window before StartWatch
-            // is called (for instance, a default 32 MB journal wrapping within minutes on
-            // a busy system drive, or the journal being recreated with a new ID). If
-            // watch fails at start before yielding any batch because the cached cursor is
-            // stale or invalidated, degrade the same way catch-up does: re-query the cursor,
-            // emit a Warning frame so the consumer knows the replay gap was lost and a rescan
-            // is recommended, and keep streaming from the fresh cursor.
-            // Genuine access, volume, allocation, or protocol failures must not be retried as
-            // a cursor degradation; they propagate to the outer catch to emit an Error.
-            catch (Exception exception) when (!yieldedAny && since.JournalId != 0 && !IsNonRetryableStartupException(exception))
-            {
-                var freshCursor = _queryCursor(drive);
-                if (freshCursor == effectiveSince ||
-                    (freshCursor.JournalId == effectiveSince.JournalId && !IsJournalCursorException(exception)))
-                {
-                    throw;
-                }
-
+                yieldedAny = true;
                 await WriteFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteWarning(writer, drive,
-                        $"Watch from cached cursor failed: {exception.Message}; watching from the current " +
-                        "journal position, replay gap was lost and a rescan is recommended"),
-                    cancellationToken).ConfigureAwait(false);
-
-                await foreach (var (entries, cursor) in _watchDrive(drive, freshCursor, cancellationToken)
-                                   .ConfigureAwait(false))
-                {
-                    await WriteFrameAsync(stream, writeLock,
-                            writer => BrokerProtocol.WriteJournalBatch(writer, drive, cursor, entries), cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                        writer => BrokerProtocol.WriteJournalBatch(writer, drive, request.ArmEpoch, cursor, entries), cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
         {
-            // Normal stop: the session was cancelled.
+            // Normal stop: this drive was disarmed, or the whole session was cancelled.
         }
-        // Surface a genuine watch failure (journal wrapped mid-stream, volume
-        // closed) to the caller as a per-drive Error instead of tearing down the
-        // session; other drives keep watching. Cancellation is handled above.
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        // Every other failure ends this drive's stream and travels as this drive's Error
+        // frame; the other drives keep watching. There is no resume from the current
+        // journal position, because a consumer that applied batches from the far side of
+        // a lost replay gap would advance past USN records nothing will ever replay and
+        // diverge from the volume in silence. A rescan is the only recovery.
+        catch (Exception exception)
         {
             await WriteFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteError(writer, drive, exception.Message), CancellationToken.None)
+                    writer => BrokerProtocol.WriteError(writer, drive, request.ArmEpoch,
+                        DescribeWatchFailure(drive, since, yieldedAny, exception)), CancellationToken.None)
                 .ConfigureAwait(false);
         }
+    }
+
+    // A cached cursor can fall outside the journal's live window before StartWatch is
+    // called: a default 32 MB journal wrapping within minutes on a busy system drive, or
+    // the journal being recreated with a new id. That failure names the cursor and the
+    // rescan, so a consumer can tell "this drive needs rebuilding" from "this drive hit
+    // an access or volume error". A failure after batches have flowed, or from a (0,0)
+    // sentinel start that had no cached cursor to be stale, carries its own message.
+    static string DescribeWatchFailure(string drive, UsnJournalCursor since, bool yieldedAny, Exception exception)
+    {
+        if (yieldedAny || since.JournalId == 0 || !IsJournalCursorException(exception))
+        {
+            return exception.Message;
+        }
+
+        var cursorText = FormattableString.Invariant($"{since.JournalId}:{since.NextUsn}");
+        return $"Drive {drive} cannot resume its live watch from journal cursor {cursorText}: " +
+               $"{exception.Message}. The records between that cursor and the current journal position " +
+               "are gone, so this drive needs a rescan before it can be watched again.";
     }
 
     static async Task WriteFrameAsync(Stream stream, SemaphoreSlim writeLock,
@@ -259,22 +236,6 @@ public sealed partial class JournalBrokerHost
         {
             yield return batch;
         }
-    }
-
-    static bool IsNonRetryableStartupException(Exception exception)
-    {
-        if (exception is OperationCanceledException or UnauthorizedAccessException or OutOfMemoryException)
-        {
-            return true;
-        }
-
-        var message = exception.Message;
-        return !string.IsNullOrEmpty(message) &&
-               (message.Contains("Access is denied", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("access denied", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("Failed to allocate", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("Failed to create event", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("PlatformNotSupported", StringComparison.OrdinalIgnoreCase));
     }
 
     static bool IsJournalCursorException(Exception exception)

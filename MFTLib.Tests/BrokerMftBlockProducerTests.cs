@@ -121,6 +121,37 @@ public class BrokerMftBlockProducerTests
     }
 
     [TestMethod]
+    public async Task ProduceAsync_ForwardsBrokerProgressOntoTheIndexProgressChannel()
+    {
+        await using var harness = new InProcessBlockBrokerHarness();
+        var samples = new List<IndexScanProgress>();
+        var request = harness.Request with { Progress = new SynchronousProgress<IndexScanProgress>(samples.Add) };
+        var producer = new BrokerMftBlockProducer(harness.ConnectAsync);
+
+        var result = await producer.CreateProducer()(request, harness.CancellationToken);
+        result.Block.Dispose();
+
+        Assert.IsTrue(samples.Count > 0, "the broker reported no progress to the index channel");
+        Assert.IsTrue(samples.All(sample => sample.DriveLetter == 'c'));
+        Assert.IsTrue(samples.Any(sample => sample.Phase == IndexScanPhase.Transferring));
+        Assert.IsTrue(samples.All(sample => sample.TotalRows is null || sample.TotalRows.Value >= sample.RowsWritten),
+            "when present, total rows should not be less than rows written");
+    }
+
+    [TestMethod]
+    public async Task ProduceAsync_KeepsTheCallersOwnBrokerProgressChannel()
+    {
+        await using var harness = new InProcessBlockBrokerHarness();
+        var brokerSamples = new List<BrokerScanProgress>();
+        var producer = new BrokerMftBlockProducer(harness.ConnectAsync,
+            new BrokerScanOptions { Progress = new SynchronousProgress<BrokerScanProgress>(brokerSamples.Add) });
+        var result = await producer.CreateProducer()(harness.Request, harness.CancellationToken);
+        result.Block.Dispose();
+
+        Assert.IsTrue(brokerSamples.Count > 0);
+    }
+
+    [TestMethod]
     public async Task Produce_ReportsCompactionFlag()
     {
         await using var harness = new InProcessBlockBrokerHarness(block => block.Header.Flags |= BlockFlags.CompactionNeeded);
@@ -180,8 +211,8 @@ public class BrokerMftBlockProducerTests
                 return ("duplicate-section", blocks[^1], lifetimes[^1]);
             });
         var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteError(response, "C", "query failed");
-        BrokerProtocol.WriteError(response, "D", "query failed");
+        BrokerProtocol.WriteError(response, "C", BrokerFrame.NoArmEpoch, "query failed");
+        BrokerProtocol.WriteError(response, "D", BrokerFrame.NoArmEpoch, "query failed");
         await server.WriteAsync(response.WrittenMemory);
         try
         {

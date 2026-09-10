@@ -4,7 +4,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 [TestClass]
-public class BlockWriterTests
+public partial class BlockWriterTests
 {
     static readonly DateTime Moment = new(2026, 9, 2, 8, 0, 0, DateTimeKind.Utc);
 
@@ -13,7 +13,8 @@ public class BlockWriterTests
         Flags: RowFlags.InUse | RowFlags.Directory,
         Attributes: 16,
         Size: 0,
-        ModifiedTicks: Moment.Ticks);
+        ModifiedTicks: Moment.Ticks,
+        SequenceNumber: 0);
 
     string _directory = null!;
     string _blockPath = null!;
@@ -39,9 +40,10 @@ public class BlockWriterTests
         }
     }
 
-    static RowColumns FileColumns(long size = 0, uint attributes = 0, uint parentRow = 0)
+    static RowColumns FileColumns(ushort sequenceNumber, long size = 0, uint attributes = 0,
+        uint parentRow = 0)
     {
-        return new RowColumns(parentRow, RowFlags.InUse, attributes, size, Moment.Ticks);
+        return new RowColumns(parentRow, RowFlags.InUse, attributes, size, Moment.Ticks, sequenceNumber);
     }
 
     BlockFile CreateBlock(uint slotCapacity = 64, uint namePoolCapacity = 512)
@@ -63,7 +65,7 @@ public class BlockWriterTests
         var writer = new BlockWriter(block);
 
         Assert.IsTrue(writer.TryWriteRow(0, "", RootColumns));
-        Assert.IsTrue(writer.TryWriteRow(1, "report.pdf", FileColumns(size: 4096, attributes: 32)));
+        Assert.IsTrue(writer.TryWriteRow(1, "report.pdf", FileColumns(0, size: 4096, attributes: 32)));
 
         Assert.AreEqual(2u, writer.RowCount);
         Assert.AreEqual("report.pdf", new string(NamePool.ReadRowName(block, 1)));
@@ -72,14 +74,86 @@ public class BlockWriterTests
     }
 
     [TestMethod]
+    public void LiveRowCount_CountsLiveRowsNotSlots()
+    {
+        using var builder = new SyntheticBlockBuilder();
+        using var block = builder.OpenForWriting();
+        var writer = new BlockWriter(block);
+        var columns = new RowColumns(0, RowFlags.InUse, 0, 10, 0, 0);
+
+        Assert.IsTrue(writer.TryWriteRow(0, "a.txt", in columns));
+        Assert.IsTrue(writer.TryWriteRow(7, "b.txt", in columns));
+
+        Assert.AreEqual(8u, block.Header.RowCount);
+        Assert.AreEqual(2u, block.Header.LiveRowCount);
+    }
+
+    [TestMethod]
+    public void LiveRowCount_DropsOnTombstoneAndDoesNotDoubleCount()
+    {
+        using var builder = new SyntheticBlockBuilder();
+        using var block = builder.OpenForWriting();
+        var writer = new BlockWriter(block);
+        var columns = new RowColumns(0, RowFlags.InUse, 0, 10, 0, 0);
+        writer.TryWriteRow(3, "a.txt", in columns);
+
+        writer.MarkTombstone(3);
+        Assert.AreEqual(0u, block.Header.LiveRowCount);
+
+        writer.MarkTombstone(3);
+        Assert.AreEqual(0u, block.Header.LiveRowCount);
+
+        Assert.IsTrue(writer.TryWriteRow(3, "reused.txt", in columns));
+        Assert.AreEqual(1u, block.Header.LiveRowCount);
+    }
+
+    [TestMethod]
+    public void LiveRowCount_TracksEveryTryWriteRowTransition()
+    {
+        using var builder = new SyntheticBlockBuilder();
+        using var block = builder.OpenForWriting();
+        var writer = new BlockWriter(block);
+        var liveColumns = new RowColumns(0, RowFlags.InUse, 0, 10, 0, 0);
+        var nonliveColumns = new RowColumns(0, RowFlags.InUse | RowFlags.Tombstone, 0, 10, 0, 0);
+
+        Assert.IsTrue(writer.TryWriteRow(0, "live.txt", in liveColumns));
+        Assert.AreEqual(1u, block.Header.LiveRowCount);
+
+        Assert.IsTrue(writer.TryWriteRow(0, "still-live.txt", in liveColumns));
+        Assert.AreEqual(1u, block.Header.LiveRowCount);
+
+        Assert.IsTrue(writer.TryWriteRow(1, "deleted.txt", in nonliveColumns));
+        Assert.AreEqual(1u, block.Header.LiveRowCount);
+
+        Assert.IsTrue(writer.TryWriteRow(0, "now-deleted.txt", in nonliveColumns));
+        Assert.AreEqual(0u, block.Header.LiveRowCount);
+    }
+
+    [TestMethod]
+    public void LiveRowCount_IgnoresFlagsAddedToANonliveRow()
+    {
+        using var builder = new SyntheticBlockBuilder();
+        using var block = builder.OpenForWriting();
+        var writer = new BlockWriter(block);
+        var columns = new RowColumns(0, RowFlags.None, 0, 10, 0, 0);
+        Assert.IsTrue(writer.TryWriteRow(0, "unused.txt", in columns));
+
+        writer.MarkSubtreeSkipped(0);
+        writer.MarkTombstone(0);
+
+        Assert.AreEqual(0u, block.Header.LiveRowCount);
+    }
+
+    [TestMethod]
     public void TryWriteRow_PastSlotCapacity_SetsCompactionNeededAndReturnsFalse()
     {
         using var block = CreateBlock(slotCapacity: 4);
         var writer = new BlockWriter(block);
 
-        Assert.IsFalse(writer.TryWriteRow(4, "overflow.txt", FileColumns()));
+        Assert.IsFalse(writer.TryWriteRow(4, "overflow.txt", FileColumns(0)));
         Assert.IsTrue(writer.CompactionNeeded);
         Assert.AreEqual(0u, writer.RowCount);
+        Assert.AreEqual(0u, block.Header.LiveRowCount);
     }
 
     [TestMethod]
@@ -88,11 +162,12 @@ public class BlockWriterTests
         using var block = CreateBlock(namePoolCapacity: 8);
         var writer = new BlockWriter(block);
 
-        Assert.IsTrue(writer.TryWriteRow(0, "abcd", FileColumns()));
-        Assert.IsFalse(writer.TryWriteRow(1, "this name does not fit", FileColumns()));
+        Assert.IsTrue(writer.TryWriteRow(0, "abcd", FileColumns(0)));
+        Assert.IsFalse(writer.TryWriteRow(1, "this name does not fit", FileColumns(0)));
 
         Assert.IsTrue(writer.CompactionNeeded);
         Assert.IsFalse(block.Rows[1].IsInUse);
+        Assert.AreEqual(1u, block.Header.LiveRowCount);
     }
 
     [TestMethod]
@@ -101,8 +176,8 @@ public class BlockWriterTests
         using var block = CreateBlock(slotCapacity: 8);
         var writer = new BlockWriter(block);
 
-        Assert.IsFalse(writer.TryWriteRow(99, "far.txt", FileColumns()));
-        Assert.IsTrue(writer.TryWriteRow(1, "near.txt", FileColumns()));
+        Assert.IsFalse(writer.TryWriteRow(99, "far.txt", FileColumns(0)));
+        Assert.IsTrue(writer.TryWriteRow(1, "near.txt", FileColumns(0)));
 
         Assert.AreEqual("near.txt", new string(NamePool.ReadRowName(block, 1)));
         Assert.IsTrue(writer.CompactionNeeded);
@@ -114,13 +189,13 @@ public class BlockWriterTests
         using var block = CreateBlock();
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
-        writer.TryWriteRow(1, "gone.tmp", FileColumns(size: 10, attributes: 32));
+        writer.TryWriteRow(1, "gone.tmp", FileColumns(0, size: 10, attributes: 32));
         writer.MarkTombstone(1);
 
         // Row 1 is inside the published range (RowCount already covers it), so this create
         // reuses a live slot rather than filling a fresh one, exactly like a journal create
         // over a reused MFT record number.
-        Assert.IsTrue(writer.TryWriteRow(1, "reused.txt", FileColumns(size: 20, attributes: 32)));
+        Assert.IsTrue(writer.TryWriteRow(1, "reused.txt", FileColumns(0, size: 20, attributes: 32)));
 
         var descriptor = FileRow.ReadDescriptorWord(in block.Rows[1]);
         var offsetBytes = FileRow.DescriptorNameOffsetBytes(descriptor);
@@ -135,65 +210,17 @@ public class BlockWriterTests
     }
 
     [TestMethod]
-    public void TryRenameRow_WithTheSameName_UpdatesOnlyTheParentRowAndDoesNotGrowTheNamePool()
+    public void TryWriteRow_StoresTheSequenceNumberBesideTheRow()
     {
-        using var block = CreateBlock();
+        using var builder = new SyntheticBlockBuilder();
+        using var block = builder.OpenForWriting();
         var writer = new BlockWriter(block);
-        writer.TryWriteRow(0, "", RootColumns);
-        writer.TryWriteRow(1, "Documents", RootColumns);
-        writer.TryWriteRow(2, "unchanged.txt", FileColumns(size: 10, attributes: 32, parentRow: 0));
-        var namePoolUsedBefore = block.Header.NamePoolUsed;
 
-        Assert.IsTrue(writer.TryRenameRow(2, "unchanged.txt", parentRow: 1));
+        Assert.IsTrue(writer.TryWriteRow(5, "root", new RowColumns(
+            5, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 42)));
 
-        Assert.AreEqual(namePoolUsedBefore, block.Header.NamePoolUsed);
-        Assert.AreEqual(1u, block.Rows[2].ParentRow);
-        Assert.AreEqual("unchanged.txt", new string(NamePool.ReadRowName(block, 2)));
-    }
-
-    [TestMethod]
-    public void TryRenameRow_AppendsTheNewNameAndSwapsTheRowOffset()
-    {
-        using var block = CreateBlock();
-        var writer = new BlockWriter(block);
-        writer.TryWriteRow(0, "", RootColumns);
-        writer.TryWriteRow(1, "before.txt", FileColumns(size: 10, attributes: 32));
-        var originalOffset = block.Rows[1].NameOffsetBytes;
-
-        Assert.IsTrue(writer.TryRenameRow(1, "after.txt", parentRow: 0));
-
-        Assert.AreEqual("after.txt", new string(NamePool.ReadRowName(block, 1)));
-        Assert.AreNotEqual(originalOffset, block.Rows[1].NameOffsetBytes);
-        Assert.AreEqual("before.txt", new string(NamePool.Read(block.NamePoolCharacters, originalOffset, 10)));
-    }
-
-    [TestMethod]
-    public void TryRenameRow_PublishesOffsetLengthAndFlagsAsOneDescriptorWord()
-    {
-        using var block = CreateBlock();
-        var writer = new BlockWriter(block);
-        writer.TryWriteRow(0, "", RootColumns);
-        writer.TryWriteRow(1, "before.txt", FileColumns(size: 10, attributes: 32));
-        var originalOffset = block.Rows[1].NameOffsetBytes;
-
-        Assert.IsTrue(writer.TryRenameRow(1, "considerably-longer-name.txt", parentRow: 0));
-
-        // The whole point of the descriptor word: one read yields an offset and a length that
-        // belong to the same name. Decoding them separately from the word must agree with the
-        // name the pool reader hands back, and the old name must still be readable at the old
-        // offset because the pool is append-only.
-        var descriptor = FileRow.ReadDescriptorWord(in block.Rows[1]);
-        var offsetBytes = FileRow.DescriptorNameOffsetBytes(descriptor);
-        var lengthUnits = FileRow.DescriptorNameLengthUnits(descriptor);
-
-        Assert.AreNotEqual(originalOffset, offsetBytes);
-        Assert.AreEqual((ushort)"considerably-longer-name.txt".Length, lengthUnits);
-        Assert.AreEqual("considerably-longer-name.txt",
-            new string(NamePool.Read(block.NamePoolCharacters, offsetBytes, lengthUnits)));
-        Assert.AreEqual("considerably-longer-name.txt", new string(NamePool.ReadRowName(block, 1)));
-        Assert.AreEqual(RowFlags.InUse, FileRow.DescriptorFlags(descriptor));
-        Assert.AreEqual("before.txt",
-            new string(NamePool.Read(block.NamePoolCharacters, originalOffset, 10)));
+        Assert.AreEqual((ushort)42, block.SequenceNumbers[5]);
+        Assert.AreEqual((ushort)0, block.SequenceNumbers[4]);
     }
 
     [TestMethod]
@@ -202,7 +229,7 @@ public class BlockWriterTests
         using var block = CreateBlock();
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
-        writer.TryWriteRow(1, "before.txt", FileColumns(size: 10, attributes: 32));
+        writer.TryWriteRow(1, "before.txt", FileColumns(0, size: 10, attributes: 32));
         Assert.IsTrue(writer.TryRenameRow(1, "after.txt", parentRow: 0));
 
         writer.MarkTombstone(1);
@@ -220,12 +247,13 @@ public class BlockWriterTests
         using var block = CreateBlock();
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
-        writer.TryWriteRow(1, "Locked", FileColumns(attributes: 16));
+        writer.TryWriteRow(1, "Locked", FileColumns(0, attributes: 16));
 
         writer.MarkSubtreeSkipped(1);
 
         Assert.IsTrue(block.Rows[1].SubtreeSkipped);
         Assert.AreEqual("Locked", new string(NamePool.ReadRowName(block, 1)));
+        Assert.AreEqual(2u, block.Header.LiveRowCount);
     }
 
     [TestMethod]
@@ -245,7 +273,7 @@ public class BlockWriterTests
         using var block = CreateBlock();
         var writer = new BlockWriter(block);
         writer.TryWriteRow(0, "", RootColumns);
-        writer.TryWriteRow(1, "gone.tmp", FileColumns(size: 10, attributes: 32));
+        writer.TryWriteRow(1, "gone.tmp", FileColumns(0, size: 10, attributes: 32));
 
         writer.MarkTombstone(1);
 

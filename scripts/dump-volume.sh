@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dump-volume.sh — extract $MFT from an NTFS device via ntfscat (sudo) and
+# dump-volume.sh - extract $MFT from an NTFS device via ntfscat (sudo) and
 # invoke mft-cli on the resulting file.
 #
 # Usage:
@@ -36,7 +36,7 @@ fi
 
 if [ ! -f "$DUMP_PATH" ] || [ "${FORCE:-0}" = "1" ]; then
     RAW_PATH="${DUMP_PATH}.raw"
-    echo "==> extracting \$MFT from $DEVICE → $DUMP_PATH (sudo required for raw block read)"
+    echo "==> extracting \$MFT from $DEVICE -> $DUMP_PATH (sudo required for raw block read)"
     # ntfscat refuses by default if the volume is mounted. --force is safe for a
     # read-only extraction on an idle volume; the risk is reading inconsistent
     # state if writes are happening concurrently, which is acceptable here.

@@ -6,4 +6,4 @@ namespace MFTLib.Index;
 ///     <paramref name="DriveLetter" /> as a display and lookup key. The volume serial is part of
 ///     the block's file name so a re-lettered drive never matches the wrong block.
 /// </summary>
-public sealed record IndexedDrive(char DriveLetter, string RootDirectory, uint VolumeSerial);
+public sealed partial record IndexedDrive(char DriveLetter, string RootDirectory, uint VolumeSerial);

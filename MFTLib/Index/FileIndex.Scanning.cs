@@ -6,17 +6,17 @@ public sealed partial class FileIndex
     {
         var driveLetter = char.ToUpperInvariant(drive.DriveLetter);
         _driveConfigurations[driveLetter] = drive;
-
         if (!Directory.Exists(drive.RootDirectory))
         {
             lock (_stateLock)
             {
-                _offlineDrives.Add(new DriveStatus
+                _blocklessDriveStatuses.Add(new DriveStatus
                 {
                     DriveLetter = driveLetter,
                     ProducerKind = ProducerKind.Enumeration,
                     State = DriveState.Offline,
                     RowCount = 0,
+                    LiveRowCount = 0,
                     ScanTimestamp = DateTime.MinValue,
                     CompactionNeeded = false,
                     WatchSupported = false
@@ -32,16 +32,10 @@ public sealed partial class FileIndex
             driveOrdinal = (ushort)_driveBlocks.Count;
         }
 
-        // A process that was killed rather than disposed can leave a leftover behind: a
-        // no-cache temp block (DisposeAsync is what deletes those; see FileIndexOptions.NoCache)
-        // or a cache-mode ".retired-*" sibling from a rescan that renamed the old file aside but
-        // never got to complete the replacement. Both are recognized purely by name and are
-        // safe to remove before this drive is opened.
-        if (_options.NoCache)
-        {
-            CleanupStaleNoCacheBlocks(drive.DriveLetter, drive.VolumeSerial);
-        }
-        else
+        // Cache-mode rescans can leave a renamed ".retired-*" sibling if a prior attempt
+        // aborted before it could remove it; no-cache blocks are now tied to
+        // FileOptions.DeleteOnClose and do not need sweep cleanup.
+        if (!_options.NoCache)
         {
             CleanupRetiredSiblings(drive.DriveLetter, drive.VolumeSerial);
         }
@@ -64,16 +58,43 @@ public sealed partial class FileIndex
         {
             var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, ComputeScanBlockPath(drive),
                 cancellationToken).ConfigureAwait(false);
-            driveBlock = scanResult.DriveBlock;
+            if (scanResult is not { } completedScan)
+            {
+                RecordFailedDrive(driveLetter, driveOrdinal);
+                return;
+            }
+
+            driveBlock = completedScan.DriveBlock;
             lock (_stateLock)
             {
-                _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = scanResult.AccessDeniedSubtreeCount;
+                _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
             }
         }
 
         lock (_stateLock)
         {
             _driveBlocks.Add(driveBlock);
+        }
+    }
+
+    void RecordFailedDrive(char driveLetter, ushort driveOrdinal)
+    {
+        lock (_stateLock)
+        {
+            _blocklessDriveStatuses.Add(new DriveStatus
+            {
+                DriveLetter = driveLetter,
+                ProducerKind = ProducerKind.Mft,
+                State = DriveState.Failed,
+                RowCount = 0,
+                LiveRowCount = 0,
+                ScanTimestamp = DateTime.MinValue,
+                CompactionNeeded = false,
+                WatchSupported = false,
+                MftProducerFailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveOrdinal)
+            });
+            _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
+            _discardedBlocksByOrdinal.Remove(driveOrdinal);
         }
     }
 
@@ -95,63 +116,45 @@ public sealed partial class FileIndex
     readonly record struct BlockScanResult(BlockFile Block, EnumerationResult Result);
 
     /// <summary>
-    ///     Picks the producer for one drive's cold scan according to
-    ///     <see cref="FileIndexOptions.ProducerPolicy" />. <see cref="ProducerPolicy.MftOnly" />
-    ///     requires <see cref="FileIndexOptions.MftProducer" /> and lets a producer failure
-    ///     propagate, because the caller asked for exactly one producer.
-    ///     <see cref="ProducerPolicy.Auto" /> prefers the MFT producer when one is set, but a
-    ///     failure there is not fatal: it is recorded on the drive status and the drive falls
-    ///     back to the enumeration producer instead, so no drive is ever left unindexed because
-    ///     of its substrate. <see cref="ProducerPolicy.EnumerationOnly" /> ignores
-    ///     <see cref="FileIndexOptions.MftProducer" /> entirely. Cancellation is never treated as
-    ///     a producer failure: it always propagates rather than triggering a fallback.
+    ///     Picks the producer for one drive's cold scan. Enumeration walks the directory tree;
+    ///     MFT failures return null so the caller can mark only that drive failed. Cancellation
+    ///     always propagates.
     /// </summary>
-    async Task<ScanDriveResult> ProduceDriveBlockAsync(IndexedDrive drive, ushort driveOrdinal, string blockPath,
+    async Task<ScanDriveResult?> ProduceDriveBlockAsync(IndexedDrive drive, ushort driveOrdinal, string blockPath,
         CancellationToken cancellationToken)
     {
-        if (_options.ProducerPolicy == ProducerPolicy.MftOnly)
+        if (_options.ProducerPolicy == ProducerPolicy.Enumeration)
         {
-            var producer = _options.MftProducer ?? throw new InvalidOperationException(
-                $"{nameof(ProducerPolicy)}.{nameof(ProducerPolicy.MftOnly)} requires " +
-                $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.MftProducer)} to be set.");
-            return await RunMftProducerAsync(drive, driveOrdinal, blockPath, producer, cancellationToken)
+            return await Task
+                .Run(() => ScanDrive(drive, driveOrdinal, blockPath, _options.NoCache, cancellationToken),
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        if (_options.ProducerPolicy == ProducerPolicy.Auto && _options.MftProducer is { } mftProducer)
+        var producer = _options.MftProducer ?? throw new InvalidOperationException(
+            $"{nameof(ProducerPolicy)}.{nameof(ProducerPolicy.Mft)} requires " +
+            $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.MftProducer)} to be set.");
+
+        try
         {
-            try
+            var mftScanResult = await RunMftProducerAsync(drive, driveOrdinal, blockPath, producer,
+                cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
             {
-                var mftScanResult = await RunMftProducerAsync(drive, driveOrdinal, blockPath, mftProducer,
-                    cancellationToken).ConfigureAwait(false);
-
-                // A genuine MFT-producer success replaces whatever this ordinal's dictionary
-                // entry recorded from an earlier failed attempt (AddDriveAsync's first scan or a
-                // prior RescanAsync): DriveStatus.MftProducerFailureMessage's doc comment promises
-                // null once the current block came from the MFT producer, so a recovered drive
-                // must not keep reporting a stale failure. The catch block below is the only other
-                // writer of this ordinal's entry, and it runs on a different path than this one, so
-                // clearing here never erases a message that same call just set.
-                lock (_stateLock)
-                {
-                    _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
-                }
-
-                return mftScanResult;
+                _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                lock (_stateLock)
-                {
-                    _mftProducerFailureMessagesByOrdinal[driveOrdinal] = exception.Message;
-                }
-            }
+
+            return mftScanResult;
         }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            lock (_stateLock)
+            {
+                _mftProducerFailureMessagesByOrdinal[driveOrdinal] = exception.Message;
+            }
 
-        return await Task
-            .Run(() => ScanDrive(drive, driveOrdinal, blockPath, _options.NoCache, cancellationToken),
-                cancellationToken)
-            .ConfigureAwait(false);
+            return null;
+        }
     }
 
     /// <summary>
@@ -195,7 +198,7 @@ public sealed partial class FileIndex
         // releases it through the reference-counted Release() (see DriveBlock's own summary),
         // not through IDisposable.
         var driveBlock = new DriveBlock(drive.DriveLetter, driveOrdinal, produceResult.Block,
-            deleteFileOnRelease: _options.NoCache, rootDirectoryPath: drive.RootDirectory);
+            rootDirectoryPath: drive.RootDirectory);
         var scanResult = new ScanDriveResult(driveBlock, produceResult.SkippedRecordCount, produceResult.JournalId,
             produceResult.NextUsn);
 
@@ -250,8 +253,7 @@ public sealed partial class FileIndex
             }
 
             return new WarmStartResult(
-                new DriveBlock(drive.DriveLetter, driveOrdinal, block, deleteFileOnRelease: false,
-                    rootDirectoryPath: drive.RootDirectory), null);
+                new DriveBlock(drive.DriveLetter, driveOrdinal, block, rootDirectoryPath: drive.RootDirectory), null);
         }
 
         if (validation != BlockValidationResult.WrongMagic || existedBeforeOpen)
@@ -289,8 +291,7 @@ public sealed partial class FileIndex
         // through the reference-counted Release() (see DriveBlock's own summary), not through
         // IDisposable.
         return new ScanDriveResult(
-            new DriveBlock(drive.DriveLetter, driveOrdinal, block, deleteFileOnRelease: deleteOnClose,
-                rootDirectoryPath: drive.RootDirectory),
+            new DriveBlock(drive.DriveLetter, driveOrdinal, block, rootDirectoryPath: drive.RootDirectory),
             result.AccessDeniedSubtreeCount);
     }
 

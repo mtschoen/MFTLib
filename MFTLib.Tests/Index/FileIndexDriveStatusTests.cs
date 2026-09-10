@@ -14,6 +14,8 @@ public class FileIndexDriveStatusTests
     string _treeRoot = null!;
     string _cacheDirectory = null!;
 
+    public TestContext TestContext { get; set; } = null!;
+
     [TestInitialize]
     public void Initialize()
     {
@@ -48,6 +50,7 @@ public class FileIndexDriveStatusTests
         {
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration,
             Progress = progress
         };
     }
@@ -62,7 +65,8 @@ public class FileIndexDriveStatusTests
                 new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1),
                 new IndexedDrive('T', _treeRoot, 0x0BADF00D)
             ],
-            CacheDirectory = _cacheDirectory
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -70,8 +74,29 @@ public class FileIndexDriveStatusTests
         Assert.AreEqual(2, index.Drives.Count);
         Assert.AreEqual('Z', index.Drives[0].DriveLetter);
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
+        Assert.AreEqual(0u, index.Drives[0].LiveRowCount);
         Assert.AreEqual('T', index.Drives[1].DriveLetter);
         Assert.AreEqual(DriveState.Ready, index.Drives[1].State);
+    }
+
+    [TestMethod]
+    public async Task DriveStatus_ReportsLiveRowCountFromTheHeader()
+    {
+        Directory.Delete(Path.Combine(_treeRoot, "Documents"), recursive: true);
+        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "one.txt"), "1",
+            TestContext.CancellationTokenSource.Token);
+        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "two.txt"), "2",
+            TestContext.CancellationTokenSource.Token);
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('T', _treeRoot, 4242)],
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration
+        }, TestContext.CancellationTokenSource.Token);
+
+        var status = index.Drives.Single();
+        Assert.AreEqual(3u, status.LiveRowCount);
+        Assert.IsTrue(status.LiveRowCount <= status.RowCount);
     }
 
     [TestMethod]
@@ -84,7 +109,8 @@ public class FileIndexDriveStatusTests
                 new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1),
                 new IndexedDrive('T', _treeRoot, 0x0BADF00D)
             ],
-            CacheDirectory = _cacheDirectory
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration
         };
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);

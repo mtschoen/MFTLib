@@ -24,8 +24,8 @@ public class BlockFileTests
     {
         using var builder = new SyntheticBlockBuilder();
         var root = builder.AddRoot();
-        var childRow = builder.AddRow("report.pdf", root, RowFlags.InUse, size: 4096,
-            modifiedUtc: ScanMoment, attributes: 32);
+        var childRow = builder.AddRow("report.pdf", new RowColumns(root, RowFlags.InUse, 32,
+            4096, ScanMoment.Ticks, 0));
         builder.Complete(ScanMoment);
 
         using var block = builder.OpenForReading(out var validation);
@@ -36,6 +36,7 @@ public class BlockFileTests
         Assert.AreEqual(BlockLayout.FormatVersion, block.Header.FormatVersion);
         Assert.AreEqual(ProducerKind.Enumeration, block.Header.ProducerKind);
         Assert.AreEqual(2u, block.Header.RowCount);
+        Assert.AreEqual(2u, block.Header.LiveRowCount);
         Assert.AreEqual((ulong)BlockLayout.RowRegionOffset, block.Header.RowRegionOffset);
         Assert.AreEqual((ulong)BlockLayout.NamePoolOffset(block.Header.SlotCapacity), block.Header.NamePoolOffset);
         Assert.AreEqual(ScanMoment, block.Header.ScanTimestampUtc);
@@ -123,7 +124,7 @@ public class BlockFileTests
     {
         using var builder = new SyntheticBlockBuilder();
         builder.AddRoot();
-        var childRow = builder.AddRow("report.pdf", 0, RowFlags.InUse, 4096, ScanMoment);
+        var childRow = builder.AddRow("report.pdf", 0, RowFlags.InUse, 4096, ScanMoment, sequenceNumber: 0);
         builder.Complete(ScanMoment);
         builder.MutateNameDescriptor(childRow, uint.MaxValue - 1, ushort.MaxValue);
 
@@ -138,7 +139,7 @@ public class BlockFileTests
     {
         using var builder = new SyntheticBlockBuilder();
         builder.AddRoot();
-        var childRow = builder.AddRow("report.pdf", 0, RowFlags.InUse, 4096, ScanMoment);
+        var childRow = builder.AddRow("report.pdf", 0, RowFlags.InUse, 4096, ScanMoment, sequenceNumber: 0);
         builder.Complete(ScanMoment);
         builder.MutateNameDescriptor(childRow, nameOffsetBytes: 1, nameLengthUnits: 1);
 
@@ -225,7 +226,7 @@ public class BlockFileTests
             // MemoryMappedFile.CreateFromFile itself throw, before it is ever assigned, which
             // exercises the branch that disposes the FileStream directly rather than through it.
             Assert.ThrowsException<ArgumentException>(() =>
-                BlockFile.OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: 0));
+                BlockFile.OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: 0, fileOptions: FileOptions.None));
 
             // If the failed attempt's FileStream were not disposed, this exclusive reopen would
             // fail with a sharing violation instead of succeeding.
@@ -248,11 +249,84 @@ public class BlockFileTests
             // A view larger than the mapping's own capacity makes CreateViewAccessor throw after
             // the FileStream and MemoryMappedFile already exist, exercising the cleanup path.
             Assert.ThrowsException<UnauthorizedAccessException>(() =>
-                BlockFile.OpenMapping(path, FileMode.Create, mappingCapacity: 4096, viewLength: 8192));
+                BlockFile.OpenMapping(path, FileMode.Create, mappingCapacity: 4096, viewLength: 8192,
+                    fileOptions: FileOptions.None));
 
             // If the failed attempt's FileStream were not disposed, this exclusive reopen would
             // fail with a sharing violation instead of succeeding.
             using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void Open_FileLockedWithNoSharing_ReportsWrongMagicWithoutThrowing()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "locked.mlix");
+        File.WriteAllBytes(path, new byte[BlockLayout.HeaderRegionBytes]);
+        try
+        {
+            // A handle opened with no sharing at all makes OpenMapping's own FileStream
+            // construction throw a sharing-violation IOException, exercising the branch
+            // that reports it as WrongMagic rather than a validation-level rejection.
+            using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            using var block = BlockFile.Open(path, 1, out var validation);
+            Assert.AreEqual(BlockValidationResult.WrongMagic, validation);
+            Assert.IsNull(block);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void TryDeleteFailedCreate_FileIsReadOnly_DoesNotThrow()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "readonly.mlix");
+        File.WriteAllBytes(path, [1, 2, 3]);
+        File.SetAttributes(path, FileAttributes.ReadOnly);
+        try
+        {
+            // Windows treats the read-only attribute as delete-denying, so the delete fails with
+            // UnauthorizedAccessException and this call swallows it. Unix unlink ignores a file's
+            // own permission bits (only the containing directory's write permission matters), so
+            // the delete there simply succeeds. Either way this call must not throw.
+            BlockFile.TryDeleteFailedCreate(path);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.SetAttributes(path, FileAttributes.Normal);
+            }
+
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void TryDeleteFailedCreate_FileIsLockedWithNoSharing_DoesNotThrow()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "locked.mlix");
+        File.WriteAllBytes(path, [1, 2, 3]);
+        try
+        {
+            // FileShare.None makes Windows' delete fail with a sharing-violation IOException,
+            // swallowed by this call. Unix has no mandatory share-mode locking, so unlink
+            // succeeds there even with the handle still open. Either way this call must not
+            // throw.
+            using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            BlockFile.TryDeleteFailedCreate(path);
         }
         finally
         {
@@ -277,7 +351,7 @@ public class BlockFileTests
                 NamePoolCapacity = 4096
             };
             var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NamePoolCapacity);
-            var (mappedFile, view) = BlockFile.OpenMapping(path, FileMode.Create, length, length);
+            var (mappedFile, view) = BlockFile.OpenMapping(path, FileMode.Create, length, length, FileOptions.None);
 
             // Disposing the view before handing it over makes acquiring the base pointer in the
             // constructor throw, reproducing the state a real failure leaves behind: the mapping

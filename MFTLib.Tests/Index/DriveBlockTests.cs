@@ -21,7 +21,7 @@ public class DriveBlockTests
     {
         using var builder = CompletedBuilder();
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false);
+        var driveBlock = new DriveBlock('T', 0, block);
 
         Assert.AreEqual(0, driveBlock.ReferenceCount);
         Assert.IsFalse(driveBlock.IsReleased);
@@ -37,7 +37,7 @@ public class DriveBlockTests
     {
         using var builder = CompletedBuilder();
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false);
+        var driveBlock = new DriveBlock('T', 0, block);
 
         Assert.IsTrue(driveBlock.TryAddReference());
         Assert.IsTrue(driveBlock.TryAddReference());
@@ -50,25 +50,11 @@ public class DriveBlockTests
     }
 
     [TestMethod]
-    public void DeleteFileOnRelease_RemovesTheSupersededBlockFile()
-    {
-        using var builder = CompletedBuilder();
-        var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: true);
-
-        Assert.IsTrue(driveBlock.TryAddReference());
-        Assert.IsTrue(File.Exists(builder.BlockPath));
-
-        driveBlock.Release();
-        Assert.IsFalse(File.Exists(builder.BlockPath));
-    }
-
-    [TestMethod]
     public void ScheduleDeleteAt_DeletesTheOverridePathInsteadOfTheBlocksOwnPath()
     {
         using var builder = CompletedBuilder();
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false);
+        var driveBlock = new DriveBlock('T', 0, block);
 
         var renamedPath = builder.BlockPath + ".retired-1";
         File.Move(builder.BlockPath, renamedPath);
@@ -81,11 +67,64 @@ public class DriveBlockTests
     }
 
     [TestMethod]
+    public void Release_WithOverridePathLocked_DoesNotThrow()
+    {
+        using var builder = CompletedBuilder();
+        var block = builder.OpenForReading(out _)!;
+        var driveBlock = new DriveBlock('T', 0, block);
+
+        var renamedPath = builder.BlockPath + ".retired-1";
+        File.Move(builder.BlockPath, renamedPath);
+        driveBlock.ScheduleDeleteAt(renamedPath);
+
+        // ReadWrite share matches the block's own still-open handle so this second handle can
+        // coexist with it; omitting FileShare.Delete is what makes Windows' delete inside
+        // Release hit a sharing violation, swallowed by Release. Unix has no mandatory
+        // share-mode locking, so the delete there succeeds even with the handle still open.
+        // Either way Release must not throw.
+        using var lockingHandle =
+            new FileStream(renamedPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        Assert.IsTrue(driveBlock.TryAddReference());
+
+        driveBlock.Release();
+    }
+
+    [TestMethod]
+    public void Release_WithOverridePathReadOnly_DoesNotThrow()
+    {
+        using var builder = CompletedBuilder();
+        var block = builder.OpenForReading(out _)!;
+        var driveBlock = new DriveBlock('T', 0, block);
+
+        var renamedPath = builder.BlockPath + ".retired-1";
+        File.Move(builder.BlockPath, renamedPath);
+        File.SetAttributes(renamedPath, FileAttributes.ReadOnly);
+        driveBlock.ScheduleDeleteAt(renamedPath);
+
+        try
+        {
+            Assert.IsTrue(driveBlock.TryAddReference());
+
+            // Windows treats the read-only attribute as delete-denying, swallowed by Release.
+            // Unix unlink ignores a file's own permission bits, so the delete there succeeds.
+            // Either way Release must not throw.
+            driveBlock.Release();
+        }
+        finally
+        {
+            if (File.Exists(renamedPath))
+            {
+                File.SetAttributes(renamedPath, FileAttributes.Normal);
+            }
+        }
+    }
+
+    [TestMethod]
     public void TryAddReference_AfterRelease_ReturnsFalse()
     {
         using var builder = CompletedBuilder();
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false);
+        var driveBlock = new DriveBlock('T', 0, block);
 
         Assert.IsTrue(driveBlock.TryAddReference());
         driveBlock.Release();
@@ -99,7 +138,7 @@ public class DriveBlockTests
     {
         using var builder = CompletedBuilder();
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false);
+        var driveBlock = new DriveBlock('T', 0, block);
 
         Assert.ThrowsException<InvalidOperationException>(driveBlock.Release);
     }

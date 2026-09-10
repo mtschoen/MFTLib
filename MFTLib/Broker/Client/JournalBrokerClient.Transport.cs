@@ -27,19 +27,31 @@ public sealed partial class JournalBrokerClient
 
         // Cancel the demux so its blocking pipe read unwinds, then await it before
         // disposing the pipe (cancelling the read is what reliably unblocks it).
-        if (_demuxCts != null)
+        CancellationTokenSource? demuxCancellation;
+        Task? demuxTask;
+        lock (_liveChannelsLock)
         {
-            await _demuxCts.CancelAsync().ConfigureAwait(false);
+            demuxCancellation = _demuxCts;
+            demuxTask = _demuxTask;
+        }
+        if (demuxCancellation != null)
+        {
+            await demuxCancellation.CancelAsync().ConfigureAwait(false);
         }
 
         // DemuxLoopAsync catches everything internally (broker death and cancellation
         // alike) and never lets an exception escape, so awaiting it here cannot fault.
-        if (_demuxTask != null)
+        if (demuxTask != null)
         {
-            await _demuxTask.ConfigureAwait(false);
+            await demuxTask.ConfigureAwait(false);
         }
 
-        _demuxCts?.Dispose();
+        lock (_liveChannelsLock)
+        {
+            _demuxCts = null;
+            _demuxTask = null;
+        }
+        demuxCancellation?.Dispose();
         await pipe.DisposeAsync().ConfigureAwait(false);
 
         List<IDisposable> lifetimes;
@@ -57,6 +69,7 @@ public sealed partial class JournalBrokerClient
         }
 
         _writeLock.Dispose();
+        _armOrderingGate.Dispose();
     }
 
     // Fires BrokerDied at most once per client lifetime (guarded by Interlocked).
@@ -128,7 +141,15 @@ public sealed partial class JournalBrokerClient
     // The broker spec tokens and frame Drive fields use the bare letter.
     internal static string NormalizeDriveLetter(string drive)
     {
+        return TryNormalizeDriveLetter(drive, out var normalizedDrive)
+            ? normalizedDrive
+            : throw new ArgumentException($"'{drive}' is not a valid drive letter.", nameof(drive));
+    }
+
+    internal static bool TryNormalizeDriveLetter(string drive, out string normalizedDrive)
+    {
         ArgumentNullException.ThrowIfNull(drive);
+
         var span = drive.AsSpan().Trim();
         if (span.StartsWith(@"\\.\", StringComparison.OrdinalIgnoreCase))
         {
@@ -142,12 +163,13 @@ public sealed partial class JournalBrokerClient
 
         if (span.Length != 1 || !char.IsAsciiLetter(span[0]))
         {
-            throw new ArgumentException($"'{drive}' is not a valid drive letter.", nameof(drive));
+            normalizedDrive = string.Empty;
+            return false;
         }
 
-        return char.ToUpperInvariant(span[0]).ToString();
+        normalizedDrive = char.ToUpperInvariant(span[0]).ToString();
+        return true;
     }
-
     // Fill buffer fully. Returns false on clean EOF before any byte; throws on truncated data.
     static async Task<bool> ReadExactAsync(Stream stream, Memory<byte> buffer, CancellationToken cancellationToken)
     {

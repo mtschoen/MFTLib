@@ -21,12 +21,14 @@ public static partial class BrokerProtocol
     public static void WriteEntry(IBufferWriter<byte> writer, UsnJournalEntry entry)
     {
         var nameBytes = Encoding.Unicode.GetBytes(entry.FileName);
-        var span = writer.GetSpan(8 + 8 + 8 + 8 + 4 + 4 + 4 + nameBytes.Length);
+        var span = writer.GetSpan(8 + 8 + 2 + 8 + 8 + 4 + 4 + 4 + nameBytes.Length);
         var offset = 0;
         BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], entry.RecordNumber);
         offset += 8;
         BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], entry.ParentRecordNumber);
         offset += 8;
+        BinaryPrimitives.WriteUInt16LittleEndian(span[offset..], entry.SequenceNumber);
+        offset += 2;
         BinaryPrimitives.WriteInt64LittleEndian(span[offset..], entry.Usn);
         offset += 8;
         BinaryPrimitives.WriteInt64LittleEndian(span[offset..], entry.Timestamp.Ticks);
@@ -49,6 +51,8 @@ public static partial class BrokerProtocol
         offset += 8;
         var parentRecordNumber = BinaryPrimitives.ReadUInt64LittleEndian(span[offset..]);
         offset += 8;
+        var sequenceNumber = BinaryPrimitives.ReadUInt16LittleEndian(span[offset..]);
+        offset += 2;
         var usn = BinaryPrimitives.ReadInt64LittleEndian(span[offset..]);
         offset += 8;
         var ticks = BinaryPrimitives.ReadInt64LittleEndian(span[offset..]);
@@ -66,6 +70,7 @@ public static partial class BrokerProtocol
         {
             RecordNumber = recordNumber,
             ParentRecordNumber = parentRecordNumber,
+            SequenceNumber = sequenceNumber,
             Usn = usn,
             Timestamp = new DateTime(ticks, DateTimeKind.Utc),
             Reason = (UsnReason)reason,
@@ -85,6 +90,7 @@ public static partial class BrokerProtocol
         {
             BrokerFrameKind.ArmAndScan => ReadArmAndScanFrame(payload),
             BrokerFrameKind.StartWatch => BrokerFrame.StartWatch(ReadString(payload, 0, out _)),
+            BrokerFrameKind.DisarmDrive => BrokerFrame.DisarmDrive(ReadString(payload, 0, out _)),
             BrokerFrameKind.Shutdown => BrokerFrame.Shutdown(),
             BrokerFrameKind.Heartbeat => BrokerFrame.Heartbeat(),
             BrokerFrameKind.EndWatch => BrokerFrame.EndWatch(),
@@ -150,6 +156,8 @@ public static partial class BrokerProtocol
     static BrokerFrame ReadJournalBatchFrame(ReadOnlySpan<byte> payload)
     {
         var drive = ReadString(payload, 0, out var offset);
+        var armEpoch = BinaryPrimitives.ReadUInt32LittleEndian(payload[offset..]);
+        offset += 4;
         var journalId = BinaryPrimitives.ReadUInt64LittleEndian(payload[offset..]);
         offset += 8;
         var nextUsn = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
@@ -163,14 +171,16 @@ public static partial class BrokerProtocol
             offset += entryConsumed;
         }
 
-        return BrokerFrame.JournalBatch(drive, new UsnJournalCursor(journalId, nextUsn), entries);
+        return BrokerFrame.JournalBatch(drive, armEpoch, new UsnJournalCursor(journalId, nextUsn), entries);
     }
 
     static BrokerFrame ReadErrorFrame(ReadOnlySpan<byte> payload)
     {
         var drive = ReadString(payload, 0, out var offset);
+        var armEpoch = BinaryPrimitives.ReadUInt32LittleEndian(payload[offset..]);
+        offset += 4;
         var message = ReadString(payload, offset, out _);
-        return BrokerFrame.Error(drive, message);
+        return BrokerFrame.Error(drive, armEpoch, message);
     }
 
     static BrokerFrame ReadWarningFrame(ReadOnlySpan<byte> payload)

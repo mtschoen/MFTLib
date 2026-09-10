@@ -21,19 +21,19 @@ public class AggregateEngineTests
     {
         _builder = new SyntheticBlockBuilder(slotCapacity: 512, namePoolCapacity: 8192);
         var root = _builder.AddRoot();
-        _documentsRow = _builder.AddRow("Documents", root, RowFlags.InUse | RowFlags.Directory, 0, Moment);
-        var pictures = _builder.AddRow("Pictures", root, RowFlags.InUse | RowFlags.Directory, 0, Moment);
-        _builder.AddRow("huge.bin", _documentsRow, RowFlags.InUse, 9_000_000, Moment);
-        _builder.AddRow("large.bin", _documentsRow, RowFlags.InUse, 5_000_000, Moment);
-        _builder.AddRow("medium.bin", pictures, RowFlags.InUse, 3_000_000, Moment);
-        _builder.AddRow("small.bin", pictures, RowFlags.InUse, 1_000, Moment);
-        _builder.AddRow("readme.md", _documentsRow, RowFlags.InUse, 10, Moment);
-        _builder.AddRow("readme.md", pictures, RowFlags.InUse, 20, Moment);
-        _builder.AddRow("gone.bin", _documentsRow, RowFlags.InUse | RowFlags.Tombstone, 99_000_000, Moment);
+        _documentsRow = _builder.AddRow("Documents", root, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        var pictures = _builder.AddRow("Pictures", root, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        _builder.AddRow("huge.bin", _documentsRow, RowFlags.InUse, 9_000_000, Moment, sequenceNumber: 0);
+        _builder.AddRow("large.bin", _documentsRow, RowFlags.InUse, 5_000_000, Moment, sequenceNumber: 0);
+        _builder.AddRow("medium.bin", pictures, RowFlags.InUse, 3_000_000, Moment, sequenceNumber: 0);
+        _builder.AddRow("small.bin", pictures, RowFlags.InUse, 1_000, Moment, sequenceNumber: 0);
+        _builder.AddRow("readme.md", _documentsRow, RowFlags.InUse, 10, Moment, sequenceNumber: 0);
+        _builder.AddRow("readme.md", pictures, RowFlags.InUse, 20, Moment, sequenceNumber: 0);
+        _builder.AddRow("gone.bin", _documentsRow, RowFlags.InUse | RowFlags.Tombstone, 99_000_000, Moment, sequenceNumber: 0);
         _builder.Complete(Moment);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block, deleteFileOnRelease: false)]);
+        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block)]);
     }
 
     [TestCleanup]
@@ -65,13 +65,13 @@ public class AggregateEngineTests
     {
         using var builder = new SyntheticBlockBuilder('K');
         var root = builder.AddRoot();
-        builder.AddRow("known-small.txt", root, RowFlags.InUse, 10, Moment);
-        builder.AddRow("unknown-size.txt", root, RowFlags.InUse | RowFlags.SizeUnknown, 0, Moment);
-        builder.AddRow("known-big.txt", root, RowFlags.InUse, 1000, Moment);
+        builder.AddRow("known-small.txt", root, RowFlags.InUse, 10, Moment, sequenceNumber: 0);
+        builder.AddRow("unknown-size.txt", root, RowFlags.InUse | RowFlags.SizeUnknown, 0, Moment, sequenceNumber: 0);
+        builder.AddRow("known-big.txt", root, RowFlags.InUse, 1000, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('K', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('K', 0, block)]);
         try
         {
             var results = AggregateEngineTestAccess.Largest(snapshot, 10, under: null);
@@ -137,13 +137,13 @@ public class AggregateEngineTests
     {
         using var builder = new SyntheticBlockBuilder('V');
         var root = builder.AddRoot();
-        var first = builder.AddRow("Sub", root, RowFlags.InUse | RowFlags.Directory, 0, Moment);
-        builder.AddRow("Notes.TXT", root, RowFlags.InUse, 1, Moment);
-        builder.AddRow("notes.txt", first, RowFlags.InUse, 2, Moment);
+        var first = builder.AddRow("Sub", root, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        builder.AddRow("Notes.TXT", root, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
+        builder.AddRow("notes.txt", first, RowFlags.InUse, 2, Moment, sequenceNumber: 0);
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block)]);
         try
         {
             var groups = AggregateEngineTestAccess.DuplicateNames(snapshot);
@@ -169,13 +169,13 @@ public class AggregateEngineTests
         var root = builder.AddRoot();
         for (var size = 1; size <= LargeRowCount; size++)
         {
-            builder.AddRow($"file{size}.bin", root, RowFlags.InUse, size, Moment);
+            builder.AddRow($"file{size}.bin", root, RowFlags.InUse, size, Moment, sequenceNumber: 0);
         }
 
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('L', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('L', 0, block)]);
         try
         {
             var results = AggregateEngineTestAccess.Largest(snapshot, 5, under: null);
@@ -198,27 +198,27 @@ public class AggregateEngineTests
         var rootA = builderA.AddRoot();
         for (var index = 0; index < uniqueRowCountOnDriveA; index++)
         {
-            builderA.AddRow($"a-only-{index}.bin", rootA, RowFlags.InUse, index, Moment);
+            builderA.AddRow($"a-only-{index}.bin", rootA, RowFlags.InUse, index, Moment, sequenceNumber: 0);
         }
 
-        builderA.AddRow("shared1.bin", rootA, RowFlags.InUse, 1, Moment);
-        builderA.AddRow("shared2.bin", rootA, RowFlags.InUse, 2, Moment);
-        builderA.AddRow("shared3.bin", rootA, RowFlags.InUse, 3, Moment);
+        builderA.AddRow("shared1.bin", rootA, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
+        builderA.AddRow("shared2.bin", rootA, RowFlags.InUse, 2, Moment, sequenceNumber: 0);
+        builderA.AddRow("shared3.bin", rootA, RowFlags.InUse, 3, Moment, sequenceNumber: 0);
         builderA.Complete(Moment);
 
         using var builderB = new SyntheticBlockBuilder('B');
         var rootB = builderB.AddRoot();
-        builderB.AddRow("shared1.bin", rootB, RowFlags.InUse, 10, Moment);
-        builderB.AddRow("shared2.bin", rootB, RowFlags.InUse, 20, Moment);
-        builderB.AddRow("shared3.bin", rootB, RowFlags.InUse, 30, Moment);
-        builderB.AddRow("b-only.bin", rootB, RowFlags.InUse, 40, Moment);
+        builderB.AddRow("shared1.bin", rootB, RowFlags.InUse, 10, Moment, sequenceNumber: 0);
+        builderB.AddRow("shared2.bin", rootB, RowFlags.InUse, 20, Moment, sequenceNumber: 0);
+        builderB.AddRow("shared3.bin", rootB, RowFlags.InUse, 30, Moment, sequenceNumber: 0);
+        builderB.AddRow("b-only.bin", rootB, RowFlags.InUse, 40, Moment, sequenceNumber: 0);
         builderB.Complete(Moment);
 
         var blockA = builderA.OpenForReading(out _)!;
         var blockB = builderB.OpenForReading(out _)!;
         var snapshot = Snapshot.Create([
-            new DriveBlock('A', 0, blockA, deleteFileOnRelease: false),
-            new DriveBlock('B', 1, blockB, deleteFileOnRelease: false)
+            new DriveBlock('A', 0, blockA),
+            new DriveBlock('B', 1, blockB)
         ]);
         try
         {

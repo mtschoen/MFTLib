@@ -4,6 +4,7 @@ readonly record struct NativeUsnJournalEntryData
 {
     public required ulong RecordNumber { get; init; }
     public required ulong ParentRecordNumber { get; init; }
+    public required ushort SequenceNumber { get; init; }
     public required long Usn { get; init; }
     public required long FileTimeTimestamp { get; init; }
     public required uint Reason { get; init; }
@@ -14,14 +15,19 @@ readonly record struct NativeUsnJournalEntryData
 public readonly struct UsnJournalEntry
 {
     /// <summary>
-    ///     MFT segment index (48-bit, sequence number stripped). Matches MftRecord.RecordNumber.
+    ///     MFT segment index (the lower 48 bits of the file reference number). Matches MftRecord.RecordNumber.
+    ///     The sequence number is carried separately in <see cref="SequenceNumber" />.
     ///     Safe to use as a dictionary key across MFT scans and USN journal reads on the same volume.
     /// </summary>
     public ulong RecordNumber { get; }
 
+    /// <summary>The upper 16 bits of the file reference, identifying reuse of an MFT segment.</summary>
+    public ushort SequenceNumber { get; }
+
     /// <summary>
-    ///     Parent directory's MFT segment index (48-bit, sequence number stripped). Matches MftRecord.ParentRecordNumber.
-    ///     The NTFS root directory is segment 5 (its parent is also 5).
+    ///     Parent directory's MFT segment index (the lower 48 bits of the file reference number).
+    ///     Matches MftRecord.ParentRecordNumber. The NTFS root directory is segment 5 (its parent
+    ///     is also 5).
     /// </summary>
     public ulong ParentRecordNumber { get; }
 
@@ -40,6 +46,7 @@ public readonly struct UsnJournalEntry
     {
         RecordNumber = data.RecordNumber;
         ParentRecordNumber = data.ParentRecordNumber;
+        SequenceNumber = data.SequenceNumber;
         Usn = data.Usn;
         Timestamp = data.FileTimeTimestamp > 0
             ? DateTime.FromFileTimeUtc(data.FileTimeTimestamp)
@@ -53,6 +60,7 @@ public readonly struct UsnJournalEntry
     {
         RecordNumber = options.RecordNumber;
         ParentRecordNumber = options.ParentRecordNumber;
+        SequenceNumber = options.SequenceNumber;
         Usn = options.Usn;
         Timestamp = options.Timestamp;
         Reason = options.Reason;

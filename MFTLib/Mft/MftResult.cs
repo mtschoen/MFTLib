@@ -183,6 +183,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         var stringLength = Unsafe.ReadUnaligned<ushort>(row + 30);
         var size = Unsafe.ReadUnaligned<long>(row + 32);
         var modifiedFileTime = Unsafe.ReadUnaligned<long>(row + 40);
+        var sequenceNumber = Unsafe.ReadUnaligned<ushort>(row + 48);
 
         if (stringOffset > poolUnits || stringLength > poolUnits - stringOffset)
         {
@@ -193,7 +194,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         var strings = isPath
             ? new NativeStrings(IntPtr.Zero, 0, pointer, stringLength)
             : new NativeStrings(pointer, stringLength, IntPtr.Zero, 0);
-        var fields = new MftRecordFields(flags, fileAttributes, size, modifiedFileTime);
+        var fields = new MftRecordFields(flags, fileAttributes, size, modifiedFileTime, sequenceNumber);
         return new MftRecord(recordNumber, parentRecordNumber, fields, strings, driveLetter);
     }
 

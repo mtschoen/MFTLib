@@ -38,6 +38,10 @@ public sealed unsafe class BlockFile : IDisposable
 
     public long Length { get; }
 
+    /// <summary>
+    ///     True when this block was created in a no-cache path and therefore owns deletion via
+    ///     <see cref="FileOptions.DeleteOnClose" />, so the process is not required to delete it.
+    /// </summary>
     public bool DeleteOnClose { get; }
 
     public ref BlockHeader Header
@@ -59,6 +63,15 @@ public sealed unsafe class BlockFile : IDisposable
         }
     }
 
+    public Span<ushort> SequenceNumbers
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return new Span<ushort>(_base + (long)Header.SequenceRegionOffset, (int)Header.SlotCapacity);
+        }
+    }
+
     /// <summary>The whole name pool as UTF-16 code units. Row name offsets are in bytes.</summary>
     public Span<char> NamePoolCharacters
     {
@@ -74,7 +87,8 @@ public sealed unsafe class BlockFile : IDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
         var length = BlockLayout.TotalBlockBytes(options.SlotCapacity, options.NamePoolCapacity);
-        var (mappedFile, view) = OpenMapping(options.Path, FileMode.Create, length, length);
+        var (mappedFile, view) = OpenMapping(options.Path, FileMode.Create, length, length,
+            options.DeleteOnClose ? FileOptions.DeleteOnClose : FileOptions.None);
         return BuildAndInitialize(options, length, mappedFile, view);
     }
 
@@ -188,21 +202,8 @@ public sealed unsafe class BlockFile : IDisposable
         _view.Dispose();
         _mappedFile.Dispose();
 
-        if (!DeleteOnClose)
-        {
-            return;
-        }
-
-        try
-        {
-            File.Delete(Path);
-        }
-        catch (IOException)
-        {
-            // A no-cache block that survives one process exit is a leftover in the temp
-            // directory, not a correctness problem. Rethrowing would turn a benign sharing
-            // violation on shutdown into a failed dispose.
-        }
+        // File deletion follows the operating system contract. When created with
+        // FileOptions.DeleteOnClose, the last handle closure removes the backing file.
     }
 
     static BlockFile? OpenMapped(string path, uint expectedVolumeSerial, long length,
@@ -211,7 +212,8 @@ public sealed unsafe class BlockFile : IDisposable
         BlockFile? block = null;
         try
         {
-            var (mappedFile, view) = OpenMapping(path, FileMode.Open, mappingCapacity: 0, length);
+            var (mappedFile, view) = OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: length,
+                fileOptions: FileOptions.None);
             block = new BlockFile(path, length, deleteOnClose: false, mappedFile, view);
             validation = BlockHeader.Validate(in block.Header, expectedVolumeSerial, length);
             if (validation == BlockValidationResult.Valid)
@@ -255,9 +257,10 @@ public sealed unsafe class BlockFile : IDisposable
     ///     verify the file becomes unlocked afterward.
     /// </summary>
     internal static (MemoryMappedFile MappedFile, MemoryMappedViewAccessor View) OpenMapping(
-        string path, FileMode fileMode, long mappingCapacity, long viewLength)
+        string path, FileMode fileMode, long mappingCapacity, long viewLength, FileOptions fileOptions)
     {
-        var fileStream = new FileStream(path, fileMode, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
+        var fileStream = new FileStream(path, fileMode, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete,
+            bufferSize: 4096, options: fileOptions);
         MemoryMappedFile? mappedFile = null;
         try
         {
@@ -326,6 +329,7 @@ public sealed unsafe class BlockFile : IDisposable
         header.SlotCapacity = options.SlotCapacity;
         header.NamePoolCapacity = options.NamePoolCapacity;
         header.RowRegionOffset = BlockLayout.RowRegionOffset;
+        header.SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(options.SlotCapacity);
         header.NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(options.SlotCapacity);
     }
 }

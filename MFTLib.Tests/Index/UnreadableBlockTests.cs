@@ -56,7 +56,8 @@ public class UnreadableBlockTests
         return new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
-            CacheDirectory = _cacheDirectory
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration
         };
     }
 

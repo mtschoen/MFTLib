@@ -280,6 +280,7 @@ public class UsnJournalTests
         {
             RecordNumber = 1,
             ParentRecordNumber = 5,
+            SequenceNumber = 0,
             Usn = 100,
             FileTimeTimestamp = filetime,
             Reason = (uint)UsnReason.FileCreate,
@@ -300,6 +301,7 @@ public class UsnJournalTests
         {
             RecordNumber = 1,
             ParentRecordNumber = 5,
+            SequenceNumber = 0,
             Usn = 100,
             FileTimeTimestamp = 0,
             Reason = (uint)UsnReason.FileCreate,

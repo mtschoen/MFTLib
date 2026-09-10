@@ -15,12 +15,17 @@ public enum BrokerFrameKind : byte
     ScanProgress = 11,
     Warning = 12,
     QueryVolumes = 13,
-    VolumeInfo = 14
+    VolumeInfo = 14,
+    DisarmDrive = 15
 }
 
 public readonly record struct BrokerFrame
 {
+    // Scan and volume-query frames belong to no live arm; clients never issue zero.
+    public const uint NoArmEpoch = 0;
     public BrokerFrameKind Kind { get; private init; }
+    // Live batches and errors are delivered only while this is the drive's current epoch.
+    public uint ArmEpoch { get; private init; }
     public string? Drive { get; private init; }
     public UsnJournalCursor Cursor { get; private init; }
     public UsnJournalEntry[] Entries { get; private init; }
@@ -36,10 +41,10 @@ public readonly record struct BrokerFrame
     public uint BytesPerFileRecordSegment { get; private init; }
     public long MftValidDataLength { get; private init; }
 
-    // Cursor/JournalBatch/Error frames always carry a real (possibly empty, never
-    // null) drive string: BrokerProtocol.ReadFrame decodes it via a length-prefixed
-    // string, not a nullable field. These turn that protocol invariant into a clear
-    // diagnostic if it is ever violated, instead of a silent null-forgiving `!`.
+    // Drive-carrying frames always carry a real (possibly empty, never null) drive
+    // string: BrokerProtocol.ReadFrame decodes it via a length-prefixed string, not a
+    // nullable field. These turn that protocol invariant into a clear diagnostic if it
+    // is ever violated, instead of a silent null-forgiving `!`.
     public string RequireDrive()
     {
         return Drive ?? throw new InvalidDataException($"{Kind} frame is missing its drive field");
@@ -77,6 +82,21 @@ public readonly record struct BrokerFrame
             Kind = BrokerFrameKind.StartWatch,
             Entries = Array.Empty<UsnJournalEntry>(),
             DrivesSpec = drivesSpec,
+            KeepFileNames = Array.Empty<string>()
+        };
+    }
+
+    // Retires one drive from the live watch generation and leaves every other drive
+    // running. EndWatch stays the generation-wide stop and keeps its acknowledgement;
+    // this one needs none, because the host reads request frames in order and the client
+    // completes the drive's channel itself before writing this.
+    public static BrokerFrame DisarmDrive(string drive)
+    {
+        return new BrokerFrame
+        {
+            Kind = BrokerFrameKind.DisarmDrive,
+            Entries = Array.Empty<UsnJournalEntry>(),
+            Drive = drive,
             KeepFileNames = Array.Empty<string>()
         };
     }
@@ -127,11 +147,12 @@ public readonly record struct BrokerFrame
         };
     }
 
-    public static BrokerFrame JournalBatch(string drive, UsnJournalCursor cursor, UsnJournalEntry[] entries)
+    public static BrokerFrame JournalBatch(string drive, uint armEpoch, UsnJournalCursor cursor, UsnJournalEntry[] entries)
     {
         return new BrokerFrame
         {
             Kind = BrokerFrameKind.JournalBatch,
+            ArmEpoch = armEpoch,
             Entries = entries,
             Drive = drive,
             Cursor = cursor,
@@ -151,11 +172,12 @@ public readonly record struct BrokerFrame
         };
     }
 
-    public static BrokerFrame Error(string drive, string message)
+    public static BrokerFrame Error(string drive, uint armEpoch, string message)
     {
         return new BrokerFrame
         {
             Kind = BrokerFrameKind.Error,
+            ArmEpoch = armEpoch,
             Entries = Array.Empty<UsnJournalEntry>(),
             Drive = drive,
             KeepFileNames = Array.Empty<string>(),
@@ -163,9 +185,9 @@ public readonly record struct BrokerFrame
         };
     }
 
-    // A non-fatal, per-drive degradation: unlike Error, the drive still produced a
-    // usable result (the scan succeeded, or the watch is resuming from a fresh
-    // position) - the message explains what was lost, not that the drive failed.
+    // A non-fatal, per-drive scan degradation: unlike Error, the drive still produced
+    // a usable scan result. The message explains what was lost, not that the drive
+    // failed.
     public static BrokerFrame Warning(string drive, string message)
     {
         return new BrokerFrame
@@ -179,10 +201,9 @@ public readonly record struct BrokerFrame
     }
 
     // A request for volume information on each drive in drivesSpec, without arming a
-    // scan or allocating any shared-memory map. drivesSpec uses the same watch-token
-    // shape as StartWatch ("letter:0:0" per drive, comma-joined) - the journalId/nextUsn
-    // fields are unused here, but reusing the shape lets the host parse both with the
-    // same ParseScanSpec helper.
+    // scan or allocating any shared-memory map. drivesSpec uses three-field
+    // arm-and-scan tokens ("letter:0:0", comma-joined), with unused journal fields
+    // and no section or profile, so the host reads them through ParseScanSpec.
     public static BrokerFrame QueryVolumes(string drivesSpec)
     {
         return new BrokerFrame

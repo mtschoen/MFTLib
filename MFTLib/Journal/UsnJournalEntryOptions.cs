@@ -5,6 +5,7 @@ public readonly record struct UsnJournalEntryOptions
 {
     public required ulong RecordNumber { get; init; }
     public required ulong ParentRecordNumber { get; init; }
+    public ushort SequenceNumber { get; init; }
     public required long Usn { get; init; }
     public required DateTime Timestamp { get; init; }
     public required UsnReason Reason { get; init; }

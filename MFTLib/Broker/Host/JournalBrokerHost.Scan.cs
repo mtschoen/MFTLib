@@ -32,7 +32,7 @@ public sealed partial class JournalBrokerHost
             {
                 var message = exception.Message;
                 await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteError(writer, request.Letter, message),
+                        writer => BrokerProtocol.WriteError(writer, request.Letter, BrokerFrame.NoArmEpoch, message),
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -231,14 +231,16 @@ public sealed partial class JournalBrokerHost
         }
 
         await WriteFrameAsync(stream, writeLock,
-            writer => BrokerProtocol.WriteJournalBatch(writer, request.Letter, updated, entries),
+            writer => BrokerProtocol.WriteJournalBatch(writer, request.Letter, BrokerFrame.NoArmEpoch, updated, entries),
             cancellationToken).ConfigureAwait(false);
     }
 
     internal static ScanDriveRequest[] ParseScanSpecForTest(string spec) => ParseScanSpec(spec).ToArray();
 
+    internal static WatchDriveRequest[] ParseWatchSpecForTest(string spec) => ParseWatchSpec(spec).ToArray();
+
     // Scan tokens are comma-joined "letter:journalId:nextUsn:sectionName:profile".
-    // Watch tokens use three fields; absent section and profile default to empty and Full.
+    // Absent section and profile default to empty and Full.
     static IEnumerable<ScanDriveRequest> ParseScanSpec(string spec)
     {
         foreach (var token in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
@@ -273,4 +275,38 @@ public sealed partial class JournalBrokerHost
         long NextUsn,
         string MmfName,
         BrokerScanProfile Profile);
+
+    // A per-drive live watch request: bare drive letter, the resume cursor, and the
+    // client-issued arm epoch that identifies this generation of the drive's watch stream.
+    internal readonly record struct WatchDriveRequest(
+        string Letter,
+        ulong JournalId,
+        long NextUsn,
+        uint ArmEpoch);
+
+    static IEnumerable<WatchDriveRequest> ParseWatchSpec(string spec)
+    {
+        foreach (var token in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = token.Split(':');
+            if (parts.Length != 4)
+            {
+                throw new InvalidDataException(
+                    $"Watch spec token '{token}' must be letter:journalId:nextUsn:armEpoch.");
+            }
+
+            yield return new WatchDriveRequest(
+                NormalizeWatchDrive(parts[0]),
+                ulong.Parse(parts[1], CultureInfo.InvariantCulture),
+                long.Parse(parts[2], CultureInfo.InvariantCulture),
+                uint.Parse(parts[3], CultureInfo.InvariantCulture));
+        }
+    }
+
+    // The host normalizes a disarm the same way it normalizes an arm, falling back to
+    // the raw string when it is not a drive letter. A string that cannot be normalized
+    // can never have been armed either, so it keys itself and the lookup simply misses
+    // (the same 'not armed is not an error' rule the disarm already has).
+    static string NormalizeWatchDrive(string drive) =>
+        JournalBrokerClient.TryNormalizeDriveLetter(drive, out var normalized) ? normalized : drive;
 }

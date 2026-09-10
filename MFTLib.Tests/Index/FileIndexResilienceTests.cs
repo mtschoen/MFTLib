@@ -10,7 +10,7 @@ namespace MFTLib.Tests.Index;
 ///     cache-mode rescan leftovers) must be cleaned up deterministically.
 /// </summary>
 [TestClass]
-public class FileIndexResilienceTests
+public partial class FileIndexResilienceTests
 {
     string _treeRoot = null!;
     string _cacheDirectory = null!;
@@ -50,6 +50,7 @@ public class FileIndexResilienceTests
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
             NoCache = noCache,
+            ProducerPolicy = ProducerPolicy.Enumeration,
             Progress = progress
         };
     }
@@ -108,6 +109,57 @@ public class FileIndexResilienceTests
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, reopened.Drives[0].State);
         Assert.IsTrue(reopened.Drives[0].RowCount >= 3);
+    }
+
+    [TestMethod]
+    public async Task OpenAsync_SecondDriveCancelledMidScan_UnwindsTheFirstDrivesAlreadyAddedBlock()
+    {
+        var secondTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree2-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(secondTreeRoot, "Documents"));
+        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "Documents", "readme2.md"), "hello2");
+
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var options = new FileIndexOptions
+        {
+            Drives =
+            [
+                new IndexedDrive('T', _treeRoot, 0x0BADF00D),
+                new IndexedDrive('U', secondTreeRoot, 0x0BADF00E)
+            ],
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration,
+            // Only the second drive's own scan reports progress under 'U', so the first
+            // drive is guaranteed to have already been added to _driveBlocks by the time
+            // this cancels, exercising the unwind loop with a non-empty list to release.
+            Progress = new CancelOnDriveReport(cancellationTokenSource, 'U')
+        };
+
+        try
+        {
+            await AssertThrowsCancellation(() => FileIndex.OpenAsync(options, cancellationTokenSource.Token));
+
+            var firstBlockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+
+            // If the first drive's already-open mapping were not unwound, this exclusive
+            // reopen would fail with a sharing violation instead of succeeding.
+            using var exclusive = new FileStream(firstBlockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        }
+        finally
+        {
+            Directory.Delete(secondTreeRoot, recursive: true);
+        }
+    }
+
+    sealed class CancelOnDriveReport(CancellationTokenSource cancellationTokenSource, char driveLetter)
+        : IProgress<IndexScanProgress>
+    {
+        public void Report(IndexScanProgress value)
+        {
+            if (char.ToUpperInvariant(value.DriveLetter) == char.ToUpperInvariant(driveLetter))
+            {
+                cancellationTokenSource.Cancel();
+            }
+        }
     }
 
     [TestMethod]
@@ -313,40 +365,4 @@ public class FileIndexResilienceTests
             CacheDirectory.BlockFileName('T', 0x0BADF00D) + ".retired-*").Count());
     }
 
-    [TestMethod]
-    public async Task OpenAsync_CacheMode_DeletesAPreExistingRetiredSiblingForTheDrive()
-    {
-        Directory.CreateDirectory(_cacheDirectory);
-        var staleRetiredPath = Path.Combine(_cacheDirectory,
-            CacheDirectory.BlockFileName('T', 0x0BADF00D) + ".retired-" + Guid.NewGuid().ToString("N"));
-        await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process");
-
-        await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-
-        Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
-        Assert.IsFalse(File.Exists(staleRetiredPath));
-    }
-
-    [TestMethod]
-    public async Task OpenAsync_NoCacheMode_DeletesAPreExistingStaleTempBlockForTheDrive()
-    {
-        var staleTempPath = Path.Combine(Path.GetTempPath(),
-            $"mftlib-nocache-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName('T', 0x0BADF00D)}");
-        await File.WriteAllTextAsync(staleTempPath, "leftover from a killed process");
-
-        try
-        {
-            await using var index = await FileIndex.OpenAsync(Options(noCache: true), CancellationToken.None);
-
-            Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
-            Assert.IsFalse(File.Exists(staleTempPath));
-        }
-        finally
-        {
-            if (File.Exists(staleTempPath))
-            {
-                File.Delete(staleTempPath);
-            }
-        }
-    }
 }

@@ -43,6 +43,7 @@ public class QueryContractTests
             ProducerKind = ProducerKind.Enumeration,
             State = DriveState.Ready,
             RowCount = 42,
+            LiveRowCount = 40,
             ScanTimestamp = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
             CompactionNeeded = false,
             WatchSupported = false
@@ -51,19 +52,21 @@ public class QueryContractTests
         Assert.AreEqual('T', status.DriveLetter);
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(42u, status.RowCount);
+        Assert.AreEqual(40u, status.LiveRowCount);
         Assert.AreEqual(0, status.AccessDeniedSubtreeCount);
         Assert.IsFalse(status.WatchSupported);
         Assert.IsNull(status.DiscardedBlock);
+        Assert.IsNull(status.WatchFailureMessage);
     }
 
     [TestMethod]
-    public void FileChange_CarriesThePreviousNameOnlyForRenames()
+    public void FileChange_CarriesThePreviousPathOnlyForRenames()
     {
-        var created = new FileChange(FileChangeKind.Created, default);
-        var renamed = new FileChange(FileChangeKind.Renamed, default, "before.txt");
+        var created = new FileChange(FileChangeKind.Created, default, "T:\\");
+        var renamed = new FileChange(FileChangeKind.Renamed, default, "T:\\renamed.txt", "T:\\before.txt");
 
-        Assert.IsNull(created.PreviousName);
-        Assert.AreEqual("before.txt", renamed.PreviousName);
+        Assert.IsNull(created.PreviousPath);
+        Assert.AreEqual("T:\\before.txt", renamed.PreviousPath);
         Assert.AreEqual(FileChangeKind.Renamed, renamed.Kind);
     }
 

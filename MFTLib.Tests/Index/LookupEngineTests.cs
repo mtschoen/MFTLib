@@ -21,21 +21,21 @@ public class LookupEngineTests
     {
         _firstBuilder = new SyntheticBlockBuilder();
         var firstRoot = _firstBuilder.AddRoot();
-        var documents = _firstBuilder.AddRow("Documents", firstRoot, RowFlags.InUse | RowFlags.Directory, 0, Moment);
-        _firstBuilder.AddRow("report.pdf", documents, RowFlags.InUse, 4096, Moment);
-        _firstBuilder.AddRow("readme.md", documents, RowFlags.InUse, 12, Moment);
+        var documents = _firstBuilder.AddRow("Documents", firstRoot, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        _firstBuilder.AddRow("report.pdf", documents, RowFlags.InUse, 4096, Moment, sequenceNumber: 0);
+        _firstBuilder.AddRow("readme.md", documents, RowFlags.InUse, 12, Moment, sequenceNumber: 0);
         _firstBuilder.Complete(Moment);
 
         _secondBuilder = new SyntheticBlockBuilder('U');
         var secondRoot = _secondBuilder.AddRoot();
-        _secondBuilder.AddRow("readme.md", secondRoot, RowFlags.InUse, 15, Moment);
+        _secondBuilder.AddRow("readme.md", secondRoot, RowFlags.InUse, 15, Moment, sequenceNumber: 0);
         _secondBuilder.Complete(Moment);
 
         var firstBlock = _firstBuilder.OpenForReading(out _)!;
         var secondBlock = _secondBuilder.OpenForReading(out _)!;
         _snapshot = Snapshot.Create([
-            new DriveBlock('T', 0, firstBlock, deleteFileOnRelease: false),
-            new DriveBlock('U', 1, secondBlock, deleteFileOnRelease: false)
+            new DriveBlock('T', 0, firstBlock),
+            new DriveBlock('U', 1, secondBlock)
         ]);
     }
 
@@ -127,19 +127,19 @@ public class LookupEngineTests
         using var builder = new SyntheticBlockBuilder('V');
         for (var metadataRow = 0u; metadataRow < 5; metadataRow++)
         {
-            builder.AddRow($"metadata-{metadataRow}", metadataRow, RowFlags.InUse, 0, Moment);
+            builder.AddRow($"metadata-{metadataRow}", metadataRow, RowFlags.InUse, 0, Moment, sequenceNumber: 0);
         }
 
-        var rootRow = builder.AddRow("", 5, RowFlags.InUse | RowFlags.Directory, 0, Moment);
+        var rootRow = builder.AddRow("", 5, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
         var documentsRow = builder.AddRow("Documents", rootRow,
-            RowFlags.InUse | RowFlags.Directory, 0, Moment);
-        builder.AddRow("report.pdf", documentsRow, RowFlags.InUse, 4096, Moment);
+            RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        builder.AddRow("report.pdf", documentsRow, RowFlags.InUse, 4096, Moment, sequenceNumber: 0);
         builder.MutateHeader((ref header) => header.RootRow = rootRow);
         builder.Complete(Moment);
 
         var block = builder.OpenForReading(out var validation)!;
         Assert.AreEqual(BlockValidationResult.Valid, validation);
-        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block)]);
         try
         {
             Assert.AreEqual(rootRow, LookupEngineTestAccess.Root(snapshot, 'V').RowIndexForTest());
@@ -159,7 +159,7 @@ public class LookupEngineTests
         using var builder = SyntheticBlockBuilder.MftShaped();
         using var block = builder.OpenForReading(out var validation)!;
         Assert.AreEqual(BlockValidationResult.Valid, validation);
-        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false, rootDirectoryPath: @"T:\");
+        var driveBlock = new DriveBlock('T', 0, block, rootDirectoryPath: @"T:\");
         var snapshot = Snapshot.Create([driveBlock]);
 
         var root = LookupEngine.Root(snapshot, 'T');
@@ -172,7 +172,7 @@ public class LookupEngineTests
     {
         using var builder = SyntheticBlockBuilder.MftShaped();
         using var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock('T', 0, block, deleteFileOnRelease: false, rootDirectoryPath: @"T:\");
+        var driveBlock = new DriveBlock('T', 0, block, rootDirectoryPath: @"T:\");
         var snapshot = Snapshot.Create([driveBlock]);
 
         var found = LookupEngine.Find(snapshot, @"T:\documents\notes.txt");

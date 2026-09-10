@@ -2,31 +2,16 @@
 
 ## Unreleased
 
-### Breaking Changes
+Everything since 0.2.0, the latest published release: the packed index and its MFT
+producer ([MFTLib#131](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/131))
+and the live watch bridge and consumer-gap closures tracked as
+[MFTLib#132](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/132).
 
-- Native ABI bumped from 3 to 4: compact entries are 48 bytes, with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, and size-unknown flags bit `0x8000`; managed and native binaries must be upgraded together
-- Removed `IMmfWriter`, `IStreamingMmfWriter`, `IMmfReader`, and `IStreamingMmfReader`
-- Removed `RealMmfWriter`, `RealMmfReader`, and `MmfWriteResult`
-- Removed `BrokerScanOutputFormat`, `ScanPayload`, `ScanRecord`, and `ScanRecordBatchConsumer`; cold scans return packed blocks only
-- Removed `DriveScanSource`, `StreamingDriveScanSource`, and `ProgressStreamingDriveScanSource`; `JournalBrokerHost` takes `MftRecordBatchSource` as its scan source
-- Renamed `MmfWriteProgress` to `BlockWriteProgress`, preserving its fields and constructors
-- Removed `BrokerScanPhase.ResolvingPaths`; the broker parses without path resolution
-- Removed `BrokerScanOptions.ConsumeRecords`, `OutputFormat`, `MmfCapacityBytes`, and `MmfCapacityPlanner`
-- Removed `JournalBrokerClient.DefaultMmfCapacity` and `DefaultCapacityPlanner`; block sizing uses `MftBlockCapacity`
-- `JournalBrokerClient` now requires `Func<string, BlockFileCreateOptions, (string SectionName, BlockFile Block, IDisposable Lifetime)> createDriveBlockSection` immediately after the stream, replacing `IMmfReader` and `createDriveMmf`
-- Removed `JournalBrokerHost.ArmAndScan` and `ArmAndScanBatches`; `ServeAsync` takes `IBlockSectionWriter?` for block output
-- Removed the sixth (output-format) field from each `ArmAndScan` spec token
-- `ScanReady` replaces record count and byte length with `RowCount`, `NamePoolUsedBytes`, and `SkippedRecordCount` (three int64 fields)
-- `BlockScanOutcome` carries `SectionName`, `Block`, `RowCount`, `NamePoolUsedBytes`, and `SkippedRecordCount`; the caller owns the block
-- Removed `JournalBrokerScanSession.StartAsync` and `RescanAsync` overloads without `BrokerScanOptions`; every scan requires per-drive `BlockTargets`
-- `MFTLibTestExtensions.ScanSessionTestHarness.StartScannedAsync` requires `BlockTargets` in its options; `StartFromCursorsAsync` remains a warm start and removes the unused `keepFileNames` parameter, with later rescans taking explicit options
-- Removed the unused `keepFileNames` parameter from `JournalBrokerScanSession.StartFromCursorsAsync`; a rescan's explicit options supply the keep-file names
-- `BrokerScanOptions` is a required, non-nullable parameter on `JournalBrokerClient.ArmScanAndCatchUpAsync` and `JournalBrokerScanSession.RescanAsync`; passing none used to compile and then throw at runtime, because every scan requires per-drive `BlockTargets`
-- `BrokerScanResult`'s `warnings` and `blockOutcomes` constructor parameters lost their `null` defaults; every cold scan produces both
-- `BrokerMftBlockProducer`'s `scanCompleted` callback runs only after the block passes validation, so it no longer fires for a drive that errored or a block that was rejected
+### Added
 
-### Features
-
+- `MftRecord.SequenceNumber` and `UsnJournalEntry.SequenceNumber` expose the NTFS record's sequence number; combined with the record number as `(sequenceNumber << 48) | recordNumber`, it forms the file reference `FileEntry.Open` uses to detect an MFT record NTFS has reused for a different file
+- `RowColumns.SequenceNumber` and `BlockFile.SequenceNumbers` carry the sequence number into the packed block format, in a sequence region between the row region and the name pool (`BlockHeader.SequenceRegionOffset`)
+- `BlockHeader.LiveRowCount` and `DriveStatus.LiveRowCount` report rows in use and not tombstoned, distinct from `RowCount`'s highest-used-slot-plus-one
 - `MftRecord.Size`, `SizeKnown`, and `ModifiedUtc` expose unnamed data-stream size and modification time from the native parser
 - `BlockHeader.RootRow` stores the volume root at offset 20: row 5 for MFT blocks and row 0 for enumeration blocks
 - `RowFlags.SizeUnknown` marks a zero size whose data attribute lives in an extension record the parser does not follow
@@ -35,8 +20,63 @@
 - `BrokerMftBlockProducer` supplies the producer delegate, validates completed blocks, and transfers block ownership to the index while the caller retains client ownership
 - `NamedBlockSection`, `IBlockSectionWriter`, `RealBlockSectionWriter`, and `MftBlockRowWriter` write packed rows directly into client-created file-backed sections and complete the header last
 - `MftBlockCapacity` plans row and name capacities from `NtfsVolumeInformation`; `BlockScanTarget` and `BrokerScanOptions.BlockTargets` supply each drive's destination
-- `DriveStatus.ProducerKind`, `MftProducerFailureMessage`, and `DiscardedBlock` report the selected producer, MFT failure, and rejected cache validation result
+- `DriveStatus.ProducerKind`, `MftProducerFailureMessage`, and `DiscardedBlock` report the selected producer, MFT failure, and rejected cache validation result; a drive whose MFT producer fails is reported `DriveState.Failed` and never falls back to a directory walk
 - `BlockWriteProgress` reports parsing and transfer progress for block scans
+- `IndexScanPhase` (`Enumerating`, `ParsingMft`, `Transferring`) and `IndexScanProgress` report scan progress uniformly across both producers; `BrokerProgressAdapter` forwards `BrokerScanProgress` from the broker-backed producer onto `FileIndexOptions.Progress`
+- `IIndexWatchSource`, `WatchStreamItem`, `DriveWatchFailure`, and `IndexWatchTarget` define the seam `FileIndex` reads its live watch from; `BrokerMftBlockProducer.CreateWatchSource()` supplies a `BrokerIndexWatchSource` that bridges the broker onto it
+- `FileIndex.StartWatchingAsync` and `StopWatchingAsync` start and stop one watch session over every MFT-backed drive; `FileIndex.Changed` raises one event per applied change and `FileIndex.WatchFaulted` raises `WatchFault`/`WatchFaultKind` for a subscriber, apply, or source failure; `FileIndexOptions.WatchSource` supplies the stream
+- `DriveStatus.WatchFailureMessage` reports a drive's live-watch failure without invalidating its block; it clears when the drive is re-armed or rescanned
+- `FileIndex.RescanAsync` disarms, rebuilds, and re-arms the rescanned drive's live watch in place, leaving every other drive's watch undisturbed
+- `FileChange.PreviousPath` carries the full previous path of a rename
+- `JournalMutator` hydrates a row a `DirectoryIndex` scan filtered out on its first journal touch, reporting it as `FileChangeKind.Created` with a null `PreviousPath`
+- `FileEntry.Open` opens an MFT-producer entry by NTFS file id (`WindowsFileById`, `OpenFileById`) against a handle on the target volume, which needs no elevation
+- `IndexedDrive.FromWindowsVolume` builds a drive from a Windows drive letter, reading its real volume serial so a re-lettered or replaced volume never matches the wrong cached block
+- Added the `DisarmDrive` frame kind and `JournalBrokerClient.SendDisarmDriveAsync`
+- `BrokerFrame.ArmEpoch` identifies the live arm that produced a frame; `BrokerFrame.NoArmEpoch` marks scan, catch-up, and volume-query frames
+- A stale persisted journal cursor is reported as that drive's `Error`, ending only its stream
+
+### Changed
+
+- The native interface version constant (`MFT_NATIVE_ABI_VERSION`) is 1; compact entries are 50 bytes, with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, uint16 sequence number at offset 48, and a size-unknown flag bit `0x8000`. Managed and native binaries must match
+- Block format version is 2: the declared header is 104 bytes (`LiveRowCount` at offset 88, `SequenceRegionOffset` at offset 96), and a sequence-number region sits between the row region and the name pool. A version mismatch means discard the block and rescan, as before
+- `FileIndexOptions.NoCache` blocks are created with `FileOptions.DeleteOnClose`, so the operating system removes them when the last handle closes, including on a killed process, instead of relying on a managed delete during dispose plus a stale-block sweep on the next open
+- `BrokerProtocol.WriteJournalBatch`, `WriteError`, `BrokerFrame.JournalBatch`, and `BrokerFrame.Error` take an arm epoch after the drive; `JournalBatch` and `Error` wire payloads carry a `uint32` arm epoch after the drive field
+- `StartWatch` spec tokens are four fields: `letter:journalId:nextUsn:armEpoch`
+- `JournalBrokerClient.SendStartWatchAsync` arms named drives and re-arms them on repeated calls instead of throwing on a second call
+- The client drops live batches and errors that are not tagged with the drive's current arm epoch
+- `JournalBrokerClient` requires `Func<string, BlockFileCreateOptions, (string SectionName, BlockFile Block, IDisposable Lifetime)> createDriveBlockSection` immediately after the stream, replacing `IMmfReader` and `createDriveMmf`
+- `ScanReady` replaces record count and byte length with `RowCount`, `NamePoolUsedBytes`, and `SkippedRecordCount` (three int64 fields)
+- `BlockScanOutcome` carries `SectionName`, `Block`, `RowCount`, `NamePoolUsedBytes`, and `SkippedRecordCount`; the caller owns the block
+- `MFTLibTestExtensions.ScanSessionTestHarness.StartScannedAsync` requires `BlockTargets` in its options; `StartFromCursorsAsync` remains a warm start and removes the unused `keepFileNames` parameter, with later rescans taking explicit options
+- `BrokerScanOptions` is a required, non-nullable parameter on `JournalBrokerClient.ArmScanAndCatchUpAsync` and `JournalBrokerScanSession.RescanAsync`; every scan requires per-drive `BlockTargets`
+- `BrokerScanResult`'s `warnings` and `blockOutcomes` constructor parameters lost their `null` defaults; every cold scan produces both
+- `BrokerMftBlockProducer`'s `scanCompleted` callback runs only after the block passes validation, so it does not fire for a drive that errored or a block that was rejected
+
+### Removed
+
+- Removed `IMmfWriter`, `IStreamingMmfWriter`, `IMmfReader`, and `IStreamingMmfReader`
+- Removed `RealMmfWriter`, `RealMmfReader`, and `MmfWriteResult`
+- Removed `BrokerScanOutputFormat`, `ScanPayload`, `ScanRecord`, and `ScanRecordBatchConsumer`; cold scans return packed blocks only
+- Removed `DriveScanSource`, `StreamingDriveScanSource`, and `ProgressStreamingDriveScanSource`; `JournalBrokerHost` takes `MftRecordBatchSource` as its scan source
+- Removed `BrokerScanPhase.ResolvingPaths`; the broker parses without path resolution
+- Removed `BrokerScanOptions.ConsumeRecords`, `OutputFormat`, `MmfCapacityBytes`, and `MmfCapacityPlanner`
+- Removed `JournalBrokerClient.DefaultMmfCapacity` and `DefaultCapacityPlanner`; block sizing uses `MftBlockCapacity`
+- Removed `JournalBrokerHost.ArmAndScan` and `ArmAndScanBatches`; `ServeAsync` takes `IBlockSectionWriter?` for block output
+- Removed the sixth (output-format) field from each `ArmAndScan` spec token
+- Removed `JournalBrokerScanSession.StartAsync` and `RescanAsync` overloads without `BrokerScanOptions`
+- Removed the unused `keepFileNames` parameter from `JournalBrokerScanSession.StartFromCursorsAsync`; a rescan's explicit options supply the keep-file names
+- Removed `JournalBrokerClient.WarningReceived` and `JournalBrokerScanSession.WarningReceived`; scan warnings are available through `BrokerScanResult.Warnings`
+- Removed `DriveBlock`'s `deleteFileOnRelease` constructor parameter; deletion of a no-cache block is the operating system's job
+- Removed `FileIndex`'s `CleanupStaleNoCacheBlocks` sweep, which compensated for the managed delete this removes
+- Removed `FileEntry.Open`'s `NotSupportedException` for a non-enumeration producer; it opens by file id instead
+- Removed `ProducerPolicy.Auto`, `MftOnly`, and `EnumerationOnly`; `ProducerPolicy.Mft` and `ProducerPolicy.Enumeration` are the two values
+- Removed `FileChange`'s three-argument constructor and its `PreviousName` parameter; `FileChange` now requires `Path` and carries `PreviousPath`
+- Removed `IndexScanProgress`'s two-argument constructor (`RowsWritten`, `CurrentDirectory`); it now requires `DriveLetter`, `Phase`, and `RowsWritten`, with `TotalRows` and `CurrentDirectory` optional
+
+### Fixed
+
+- A drive faulting while a sibling drive is between disarm and re-arm during a rescan isolates the fault to that drive: the awaiting-reader marker spans the whole disarm-to-rearm window rather than clearing on return from disarm
+- A journal-invalidation `Error` frame for one drive faults that drive's batch source with `InvalidOperationException` while other drives keep streaming
 
 ## 0.3.0
 

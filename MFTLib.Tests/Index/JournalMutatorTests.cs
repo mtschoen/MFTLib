@@ -31,14 +31,14 @@ public class JournalMutatorTests
 
         _writer = new BlockWriter(_block);
         var directoryColumns = new RowColumns(ParentRow: 0,
-            RowFlags.InUse | RowFlags.Directory, Attributes: 16, Size: 0, Moment.Ticks);
+            RowFlags.InUse | RowFlags.Directory, Attributes: 16, Size: 0, Moment.Ticks, SequenceNumber: 0);
         _writer.TryWriteRow(0, "", directoryColumns);
         _writer.TryWriteRow(1, "Documents", directoryColumns);
         _writer.TryWriteRow(2, "existing.txt", new RowColumns(ParentRow: 1, RowFlags.InUse,
-            Attributes: 32, Size: 100, Moment.Ticks));
+            Attributes: 32, Size: 100, Moment.Ticks, SequenceNumber: 0));
         _writer.Complete(Moment);
 
-        _driveBlock = new DriveBlock('T', 0, _block, deleteFileOnRelease: false);
+        _driveBlock = new DriveBlock('T', 0, _block);
         _snapshot = Snapshot.Create([_driveBlock]);
     }
 
@@ -57,7 +57,7 @@ public class JournalMutatorTests
     }
 
     static UsnJournalEntry Entry(ulong recordNumber, ulong parentRecordNumber, string fileName,
-        UsnReason reason, DateTime timestamp)
+        UsnReason reason, DateTime timestamp, FileAttributes fileAttributes = FileAttributes.Archive)
     {
         return UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
@@ -66,7 +66,7 @@ public class JournalMutatorTests
             Usn = 1000,
             Timestamp = timestamp,
             Reason = reason,
-            FileAttributes = FileAttributes.Archive,
+            FileAttributes = fileAttributes,
             FileName = fileName
         });
     }
@@ -104,7 +104,7 @@ public class JournalMutatorTests
     }
 
     [TestMethod]
-    public void Rename_AppendsTheNewNameSwapsTheRowAndReportsThePreviousName()
+    public void Rename_AppendsTheNewNameSwapsTheRowAndReportsThePreviousPath()
     {
         var mutator = new JournalMutator(_writer);
         var changes = mutator.Apply(_snapshot, 0,
@@ -112,8 +112,88 @@ public class JournalMutatorTests
             journalId: 7, nextUsn: 2000);
 
         Assert.AreEqual(FileChangeKind.Renamed, changes[0].Kind);
-        Assert.AreEqual("existing.txt", changes[0].PreviousName);
+        Assert.AreEqual(@"T:\Documents\existing.txt", changes[0].PreviousPath);
         Assert.AreEqual("renamed.txt", new string(NamePool.ReadRowName(_block, 2)));
+    }
+
+    [TestMethod]
+    public void Rename_CarriesBothTheOldAndTheNewFullPath()
+    {
+        using var fixture = new MutatorFixture();
+        var moved = UsnJournalEntry.Create(new UsnJournalEntryOptions
+        {
+            RecordNumber = 7,
+            ParentRecordNumber = 5,
+            FileName = "renamed.txt",
+            SequenceNumber = 1,
+            Usn = 1000,
+            Reason = UsnReason.RenameNewName,
+            FileAttributes = FileAttributes.Archive,
+            Timestamp = fixture.Timestamp
+        });
+
+        var change = fixture.Apply([moved]).Single();
+
+        Assert.AreEqual(FileChangeKind.Renamed, change.Kind);
+        Assert.AreEqual(@"T:\renamed.txt", change.Path);
+        Assert.AreEqual(@"T:\documents\notes.txt", change.PreviousPath);
+    }
+
+    [TestMethod]
+    public void EachChange_KeepsThePathItHadWhenItWasApplied()
+    {
+        using var fixture = new MutatorFixture();
+        var created = UsnJournalEntry.Create(new UsnJournalEntryOptions
+        {
+            RecordNumber = 9,
+            ParentRecordNumber = 6,
+            FileName = "first.txt",
+            SequenceNumber = 1,
+            Usn = 1000,
+            Reason = UsnReason.FileCreate,
+            FileAttributes = FileAttributes.Archive,
+            Timestamp = fixture.Timestamp
+        });
+        var renamed = UsnJournalEntry.Create(new UsnJournalEntryOptions
+        {
+            RecordNumber = 9,
+            ParentRecordNumber = 5,
+            FileName = "second.txt",
+            SequenceNumber = 1,
+            Usn = 1001,
+            Reason = UsnReason.RenameNewName,
+            FileAttributes = FileAttributes.Archive,
+            Timestamp = fixture.Timestamp
+        });
+
+        var changes = fixture.Apply([created, renamed]);
+
+        Assert.AreEqual(@"T:\documents\first.txt", changes[0].Path);
+        Assert.AreEqual(@"T:\second.txt", changes[1].Path);
+        Assert.AreEqual(@"T:\documents\first.txt", changes[1].PreviousPath);
+    }
+
+    [TestMethod]
+    public void Delete_CarriesThePathOfTheRowItTombstoned()
+    {
+        using var fixture = new MutatorFixture();
+        var deleted = UsnJournalEntry.Create(new UsnJournalEntryOptions
+        {
+            RecordNumber = 7,
+            ParentRecordNumber = 6,
+            FileName = "notes.txt",
+            SequenceNumber = 1,
+            Usn = 1000,
+            Reason = UsnReason.FileDelete,
+            FileAttributes = FileAttributes.Archive,
+            Timestamp = fixture.Timestamp
+        });
+
+        var change = fixture.Apply([deleted]).Single();
+
+        Assert.AreEqual(FileChangeKind.Deleted, change.Kind);
+        Assert.AreEqual(@"T:\documents\notes.txt", change.Path);
+        Assert.IsNull(change.PreviousPath);
     }
 
     [TestMethod]
@@ -213,6 +293,38 @@ public class JournalMutatorTests
         mutator.Apply(_snapshot, 0, entries, journalId: 7, nextUsn: 2000);
 
         Assert.IsTrue(mutator.CompactionNeeded);
+    }
+
+    [TestMethod]
+    public void Create_OfADirectory_SetsTheDirectoryFlagRatherThanSizeUnknown()
+    {
+        var mutator = new JournalMutator(_writer);
+        var changes = mutator.Apply(_snapshot, 0,
+            [Entry(5, 1, "NewFolder", UsnReason.FileCreate | UsnReason.Close, ChangeMoment,
+                FileAttributes.Directory)],
+            journalId: 7, nextUsn: 2000);
+
+        Assert.AreEqual(1, changes.Count);
+        Assert.IsTrue(_block.Rows[5].IsDirectory);
+        Assert.IsTrue(_block.Rows[5].SizeKnown);
+    }
+
+    [TestMethod]
+    public void Rename_NamePoolExhausted_ReturnsNoChangeAndMarksCompactionNeeded()
+    {
+        var mutator = new JournalMutator(_writer);
+        // Longer than the whole 512-byte name pool, so the append this rename needs can
+        // never fit regardless of what else has or has not been written yet.
+        var hugeName = new string('a', 300);
+
+        var changes = mutator.Apply(_snapshot, 0,
+            [Entry(2, 1, hugeName, UsnReason.RenameNewName | UsnReason.RenameOldName | UsnReason.Close,
+                ChangeMoment)],
+            journalId: 7, nextUsn: 2000);
+
+        Assert.AreEqual(0, changes.Count);
+        Assert.IsTrue(_block.Header.IsCompactionNeeded);
+        Assert.AreEqual("existing.txt", new string(NamePool.ReadRowName(_block, 2)));
     }
 
     [TestMethod]

@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 
 namespace MFTLib;
 
@@ -23,32 +22,17 @@ public sealed partial class JournalBrokerClient
     /// </summary>
     internal bool LastStopTimedOut { get; private set; }
 
-    readonly Dictionary<string, Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>> _liveChannels =
-        new(StringComparer.OrdinalIgnoreCase);
-
-    readonly object _liveChannelsLock = new();
     CancellationTokenSource? _demuxCts;
     Task? _demuxTask;
 
-    Exception? _liveEndError;
-
-    // Latch the demux's terminal state so a drive that subscribes AFTER the broker
-    // died still gets an already-completed channel instead of blocking forever.
-    bool _liveEnded;
-
-    // Atomically reserves the single live-watch start. The _demuxTask null-check alone was
-    // not atomic with its assignment, so two concurrent SendStartWatchAsync callers could
-    // both pass it and both start a demux loop - two readers racing one pipe corrupt frames.
-    int _watchStartGuard;
-
     /// <summary>
-    ///     Send a <c>StartWatch</c> frame for the given per-drive resume cursors and begin
-    ///     the live-watch demux: a single background reader takes ownership of the pipe and
-    ///     routes each incoming <see cref="BrokerFrameKind.JournalBatch" /> frame into its
-    ///     drive's channel. Call this exactly once, after
-    ///     <see cref="ArmScanAndCatchUpAsync(IReadOnlyList{string}, BrokerScanOptions, CancellationToken)" />
-    ///     has drained the cold-scan frames; the
-    ///     per-drive delegates from <see cref="CreateBatchSource" /> then read those channels.
+    ///     Arm every drive named by its per-drive resume cursor. The first call starts the
+    ///     live-watch generation and its single pipe-reading demux. A later call re-arms any
+    ///     already-armed drive by replacing that drive's channel, while leaving drives the
+    ///     call does not name alone.
+    ///     Each named drive receives a fresh arm epoch. Frames the broker already wrote
+    ///     for an earlier arm are discarded, so re-arming from a fresh cursor cannot
+    ///     deliver a batch produced before that arm.
     /// </summary>
     public Task SendStartWatchAsync(
         IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
@@ -70,48 +54,130 @@ public sealed partial class JournalBrokerClient
         Action? transmissionStarted,
         CancellationToken cancellationToken)
     {
-        // Reserve the start atomically up front: two concurrent callers (a double
-        // scan-complete tick) must not both send StartWatch + start a demux loop.
-        if (Interlocked.CompareExchange(ref _watchStartGuard, 1, 0) != 0)
-        {
-            throw new InvalidOperationException("Live watch has already been started for this client");
-        }
-
-        // Watch spec tokens omit the map name (three fields): letter:journalId:nextUsn.
-        var specTokens = cursorsByDrive.Select(pair => FormattableString.Invariant(
-            $"{NormalizeDriveLetter(pair.Key)}:{pair.Value.JournalId}:{pair.Value.NextUsn}"));
-        var watchSpec = string.Join(",", specTokens);
-
-        var writeStarted = false;
+        await _armOrderingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var armEpochsByDrive = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
         try
         {
+            var normalizedCursors = cursorsByDrive
+                .Select(pair => new KeyValuePair<string, UsnJournalCursor>(
+                    NormalizeDriveLetter(pair.Key), pair.Value))
+                .ToArray();
+            lock (_liveChannelsLock)
+            {
+                ValidateClaimedGenerationLocked();
+                foreach (var pair in normalizedCursors)
+                {
+                    armEpochsByDrive[pair.Key] = ArmDriveLocked(pair.Key);
+                }
+            }
+
+            // Watch spec tokens are four fields: letter:journalId:nextUsn:armEpoch.
+            var specTokens = normalizedCursors.Select(pair =>
+            {
+                return FormattableString.Invariant(
+                    $"{pair.Key}:{pair.Value.JournalId}:{pair.Value.NextUsn}:{armEpochsByDrive[pair.Key]}");
+            });
+            var watchSpec = string.Join(",", specTokens);
+
             await WriteFrameAsync(
                 writer => BrokerProtocol.WriteStartWatch(writer, watchSpec),
-                () =>
+                transmissionStarted, cancellationToken).ConfigureAwait(false);
+
+            lock (_liveChannelsLock)
+            {
+                if (_liveWatchGenerationStarted)
                 {
-                    writeStarted = true;
-                    transmissionStarted?.Invoke();
-                }, cancellationToken).ConfigureAwait(false);
+                    ValidateClaimedGenerationLocked();
+                    return;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Install the cancellation source, reader, and generation claim together.
+                // After a failed start or any stop, the next start either installs or reuses
+                // a live demux, or fails loudly; success without a reader is impossible.
+                var demuxCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                // Capture the token before Task.Run because a racing stop can dispose the
+                // source before the delegate starts; the captured token remains usable.
+                var demuxToken = demuxCancellation.Token;
+                _demuxCts = demuxCancellation;
+                _demuxTask = Task.Run(() => DemuxLoopAsync(demuxToken), CancellationToken.None);
+                _liveWatchGenerationStarted = true;
+            }
         }
-        catch when (!writeStarted)
+        catch
         {
-            Interlocked.Exchange(ref _watchStartGuard, 0);
+            lock (_liveChannelsLock)
+            {
+                foreach (var drive in armEpochsByDrive.Keys)
+                {
+                    DisarmDriveLocked(drive);
+                }
+            }
             throw;
         }
+        finally
+        {
+            _armOrderingGate.Release();
+        }
+    }
 
-        // Own a CTS for the demux so DisposeAsync can cancel the blocking pipe read
-        // (disposing the pipe alone does not reliably unblock a pending ReadAsync).
-        // Read .Token now, on this thread, and close over that value rather than the
-        // CTS: Task.Run's lambda runs on a thread-pool thread whose start can be
-        // delayed, and by the time it runs the CTS could already be disposed by a
-        // racing StopLiveWatchAsync/DisposeAsync - CancellationTokenSource.Token
-        // throws ObjectDisposedException in that case, whereas the CancellationToken
-        // value itself stays valid (and already reflects any Cancel() that happened
-        // before the dispose) after its source is gone.
-        var demuxCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var demuxToken = demuxCts.Token;
-        _demuxCts = demuxCts;
-        _demuxTask = Task.Run(() => DemuxLoopAsync(demuxToken), CancellationToken.None);
+    void ValidateClaimedGenerationLocked()
+    {
+        if (!_liveWatchGenerationStarted)
+        {
+            return;
+        }
+
+        if (_demuxCts == null || _demuxTask == null || _demuxCts.IsCancellationRequested || _liveEnded)
+        {
+            throw new InvalidOperationException(
+                "The live watch reader has ended or is inconsistent. Call StopLiveWatchAsync before starting again.");
+        }
+    }
+
+    /// <summary>
+    ///     Retire one drive from the live watch generation, leaving every other drive
+    ///     streaming. That drive's channel is completed normally, so its subscriber's
+    ///     enumeration ends rather than throwing, and any batch received while the drive
+    ///     remains disarmed is dropped by the demux. Arming it again with
+    ///     <see cref="SendStartWatchAsync(IReadOnlyDictionary{string,UsnJournalCursor},CancellationToken)" />
+    ///     gives it a fresh channel and a fresh subscriber.
+    /// </summary>
+    public Task SendDisarmDriveAsync(string driveLetter, CancellationToken cancellationToken = default)
+    {
+        var normalizedDrive = NormalizeDriveLetter(driveLetter);
+        lock (_liveChannelsLock)
+        {
+            if (!_liveWatchGenerationStarted)
+            {
+                throw new InvalidOperationException(
+                    "No live watch is running for this client, so there is nothing to disarm.");
+            }
+        }
+
+        return SendDisarmDriveCoreAsync(normalizedDrive, cancellationToken);
+    }
+
+    async Task SendDisarmDriveCoreAsync(string normalizedDrive, CancellationToken cancellationToken)
+    {
+        // Keep the local retirement and wire write in the same order as concurrent arms.
+        await _armOrderingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            lock (_liveChannelsLock)
+            {
+                // Complete the subscriber without waiting for a wire round trip.
+                DisarmDriveLocked(normalizedDrive);
+            }
+
+            await WriteFrameAsync(writer => BrokerProtocol.WriteDisarmDrive(writer, normalizedDrive),
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _armOrderingGate.Release();
+        }
     }
 
     /// <summary>
@@ -123,17 +189,26 @@ public sealed partial class JournalBrokerClient
     /// </summary>
     public async Task StopLiveWatchAsync()
     {
-        var task = _demuxTask;
-        if (task == null)
+        CancellationTokenSource? demuxCancellation;
+        Task? task;
+        lock (_liveChannelsLock)
         {
-            return; // not watching
+            task = _demuxTask;
+            demuxCancellation = _demuxCts;
         }
 
-        // _demuxCts is always set alongside _demuxTask in SendStartWatchAsync and only
-        // cleared here, together, at the end of a stop - so it must be non-null now.
-        var demuxCts = _demuxCts
-                       ?? throw new InvalidOperationException(
-                           "Live-watch state is inconsistent: _demuxTask is set but _demuxCts is not.");
+        if (task == null)
+        {
+            ResetLiveWatchState();
+            return;
+        }
+
+        // The reader and cancellation source are published and captured together.
+        if (demuxCancellation == null)
+        {
+            throw new InvalidOperationException(
+                "Live-watch state is inconsistent: _demuxTask is set but _demuxCts is not.");
+        }
 
         // Ask the host to end the watch; the demux exits when it reads EndWatchAck
         // (draining any stray live batches in between) or on EOF if the broker is
@@ -160,7 +235,7 @@ public sealed partial class JournalBrokerClient
             // No ack within the window (broker wedged): force the demux down.
             {
                 LastStopTimedOut = true;
-                await demuxCts.CancelAsync().ConfigureAwait(false);
+                await demuxCancellation.CancelAsync().ConfigureAwait(false);
             }
             else
             {
@@ -172,17 +247,32 @@ public sealed partial class JournalBrokerClient
         // escape, so awaiting it here cannot fault.
         await task.ConfigureAwait(false);
 
-        demuxCts.Dispose();
-        _demuxCts = null;
-        _demuxTask = null;
-        // Release the start reservation so a rescan can begin a fresh watch on this client.
-        Interlocked.Exchange(ref _watchStartGuard, 0);
-
         lock (_liveChannelsLock)
         {
+            _demuxCts = null;
+            _demuxTask = null;
+        }
+        demuxCancellation.Dispose();
+
+        ResetLiveWatchState();
+    }
+
+    void ResetLiveWatchState()
+    {
+        lock (_liveChannelsLock)
+        {
+            foreach (var channel in _liveChannels.Values)
+            {
+                channel.Writer.TryComplete();
+            }
+
             _liveChannels.Clear();
+            _armedEpochsByDrive.Clear();
+            // Keep _lastArmEpoch: a timed-out stop can leave old frames on the pipe.
             _liveEnded = false;
             _liveEndError = null;
+            // Release the generation so a rescan can begin a fresh watch on this client.
+            _liveWatchGenerationStarted = false;
         }
     }
 
@@ -208,139 +298,6 @@ public sealed partial class JournalBrokerClient
             await foreach (var batch in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 yield return batch;
-            }
-        }
-    }
-
-    // Single owner of the pipe during live watch: read frames and route each
-    // JournalBatch to its drive's channel until the broker dies or is cancelled.
-    async Task DemuxLoopAsync(CancellationToken cancellationToken)
-    {
-        BrokerDiagnostics.Log($"DemuxLoopAsync started (t={Environment.CurrentManagedThreadId}).");
-        try
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                var frame = await ReadFrameAsync(cancellationToken).ConfigureAwait(false);
-                if (frame == null)
-                {
-                    // SignalBrokerDeath was already called inside ReadFrameAsync on EOF.
-                    CompleteAllLiveChannels(new InvalidOperationException("Broker pipe closed: Pipe EOF"));
-                    return;
-                }
-
-                var value = frame.Value;
-                switch (value.Kind)
-                {
-                    case BrokerFrameKind.JournalBatch:
-                        GetOrAddLiveChannel(NormalizeDriveLetter(value.RequireDrive()))
-                            .Writer.TryWrite((value.Entries, value.Cursor));
-                        break;
-
-                    case BrokerFrameKind.EndWatchAck:
-                        CompleteAllLiveChannels(null);
-                        return; // clean stop: the watch was ended at the client's request
-
-                    case BrokerFrameKind.Error:
-                        FaultLiveChannel(NormalizeDriveLetter(value.RequireDrive()),
-                            new InvalidOperationException(value.RequireMessage()));
-                        break;
-
-                    case BrokerFrameKind.Warning:
-                        var warningDrive = NormalizeDriveLetter(value.RequireDrive());
-                        var warningMessage = value.RequireMessage();
-                        BrokerDiagnostics.Log(
-                            $"Warning frame for drive {warningDrive}: {warningMessage}");
-                        var warningHandlers = WarningReceived;
-                        if (warningHandlers != null)
-                        {
-                            foreach (var handler in warningHandlers.GetInvocationList())
-                            {
-                                try
-                                {
-                                    ((Action<string, string>)handler)(warningDrive, warningMessage);
-                                }
-                                catch (Exception subscriberException)
-                                {
-                                    BrokerDiagnostics.Log(
-                                        $"WarningReceived subscriber threw an exception: {subscriberException.Message}");
-                                }
-                            }
-                        }
-
-                        break;
-
-                        // Heartbeat / other frame kinds are not routed to a drive stream.
-                }
-            }
-
-            // The loop can also exit because cancellation was observed at the top of
-            // an iteration, rather than by an already-blocked read throwing below -
-            // complete the channels the same way the OperationCanceledException catch
-            // does, so a subscriber's await-foreach ends instead of hanging forever.
-            CompleteAllLiveChannels(null);
-        }
-        // Deliberate broad catch: any IO or protocol error on the pipe is broker death;
-        // the watcher subscribers must see it as a fault. Cancellation ends quietly.
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            SignalBrokerDeath(exception.Message);
-            CompleteAllLiveChannels(new InvalidOperationException($"Broker pipe closed: {exception.Message}"));
-        }
-        catch (OperationCanceledException)
-        {
-            CompleteAllLiveChannels(null);
-        }
-    }
-
-    Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> GetOrAddLiveChannel(string normalizedDrive)
-    {
-        lock (_liveChannelsLock)
-        {
-            if (!_liveChannels.TryGetValue(normalizedDrive, out var channel))
-            {
-                channel = Channel.CreateUnbounded<(UsnJournalEntry[], UsnJournalCursor)>();
-                // If the broker already died, hand back an already-completed channel so
-                // a late subscriber faults immediately rather than awaiting forever.
-                if (_liveEnded)
-                {
-                    channel.Writer.TryComplete(_liveEndError);
-                }
-
-                _liveChannels[normalizedDrive] = channel;
-            }
-
-            return channel;
-        }
-    }
-
-    // Completes a single drive's channel with error, creating it first if no
-    // subscriber has registered it yet - so a subscriber that calls CreateBatchSource
-    // after this drive's Error frame arrived still gets an already-faulted channel
-    // instead of awaiting a batch forever. Other drives are unaffected.
-    void FaultLiveChannel(string normalizedDrive, Exception error)
-    {
-        lock (_liveChannelsLock)
-        {
-            if (!_liveChannels.TryGetValue(normalizedDrive, out var channel))
-            {
-                channel = Channel.CreateUnbounded<(UsnJournalEntry[], UsnJournalCursor)>();
-                _liveChannels[normalizedDrive] = channel;
-            }
-
-            channel.Writer.TryComplete(error);
-        }
-    }
-
-    void CompleteAllLiveChannels(Exception? error)
-    {
-        lock (_liveChannelsLock)
-        {
-            _liveEnded = true;
-            _liveEndError = error;
-            foreach (var channel in _liveChannels.Values)
-            {
-                channel.Writer.TryComplete(error);
             }
         }
     }

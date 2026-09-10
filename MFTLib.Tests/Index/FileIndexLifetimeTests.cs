@@ -37,7 +37,7 @@ public class FileIndexLifetimeTests
         }
     }
 
-    FileIndexOptions Options(bool noCache = false, ProducerPolicy policy = ProducerPolicy.Auto)
+    FileIndexOptions Options(bool noCache = false, ProducerPolicy policy = ProducerPolicy.Enumeration)
     {
         return new FileIndexOptions
         {
@@ -118,10 +118,10 @@ public class FileIndexLifetimeTests
     }
 
     [TestMethod]
-    public async Task OpenAsync_MftOnlyPolicyWithNoProducer_Throws()
+    public async Task OpenAsync_MftPolicyWithNoProducer_Throws()
     {
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => FileIndex.OpenAsync(Options(policy: ProducerPolicy.MftOnly), CancellationToken.None));
+            () => FileIndex.OpenAsync(Options(policy: ProducerPolicy.Mft), CancellationToken.None));
     }
 
     [TestMethod]

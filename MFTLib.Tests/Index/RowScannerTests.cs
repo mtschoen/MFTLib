@@ -20,13 +20,13 @@ public class RowScannerTests
     {
         _builder = new SyntheticBlockBuilder();
         var root = _builder.AddRoot();
-        _builder.AddRow("alpha.txt", root, RowFlags.InUse, 1, Moment);
-        _builder.AddRow("beta.txt", root, RowFlags.InUse, 2, Moment);
-        _builder.AddRow("gamma.txt", root, RowFlags.InUse, 3, Moment);
+        _builder.AddRow("alpha.txt", root, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
+        _builder.AddRow("beta.txt", root, RowFlags.InUse, 2, Moment, sequenceNumber: 0);
+        _builder.AddRow("gamma.txt", root, RowFlags.InUse, 3, Moment, sequenceNumber: 0);
         _builder.Complete(Moment);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block, deleteFileOnRelease: false)]);
+        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block)]);
     }
 
     [TestCleanup]

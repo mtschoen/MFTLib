@@ -14,10 +14,11 @@ public sealed partial class FileIndex : IAsyncDisposable
 {
     readonly List<DriveBlock> _driveBlocks = [];
     readonly Dictionary<char, IndexedDrive> _driveConfigurations = [];
-    readonly List<DriveStatus> _offlineDrives = [];
+    readonly List<DriveStatus> _blocklessDriveStatuses = [];
     readonly Dictionary<ushort, BlockValidationResult> _discardedBlocksByOrdinal = [];
     readonly Dictionary<ushort, int> _accessDeniedSubtreeCountByOrdinal = [];
     readonly Dictionary<ushort, string> _mftProducerFailureMessagesByOrdinal = [];
+    readonly Dictionary<ushort, string> _watchFailureMessagesByOrdinal = [];
     readonly List<WeakReference<Snapshot>> _retiredSnapshots = [];
     readonly FileIndexOptions _options;
     readonly SemaphoreSlim _swapGate = new(1, 1);
@@ -26,13 +27,14 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     Guards reads and writes of <see cref="_snapshot" /> and <see cref="_driveBlocks" />
     ///     against a concurrent reader (<see cref="Drives" />, <see cref="CurrentSnapshot" />,
     ///     <see cref="TryGetDriveOrdinal" />) observing a partial swap. <see cref="_swapGate" />
-    ///     already serializes the mutations themselves against each other; this is only about
-    ///     what a reader on another thread can see mid-mutation, so it is never held across an
+    ///     already serializes block mutations; this also serializes watch initialization and guards
+    ///     what a reader on another thread can see mid-mutation. It is never held across an
     ///     <c>await</c>.
     /// </summary>
     readonly Lock _stateLock = new();
 
     Snapshot _snapshot;
+    WatchSession? _watchSession;
     bool _disposed;
 
     FileIndex(FileIndexOptions options, string cacheDirectoryPath)
@@ -46,7 +48,7 @@ public sealed partial class FileIndex : IAsyncDisposable
 
     /// <summary>
     ///     Recomputed from the block headers on every read, so it reflects the latest mutation.
-    ///     Ordered to follow <see cref="FileIndexOptions.Drives" />, online or offline.
+    ///     Ordered to follow <see cref="FileIndexOptions.Drives" />, including blockless drives.
     /// </summary>
     public IReadOnlyList<DriveStatus> Drives
     {
@@ -59,7 +61,7 @@ public sealed partial class FileIndex : IAsyncDisposable
                 foreach (var configured in _options.Drives)
                 {
                     var driveLetter = char.ToUpperInvariant(configured.DriveLetter);
-                    statuses.Add(DescribeOnlineDrive(driveLetter) ?? DescribeOfflineDrive(driveLetter));
+                    statuses.Add(DescribeOnlineDrive(driveLetter) ?? DescribeBlocklessDrive(driveLetter));
                 }
 
                 return statuses;
@@ -113,13 +115,24 @@ public sealed partial class FileIndex : IAsyncDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_stateLock)
         {
-            foreach (var driveBlock in _driveBlocks)
+            return TryGetDriveOrdinalLocked(driveLetter, out driveOrdinal);
+        }
+    }
+
+    /// <summary>
+    ///     The same lookup without the disposal check, for the watch paths that run while an index
+    ///     is being torn down: recording a drive's failure or clearing it on an index that is going
+    ///     away has nothing to do, not a different exception to raise over the one already in
+    ///     flight. The caller holds <see cref="_stateLock" />.
+    /// </summary>
+    bool TryGetDriveOrdinalLocked(char driveLetter, out ushort driveOrdinal)
+    {
+        foreach (var driveBlock in _driveBlocks)
+        {
+            if (char.ToUpperInvariant(driveBlock.DriveLetter) == char.ToUpperInvariant(driveLetter))
             {
-                if (char.ToUpperInvariant(driveBlock.DriveLetter) == char.ToUpperInvariant(driveLetter))
-                {
-                    driveOrdinal = driveBlock.DriveOrdinal;
-                    return true;
-                }
+                driveOrdinal = driveBlock.DriveOrdinal;
+                return true;
             }
         }
 
@@ -128,18 +141,32 @@ public sealed partial class FileIndex : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Releases every block this index holds, current and retired, and unmaps their views. It
-    ///     does not wait for outstanding work: disposal must not overlap an in-flight query, and
-    ///     every <see cref="FileEntry" /> minted from this index is invalid once it returns. A
-    ///     query already inside a column scan holds a span over memory this call unmaps, and
-    ///     touching it afterwards faults the process rather than raising a catchable exception.
-    ///     Let every query and every handle go before disposing.
+    ///     Stops the live watch, then releases every block this index holds, current and retired,
+    ///     and unmaps their views. It does not wait for outstanding queries: disposal must not
+    ///     overlap an in-flight query, and every <see cref="FileEntry" /> minted from this index
+    ///     is invalid once it returns. A query already inside a column scan holds a span over
+    ///     memory this call unmaps, and touching it afterwards faults the process rather than
+    ///     raising a catchable exception. Let every query and every handle go before disposing.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
         if (_disposed)
         {
             return;
+        }
+
+        try
+        {
+            // No token of its own, and none may abandon a pump whose blocks this is about to unmap.
+            await StopWatchingAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            // Disposal still owns the block mappings after a reported pump fault. The fault was
+            // announced when observed and StopWatchingAsync remains the explicit rethrow surface.
+            // Discarded through the variable rather than an empty body, which is this repository's
+            // idiom for a deliberate swallow and what keeps RCS1075 honest here.
+            _ = exception;
         }
 
         _disposed = true;
@@ -205,28 +232,31 @@ public sealed partial class FileIndex : IAsyncDisposable
                 _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal);
             var mftProducerFailureMessage =
                 _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal);
-            return DescribeDrive(driveBlock, discardedBlock, accessDeniedSubtreeCount, mftProducerFailureMessage);
+            var watchFailureMessage =
+                _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal);
+            return DescribeDrive(driveBlock, discardedBlock, accessDeniedSubtreeCount, mftProducerFailureMessage,
+                watchFailureMessage);
         }
 
         return null;
     }
 
-    DriveStatus DescribeOfflineDrive(char driveLetter)
+    DriveStatus DescribeBlocklessDrive(char driveLetter)
     {
-        foreach (var offline in _offlineDrives)
+        foreach (var status in _blocklessDriveStatuses)
         {
-            if (char.ToUpperInvariant(offline.DriveLetter) == driveLetter)
+            if (char.ToUpperInvariant(status.DriveLetter) == driveLetter)
             {
-                return offline;
+                return status;
             }
         }
 
         throw new InvalidOperationException(
-            $"Drive {driveLetter} is in FileIndexOptions.Drives but was never added as online or offline.");
+            $"Drive {driveLetter} is in FileIndexOptions.Drives but has no online or blockless status.");
     }
 
     static DriveStatus DescribeDrive(DriveBlock driveBlock, BlockValidationResult? discardedBlock,
-        int accessDeniedSubtreeCount, string? mftProducerFailureMessage)
+        int accessDeniedSubtreeCount, string? mftProducerFailureMessage, string? watchFailureMessage)
     {
         ref readonly var header = ref driveBlock.Block.Header;
         return new DriveStatus
@@ -235,12 +265,14 @@ public sealed partial class FileIndex : IAsyncDisposable
             ProducerKind = driveBlock.ProducerKind,
             State = header.IsCompactionNeeded ? DriveState.Stale : DriveState.Ready,
             RowCount = header.RowCount,
+            LiveRowCount = header.LiveRowCount,
             ScanTimestamp = header.ScanTimestampUtc,
             CompactionNeeded = header.IsCompactionNeeded,
             WatchSupported = driveBlock.ProducerKind == ProducerKind.Mft,
             AccessDeniedSubtreeCount = accessDeniedSubtreeCount,
             DiscardedBlock = discardedBlock,
-            MftProducerFailureMessage = mftProducerFailureMessage
+            MftProducerFailureMessage = mftProducerFailureMessage,
+            WatchFailureMessage = watchFailureMessage
         };
     }
 }

@@ -44,11 +44,24 @@ public sealed class BlockWriter
         // published together as one atomic store, exactly as a rename publishes them. That
         // ordering holds for a fresh slot too, so there is no separate unpublished-slot case.
         ref var row = ref Block.Rows[(int)rowIndex];
+        var previousFlags = FileRow.DescriptorFlags(FileRow.ReadDescriptorWord(in row));
+        var wasLive = (previousFlags & RowFlags.InUse) != 0 && (previousFlags & RowFlags.Tombstone) == 0;
+        var isLive = (columns.Flags & RowFlags.InUse) != 0 && (columns.Flags & RowFlags.Tombstone) == 0;
         row.ParentRow = columns.ParentRow;
         row.Attributes = columns.Attributes;
         row.Size = columns.Size;
         row.ModifiedTicks = columns.ModifiedTicks;
+        Block.SequenceNumbers[(int)rowIndex] = columns.SequenceNumber;
         FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, (ushort)name.Length, columns.Flags);
+
+        if (isLive && !wasLive)
+        {
+            header.LiveRowCount++;
+        }
+        else if (!isLive && wasLive)
+        {
+            header.LiveRowCount--;
+        }
 
         if (rowIndex >= header.RowCount)
         {
@@ -156,10 +169,17 @@ public sealed class BlockWriter
 
         ref var row = ref Block.Rows[(int)rowIndex];
         var descriptor = FileRow.ReadDescriptorWord(in row);
+        var flags = FileRow.DescriptorFlags(descriptor);
+        if (additionalFlags.HasFlag(RowFlags.Tombstone) &&
+            (flags & RowFlags.InUse) != 0 && (flags & RowFlags.Tombstone) == 0)
+        {
+            Block.Header.LiveRowCount--;
+        }
+
         FileRow.WriteDescriptorWord(ref row,
             FileRow.DescriptorNameOffsetBytes(descriptor),
             FileRow.DescriptorNameLengthUnits(descriptor),
-            FileRow.DescriptorFlags(descriptor) | additionalFlags);
+            flags | additionalFlags);
     }
 
     bool TryAppendName(ReadOnlySpan<char> name, out uint nameOffsetBytes)

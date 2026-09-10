@@ -11,7 +11,7 @@ public class SnapshotTests
     static DriveBlock OpenDriveBlock(SyntheticBlockBuilder builder, ushort ordinal)
     {
         var block = builder.OpenForReading(out _)!;
-        return new DriveBlock(builder.DriveLetter, ordinal, block, deleteFileOnRelease: false);
+        return new DriveBlock(builder.DriveLetter, ordinal, block);
     }
 
     static SyntheticBlockBuilder CompletedBuilder(char driveLetter)
@@ -29,10 +29,16 @@ public class SnapshotTests
         var driveBlock = OpenDriveBlock(builder, 0);
 
         var snapshot = Snapshot.Create([driveBlock]);
-        Assert.AreEqual(1, driveBlock.ReferenceCount);
-        Assert.AreEqual(1, snapshot.DriveCount);
+        try
+        {
+            Assert.AreEqual(1, driveBlock.ReferenceCount);
+            Assert.AreEqual(1, snapshot.DriveCount);
+        }
+        finally
+        {
+            snapshot.ReleaseNow();
+        }
 
-        snapshot.ReleaseNow();
         Assert.AreEqual(0, driveBlock.ReferenceCount);
         Assert.IsTrue(driveBlock.IsReleased);
     }
@@ -44,8 +50,15 @@ public class SnapshotTests
         var driveBlock = OpenDriveBlock(builder, 0);
         var snapshot = Snapshot.Create([driveBlock]);
 
-        snapshot.ReleaseNow();
-        snapshot.ReleaseNow();
+        try
+        {
+            snapshot.ReleaseNow();
+            snapshot.ReleaseNow();
+        }
+        finally
+        {
+            snapshot.ReleaseNow();
+        }
 
         Assert.AreEqual(0, driveBlock.ReferenceCount);
     }
@@ -58,13 +71,21 @@ public class SnapshotTests
 
         var first = Snapshot.Create([driveBlock]);
         var second = Snapshot.Create([driveBlock]);
-        Assert.AreEqual(2, driveBlock.ReferenceCount);
+        try
+        {
+            Assert.AreEqual(2, driveBlock.ReferenceCount);
 
-        first.ReleaseNow();
-        Assert.IsFalse(driveBlock.IsReleased);
+            first.ReleaseNow();
+            Assert.IsFalse(driveBlock.IsReleased);
 
-        second.ReleaseNow();
-        Assert.IsTrue(driveBlock.IsReleased);
+            second.ReleaseNow();
+            Assert.IsTrue(driveBlock.IsReleased);
+        }
+        finally
+        {
+            first.ReleaseNow();
+            second.ReleaseNow();
+        }
     }
 
     [TestMethod]

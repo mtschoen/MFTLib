@@ -12,6 +12,12 @@ public sealed partial class JournalBrokerHost
     ///     <see cref="BrokerFrameKind.QueryVolumes" />, answers one <c>VolumeInfo</c> (or
     ///     <c>Error</c>) frame per drive without arming a scan, then keeps serving - the
     ///     caller can follow it with <c>ArmAndScan</c> on the same connection.
+    ///     <c>StartWatch</c> arms or re-arms each drive it names, and
+    ///     <c>DisarmDrive</c> retires one drive while the others keep streaming. A
+    ///     per-drive watch failure ends that drive's stream with an <c>Error</c> frame.
+    ///     Each <c>StartWatch</c> token carries its drive's client-issued arm epoch.
+    ///     Every live <c>JournalBatch</c> and <c>Error</c> echoes that epoch so the client
+    ///     can distinguish the current arm's frames from frames an earlier arm produced.
     ///     Returns on <c>Shutdown</c>, on EOF, or after one arm-and-scan when
     ///     <paramref name="oneShot" /> is set (a single-UAC CLI-style path).
     /// </summary>
@@ -89,9 +95,14 @@ public sealed partial class JournalBrokerHost
                 case BrokerFrameKind.StartWatch:
                     if (frame.Value.DrivesSpec is { } watchSpec)
                     {
-                        StartWatch(stream, writeLock, watch, watchSpec, cancellationToken);
+                        await ArmWatchDrivesAsync(stream, writeLock, watch, watchSpec, cancellationToken)
+                            .ConfigureAwait(false);
                     }
 
+                    break;
+
+                case BrokerFrameKind.DisarmDrive:
+                    await DisarmWatchDriveAsync(watch, NormalizeWatchDrive(frame.Value.RequireDrive())).ConfigureAwait(false);
                     break;
 
                 case BrokerFrameKind.EndWatch:
@@ -106,35 +117,45 @@ public sealed partial class JournalBrokerHost
         }
     }
 
-    void StartWatch(
+    async Task ArmWatchDrivesAsync(
         Stream stream,
         SemaphoreSlim writeLock,
         WatchGeneration watch,
         string watchSpec,
         CancellationToken cancellationToken)
     {
-        // Idempotent: if a watch generation is already live (no EndWatch
-        // arrived to retire it), a second StartWatch is a duplicate. DO NOT
-        // restart it - tearing the running generation down mid-write races
-        // its in-flight frames against the new generation's and desyncs the
-        // caller's single-reader demux (observed as "Unknown frame kind" on a
-        // warm start). A real restart always sends EndWatch first, which
-        // clears watch.Cancellation back to null.
-        if (watch.Cancellation != null)
+        // Arming a drive that is already armed stops its task and awaits it to a stop
+        // before the fresh one starts, so one drive never has two tasks writing frames at
+        // once. That is what replaces the old refusal to act on a second StartWatch: the
+        // refusal existed only because the frame loop had no way to retire a running
+        // generation safely, and awaiting one drive to a stop is that way. Drives this
+        // spec does not name are not touched.
+        watch.Cancellation ??= CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        foreach (var request in ParseWatchSpec(watchSpec))
         {
-            BrokerDiagnostics.Log(
-                "StartWatch ignored: a watch generation is already running " +
-                "(duplicate StartWatch without an intervening EndWatch).");
+            await DisarmWatchDriveAsync(watch, request.Letter).ConfigureAwait(false);
+            watch.DriveWatches[request.Letter] = new DriveWatch(
+                driveCancellationToken => StreamWatchAsync(stream, request, writeLock, driveCancellationToken),
+                watch.Cancellation.Token);
+        }
+    }
+
+    // Cancel one drive's task, await its quiescence, and forget it. StreamWatchAsync
+    // catches OperationCanceledException internally and always returns normally, so this
+    // await cannot fault. A drive that is not armed is not an error: a client may disarm
+    // a drive whose stream the host already ended with its Error frame.
+    static async Task DisarmWatchDriveAsync(WatchGeneration watch, string drive)
+    {
+        if (!watch.DriveWatches.Remove(drive, out var driveWatch))
+        {
             return;
         }
 
-        watch.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        watch.Tasks.AddRange(StartWatchTasks(stream, watchSpec, writeLock, watch.Cancellation.Token));
+        await driveWatch.Cancellation.CancelAsync().ConfigureAwait(false);
+        await driveWatch.Task.ConfigureAwait(false);
+        driveWatch.Dispose();
     }
 
-    // Cancel the current watch generation, await its tasks to quiescence, and
-    // clear it. StreamWatchAsync catches OperationCanceledException internally
-    // and always returns normally, so Task.WhenAll here cannot fault.
     static async Task StopWatchGenerationAsync(WatchGeneration watch)
     {
         if (watch.Cancellation == null)
@@ -143,17 +164,39 @@ public sealed partial class JournalBrokerHost
         }
 
         await watch.Cancellation.CancelAsync().ConfigureAwait(false);
-        await Task.WhenAll(watch.Tasks).ConfigureAwait(false);
-        watch.Tasks.Clear();
+        await Task.WhenAll(watch.DriveWatches.Values.Select(driveWatch => driveWatch.Task)).ConfigureAwait(false);
+        foreach (var driveWatch in watch.DriveWatches.Values)
+        {
+            driveWatch.Dispose();
+        }
+
+        watch.DriveWatches.Clear();
         watch.Cancellation.Dispose();
         watch.Cancellation = null;
     }
 
-    // Holds the live watch generation's CTS and per-drive tasks. A StartWatch creates
-    // one, an EndWatch (or session end) tears it down; see ServeAsync.
     sealed class WatchGeneration
     {
-        public readonly List<Task> Tasks = [];
+        public readonly Dictionary<string, DriveWatch> DriveWatches = new(StringComparer.OrdinalIgnoreCase);
         public CancellationTokenSource? Cancellation;
+    }
+
+    sealed class DriveWatch : IDisposable
+    {
+        public DriveWatch(Func<CancellationToken, Task> startWatch,
+            CancellationToken generationCancellationToken)
+        {
+            Cancellation = CancellationTokenSource.CreateLinkedTokenSource(generationCancellationToken);
+            Task = startWatch(Cancellation.Token);
+        }
+
+        public CancellationTokenSource Cancellation { get; }
+
+        public Task Task { get; }
+
+        public void Dispose()
+        {
+            Cancellation.Dispose();
+        }
     }
 }

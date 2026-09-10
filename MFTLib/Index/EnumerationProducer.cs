@@ -69,7 +69,8 @@ public sealed class EnumerationProducer
         var state = new WalkState(writer);
         writer.TryWriteRow(0, Options.RootDirectory,
             new RowColumns(ParentRow: 0, RowFlags.InUse | RowFlags.Directory,
-                (uint)FileAttributes.Directory, Size: 0, DateTime.UtcNow.Ticks));
+                (uint)FileAttributes.Directory, Size: 0, DateTime.UtcNow.Ticks,
+                SequenceNumber: 0)); // Enumeration has no NTFS sequence number.
         state.NextRow = 1;
 
         var pending = new Queue<(string Path, uint RowIndex)>();
@@ -80,7 +81,13 @@ public sealed class EnumerationProducer
             cancellationToken.ThrowIfCancellationRequested();
             var (directoryPath, directoryRow) = pending.Dequeue();
             EnumerateOneDirectory(state, directoryPath, directoryRow, pending, cancellationToken);
-            progress?.Report(new IndexScanProgress(state.NextRow, directoryPath));
+            progress?.Report(new IndexScanProgress
+            {
+                DriveLetter = Options.DriveLetter,
+                Phase = IndexScanPhase.Enumerating,
+                RowsWritten = state.NextRow,
+                CurrentDirectory = directoryPath
+            });
 
             // Every write below capacity has already failed once compaction is needed, so
             // opening further queued directories would only pay I/O for more of the same
@@ -169,7 +176,8 @@ public sealed class EnumerationProducer
             var size = isDirectory ? 0 : entry.Length;
 
             var columns = new RowColumns(parentRow, flags, (uint)entry.Attributes, size,
-                entry.LastWriteTimeUtc.UtcDateTime.Ticks);
+                entry.LastWriteTimeUtc.UtcDateTime.Ticks,
+                SequenceNumber: 0); // Enumeration has no NTFS sequence number.
             if (!Writer.TryWriteRow(rowIndex, entry.FileName, columns))
             {
                 return isDirectory;

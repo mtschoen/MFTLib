@@ -23,16 +23,16 @@ public class SearchEngineTests
     {
         _builder = new SyntheticBlockBuilder(slotCapacity: 512, namePoolCapacity: 8192);
         var root = _builder.AddRoot();
-        _documentsRow = _builder.AddRow("Documents", root, RowFlags.InUse | RowFlags.Directory, 0, Older);
-        _picturesRow = _builder.AddRow("Pictures", root, RowFlags.InUse | RowFlags.Directory, 0, Older);
-        _builder.AddRow("report.pdf", _documentsRow, RowFlags.InUse, 4096, Newer);
-        _builder.AddRow("Report.docx", _documentsRow, RowFlags.InUse, 100, Older);
-        _builder.AddRow("holiday.jpg", _picturesRow, RowFlags.InUse, 2_000_000, Newer);
-        _builder.AddRow("deleted.pdf", _documentsRow, RowFlags.InUse | RowFlags.Tombstone, 10, Older);
+        _documentsRow = _builder.AddRow("Documents", root, RowFlags.InUse | RowFlags.Directory, 0, Older, sequenceNumber: 0);
+        _picturesRow = _builder.AddRow("Pictures", root, RowFlags.InUse | RowFlags.Directory, 0, Older, sequenceNumber: 0);
+        _builder.AddRow("report.pdf", _documentsRow, RowFlags.InUse, 4096, Newer, sequenceNumber: 0);
+        _builder.AddRow("Report.docx", _documentsRow, RowFlags.InUse, 100, Older, sequenceNumber: 0);
+        _builder.AddRow("holiday.jpg", _picturesRow, RowFlags.InUse, 2_000_000, Newer, sequenceNumber: 0);
+        _builder.AddRow("deleted.pdf", _documentsRow, RowFlags.InUse | RowFlags.Tombstone, 10, Older, sequenceNumber: 0);
         _builder.Complete(Newer);
 
         var block = _builder.OpenForReading(out _)!;
-        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block, deleteFileOnRelease: false)]);
+        _snapshot = Snapshot.Create([new DriveBlock('T', 0, block)]);
     }
 
     [TestCleanup]
@@ -110,13 +110,13 @@ public class SearchEngineTests
     {
         using var builder = new SyntheticBlockBuilder('S');
         var root = builder.AddRoot();
-        builder.AddRow("known-zero.txt", root, RowFlags.InUse, 0, Newer);
-        builder.AddRow("unknown-size.txt", root, RowFlags.InUse | RowFlags.SizeUnknown, 0, Newer);
-        builder.AddRow("known-large.txt", root, RowFlags.InUse, 1000, Newer);
+        builder.AddRow("known-zero.txt", root, RowFlags.InUse, 0, Newer, sequenceNumber: 0);
+        builder.AddRow("unknown-size.txt", root, RowFlags.InUse | RowFlags.SizeUnknown, 0, Newer, sequenceNumber: 0);
+        builder.AddRow("known-large.txt", root, RowFlags.InUse, 1000, Newer, sequenceNumber: 0);
         builder.Complete(Newer);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('S', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('S', 0, block)]);
         try
         {
             var resultsMin = SearchEngineTestAccess.Search(snapshot, new SearchQuery(null, MinimumSize: 0));
@@ -165,13 +165,13 @@ public class SearchEngineTests
         const int fileCount = 200_000;
         for (var index = 0; index < fileCount; index++)
         {
-            builder.AddRow($"file{index}.dat", root, RowFlags.InUse, index, Older);
+            builder.AddRow($"file{index}.dat", root, RowFlags.InUse, index, Older, sequenceNumber: 0);
         }
 
         builder.Complete(Newer);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block)]);
         try
         {
             var results = SearchEngineTestAccess.Search(snapshot, new SearchQuery("*.dat"));

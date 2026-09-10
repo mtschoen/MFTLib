@@ -19,10 +19,8 @@ public struct BlockHeader
 
     /// <summary>
     ///     Row index of the volume root. An enumeration block writes its root at row 0, so
-    ///     zero is the correct value there and every block written before this field existed
-    ///     already carries it. An MFT block sets 5, the NTFS root directory record, because
-    ///     record 0 is $MFT. The field occupies the padding slot that aligns the 64-bit fields
-    ///     below, so defining it costs no format version bump.
+    ///     zero is the correct value there. An MFT block sets 5, the NTFS root directory
+    ///     record, because record 0 is $MFT.
     /// </summary>
     [FieldOffset(20)] public uint RootRow;
 
@@ -36,6 +34,14 @@ public struct BlockHeader
     [FieldOffset(64)] public ulong Generation;
     [FieldOffset(72)] public ulong RowRegionOffset;
     [FieldOffset(80)] public ulong NamePoolOffset;
+    /// <summary>
+    ///     Rows that are in use and not tombstoned. <see cref="RowCount" /> is the highest used
+    ///     slot plus one, so on a block whose rows are dense by record number it counts free
+    ///     slots and deleted files too. Maintained by <see cref="BlockWriter" />, the only writer
+    ///     of rows, so both producers and the journal mutator get it without their own bookkeeping.
+    /// </summary>
+    [FieldOffset(88)] public uint LiveRowCount;
+    [FieldOffset(96)] public ulong SequenceRegionOffset;
 
     public readonly bool IsComplete => (Flags & BlockFlags.Complete) != 0;
 
@@ -86,6 +92,7 @@ public struct BlockHeader
         }
 
         if (header.RowRegionOffset != BlockLayout.RowRegionOffset ||
+            header.SequenceRegionOffset != (ulong)BlockLayout.SequenceRegionOffset(header.SlotCapacity) ||
             header.NamePoolOffset != (ulong)BlockLayout.NamePoolOffset(header.SlotCapacity))
         {
             return BlockValidationResult.InconsistentRegions;

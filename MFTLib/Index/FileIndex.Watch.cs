@@ -17,26 +17,214 @@ public sealed partial class FileIndex
     public event Action<FileChange>? Changed;
 
     /// <summary>
-    ///     Validates that this index is usable and that the caller has not already cancelled, then
-    ///     completes. It starts nothing, because no producer in this build supports a live watch:
-    ///     the enumeration producer has no journal cursor, and
-    ///     <see cref="DriveStatus.WatchSupported" /> is therefore false for every drive here. The
-    ///     call is accepted rather than rejected so a caller's startup sequence needs no version
-    ///     check once the MFT producer arrives and brings the live watch with it. Until then, drive
-    ///     contents change only through <see cref="ApplyJournalEntries" /> and
-    ///     <see cref="RescanAsync" />.
+    ///     Raised immediately when the watch first sees a subscriber fault in a session, and every
+    ///     time it drops a drive for an apply or source failure. Exceptions thrown by fault
+    ///     handlers are discarded.
+    /// </summary>
+    public event Action<WatchFault>? WatchFaulted;
+
+    /// <summary>
+    ///     Starts one pump over every MFT-backed drive. Each drive resumes from the journal cursor
+    ///     persisted in its current block header, and every armed drive's
+    ///     <see cref="DriveStatus.WatchFailureMessage" /> is cleared. Cancelling
+    ///     <paramref name="cancellationToken" /> ends the session and raises no fault; the session
+    ///     is reclaimed by <see cref="StopWatchingAsync" /> or <see cref="DisposeAsync" />. An index
+    ///     with no watchable drives has nothing to start and completes immediately. A source whose
+    ///     stream ends while drives are still watched, without a stop and without cancellation,
+    ///     raises a <see cref="WatchFaultKind.Source" /> fault carrying no drive letter, marks
+    ///     every watched drive's <see cref="DriveStatus.WatchFailureMessage" />, and releases the
+    ///     session, so this method can be called again to start a fresh one.
     /// </summary>
     public Task StartWatchingAsync(CancellationToken cancellationToken)
     {
+        return StartWatchingCoreAsync(cancellationToken, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Not an <c>async</c> method, because nothing here awaits once the pump yields on its
+    ///     own, so its validation throws synchronously rather than through the returned task.
+    ///     <paramref name="sessionToken" /> is what the session's lifetime is linked to and
+    ///     <paramref name="startCancellationToken" /> only guards this call, which is how a rescan
+    ///     restarts a whole session without reparenting the watch's lifetime to itself.
+    /// </summary>
+    Task StartWatchingCoreAsync(CancellationToken sessionToken, CancellationToken startCancellationToken)
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        cancellationToken.ThrowIfCancellationRequested();
+        startCancellationToken.ThrowIfCancellationRequested();
+
+        var targets = BuildWatchTargets();
+        if (targets.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        var source = _options.WatchSource ?? throw new InvalidOperationException(
+            $"{targets.Count} drive(s) support a live watch but " +
+            $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.WatchSource)} is not set.");
+
+        lock (_stateLock)
+        {
+            if (_watchSession is not null)
+            {
+                throw new InvalidOperationException("This index is already watching.");
+            }
+
+            ClearWatchFailures(targets);
+            var session = new WatchSession(
+                CancellationTokenSource.CreateLinkedTokenSource(sessionToken), source, sessionToken);
+            session.Pump = PumpAsync(session, targets);
+            _watchSession = session;
+        }
+
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     Cancels the current watch, waits for its pump to finish, and rethrows the first fault
+    ///     observed during the session. Calling this when no watch is active has no effect.
+    ///     <paramref name="cancellationToken" /> bounds the wait: cancelling it abandons the wait
+    ///     and throws, and deliberately leaves the session in place so a later stop or
+    ///     <see cref="DisposeAsync" /> can still reclaim it. A source that ignores the token this
+    ///     call cancels is the only thing that can make that wait outlast the caller's patience.
+    /// </summary>
+    public async Task StopWatchingAsync(CancellationToken cancellationToken)
+    {
+        WatchSession? session;
+        lock (_stateLock)
+        {
+            session = _watchSession;
+        }
+
+        if (session is null)
+        {
+            return;
+        }
+
+        Exception? firstFault = null;
+        var pumpFinished = false;
+        try
+        {
+            await session.Cancellation.CancelAsync().ConfigureAwait(false);
+            firstFault = await session.Pump.WaitAsync(cancellationToken).ConfigureAwait(false);
+            pumpFinished = true;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Cancellation is how a stop terminates a source waiting for its next batch. The
+            // filter separates that from this call's own token being cancelled, which is an
+            // abandoned wait over a pump that is still running.
+            pumpFinished = true;
+        }
+        catch (ObjectDisposedException) when (!IsCurrentWatchSession(session))
+        {
+            // The pump released this session, and disposed its cancellation with it, between the
+            // read above and the cancel: the source ended without being stopped. There is nothing
+            // left to stop, and that end was announced through WatchFaulted when it was observed.
+        }
+        finally
+        {
+            if (pumpFinished)
+            {
+                lock (_stateLock)
+                {
+                    if (ReferenceEquals(_watchSession, session))
+                    {
+                        _watchSession = null;
+                    }
+                }
+
+                session.Cancellation.Dispose();
+            }
+        }
+
+        if (firstFault is not null)
+        {
+            ExceptionDispatchInfo.Capture(firstFault).Throw();
+        }
+    }
+
+    bool IsCurrentWatchSession(WatchSession session)
+    {
+        lock (_stateLock)
+        {
+            return ReferenceEquals(_watchSession, session);
+        }
+    }
+
+    List<IndexWatchTarget> BuildWatchTargets()
+    {
+        lock (_stateLock)
+        {
+            var targets = new List<IndexWatchTarget>(_driveBlocks.Count);
+            foreach (var driveBlock in _driveBlocks)
+            {
+                if (driveBlock.ProducerKind == ProducerKind.Mft)
+                {
+                    targets.Add(BuildWatchTarget(driveBlock));
+                }
+            }
+
+            return targets;
+        }
+    }
+
+    /// <summary>One drive's counterpart to <see cref="BuildWatchTargets" />, for a re-arm.</summary>
+    IndexWatchTarget BuildWatchTarget(char driveLetter)
+    {
+        lock (_stateLock)
+        {
+            foreach (var driveBlock in _driveBlocks)
+            {
+                if (char.ToUpperInvariant(driveBlock.DriveLetter) == char.ToUpperInvariant(driveLetter))
+                {
+                    return BuildWatchTarget(driveBlock);
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"Drive {driveLetter} has no block to resume a watch from.");
+    }
+
+    /// <summary>The one place a drive's persisted journal cursor is read.</summary>
+    static IndexWatchTarget BuildWatchTarget(DriveBlock driveBlock)
+    {
+        ref readonly var header = ref driveBlock.Block.Header;
+        return new IndexWatchTarget(driveBlock.DriveLetter, header.UsnJournalId, header.UsnNextUsn);
+    }
+
+    /// <summary>
+    ///     Arming a drive clears its watch failure entry: a message about a failure on a stream
+    ///     that is being restarted is no longer true. The caller holds <see cref="_stateLock" />.
+    /// </summary>
+    void ClearWatchFailures(IReadOnlyList<IndexWatchTarget> targets)
+    {
+        foreach (var target in targets)
+        {
+            ClearWatchFailureLocked(target.DriveLetter);
+        }
+    }
+
+    /// <summary>
+    ///     Resolves the ordinal from <see cref="_driveBlocks" /> directly rather than through
+    ///     <see cref="TryGetDriveOrdinal" />, which throws once this index is disposed: a rescan
+    ///     clearing an entry on an index that is going away has nothing to clear, not a different
+    ///     exception to raise over the disposal the caller is already handling. The caller holds
+    ///     <see cref="_stateLock" />.
+    /// </summary>
+    void ClearWatchFailureLocked(char driveLetter)
+    {
+        if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
+        {
+            _watchFailureMessagesByOrdinal.Remove(driveOrdinal);
+        }
     }
 
     /// <summary>
     ///     Applies one journal batch to a drive's block in place and raises
     ///     <see cref="Changed" /> for each applied change. This is the seam the watch pipeline
-    ///     drives; it returns the batch so a caller can act on it without subscribing.
+    ///     drives; it returns the batch so a caller can act on it without subscribing. The watch
+    ///     pump calls <see cref="ApplyJournalEntriesCore" /> and raises <see cref="Changed" />
+    ///     itself, so it can tell an apply failure from a subscriber failure.
     /// </summary>
     /// <remarks>
     ///     The mutation runs under <see cref="_swapGate" />, the same gate
@@ -54,6 +242,18 @@ public sealed partial class FileIndex
     public IReadOnlyList<FileChange> ApplyJournalEntries(char driveLetter,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalId, long nextUsn)
     {
+        var changes = ApplyJournalEntriesCore(driveLetter, entries, journalId, nextUsn);
+        RaiseChanged(changes);
+        return changes;
+    }
+
+    /// <summary>
+    ///     Everything <see cref="ApplyJournalEntries" /> does up to and including releasing
+    ///     <see cref="_swapGate" />, without raising <see cref="Changed" />.
+    /// </summary>
+    internal IReadOnlyList<FileChange> ApplyJournalEntriesCore(char driveLetter,
+        IReadOnlyList<UsnJournalEntry> entries, ulong journalId, long nextUsn)
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(entries);
         var upperDriveLetter = char.ToUpperInvariant(driveLetter);
@@ -68,7 +268,6 @@ public sealed partial class FileIndex
                 $"Drive {driveLetter} is offline and has no block to apply journal entries to.");
         }
 
-        IReadOnlyList<FileChange> changes;
         // ApplyJournalEntries is a synchronous seam by design (the brief's public signature
         // returns IReadOnlyList<FileChange> directly, not a Task), so this blocks on the
         // SemaphoreSlim itself, not on a Task: it is the synchronous counterpart to
@@ -90,15 +289,12 @@ public sealed partial class FileIndex
 
             var writer = new BlockWriter(driveBlock.Block);
             var mutator = new JournalMutator(writer);
-            changes = mutator.Apply(snapshot, driveOrdinal, entries, journalId, nextUsn);
+            return mutator.Apply(snapshot, driveOrdinal, entries, journalId, nextUsn);
         }
         finally
         {
             _swapGate.Release();
         }
-
-        RaiseChanged(changes);
-        return changes;
     }
 
     /// <summary>

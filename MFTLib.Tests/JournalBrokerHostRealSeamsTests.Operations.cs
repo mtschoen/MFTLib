@@ -124,14 +124,14 @@ public partial class JournalBrokerHostRealSeamsTests
         // calling queryCursor (which would need MFTLibNative._queryUsnJournal mocked
         // too) - keeps this test focused on the watch seam.
         var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100");
+        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
         await clientSide.WriteAsync(request.WrittenMemory);
         await clientSide.FlushAsync();
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
 
-        var frame = await ReadOneFrameAsync(clientSide);
+        var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
         Assert.AreEqual("watched.txt", frame.Entries[0].FileName);
 
@@ -165,7 +165,7 @@ public partial class JournalBrokerHostRealSeamsTests
         var (clientSide, serverSide) = DuplexStream.CreatePair();
 
         var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100");
+        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
         await clientSide.WriteAsync(request.WrittenMemory, cts.Token);
         await clientSide.FlushAsync(cts.Token);
 

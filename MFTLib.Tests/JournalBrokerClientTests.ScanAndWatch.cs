@@ -52,7 +52,7 @@ public partial class JournalBrokerClientTests
         {
             await ReadOneFrameAsync(serverSide);
             var response = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteError(response, "D", "journal wrapped");
+            BrokerProtocol.WriteError(response, "D", BrokerFrame.NoArmEpoch, "journal wrapped");
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -87,7 +87,7 @@ public partial class JournalBrokerClientTests
             BrokerProtocol.WriteWarning(response, "D",
                 "Catch-up after scan failed: journal wrapped; watching from the current journal position, " +
                 "changes made during the scan were not replayed");
-            BrokerProtocol.WriteJournalBatch(response, "D", freshCursor, Array.Empty<UsnJournalEntry>());
+            BrokerProtocol.WriteJournalBatch(response, "D", BrokerFrame.NoArmEpoch, freshCursor, Array.Empty<UsnJournalEntry>());
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -121,7 +121,7 @@ public partial class JournalBrokerClientTests
             Assert.AreEqual(0, request.KeepFileNames.Count);
 
             var response = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteError(response, "D", "journal wrapped");
+            BrokerProtocol.WriteError(response, "D", BrokerFrame.NoArmEpoch, "journal wrapped");
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -148,7 +148,7 @@ public partial class JournalBrokerClientTests
             CollectionAssert.Contains((ICollection)request.KeepFileNames, ".git");
 
             var response = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteError(response, "D", "journal wrapped");
+            BrokerProtocol.WriteError(response, "D", BrokerFrame.NoArmEpoch, "journal wrapped");
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -204,11 +204,13 @@ public partial class JournalBrokerClientTests
         // Write two JournalBatch frames from the "broker" side and then close.
         var brokerTask = Task.Run(async () =>
         {
+            var startWatch = await ReadOneFrameAsync(serverSide);
+            var epochC = WatchSpecArmEpochs.ForDrive(startWatch, "C");
             var response = new ArrayBufferWriter<byte>();
             // First batch for "E" - should be skipped by the C-drive source.
-            BrokerProtocol.WriteJournalBatch(response, "E", cursor1, [entry]);
+            BrokerProtocol.WriteJournalBatch(response, "E", BrokerFrame.NoArmEpoch, cursor1, [entry]);
             // Second batch for "C" - should be yielded.
-            BrokerProtocol.WriteJournalBatch(response, "C", cursor2, [entry]);
+            BrokerProtocol.WriteJournalBatch(response, "C", epochC, cursor2, [entry]);
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
             await serverSide.DisposeAsync(); // EOF -> broker death -> throws InvalidOperationException
@@ -311,11 +313,12 @@ public partial class JournalBrokerClientTests
         // demux must drain past it to the ack and still complete the stop cleanly.
         var brokerTask = Task.Run(async () =>
         {
-            await ReadOneFrameAsync(serverSide); // StartWatch
+            var startWatch = await ReadOneFrameAsync(serverSide); // StartWatch
             await ReadOneFrameAsync(serverSide); // EndWatch
 
             var response = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteJournalBatch(response, "C", new UsnJournalCursor(7UL, 110L), [strayEntry]);
+            BrokerProtocol.WriteJournalBatch(response, "C", WatchSpecArmEpochs.ForDrive(startWatch, "C"),
+                new UsnJournalCursor(7UL, 110L), [strayEntry]);
             BrokerProtocol.WriteEndWatchAck(response);
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();

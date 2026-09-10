@@ -114,6 +114,55 @@ public class MftRecordTests
     }
 
     [TestMethod]
+    public void CreateForTest_Materialize_PreservesSequenceNumber()
+    {
+        var record = MftRecord.CreateForTest(new MftRecordTestValues
+        {
+            RecordNumber = 99,
+            ParentRecordNumber = 7,
+            Flags = 1,
+            FileName = "record",
+            SequenceNumber = 37
+        });
+
+        Assert.AreEqual((ushort)37, record.SequenceNumber);
+        Assert.AreEqual((ushort)37, record.Materialize().SequenceNumber);
+    }
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ParseMftFromFile_SequenceNumberMatchesSyntheticRecord(bool resolvePaths)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Windows-only: managed parse entry point");
+        }
+
+        var path = Path.Combine(Path.GetTempPath(), $"mftlib-sequence-{Guid.NewGuid():N}.mft");
+        try
+        {
+            MftVolume.GenerateSyntheticMFT(path, 100, 256);
+            var matchFlags = resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None;
+            var records = MftVolume.ParseMFTFromFile(path, null, matchFlags, out _);
+            Assert.IsTrue(records.Length >= 10, $"Expected at least 10 records, got {records.Length}");
+
+            foreach (var record in records.Take(10))
+            {
+                Assert.AreEqual((ushort)(record.RecordNumber + 1), record.SequenceNumber,
+                    $"record {record.RecordNumber}");
+            }
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [TestMethod]
     public void UnmanagedRecord_Record5_WithResolvePaths_ReturnsDriveRoot()
     {
         var strings = new NativeStrings(IntPtr.Zero, 0, NonNullEmptyPoolPointer, 0);

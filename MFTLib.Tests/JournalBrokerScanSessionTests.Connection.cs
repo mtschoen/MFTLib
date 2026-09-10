@@ -230,7 +230,8 @@ public partial class JournalBrokerScanSessionTests
 
         var watchFrameTask = ReadOneFrameAsync(serverSide);
         await session.StartWatchAsync();
-        await watchFrameTask;
+        var watchFrame = await watchFrameTask;
+        Assert.AreEqual(BrokerFrameKind.StartWatch, watchFrame.Kind);
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => session.StartWatchAsync());
 
@@ -246,7 +247,7 @@ public partial class JournalBrokerScanSessionTests
         {
             await ReadOneFrameAsync(serverSide); // ArmAndScan request
             var response = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteError(response, "C", "access denied");
+            BrokerProtocol.WriteError(response, "C", BrokerFrame.NoArmEpoch, "access denied");
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -271,12 +272,12 @@ public partial class JournalBrokerScanSessionTests
 
         var watchFrameTask = ReadOneFrameAsync(serverSide);
         await session.StartWatchAsync();
-        await watchFrameTask;
+        var watchFrame = await watchFrameTask;
 
         var cursor = new UsnJournalCursor(7UL, 210L);
         var entry = JournalEntryFactory.Create(1, 110, "f.txt");
         var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteJournalBatch(response, "C", cursor, [entry]);
+        BrokerProtocol.WriteJournalBatch(response, "C", WatchSpecArmEpochs.ForDrive(watchFrame, "C"), cursor, [entry]);
         BrokerProtocol.WriteEndWatchAck(response);
         await serverSide.WriteAsync(response.WrittenMemory);
         await serverSide.FlushAsync();
@@ -294,49 +295,4 @@ public partial class JournalBrokerScanSessionTests
         await session.DisposeAsync();
     }
 
-    [TestMethod]
-    public async Task WatchDrive_WarningFrame_FiresSessionWarningReceivedEvent()
-    {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
-        var scanTask = RespondToArmAndScanAsync(serverSide, "C");
-
-        var session = await JournalBrokerScanSession.StartAsync(_ => Task.FromResult(client), DriveC, CreateOptions(), cancellationToken: CancellationToken.None);
-        await scanTask;
-
-        string? receivedWarningDrive = null;
-        string? receivedWarningMessage = null;
-        session.WarningReceived += (drive, message) =>
-        {
-            receivedWarningDrive = drive;
-            receivedWarningMessage = message;
-        };
-
-        var watchFrameTask = ReadOneFrameAsync(serverSide);
-        await session.StartWatchAsync();
-        await watchFrameTask;
-
-        var cursor = new UsnJournalCursor(7UL, 210L);
-        var entry = JournalEntryFactory.Create(1, 110, "f.txt");
-        var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteWarning(response, "C", "Watch from cached cursor failed: journal wrapped");
-        BrokerProtocol.WriteJournalBatch(response, "C", cursor, [entry]);
-        BrokerProtocol.WriteEndWatchAck(response);
-        await serverSide.WriteAsync(response.WrittenMemory);
-        await serverSide.FlushAsync();
-
-        var received = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await foreach (var batch in session.WatchDriveAsync("C", timeout.Token))
-        {
-            received.Add(batch);
-        }
-
-        Assert.AreEqual(1, received.Count);
-        Assert.AreEqual(cursor, received[0].Cursor);
-        Assert.AreEqual("C", receivedWarningDrive);
-        Assert.AreEqual("Watch from cached cursor failed: journal wrapped", receivedWarningMessage);
-
-        await session.DisposeAsync();
-    }
 }

@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -66,7 +67,7 @@ public class EnumerationProducerTests
 
         result = producer.Produce(created.Writer, progress: null, CancellationToken.None);
         created.Writer.Complete(new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc));
-        return Snapshot.Create([new DriveBlock('T', 0, block, deleteFileOnRelease: false)]);
+        return Snapshot.Create([new DriveBlock('T', 0, block)]);
     }
 
     [TestMethod]
@@ -199,18 +200,12 @@ public class EnumerationProducerTests
 
         Assert.AreEqual(7u, created.Writer.RowCount);
         Assert.IsTrue(observed.Count > 0, "the walk visited at least one directory");
-        CollectionAssert.AllItemsAreUnique(observed.Select(report => report.CurrentDirectory).ToArray());
+        Assert.AreEqual(IndexScanPhase.Enumerating, observed[0].Phase);
+        Assert.AreEqual('T', observed[0].DriveLetter);
+        CollectionAssert.AllItemsAreUnique(observed.Select(report => report.CurrentDirectory!).ToArray());
         Assert.IsTrue(observed[^1].RowsWritten > observed[0].RowsWritten,
             "later reports reflect more rows written as the walk progresses");
         Assert.AreEqual(7u, observed[^1].RowsWritten);
-    }
-
-    sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
-    {
-        public void Report(T value)
-        {
-            callback(value);
-        }
     }
 
     [TestMethod]
@@ -350,7 +345,7 @@ public class EnumerationProducerTests
 /// </summary>
 sealed class RecordingProgress : IProgress<IndexScanProgress>
 {
-    public List<string> Directories { get; } = [];
+    public List<string?> Directories { get; } = [];
 
     public void Report(IndexScanProgress value)
     {

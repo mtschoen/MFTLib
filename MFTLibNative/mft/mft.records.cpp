@@ -220,6 +220,7 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
     outEntry->parentRecordNumber = parent;
     outEntry->fileAttributes = attributes.standardInformation.present ? attributes.standardInformation.fileAttributes
                                                                       : nameAttr->FileAttributes;
+    outEntry->sequenceNumber = rec->SequenceNumber;
     outEntry->modifiedTime = attributes.standardInformation.present ? attributes.standardInformation.modifiedTime
                                                                     : static_cast<int64_t>(nameAttr->ModificationTime);
     outEntry->name = nameAttr->FileName;

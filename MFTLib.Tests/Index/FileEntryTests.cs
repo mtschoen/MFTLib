@@ -25,16 +25,16 @@ public class FileEntryTests
     {
         _builder = new SyntheticBlockBuilder();
         var root = _builder.AddRoot();
-        _directoryRow = _builder.AddRow("Documents", root, RowFlags.InUse | RowFlags.Directory, 0, ScanMoment,
-            attributes: (uint)FileAttributes.Directory);
-        _fileRow = _builder.AddRow("report.pdf", _directoryRow, RowFlags.InUse, 4096, FileMoment,
-            attributes: (uint)FileAttributes.Archive);
+        _directoryRow = _builder.AddRow("Documents", new RowColumns(root,
+            RowFlags.InUse | RowFlags.Directory, (uint)FileAttributes.Directory, 0, ScanMoment.Ticks, 0));
+        _fileRow = _builder.AddRow("report.pdf", new RowColumns(_directoryRow, RowFlags.InUse,
+            (uint)FileAttributes.Archive, 4096, FileMoment.Ticks, 0));
         _deletedRow = _builder.AddRow("gone.tmp", _directoryRow, RowFlags.InUse | RowFlags.Tombstone, 10,
-            FileMoment);
+            FileMoment, sequenceNumber: 0);
         _builder.Complete(ScanMoment);
 
         var block = _builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(_builder.DriveLetter, 0, block, deleteFileOnRelease: false);
+        var driveBlock = new DriveBlock(_builder.DriveLetter, 0, block);
         _snapshot = Snapshot.Create([driveBlock]);
     }
 
@@ -100,11 +100,11 @@ public class FileEntryTests
     {
         using var builder = new SyntheticBlockBuilder('V');
         var root = builder.AddRoot();
-        var row = builder.AddRow("huge.bin", root, RowFlags.InUse | RowFlags.SizeUnknown, 0, FileMoment);
+        var row = builder.AddRow("huge.bin", root, RowFlags.InUse | RowFlags.SizeUnknown, 0, FileMoment, sequenceNumber: 0);
         builder.Complete(ScanMoment);
 
         var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block, deleteFileOnRelease: false)]);
+        var snapshot = Snapshot.Create([new DriveBlock('V', 0, block)]);
         try
         {
             var entry = FileEntry.Create(snapshot, 0, row);
@@ -143,21 +143,21 @@ public class FileEntryTests
     }
 
     [TestMethod]
-    public void Open_ProducerKindIsNotEnumeration_ThrowsNotSupported()
+    public void Open_MftProducerNoRootDirectoryConfigured_ThrowsInvalidOperation()
     {
         using var builder = new SyntheticBlockBuilder('M');
         var root = builder.AddRoot();
-        var fileRow = builder.AddRow("record.dat", root, RowFlags.InUse, 128, FileMoment);
+        var fileRow = builder.AddRow("record.dat", root, RowFlags.InUse, 128, FileMoment, sequenceNumber: 0);
         builder.Complete(ScanMoment);
         builder.MutateHeader((ref header) => header.ProducerKind = ProducerKind.Mft);
 
         var block = builder.OpenForReading(out _)!;
-        var driveBlock = new DriveBlock(builder.DriveLetter, 0, block, deleteFileOnRelease: false);
+        var driveBlock = new DriveBlock(builder.DriveLetter, 0, block);
         var snapshot = Snapshot.Create([driveBlock]);
         try
         {
             var entry = FileEntry.Create(snapshot, 0, fileRow);
-            Assert.ThrowsException<NotSupportedException>(() => entry.Open(FileAccess.Read));
+            Assert.ThrowsException<InvalidOperationException>(() => entry.Open(FileAccess.Read));
         }
         finally
         {

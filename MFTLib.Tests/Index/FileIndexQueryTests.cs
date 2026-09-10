@@ -25,7 +25,8 @@ public class FileIndexQueryTests
         _index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
-            CacheDirectory = _cacheDirectory
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration
         }, CancellationToken.None);
     }
 

@@ -33,9 +33,9 @@ public class FileIndexWatchTests
         }))
         {
             var writer = new BlockWriter(block);
-            writer.TryWriteRow(0, "", new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 16, 0, ChangeMoment.Ticks));
-            writer.TryWriteRow(1, "Documents", new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 16, 0, ChangeMoment.Ticks));
-            writer.TryWriteRow(2, "readme.md", new RowColumns(1, RowFlags.InUse, 32, 100, ChangeMoment.Ticks));
+            writer.TryWriteRow(0, "", new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 16, 0, ChangeMoment.Ticks, 0));
+            writer.TryWriteRow(1, "Documents", new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 16, 0, ChangeMoment.Ticks, 0));
+            writer.TryWriteRow(2, "readme.md", new RowColumns(1, RowFlags.InUse, 32, 100, ChangeMoment.Ticks, 0));
             writer.Complete(ChangeMoment);
         }
 
@@ -47,7 +47,8 @@ public class FileIndexWatchTests
                 new IndexedDrive('E', _treeRoot, 0x0E0E0E0E),
                 new IndexedDrive('Z', Path.Combine(_treeRoot, "does-not-exist"), 0xDEAD0000)
             ],
-            CacheDirectory = _cacheDirectory
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration
         }, CancellationToken.None);
     }
 
@@ -84,11 +85,30 @@ public class FileIndexWatchTests
     }
 
     [TestMethod]
-    public async Task StartWatchingAsync_OnAnEnumerationDrive_CompletesWithoutStartingAWatch()
+    public async Task StartWatchingAsync_OnAMixedIndexWithoutASource_ThrowsInvalidOperation()
     {
-        await _index.StartWatchingAsync(CancellationToken.None);
         Assert.IsFalse(_index.Drives[1].WatchSupported);
         Assert.IsTrue(_index.Drives[0].WatchSupported);
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => _index.StartWatchingAsync(CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task StartWatchingAsync_OnAnEnumerationOnlyIndex_CompletesWithoutCallingSource()
+    {
+        var source = new FailIfCalledWatchSource();
+
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('E', _treeRoot, 0x0E0E0E0E)],
+            CacheDirectory = Path.Combine(_cacheDirectory, "enumeration-only"),
+            ProducerPolicy = ProducerPolicy.Enumeration,
+            WatchSource = source
+        }, CancellationToken.None);
+
+        await index.StartWatchingAsync(CancellationToken.None);
+
+        Assert.IsFalse(source.WasCalled);
     }
 
     [TestMethod]
@@ -197,6 +217,21 @@ public class FileIndexWatchTests
     }
 
     [TestMethod]
+    public void ApplyJournalEntries_MultipleHandlerExceptions_ThrowsAggregateException()
+    {
+        _index.Changed += _ => throw new InvalidOperationException("first boom");
+        _index.Changed += _ => throw new InvalidOperationException("second boom");
+
+        var thrown = Assert.ThrowsException<AggregateException>(() => _index.ApplyJournalEntries('T',
+            [Entry(20, 0, "first.txt", UsnReason.FileCreate | UsnReason.Close)],
+            journalId: 5, nextUsn: 100));
+
+        Assert.AreEqual(2, thrown.InnerExceptions.Count);
+        CollectionAssert.AreEquivalent(new[] { "first boom", "second boom" },
+            thrown.InnerExceptions.Select(exception => exception.Message).ToArray());
+    }
+
+    [TestMethod]
     public void ApplyJournalEntries_SingleHandlerException_KeepsTheStackTraceOfTheHandlerThatThrew()
     {
         _index.Changed += ThrowingSubscriber;
@@ -213,5 +248,31 @@ public class FileIndexWatchTests
     static void ThrowingSubscriber(FileChange change)
     {
         throw new InvalidOperationException("boom");
+    }
+
+    /// <summary>Every member fails the test, so an index with nothing watchable proves it.</summary>
+    sealed class FailIfCalledWatchSource : IIndexWatchSource
+    {
+        public bool WasCalled { get; private set; }
+
+        public IAsyncEnumerable<WatchStreamItem> StartWatching(IReadOnlyList<IndexWatchTarget> targets,
+            CancellationToken cancellationToken)
+        {
+            WasCalled = true;
+            throw new AssertFailedException(
+                $"Source received {targets.Count} target(s) with cancellation {cancellationToken.CanBeCanceled}.");
+        }
+
+        public Task ArmDriveAsync(IndexWatchTarget target, CancellationToken cancellationToken)
+        {
+            WasCalled = true;
+            throw new AssertFailedException($"Source was asked to arm drive {target.DriveLetter}.");
+        }
+
+        public Task DisarmDriveAsync(char driveLetter, CancellationToken cancellationToken)
+        {
+            WasCalled = true;
+            throw new AssertFailedException($"Source was asked to disarm drive {driveLetter}.");
+        }
     }
 }

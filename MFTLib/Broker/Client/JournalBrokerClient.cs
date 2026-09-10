@@ -38,9 +38,11 @@ public sealed partial class JournalBrokerClient(
     readonly Dictionary<string, IDisposable> _mmfLifetimes = new(StringComparer.Ordinal);
     readonly Dictionary<string, BlockFile> _pendingBlocks = new(StringComparer.Ordinal);
     readonly object _mmfLifetimesLock = new();
-    // Pipe write mutex: only ArmScanAndCatchUpAsync and DisposeAsync write to the pipe,
-    // and DisposeAsync waits for ArmScanAndCatchUpAsync to finish before writing Shutdown.
+    // Serialize scan, watch-control, and shutdown writes so frames cannot interleave.
     readonly SemaphoreSlim _writeLock = new(1, 1);
+    // Hold across epoch assignment or retirement and the frame write, so local arm
+    // state advances in wire order. A plain lock cannot span the awaited write.
+    readonly SemaphoreSlim _armOrderingGate = new(1, 1);
 
     // Guards single-fire BrokerDied: 0 = not yet fired, 1 = fired. Swapped with
     // Interlocked.Exchange so only the first caller fires the event.
@@ -52,10 +54,4 @@ public sealed partial class JournalBrokerClient(
     ///     readers detect the same death.
     /// </summary>
     public event Action<string>? BrokerDied;
-
-    /// <summary>
-    ///     Fired when a non-fatal <see cref="BrokerFrameKind.Warning" /> frame arrives from the broker.
-    ///     Carries the drive letter and warning message.
-    /// </summary>
-    public event Action<string, string>? WarningReceived;
 }

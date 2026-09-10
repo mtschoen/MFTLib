@@ -13,12 +13,14 @@ readonly struct NativeStrings(IntPtr namePtr, ushort nameLength, IntPtr pathPtr,
 }
 
 internal readonly struct MftRecordFields(
-    ushort flags, FileAttributes fileAttributes = 0, long size = 0, long modifiedFileTime = 0)
+    ushort flags, FileAttributes fileAttributes = 0, long size = 0, long modifiedFileTime = 0,
+    ushort sequenceNumber = 0)
 {
     public readonly ushort Flags = flags;
     public readonly FileAttributes FileAttributes = fileAttributes;
     public readonly long Size = size;
     public readonly long ModifiedFileTime = modifiedFileTime;
+    public readonly ushort SequenceNumber = sequenceNumber;
 }
 
 /// <summary>
@@ -35,6 +37,7 @@ internal sealed record MftRecordTestValues
     public FileAttributes FileAttributes { get; init; }
     public long Size { get; init; }
     public long ModifiedFileTime { get; init; }
+    public ushort SequenceNumber { get; init; }
 }
 
 public readonly struct MftRecord
@@ -46,6 +49,7 @@ public readonly struct MftRecord
     readonly bool _materialized;
     readonly long _size;
     readonly long _modifiedFileTime;
+    readonly ushort _sequenceNumber;
 
     const ushort SizeUnknownFlag = 0x8000;
 
@@ -59,15 +63,18 @@ public readonly struct MftRecord
     readonly string? _fullPath;
 
     /// <summary>
-    ///     MFT segment index (48-bit, sequence number stripped). Stable across USN journal reads.
+    ///     MFT segment index (the lower 48 bits of the file reference number). Stable across USN
+    ///     journal reads. The sequence number is carried separately in <see cref="SequenceNumber" />.
     /// </summary>
     public ulong RecordNumber { get; }
 
     /// <summary>
-    ///     Parent directory's MFT segment index (48-bit, sequence number stripped).
+    ///     Parent directory's MFT segment index (the lower 48 bits of the file reference number).
     ///     The NTFS root directory is segment 5 (its parent is also 5).
     /// </summary>
     public ulong ParentRecordNumber { get; }
+
+    public ushort SequenceNumber => _sequenceNumber;
 
     public bool InUse => (_flags & 1) != 0;
     public bool IsDirectory => (_flags & 2) != 0;
@@ -188,6 +195,7 @@ public readonly struct MftRecord
         FileAttributes = fields.FileAttributes;
         _size = fields.Size;
         _modifiedFileTime = fields.ModifiedFileTime;
+        _sequenceNumber = fields.SequenceNumber;
         _namePtr = strings.NamePtr;
         _nameLength = strings.NameLength;
         _pathPtr = strings.PathPtr;
@@ -209,7 +217,7 @@ public readonly struct MftRecord
             return this;
         }
 
-        var fields = new MftRecordFields(_flags, FileAttributes, _size, _modifiedFileTime);
+        var fields = new MftRecordFields(_flags, FileAttributes, _size, _modifiedFileTime, _sequenceNumber);
         return new MftRecord(RecordNumber, ParentRecordNumber, fields, FileName, FullPath);
     }
 
@@ -222,6 +230,7 @@ public readonly struct MftRecord
         FileAttributes = fields.FileAttributes;
         _size = fields.Size;
         _modifiedFileTime = fields.ModifiedFileTime;
+        _sequenceNumber = fields.SequenceNumber;
         _fileName = fileName;
         _fullPath = fullPath;
         _namePtr = IntPtr.Zero;
@@ -234,7 +243,8 @@ public readonly struct MftRecord
 
     internal static MftRecord CreateForTest(MftRecordTestValues values)
     {
-        var fields = new MftRecordFields(values.Flags, values.FileAttributes, values.Size, values.ModifiedFileTime);
+        var fields = new MftRecordFields(values.Flags, values.FileAttributes, values.Size, values.ModifiedFileTime,
+            values.SequenceNumber);
         return new MftRecord(values.RecordNumber, values.ParentRecordNumber, fields, values.FileName, values.FullPath);
     }
 

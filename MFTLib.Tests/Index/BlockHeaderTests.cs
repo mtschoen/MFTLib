@@ -26,7 +26,9 @@ public class BlockHeaderTests
             UsnNextUsn = 0,
             Generation = 1,
             RowRegionOffset = BlockLayout.RowRegionOffset,
-            NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(100)
+            SequenceRegionOffset = (ulong)BlockLayout.SequenceRegionOffset(100),
+            NamePoolOffset = (ulong)BlockLayout.NamePoolOffset(100),
+            LiveRowCount = 8
         };
     }
 
@@ -36,7 +38,7 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void Header_IsExactlyEightyEightBytes()
+    public void Header_IsExpectedSize()
     {
         Assert.AreEqual(BlockLayout.HeaderFieldBytes, Marshal.SizeOf<BlockHeader>());
     }
@@ -50,6 +52,7 @@ public class BlockHeaderTests
         Assert.AreEqual(64, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.Generation)));
         Assert.AreEqual(72, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.RowRegionOffset)));
         Assert.AreEqual(80, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.NamePoolOffset)));
+        Assert.AreEqual(96, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.SequenceRegionOffset)));
     }
 
     [TestMethod]
@@ -159,6 +162,18 @@ public class BlockHeaderTests
     public void RootRow_SitsAtHeaderOffsetTwenty()
     {
         Assert.AreEqual(20, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.RootRow)));
+    }
+
+    [TestMethod]
+    public void LiveRowCount_SitsAtHeaderOffsetEightyEight()
+    {
+        Assert.AreEqual(88, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.LiveRowCount)));
+    }
+
+    [TestMethod]
+    public void FormatVersion_IsTwo()
+    {
+        Assert.AreEqual(2u, BlockLayout.FormatVersion);
     }
 
     [TestMethod]

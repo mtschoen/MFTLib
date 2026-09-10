@@ -17,9 +17,10 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 
 | Region | Offset | Size |
 | --- | --- | --- |
-| Header | 0 | 4096 (88 bytes used) |
+| Header | 0 | 4096 (104-byte declared header, including alignment padding) |
 | Rows | 4096 | `slot capacity * 32`, rounded up to a page |
-| Name pool | after rows | `name pool capacity`, rounded up to a page |
+| Sequence region | after rows | `slot capacity * 2`, rounded up to a page |
+| Name pool | after sequence region | `name pool capacity`, rounded up to a page |
 
 ## Header
 
@@ -41,6 +42,11 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 64 | generation | u64 | Bumped once per mutation batch |
 | 72 | row region offset | u64 | |
 | 80 | name pool offset | u64 | |
+| 88 | live row count | u32 | Rows in use and not tombstoned; maintained by `BlockWriter` |
+| 96 | sequence region offset | u64 | |
+
+The format version is 2. The declared header ends at byte 104 to preserve 8-byte
+alignment; the header region remains one 4096-byte page.
 
 The complete flag is written last. A producer that dies mid-write leaves a block
 without it, which a reader rejects.
@@ -91,6 +97,14 @@ point of the layout:
   that only means to change the flags, which must round-trip the offset and the
   length through the same call.
 
+## Sequence region
+
+One `ushort` per row slot, densely stored after the row region and before the
+name pool. The sequence region stores one sequence number per slot so readers can
+derive a 64-bit file identifier in the form `(sequenceNumber << 48) | recordNumber`.
+For slot capacity *N*, the region uses `N * 2` bytes, then aligns to 4 KB like all
+other block regions.
+
 ## Capacity
 
 Slot capacity is the estimated row count plus headroom of 25 percent or 65536
@@ -105,7 +119,7 @@ the caller can offer a rescan. Compaction is a rescan.
 UTF-16, append only. A rename appends the new name to the name pool and then
 atomically updates the row descriptor word (name offset, name length, and row
 flags) with a single 64-bit store, so a concurrent reader sees the old name or
-the new one and never a torn descriptor. Names are not interned in v1. Maximum
+the new one and never a torn descriptor. Names are not interned. Maximum
 name length is 32767 UTF-16 code units.
 
 ## Enumeration blocks
@@ -119,8 +133,10 @@ cursor, which is why a `FileId` from such a block reports `IsSynthetic`.
 
 Rows are dense by NTFS record number: row i is record i, with unused slots left
 empty and the volume root at row 5 (`BlockHeader.RootRow`). `RowCount` is the
-highest written slot plus one, not the number of live records. A size-unknown
-row carries `RowFlags.SizeUnknown` and a zero size when no usable data size was
+highest written slot plus one. `LiveRowCount` counts records that are in use and
+not tombstoned, excluding free slots and deleted files. Use the live count when
+displaying a file count; `DriveStatus.LiveRowCount` reads it from the header. A
+size-unknown row carries `RowFlags.SizeUnknown` and a zero size when no usable data size was
 found in the base record, including data in an extension record that the parser
 does not follow or a negative non-resident data size. A known zero size means an
 empty file or a directory.
