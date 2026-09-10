@@ -5,8 +5,13 @@ public readonly partial record struct FileEntry
     /// <summary>
     ///     The full path, built once per call by walking the parent column upward and joining the
     ///     collected name spans. This allocates; nothing else on the handle except
-    ///     <see cref="Name" /> does.
+    ///     <see cref="Name" /> does. The parent walk is limited to
+    ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops.
     /// </summary>
+    /// <exception cref="InvalidDataException">
+    ///     The parent chain does not reach the volume root within
+    ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops.
+    /// </exception>
     public string Path => IndexNavigation.BuildPath(Snapshot, DriveOrdinal, RowIndex);
 
     /// <summary>The parent directory, or null for the volume root, whose parent is itself.</summary>

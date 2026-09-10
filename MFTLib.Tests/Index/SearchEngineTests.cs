@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -155,6 +156,62 @@ public class SearchEngineTests
         var pictures = FileEntry.Create(_snapshot, 0, _picturesRow);
         var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery("report", Under: pictures));
         Assert.AreEqual(0, results.Count);
+    }
+
+    [TestMethod]
+    public void Search_Under_WhenCandidateExceedsTheDepthCap_ThrowsInvalidDataException()
+    {
+        using var builder = new SyntheticBlockBuilder('Z', slotCapacity: 512, namePoolCapacity: 16384);
+        var root = builder.AddRoot();
+        var parent = root;
+        for (var level = 0; level < BlockLayout.MaximumPathDepth; level++)
+        {
+            parent = builder.AddRow($"d{level}", parent, RowFlags.InUse | RowFlags.Directory, 0, Older, sequenceNumber: 0);
+        }
+
+        builder.AddRow("needle.txt", parent, RowFlags.InUse, 1, Newer, sequenceNumber: 0);
+        builder.Complete(Newer);
+        var block = builder.OpenForReading(out _)!;
+        var snapshot = Snapshot.Create([new DriveBlock('Z', 0, block)]);
+        try
+        {
+            var ancestor = FileEntry.Create(snapshot, 0, root);
+            var exception = Assert.ThrowsException<InvalidDataException>(() =>
+                SearchEngineTestAccess.Search(snapshot, new SearchQuery("needle.txt", Under: ancestor)));
+            StringAssert.Contains(exception.Message, BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture));
+        }
+        finally
+        {
+            snapshot.ReleaseNow();
+        }
+    }
+
+    [TestMethod]
+    public void Search_Under_WhenCandidateHasACyclicParentColumn_ExcludesCyclicCandidateWithoutThrowing()
+    {
+        using var builder = new SyntheticBlockBuilder('Z');
+        var root = builder.AddRoot();
+        var dirA = builder.AddRow("dirA", 2, RowFlags.InUse | RowFlags.Directory, 0, Older, sequenceNumber: 0);
+        var dirB = builder.AddRow("dirB", dirA, RowFlags.InUse | RowFlags.Directory, 0, Older, sequenceNumber: 0);
+        builder.AddRow("cyclic.txt", dirB, RowFlags.InUse, 10, Newer, sequenceNumber: 0);
+
+        var validDir = builder.AddRow("validDir", root, RowFlags.InUse | RowFlags.Directory, 0, Older, sequenceNumber: 0);
+        builder.AddRow("valid.txt", validDir, RowFlags.InUse, 20, Newer, sequenceNumber: 0);
+        builder.Complete(Newer);
+
+        var block = builder.OpenForReading(out _)!;
+        var snapshot = Snapshot.Create([new DriveBlock('Z', 0, block)]);
+        try
+        {
+            var ancestor = FileEntry.Create(snapshot, 0, root);
+            var results = SearchEngineTestAccess.Search(snapshot, new SearchQuery("*.txt", Under: ancestor));
+            Assert.AreEqual(1, results.Count);
+            Assert.AreEqual("valid.txt", results[0].Name);
+        }
+        finally
+        {
+            snapshot.ReleaseNow();
+        }
     }
 
     [TestMethod]

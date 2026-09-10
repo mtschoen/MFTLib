@@ -5,8 +5,8 @@ namespace MFTLib.Index;
 /// <summary>
 ///     Walks the parent column. The upward walk mirrors the native path resolver: it stops at a
 ///     row whose parent is itself, caps at <see cref="BlockLayout.MaximumPathDepth" />, and
-///     never revisits a row already seen on this walk, so a corrupt parent column yields a
-///     truncated path instead of a hang.
+///     never revisits a row already seen on this walk, so a cyclic parent column yields a
+///     truncated path instead of a hang while depth exhaustion throws <see cref="InvalidDataException" />.
 /// </summary>
 internal static class IndexNavigation
 {
@@ -84,6 +84,9 @@ internal static class IndexNavigation
         var block = candidate.DriveBlock.Block;
         var current = candidate.RowIndex;
         var target = ancestor.RowIndex;
+        var hare = current;
+        var cycleDetectionActive = true;
+
         for (var depth = 0; depth < BlockLayout.MaximumPathDepth; depth++)
         {
             if (current == target)
@@ -97,9 +100,40 @@ internal static class IndexNavigation
             }
 
             current = parent;
+            if (current == target)
+            {
+                return true;
+            }
+
+            if (cycleDetectionActive)
+            {
+                if (TryGetParentRow(block, hare, out hare) &&
+                    TryGetParentRow(block, hare, out hare))
+                {
+                    if (hare == current)
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    cycleDetectionActive = false;
+                }
+            }
         }
 
-        return false;
+        if (current == target)
+        {
+            return true;
+        }
+
+        if (!TryGetParentRow(block, current, out _))
+        {
+            return false;
+        }
+
+        throw new InvalidDataException(
+            $"Parent chain for {candidate.Id} exceeds the supported depth of {BlockLayout.MaximumPathDepth} hops.");
     }
 
     static List<string> CollectSegments(BlockFile block, uint rowIndex)
@@ -113,7 +147,7 @@ internal static class IndexNavigation
         {
             if (current >= rowCount || !visited.Add(current) || IsRootRow(block, current))
             {
-                break;
+                return segments;
             }
 
             var name = NamePool.ReadRowName(block, current);
@@ -125,7 +159,13 @@ internal static class IndexNavigation
             current = block.Rows[(int)current].ParentRow;
         }
 
-        return segments;
+        if (current >= rowCount || visited.Contains(current) || IsRootRow(block, current))
+        {
+            return segments;
+        }
+
+        throw new InvalidDataException(
+            $"Parent chain for row {rowIndex} exceeds the supported depth of {BlockLayout.MaximumPathDepth} hops.");
     }
 }
 

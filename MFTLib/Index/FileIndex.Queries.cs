@@ -20,12 +20,25 @@ public sealed partial class FileIndex
     ///     The whole match set, materialized. Callers page by slicing the returned list, which is
     ///     why the count is available up front and there is no cursor.
     /// </summary>
+    /// <exception cref="InvalidDataException">
+    ///     A candidate's parent chain does not resolve within
+    ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops while applying the subtree restriction
+    ///     (<see cref="SearchQuery.Under" />).
+    /// </exception>
     public IReadOnlyList<FileEntry> Search(SearchQuery query)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return SearchEngine.Search(CurrentSnapshot, query);
     }
 
+    /// <summary>
+    ///     Returns the largest files across the current snapshot, optionally restricted to an inclusive subtree.
+    /// </summary>
+    /// <exception cref="InvalidDataException">
+    ///     A candidate's parent chain does not resolve within
+    ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops while applying the subtree restriction
+    ///     (<paramref name="under" />).
+    /// </exception>
     public IReadOnlyList<FileEntry> Largest(int count, FileEntry? under = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

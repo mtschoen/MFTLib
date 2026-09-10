@@ -192,8 +192,11 @@ mapping closes.
 ### 5.3 Paths and opening
 
 `Path` walks the parent column upward, collecting name spans, and builds the
-string once. Depth is capped and cycles are guarded exactly as the native
-resolver does today.
+string once. Depth is capped at `BlockLayout.MaximumPathDepth` and cycles are guarded, as in
+the native resolver. Reaching the root or requested ancestor exactly at the cap
+succeeds; if a valid parent chain must continue beyond it, `Path`, `Search`
+with `Under`, and `Largest` with `under` throw `InvalidDataException` rather
+than returning a truncated path or incomplete result set.
 
 `Open` uses the NTFS file id. It opens the volume root directory with backup
 semantics as the reference handle, which needs no elevation, and calls

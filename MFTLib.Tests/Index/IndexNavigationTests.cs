@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -201,26 +202,119 @@ public class IndexNavigationTests
     }
 
     [TestMethod]
-    public void Path_DeeperThanTheDepthCap_IsTruncatedNotInfinite()
+    public void Path_AtTheDepthCap_ResolvesTheCompletePath()
     {
         using var builder = new SyntheticBlockBuilder('X', slotCapacity: 512, namePoolCapacity: 16384);
         var root = builder.AddRoot();
         var parent = root;
-        for (var level = 0; level < BlockLayout.MaximumPathDepth + 20; level++)
+        for (var level = 0; level < BlockLayout.MaximumPathDepth; level++)
         {
             parent = builder.AddRow($"d{level}", parent, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
         }
 
         builder.Complete(Moment);
-
         var block = builder.OpenForReading(out _)!;
         var snapshot = Snapshot.Create([new DriveBlock('X', 0, block)]);
         try
         {
             var path = FileEntry.Create(snapshot, 0, parent).Path;
-            var separators = path.Count(character => character == '\\');
-            Assert.IsTrue(separators <= BlockLayout.MaximumPathDepth + 1,
-                $"Path had {separators} separators, above the depth cap.");
+            Assert.IsTrue(path.StartsWith(@"X:\d0\d1", StringComparison.Ordinal));
+            Assert.IsTrue(path.EndsWith(@"\d127", StringComparison.Ordinal));
+            Assert.AreEqual(BlockLayout.MaximumPathDepth, path.Count(character => character == '\\'));
+        }
+        finally
+        {
+            snapshot.ReleaseNow();
+        }
+    }
+
+    [TestMethod]
+    public void Path_DeeperThanTheDepthCap_ThrowsInvalidDataException()
+    {
+        using var builder = new SyntheticBlockBuilder('X', slotCapacity: 512, namePoolCapacity: 16384);
+        var root = builder.AddRoot();
+        var parent = root;
+        for (var level = 0; level <= BlockLayout.MaximumPathDepth; level++)
+        {
+            parent = builder.AddRow($"d{level}", parent, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        }
+
+        builder.Complete(Moment);
+        var block = builder.OpenForReading(out _)!;
+        var snapshot = Snapshot.Create([new DriveBlock('X', 0, block)]);
+        try
+        {
+            var exception = Assert.ThrowsException<InvalidDataException>(
+                () => _ = FileEntry.Create(snapshot, 0, parent).Path);
+            StringAssert.Contains(exception.Message, BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture));
+        }
+        finally
+        {
+            snapshot.ReleaseNow();
+        }
+    }
+
+    [TestMethod]
+    public void IsUnder_AncestorExactlyAtTheDepthCap_ReturnsTrue()
+    {
+        using var builder = new SyntheticBlockBuilder('Z', slotCapacity: 512, namePoolCapacity: 16384);
+        var root = builder.AddRoot();
+        var candidate = root;
+        for (var level = 0; level < BlockLayout.MaximumPathDepth; level++)
+        {
+            candidate = builder.AddRow($"d{level}", candidate, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        }
+
+        builder.Complete(Moment);
+        var block = builder.OpenForReading(out _)!;
+        var snapshot = Snapshot.Create([new DriveBlock('Z', 0, block)]);
+        try
+        {
+            Assert.IsTrue(IndexNavigationTestAccess.IsUnder(
+                FileEntry.Create(snapshot, 0, candidate),
+                FileEntry.Create(snapshot, 0, root)));
+        }
+        finally
+        {
+            snapshot.ReleaseNow();
+        }
+    }
+
+    [TestMethod]
+    public void IsUnder_WithACyclicParentColumn_ReturnsFalseInsteadOfThrowing()
+    {
+        using var builder = new SyntheticBlockBuilder('W');
+        var root = builder.AddRoot();
+        var first = builder.AddRow("a", 2, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        var second = builder.AddRow("b", first, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        var child = builder.AddRow("c", second, RowFlags.InUse, 10, Moment, sequenceNumber: 0);
+        builder.Complete(Moment);
+
+        var block = builder.OpenForReading(out _)!;
+        var snapshot = Snapshot.Create([new DriveBlock('W', 0, block)]);
+        try
+        {
+            // Rows 1 and 2 point at each other. None of these reach root.
+            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(
+                FileEntry.Create(snapshot, 0, second),
+                FileEntry.Create(snapshot, 0, root)));
+            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(
+                FileEntry.Create(snapshot, 0, first),
+                FileEntry.Create(snapshot, 0, root)));
+            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(
+                FileEntry.Create(snapshot, 0, child),
+                FileEntry.Create(snapshot, 0, root)));
+
+            // But rows in the cycle or under the cycle are under cycle members.
+            Assert.IsTrue(IndexNavigationTestAccess.IsUnder(
+                FileEntry.Create(snapshot, 0, second),
+                FileEntry.Create(snapshot, 0, first)));
+            Assert.IsTrue(IndexNavigationTestAccess.IsUnder(
+                FileEntry.Create(snapshot, 0, first),
+                FileEntry.Create(snapshot, 0, second)));
+            Assert.IsTrue(IndexNavigationTestAccess.IsUnder(
+                FileEntry.Create(snapshot, 0, child),
+                FileEntry.Create(snapshot, 0, first)));
         }
         finally
         {
