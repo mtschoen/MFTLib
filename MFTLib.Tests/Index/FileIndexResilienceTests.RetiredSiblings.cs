@@ -14,7 +14,7 @@ public partial class FileIndexResilienceTests
     {
         Directory.CreateDirectory(_cacheDirectory);
         var staleRetiredPath = Path.Combine(_cacheDirectory,
-            CacheDirectory.BlockFileName('T', 0x0BADF00D) + ".retired-" + Guid.NewGuid().ToString("N"));
+            CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process");
 
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
@@ -28,7 +28,7 @@ public partial class FileIndexResilienceTests
     {
         Directory.CreateDirectory(_cacheDirectory);
         var staleRetiredPath = Path.Combine(_cacheDirectory,
-            CacheDirectory.BlockFileName('T', 0x0BADF00D) + ".retired-" + Guid.NewGuid().ToString("N"));
+            CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process");
 
         // No FileShare.Delete, so Windows' best-effort delete inside cleanup hits a sharing
@@ -49,7 +49,7 @@ public partial class FileIndexResilienceTests
     {
         Directory.CreateDirectory(_cacheDirectory);
         var staleRetiredPath = Path.Combine(_cacheDirectory,
-            CacheDirectory.BlockFileName('T', 0x0BADF00D) + ".retired-" + Guid.NewGuid().ToString("N"));
+            CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
         await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process");
         File.SetAttributes(staleRetiredPath, FileAttributes.ReadOnly);
 

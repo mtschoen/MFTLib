@@ -14,10 +14,12 @@ public partial class FileIndexResilienceTests
 {
     string _treeRoot = null!;
     string _cacheDirectory = null!;
+    uint _volumeSerial;
 
     [TestInitialize]
     public void Initialize()
     {
+        _volumeSerial = TestVolumeSerial.GetNext();
         _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
         _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
@@ -47,7 +49,7 @@ public partial class FileIndexResilienceTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
+            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial)],
             CacheDirectory = _cacheDirectory,
             NoCache = noCache,
             ProducerPolicy = ProducerPolicy.Enumeration,
@@ -96,7 +98,7 @@ public partial class FileIndexResilienceTests
 
         await AssertThrowsCancellation(() => FileIndex.OpenAsync(options, cancellationTokenSource.Token));
 
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
         if (File.Exists(blockPath))
         {
             // Proves the partial block is not still mapped: File.Delete would succeed even on a
@@ -171,7 +173,7 @@ public partial class FileIndexResilienceTests
         await AssertThrowsCancellation(() => FileIndex.OpenAsync(options, cancellationTokenSource.Token));
 
         Assert.AreEqual(0, Directory.EnumerateFiles(Path.GetTempPath(),
-            $"mftlib-nocache-*-{CacheDirectory.BlockFileName('T', 0x0BADF00D)}").Count());
+            $"mftlib-nocache-*-{CacheDirectory.BlockFileName('T', _volumeSerial)}").Count());
     }
 
     [TestMethod]
@@ -211,10 +213,10 @@ public partial class FileIndexResilienceTests
 
             await AssertThrowsCancellation(() => index.RescanAsync('T', cancellationTokenSource.Token));
 
-            var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+            var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
             Assert.IsTrue(File.Exists(blockPath), "the canonical file must be restored, not left renamed aside");
             Assert.AreEqual(0, Directory.EnumerateFiles(_cacheDirectory,
-                CacheDirectory.BlockFileName('T', 0x0BADF00D) + ".retired-*").Count());
+                CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*").Count());
         }
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
@@ -271,7 +273,7 @@ public partial class FileIndexResilienceTests
         Assert.AreEqual(canonicalPath, newPath, "the new block takes the same canonical cache path");
 
         var retiredPaths = Directory
-            .EnumerateFiles(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D) + ".retired-*")
+            .EnumerateFiles(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
             .ToList();
         Assert.AreEqual(1, retiredPaths.Count);
         Assert.IsTrue(File.Exists(retiredPaths[0]));
@@ -295,7 +297,7 @@ public partial class FileIndexResilienceTests
         await index.RescanAsync('T', CancellationToken.None);
 
         var retiredPaths = Directory
-            .EnumerateFiles(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D) + ".retired-*")
+            .EnumerateFiles(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*")
             .ToList();
         Assert.AreEqual(2, retiredPaths.Count, "each rescan should retire a distinctly named file");
         Assert.AreNotEqual(retiredPaths[0], retiredPaths[1]);
@@ -326,7 +328,7 @@ public partial class FileIndexResilienceTests
         {
         }
 
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
         var bytes = await File.ReadAllBytesAsync(blockPath);
         bytes[0] = 0xFF;
         await File.WriteAllBytesAsync(blockPath, bytes);
@@ -350,7 +352,7 @@ public partial class FileIndexResilienceTests
     public async Task RescanAsync_CanonicalCacheFileMissing_StillSucceedsWithoutRenamingAnything()
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
 
         // Simulates a canonical cache file removed out from under the index between opens, so
         // RenameAsideForRescan finds nothing to rename aside. Safe while the block is still
@@ -362,7 +364,35 @@ public partial class FileIndexResilienceTests
 
         Assert.IsTrue(File.Exists(canonicalPath));
         Assert.AreEqual(0, Directory.EnumerateFiles(_cacheDirectory,
-            CacheDirectory.BlockFileName('T', 0x0BADF00D) + ".retired-*").Count());
+            CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*").Count());
     }
 
+    [TestMethod]
+    public async Task OpenAsync_NoCacheMode_AnotherTestInstanceDoesNotDeleteTheLiveTempBlock()
+    {
+        var firstFixture = new FileIndexResilienceTests();
+        var secondFixture = new FileIndexResilienceTests();
+        firstFixture.Initialize();
+        secondFixture.Initialize();
+
+        try
+        {
+            await using var firstIndex =
+                await FileIndex.OpenAsync(firstFixture.Options(noCache: true), CancellationToken.None);
+            Assert.IsTrue(firstIndex.TryGetDriveOrdinal('T', out var firstDriveOrdinal));
+            var firstBlockPath = firstIndex.CurrentSnapshot.GetDriveBlock(firstDriveOrdinal).Block.Path;
+            Assert.IsTrue(File.Exists(firstBlockPath));
+
+            await using var secondIndex =
+                await FileIndex.OpenAsync(secondFixture.Options(noCache: true), CancellationToken.None);
+
+            Assert.IsTrue(File.Exists(firstBlockPath),
+                "opening another test fixture must not unlink this fixture's live no-cache block");
+        }
+        finally
+        {
+            firstFixture.Cleanup();
+            secondFixture.Cleanup();
+        }
+    }
 }

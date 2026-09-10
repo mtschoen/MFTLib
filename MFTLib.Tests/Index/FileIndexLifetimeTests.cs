@@ -8,10 +8,12 @@ public class FileIndexLifetimeTests
 {
     string _treeRoot = null!;
     string _cacheDirectory = null!;
+    uint _volumeSerial;
 
     [TestInitialize]
     public void Initialize()
     {
+        _volumeSerial = TestVolumeSerial.GetNext();
         _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
         _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
@@ -41,7 +43,7 @@ public class FileIndexLifetimeTests
     {
         return new FileIndexOptions
         {
-            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
+            Drives = [new IndexedDrive('T', _treeRoot, _volumeSerial)],
             CacheDirectory = _cacheDirectory,
             NoCache = noCache,
             ProducerPolicy = policy
@@ -58,7 +60,7 @@ public class FileIndexLifetimeTests
         Assert.AreEqual(ProducerKind.Enumeration, index.Drives[0].ProducerKind);
         Assert.IsTrue(index.Drives[0].RowCount >= 3);
         Assert.IsFalse(index.Drives[0].WatchSupported);
-        Assert.IsTrue(File.Exists(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D))));
+        Assert.IsTrue(File.Exists(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial))));
     }
 
     [TestMethod]
@@ -81,7 +83,7 @@ public class FileIndexLifetimeTests
         {
         }
 
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
         var bytes = await File.ReadAllBytesAsync(blockPath);
         bytes[0] = 0xFF;
         await File.WriteAllBytesAsync(blockPath, bytes);
@@ -99,7 +101,7 @@ public class FileIndexLifetimeTests
             Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         }
 
-        var cachedBlock = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var cachedBlock = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
         Assert.IsFalse(File.Exists(cachedBlock));
     }
 
