@@ -104,6 +104,30 @@ public class JournalMutatorTests
     }
 
     [TestMethod]
+    public void DeleteAfterCreateMissedAtCapacity_ProducesNoChangeForTheUnusedRow()
+    {
+        var mutator = new JournalMutator(_writer);
+        var generationBefore = _block.Header.Generation;
+        var nameTooLargeForTheRemainingPool = new string('n', 300);
+
+        var changes = mutator.Apply(_snapshot, 0,
+        [
+            Entry(5, 1, nameTooLargeForTheRemainingPool,
+                UsnReason.FileCreate | UsnReason.Close, ChangeMoment),
+            Entry(5, 1, nameTooLargeForTheRemainingPool,
+                UsnReason.FileDelete | UsnReason.Close, ChangeMoment)
+        ], journalId: 7, nextUsn: 2000);
+
+        Assert.AreEqual(0, changes.Count);
+        Assert.IsTrue(mutator.CompactionNeeded);
+        Assert.IsFalse(_block.Rows[5].IsInUse);
+        Assert.IsFalse(_block.Rows[5].IsDeleted);
+        Assert.AreEqual(generationBefore, _block.Header.Generation);
+        Assert.AreEqual(7ul, _block.Header.UsnJournalId);
+        Assert.AreEqual(2000L, _block.Header.UsnNextUsn);
+    }
+
+    [TestMethod]
     public void Rename_AppendsTheNewNameSwapsTheRowAndReportsThePreviousPath()
     {
         var mutator = new JournalMutator(_writer);
