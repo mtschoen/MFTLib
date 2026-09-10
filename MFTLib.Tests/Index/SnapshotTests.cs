@@ -1,3 +1,4 @@
+using System.Collections;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -7,6 +8,33 @@ namespace MFTLib.Tests.Index;
 public class SnapshotTests
 {
     static readonly DateTime ScanMoment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
+
+    sealed class ReleaseBeforeSecondBlockList(
+        DriveBlock first,
+        DriveBlock second,
+        Action releaseBeforeSecond) : IReadOnlyList<DriveBlock>
+    {
+        public int Count => 2;
+
+        public DriveBlock this[int index] => index switch
+        {
+            0 => first,
+            1 => second,
+            _ => throw new ArgumentOutOfRangeException(nameof(index))
+        };
+
+        public IEnumerator<DriveBlock> GetEnumerator()
+        {
+            yield return first;
+            releaseBeforeSecond();
+            yield return second;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+    }
 
     static DriveBlock OpenDriveBlock(SyntheticBlockBuilder builder, ushort ordinal)
     {
@@ -98,5 +126,39 @@ public class SnapshotTests
         driveBlock.Release();
 
         Assert.ThrowsException<InvalidOperationException>(() => Snapshot.Create([driveBlock]));
+    }
+
+    [TestMethod]
+    public void Create_WhenPreviousOwnerReleasesBeforeLaterBlockFails_KeepsFirstBlockMapped()
+    {
+        using var firstBuilder = CompletedBuilder('T');
+        using var secondBuilder = CompletedBuilder('U');
+        var firstBlock = OpenDriveBlock(firstBuilder, 0);
+        var secondBlock = OpenDriveBlock(secondBuilder, 1);
+        var previousOwner = Snapshot.Create([firstBlock]);
+
+        Assert.IsTrue(secondBlock.TryAddReference());
+        secondBlock.Release();
+
+        try
+        {
+            var blocks = new ReleaseBeforeSecondBlockList(
+                firstBlock,
+                secondBlock,
+                previousOwner.ReleaseNow);
+
+            Assert.ThrowsException<InvalidOperationException>(() => Snapshot.Create(blocks));
+            Assert.AreEqual(1, firstBlock.ReferenceCount);
+            Assert.IsFalse(firstBlock.IsReleased);
+            Assert.AreEqual(256, firstBlock.Block.Rows.Length);
+            Assert.AreEqual(1u, firstBlock.Block.Header.RowCount);
+        }
+        finally
+        {
+            if (firstBlock.ReferenceCount != 0)
+            {
+                firstBlock.Release();
+            }
+        }
     }
 }

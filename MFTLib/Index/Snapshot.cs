@@ -65,11 +65,9 @@ public sealed class Snapshot
                 continue;
             }
 
-            foreach (var alreadyTaken in taken)
-            {
-                alreadyTaken.Release();
-            }
-
+            // Keep references already acquired on this exceptional path. Another owner can release a
+            // block between this loop's TryAddReference calls; rolling back here could then become the
+            // last release and unmap a block that FileIndex still holds in its active block list.
             throw new InvalidOperationException(
                 $"Drive block {driveBlock.DriveLetter} was already released and cannot join a snapshot.");
         }
