@@ -33,7 +33,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// </summary>
     readonly Lock _stateLock = new();
 
-    Snapshot _snapshot;
+    Snapshot? _snapshot;
     WatchSession? _watchSession;
     bool _disposed;
 
@@ -76,7 +76,9 @@ public sealed partial class FileIndex : IAsyncDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             lock (_stateLock)
             {
-                return _snapshot;
+                var snapshot = _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
+                snapshot.MarkExposed();
+                return snapshot;
             }
         }
     }
@@ -141,12 +143,10 @@ public sealed partial class FileIndex : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Stops the live watch, then releases every block this index holds, current and retired,
-    ///     and unmaps their views. It does not wait for outstanding queries: disposal must not
-    ///     overlap an in-flight query, and every <see cref="FileEntry" /> minted from this index
-    ///     is invalid once it returns. A query already inside a column scan holds a span over
-    ///     memory this call unmaps, and touching it afterwards faults the process rather than
-    ///     raising a catchable exception. Let every query and every handle go before disposing.
+    ///     Stops the live watch, prevents new index operations, waits for mutation/rescan ownership
+    ///     of <see cref="_swapGate" />, releases snapshots that have no exposed handles deterministically,
+    ///     and detaches snapshot references with exposed handles so outstanding queries and handles
+    ///     keep their mappings alive until their snapshots finalize.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
@@ -177,8 +177,18 @@ public sealed partial class FileIndex : IAsyncDisposable
 
             lock (_stateLock)
             {
-                _snapshot.ReleaseNow();
+                if (_snapshot is not null)
+                {
+                    if (!_snapshot.HasExposedHandles)
+                    {
+                        _snapshot.ReleaseNow();
+                    }
+
+                    _snapshot = null;
+                }
+
                 _driveBlocks.Clear();
+                _retiredSnapshots.Clear();
             }
         }
         finally

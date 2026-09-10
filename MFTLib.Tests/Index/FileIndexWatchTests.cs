@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -159,6 +160,61 @@ public class FileIndexWatchTests
         Assert.AreEqual(FileChangeKind.Deleted, applied[0].Kind);
         Assert.IsTrue(target.IsDeleted);
         Assert.AreEqual("readme.md", target.Name);
+    }
+
+    sealed class ConcurrentReaderState
+    {
+        public readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public volatile bool Finished;
+    }
+
+    [TestMethod]
+    public async Task ApplyJournalEntries_ConcurrentHeldHandleReaderSeesOnlyCompleteNames()
+    {
+        var target = _index.Find(@"T:\Documents\readme.md")!.Value;
+        var recordNumber = target.Id.RecordNumber;
+        const string shortName = "x";
+        const string longName = "journal-renamed-document.txt";
+        var state = new ConcurrentReaderState();
+        var unexpectedNames = new ConcurrentQueue<string>();
+
+        var reader = Task.Run(() =>
+        {
+            state.Started.TrySetResult();
+            while (!state.Finished)
+            {
+                var name = target.Name;
+                if (name is not "readme.md" and not shortName and not longName)
+                {
+                    unexpectedNames.Enqueue(name);
+                }
+
+                Thread.Yield();
+            }
+        });
+
+        await state.Started.Task;
+        try
+        {
+            for (var iteration = 0; iteration < 64; iteration++)
+            {
+                var name = iteration % 2 == 0 ? shortName : longName;
+                _index.ApplyJournalEntries('T',
+                    [Entry(recordNumber, 1, name, UsnReason.RenameNewName | UsnReason.Close)],
+                    journalId: 5, nextUsn: iteration + 1);
+                Thread.Yield();
+            }
+        }
+        finally
+        {
+            state.Finished = true;
+        }
+
+        await reader;
+
+        Assert.AreEqual(0, unexpectedNames.Count,
+            $"Reader observed torn names: {string.Join(", ", unexpectedNames)}");
+        Assert.AreEqual(longName, target.Name);
     }
 
     [TestMethod]

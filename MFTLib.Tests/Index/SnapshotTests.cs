@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -20,6 +21,30 @@ public class SnapshotTests
         builder.AddRoot();
         builder.Complete(ScanMoment);
         return builder;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static WeakReference<Snapshot> CreateUnrootedSnapshot(DriveBlock driveBlock)
+    {
+        var snapshot = Snapshot.Create([driveBlock]);
+        return new WeakReference<Snapshot>(snapshot);
+    }
+
+    [TestMethod]
+    public void Finalizer_ReleasesDriveBlockWhenSnapshotBecomesUnreachable()
+    {
+        using var builder = CompletedBuilder('T');
+        var driveBlock = OpenDriveBlock(builder, 0);
+        var weakSnapshot = CreateUnrootedSnapshot(driveBlock);
+        Assert.AreEqual(1, driveBlock.ReferenceCount);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        Assert.IsFalse(weakSnapshot.TryGetTarget(out _));
+        Assert.AreEqual(0, driveBlock.ReferenceCount);
+        Assert.IsTrue(driveBlock.IsReleased);
     }
 
     [TestMethod]

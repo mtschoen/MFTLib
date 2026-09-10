@@ -13,9 +13,8 @@ namespace MFTLib.Index;
 /// <remarks>
 ///     The snapshot reference keeps the block mapped for as long as the handle is held, so a
 ///     rescan that supersedes the block cannot pull the memory out from under it. Disposing the
-///     owning <see cref="FileIndex" /> is the one thing that does: it releases every block
-///     regardless of outstanding handles, and a property read afterwards touches unmapped memory
-///     and faults the process rather than throwing. Drop every handle before disposing the index.
+///     owning <see cref="FileIndex" /> detaches its reference, and a held <see cref="FileEntry" />
+///     continues to root the snapshot and remains readable until the last handle becomes unreachable.
 /// </remarks>
 public readonly partial record struct FileEntry
 {
@@ -34,6 +33,7 @@ public readonly partial record struct FileEntry
     internal static FileEntry Create(Snapshot snapshot, ushort driveOrdinal, uint rowIndex)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        snapshot.MarkExposed();
         return new FileEntry(snapshot, driveOrdinal, rowIndex);
     }
 

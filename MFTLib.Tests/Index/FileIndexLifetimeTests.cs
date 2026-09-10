@@ -101,6 +101,10 @@ public class FileIndexLifetimeTests
             Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         }
 
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
         var cachedBlock = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
         Assert.IsFalse(File.Exists(cachedBlock));
     }
@@ -186,5 +190,27 @@ public class FileIndexLifetimeTests
 
         oldSnapshot.ReleaseNow();
         Assert.ThrowsException<ObjectDisposedException>(() => oldEntry.IsDirectory);
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_AHeldFileEntryRemainsReadable()
+    {
+        var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        var entry = index.Find(@"T:\Documents\readme.md")!.Value;
+        var expectedId = entry.Id;
+        var expectedModified = entry.Modified;
+        var expectedAttributes = entry.Attributes;
+
+        await index.DisposeAsync();
+
+        Assert.AreEqual(expectedId, entry.Id);
+        Assert.AreEqual("readme.md", entry.Name);
+        Assert.AreEqual(@"T:\Documents\readme.md", entry.Path);
+        Assert.AreEqual(5L, entry.Size);
+        Assert.IsTrue(entry.SizeKnown);
+        Assert.AreEqual(expectedModified, entry.Modified);
+        Assert.AreEqual(expectedAttributes, entry.Attributes);
+        Assert.IsFalse(entry.IsDirectory);
+        Assert.IsFalse(entry.IsDeleted);
     }
 }

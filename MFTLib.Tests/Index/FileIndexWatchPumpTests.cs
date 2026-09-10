@@ -307,6 +307,9 @@ public class FileIndexWatchPumpTests
         var producedBlock = harness.BlockFor('T');
 
         await harness.Index.DisposeAsync();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
 
         Assert.IsTrue(harness.SourceCancelled);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);

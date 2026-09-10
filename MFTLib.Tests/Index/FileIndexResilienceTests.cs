@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -226,8 +227,14 @@ public partial class FileIndexResilienceTests
         Assert.IsNull(reopened.Drives[0].DiscardedBlock);
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static string GetCurrentBlockPath(FileIndex index, ushort driveOrdinal)
+    {
+        return index.CurrentSnapshot.GetDriveBlock(driveOrdinal).Block.Path;
+    }
+
     [TestMethod]
-    public async Task DisposeAsync_NoCacheMode_DeletesEveryRetiredTempBlock()
+    public async Task DisposeAsync_NoCacheMode_DeletesEveryUnheldTempBlockAfterFinalization()
     {
         var index = await FileIndex.OpenAsync(Options(noCache: true), CancellationToken.None);
         string firstPath;
@@ -235,23 +242,24 @@ public partial class FileIndexResilienceTests
         try
         {
             Assert.IsTrue(index.TryGetDriveOrdinal('T', out var driveOrdinal));
-            firstPath = index.CurrentSnapshot.GetDriveBlock(driveOrdinal).Block.Path;
+            firstPath = GetCurrentBlockPath(index, driveOrdinal);
             Assert.IsTrue(File.Exists(firstPath));
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
             await index.RescanAsync('T', CancellationToken.None);
-            secondPath = index.CurrentSnapshot.GetDriveBlock(driveOrdinal).Block.Path;
+            secondPath = GetCurrentBlockPath(index, driveOrdinal);
 
             Assert.AreNotEqual(firstPath, secondPath);
             Assert.IsTrue(File.Exists(firstPath), "the superseded temp block is still mapped until dispose");
         }
         finally
         {
-            // Disposal is the action under test and the cleanup at once. A failed assertion above
-            // must still reach it, or a mapped no-cache block is left directly under the shared
-            // temp root, outside what [TestCleanup] removes, where it can fail an unrelated later
-            // test's directory delete on Windows and hide the failure that actually mattered.
+            // Disposal detaches the index snapshots, and the forced GC proves unheld snapshots
+            // then finalize and remove both no-cache files.
             await index.DisposeAsync();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
         }
 
         Assert.IsFalse(File.Exists(firstPath));
@@ -313,12 +321,14 @@ public partial class FileIndexResilienceTests
     public async Task ReadsAfterDispose_ThrowObjectDisposedException()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        var entry = index.Find(@"T:\Documents\readme.md")!.Value;
         await index.DisposeAsync();
 
         Assert.ThrowsException<ObjectDisposedException>(() => index.Drives);
         Assert.ThrowsException<ObjectDisposedException>(() => index.CurrentSnapshot);
         Assert.ThrowsException<ObjectDisposedException>(() => index.TryGetDriveOrdinal('T', out _));
         Assert.ThrowsException<ObjectDisposedException>(() => index.Scan(0));
+        Assert.AreEqual("readme.md", entry.Name);
     }
 
     [TestMethod]

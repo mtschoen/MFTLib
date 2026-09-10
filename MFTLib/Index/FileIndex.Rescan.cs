@@ -330,18 +330,15 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Swaps in a new snapshot over the current <see cref="_driveBlocks" /> list and tracks
-    ///     the retired one weakly, so <see cref="DisposeAsync" /> can force its release
-    ///     deterministically even if nothing else ever references it long enough for the
-    ///     finalizer to run. The retired snapshot is not force-released here: a caller may still
-    ///     hold a <see cref="FileEntry" /> minted from it, and <see cref="Snapshot.ReleaseNow" />
-    ///     is reserved for the index's own deterministic teardown in <see cref="DisposeAsync" />.
+    ///     the retired one weakly only to avoid extending its lifetime, so it is never
+    ///     force-released while a handle may retain it.
     /// </summary>
     void PublishSnapshot()
     {
         Snapshot previous;
         lock (_stateLock)
         {
-            previous = _snapshot;
+            previous = _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
             _snapshot = Snapshot.Create(_driveBlocks);
         }
 
@@ -350,16 +347,14 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Forces every retired snapshot still reachable through <see cref="_retiredSnapshots" />
-    ///     to release its blocks now, so a normal exit through <see cref="DisposeAsync" /> cleans
-    ///     up every superseded no-cache temp file and rescan-retired cache file even if the
-    ///     process never happened to trigger a finalizer for one in between.
+    ///     Forces every retired snapshot without exposed handles to release its blocks now, so a normal
+    ///     exit through <see cref="DisposeAsync" /> cleans up unheld temp and cache files immediately.
     /// </summary>
     void ReleaseAllRetiredSnapshots()
     {
         foreach (var weak in _retiredSnapshots)
         {
-            if (weak.TryGetTarget(out var retired))
+            if (weak.TryGetTarget(out var retired) && !retired.HasExposedHandles)
             {
                 retired.ReleaseNow();
             }

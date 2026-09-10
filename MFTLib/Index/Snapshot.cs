@@ -5,17 +5,26 @@ namespace MFTLib.Index;
 /// <summary>
 ///     The set of drive blocks current at one moment. A <see cref="FileEntry" /> holds a
 ///     reference to its snapshot, so a handle keeps its block mapped for as long as the handle
-///     is reachable. The finalizer is the release path for handles the caller simply drops;
-///     <see cref="ReleaseNow" /> is the deterministic path the index uses on teardown.
+///     is reachable. The finalizer is the release path for snapshots when all referencing
+///     handles are dropped; <see cref="ReleaseNow" /> is the deterministic path for code that
+///     exclusively owns a snapshot (including focused tests).
 /// </summary>
 public sealed class Snapshot
 {
     readonly DriveBlock[] _driveBlocks;
     int _releaseState;
+    int _hasExposedHandles;
 
     Snapshot(DriveBlock[] driveBlocks)
     {
         _driveBlocks = driveBlocks;
+    }
+
+    internal bool HasExposedHandles => Volatile.Read(ref _hasExposedHandles) != 0;
+
+    internal void MarkExposed()
+    {
+        Volatile.Write(ref _hasExposedHandles, 1);
     }
 
     /// <summary>
@@ -97,9 +106,10 @@ public sealed class Snapshot
     }
 
     [SuppressMessage("Design", "CA1816",
-        Justification = "ReleaseNow is the deterministic teardown path FileIndex calls; it is internal rather " +
-                         "than a public Dispose because ordinary consumers release a snapshot only by dropping " +
-                         "their FileEntry handles and letting the finalizer run.")]
+        Justification = "ReleaseNow is the deterministic path for code that exclusively owns a snapshot " +
+                         "(including focused tests); it is internal rather than a public Dispose because ordinary " +
+                         "consumers release a snapshot only by dropping their FileEntry handles and letting the " +
+                         "finalizer run.")]
     internal void ReleaseNow()
     {
         if (ReleaseCore())
