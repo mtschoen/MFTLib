@@ -77,6 +77,8 @@ and the live watch bridge and consumer-gap closures tracked as
 
 - A drive faulting while a sibling drive is between disarm and re-arm during a rescan isolates the fault to that drive: the awaiting-reader marker spans the whole disarm-to-rearm window rather than clearing on return from disarm
 - A journal-invalidation `Error` frame for one drive faults that drive's batch source with `InvalidOperationException` while other drives keep streaming
+- `IndexNavigation.BuildPath`, `IsUnder`, and subtree-restricted queries explicitly throw `InvalidDataException` when a valid parent chain exceeds `BlockLayout.MaximumPathDepth` hops instead of silently returning truncated paths or false negatives, while preserving cycle detection
+- Under capacity exhaustion (such as a delete following an unrecorded create), `JournalMutator` suppresses the `FileChangeKind.Deleted` change event when row hydration fails rather than emitting an invalid event for an unrecorded record
 
 ## 0.3.0
 

@@ -72,7 +72,7 @@ Write-Host ""
 
 # --- Pack NuGet ---
 Write-Host "Packing NuGet package..." -ForegroundColor Cyan
-& $msbuild "$repoRoot\MFTLib\MFTLib.csproj" -t:Pack -p:Configuration=Release -p:Platform=x64 -v:q -nologo
+& $msbuild "$repoRoot\MFTLib\MFTLib.csproj" -t:Pack -p:Configuration=Release -p:Platform=x64 -p:ContinuousIntegrationBuild=true -v:q -nologo
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Pack failed." -ForegroundColor Red
     exit 1
@@ -121,6 +121,9 @@ Write-Host ""
 Write-Host "Tagging $tag..." -ForegroundColor Cyan
 git tag $tag
 git push origin $tag
+if (git remote | Where-Object { $_ -eq "github" }) {
+    git push github $tag
+}
 
 # --- Create GitHub release ---
 Write-Host ""
