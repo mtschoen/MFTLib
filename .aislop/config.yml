@@ -27,7 +27,7 @@ engines:
   lint: true
   code-quality: true
   ai-slop: true
-  architecture: false
+  architecture: true
   security: true
 
 lint:

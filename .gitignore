@@ -407,3 +407,4 @@ native-coverage.cobertura.xml
 **/.aislop/*
 !**/.aislop/config.yml
 !**/.aislop/fork-commit
+!**/.aislop/rules.yml

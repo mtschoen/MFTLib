@@ -1,0 +1,26 @@
+# Architecture rules for MFTLib.
+# Enforces the substrate-neutral boundary for MFTLib.Index.
+rules:
+  - name: index-no-mft
+    type: forbid_import_from_path
+    from: "MFTLib/Index/**"
+    forbid: "MFTLib/Mft/**"
+    severity: error
+
+  - name: index-no-broker
+    type: forbid_import_from_path
+    from: "MFTLib/Index/**"
+    forbid: "MFTLib/Broker/**"
+    severity: error
+
+  - name: index-no-internal
+    type: forbid_import_from_path
+    from: "MFTLib/Index/**"
+    forbid: "MFTLib/Internal/**"
+    severity: error
+
+  - name: index-no-interop
+    type: forbid_import_from_path
+    from: "MFTLib/Index/**"
+    forbid: "MFTLib/Interop/**"
+    severity: error
