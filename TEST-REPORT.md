@@ -33,8 +33,8 @@ Roslynator could not load the mixed solution and fell back to five managed proje
 ## Commands
 
 ```powershell
-dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --filter "TestCategory!=RequiresAdmin" -p:CollectCoverage=true -p:CoverletOutputFormat=cobertura -p:CoverletOutput=../.superpowers/sdd/2026-09-09-packed-index-watch-bridge/fix-round1-coverage.xml
+dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --filter "TestCategory!=RequiresAdmin" -p:CollectCoverage=true -p:CoverletOutputFormat=cobertura -p:CoverletOutput=../coverage/mftlib-tests-coverage.xml
 aislop scan . --json
 ```
 
-Full output, timeout duration, focused results, coverage XML, and scan JSON are retained in the ignored Task 7b2 working directory under .superpowers/sdd/2026-09-09-packed-index-watch-bridge. The completion report there records the per-test evidence and final commit.
+These figures come from the plan 2b verification run. The per-task working directory that held its full output, coverage XML and scan JSON was git-ignored scratch and no longer exists: the plan completed in #137 and its document was reaped in #148. Re-run the commands above to regenerate the artifacts rather than looking for the originals.
