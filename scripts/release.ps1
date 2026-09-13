@@ -41,6 +41,48 @@ if (git tag -l $tag) {
     exit 1
 }
 
+# --- Verify the release commit is present on GitHub ---
+# SourceLink (PublishRepositoryUrl=true + SourceLink.GitHub) embeds the exact commit
+# being packed into the package, and symbol resolution for package consumers needs
+# that commit reachable on the public GitHub mirror. This check runs in both dry-run
+# and -Publish modes so the problem surfaces before the coverage run and pack, not
+# only right before dotnet nuget push.
+$releaseCommit = (git rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Could not resolve the release commit with git rev-parse HEAD." -ForegroundColor Red
+    exit 1
+}
+
+$githubMirrorUrl = "https://github.com/mtschoen/MFTLib.git"
+Write-Host "Verifying release commit $releaseCommit is present on the GitHub mirror ($githubMirrorUrl)..." -ForegroundColor Cyan
+
+$githubMainReference = git ls-remote $githubMirrorUrl refs/heads/main
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Could not reach the GitHub mirror ($githubMirrorUrl) with git ls-remote. Check network connectivity and try again." -ForegroundColor Red
+    exit 1
+}
+
+$githubMainCommit = ($githubMainReference -split "`t")[0]
+
+git fetch $githubMirrorUrl main
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Could not fetch main from the GitHub mirror ($githubMirrorUrl)." -ForegroundColor Red
+    exit 1
+}
+
+git merge-base --is-ancestor $releaseCommit FETCH_HEAD
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Release commit $releaseCommit is not present on GitHub main ($githubMirrorUrl)." -ForegroundColor Red
+    Write-Host "GitHub main is currently at $githubMainCommit." -ForegroundColor Red
+    Write-Host "Push the release commit to GitHub and re-run:" -ForegroundColor Yellow
+    Write-Host "  git push github main" -ForegroundColor Yellow
+    Write-Host "  (or, if the github remote is not configured locally: git push $githubMirrorUrl main)" -ForegroundColor Yellow
+    exit 1
+}
+
+Write-Host "Release commit $releaseCommit is present on GitHub main." -ForegroundColor Green
+Write-Host ""
+
 # --- Clean and restore ---
 # Resolve MSBuild via vswhere: a fresh shell has no MSBuild on PATH (same fix
 # as run-coverage.ps1 / native-coverage.ps1).

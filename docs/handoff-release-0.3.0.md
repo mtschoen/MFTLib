@@ -32,6 +32,9 @@ Validation measured on Linux (`scripts/coverage-linux.sh`):
 
 Ensure the exact merged history on Gitea `main` is mirrored to GitHub so SourceLink
 (`PublishRepositoryUrl=true` + `SourceLink.GitHub`) can resolve the commit that will be packed.
+A Gitea push mirror to GitHub now syncs `main` on every commit (with an 8 hour fallback
+sync), and `scripts/release.ps1` refuses to run unless the release commit is present on
+GitHub `main`, so this step is a manual fallback rather than the only line of defense.
 Note: in this repository, remote `origin` points to Gitea and remote `github` points to GitHub:
 
 ```bash
@@ -61,7 +64,10 @@ On Windows (`chonkers`):
 .\scripts\release.ps1
 ```
 
-This requires a clean tree and no existing `v0.3.0` tag. It resolves 64-bit MSBuild via `vswhere`,
+This requires a clean tree, no existing `v0.3.0` tag, and the release commit already present
+on GitHub `main` (the script verifies this with `git ls-remote` and `git merge-base --is-ancestor`
+against the public mirror before doing anything else, in both dry-run and `-Publish` modes).
+It resolves 64-bit MSBuild via `vswhere`,
 executes `scripts/run-coverage.ps1 -Configuration Release` (verifying full managed and elevated coverage),
 and packs `MFTLib.0.3.0.nupkg` and `.snupkg` with `ContinuousIntegrationBuild=true` without publishing.
 
