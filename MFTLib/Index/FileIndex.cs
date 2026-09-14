@@ -19,9 +19,20 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly Dictionary<ushort, int> _accessDeniedSubtreeCountByOrdinal = [];
     readonly Dictionary<ushort, string> _mftProducerFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, string> _watchFailureMessagesByOrdinal = [];
-    readonly List<WeakReference<Snapshot>> _retiredSnapshots = [];
+    readonly Dictionary<ushort, BlockSource> _blockSourcesByOrdinal = [];
+    readonly List<RetiredSnapshot> _retiredSnapshots = [];
     readonly FileIndexOptions _options;
     readonly SemaphoreSlim _swapGate = new(1, 1);
+
+    sealed class RetiredSnapshot
+    {
+        internal RetiredSnapshot(Snapshot snapshot)
+        {
+            Release = snapshot.ReleaseState;
+        }
+
+        internal SnapshotRelease Release { get; }
+    }
 
     /// <summary>
     ///     Guards reads and writes of <see cref="_snapshot" /> and <see cref="_driveBlocks" />
@@ -76,9 +87,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             lock (_stateLock)
             {
-                var snapshot = _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
-                snapshot.MarkExposed();
-                return snapshot;
+                return _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
             }
         }
     }
@@ -143,11 +152,17 @@ public sealed partial class FileIndex : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Stops the live watch, prevents new index operations, waits for mutation/rescan ownership
-    ///     of <see cref="_swapGate" />, releases snapshots that have no exposed handles deterministically,
-    ///     and detaches snapshot references with exposed handles so outstanding queries and handles
-    ///     keep their mappings alive until their snapshots finalize.
+    ///     Stops the live watch, prevents new index operations, waits for mutation and rescan
+    ///     ownership of <see cref="_swapGate" />, and releases every snapshot it holds, current
+    ///     and retired.
     /// </summary>
+    /// <remarks>
+    ///     Disposing while another thread is reading a <see cref="FileEntry" /> minted from this
+    ///     index is the same contract as disposing any other .NET disposable while another thread
+    ///     uses it: the reader may observe the handle as live and then read a released mapping.
+    ///     That is a consumer bug, not a library guarantee. A handle whose read is ordered after
+    ///     the disposal throws <see cref="ObjectDisposedException" />.
+    /// </remarks>
     public async ValueTask DisposeAsync()
     {
         if (_disposed)
@@ -173,23 +188,23 @@ public sealed partial class FileIndex : IAsyncDisposable
         await _swapGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            ReleaseAllRetiredSnapshots();
+            await ReleaseAllRetiredSnapshotsAsync().ConfigureAwait(false);
 
+            Snapshot? current;
             lock (_stateLock)
             {
-                if (_snapshot is not null)
-                {
-                    if (!_snapshot.HasExposedHandles)
-                    {
-                        _snapshot.ReleaseNow();
-                    }
-
-                    _snapshot = null;
-                }
-
+                current = _snapshot;
+                _snapshot = null;
                 _driveBlocks.Clear();
                 _retiredSnapshots.Clear();
             }
+
+            // Unconditional: a consumer that disposed everything it owns has asked for the
+            // mappings to go, and a handle it kept is answered by ObjectDisposedException
+            // rather than by an indefinitely open block file. See FileEntry.IsDisposed.
+            // Released outside _stateLock because ReleaseNow waits out a release another caller
+            // already started, and a reader must not be shut out of the lock for that long.
+            current?.ReleaseNow();
         }
         finally
         {
@@ -238,14 +253,13 @@ public sealed partial class FileIndex : IAsyncDisposable
             var discardedBlock = _discardedBlocksByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var reason)
                 ? reason
                 : (BlockValidationResult?)null;
-            var accessDeniedSubtreeCount =
-                _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal);
-            var mftProducerFailureMessage =
-                _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal);
-            var watchFailureMessage =
-                _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal);
-            return DescribeDrive(driveBlock, discardedBlock, accessDeniedSubtreeCount, mftProducerFailureMessage,
-                watchFailureMessage);
+            var annotations = new DriveStatusAnnotations(
+                discardedBlock,
+                _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+                _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+                _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+                _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal));
+            return DescribeDrive(driveBlock, in annotations);
         }
 
         return null;
@@ -265,24 +279,32 @@ public sealed partial class FileIndex : IAsyncDisposable
             $"Drive {driveLetter} is in FileIndexOptions.Drives but has no online or blockless status.");
     }
 
-    static DriveStatus DescribeDrive(DriveBlock driveBlock, BlockValidationResult? discardedBlock,
-        int accessDeniedSubtreeCount, string? mftProducerFailureMessage, string? watchFailureMessage)
+    /// <summary>Everything a drive's status carries that is not read off its block header.</summary>
+    readonly record struct DriveStatusAnnotations(
+        BlockValidationResult? DiscardedBlock,
+        int AccessDeniedSubtreeCount,
+        string? MftProducerFailureMessage,
+        string? WatchFailureMessage,
+        BlockSource BlockSource);
+
+    static DriveStatus DescribeDrive(DriveBlock driveBlock, in DriveStatusAnnotations annotations)
     {
         ref readonly var header = ref driveBlock.Block.Header;
         return new DriveStatus
         {
             DriveLetter = driveBlock.DriveLetter,
             ProducerKind = driveBlock.ProducerKind,
+            BlockSource = annotations.BlockSource,
             State = header.IsCompactionNeeded ? DriveState.Stale : DriveState.Ready,
             RowCount = header.RowCount,
             LiveRowCount = header.LiveRowCount,
             ScanTimestamp = header.ScanTimestampUtc,
             CompactionNeeded = header.IsCompactionNeeded,
             WatchSupported = driveBlock.ProducerKind == ProducerKind.Mft,
-            AccessDeniedSubtreeCount = accessDeniedSubtreeCount,
-            DiscardedBlock = discardedBlock,
-            MftProducerFailureMessage = mftProducerFailureMessage,
-            WatchFailureMessage = watchFailureMessage
+            AccessDeniedSubtreeCount = annotations.AccessDeniedSubtreeCount,
+            DiscardedBlock = annotations.DiscardedBlock,
+            MftProducerFailureMessage = annotations.MftProducerFailureMessage,
+            WatchFailureMessage = annotations.WatchFailureMessage
         };
     }
 }

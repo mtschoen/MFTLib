@@ -25,7 +25,7 @@ public class JournalMutatorHydrationTests
         var change = fixture.Apply([edited]).Single();
 
         Assert.AreEqual(FileChangeKind.Modified, change.Kind);
-        Assert.AreEqual(@"T:\documents\source.cs", change.Path);
+        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "source.cs"), change.Path);
         Assert.IsTrue(change.Entry.SizeKnown == false);
         Assert.AreEqual((ushort)3, fixture.Block.SequenceNumbers[20]);
     }
@@ -48,7 +48,7 @@ public class JournalMutatorHydrationTests
         var change = fixture.Apply([deleted]).Single();
 
         Assert.AreEqual(FileChangeKind.Deleted, change.Kind);
-        Assert.AreEqual(@"T:\documents\gone.cs", change.Path);
+        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "gone.cs"), change.Path);
         Assert.IsTrue(change.Entry.IsDeleted);
     }
 
@@ -70,7 +70,7 @@ public class JournalMutatorHydrationTests
         var change = fixture.Apply([renamed]).Single();
 
         Assert.AreEqual(FileChangeKind.Created, change.Kind);
-        Assert.AreEqual(@"T:\documents\surfaced.cs", change.Path);
+        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "surfaced.cs"), change.Path);
         Assert.IsNull(change.PreviousPath);
     }
 

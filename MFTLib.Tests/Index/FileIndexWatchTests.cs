@@ -150,7 +150,7 @@ public class FileIndexWatchTests
     [TestMethod]
     public void ApplyJournalEntries_DeleteMakesTheEntryReadAsDeletedButKeepsItsName()
     {
-        var target = _index.Find(@"T:\Documents\readme.md")!.Value;
+        var target = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
         var recordNumber = target.Id.RecordNumber;
 
         var applied = _index.ApplyJournalEntries('T',
@@ -171,7 +171,7 @@ public class FileIndexWatchTests
     [TestMethod]
     public async Task ApplyJournalEntries_ConcurrentHeldHandleReaderSeesOnlyCompleteNames()
     {
-        var target = _index.Find(@"T:\Documents\readme.md")!.Value;
+        var target = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
         var recordNumber = target.Id.RecordNumber;
         const string shortName = "x";
         const string longName = "journal-renamed-document.txt";

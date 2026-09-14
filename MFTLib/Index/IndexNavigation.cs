@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace MFTLib.Index;
 
 /// <summary>
@@ -27,24 +25,36 @@ internal static class IndexNavigation
         return parentRow != rowIndex && parentRow < block.Header.RowCount;
     }
 
+    /// <summary>
+    ///     Joins the drive block's real root directory with the collected name chain, one path
+    ///     component at a time, so the host's separator is the only one that appears and the
+    ///     result is a path that can be opened and looked up again. The root is the block's
+    ///     normalised <see cref="DriveBlock.RootDirectoryPath" />, which is what keeps the
+    ///     rendered path and <c>LookupEngine.Find</c> agreeing on where the root ends. The drive
+    ///     key is a display and lookup key for the index, never part of a path.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    ///     The drive block has no configured root directory, so there is nothing to root the name
+    ///     chain in. Every production block sets one; a synthetic test block need not.
+    /// </exception>
     internal static string BuildPath(Snapshot snapshot, ushort driveOrdinal, uint rowIndex)
     {
         var driveBlock = snapshot.GetDriveBlock(driveOrdinal);
-        var block = driveBlock.Block;
-        var segments = CollectSegments(block, rowIndex);
-
-        var builder = new StringBuilder();
-        builder.Append(driveBlock.DriveLetter).Append(":\\");
-        for (var index = segments.Count - 1; index >= 0; index--)
+        if (driveBlock.RootDirectoryPath is not { } rootDirectoryPath)
         {
-            builder.Append(segments[index]);
-            if (index > 0)
-            {
-                builder.Append('\\');
-            }
+            throw new InvalidOperationException(
+                $"Drive block {driveBlock.DriveLetter} has no configured root directory to build a path from.");
         }
 
-        return builder.ToString();
+        var segments = CollectSegments(driveBlock.Block, rowIndex);
+        var components = new string[segments.Count + 1];
+        components[0] = rootDirectoryPath;
+        for (var index = 0; index < segments.Count; index++)
+        {
+            components[index + 1] = segments[segments.Count - 1 - index];
+        }
+
+        return Path.Combine(components);
     }
 
     /// <summary>

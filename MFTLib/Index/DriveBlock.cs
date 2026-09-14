@@ -20,7 +20,8 @@ public sealed class DriveBlock
         DriveOrdinal = driveOrdinal;
         Block = block;
         ProducerKind = block.Header.ProducerKind;
-        RootDirectoryPath = rootDirectoryPath;
+        RootDirectoryPath = ToRootedDirectoryPath(rootDirectoryPath);
+        MatchableRootDirectoryPath = ToMatchablePrefix(RootDirectoryPath);
     }
 
     public char DriveLetter { get; }
@@ -32,15 +33,24 @@ public sealed class DriveBlock
     public ProducerKind ProducerKind { get; }
 
     /// <summary>
-    ///     Required for <see cref="FileEntry.Open" /> on both producer kinds - null when this
-    ///     block was constructed without one (every production block sets it; some synthetic
-    ///     test blocks do not, since they never call <see cref="FileEntry.Open" />). Enumeration
-    ///     entries resolve a real file path from it: <see cref="FileEntry.Path" /> is a logical
-    ///     path rooted at <see cref="DriveLetter" />, which need not be a real filesystem root,
-    ///     so resolving a real file requires this. MFT entries instead use it as a handle on the
-    ///     target volume to open by file id.
+    ///     The base of every real filesystem path this block renders through <see cref="FileEntry.Path" />.
+    ///     Required for path rendering and <see cref="FileEntry.Open" /> on both producer kinds.
+    ///     Every production block sets it; synthetic blocks that never render or open paths may
+    ///     leave it null. MFT entries also use it as a path on the target volume to open by file id.
+    ///     Normalised at construction by <see cref="ToRootedDirectoryPath" />, so what is stored is
+    ///     always rooted even when the caller supplied a bare drive specifier.
     /// </summary>
     public string? RootDirectoryPath { get; }
+
+    /// <summary>
+    ///     <see cref="RootDirectoryPath" /> in the form <c>LookupEngine.Find</c> compares a native
+    ///     path's prefix against: Windows separator spellings folded to <c>/</c> and any trailing
+    ///     separator removed. On other platforms a backslash remains a filename character.
+    ///     Computed once here because it is invariant for the life of the block, where recomputing
+    ///     it inside the lookup allocated one or two strings per candidate block on every call.
+    ///     Null when the block has no root directory, which can never match a path.
+    /// </summary>
+    internal string? MatchableRootDirectoryPath { get; }
 
     public int ReferenceCount
     {
@@ -160,5 +170,44 @@ public sealed class DriveBlock
             // Same reasoning as the IOException case above: a permission error on a file
             // nothing references any more must not fail the release that triggered it.
         }
+    }
+
+    /// <summary>
+    ///     The single place a caller-supplied root is normalised, so path rendering and path
+    ///     lookup can never disagree about what this block's root is. A bare drive specifier such
+    ///     as <c>C:</c> is drive-relative on Windows: joined with a name chain it yields
+    ///     <c>C:Windows</c>, which resolves against that drive's per-process current directory
+    ///     rather than its root, and which no lookup would then accept because the character after
+    ///     the root is a name character instead of a separator. A separator is appended so the
+    ///     result is rooted. Resolving through <c>Path.GetFullPath</c> would be wrong here, since
+    ///     that resolves against the current process directory rather than the drive's root.
+    /// </summary>
+    static string? ToRootedDirectoryPath(string? rootDirectoryPath)
+    {
+        if (rootDirectoryPath is not { Length: 2 } specifier ||
+            specifier[1] != ':' || !char.IsAsciiLetter(specifier[0]))
+        {
+            return rootDirectoryPath;
+        }
+
+        return specifier + Path.DirectorySeparatorChar;
+    }
+
+    /// <summary>
+    ///     Windows separator spellings are folded to one character and any trailing separator is
+    ///     removed, which is the form a path prefix is compared against. On other platforms a
+    ///     backslash remains a filename character. Null for a block with no root directory, and
+    ///     for an empty one, because neither can ever match a path.
+    /// </summary>
+    static string? ToMatchablePrefix(string? rootDirectoryPath)
+    {
+        if (rootDirectoryPath is not { Length: > 0 } root)
+        {
+            return null;
+        }
+
+        return OperatingSystem.IsWindows()
+            ? root.Replace('\\', '/').TrimEnd('/')
+            : root.TrimEnd(Path.DirectorySeparatorChar);
     }
 }

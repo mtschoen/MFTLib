@@ -192,25 +192,25 @@ public class FileIndexLifetimeTests
         Assert.ThrowsException<ObjectDisposedException>(() => oldEntry.IsDirectory);
     }
 
+    /// <summary>
+    ///     MFTLib#145 reversed this: a handle held across disposal used to stay readable because
+    ///     disposal skipped the release whenever a query had handed out a handle on it. Disposal
+    ///     now always unmaps, so the handle answers <see cref="ObjectDisposedException" /> instead
+    ///     of keeping the block file open for a garbage collection that may never come.
+    /// </summary>
     [TestMethod]
-    public async Task DisposeAsync_AHeldFileEntryRemainsReadable()
+    public async Task DisposeAsync_AHeldFileEntryBecomesDisposedAndThrows()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var entry = index.Find(@"T:\Documents\readme.md")!.Value;
-        var expectedId = entry.Id;
-        var expectedModified = entry.Modified;
-        var expectedAttributes = entry.Attributes;
+        var entry = index.FindByName("readme.md").Single();
+        Assert.AreEqual("readme.md", entry.Name);
 
         await index.DisposeAsync();
 
-        Assert.AreEqual(expectedId, entry.Id);
-        Assert.AreEqual("readme.md", entry.Name);
-        Assert.AreEqual(@"T:\Documents\readme.md", entry.Path);
-        Assert.AreEqual(5L, entry.Size);
-        Assert.IsTrue(entry.SizeKnown);
-        Assert.AreEqual(expectedModified, entry.Modified);
-        Assert.AreEqual(expectedAttributes, entry.Attributes);
-        Assert.IsFalse(entry.IsDirectory);
-        Assert.IsFalse(entry.IsDeleted);
+        Assert.IsTrue(entry.IsValid);
+        Assert.IsTrue(entry.IsDisposed);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Name);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Id);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Path);
     }
 }

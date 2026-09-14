@@ -41,8 +41,13 @@ existing `.fwc` cache. All are follow-ups gated on a measurement.
    volumes, network shares, and Linux. No drive is ever "not indexed" because
    of its substrate.
 5. One assembly, one NuGet package, name stays MFTLib. Layering is a namespace
-   boundary enforced by an aislop architecture rule: `MFTLib.Index` never
-   references `MFTLib.Mft`, `MFTLib.Broker`, or `MFTLib.Internal`. The README
+   boundary enforced by an architecture test: `MFTLib.Tests` loads the built
+   `MFTLib` assembly with ArchUnitNET and asserts that types in namespace
+   `MFTLib.Index` depend on nothing in the exact namespace `MFTLib` or in
+   `MFTLib.Interop`, apart from an explicit per-type allowlist of journal value
+   types. An import rule cannot see this boundary: the forbidden folders share
+   the flat `MFTLib` namespace, so the crossing needs no `using`. A deliberate
+   violator in the test assembly proves the rule reports violations. The README
    gets a sentence explaining the not-just-MFT scope.
 6. Search materializes its match set. `Count` is up front, pages are slices,
    sort is a sort over 16-byte handles. No cursors, no infinite scroll.
@@ -186,13 +191,19 @@ ordinal plus row index). Property reads go straight to the mapped row.
 
 A rescan writes a new block file beside the old one, swaps it into the current
 snapshot, and drops the old block's reference. Handles from the old snapshot
-keep it mapped until they are collected. The old file is deleted when its
-mapping closes.
+keep it mapped while the index lives, until those handles are collected.
+`FileIndex.DisposeAsync` releases every current and retired snapshot it holds,
+closing their mappings even when handles remain reachable. Such handles report
+`IsDisposed`; reading their mapped data throws `ObjectDisposedException`.
+`IsValid` and `IsDisposed` remain readable, and `ToString()` returns a diagnostic
+string. The old file is deleted when its mapping closes.
 
 ### 5.3 Paths and opening
 
 `Path` walks the parent column upward, collecting name spans, and builds the
-string once. Depth is capped at `BlockLayout.MaximumPathDepth` and cycles are guarded, as in
+string once from the block's real root directory and name chain using the host
+separator. `FileIndex.Find` accepts this native path and resolves the longest
+matching indexed root before walking its remaining segments. Depth is capped at `BlockLayout.MaximumPathDepth` and cycles are guarded, as in
 the native resolver. Reaching the root or requested ancestor exactly at the cap
 succeeds; if a valid parent chain must continue beyond it, `Path`, `Search`
 with `Under`, and `Largest` with `under` throw `InvalidDataException` rather
@@ -251,6 +262,7 @@ public readonly record struct FileEntry
     public FileAttributes Attributes { get; }
     public bool IsDirectory { get; }
     public bool IsDeleted { get; }
+    public bool IsDisposed { get; }
     public FileEntry? Parent { get; }
     public IReadOnlyList<FileEntry> Children();
     public FileStream Open(FileAccess access);
@@ -353,7 +365,7 @@ issue and PR train:
    broker write path, `ScanPayload` retirement.
 3. file-wizard port and deletion of the old index and cache.
 4. git-wizard port.
-5. Docs, README, aislop architecture rule, measurement, then the 0.3.0 track
+5. Docs, README, architecture test, measurement, then the 0.3.0 track
    resumes.
 
 ## 10. Deferred, with the trigger that revives each

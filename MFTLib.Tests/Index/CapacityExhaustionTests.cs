@@ -46,7 +46,7 @@ public class CapacityExhaustionTests
         writer.TryWriteRow(0, "", new RowColumns(ParentRow: 0,
             RowFlags.InUse | RowFlags.Directory, Attributes: 16, Size: 0, Moment.Ticks, SequenceNumber: 0));
         writer.Complete(Moment);
-        var snapshot = Snapshot.Create([new DriveBlock('T', 0, block)]);
+        var snapshot = Snapshot.Create([new DriveBlock('T', 0, block, rootDirectoryPath: TestDriveRoot.For('T'))]);
         return (block, writer, snapshot);
     }
 

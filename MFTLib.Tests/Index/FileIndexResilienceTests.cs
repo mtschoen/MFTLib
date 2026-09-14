@@ -321,14 +321,15 @@ public partial class FileIndexResilienceTests
     public async Task ReadsAfterDispose_ThrowObjectDisposedException()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var entry = index.Find(@"T:\Documents\readme.md")!.Value;
+        var entry = index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
         await index.DisposeAsync();
 
         Assert.ThrowsException<ObjectDisposedException>(() => index.Drives);
         Assert.ThrowsException<ObjectDisposedException>(() => index.CurrentSnapshot);
         Assert.ThrowsException<ObjectDisposedException>(() => index.TryGetDriveOrdinal('T', out _));
         Assert.ThrowsException<ObjectDisposedException>(() => index.Scan(0));
-        Assert.AreEqual("readme.md", entry.Name);
+        Assert.IsTrue(entry.IsDisposed);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Name);
     }
 
     [TestMethod]

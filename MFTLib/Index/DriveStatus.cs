@@ -10,6 +10,13 @@ public sealed record DriveStatus
 
     public required ProducerKind ProducerKind { get; init; }
 
+    /// <summary>
+    ///     Where the block behind this status came from. <see cref="BlockSource.None" /> for a
+    ///     drive with no block. Reads <see cref="BlockSource.ProducedByScan" /> after a successful
+    ///     rescan, because that rescan is what produced the current block.
+    /// </summary>
+    public required BlockSource BlockSource { get; init; }
+
     public required DriveState State { get; init; }
 
     public required uint RowCount { get; init; }

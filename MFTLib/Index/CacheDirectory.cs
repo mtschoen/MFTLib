@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -26,7 +27,76 @@ public static class CacheDirectory
 
     public static string BlockFileName(char driveLetter, uint volumeSerial)
     {
-        return $"{char.ToUpperInvariant(driveLetter)}-{volumeSerial:X8}.mlix";
+        return $"{char.ToUpperInvariant(driveLetter)}-{volumeSerial:X8}{BlockFileExtension}";
+    }
+
+    /// <summary>
+    ///     The cached drives in <paramref name="cacheDirectoryPath" />, one record per file whose
+    ///     name this class wrote. The listing is eager rather than lazy so a missing directory is
+    ///     an empty result at the call rather than a deferred throw from the caller's own
+    ///     <c>foreach</c>. Nothing is opened or validated here; validation stays in the open path,
+    ///     which already reports per-drive failures, and every field on the record comes from the
+    ///     directory entry the walk already read, so no per-file stat can fail mid-listing.
+    /// </summary>
+    public static IReadOnlyList<CachedBlockFile> EnumerateCached(string cacheDirectoryPath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
+        var directory = new DirectoryInfo(cacheDirectoryPath);
+        if (!directory.Exists)
+        {
+            return [];
+        }
+
+        var cached = new List<CachedBlockFile>();
+        foreach (var file in directory.EnumerateFiles("*" + BlockFileExtension))
+        {
+            if (!TryParseBlockFileName(file.Name, out var driveLetter, out var volumeSerial))
+            {
+                continue;
+            }
+
+            cached.Add(new CachedBlockFile(driveLetter, volumeSerial, file.FullName, file.Length,
+                file.LastWriteTimeUtc));
+        }
+
+        return cached;
+    }
+
+    const string BlockFileExtension = ".mlix";
+
+    /// <summary>
+    ///     The exact inverse of <see cref="BlockFileName" />, and private on purpose: the format
+    ///     is the library's, not the consumer's. The final round trip through
+    ///     <see cref="BlockFileName" /> is what keeps the two from ever drifting apart, so a name
+    ///     is only accepted when the formatter would have produced exactly it.
+    /// </summary>
+    static bool TryParseBlockFileName(string fileName, out char driveLetter, out uint volumeSerial)
+    {
+        driveLetter = '\0';
+        volumeSerial = 0;
+
+        const int serialDigits = 8;
+        var expectedLength = 1 + 1 + serialDigits + BlockFileExtension.Length;
+        if (fileName.Length != expectedLength || fileName[1] != '-' || !char.IsAsciiLetter(fileName[0]))
+        {
+            return false;
+        }
+
+        if (!uint.TryParse(fileName.AsSpan(2, serialDigits), NumberStyles.HexNumber,
+                CultureInfo.InvariantCulture, out var parsedSerial))
+        {
+            return false;
+        }
+
+        var candidateLetter = fileName[0];
+        if (!string.Equals(BlockFileName(candidateLetter, parsedSerial), fileName, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        driveLetter = candidateLetter;
+        volumeSerial = parsedSerial;
+        return true;
     }
 
     /// <summary>

@@ -139,6 +139,7 @@ public sealed partial class FileIndex
             lock (_stateLock)
             {
                 _driveBlocks[driveOrdinal] = completedScan.DriveBlock;
+                _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
                 _discardedBlocksByOrdinal.Remove(driveOrdinal);
                 _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
             }
@@ -329,9 +330,10 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Swaps in a new snapshot over the current <see cref="_driveBlocks" /> list and tracks
-    ///     the retired one weakly only to avoid extending its lifetime, so it is never
-    ///     force-released while a handle may retain it.
+    ///     Swaps in a new snapshot over the current <see cref="_driveBlocks" /> list and retains
+    ///     release state for each retired snapshot until disposal. The snapshot itself stays weakly
+    ///     referenced, so its finalizer remains the release path when its handles become unreachable
+    ///     while the index lives.
     /// </summary>
     void PublishSnapshot()
     {
@@ -342,22 +344,24 @@ public sealed partial class FileIndex
             _snapshot = Snapshot.Create(_driveBlocks);
         }
 
-        _retiredSnapshots.RemoveAll(weak => !weak.TryGetTarget(out _));
-        _retiredSnapshots.Add(new WeakReference<Snapshot>(previous));
+        // Complete, not started: a release that has begun still holds every block it has not
+        // reached yet, and dropping its record here would leave disposal with nothing to wait on.
+        _retiredSnapshots.RemoveAll(retired => retired.Release.IsReleaseComplete);
+        _retiredSnapshots.Add(new RetiredSnapshot(previous));
     }
 
     /// <summary>
-    ///     Forces every retired snapshot without exposed handles to release its blocks now, so a normal
-    ///     exit through <see cref="DisposeAsync" /> cleans up unheld temp and cache files immediately.
+    ///     Forces every retained release state to release its blocks now, including a retired
+    ///     snapshot that was collected before its finalizer ran, so disposal closes temp and cache
+    ///     files immediately. Waits out a release a finalizer already started rather than taking
+    ///     the started flag for a finished one, so this returns only once every retired block is
+    ///     genuinely closed.
     /// </summary>
-    void ReleaseAllRetiredSnapshots()
+    async ValueTask ReleaseAllRetiredSnapshotsAsync()
     {
-        foreach (var weak in _retiredSnapshots)
+        foreach (var retired in _retiredSnapshots)
         {
-            if (weak.TryGetTarget(out var retired) && !retired.HasExposedHandles)
-            {
-                retired.ReleaseNow();
-            }
+            await retired.Release.ReleaseAsync().ConfigureAwait(false);
         }
 
         _retiredSnapshots.Clear();

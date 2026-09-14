@@ -35,8 +35,8 @@ public class MftProducerEndToEndTests
 
         AssertReady(index);
         Assert.AreEqual(24u, index.Drives[0].RowCount);
-        Assert.AreEqual(@"C:\", index.Root('C').Path);
-        var notes = index.Find(@"C:\documents\notes.txt")!.Value;
+        Assert.AreEqual(_rootDirectory, index.Root('C').Path);
+        var notes = index.Find(At("documents", "notes.txt"))!.Value;
         Assert.AreEqual(20UL, notes.Id.RecordNumber);
         Assert.AreEqual(4096L, notes.Size);
         Assert.IsTrue(notes.SizeKnown);
@@ -46,28 +46,28 @@ public class MftProducerEndToEndTests
         var duplicates = index.DuplicateNames().Single();
         Assert.AreEqual("notes.txt", duplicates.Name);
         Assert.AreEqual(2, duplicates.Entries.Count);
-        var deleted = index.Find(@"C:\documents\obsolete.txt")!.Value;
-        var renamed = index.Find(@"C:\documents\draft.txt")!.Value;
+        var deleted = index.Find(At("documents", "obsolete.txt"))!.Value;
+        var renamed = index.Find(At("documents", "draft.txt"))!.Value;
         Assert.IsNotNull(completed);
         Assert.AreEqual(0, completed.Errors.Count);
         Assert.AreEqual(InProcessBlockBrokerHarness.ArmedCursor, completed.ArmedCursors["C"]);
         var block = completed.BlockOutcomes["C"].Block;
         Assert.AreSame(block, index.Root('C').DriveBlock.Block);
         Assert.AreEqual(completed.ArmedCursors["C"].NextUsn, block.Header.UsnNextUsn);
-        Assert.IsNull(index.Find(@"C:\documents\created.txt"));
+        Assert.IsNull(index.Find(At("documents", "created.txt")));
 
         var cursor = completed.AdvancedCursors["C"];
         var changes = index.ApplyJournalEntries('C', completed.CatchUpEntries["C"], cursor.JournalId, cursor.NextUsn);
 
         CollectionAssert.AreEqual(new[] { FileChangeKind.Created, FileChangeKind.Deleted, FileChangeKind.Renamed },
             changes.Select(change => change.Kind).ToArray());
-        Assert.AreEqual(30UL, index.Find(@"C:\documents\created.txt")!.Value.Id.RecordNumber);
+        Assert.AreEqual(30UL, index.Find(At("documents", "created.txt"))!.Value.Id.RecordNumber);
         Assert.IsTrue(deleted.IsDeleted);
         Assert.IsTrue(block.Rows[21].IsDeleted);
-        Assert.IsNull(index.Find(@"C:\documents\obsolete.txt"));
+        Assert.IsNull(index.Find(At("documents", "obsolete.txt")));
         Assert.AreEqual("published.txt", renamed.Name);
-        Assert.AreEqual(23UL, index.Find(@"C:\documents\published.txt")!.Value.Id.RecordNumber);
-        Assert.IsNull(index.Find(@"C:\documents\draft.txt"));
+        Assert.AreEqual(23UL, index.Find(At("documents", "published.txt"))!.Value.Id.RecordNumber);
+        Assert.IsNull(index.Find(At("documents", "draft.txt")));
         Assert.AreEqual(AdvancedCursor.JournalId, block.Header.UsnJournalId);
         Assert.AreEqual(AdvancedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.IsTrue(block.Header.UsnNextUsn > completed.ArmedCursors["C"].NextUsn);
@@ -104,11 +104,11 @@ public class MftProducerEndToEndTests
         Assert.AreEqual(BrokerScanPhase.Transferring, progress[^1].Phase);
         Assert.IsTrue(progress.All(value => value.DriveLetter == "C"));
         Assert.IsTrue(progress[^1].BytesProcessed > 0);
-        Assert.IsTrue(index.Find(@"C:\documents")!.Value.IsDirectory);
-        Assert.IsNotNull(index.Find(@"C:\documents\notes.txt"));
-        Assert.IsNotNull(index.Find(@"C:\notes.txt"));
-        Assert.IsNull(index.Find(@"C:\documents\obsolete.txt"));
-        Assert.IsNull(index.Find(@"C:\documents\draft.txt"));
+        Assert.IsTrue(index.Find(At("documents"))!.Value.IsDirectory);
+        Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
+        Assert.IsNotNull(index.Find(At("notes.txt")));
+        Assert.IsNull(index.Find(At("documents", "obsolete.txt")));
+        Assert.IsNull(index.Find(At("documents", "draft.txt")));
     }
 
     [TestMethod]
@@ -126,8 +126,8 @@ public class MftProducerEndToEndTests
         Assert.IsTrue(index.Drives[0].CompactionNeeded);
         Assert.AreEqual(DriveState.Stale, index.Drives[0].State);
         Assert.AreEqual(ProducerKind.Mft, index.Drives[0].ProducerKind);
-        Assert.IsNotNull(index.Find(@"C:\documents\notes.txt"));
-        Assert.IsNull(index.Find(@"C:\beyond.txt"));
+        Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
+        Assert.IsNull(index.Find(At("beyond.txt")));
     }
 
     [TestMethod]
@@ -140,7 +140,7 @@ public class MftProducerEndToEndTests
             ++scanCount == 1 ? Records() : [[Record(5, 5, ".", directory: true), Record(40, 5, "replacement.txt")]]);
         var producer = new BrokerMftBlockProducer(harness.ConnectAsync, scanCompleted: scans.Add).CreateProducer();
         await using var index = await FileIndex.OpenAsync(Options(producer), harness.CancellationToken);
-        var previous = index.Find(@"C:\documents\notes.txt")!.Value;
+        var previous = index.Find(At("documents", "notes.txt"))!.Value;
         var previousBlock = previous.DriveBlock.Block;
 
         await index.RescanAsync('C', harness.CancellationToken);
@@ -150,9 +150,9 @@ public class MftProducerEndToEndTests
         AssertReady(index);
         Assert.AreNotSame(previousBlock, index.Root('C').DriveBlock.Block);
         Assert.AreSame(scans[1].BlockOutcomes["C"].Block, index.Root('C').DriveBlock.Block);
-        Assert.AreEqual(40UL, index.Find(@"C:\replacement.txt")!.Value.Id.RecordNumber);
-        Assert.IsNull(index.Find(@"C:\documents\notes.txt"));
-        Assert.AreEqual(@"C:\documents\notes.txt", previous.Path);
+        Assert.AreEqual(40UL, index.Find(At("replacement.txt"))!.Value.Id.RecordNumber);
+        Assert.IsNull(index.Find(At("documents", "notes.txt")));
+        Assert.AreEqual(Path.Combine(_rootDirectory, "documents", "notes.txt"), previous.Path);
         Assert.AreEqual("notes.txt", previous.Name);
         Assert.AreEqual(4096L, previous.Size);
         Assert.AreEqual(Modified, previous.Modified);
@@ -182,7 +182,7 @@ public class MftProducerEndToEndTests
         Assert.AreEqual(InProcessBlockBrokerHarness.ArmedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.AreSame(block, index.Root('C').DriveBlock.Block);
         AssertReady(index);
-        Assert.IsNotNull(index.Find(@"C:\documents\notes.txt"));
+        Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
     }
 
     static async Task AssertParkedWatchCursorAsync()
@@ -210,6 +210,8 @@ public class MftProducerEndToEndTests
         Assert.AreEqual(cursor, session.WatchCursors["C"]);
         Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
     }
+
+    string At(params string[] segments) => Path.Combine([_rootDirectory, .. segments]);
 
     FileIndexOptions Options(MftBlockProducer producer) => new()
     {

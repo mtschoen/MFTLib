@@ -4,28 +4,32 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     The set of drive blocks current at one moment. A <see cref="FileEntry" /> holds a
-///     reference to its snapshot, so a handle keeps its block mapped for as long as the handle
-///     is reachable. The finalizer is the release path for snapshots when all referencing
-///     handles are dropped; <see cref="ReleaseNow" /> is the deterministic path for code that
-///     exclusively owns a snapshot (including focused tests).
+///     reference to its snapshot, keeping a block retired by a rescan mapped while that handle
+///     remains reachable. The finalizer releases a retired snapshot once its handles become
+///     unreachable while the index lives. <see cref="ReleaseNow" /> is the internal deterministic
+///     release path used by index disposal and focused tests; released snapshots reject subsequent
+///     handle reads.
 /// </summary>
 public sealed class Snapshot
 {
-    readonly DriveBlock[] _driveBlocks;
-    int _releaseState;
-    int _hasExposedHandles;
+    readonly SnapshotRelease _release;
 
-    Snapshot(DriveBlock[] driveBlocks)
+    Snapshot(SnapshotRelease release)
     {
-        _driveBlocks = driveBlocks;
+        _release = release;
     }
 
-    internal bool HasExposedHandles => Volatile.Read(ref _hasExposedHandles) != 0;
+    /// <summary>
+    ///     True from the moment a release begins, before the first block is unmapped, so a
+    ///     reader is turned away rather than racing the unmap. Set by <see cref="SnapshotRelease.Release" />
+    ///     on both the <see cref="ReleaseNow" /> path and the finalizer path. Deliberately started
+    ///     rather than finished: a reader must be refused for the whole of the release, while a
+    ///     caller that wants the blocks actually closed asks
+    ///     <see cref="SnapshotRelease.IsReleaseComplete" /> instead.
+    /// </summary>
+    internal bool IsReleased => _release.IsReleaseStarted;
 
-    internal void MarkExposed()
-    {
-        Volatile.Write(ref _hasExposedHandles, 1);
-    }
+    internal SnapshotRelease ReleaseState => _release;
 
     /// <summary>
     ///     Releases the snapshot's blocks for a caller who simply dropped every handle. The catch
@@ -45,7 +49,7 @@ public sealed class Snapshot
     {
         try
         {
-            ReleaseCore();
+            _release.Release();
         }
         catch (Exception)
         {
@@ -53,9 +57,9 @@ public sealed class Snapshot
         }
     }
 
-    public IReadOnlyList<DriveBlock> DriveBlocks => _driveBlocks;
+    public IReadOnlyList<DriveBlock> DriveBlocks => _release.DriveBlocks;
 
-    public int DriveCount => _driveBlocks.Length;
+    public int DriveCount => _release.DriveBlocks.Length;
 
     /// <summary>
     ///     Takes one reference on every block. Throws if any block has already been fully
@@ -83,18 +87,18 @@ public sealed class Snapshot
                 $"Drive block {driveBlock.DriveLetter} was already released and cannot join a snapshot.");
         }
 
-        return new Snapshot([.. taken]);
+        return new Snapshot(new SnapshotRelease([.. taken]));
     }
 
     public DriveBlock GetDriveBlock(ushort driveOrdinal)
     {
-        return _driveBlocks[driveOrdinal];
+        return _release.DriveBlocks[driveOrdinal];
     }
 
     /// <summary>Null when no current drive block has this letter.</summary>
     public DriveBlock? FindDriveBlock(char driveLetter)
     {
-        foreach (var candidate in _driveBlocks)
+        foreach (var candidate in _release.DriveBlocks)
         {
             if (char.ToUpperInvariant(candidate.DriveLetter) == char.ToUpperInvariant(driveLetter))
             {
@@ -105,31 +109,147 @@ public sealed class Snapshot
         return null;
     }
 
+    /// <summary>
+    ///     Deterministic release. Returns only once this snapshot's blocks are released, whether
+    ///     this call did the releasing or a finalizer that got there first is still working
+    ///     through them, so a caller told the snapshot is closed never finds the mapping still
+    ///     open. Safe to block here because the finalizer path never calls this method.
+    /// </summary>
     [SuppressMessage("Design", "CA1816",
-        Justification = "ReleaseNow is the deterministic path for code that exclusively owns a snapshot " +
-                         "(including focused tests); it is internal rather than a public Dispose because ordinary " +
-                         "consumers release a snapshot only by dropping their FileEntry handles and letting the " +
-                         "finalizer run.")]
+        Justification = "ReleaseNow is internal rather than a public Dispose; index disposal reaches it " +
+                         "on the consumer's behalf, and focused tests use it for deterministic teardown.")]
     internal void ReleaseNow()
     {
-        if (ReleaseCore())
+        if (_release.ReleaseAndWait())
         {
             GC.SuppressFinalize(this);
         }
     }
 
-    bool ReleaseCore()
+}
+
+/// <summary>
+///     Owns a snapshot's block references independently of the snapshot object's lifetime, so
+///     index disposal can release a retired snapshot after garbage collection but before its
+///     finalizer runs.
+/// </summary>
+internal sealed class SnapshotRelease
+{
+    readonly DriveBlock[] _driveBlocks;
+
+    /// <summary>
+    ///     Completes once the release that started has finished with every block. Continuations
+    ///     run asynchronously so a waiter's remaining work never resumes on the finalizer thread
+    ///     that completed this.
+    /// </summary>
+    readonly TaskCompletionSource _completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    ///     Pulsed after <see cref="_completed" /> is set, so the synchronous waiter in
+    ///     <see cref="ReleaseAndWait" /> can block on a monitor instead of on the task, which
+    ///     keeps the deterministic path free of sync-over-async blocking.
+    /// </summary>
+    readonly object _completionGate = new();
+
+    int _releaseState;
+
+    /// <summary>
+    ///     A test seam, held per instance rather than statically so two snapshots never share it
+    ///     and enabling test parallelism does not have to answer for it. Invoked once the release
+    ///     flag is set and before the first block is unmapped, which is the window a competing
+    ///     caller has to observe.
+    /// </summary>
+    internal Action? _releaseStartedForTest;
+
+    internal SnapshotRelease(DriveBlock[] driveBlocks)
+    {
+        _driveBlocks = driveBlocks;
+    }
+
+    internal DriveBlock[] DriveBlocks => _driveBlocks;
+
+    /// <summary>True from the moment a release begins, before the first block is unmapped.</summary>
+    internal bool IsReleaseStarted => Volatile.Read(ref _releaseState) != 0;
+
+    /// <summary>
+    ///     True once the release has finished with every block. This, not
+    ///     <see cref="IsReleaseStarted" />, is what says the blocks are no longer held: between
+    ///     the two, the mappings and their files are still open.
+    /// </summary>
+    internal bool IsReleaseComplete => _completed.Task.IsCompleted;
+
+    /// <summary>
+    ///     Releases every block, or reports that another caller already began. Never waits for
+    ///     that other caller: the snapshot finalizer calls this, and a finalizer thread parked
+    ///     behind another thread's release stalls finalization for the whole process.
+    /// </summary>
+    internal bool Release()
     {
         if (Interlocked.Exchange(ref _releaseState, 1) != 0)
         {
             return false;
         }
 
-        foreach (var driveBlock in _driveBlocks)
+        try
         {
-            driveBlock.Release();
+            _releaseStartedForTest?.Invoke();
+
+            foreach (var driveBlock in _driveBlocks)
+            {
+                driveBlock.Release();
+            }
+        }
+        finally
+        {
+            // Completed in a finally rather than after the loop. A block that throws partway
+            // leaves the blocks after it mapped, which is what a failed release already cost;
+            // a waiter parked forever on a completion that never arrives would be a new failure
+            // on top of it. The exception still reaches this call's own caller.
+            _completed.TrySetResult();
+            lock (_completionGate)
+            {
+                Monitor.PulseAll(_completionGate);
+            }
         }
 
         return true;
+    }
+
+    /// <summary>
+    ///     Releases, or waits out the release another caller already started, without blocking a
+    ///     thread. Index disposal uses this, so it returns only once the blocks are actually
+    ///     closed rather than once someone else has merely begun closing them.
+    /// </summary>
+    internal async ValueTask ReleaseAsync()
+    {
+        if (!Release())
+        {
+            await _completed.Task.ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    ///     The blocking twin of <see cref="ReleaseAsync" />, for the synchronous deterministic
+    ///     path. Returns whether this call did the releasing. Only ever reached from a caller that
+    ///     is not the finalizer thread, which is what makes waiting here safe.
+    /// </summary>
+    internal bool ReleaseAndWait()
+    {
+        if (Release())
+        {
+            return true;
+        }
+
+        lock (_completionGate)
+        {
+            // Checked under the gate so a completion that lands between the check and the wait
+            // cannot be missed: the releasing thread pulses only after taking the same lock.
+            while (!_completed.Task.IsCompleted)
+            {
+                Monitor.Wait(_completionGate);
+            }
+        }
+
+        return false;
     }
 }

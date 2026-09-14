@@ -50,7 +50,7 @@ public class FileIndexQueryTests
     [TestMethod]
     public void Find_ResolvesAPathToItsEntry()
     {
-        var entry = _index.Find(@"T:\Documents\Projects\report.pdf");
+        var entry = _index.Find(Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf"));
         Assert.IsTrue(entry.HasValue);
         Assert.AreEqual(100L, entry.Value.Size);
     }
@@ -75,10 +75,10 @@ public class FileIndexQueryTests
     [TestMethod]
     public void Search_UnderRestrictsToASubtree()
     {
-        var pictures = _index.Find(@"T:\Pictures")!.Value;
+        var pictures = _index.Find(Path.Combine(_treeRoot, "Pictures"))!.Value;
         var results = _index.Search(new SearchQuery("readme", Under: pictures));
         Assert.AreEqual(1, results.Count);
-        Assert.AreEqual(@"T:\Pictures\readme.md", results[0].Path);
+        Assert.AreEqual(Path.Combine(_treeRoot, "Pictures", "readme.md"), results[0].Path);
     }
 
     [TestMethod]
@@ -100,7 +100,7 @@ public class FileIndexQueryTests
     [TestMethod]
     public void Root_ReturnsTheDriveRoot()
     {
-        Assert.AreEqual(@"T:\", _index.Root('T').Path);
+        Assert.AreEqual(_treeRoot, _index.Root('T').Path);
     }
 
     [TestMethod]
@@ -114,7 +114,7 @@ public class FileIndexQueryTests
     [TestMethod]
     public void Open_ReadsTheRealFileBehindAnEnumerationEntry()
     {
-        var entry = _index.Find(@"T:\Documents\readme.md")!.Value;
+        var entry = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
         using var stream = entry.Open(FileAccess.Read);
         using var reader = new StreamReader(stream);
         Assert.AreEqual("hello", reader.ReadToEnd());
@@ -146,11 +146,11 @@ public class FileIndexQueryTests
     [TestMethod]
     public void HandleFromAnOldSnapshot_StaysReadableAcrossARescan()
     {
-        var before = _index.Find(@"T:\Documents\readme.md")!.Value;
+        var before = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
         _index.RescanAsync('T', CancellationToken.None).GetAwaiter().GetResult();
 
         // The old block stays mapped because this handle still references its snapshot.
         Assert.AreEqual("readme.md", before.Name);
-        Assert.AreEqual(@"T:\Documents\readme.md", before.Path);
+        Assert.AreEqual(Path.Combine(_treeRoot, "Documents", "readme.md"), before.Path);
     }
 }

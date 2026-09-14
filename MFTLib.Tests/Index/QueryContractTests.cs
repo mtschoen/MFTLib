@@ -39,6 +39,7 @@ public class QueryContractTests
     {
         var status = new DriveStatus
         {
+            BlockSource = BlockSource.None,
             DriveLetter = 'T',
             ProducerKind = ProducerKind.Enumeration,
             State = DriveState.Ready,

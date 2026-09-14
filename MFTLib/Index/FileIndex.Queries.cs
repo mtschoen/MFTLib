@@ -2,11 +2,16 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    /// <summary>Resolves a full path by walking down from the drive root, one name per level.</summary>
-    public FileEntry? Find(string fullPath)
+    /// <summary>
+    ///     Resolves a native filesystem path to its entry. The indexed root directory that is the
+    ///     longest prefix of the path selects the block, and the remaining segments are walked
+    ///     down from that block's root row, one name per level. This is the inverse of
+    ///     <see cref="FileEntry.Path" />: whatever that emits, this accepts.
+    /// </summary>
+    public FileEntry? Find(string nativePath)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return LookupEngine.Find(CurrentSnapshot, fullPath);
+        return LookupEngine.Find(CurrentSnapshot, nativePath);
     }
 
     /// <summary>Exact-name matches across every current drive block, folding case the way NTFS does.</summary>

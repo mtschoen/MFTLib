@@ -9,6 +9,10 @@ and the live watch bridge and consumer-gap closures tracked as
 
 ### Added
 
+- `DriveStatus.BlockSource` and the `BlockSource` enum (`None`, `WarmStartedFromCache`, `ProducedByScan`) report where a drive's current block came from, so a consumer's rebuild loop can skip the drives an `OpenAsync` just scanned instead of scanning every cold drive twice. A successful `RescanAsync` leaves the drive reading `ProducedByScan` ([MFTLib#146](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/146))
+
+- `CacheDirectory.EnumerateCached` and the `CachedBlockFile` record list the drives a cache directory holds (drive letter, volume serial, path, size, last-write time) without opening or validating any block, so a consumer never reimplements the inverse of `CacheDirectory.BlockFileName`. A missing directory returns empty and an unrecognised file name is skipped rather than reported ([MFTLib#144](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/144))
+- `FileEntry.IsDisposed` reports that the handle's snapshot has been released, distinct from `IsValid` (the default struct value) and `IsDeleted` (a tombstoned row); every read on a disposed handle throws `ObjectDisposedException` ([MFTLib#145](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/145))
 - `MftRecord.SequenceNumber` and `UsnJournalEntry.SequenceNumber` expose the NTFS record's sequence number; combined with the record number as `(sequenceNumber << 48) | recordNumber`, it forms the file reference `FileEntry.Open` uses to detect an MFT record NTFS has reused for a different file
 - `RowColumns.SequenceNumber` and `BlockFile.SequenceNumbers` carry the sequence number into the packed block format, in a sequence region between the row region and the name pool (`BlockHeader.SequenceRegionOffset`)
 - `BlockHeader.LiveRowCount` and `DriveStatus.LiveRowCount` report rows in use and not tombstoned, distinct from `RowCount`'s highest-used-slot-plus-one
@@ -37,6 +41,9 @@ and the live watch bridge and consumer-gap closures tracked as
 
 ### Changed
 
+- `FileIndex.Find` accepts a native filesystem path and resolves it against the longest matching indexed root directory instead of requiring a `X:\` drive-letter prefix, so it is the exact inverse of `FileEntry.Path` on every platform, including a Linux file name containing a backslash. Child names match by the block's own rule: an MFT block folds case, an enumeration block over a case-sensitive root matches ordinally ([MFTLib#143](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/143))
+- `FileEntry.Path` renders the drive block's real root directory joined with the name chain using the host separator, so it is openable and can be looked up again on any platform; the drive key is never rendered into a path. `FileChange.Path` and `PreviousPath` come from the same builder and change with it. A Windows MFT block is byte-identical because its root directory is `X:\` ([MFTLib#143](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/143))
+- `FileIndex.DisposeAsync` releases every snapshot it holds, current and retired, unconditionally, including retired snapshots whose handles are already unreachable. It returns only once those blocks are actually closed: a release a snapshot finalizer has already begun is waited out rather than taken for a finished one. During an index's lifetime, a retired snapshot still releases through its finalizer once handles minted before the rescan are unreachable. A `FileEntry` held across disposal reports `IsDisposed` and throws `ObjectDisposedException` on every read ([MFTLib#145](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/145))
 - The native interface version constant (`MFT_NATIVE_ABI_VERSION`) is 1; compact entries are 50 bytes, with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, uint16 sequence number at offset 48, and a size-unknown flag bit `0x8000`. Managed and native binaries must match
 - Block format version is 2: the declared header is 104 bytes (`LiveRowCount` at offset 88, `SequenceRegionOffset` at offset 96), and a sequence-number region sits between the row region and the name pool. A version mismatch means discard the block and rescan, as before
 - `FileIndexOptions.NoCache` blocks are created with `FileOptions.DeleteOnClose`, so the operating system removes them when the last handle closes, including on a killed process, instead of relying on a managed delete during dispose plus a stale-block sweep on the next open
@@ -54,6 +61,7 @@ and the live watch bridge and consumer-gap closures tracked as
 
 ### Removed
 
+- Removed the internal `LookupEngine.TryParseDriveLetter`; a path no longer carries a drive key
 - Removed `IMmfWriter`, `IStreamingMmfWriter`, `IMmfReader`, and `IStreamingMmfReader`
 - Removed `RealMmfWriter`, `RealMmfReader`, and `MmfWriteResult`
 - Removed `BrokerScanOutputFormat`, `ScanPayload`, `ScanRecord`, and `ScanRecordBatchConsumer`; cold scans return packed blocks only

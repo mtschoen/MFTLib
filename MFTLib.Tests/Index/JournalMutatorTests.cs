@@ -38,7 +38,7 @@ public class JournalMutatorTests
             Attributes: 32, Size: 100, Moment.Ticks, SequenceNumber: 0));
         _writer.Complete(Moment);
 
-        _driveBlock = new DriveBlock('T', 0, _block);
+        _driveBlock = new DriveBlock('T', 0, _block, rootDirectoryPath: TestDriveRoot.For('T'));
         _snapshot = Snapshot.Create([_driveBlock]);
     }
 
@@ -136,7 +136,7 @@ public class JournalMutatorTests
             journalId: 7, nextUsn: 2000);
 
         Assert.AreEqual(FileChangeKind.Renamed, changes[0].Kind);
-        Assert.AreEqual(@"T:\Documents\existing.txt", changes[0].PreviousPath);
+        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "Documents", "existing.txt"), changes[0].PreviousPath);
         Assert.AreEqual("renamed.txt", new string(NamePool.ReadRowName(_block, 2)));
     }
 
@@ -159,8 +159,8 @@ public class JournalMutatorTests
         var change = fixture.Apply([moved]).Single();
 
         Assert.AreEqual(FileChangeKind.Renamed, change.Kind);
-        Assert.AreEqual(@"T:\renamed.txt", change.Path);
-        Assert.AreEqual(@"T:\documents\notes.txt", change.PreviousPath);
+        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "renamed.txt"), change.Path);
+        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "notes.txt"), change.PreviousPath);
     }
 
     [TestMethod]
@@ -192,9 +192,9 @@ public class JournalMutatorTests
 
         var changes = fixture.Apply([created, renamed]);
 
-        Assert.AreEqual(@"T:\documents\first.txt", changes[0].Path);
-        Assert.AreEqual(@"T:\second.txt", changes[1].Path);
-        Assert.AreEqual(@"T:\documents\first.txt", changes[1].PreviousPath);
+        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "first.txt"), changes[0].Path);
+        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "second.txt"), changes[1].Path);
+        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "first.txt"), changes[1].PreviousPath);
     }
 
     [TestMethod]
@@ -216,7 +216,7 @@ public class JournalMutatorTests
         var change = fixture.Apply([deleted]).Single();
 
         Assert.AreEqual(FileChangeKind.Deleted, change.Kind);
-        Assert.AreEqual(@"T:\documents\notes.txt", change.Path);
+        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "notes.txt"), change.Path);
         Assert.IsNull(change.PreviousPath);
     }
 

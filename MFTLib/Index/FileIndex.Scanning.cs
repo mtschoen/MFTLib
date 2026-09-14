@@ -14,6 +14,7 @@ public sealed partial class FileIndex
                 {
                     DriveLetter = driveLetter,
                     ProducerKind = ProducerKind.Enumeration,
+                    BlockSource = BlockSource.None,
                     State = DriveState.Offline,
                     RowCount = 0,
                     LiveRowCount = 0,
@@ -53,6 +54,10 @@ public sealed partial class FileIndex
         if (warmStart.DriveBlock is { } warmStartedBlock)
         {
             driveBlock = warmStartedBlock;
+            lock (_stateLock)
+            {
+                _blockSourcesByOrdinal[driveOrdinal] = BlockSource.WarmStartedFromCache;
+            }
         }
         else
         {
@@ -68,6 +73,7 @@ public sealed partial class FileIndex
             lock (_stateLock)
             {
                 _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
+                _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
             }
         }
 
@@ -85,6 +91,7 @@ public sealed partial class FileIndex
             {
                 DriveLetter = driveLetter,
                 ProducerKind = ProducerKind.Mft,
+                BlockSource = BlockSource.None,
                 State = DriveState.Failed,
                 RowCount = 0,
                 LiveRowCount = 0,
@@ -95,6 +102,7 @@ public sealed partial class FileIndex
             });
             _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
             _discardedBlocksByOrdinal.Remove(driveOrdinal);
+            _blockSourcesByOrdinal.Remove(driveOrdinal);
         }
     }
 

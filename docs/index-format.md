@@ -11,6 +11,11 @@ code: a version, serial, or completeness mismatch means discard and rescan.
 example `C-0BADF00D.mlix`. The serial is part of the name so a re-lettered drive
 never matches the wrong block.
 
+The library owns both directions of this name: `CacheDirectory.BlockFileName`
+writes it and `CacheDirectory.EnumerateCached` reads a directory back into drive
+letters and serials, so a consumer never parses the name itself and a future
+format change is one edit rather than one edit per consumer.
+
 ## Layout
 
 Little-endian throughout. Every region boundary is 4096-byte aligned.

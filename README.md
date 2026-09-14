@@ -351,6 +351,25 @@ explicitly, never as an inherited fallback decision.
 operating system removes them when the last handle closes, including when the process
 is killed rather than shut down gracefully.
 
+`FileEntry.Path` is a real filesystem path: the drive block's root directory joined
+with the entry's name chain using the host separator. It can be opened, and
+`FileIndex.Find` accepts it back, resolving a native path against the longest
+matching indexed root. Disposing a `FileIndex` releases every block mapping it
+holds, so the `.mlix` files are closed at a point the caller chooses; a `FileEntry`
+held across that disposal reports `IsDisposed` and throws `ObjectDisposedException`
+on every read. `DriveStatus.BlockSource` says whether a drive warm-started from
+cache or was scanned, so a rebuild loop can skip the drives an open already scanned,
+and `CacheDirectory.EnumerateCached` lists the drives a cache directory holds
+without a consumer parsing block file names.
+
+`IsValid` and `IsDisposed` remain readable after disposal, and `ToString()` returns
+a diagnostic string. Reads of mapped entry data throw as described above.
+`DriveStatus.BlockSource` is `None` when no block is available,
+`WarmStartedFromCache` for an adopted cache block, or `ProducedByScan` after a scan.
+`CacheDirectory.EnumerateCached` returns `CachedBlockFile` records containing the
+drive letter, volume serial, full cache-file path, size, and last-write time;
+listing a file does not open or validate its block.
+
 ## Errors and recovery
 
 Most volume, native parsing, and journal failures surface as `InvalidOperationException`
@@ -384,6 +403,7 @@ Run non-interactive managed coverage with:
 
 The source is organized by responsibility:
 
+- `MFTLib/Index` - the substrate-neutral packed index: block format, `FileIndex`, snapshots, queries, mutation, and the enumeration producer. It is not MFT-specific and depends on nothing else in the library beyond a few journal value types, a boundary an architecture test enforces.
 - `MFTLib/Mft` - scans, records, results, filters, paths, and timings
 - `MFTLib/Journal` - USN cursor, entries, reasons, and `MftVolume` journal APIs
 - `MFTLib/Broker` - elevated host/client, protocol, block writing, and diagnostics

@@ -67,7 +67,7 @@ public class EnumerationProducerTests
 
         result = producer.Produce(created.Writer, progress: null, CancellationToken.None);
         created.Writer.Complete(new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc));
-        return Snapshot.Create([new DriveBlock('T', 0, block)]);
+        return Snapshot.Create([new DriveBlock('T', 0, block, rootDirectoryPath: _treeRoot)]);
     }
 
     [TestMethod]
@@ -117,7 +117,7 @@ public class EnumerationProducerTests
         var snapshot = Produce(out _, out _);
         try
         {
-            var entry = EnumerationLookupTestAccess.FindByPath(snapshot, @"T:\Documents\Projects\report.pdf");
+            var entry = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents", "Projects", "report.pdf"));
             Assert.IsTrue(entry.HasValue);
             Assert.AreEqual(100L, entry.Value.Size);
             Assert.IsFalse(entry.Value.IsDirectory);
@@ -134,7 +134,7 @@ public class EnumerationProducerTests
         var snapshot = Produce(out _, out _);
         try
         {
-            var documents = EnumerationLookupTestAccess.FindByPath(snapshot, @"T:\Documents");
+            var documents = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Documents"));
             Assert.IsTrue(documents.HasValue);
             Assert.IsTrue(documents.Value.IsDirectory);
             Assert.AreEqual(0L, documents.Value.Size);
@@ -169,7 +169,7 @@ public class EnumerationProducerTests
         var snapshot = Produce(out _, out _);
         try
         {
-            var entry = EnumerationLookupTestAccess.FindByPath(snapshot, @"T:\Pictures\holiday.jpg");
+            var entry = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures", "holiday.jpg"));
             Assert.IsTrue(entry!.Value.Id.IsSynthetic);
         }
         finally
@@ -253,7 +253,7 @@ public class EnumerationProducerTests
             Assert.AreEqual(8u, block.Header.RowCount);
             Assert.IsFalse(result.CompactionNeeded);
 
-            var link = EnumerationLookupTestAccess.FindByPath(snapshot, @"T:\RootLink");
+            var link = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "RootLink"));
             Assert.IsTrue(link.HasValue);
         }
         finally
@@ -278,7 +278,7 @@ public class EnumerationProducerTests
         var snapshot = Produce(out _, out _);
         try
         {
-            var entry = EnumerationLookupTestAccess.FindByPath(snapshot, $@"T:\{hiddenName}");
+            var entry = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, hiddenName));
             Assert.IsTrue(entry.HasValue);
         }
         finally

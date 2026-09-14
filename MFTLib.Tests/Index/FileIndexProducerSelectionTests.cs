@@ -216,7 +216,7 @@ public class FileIndexProducerSelectionTests
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(ProducerKind.Enumeration, status.ProducerKind);
         Assert.IsNull(status.MftProducerFailureMessage);
-        Assert.IsNotNull(index.Find(@"T:\indexed.txt"));
+        Assert.IsNotNull(index.Find(Path.Combine(_treeRoot, "indexed.txt")));
     }
 
     [TestMethod]
@@ -253,6 +253,7 @@ public class FileIndexProducerSelectionTests
 
             Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
             Assert.AreEqual("elevation declined during rescan", index.Drives.Single().MftProducerFailureMessage);
+            Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().BlockSource);
         }
 
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -310,7 +311,7 @@ public class FileIndexProducerSelectionTests
         Assert.IsTrue(index.Drives[0].WatchSupported);
         Assert.AreEqual(8192L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(4096L, previousRoot.DriveBlock.Block.Header.UsnNextUsn);
-        Assert.AreEqual(@"T:\", previousRoot.Path);
+        Assert.AreEqual(_treeRoot, previousRoot.Path);
     }
 
     [TestMethod]
