@@ -90,10 +90,10 @@ public sealed class BrokerFileIndexRescanTests
             };
             await index.StartWatchingAsync(token);
             await Task.WhenAll(firstC.Task, firstD.Task).WaitAsync(token);
-            Assert.AreEqual(2, index.FindByName("scan-1.txt", token).Count);
-            await index.RescanAsync('C', token);
-            await secondC.Task.WaitAsync(token);
+            var rescanTask = index.RescanAsync('C', token);
             await appliedD.Task.WaitAsync(token);
+            await rescanTask;
+            await secondC.Task.WaitAsync(token);
             Assert.AreEqual(2, scansC);
             Assert.AreEqual(2, armsC);
             Assert.AreEqual(1, armsD);

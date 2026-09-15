@@ -34,50 +34,60 @@ public sealed partial class FileIndex
             throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
         }
 
-        // Disarming before the gate, never under it: the pump takes _swapGate synchronously
-        // inside ApplyJournalEntriesCore, so touching the watch while this method holds the gate
-        // would deadlock the rescan against its own pump. Nothing here deadlocks the other way
-        // either, because the disarm awaits a reader that never takes the gate and the merged
-        // channel is unbounded, so a pump blocked on the gate never blocks a reader's write.
-        SuspendedWatch suspended;
+        await _rescanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            suspended = await SuspendDriveForRescanAsync(driveLetter, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception suspendFailure)
-        {
-            // A disarm that throws has already stopped the drive at the source, so leaving its
-            // status healthy would be the same silent stop ResumeAfterFailedSwapAsync prevents on
-            // the swap path. Recording it announces the freeze before the caller sees the throw.
-            RecordWatchFailure(driveLetter, suspendFailure);
-            throw;
-        }
+            ObjectDisposedException.ThrowIf(_disposed, this);
 
-        try
-        {
-            await SwapDriveBlockAsync(drive, driveLetter, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception swapFailure)
-        {
-            // A failed swap must not leave this drive disarmed at the source while its status still
-            // reads healthy: that is the silent stop the per-drive contract forbids. Nothing was
-            // swapped, so the block's header cursor is still true and the drive resumes from it.
-            await ResumeAfterFailedSwapAsync(driveLetter, suspended, swapFailure, cancellationToken)
-                .ConfigureAwait(false);
-            throw;
-        }
+            // Disarming before the gate, never under it: the pump takes _swapGate synchronously
+            // inside ApplyJournalEntriesCore, so touching the watch while this method holds the gate
+            // would deadlock the rescan against its own pump. Nothing here deadlocks the other way
+            // either, because the disarm awaits a reader that never takes the gate and the merged
+            // channel is unbounded, so a pump blocked on the gate never blocks a reader's write.
+            SuspendedWatch suspended;
+            try
+            {
+                suspended = await SuspendDriveForRescanAsync(driveLetter, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception suspendFailure)
+            {
+                // A disarm that throws has already stopped the drive at the source, so leaving its
+                // status healthy would be the same silent stop ResumeAfterFailedSwapAsync prevents on
+                // the swap path. Recording it announces the freeze before the caller sees the throw.
+                RecordWatchFailure(driveLetter, suspendFailure);
+                throw;
+            }
 
-        try
-        {
-            await ResumeDriveAfterRescanAsync(driveLetter, suspended, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await SwapDriveBlockAsync(drive, driveLetter, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception swapFailure)
+            {
+                // A failed swap must not leave this drive disarmed at the source while its status still
+                // reads healthy: that is the silent stop the per-drive contract forbids. Nothing was
+                // swapped, so the block's header cursor is still true and the drive resumes from it.
+                await ResumeAfterFailedSwapAsync(driveLetter, suspended, swapFailure, cancellationToken)
+                    .ConfigureAwait(false);
+                throw;
+            }
+
+            try
+            {
+                await ResumeDriveAfterRescanAsync(driveLetter, suspended, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception resumeFailure)
+            {
+                // The swap succeeded, so the drive's block is current and only its watch is missing.
+                // The resume clears the drive's failure message before it arms, so without this the
+                // drive would read healthy while nothing was watching it.
+                RecordWatchFailure(driveLetter, resumeFailure);
+                throw;
+            }
         }
-        catch (Exception resumeFailure)
+        finally
         {
-            // The swap succeeded, so the drive's block is current and only its watch is missing.
-            // The resume clears the drive's failure message before it arms, so without this the
-            // drive would read healthy while nothing was watching it.
-            RecordWatchFailure(driveLetter, resumeFailure);
-            throw;
+            _rescanGate.Release();
         }
     }
 
@@ -106,33 +116,30 @@ public sealed partial class FileIndex
 
     async Task SwapDriveBlockAsync(IndexedDrive drive, char driveLetter, CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!TryGetDriveOrdinal(driveLetter, out var driveOrdinal))
+        {
+            throw new ArgumentException($"Drive {driveLetter} has no block.", nameof(driveLetter));
+        }
+
+        DriveBlock superseded;
+        lock (_stateLock)
+        {
+            superseded = _driveBlocks[driveOrdinal];
+        }
+
+        var blockPath = ComputeScanBlockPath(drive);
+        var retiredPath = _options.NoCache ? null : RenameAsideForRescan(blockPath, superseded);
+        var scanResult = await ProduceRescannedBlockAsync(drive, driveOrdinal, blockPath, retiredPath,
+            superseded, cancellationToken).ConfigureAwait(false);
+        if (scanResult is not { } completedScan)
+        {
+            return;
+        }
+
         await _swapGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // The check above the gate is only an early out. DisposeAsync sets the flag before it
-            // waits on this same gate, so a rescan admitted after that would otherwise scan a
-            // drive and publish a snapshot over an index whose blocks are already released.
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!TryGetDriveOrdinal(driveLetter, out var driveOrdinal))
-            {
-                throw new ArgumentException($"Drive {driveLetter} has no block.", nameof(driveLetter));
-            }
-
-            DriveBlock superseded;
-            lock (_stateLock)
-            {
-                superseded = _driveBlocks[driveOrdinal];
-            }
-
-            var blockPath = ComputeScanBlockPath(drive);
-            var retiredPath = _options.NoCache ? null : RenameAsideForRescan(blockPath, superseded);
-            var scanResult = await ProduceRescannedBlockAsync(drive, driveOrdinal, blockPath, retiredPath,
-                superseded, cancellationToken).ConfigureAwait(false);
-            if (scanResult is not { } completedScan)
-            {
-                return;
-            }
-
             // The watch failure entry is deliberately left alone here: clearing it happens once
             // the gate is released, immediately before the re-arm, so the drive is never live
             // again while it still looks dropped.
