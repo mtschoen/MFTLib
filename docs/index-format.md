@@ -152,6 +152,16 @@ writes rows and names directly from parse batches, without resolving full paths.
 It stamps the armed journal cursor and writes the completed header last; a crash
 before completion leaves a block the client discards.
 
+Journal mutation coalesces NTFS close records. NTFS ends every open cycle with a record
+that repeats the cycle's reasons plus `USN_REASON_CLOSE`, and the watch reads with
+`ReturnOnlyOnClose = 0`, so every intermediate record arrives. `JournalMutator` tracks,
+per drive block, the reasons each row's open cycle already reported; a close record that
+adds no new reason restamps the row's `ModifiedTicks` and attributes without emitting a
+second change, so one real transition raises one change. The state is runtime-only - it
+is not part of this format, is not persisted, and is discarded with the block a rescan
+replaces. A sequence-number change on the row resets the cycle, since the MFT segment
+was reused by a new file.
+
 ## Sidecars
 
 A follow-up children table or name index is a separate file next to the block,

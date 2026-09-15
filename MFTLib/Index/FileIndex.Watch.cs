@@ -10,7 +10,10 @@ public sealed partial class FileIndex
     ///     this one). The mutation and the USN cursor are already durable by the time any handler
     ///     runs: <see cref="ApplyJournalEntries" /> applies the whole batch and releases its gate
     ///     before raising this event at all, so a throwing handler never undoes anything and never
-    ///     stops another handler from seeing the rest of the batch. See
+    ///     stops another handler from seeing the rest of the batch. A close record that
+    ///     repeats only reasons its open cycle already reported applies its metadata to the
+    ///     block without raising this event, so one real transition raises one change even
+    ///     though NTFS writes at least two journal records for it. See
     ///     <see cref="ApplyJournalEntries" /> for how a handler exception is surfaced to the
     ///     caller.
     /// </summary>

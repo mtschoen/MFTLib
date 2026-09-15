@@ -301,6 +301,37 @@ public class FileIndexWatchTests
         StringAssert.Contains(thrown.StackTrace ?? string.Empty, nameof(ThrowingSubscriber));
     }
 
+    [TestMethod]
+    public void ApplyJournalEntries_CreateClosePairAcrossBatches_RaisesExactlyOneCreated()
+    {
+        var observed = new List<FileChange>();
+        _index.Changed += observed.Add;
+
+        var first = _index.ApplyJournalEntries('T',
+            [Entry(20, 0, "injected.txt", UsnReason.FileCreate)], journalId: 5, nextUsn: 100);
+        var second = _index.ApplyJournalEntries('T',
+            [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)], journalId: 5, nextUsn: 101);
+
+        Assert.AreEqual(1, first.Count);
+        Assert.AreEqual(0, second.Count);
+        Assert.AreEqual(1, observed.Count);
+        Assert.AreEqual(FileChangeKind.Created, observed[0].Kind);
+    }
+
+    [TestMethod]
+    public void ApplyJournalEntries_CloseCarryingAnUnreportedReason_StillRaisesOneChange()
+    {
+        _index.ApplyJournalEntries('T',
+            [Entry(20, 0, "injected.txt", UsnReason.FileCreate)], journalId: 5, nextUsn: 100);
+
+        var second = _index.ApplyJournalEntries('T',
+            [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.DataExtend | UsnReason.Close)],
+            journalId: 5, nextUsn: 101);
+
+        Assert.AreEqual(1, second.Count);
+        Assert.AreEqual(FileChangeKind.Modified, second[0].Kind);
+    }
+
     static void ThrowingSubscriber(FileChange change)
     {
         throw new InvalidOperationException("boom");

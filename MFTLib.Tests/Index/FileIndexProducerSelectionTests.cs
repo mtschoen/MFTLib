@@ -386,4 +386,80 @@ public class FileIndexProducerSelectionTests
         Assert.AreEqual(0, invocationCount);
         Assert.AreEqual(ProducerKind.Enumeration, index.Drives[0].ProducerKind);
     }
+
+    /// <summary>
+    ///     Close-record coalescing state is owned by the drive block, so a rescan that
+    ///     replaces the block resets it: the same close record the old block would have
+    ///     suppressed is a first-sighted create on the replacement.
+    /// </summary>
+    [TestMethod]
+    public async Task RescanAsync_ResetsReportedReasonCyclesWithTheReplacedBlock()
+    {
+        var invocationCount = 0;
+        Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
+        {
+            var nextUsn = 4096L * ++invocationCount;
+            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, 7, nextUsn),
+                7, nextUsn, 0, false));
+        }
+
+        await using var index = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, Produce),
+            TestContext.CancellationTokenSource.Token);
+        var created = UsnJournalEntry.Create(new UsnJournalEntryOptions
+        {
+            RecordNumber = 20,
+            ParentRecordNumber = 5,
+            FileName = "tracked.txt",
+            Reason = UsnReason.FileCreate,
+            Usn = 5000,
+            Timestamp = FixedMoment,
+            FileAttributes = FileAttributes.Archive
+        });
+        var closed = UsnJournalEntry.Create(new UsnJournalEntryOptions
+        {
+            RecordNumber = 20,
+            ParentRecordNumber = 5,
+            FileName = "tracked.txt",
+            Reason = UsnReason.FileCreate | UsnReason.Close,
+            Usn = 5001,
+            Timestamp = FixedMoment,
+            FileAttributes = FileAttributes.Archive
+        });
+
+        var controlCreated = UsnJournalEntry.Create(new UsnJournalEntryOptions
+        {
+            RecordNumber = 21,
+            ParentRecordNumber = 5,
+            FileName = "control.txt",
+            Reason = UsnReason.FileCreate,
+            Usn = 5000,
+            Timestamp = FixedMoment,
+            FileAttributes = FileAttributes.Archive
+        });
+        var controlClosed = UsnJournalEntry.Create(new UsnJournalEntryOptions
+        {
+            RecordNumber = 21,
+            ParentRecordNumber = 5,
+            FileName = "control.txt",
+            Reason = UsnReason.FileCreate | UsnReason.Close,
+            Usn = 5001,
+            Timestamp = FixedMoment,
+            FileAttributes = FileAttributes.Archive
+        });
+
+        // Prove coalescing works within an unreplaced block's open cycle.
+        Assert.AreEqual(1, index.ApplyJournalEntries('T', [controlCreated], 7, 5002).Count);
+        Assert.AreEqual(0, index.ApplyJournalEntries('T', [controlClosed], 7, 5003).Count);
+
+        // Record 20's create leaves its cycle open in ReportedReasonCycles leading up to rescan.
+        Assert.AreEqual(1, index.ApplyJournalEntries('T', [created], 7, 5004).Count);
+
+        await index.RescanAsync('T', TestContext.CancellationTokenSource.Token);
+
+        // On the replaced block, the open cycle was discarded with the old DriveBlock;
+        // the close record is treated as a first-sighted create rather than coalesced.
+        var afterRescan = index.ApplyJournalEntries('T', [closed], 7, 8193);
+        Assert.AreEqual(1, afterRescan.Count);
+        Assert.AreEqual(FileChangeKind.Created, afterRescan[0].Kind);
+    }
 }

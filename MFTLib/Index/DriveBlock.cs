@@ -52,6 +52,13 @@ public sealed class DriveBlock
     /// </summary>
     internal string? MatchableRootDirectoryPath { get; }
 
+    /// <summary>
+    ///     Coalescing state for journal close records, owned by this block so that a
+    ///     rescan replacing the block starts with no reported cycles. See
+    ///     <see cref="JournalMutator" /> for how it is used.
+    /// </summary>
+    internal ReportedReasonCycles ReportedCycles { get; } = new();
+
     public int ReferenceCount
     {
         get

@@ -4,7 +4,11 @@ namespace MFTLib.Index;
 ///     Applies USN journal batches to a block in place. Handed-out handles never dangle and
 ///     never read garbage; their values simply become current. Capacity exhaustion sets the
 ///     compaction-needed flag, keeps applying what fits, and reports the drive as stale rather
-///     than crashing or silently dropping a record.
+///     than crashing or silently dropping a record. NTFS closes every open cycle with a record
+///     that repeats the cycle's reasons plus <see cref="UsnReason.Close" />; the mutator
+///     coalesces that close record against the reasons the cycle already reported (tracked per
+///     drive block in <see cref="ReportedReasonCycles" />), so one real transition raises one
+///     change while the row still takes the close record's timestamp and attributes.
 /// </summary>
 public sealed class JournalMutator
 {
@@ -30,9 +34,10 @@ public sealed class JournalMutator
         ArgumentNullException.ThrowIfNull(entries);
 
         var changes = new List<FileChange>();
+        var rowMutated = false;
         foreach (var entry in entries)
         {
-            var change = ApplyOne(snapshot, driveOrdinal, entry);
+            var change = ApplyOne(snapshot, driveOrdinal, entry, ref rowMutated);
             if (change is not null)
             {
                 changes.Add(change);
@@ -40,7 +45,7 @@ public sealed class JournalMutator
         }
 
         Writer.SetJournalCursor(journalId, nextUsn);
-        if (changes.Count > 0)
+        if (changes.Count > 0 || rowMutated)
         {
             Writer.BumpGeneration();
         }
@@ -48,7 +53,7 @@ public sealed class JournalMutator
         return changes;
     }
 
-    FileChange? ApplyOne(Snapshot snapshot, ushort driveOrdinal, UsnJournalEntry entry)
+    FileChange? ApplyOne(Snapshot snapshot, ushort driveOrdinal, UsnJournalEntry entry, ref bool rowMutated)
     {
         var rowIndex = (uint)entry.RecordNumber;
         if (entry.RecordNumber > uint.MaxValue || rowIndex >= Writer.Block.Header.SlotCapacity)
@@ -57,40 +62,120 @@ public sealed class JournalMutator
             return null;
         }
 
-        if (entry.IsCreate)
+        // NTFS accumulates reason flags while a file handle is open and closes it with a final
+        // record that repeats every reason already delivered for that open cycle plus
+        // USN_REASON_CLOSE. Every record in the cycle (intermediate or close) is therefore
+        // classified only by the reasons this cycle has not reported yet; bits already reported
+        // must not classify a subsequent record a second time. RenameOldName never classifies:
+        // it is the paired frame whose RenameNewName sibling carries the rename.
+        var cycles = snapshot.GetDriveBlock(driveOrdinal).ReportedCycles;
+        var reported = cycles.GetReportedReasons(rowIndex, entry.SequenceNumber);
+        var meaningful = entry.Reason & ~(UsnReason.Close | UsnReason.RenameOldName);
+        var classification = meaningful & ~reported;
+
+        FileChange? change;
+        if ((classification & UsnReason.FileCreate) != 0)
         {
-            return ApplyCreate(snapshot, driveOrdinal, entry, rowIndex);
+            change = ApplyCreate(snapshot, driveOrdinal, entry, rowIndex);
+        }
+        else if ((classification & UsnReason.FileDelete) != 0)
+        {
+            change = ApplyDelete(snapshot, driveOrdinal, entry, rowIndex);
+        }
+        else if ((classification & UsnReason.RenameNewName) != 0)
+        {
+            change = ApplyRenameArm(snapshot, driveOrdinal, entry, rowIndex);
+        }
+        else if (classification != UsnReason.None)
+        {
+            change = ApplyModification(snapshot, driveOrdinal, entry, rowIndex);
+        }
+        else
+        {
+            change = null;
+            if (entry.IsClose && meaningful != UsnReason.None)
+            {
+                if (ApplyCloseMetadata(entry, rowIndex))
+                {
+                    rowMutated = true;
+                }
+            }
         }
 
-        if (entry.IsDelete)
+        if (entry.IsClose)
         {
-            if (!TryHydrateRow(entry, rowIndex, out _))
-            {
-                return null;
-            }
-
-            var path = IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex);
-            Writer.MarkTombstone(rowIndex);
-            return new FileChange(FileChangeKind.Deleted, FileEntry.Create(snapshot, driveOrdinal, rowIndex), path);
+            cycles.CloseCycle(rowIndex);
+        }
+        else if (meaningful != UsnReason.None)
+        {
+            // Every meaningful bit of a reported record counts as reported, not only the
+            // bit that won the classification: the record was reported once, and its
+            // remaining bits are subsumed by that one change.
+            cycles.MarkReported(rowIndex, entry.SequenceNumber, meaningful);
         }
 
-        if ((entry.Reason & UsnReason.RenameNewName) != 0)
+        return change;
+    }
+
+    FileChange? ApplyDelete(Snapshot snapshot, ushort driveOrdinal, UsnJournalEntry entry, uint rowIndex)
+    {
+        if (!TryHydrateRow(entry, rowIndex, out _))
         {
-            if (!TryHydrateRow(entry, rowIndex, out var hydrated))
-            {
-                return null;
-            }
-
-            if (hydrated)
-            {
-                return new FileChange(FileChangeKind.Created, FileEntry.Create(snapshot, driveOrdinal, rowIndex),
-                    IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex));
-            }
-
-            return ApplyRename(snapshot, driveOrdinal, entry, rowIndex);
+            return null;
         }
 
-        return ApplyModification(snapshot, driveOrdinal, entry, rowIndex);
+        var path = IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex);
+        Writer.MarkTombstone(rowIndex);
+        return new FileChange(FileChangeKind.Deleted, FileEntry.Create(snapshot, driveOrdinal, rowIndex), path);
+    }
+
+    /// <summary>
+    ///     The rename arm of <see cref="ApplyOne" />: a rename of a row the index never
+    ///     had is reported as a create, because there is no real previous path to give it.
+    /// </summary>
+    FileChange? ApplyRenameArm(Snapshot snapshot, ushort driveOrdinal, UsnJournalEntry entry, uint rowIndex)
+    {
+        if (!TryHydrateRow(entry, rowIndex, out var hydrated))
+        {
+            return null;
+        }
+
+        if (hydrated)
+        {
+            return new FileChange(FileChangeKind.Created, FileEntry.Create(snapshot, driveOrdinal, rowIndex),
+                IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex));
+        }
+
+        return ApplyRename(snapshot, driveOrdinal, entry, rowIndex);
+    }
+
+    /// <summary>
+    ///     A close record that repeats only already-reported reasons still carries the
+    ///     freshest metadata for the row, so its timestamp and attributes are applied
+    ///     without a change notification (mutation separated from notification). An
+    ///     unused or tombstoned slot stays untouched: bookkeeping never hydrates a row
+    ///     or resurrects a deleted file. Name and parent are not restamped: they were
+    ///     written by the record that opened the cycle and cannot change without a rename
+    ///     record of their own. Returns true if row metadata was modified.
+    /// </summary>
+    bool ApplyCloseMetadata(UsnJournalEntry entry, uint rowIndex)
+    {
+        ref var row = ref Writer.Block.Rows[(int)rowIndex];
+        if (!row.IsInUse || row.IsDeleted)
+        {
+            return false;
+        }
+
+        var modifiedTicks = entry.Timestamp.Ticks;
+        var attributes = (uint)entry.FileAttributes;
+        if (row.ModifiedTicks == modifiedTicks && row.Attributes == attributes)
+        {
+            return false;
+        }
+
+        row.ModifiedTicks = modifiedTicks;
+        row.Attributes = attributes;
+        return true;
     }
 
     FileChange? ApplyCreate(Snapshot snapshot, ushort driveOrdinal, UsnJournalEntry entry, uint rowIndex)
