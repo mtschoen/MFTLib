@@ -18,6 +18,7 @@ public sealed record FileIndexOptions
     ///     than graceful dispose, so no stale no-cache file is left behind.
     /// </summary>
     public bool NoCache { get; init; }
+    public bool InitialOpenCacheOnly { get; init; }
 
     public ProducerPolicy ProducerPolicy { get; init; } = ProducerPolicy.Mft;
 

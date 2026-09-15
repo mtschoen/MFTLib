@@ -61,6 +61,18 @@ public sealed partial class FileIndex
         }
         else
         {
+            if (_options.InitialOpenCacheOnly)
+            {
+                lock (_stateLock)
+                {
+                    _mftProducerFailureMessagesByOrdinal[driveOrdinal] =
+                        $"Drive {driveLetter}: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan.";
+                }
+
+                RecordFailedDrive(driveLetter, driveOrdinal);
+                return;
+            }
+
             var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, ComputeScanBlockPath(drive),
                 cancellationToken).ConfigureAwait(false);
             if (scanResult is not { } completedScan)
