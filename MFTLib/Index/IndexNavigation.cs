@@ -61,15 +61,15 @@ internal static class IndexNavigation
     ///     Direct live children only. A tombstoned row is excluded here even though
     ///     <see cref="TryGetParentRow" /> and the path walk still pass through it.
     /// </summary>
-    internal static List<FileEntry> GetChildren(Snapshot snapshot, ushort driveOrdinal, uint rowIndex)
+    internal static List<FileEntry> GetChildren(Snapshot snapshot, ushort driveOrdinal, uint rowIndex,
+        CancellationToken cancellationToken = default)
     {
-        var block = snapshot.GetDriveBlock(driveOrdinal).Block;
-        var rowCount = block.Header.RowCount;
         var children = new List<FileEntry>();
-        var rows = block.Rows;
-        for (var candidate = 0u; candidate < rowCount; candidate++)
+        var scanner = new RowScanner(snapshot, driveOrdinal, cancellationToken);
+        while (scanner.MoveNext())
         {
-            ref readonly var row = ref rows[(int)candidate];
+            ref readonly var row = ref scanner.Current;
+            var candidate = scanner.CurrentRowIndex;
             if (row.IsInUse && !row.IsDeleted && row.ParentRow == rowIndex && candidate != rowIndex)
             {
                 children.Add(FileEntry.Create(snapshot, driveOrdinal, candidate));
@@ -92,8 +92,17 @@ internal static class IndexNavigation
         }
 
         var block = candidate.DriveBlock.Block;
-        var current = candidate.RowIndex;
-        var target = ancestor.RowIndex;
+        return IsUnder(block, candidate.RowIndex, ancestor.RowIndex);
+    }
+
+    /// <summary>
+    ///     Walks the parent chain from <paramref name="candidateRow" /> up toward <paramref name="targetRow" />.
+    ///     Direct block overload for query engines to avoid creating handles and reading guarded properties.
+    /// </summary>
+    internal static bool IsUnder(BlockFile block, uint candidateRow, uint targetRow)
+    {
+        var current = candidateRow;
+        var target = targetRow;
         var hare = current;
         var cycleDetectionActive = true;
 
@@ -143,7 +152,7 @@ internal static class IndexNavigation
         }
 
         throw new InvalidDataException(
-            $"Parent chain for {candidate.Id} exceeds the supported depth of {BlockLayout.MaximumPathDepth} hops.");
+            $"Parent chain for row {candidateRow} exceeds the supported depth of {BlockLayout.MaximumPathDepth} hops.");
     }
 
     static List<string> CollectSegments(BlockFile block, uint rowIndex)

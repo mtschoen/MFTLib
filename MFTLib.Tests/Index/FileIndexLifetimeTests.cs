@@ -188,7 +188,7 @@ public class FileIndexLifetimeTests
         Assert.AreNotSame(oldSnapshot, index.CurrentSnapshot);
         Assert.IsTrue(oldEntry.IsDirectory);
 
-        oldSnapshot.ReleaseNow();
+        await oldSnapshot.ReleaseNowAsync();
         Assert.ThrowsException<ObjectDisposedException>(() => oldEntry.IsDirectory);
     }
 

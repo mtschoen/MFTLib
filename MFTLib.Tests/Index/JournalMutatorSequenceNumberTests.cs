@@ -12,9 +12,9 @@ namespace MFTLib.Tests.Index;
 public class JournalMutatorSequenceNumberTests
 {
     [TestMethod]
-    public void Create_StampsTheEntrysSequenceNumberOnTheRowItWrites()
+    public async Task Create_StampsTheEntrysSequenceNumberOnTheRowItWrites()
     {
-        using var fixture = new MutatorFixture();
+        await using var fixture = new MutatorFixture();
         var created = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 30,

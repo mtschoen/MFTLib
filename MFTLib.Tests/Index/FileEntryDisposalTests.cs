@@ -38,9 +38,9 @@ public class FileEntryDisposalTests
     }
 
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        _snapshot.ReleaseNow();
+        await _snapshot.ReleaseNowAsync();
         _builder.Dispose();
     }
 
@@ -52,9 +52,9 @@ public class FileEntryDisposalTests
     }
 
     [TestMethod]
-    public void IsDisposed_IsTrueOnceTheSnapshotIsReleased()
+    public async Task IsDisposed_IsTrueOnceTheSnapshotIsReleased()
     {
-        _snapshot.ReleaseNow();
+        await _snapshot.ReleaseNowAsync();
 
         Assert.IsTrue(_entry.IsDisposed);
         Assert.IsTrue(_entry.IsValid, "IsValid answers whether the handle references a snapshot, not whether it is live");
@@ -70,9 +70,9 @@ public class FileEntryDisposalTests
     }
 
     [TestMethod]
-    public void EveryDocumentedRead_ThrowsOnceTheSnapshotIsReleased()
+    public async Task EveryDocumentedRead_ThrowsOnceTheSnapshotIsReleased()
     {
-        _snapshot.ReleaseNow();
+        await _snapshot.ReleaseNowAsync();
         var entry = _entry;
 
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Name);
@@ -90,9 +90,9 @@ public class FileEntryDisposalTests
     }
 
     [TestMethod]
-    public void ToString_DoesNotThrowOnADisposedHandle()
+    public async Task ToString_DoesNotThrowOnADisposedHandle()
     {
-        _snapshot.ReleaseNow();
+        await _snapshot.ReleaseNowAsync();
 
         Assert.AreEqual("<disposed FileEntry>", _entry.ToString());
         Assert.AreEqual("<invalid FileEntry>", default(FileEntry).ToString());

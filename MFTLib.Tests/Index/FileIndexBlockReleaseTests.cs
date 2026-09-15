@@ -214,6 +214,178 @@ public class FileIndexBlockReleaseTests
     }
 
     /// <summary>
+    ///     A borrow is the reader gate a query holds for its whole duration. Disposal waits for it
+    ///     to come back before it unmaps anything, so the mapping a scan is reading stays valid
+    ///     until that scan has left it.
+    /// </summary>
+    [TestMethod]
+    public async Task DisposeAsync_WhileABorrowIsHeld_WaitsForItAndThenReleasesTheBlockFile()
+    {
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        var borrow = index.CurrentSnapshot.Borrow();
+        try
+        {
+            var disposal = index.DisposeAsync().AsTask();
+
+            Assert.IsFalse(disposal.IsCompleted,
+                "DisposeAsync returned while a reader still held the snapshot");
+
+            borrow.Dispose();
+            await disposal;
+
+            BlockFileHoldAssertions.AssertNotHeld(blockPath);
+        }
+        finally
+        {
+            borrow.Dispose();
+            await index.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    ///     A caller whose own token source was disposed without being cancelled must not be able
+    ///     to wedge the index. On this runtime such a token behaves like a live uncancelled one
+    ///     and the query answers normally; a runtime that refused to link it would make the query
+    ///     throw instead. Either way the borrow is accounted for, which is what disposal depends
+    ///     on: a borrow counted and then stranded by a throw would make every later release wait
+    ///     for a reader that does not exist.
+    /// </summary>
+    [TestMethod]
+    public async Task AQueryWhoseTokenSourceWasDisposed_LeavesNoBorrowOutstanding()
+    {
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        var release = index.CurrentSnapshot.ReleaseState;
+        var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
+        cancellation.Dispose();
+
+        Assert.AreEqual(1, index.FindByName("readme.md", token).Count);
+
+        // Asserted before the disposal below, which is what a stranded borrow would hang forever.
+        Assert.AreEqual(0, release.OutstandingBorrowCount,
+            "the query kept the borrow it took, so nothing can ever release this snapshot");
+
+        await index.DisposeAsync();
+
+        BlockFileHoldAssertions.AssertNotHeld(blockPath);
+    }
+
+    /// <summary>
+    ///     A query started after disposal is refused before it counts anything, so the refusal
+    ///     path leaves no borrow behind either. Asserted for both shapes of query token: a caller
+    ///     that passes none observes the disposal signal directly, and a caller that passes one
+    ///     gets a linked source that the refusal has to give back rather than strand.
+    /// </summary>
+    [TestMethod]
+    public async Task AQueryStartedAfterDisposal_ThrowsAndLeavesNoBorrowOutstanding()
+    {
+        var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        var release = index.CurrentSnapshot.ReleaseState;
+        using var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
+        await index.DisposeAsync();
+
+        Assert.ThrowsException<ObjectDisposedException>(() => index.FindByName("readme.md"));
+        Assert.ThrowsException<ObjectDisposedException>(() => index.FindByName("readme.md", token));
+
+        Assert.AreEqual(0, release.OutstandingBorrowCount);
+    }
+
+    /// <summary>
+    ///     When both halves of a disposal fail, neither failure disappears. The cancellation
+    ///     failure is captured so the release can still run, and a release that then fails too
+    ///     would otherwise carry the only exception out: the captured one has nowhere left to go,
+    ///     and a consumer told the release failed would never learn that its own callback threw
+    ///     first. Both come out together instead, cancellation first because it happened first.
+    /// </summary>
+    [TestMethod]
+    public async Task DisposeAsync_WhenBothTheCancellationAndTheReleaseFail_ReportsBoth()
+    {
+        var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        index.CurrentSnapshot.ReleaseState._releaseStartedForTest =
+            () => throw new InvalidOperationException("the release itself");
+        using var registration = index.DisposalToken.Register(
+            () => throw new InvalidOperationException("a cancellation callback of someone else's"));
+
+        var thrown = await Assert.ThrowsExceptionAsync<AggregateException>(
+            async () => await index.DisposeAsync());
+
+        Assert.AreEqual(2, thrown.InnerExceptions.Count, "one of the two failures was dropped");
+        var cancellationFailure = (AggregateException)thrown.InnerExceptions[0];
+        Assert.AreEqual("a cancellation callback of someone else's",
+            cancellationFailure.InnerExceptions.Single().Message,
+            "the cancellation failure must come first, since it happened first");
+        Assert.AreEqual("the release itself", thrown.InnerExceptions[1].Message);
+
+        // Flattening is how a consumer gets at the leaves, the cancellation failure being the
+        // AggregateException that CancelAsync itself raised. It does not preserve the order
+        // above, so this asserts membership rather than position.
+        var leaves = thrown.Flatten().InnerExceptions.Select(failure => failure.Message).ToArray();
+        CollectionAssert.AreEquivalent(
+            new[] { "a cancellation callback of someone else's", "the release itself" }, leaves);
+    }
+
+    /// <summary>
+    ///     Cancelling the queries in flight is a step on the way to unmapping, not a reason to
+    ///     stop: a callback registered on the disposal signal belongs to someone else, and a
+    ///     throw from it must not leave the blocks mapped with the disposed flag already set,
+    ///     which is a state no later call can recover from because disposal returns early once
+    ///     that flag is set. The failure is still raised, after the mappings are gone.
+    /// </summary>
+    [TestMethod]
+    public async Task DisposeAsync_WhenACancellationCallbackThrows_StillReleasesTheBlock()
+    {
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
+        var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        using var registration = index.DisposalToken.Register(
+            () => throw new InvalidOperationException("a cancellation callback of someone else's"));
+
+        var thrown = await Assert.ThrowsExceptionAsync<AggregateException>(
+            async () => await index.DisposeAsync());
+
+        Assert.IsInstanceOfType<InvalidOperationException>(thrown.InnerExceptions.Single());
+        BlockFileHoldAssertions.AssertNotHeld(blockPath);
+    }
+
+    /// <summary>
+    ///     A query that began before a rescan holds a borrow on the snapshot that rescan retires.
+    ///     Disposal waits for that borrow too, which is why the count lives on the release state
+    ///     rather than on the index's current snapshot.
+    /// </summary>
+    [TestMethod]
+    public async Task DisposeAsync_WhileABorrowOnARetiredSnapshotIsHeld_WaitsForIt()
+    {
+        var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        var borrow = index.CurrentSnapshot.Borrow();
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+            await index.RescanAsync('T', CancellationToken.None);
+            Assert.AreNotSame(borrow.Snapshot, index.CurrentSnapshot,
+                "the rescan did not retire the borrowed snapshot, so this proves nothing");
+
+            var disposal = index.DisposeAsync().AsTask();
+
+            Assert.IsFalse(disposal.IsCompleted,
+                "DisposeAsync returned while a reader still held a retired snapshot");
+
+            borrow.Dispose();
+            await disposal;
+
+            BlockFileHoldAssertions.AssertNotHeld(Path.Combine(_cacheDirectory,
+                CacheDirectory.BlockFileName('T', _volumeSerial)));
+            Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory, "*.retired-*").Length);
+        }
+        finally
+        {
+            borrow.Dispose();
+            await index.DisposeAsync();
+        }
+    }
+
+    /// <summary>
     ///     Publication drops the retained release state of retired snapshots that are done with
     ///     their blocks. A release that has merely started is not done, so a second rescan must
     ///     keep that record: dropping it is what leaves a later disposal with nothing to wait on.

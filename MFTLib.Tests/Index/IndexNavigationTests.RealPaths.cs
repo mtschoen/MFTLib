@@ -6,7 +6,7 @@ namespace MFTLib.Tests.Index;
 public partial class IndexNavigationTests
 {
     [TestMethod]
-    public void Path_RendersTheBlockRootDirectory_NotTheDriveKey()
+    public async Task Path_RendersTheBlockRootDirectory_NotTheDriveKey()
     {
         using var builder = new SyntheticBlockBuilder();
         var root = builder.AddRoot();
@@ -26,7 +26,7 @@ public partial class IndexNavigationTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
@@ -39,7 +39,7 @@ public partial class IndexNavigationTests
     ///     rooted and the root joins the name chain with exactly one separator.
     /// </summary>
     [TestMethod]
-    public void Path_ForARootWithoutATrailingSeparator_JoinsWithExactlyOneSeparator()
+    public async Task Path_ForARootWithoutATrailingSeparator_JoinsWithExactlyOneSeparator()
     {
         using var builder = new SyntheticBlockBuilder('C');
         var root = builder.AddRoot();
@@ -63,12 +63,12 @@ public partial class IndexNavigationTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Path_WithNoRootDirectoryOnTheBlock_Throws()
+    public async Task Path_WithNoRootDirectoryOnTheBlock_Throws()
     {
         using var builder = new SyntheticBlockBuilder();
         var root = builder.AddRoot();
@@ -85,7 +85,7 @@ public partial class IndexNavigationTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 }

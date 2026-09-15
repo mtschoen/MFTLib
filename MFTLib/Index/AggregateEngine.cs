@@ -11,11 +11,13 @@ namespace MFTLib.Index;
 /// </summary>
 internal static class AggregateEngine
 {
-    internal static List<FileEntry> Largest(Snapshot snapshot, int count, FileEntry? under)
+    internal static List<FileEntry> Largest(Snapshot snapshot, int count, FileEntry? under,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentOutOfRangeException.ThrowIfNegative(count);
-        if (count == 0)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (count == 0 || (under is { } underAncestor && !underAncestor.IsValid))
         {
             return [];
         }
@@ -23,27 +25,38 @@ internal static class AggregateEngine
         var best = new PriorityQueue<FileEntry, long>(count);
         foreach (var driveBlock in snapshot.DriveBlocks)
         {
-            if (under is { } ancestor && ancestor.DriveOrdinal != driveBlock.DriveOrdinal)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (under is { } ancestor && (!ancestor.IsValid || ancestor.DriveOrdinal != driveBlock.DriveOrdinal))
             {
                 continue;
             }
 
-            CollectLargestFromDrive(snapshot, driveBlock.DriveOrdinal, count, under, best);
+            CollectLargestFromDrive(snapshot, driveBlock.DriveOrdinal, count, under, best, cancellationToken);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         var results = new List<FileEntry>(best.Count);
+        var checkCadence = 0;
         while (best.TryDequeue(out var entry, out _))
         {
+            if ((checkCadence++ & 0xFFF) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             results.Add(entry);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         results.Reverse();
         return results;
     }
 
-    internal static List<DuplicateGroup> DuplicateNames(Snapshot snapshot)
+    internal static List<DuplicateGroup> DuplicateNames(Snapshot snapshot,
+        CancellationToken cancellationToken = default)
     {
-        return DuplicateNameFinder.Find(snapshot, DuplicateNameSieveOptions.Default, out _);
+        return DuplicateNameFinder.Find(snapshot, DuplicateNameSieveOptions.Default, out _, cancellationToken);
     }
 
     /// <summary>
@@ -53,9 +66,11 @@ internal static class AggregateEngine
     ///     bounded heap; nothing is buffered into an intermediate list first.
     /// </summary>
     static void CollectLargestFromDrive(Snapshot snapshot, ushort driveOrdinal, int count,
-        FileEntry? under, PriorityQueue<FileEntry, long> best)
+        FileEntry? under, PriorityQueue<FileEntry, long> best, CancellationToken cancellationToken)
     {
-        var scanner = new RowScanner(snapshot, driveOrdinal);
+        var block = snapshot.GetDriveBlock(driveOrdinal).Block;
+        var underRow = under?.RowIndex ?? 0;
+        var scanner = new RowScanner(snapshot, driveOrdinal, cancellationToken);
         while (scanner.MoveNext())
         {
             ref readonly var row = ref scanner.Current;
@@ -64,13 +79,17 @@ internal static class AggregateEngine
                 continue;
             }
 
-            var entry = FileEntry.Create(snapshot, driveOrdinal, scanner.CurrentRowIndex);
-            if (under is { } ancestor && !IndexNavigation.IsUnder(entry, ancestor))
+            if (under is not null)
             {
-                continue;
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!under.Value.IsValid || under.Value.DriveOrdinal != driveOrdinal ||
+                    !IndexNavigation.IsUnder(block, scanner.CurrentRowIndex, underRow))
+                {
+                    continue;
+                }
             }
 
-            best.Enqueue(entry, entry.Size);
+            best.Enqueue(FileEntry.Create(snapshot, driveOrdinal, scanner.CurrentRowIndex), row.Size);
             if (best.Count > count)
             {
                 best.Dequeue();

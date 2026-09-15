@@ -8,67 +8,203 @@ public sealed partial class FileIndex
     ///     down from that block's root row, one name per level. This is the inverse of
     ///     <see cref="FileEntry.Path" />: whatever that emits, this accepts.
     /// </summary>
-    public FileEntry? Find(string nativePath)
+    /// <param name="nativePath">The path to resolve, in the form <see cref="FileEntry.Path" /> emits.</param>
+    /// <param name="cancellationToken">
+    ///     Stops the walk. Observed before the first row is read and at least every 4096 rows
+    ///     thereafter, so a cancelled query leaves the mapping promptly.
+    /// </param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    public FileEntry? Find(string nativePath, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return LookupEngine.Find(CurrentSnapshot, nativePath);
+        using var query = BeginQuery(cancellationToken);
+        return LookupEngine.Find(query.Snapshot, nativePath, query.CancellationToken);
     }
 
     /// <summary>Exact-name matches across every current drive block, folding case the way NTFS does.</summary>
-    public IReadOnlyList<FileEntry> FindByName(string name)
+    /// <param name="name">The name to match in full.</param>
+    /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    public IReadOnlyList<FileEntry> FindByName(string name, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return LookupEngine.FindByName(CurrentSnapshot, name, caseSensitive: false);
+        using var query = BeginQuery(cancellationToken);
+        return LookupEngine.FindByName(query.Snapshot, name, caseSensitive: false, query.CancellationToken);
     }
 
     /// <summary>
     ///     The whole match set, materialized. Callers page by slicing the returned list, which is
     ///     why the count is available up front and there is no cursor.
     /// </summary>
+    /// <param name="query">The predicates a row has to satisfy.</param>
+    /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
     /// <exception cref="InvalidDataException">
     ///     A candidate's parent chain does not resolve within
     ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops while applying the subtree restriction
     ///     (<see cref="SearchQuery.Under" />).
     /// </exception>
-    public IReadOnlyList<FileEntry> Search(SearchQuery query)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    public IReadOnlyList<FileEntry> Search(SearchQuery query, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return SearchEngine.Search(CurrentSnapshot, query);
+        using var scope = BeginQuery(cancellationToken);
+        return SearchEngine.Search(scope.Snapshot, query, scope.CancellationToken);
     }
 
     /// <summary>
     ///     Returns the largest files across the current snapshot, optionally restricted to an inclusive subtree.
     /// </summary>
+    /// <param name="count">How many entries to return at most.</param>
+    /// <param name="under">The inclusive subtree to stay within, or null for the whole index.</param>
+    /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
     /// <exception cref="InvalidDataException">
     ///     A candidate's parent chain does not resolve within
     ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops while applying the subtree restriction
     ///     (<paramref name="under" />).
     /// </exception>
-    public IReadOnlyList<FileEntry> Largest(int count, FileEntry? under = null)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    public IReadOnlyList<FileEntry> Largest(int count, FileEntry? under = null,
+        CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return AggregateEngine.Largest(CurrentSnapshot, count, under);
+        using var query = BeginQuery(cancellationToken);
+        return AggregateEngine.Largest(query.Snapshot, count, under, query.CancellationToken);
     }
 
-    public IReadOnlyList<DuplicateGroup> DuplicateNames()
+    /// <summary>
+    ///     Groups every live file name that occurs more than once across the current snapshot.
+    ///     This is the longest scan the index offers, several passes over the name column, which
+    ///     is where a token earns its keep.
+    /// </summary>
+    /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    public IReadOnlyList<DuplicateGroup> DuplicateNames(CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return AggregateEngine.DuplicateNames(CurrentSnapshot);
+        using var query = BeginQuery(cancellationToken);
+        return AggregateEngine.DuplicateNames(query.Snapshot, query.CancellationToken);
     }
 
-    public FileEntry Root(char drive)
+    /// <summary>
+    ///     The entry for the drive block's root row, which is the indexed root directory rather
+    ///     than the volume root: a block indexed from a subdirectory roots there.
+    /// </summary>
+    /// <param name="drive">The drive letter, as configured in <see cref="FileIndexOptions.Drives" />.</param>
+    /// <param name="cancellationToken">Stops the lookup before it resolves the root row.</param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    public FileEntry Root(char drive, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return LookupEngine.Root(CurrentSnapshot, drive);
+        using var query = BeginQuery(cancellationToken);
+        return LookupEngine.Root(query.Snapshot, drive, query.CancellationToken);
     }
 
     /// <summary>
     ///     The ref-struct escape hatch over one drive's mapped rows, for hot paths that cannot
-    ///     afford a materialized list. Internal in v1: the public surface is lists.
+    ///     afford a materialized list. Internal in v1: the public surface is lists. The scanner
+    ///     outlives this call, so the caller passes in the borrow that keeps those rows mapped
+    ///     for as long as it reads them, rather than this method taking one it cannot hold.
     /// </summary>
-    internal RowScanner Scan(ushort driveOrdinal)
+    internal RowScanner Scan(SnapshotBorrow borrow, ushort driveOrdinal,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(borrow);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return new RowScanner(borrow.Snapshot, driveOrdinal, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Takes a reader's claim on the current snapshot. Taken under <see cref="_stateLock" />,
+    ///     the same lock a snapshot swap and index disposal publish through, so a borrow is
+    ///     either counted before the snapshot leaves the index (and waited for when it is
+    ///     released) or refused because the release has already begun.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    internal SnapshotBorrow BorrowCurrentSnapshot()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return new RowScanner(CurrentSnapshot, driveOrdinal);
+        lock (_stateLock)
+        {
+            var snapshot = _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
+            return snapshot.Borrow();
+        }
+    }
+
+    /// <summary>
+    ///     Everything a query needs and nothing it has to remember to give back by hand: the
+    ///     snapshot to read, the token to observe, and a borrow that is returned when the query
+    ///     returns, whether it answered or threw.
+    /// </summary>
+    QueryScope BeginQuery(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!cancellationToken.CanBeCanceled)
+        {
+            // Nothing to link: disposal is the whole of this query's cancellation. Linking anyway
+            // would allocate a source and register on the one source every query shares, whose
+            // registration takes that source's lock, so a consumer querying in a tight loop would
+            // serialize its threads through it.
+            return new QueryScope(BorrowCurrentSnapshot(), DisposalToken);
+        }
+
+        // Linked per query rather than shared, so the caller's own cancellation and the index's
+        // disposal both stop this scan and neither can stop anyone else's. Built before the
+        // borrow is taken, and given back if the borrow is refused: a borrow counts from the
+        // moment it is taken, so anything that throws between that count and the scope that
+        // returns it would leave every later release waiting on a reader that no longer exists.
+        var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, DisposalToken);
+        var handedOver = false;
+        try
+        {
+            var scope = new QueryScope(BorrowCurrentSnapshot(), linkedCancellation);
+            handedOver = true;
+            return scope;
+        }
+        finally
+        {
+            if (!handedOver)
+            {
+                linkedCancellation.Dispose();
+            }
+        }
+    }
+
+    /// <summary>One query's hold on the index: the borrowed snapshot and the token that stops it.</summary>
+    readonly struct QueryScope : IDisposable
+    {
+        readonly SnapshotBorrow _borrow;
+        readonly CancellationTokenSource? _linkedCancellation;
+
+        /// <summary>For a query that observes a token it does not own, and so has none to dispose.</summary>
+        internal QueryScope(SnapshotBorrow borrow, CancellationToken cancellationToken)
+        {
+            _borrow = borrow;
+            _linkedCancellation = null;
+            CancellationToken = cancellationToken;
+        }
+
+        /// <summary>For a query that owns the linked source its token comes from.</summary>
+        internal QueryScope(SnapshotBorrow borrow, CancellationTokenSource linkedCancellation)
+            : this(borrow, linkedCancellation.Token)
+        {
+            _linkedCancellation = linkedCancellation;
+        }
+
+        internal Snapshot Snapshot => _borrow.Snapshot;
+
+        /// <summary>
+        ///     The token the engines observe: cancelled by the caller's own token or by the
+        ///     index's disposal, whichever comes first.
+        /// </summary>
+        internal CancellationToken CancellationToken { get; }
+
+        public void Dispose()
+        {
+            // The borrow goes back last. Its return is what lets a waiting disposal unmap, so
+            // nothing this query still owns may outlive it.
+            _linkedCancellation?.Dispose();
+            _borrow.Dispose();
+        }
     }
 }

@@ -37,9 +37,9 @@ public class AggregateEngineTests
     }
 
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        _snapshot.ReleaseNow();
+        await _snapshot.ReleaseNowAsync();
         _builder.Dispose();
     }
 
@@ -61,7 +61,7 @@ public class AggregateEngineTests
     }
 
     [TestMethod]
-    public void Largest_ExcludesSizeUnknownRows()
+    public async Task Largest_ExcludesSizeUnknownRows()
     {
         using var builder = new SyntheticBlockBuilder('K');
         var root = builder.AddRoot();
@@ -81,7 +81,7 @@ public class AggregateEngineTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
@@ -116,6 +116,49 @@ public class AggregateEngineTests
     }
 
     [TestMethod]
+    public void Largest_WithCancelledToken_ThrowsOperationCanceled()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var token = cancellation.Token;
+
+        Assert.ThrowsException<OperationCanceledException>(() =>
+            AggregateEngineTestAccess.Largest(_snapshot, 10, under: null, token));
+    }
+
+    [TestMethod]
+    public void Largest_Under_WithCancelledToken_ThrowsOperationCanceled()
+    {
+        var documents = FileEntry.Create(_snapshot, 0, _documentsRow);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var token = cancellation.Token;
+
+        Assert.ThrowsException<OperationCanceledException>(() =>
+            AggregateEngineTestAccess.Largest(_snapshot, 10, under: documents, token));
+    }
+
+    [TestMethod]
+    public void Largest_Under_InvalidAncestor_ReturnsEmpty()
+    {
+        var invalidAncestor = default(FileEntry);
+        var results = AggregateEngineTestAccess.Largest(_snapshot, 5, invalidAncestor);
+        Assert.AreEqual(0, results.Count);
+    }
+
+    [TestMethod]
+    public void Largest_Under_InvalidAncestor_WithCancelledToken_ThrowsOperationCanceled()
+    {
+        var invalidAncestor = default(FileEntry);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var token = cancellation.Token;
+
+        Assert.ThrowsException<OperationCanceledException>(() =>
+            AggregateEngineTestAccess.Largest(_snapshot, 10, under: invalidAncestor, token));
+    }
+
+    [TestMethod]
     public void DuplicateNames_GroupsRowsThatShareAName()
     {
         var groups = AggregateEngineTestAccess.DuplicateNames(_snapshot);
@@ -133,7 +176,7 @@ public class AggregateEngineTests
     }
 
     [TestMethod]
-    public void DuplicateNames_FoldsCaseTheWayNtfsDoes()
+    public async Task DuplicateNames_FoldsCaseTheWayNtfsDoes()
     {
         using var builder = new SyntheticBlockBuilder('V');
         var root = builder.AddRoot();
@@ -152,7 +195,7 @@ public class AggregateEngineTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
@@ -162,7 +205,7 @@ public class AggregateEngineTests
     const int LargeRowCount = 100_000;
 
     [TestMethod]
-    public void Largest_OverALargeBlockReturnsTheExactTopFiveInDescendingOrder()
+    public async Task Largest_OverALargeBlockReturnsTheExactTopFiveInDescendingOrder()
     {
         using var builder = new SyntheticBlockBuilder('L',
             slotCapacity: LargeRowCount + 10, namePoolCapacity: (uint)LargeRowCount * 40);
@@ -185,12 +228,12 @@ public class AggregateEngineTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void DuplicateNames_OverALargeTwoDriveBlockFindsExactlyTheSharedNames()
+    public async Task DuplicateNames_OverALargeTwoDriveBlockFindsExactlyTheSharedNames()
     {
         var uniqueRowCountOnDriveA = LargeRowCount - 3;
         using var builderA = new SyntheticBlockBuilder('A',
@@ -230,20 +273,22 @@ public class AggregateEngineTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 }
 
 static class AggregateEngineTestAccess
 {
-    public static List<FileEntry> Largest(Snapshot snapshot, int count, FileEntry? under)
+    public static List<FileEntry> Largest(Snapshot snapshot, int count, FileEntry? under,
+        CancellationToken cancellationToken = default)
     {
-        return AggregateEngine.Largest(snapshot, count, under);
+        return AggregateEngine.Largest(snapshot, count, under, cancellationToken);
     }
 
-    public static List<DuplicateGroup> DuplicateNames(Snapshot snapshot)
+    public static List<DuplicateGroup> DuplicateNames(Snapshot snapshot,
+        CancellationToken cancellationToken = default)
     {
-        return AggregateEngine.DuplicateNames(snapshot);
+        return AggregateEngine.DuplicateNames(snapshot, cancellationToken);
     }
 }

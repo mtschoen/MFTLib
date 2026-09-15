@@ -40,9 +40,9 @@ public class LookupEngineTests
     }
 
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        _snapshot.ReleaseNow();
+        await _snapshot.ReleaseNowAsync();
         _firstBuilder.Dispose();
         _secondBuilder.Dispose();
     }
@@ -155,7 +155,7 @@ public class LookupEngineTests
     }
 
     [TestMethod]
-    public void RootAndFind_UseTheRootRowDeclaredByTheBlockHeader()
+    public async Task RootAndFind_UseTheRootRowDeclaredByTheBlockHeader()
     {
         using var builder = new SyntheticBlockBuilder('V');
         for (var metadataRow = 0u; metadataRow < 5; metadataRow++)
@@ -182,7 +182,7 @@ public class LookupEngineTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 

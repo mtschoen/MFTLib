@@ -357,10 +357,27 @@ with the entry's name chain using the host separator. It can be opened, and
 matching indexed root. Disposing a `FileIndex` releases every block mapping it
 holds, so the `.mlix` files are closed at a point the caller chooses; a `FileEntry`
 held across that disposal reports `IsDisposed` and throws `ObjectDisposedException`
-on every read. `DriveStatus.BlockSource` says whether a drive warm-started from
-cache or was scanned, so a rebuild loop can skip the drives an open already scanned,
-and `CacheDirectory.EnumerateCached` lists the drives a cache directory holds
-without a consumer parsing block file names.
+on every read.
+
+Seven entry points scan rows: `Find`, `FindByName`, `Search`, `Largest`,
+`DuplicateNames` and `Root` on `FileIndex`, and `Children()` on a `FileEntry`. Each
+takes an optional `CancellationToken`, read before the first row and then at least
+every 4096 rows, and each holds the snapshot it reads for its whole duration.
+`DisposeAsync` waits for every one of those readers before it unmaps anything, so
+scanning on one thread while another disposes the index is safe. The six on
+`FileIndex` also observe the index's disposal, so disposing cancels them and each ends
+with `OperationCanceledException`, or `ObjectDisposedException` if it had not started;
+the wait is bounded by how long they take to reach their next checkpoint. `Children()`
+is the exception: a handle holds no reference to its index, so disposal waits that
+listing out instead, one pass over the drive's rows unless the caller passes a token.
+Every other `FileEntry` member reads a single row rather than scanning and carries no
+borrow, so a read ordered after the disposal throws `ObjectDisposedException` from the
+per-access check instead.
+
+`DriveStatus.BlockSource` says whether a drive warm-started from cache or was scanned,
+so a rebuild loop can skip the drives an open already scanned, and
+`CacheDirectory.EnumerateCached` lists the drives a cache directory holds without a
+consumer parsing block file names.
 
 `IsValid` and `IsDisposed` remain readable after disposal, and `ToString()` returns
 a diagnostic string. Reads of mapped entry data throw as described above.

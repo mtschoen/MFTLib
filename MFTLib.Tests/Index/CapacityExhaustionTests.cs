@@ -65,7 +65,7 @@ public class CapacityExhaustionTests
     }
 
     [TestMethod]
-    public void SlotExhaustion_FlagsCompactionKeepsWhatFitsAndNeverThrows()
+    public async Task SlotExhaustion_FlagsCompactionKeepsWhatFitsAndNeverThrows()
     {
         var (block, writer, snapshot) = BuildTinyDrive(slotCapacity: 4, namePoolCapacity: 512);
         try
@@ -82,12 +82,12 @@ public class CapacityExhaustionTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void NamePoolExhaustion_FlagsCompactionAndNeverThrows()
+    public async Task NamePoolExhaustion_FlagsCompactionAndNeverThrows()
     {
         // Capacity for exactly one "name-number-N.txt" name (17 characters, 34 bytes) with no
         // room left for a second one, so the first create survives and every later one is the
@@ -112,12 +112,12 @@ public class CapacityExhaustionTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void SearchOverAnExhaustedBlock_StillReturnsWhatWasApplied()
+    public async Task SearchOverAnExhaustedBlock_StillReturnsWhatWasApplied()
     {
         var (_, writer, snapshot) = BuildTinyDrive(slotCapacity: 4, namePoolCapacity: 512);
         try
@@ -132,7 +132,7 @@ public class CapacityExhaustionTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 }

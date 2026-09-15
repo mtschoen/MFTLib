@@ -82,11 +82,25 @@ public class FileIndexQueryTests
     }
 
     [TestMethod]
+    public void Search_Under_InvalidAncestor_ReturnsNoResults()
+    {
+        var results = _index.Search(new SearchQuery("readme", Under: default(FileEntry)));
+        Assert.AreEqual(0, results.Count);
+    }
+
+    [TestMethod]
     public void Largest_ReturnsTheBiggestFiles()
     {
         var results = _index.Largest(2);
         Assert.AreEqual("holiday.jpg", results[0].Name);
         Assert.AreEqual("report.pdf", results[1].Name);
+    }
+
+    [TestMethod]
+    public void Largest_Under_InvalidAncestor_ReturnsNoResults()
+    {
+        var results = _index.Largest(2, under: default(FileEntry));
+        Assert.AreEqual(0, results.Count);
     }
 
     [TestMethod]
@@ -135,7 +149,8 @@ public class FileIndexQueryTests
         Assert.IsTrue(_index.TryGetDriveOrdinal('T', out var driveOrdinal));
 
         var rowCount = 0;
-        foreach (var _ in _index.Scan(driveOrdinal))
+        using var borrow = _index.BorrowCurrentSnapshot();
+        foreach (var _ in _index.Scan(borrow, driveOrdinal))
         {
             rowCount++;
         }

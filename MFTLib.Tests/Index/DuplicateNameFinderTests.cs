@@ -23,7 +23,7 @@ public class DuplicateNameFinderTests
     static readonly DuplicateNameSieveOptions ForcedSmallSieve = new(bucketCountOverride: NameHashTable.MinimumBucketCount);
 
     [TestMethod]
-    public void Find_WithTwentyThousandUniqueNamesMaterializesAtMostOnePercentOfRows()
+    public async Task Find_WithTwentyThousandUniqueNamesMaterializesAtMostOnePercentOfRows()
     {
         using var builder = new SyntheticBlockBuilder('U',
             slotCapacity: UniqueNameCount + 10, namePoolCapacity: (uint)UniqueNameCount * 40);
@@ -64,12 +64,12 @@ public class DuplicateNameFinderTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Find_TrueDuplicatesSurviveEveryRefinementPassUnderTheForcedSmallSieve()
+    public async Task Find_TrueDuplicatesSurviveEveryRefinementPassUnderTheForcedSmallSieve()
     {
         using var builder = new SyntheticBlockBuilder('D',
             slotCapacity: UniqueNameCount + 20, namePoolCapacity: (uint)UniqueNameCount * 40);
@@ -99,7 +99,7 @@ public class DuplicateNameFinderTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 

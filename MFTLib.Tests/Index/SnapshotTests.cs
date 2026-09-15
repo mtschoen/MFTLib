@@ -31,7 +31,7 @@ public class SnapshotTests
     }
 
     [TestMethod]
-    public void Finalizer_ReleasesDriveBlockWhenSnapshotBecomesUnreachable()
+    public async Task Finalizer_ReleasesDriveBlockWhenSnapshotBecomesUnreachable()
     {
         using var builder = CompletedBuilder('T');
         var driveBlock = OpenDriveBlock(builder, 0);
@@ -48,7 +48,7 @@ public class SnapshotTests
     }
 
     [TestMethod]
-    public void Create_TakesOneReferencePerDriveBlock()
+    public async Task Create_TakesOneReferencePerDriveBlock()
     {
         using var builder = CompletedBuilder('T');
         var driveBlock = OpenDriveBlock(builder, 0);
@@ -61,7 +61,7 @@ public class SnapshotTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
 
         Assert.AreEqual(0, driveBlock.ReferenceCount);
@@ -69,7 +69,7 @@ public class SnapshotTests
     }
 
     [TestMethod]
-    public void ReleaseNow_IsIdempotent()
+    public async Task ReleaseNow_IsIdempotent()
     {
         using var builder = CompletedBuilder('T');
         var driveBlock = OpenDriveBlock(builder, 0);
@@ -77,19 +77,19 @@ public class SnapshotTests
 
         try
         {
-            snapshot.ReleaseNow();
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
+            await snapshot.ReleaseNowAsync();
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
 
         Assert.AreEqual(0, driveBlock.ReferenceCount);
     }
 
     [TestMethod]
-    public void TwoSnapshotsOverOneBlock_KeepItMappedUntilBothRelease()
+    public async Task TwoSnapshotsOverOneBlock_KeepItMappedUntilBothRelease()
     {
         using var builder = CompletedBuilder('T');
         var driveBlock = OpenDriveBlock(builder, 0);
@@ -100,21 +100,21 @@ public class SnapshotTests
         {
             Assert.AreEqual(2, driveBlock.ReferenceCount);
 
-            first.ReleaseNow();
+            await first.ReleaseNowAsync();
             Assert.IsFalse(driveBlock.IsReleased);
 
-            second.ReleaseNow();
+            await second.ReleaseNowAsync();
             Assert.IsTrue(driveBlock.IsReleased);
         }
         finally
         {
-            first.ReleaseNow();
-            second.ReleaseNow();
+            await first.ReleaseNowAsync();
+            await second.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void GetDriveBlock_ResolvesByOrdinalAndByDriveLetter()
+    public async Task GetDriveBlock_ResolvesByOrdinalAndByDriveLetter()
     {
         using var firstBuilder = CompletedBuilder('T');
         using var secondBuilder = CompletedBuilder('U');
@@ -131,7 +131,7 @@ public class SnapshotTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 

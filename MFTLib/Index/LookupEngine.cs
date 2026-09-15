@@ -7,9 +7,11 @@ namespace MFTLib.Index;
 /// </summary>
 internal static class LookupEngine
 {
-    internal static FileEntry Root(Snapshot snapshot, char driveLetter)
+    internal static FileEntry Root(Snapshot snapshot, char driveLetter,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        cancellationToken.ThrowIfCancellationRequested();
         if (snapshot.FindDriveBlock(driveLetter) is not { } driveBlock)
         {
             throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
@@ -23,10 +25,12 @@ internal static class LookupEngine
     ///     directory is the longest prefix of the path wins, so nested indexed roots resolve to
     ///     the inner one, and the remaining segments are walked down from that block's root row.
     /// </summary>
-    internal static FileEntry? Find(Snapshot snapshot, string nativePath)
+    internal static FileEntry? Find(Snapshot snapshot, string nativePath,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(nativePath);
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (FindLongestMatchingRoot(snapshot, nativePath) is not { } match)
         {
@@ -36,22 +40,25 @@ internal static class LookupEngine
         var (driveBlock, rootLength) = match;
         var remainder = nativePath.AsSpan(rootLength);
         var currentRow = driveBlock.Block.Header.RootRow;
-        var caseSensitive = IsCaseSensitive(driveBlock);
+        var descent = new PathDescent(snapshot, driveBlock.DriveOrdinal, IsCaseSensitive(driveBlock),
+            cancellationToken);
         foreach (var segmentRange in remainder.SplitAny(
                      OperatingSystem.IsWindows() ? ['\\', '/'] : ['/']))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var segment = remainder[segmentRange];
             if (segment.IsEmpty)
             {
                 continue;
             }
 
-            if (!TryFindChild(snapshot, driveBlock.DriveOrdinal, currentRow, segment, caseSensitive, out currentRow))
+            if (!TryFindChild(in descent, currentRow, segment, out currentRow))
             {
                 return null;
             }
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         return FileEntry.Create(snapshot, driveBlock.DriveOrdinal, currentRow);
     }
 
@@ -126,16 +133,27 @@ internal static class LookupEngine
         return character == '/' || (OperatingSystem.IsWindows() && character == '\\');
     }
 
-    static bool TryFindChild(Snapshot snapshot, ushort driveOrdinal, uint parentRow,
-        ReadOnlySpan<char> segment, bool caseSensitive, out uint childRow)
+    /// <summary>
+    ///     What stays the same for every level of one path descent: the block being walked, how
+    ///     its names compare, and the token that stops the walk. Passed as one value so each
+    ///     level's call carries only what actually changes between levels.
+    /// </summary>
+    readonly record struct PathDescent(
+        Snapshot Snapshot,
+        ushort DriveOrdinal,
+        bool CaseSensitive,
+        CancellationToken CancellationToken);
+
+    static bool TryFindChild(in PathDescent descent, uint parentRow, ReadOnlySpan<char> segment,
+        out uint childRow)
     {
-        var scanner = new RowScanner(snapshot, driveOrdinal);
+        var scanner = new RowScanner(descent.Snapshot, descent.DriveOrdinal, descent.CancellationToken);
         while (scanner.MoveNext())
         {
             ref readonly var row = ref scanner.Current;
             if (row.IsInUse && !row.IsDeleted && row.ParentRow == parentRow &&
                 scanner.CurrentRowIndex != parentRow &&
-                NameMatching.EqualsName(scanner.CurrentName, segment, caseSensitive))
+                NameMatching.EqualsName(scanner.CurrentName, segment, descent.CaseSensitive))
             {
                 childRow = scanner.CurrentRowIndex;
                 return true;
@@ -146,15 +164,18 @@ internal static class LookupEngine
         return false;
     }
 
-    internal static List<FileEntry> FindByName(Snapshot snapshot, string name, bool caseSensitive)
+    internal static List<FileEntry> FindByName(Snapshot snapshot, string name, bool caseSensitive,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(name);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var results = new List<FileEntry>();
         foreach (var driveBlock in snapshot.DriveBlocks)
         {
-            var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal);
+            cancellationToken.ThrowIfCancellationRequested();
+            var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal, cancellationToken);
             while (scanner.MoveNext())
             {
                 ref readonly var row = ref scanner.Current;
@@ -166,6 +187,7 @@ internal static class LookupEngine
             }
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         return results;
     }
 }

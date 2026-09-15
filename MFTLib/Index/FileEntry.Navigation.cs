@@ -34,11 +34,23 @@ public readonly partial record struct FileEntry
 
     /// <summary>
     ///     Direct children, found by scanning the parent column. A compressed-sparse-row children
-    ///     table is a measured follow-up, so this is linear in the drive's row count.
+    ///     table is a measured follow-up, so this is linear in the drive's row count. Being a
+    ///     whole-drive scan rather than a single-row read, this holds a borrow on the handle's
+    ///     snapshot for its duration, the same claim a <see cref="FileIndex" /> query takes, so a
+    ///     release cannot unmap the rows it is walking; a disposal that arrives mid-scan waits
+    ///     for it to finish.
     /// </summary>
+    /// <param name="cancellationToken">
+    ///     Stops the scan. Observed before the first row and then at least every 4096 rows. A
+    ///     handle carries no reference to its index, so this is the caller's own token only: the
+    ///     index's disposal waits this scan out rather than cancelling it.
+    /// </param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's snapshot released.</exception>
-    public IReadOnlyList<FileEntry> Children()
+    public IReadOnlyList<FileEntry> Children(CancellationToken cancellationToken = default)
     {
-        return IndexNavigation.GetChildren(Snapshot, DriveOrdinal, RowIndex);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var borrow = Snapshot.Borrow();
+        return IndexNavigation.GetChildren(borrow.Snapshot, DriveOrdinal, RowIndex, cancellationToken);
     }
 }

@@ -22,7 +22,7 @@ public class LookupEngineRootMatchingTests
     }
 
     [TestMethod]
-    public void Find_NestedIndexedRoots_ResolvesToTheLongestMatchingRoot()
+    public async Task Find_NestedIndexedRoots_ResolvesToTheLongestMatchingRoot()
     {
         var outerRoot = Path.Combine(Path.GetTempPath(), "mftlib-outer");
         var innerRoot = Path.Combine(outerRoot, "inner");
@@ -50,12 +50,12 @@ public class LookupEngineRootMatchingTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Find_AnMftBlockMatchesChildNamesCaseInsensitivelyOnEitherPlatform()
+    public async Task Find_AnMftBlockMatchesChildNamesCaseInsensitivelyOnEitherPlatform()
     {
         using var builder = SyntheticBlockBuilder.MftShaped();
         var block = builder.OpenForReading(out _)!;
@@ -70,12 +70,12 @@ public class LookupEngineRootMatchingTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Find_AnEnumerationBlockFollowsTheHostCaseRule()
+    public async Task Find_AnEnumerationBlockFollowsTheHostCaseRule()
     {
         var root = Path.Combine(Path.GetTempPath(), "mftlib-case");
         using var builder = BuildSingleFileBlock('E', "Readme.md");
@@ -98,7 +98,7 @@ public class LookupEngineRootMatchingTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
@@ -107,7 +107,7 @@ public class LookupEngineRootMatchingTests
     ///     keeps looking. Synthetic blocks are allowed to have no root, so this is reachable.
     /// </summary>
     [TestMethod]
-    public void Find_SkipsABlockWithNoRootDirectory_AndResolvesThroughTheRootedBlock()
+    public async Task Find_SkipsABlockWithNoRootDirectory_AndResolvesThroughTheRootedBlock()
     {
         var root = TestDriveRoot.For('T');
         using var rootlessBuilder = BuildSingleFileBlock('N', "visible.txt");
@@ -124,12 +124,12 @@ public class LookupEngineRootMatchingTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Find_MultiSegmentRootAcceptsMixedSeparatorsThroughoutThePrefix()
+    public async Task Find_MultiSegmentRootAcceptsMixedSeparatorsThroughoutThePrefix()
     {
         var root = Path.Combine(Path.GetTempPath(), "mftlib-mixed", "Users", "test");
         using var builder = BuildSingleFileBlock('E', "file.txt");
@@ -152,12 +152,12 @@ public class LookupEngineRootMatchingTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Find_OnLinux_LeavesBackslashesInsideFileNamesUntouched()
+    public async Task Find_OnLinux_LeavesBackslashesInsideFileNamesUntouched()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -188,12 +188,12 @@ public class LookupEngineRootMatchingTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Find_StringPrefixRootsRequireAPathBoundary()
+    public async Task Find_StringPrefixRootsRequireAPathBoundary()
     {
         var outerRoot = Path.Combine(Path.GetTempPath(), "mftlib-boundary", "root");
         var secondRoot = outerRoot + "2";
@@ -220,8 +220,8 @@ public class LookupEngineRootMatchingTests
         }
         finally
         {
-            outerOnly.ReleaseNow();
-            snapshot.ReleaseNow();
+            await outerOnly.ReleaseNowAsync();
+            await snapshot.ReleaseNowAsync();
         }
     }
 

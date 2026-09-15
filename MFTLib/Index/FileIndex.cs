@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+
 namespace MFTLib.Index;
 
 /// <summary>
@@ -23,6 +25,22 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly List<RetiredSnapshot> _retiredSnapshots = [];
     readonly FileIndexOptions _options;
     readonly SemaphoreSlim _swapGate = new(1, 1);
+
+    /// <summary>
+    ///     Cancelled by <see cref="DisposeAsync" /> before it waits for anything. Every query's
+    ///     effective token is linked to this one, so a scan in flight is told to stop rather than
+    ///     holding disposal open for the rest of a whole-drive pass. Deliberately not disposed,
+    ///     for the same reason as <see cref="_swapGate" />: a query that raced the disposal still
+    ///     reads this token, and a disposed source would answer it with an exception naming the
+    ///     source rather than the index.
+    /// </summary>
+    readonly CancellationTokenSource _disposalCancellation = new();
+
+    /// <summary>
+    ///     The signal that stops the queries in flight when this index is disposed. A query's
+    ///     effective token is this one, or this one linked with the caller's own.
+    /// </summary>
+    internal CancellationToken DisposalToken => _disposalCancellation.Token;
 
     sealed class RetiredSnapshot
     {
@@ -157,11 +175,32 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     and retired.
     /// </summary>
     /// <remarks>
-    ///     Disposing while another thread is reading a <see cref="FileEntry" /> minted from this
-    ///     index is the same contract as disposing any other .NET disposable while another thread
-    ///     uses it: the reader may observe the handle as live and then read a released mapping.
-    ///     That is a consumer bug, not a library guarantee. A handle whose read is ordered after
-    ///     the disposal throws <see cref="ObjectDisposedException" />.
+    ///     <para>
+    ///         Disposing while another thread is running a scan is safe, and is what this method
+    ///         being asynchronous buys. Seven entry points scan rows, and each holds a borrow on
+    ///         the snapshot it reads for its whole duration: <see cref="Find" />,
+    ///         <see cref="FindByName" />, <see cref="Search" />, <see cref="Largest" />,
+    ///         <see cref="DuplicateNames" /> and <see cref="Root" /> on this class, and
+    ///         <see cref="FileEntry.Children" /> on a handle. Disposal waits for every one of
+    ///         those borrows, on the current snapshot and on the retired ones, before it unmaps
+    ///         anything.
+    ///     </para>
+    ///     <para>
+    ///         The six queries on this class also observe a token linked to the index's disposal,
+    ///         so disposal cancels them rather than waiting them out: each ends with
+    ///         <see cref="OperationCanceledException" /> or, if it had not started,
+    ///         <see cref="ObjectDisposedException" />, and the wait is as long as they take to
+    ///         reach their next checkpoint, at most 4096 rows. <see cref="FileEntry.Children" />
+    ///         is the exception: a handle carries no reference to its index, so there is no
+    ///         disposal token to link and this method waits that listing out instead, which is one
+    ///         pass over the drive's rows unless its caller passes a token of its own.
+    ///     </para>
+    ///     <para>
+    ///         Every other member of <see cref="FileEntry" /> reads a single row rather than
+    ///         scanning, and carries no borrow. A read through a handle that is ordered after the
+    ///         disposal throws <see cref="ObjectDisposedException" /> from the per-access check
+    ///         <see cref="FileEntry.IsDisposed" /> describes.
+    ///     </para>
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
@@ -185,6 +224,25 @@ public sealed partial class FileIndex : IAsyncDisposable
         }
 
         _disposed = true;
+
+        // Before the gate, not after: a query already inside the index holds a borrow that every
+        // release below waits for, so it has to be told to stop before anything starts waiting on
+        // it. A query that has not started yet is turned away by the disposed flag instead.
+        ExceptionDispatchInfo? cancellationFailure = null;
+        try
+        {
+            await _disposalCancellation.CancelAsync().ConfigureAwait(false);
+        }
+        catch (AggregateException exception)
+        {
+            // A callback on this token belongs to someone else, and a throw from one is not a
+            // reason to abandon the mappings: the disposed flag is already set, so the early
+            // return above means no later call would ever finish the job. The release runs, and
+            // the failure is raised after it, with its original stack, or alongside the release's
+            // own failure if the release fails too.
+            cancellationFailure = ExceptionDispatchInfo.Capture(exception);
+        }
+
         await _swapGate.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -202,9 +260,22 @@ public sealed partial class FileIndex : IAsyncDisposable
             // Unconditional: a consumer that disposed everything it owns has asked for the
             // mappings to go, and a handle it kept is answered by ObjectDisposedException
             // rather than by an indefinitely open block file. See FileEntry.IsDisposed.
-            // Released outside _stateLock because ReleaseNow waits out a release another caller
-            // already started, and a reader must not be shut out of the lock for that long.
-            current?.ReleaseNow();
+            // Released outside _stateLock because this waits out both a release another caller
+            // already started and every query still reading the snapshot, and a reader must not
+            // be shut out of the lock for that long.
+            if (current is not null)
+            {
+                await current.ReleaseNowAsync().ConfigureAwait(false);
+            }
+        }
+        catch (Exception releaseFailure) when (cancellationFailure is not null)
+        {
+            // Both halves failed. The captured cancellation failure has nowhere left to go once
+            // this one is in flight, and a consumer told the release failed would never learn
+            // that its own callback threw first, so both come out together, in the order they
+            // happened. The first is itself the AggregateException CancelAsync raised, so a
+            // consumer that wants the leaves calls Flatten().
+            throw new AggregateException(cancellationFailure.SourceException, releaseFailure);
         }
         finally
         {
@@ -216,6 +287,8 @@ public sealed partial class FileIndex : IAsyncDisposable
             // deterministic release.
             _swapGate.Release();
         }
+
+        cancellationFailure?.Throw();
     }
 
     /// <summary>

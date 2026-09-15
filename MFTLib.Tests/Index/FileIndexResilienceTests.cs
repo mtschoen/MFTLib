@@ -267,7 +267,7 @@ public partial class FileIndexResilienceTests
     }
 
     [TestMethod]
-    public async Task RescanAsync_CacheMode_RetiredFileExistsWhileHeldAndIsGoneAfterReleaseNow()
+    public async Task RescanAsync_CacheMode_RetiredFileExistsWhileHeldAndIsGoneAfterRelease()
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.IsTrue(index.TryGetDriveOrdinal('T', out var driveOrdinal));
@@ -286,7 +286,7 @@ public partial class FileIndexResilienceTests
         Assert.AreEqual(1, retiredPaths.Count);
         Assert.IsTrue(File.Exists(retiredPaths[0]));
 
-        oldSnapshot.ReleaseNow();
+        await oldSnapshot.ReleaseNowAsync();
 
         Assert.IsFalse(File.Exists(retiredPaths[0]));
     }
@@ -311,8 +311,8 @@ public partial class FileIndexResilienceTests
         Assert.AreNotEqual(retiredPaths[0], retiredPaths[1]);
         Assert.IsTrue(retiredPaths.All(File.Exists));
 
-        firstSnapshot.ReleaseNow();
-        secondSnapshot.ReleaseNow();
+        await firstSnapshot.ReleaseNowAsync();
+        await secondSnapshot.ReleaseNowAsync();
 
         Assert.IsTrue(retiredPaths.All(path => !File.Exists(path)));
     }
@@ -327,7 +327,7 @@ public partial class FileIndexResilienceTests
         Assert.ThrowsException<ObjectDisposedException>(() => index.Drives);
         Assert.ThrowsException<ObjectDisposedException>(() => index.CurrentSnapshot);
         Assert.ThrowsException<ObjectDisposedException>(() => index.TryGetDriveOrdinal('T', out _));
-        Assert.ThrowsException<ObjectDisposedException>(() => index.Scan(0));
+        Assert.ThrowsException<ObjectDisposedException>(() => index.BorrowCurrentSnapshot());
         Assert.IsTrue(entry.IsDisposed);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Name);
     }

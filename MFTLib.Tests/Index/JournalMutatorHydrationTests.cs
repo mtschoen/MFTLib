@@ -7,9 +7,9 @@ namespace MFTLib.Tests.Index;
 public class JournalMutatorHydrationTests
 {
     [TestMethod]
-    public void Modification_HydratesAnUnwrittenRowAndStillReportsModified()
+    public async Task Modification_HydratesAnUnwrittenRowAndStillReportsModified()
     {
-        using var fixture = new MutatorFixture();          // row 20 was never written by the producer
+        await using var fixture = new MutatorFixture();          // row 20 was never written by the producer
         var edited = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 20,
@@ -31,9 +31,9 @@ public class JournalMutatorHydrationTests
     }
 
     [TestMethod]
-    public void Delete_HydratesAnUnwrittenRowSoTheTombstoneKeepsItsPath()
+    public async Task Delete_HydratesAnUnwrittenRowSoTheTombstoneKeepsItsPath()
     {
-        using var fixture = new MutatorFixture();
+        await using var fixture = new MutatorFixture();
         var deleted = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 21,
@@ -53,9 +53,9 @@ public class JournalMutatorHydrationTests
     }
 
     [TestMethod]
-    public void Rename_HydratesAnUnwrittenRowAndReportsCreatedWithNoPreviousPath()
+    public async Task Rename_HydratesAnUnwrittenRowAndReportsCreatedWithNoPreviousPath()
     {
-        using var fixture = new MutatorFixture();
+        await using var fixture = new MutatorFixture();
         var renamed = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 23,
@@ -75,9 +75,9 @@ public class JournalMutatorHydrationTests
     }
 
     [TestMethod]
-    public void Hydration_RefusesAnOutOfRangeParentAndMarksCompactionNeeded()
+    public async Task Hydration_RefusesAnOutOfRangeParentAndMarksCompactionNeeded()
     {
-        using var fixture = new MutatorFixture();
+        await using var fixture = new MutatorFixture();
         var bad = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 22,
@@ -94,9 +94,9 @@ public class JournalMutatorHydrationTests
     }
 
     [TestMethod]
-    public void Delete_HydrationFailsForOutOfRangeParent_ReturnsNoChangeAndMarksCompactionNeeded()
+    public async Task Delete_HydrationFailsForOutOfRangeParent_ReturnsNoChangeAndMarksCompactionNeeded()
     {
-        using var fixture = new MutatorFixture();
+        await using var fixture = new MutatorFixture();
         var bad = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 25,
@@ -113,9 +113,9 @@ public class JournalMutatorHydrationTests
     }
 
     [TestMethod]
-    public void Rename_HydrationFailsForOutOfRangeParent_ReturnsNoChangeAndMarksCompactionNeeded()
+    public async Task Rename_HydrationFailsForOutOfRangeParent_ReturnsNoChangeAndMarksCompactionNeeded()
     {
-        using var fixture = new MutatorFixture();
+        await using var fixture = new MutatorFixture();
         var bad = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 26,
@@ -132,9 +132,9 @@ public class JournalMutatorHydrationTests
     }
 
     [TestMethod]
-    public void Hydration_OfADirectoryRow_SetsTheDirectoryFlagRatherThanSizeUnknown()
+    public async Task Hydration_OfADirectoryRow_SetsTheDirectoryFlagRatherThanSizeUnknown()
     {
-        using var fixture = new MutatorFixture();
+        await using var fixture = new MutatorFixture();
         var edited = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 24,
@@ -154,9 +154,9 @@ public class JournalMutatorHydrationTests
     }
 
     [TestMethod]
-    public void Modification_OfALiveRowDoesNotRewriteItsName()
+    public async Task Modification_OfALiveRowDoesNotRewriteItsName()
     {
-        using var fixture = new MutatorFixture();
+        await using var fixture = new MutatorFixture();
         var edited = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 7,

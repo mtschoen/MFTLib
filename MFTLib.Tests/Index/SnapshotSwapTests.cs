@@ -16,7 +16,7 @@ public class SnapshotSwapTests
     ///     is the part this test adds.
     /// </summary>
     [TestMethod]
-    public void HeldFileEntry_ReadsCorrectlyWhileASupersedingSnapshotIsReleased()
+    public async Task HeldFileEntry_ReadsCorrectlyWhileASupersedingSnapshotIsReleased()
     {
         using var builder = new SyntheticBlockBuilder();
         var root = builder.AddRoot();
@@ -33,7 +33,7 @@ public class SnapshotSwapTests
             // Models FileIndex.PublishSnapshot: a new snapshot is created over the same block set
             // and the index's own reference to the previous one is released immediately, leaving
             // oldSnapshot as the only thing keeping driveBlock mapped for this held handle.
-            Snapshot.Create([driveBlock]).ReleaseNow();
+            await Snapshot.Create([driveBlock]).ReleaseNowAsync();
 
             Assert.AreEqual("kept.txt", handle.Name);
             Assert.AreEqual(7L, handle.Size);
@@ -42,7 +42,7 @@ public class SnapshotSwapTests
         {
             // A failed assertion would otherwise skip this and leave the block mapped through the
             // builder's own disposal, which is how one real failure turns into a cascade.
-            oldSnapshot.ReleaseNow();
+            await oldSnapshot.ReleaseNowAsync();
         }
     }
 

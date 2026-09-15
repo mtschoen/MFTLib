@@ -71,7 +71,7 @@ public class EnumerationProducerTests
     }
 
     [TestMethod]
-    public void Produce_WritesARootPlusEveryDirectoryAndFile()
+    public async Task Produce_WritesARootPlusEveryDirectoryAndFile()
     {
         var snapshot = Produce(out var block, out var result);
         try
@@ -84,7 +84,7 @@ public class EnumerationProducerTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
@@ -112,7 +112,7 @@ public class EnumerationProducerTests
     }
 
     [TestMethod]
-    public void Produce_BuildsPathsThatMatchTheRealTree()
+    public async Task Produce_BuildsPathsThatMatchTheRealTree()
     {
         var snapshot = Produce(out _, out _);
         try
@@ -124,12 +124,12 @@ public class EnumerationProducerTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Produce_MarksDirectoriesAsDirectoriesWithZeroSize()
+    public async Task Produce_MarksDirectoriesAsDirectoriesWithZeroSize()
     {
         var snapshot = Produce(out _, out _);
         try
@@ -141,12 +141,12 @@ public class EnumerationProducerTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Produce_RootRowIsRowZeroAndParentsItself()
+    public async Task Produce_RootRowIsRowZeroAndParentsItself()
     {
         var snapshot = Produce(out var block, out _);
         try
@@ -159,12 +159,12 @@ public class EnumerationProducerTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Produce_ProducerKindOnTheBlockIsEnumerationSoIdsReadAsSynthetic()
+    public async Task Produce_ProducerKindOnTheBlockIsEnumerationSoIdsReadAsSynthetic()
     {
         var snapshot = Produce(out _, out _);
         try
@@ -174,7 +174,7 @@ public class EnumerationProducerTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
@@ -233,7 +233,7 @@ public class EnumerationProducerTests
     }
 
     [TestMethod]
-    public void Produce_DirectorySymbolicLink_RecordsRowButDoesNotFollowIt()
+    public async Task Produce_DirectorySymbolicLink_RecordsRowButDoesNotFollowIt()
     {
         var linkPath = Path.Combine(_treeRoot, "RootLink");
         try
@@ -258,18 +258,18 @@ public class EnumerationProducerTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Produce_IndexesHiddenAndSystemEntries()
+    public async Task Produce_IndexesHiddenAndSystemEntries()
     {
         // Hidden on Windows is an attribute bit; on Linux and macOS it is a leading-dot naming
         // convention. Giving the file both makes the assertion meaningful on every platform.
         const string hiddenName = ".hidden.txt";
         var hiddenPath = Path.Combine(_treeRoot, hiddenName);
-        File.WriteAllText(hiddenPath, "secret");
+        await File.WriteAllTextAsync(hiddenPath, "secret");
         if (OperatingSystem.IsWindows())
         {
             File.SetAttributes(hiddenPath, File.GetAttributes(hiddenPath) | FileAttributes.Hidden);
@@ -283,7 +283,7 @@ public class EnumerationProducerTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 

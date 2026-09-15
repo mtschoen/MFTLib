@@ -43,9 +43,9 @@ public class JournalMutatorTests
     }
 
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        _snapshot.ReleaseNow();
+        await _snapshot.ReleaseNowAsync();
         try
         {
             Directory.Delete(_directory, recursive: true);
@@ -141,9 +141,9 @@ public class JournalMutatorTests
     }
 
     [TestMethod]
-    public void Rename_CarriesBothTheOldAndTheNewFullPath()
+    public async Task Rename_CarriesBothTheOldAndTheNewFullPath()
     {
-        using var fixture = new MutatorFixture();
+        await using var fixture = new MutatorFixture();
         var moved = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 7,
@@ -164,9 +164,9 @@ public class JournalMutatorTests
     }
 
     [TestMethod]
-    public void EachChange_KeepsThePathItHadWhenItWasApplied()
+    public async Task EachChange_KeepsThePathItHadWhenItWasApplied()
     {
-        using var fixture = new MutatorFixture();
+        await using var fixture = new MutatorFixture();
         var created = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 9,
@@ -198,9 +198,9 @@ public class JournalMutatorTests
     }
 
     [TestMethod]
-    public void Delete_CarriesThePathOfTheRowItTombstoned()
+    public async Task Delete_CarriesThePathOfTheRowItTombstoned()
     {
-        using var fixture = new MutatorFixture();
+        await using var fixture = new MutatorFixture();
         var deleted = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = 7,

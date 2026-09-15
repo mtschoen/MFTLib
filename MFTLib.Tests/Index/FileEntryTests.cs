@@ -39,9 +39,9 @@ public class FileEntryTests
     }
 
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        _snapshot.ReleaseNow();
+        await _snapshot.ReleaseNowAsync();
         _builder.Dispose();
     }
 
@@ -96,7 +96,7 @@ public class FileEntryTests
     }
 
     [TestMethod]
-    public void SizeUnknownRow_ReportsSizeNotKnown()
+    public async Task SizeUnknownRow_ReportsSizeNotKnown()
     {
         using var builder = new SyntheticBlockBuilder('V');
         var root = builder.AddRoot();
@@ -113,7 +113,7 @@ public class FileEntryTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
@@ -143,7 +143,7 @@ public class FileEntryTests
     }
 
     [TestMethod]
-    public void Open_MftProducerNoRootDirectoryConfigured_ThrowsInvalidOperation()
+    public async Task Open_MftProducerNoRootDirectoryConfigured_ThrowsInvalidOperation()
     {
         using var builder = new SyntheticBlockBuilder('M');
         var root = builder.AddRoot();
@@ -161,7 +161,7 @@ public class FileEntryTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 

@@ -54,17 +54,37 @@ internal static class DuplicateNameFinder
     const int CandidateThresholdDivisor = 256;
 
     internal static List<DuplicateGroup> Find(Snapshot snapshot, DuplicateNameSieveOptions options,
-        out DuplicateNameRefinementStatistics statistics)
+        out DuplicateNameRefinementStatistics statistics, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var bucketCount = options.BucketCountOverride ?? NameHashTable.ComputeBucketCount(SumRowCounts(snapshot));
+        var (bitmaps, candidatesPerPass) = RunRefinementPasses(snapshot, bucketCount, cancellationToken);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var (byName, namesMaterialized) = MaterializeCandidateEntries(snapshot, bitmaps, cancellationToken);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        statistics = new DuplicateNameRefinementStatistics(candidatesPerPass, namesMaterialized);
+        var groups = AssembleDuplicateGroups(byName, cancellationToken);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return groups;
+    }
+
+    static (List<MayRepeatBitmap> Bitmaps, List<long> CandidatesPerPass) RunRefinementPasses(
+        Snapshot snapshot, int bucketCount, CancellationToken cancellationToken)
+    {
         var bitmaps = new List<MayRepeatBitmap>();
         var candidatesPerPass = new List<long>();
         var previousCandidateCount = long.MaxValue;
 
         for (var passIndex = 0; passIndex <= MaximumRefinementPassCount; passIndex++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var table = NameHashTable.ForBucketCount(bucketCount, passIndex);
             long candidateCount = 0;
             ForEachEligibleHash(snapshot, hash =>
@@ -76,7 +96,7 @@ internal static class DuplicateNameFinder
 
                 table.Increment(hash);
                 candidateCount++;
-            });
+            }, cancellationToken);
 
             candidatesPerPass.Add(candidateCount);
             bitmaps.Add(table.ToMayRepeatBitmap());
@@ -90,11 +110,18 @@ internal static class DuplicateNameFinder
             }
         }
 
+        return (bitmaps, candidatesPerPass);
+    }
+
+    static (Dictionary<string, List<FileEntry>> ByName, long NamesMaterialized) MaterializeCandidateEntries(
+        Snapshot snapshot, List<MayRepeatBitmap> bitmaps, CancellationToken cancellationToken)
+    {
         var byName = new Dictionary<string, List<FileEntry>>(StringComparer.OrdinalIgnoreCase);
         long namesMaterialized = 0;
         foreach (var driveBlock in snapshot.DriveBlocks)
         {
-            var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal);
+            cancellationToken.ThrowIfCancellationRequested();
+            var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal, cancellationToken);
             while (scanner.MoveNext())
             {
                 ref readonly var row = ref scanner.Current;
@@ -115,11 +142,21 @@ internal static class DuplicateNameFinder
             }
         }
 
-        statistics = new DuplicateNameRefinementStatistics(candidatesPerPass, namesMaterialized);
+        return (byName, namesMaterialized);
+    }
 
+    static List<DuplicateGroup> AssembleDuplicateGroups(
+        Dictionary<string, List<FileEntry>> byName, CancellationToken cancellationToken)
+    {
         var groups = new List<DuplicateGroup>();
+        var groupCadence = 0;
         foreach (var (name, entries) in byName)
         {
+            if ((groupCadence++ & 0xFFF) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             if (entries.Count > 1)
             {
                 groups.Add(new DuplicateGroup(name, entries));
@@ -148,11 +185,12 @@ internal static class DuplicateNameFinder
     ///     hash, shared by pass 0 and every refinement pass. No name string is allocated here,
     ///     only the hash.
     /// </summary>
-    static void ForEachEligibleHash(Snapshot snapshot, Action<int> onEligibleHash)
+    static void ForEachEligibleHash(Snapshot snapshot, Action<int> onEligibleHash,
+        CancellationToken cancellationToken)
     {
         foreach (var driveBlock in snapshot.DriveBlocks)
         {
-            var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal);
+            var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal, cancellationToken);
             while (scanner.MoveNext())
             {
                 ref readonly var row = ref scanner.Current;

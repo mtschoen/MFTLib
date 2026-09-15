@@ -9,28 +9,37 @@ namespace MFTLib.Index;
 /// </summary>
 internal static class SearchEngine
 {
-    internal static List<FileEntry> Search(Snapshot snapshot, SearchQuery query)
+    internal static List<FileEntry> Search(Snapshot snapshot, SearchQuery query,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (query.Under is { } underAncestor && !underAncestor.IsValid)
+        {
+            return [];
+        }
 
         var results = new List<FileEntry>();
         foreach (var driveBlock in snapshot.DriveBlocks)
         {
-            if (query.Under is { } under && under.DriveOrdinal != driveBlock.DriveOrdinal)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (query.Under is { } under && (!under.IsValid || under.DriveOrdinal != driveBlock.DriveOrdinal))
             {
                 continue;
             }
 
-            SearchOneDrive(snapshot, driveBlock.DriveOrdinal, query, results);
+            SearchOneDrive(snapshot, driveBlock.DriveOrdinal, query, results, cancellationToken);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         return results;
     }
 
     /// <summary>
     ///     Applies the cheap column predicates first and the subtree walk last, because
-    ///     <see cref="IndexNavigation.IsUnder" /> climbs the parent column for every candidate.
+    ///     <see cref="IndexNavigation.IsUnder(BlockFile, uint, uint)" /> climbs the parent column for every candidate.
     /// </summary>
     [SuppressMessage("Roslynator", "RCS1242",
         Justification = "FileRow is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
@@ -76,7 +85,8 @@ internal static class SearchEngine
         return query.ModifiedBefore is not { } before || row.ModifiedTicks <= before.Ticks;
     }
 
-    static void SearchOneDrive(Snapshot snapshot, ushort driveOrdinal, SearchQuery query, List<FileEntry> results)
+    static void SearchOneDrive(Snapshot snapshot, ushort driveOrdinal, SearchQuery query,
+        List<FileEntry> results, CancellationToken cancellationToken)
     {
         var rowCount = snapshot.GetDriveBlock(driveOrdinal).Block.Header.RowCount;
         var partitions = ScanPartitioning.Partition(rowCount, ScanPartitioning.DefaultPartitionCount(rowCount));
@@ -87,17 +97,24 @@ internal static class SearchEngine
 
         if (partitions.Count == 1)
         {
-            CollectPartition(snapshot, driveOrdinal, query, partitions[0], results);
+            CollectPartition(snapshot, driveOrdinal, query, partitions[0], results, cancellationToken);
             return;
         }
 
         var perPartition = new List<FileEntry>[partitions.Count];
-        Parallel.For(0, partitions.Count, index =>
+
+        // The token goes on the loop as well as into every partition's scanner, so cancellation
+        // reaches the caller as one OperationCanceledException for the query rather than an
+        // AggregateException holding one per partition for it to unwrap.
+        var options = new ParallelOptions { CancellationToken = cancellationToken };
+        Parallel.For(0, partitions.Count, options, index =>
         {
             var local = new List<FileEntry>();
-            CollectPartition(snapshot, driveOrdinal, query, partitions[index], local);
+            CollectPartition(snapshot, driveOrdinal, query, partitions[index], local, cancellationToken);
             perPartition[index] = local;
         });
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         foreach (var local in perPartition)
         {
@@ -106,10 +123,12 @@ internal static class SearchEngine
     }
 
     static void CollectPartition(Snapshot snapshot, ushort driveOrdinal, SearchQuery query,
-        (uint StartRow, uint EndRowExclusive) partition, List<FileEntry> destination)
+        (uint StartRow, uint EndRowExclusive) partition, List<FileEntry> destination,
+        CancellationToken cancellationToken)
     {
         var candidates = new List<uint>();
-        var scanner = new RowScanner(snapshot, driveOrdinal, partition.StartRow, partition.EndRowExclusive);
+        var scanner = new RowScanner(snapshot, driveOrdinal, partition.StartRow, partition.EndRowExclusive,
+            cancellationToken);
         while (scanner.MoveNext())
         {
             if (RowMatches(in scanner.Current, scanner.CurrentName, query))
@@ -118,13 +137,32 @@ internal static class SearchEngine
             }
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var block = snapshot.GetDriveBlock(driveOrdinal).Block;
+        var under = query.Under;
+        var underRow = under?.RowIndex ?? 0;
+        var checkCadence = 0;
+
         foreach (var rowIndex in candidates)
         {
-            var entry = FileEntry.Create(snapshot, driveOrdinal, rowIndex);
-            if (query.Under is not { } under || IndexNavigation.IsUnder(entry, under))
+            if (under is not null)
             {
-                destination.Add(entry);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!under.Value.IsValid || under.Value.DriveOrdinal != driveOrdinal ||
+                    !IndexNavigation.IsUnder(block, rowIndex, underRow))
+                {
+                    continue;
+                }
             }
+            else if ((checkCadence++ & 0xFFF) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            destination.Add(FileEntry.Create(snapshot, driveOrdinal, rowIndex));
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
     }
 }

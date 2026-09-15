@@ -7,7 +7,7 @@ namespace MFTLib.Tests.Index;
 ///     <see cref="Snapshot" />/<see cref="BlockWriter" /> pair so a test can apply journal
 ///     entries directly through a <see cref="JournalMutator" /> without repeating the setup.
 /// </summary>
-internal sealed class MutatorFixture : IDisposable
+internal sealed class MutatorFixture : IAsyncDisposable
 {
     readonly SyntheticBlockBuilder _builder;
     readonly Snapshot _snapshot;
@@ -32,9 +32,9 @@ internal sealed class MutatorFixture : IDisposable
         return _mutator.Apply(_snapshot, driveOrdinal: 0, entries, journalId: 7, _nextUsn++);
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _snapshot.ReleaseNow();
+        await _snapshot.ReleaseNowAsync();
         _builder.Dispose();
     }
 }

@@ -37,9 +37,9 @@ public class SearchEngineTests
     }
 
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        _snapshot.ReleaseNow();
+        await _snapshot.ReleaseNowAsync();
         _builder.Dispose();
     }
 
@@ -107,7 +107,7 @@ public class SearchEngineTests
     }
 
     [TestMethod]
-    public void Search_SizeFilter_ExcludesSizeUnknownRows()
+    public async Task Search_SizeFilter_ExcludesSizeUnknownRows()
     {
         using var builder = new SyntheticBlockBuilder('S');
         var root = builder.AddRoot();
@@ -130,7 +130,7 @@ public class SearchEngineTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
@@ -159,7 +159,27 @@ public class SearchEngineTests
     }
 
     [TestMethod]
-    public void Search_Under_WhenCandidateExceedsTheDepthCap_ThrowsInvalidDataException()
+    public void Search_Under_InvalidAncestor_ReturnsNoResults()
+    {
+        var invalidAncestor = default(FileEntry);
+        var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery(null, Under: invalidAncestor));
+        Assert.AreEqual(0, results.Count);
+    }
+
+    [TestMethod]
+    public void Search_Under_InvalidAncestor_WithCancelledToken_ThrowsOperationCanceled()
+    {
+        var invalidAncestor = default(FileEntry);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var token = cancellation.Token;
+
+        Assert.ThrowsException<OperationCanceledException>(() =>
+            SearchEngineTestAccess.Search(_snapshot, new SearchQuery(null, Under: invalidAncestor), token));
+    }
+
+    [TestMethod]
+    public async Task Search_Under_WhenCandidateExceedsTheDepthCap_ThrowsInvalidDataException()
     {
         using var builder = new SyntheticBlockBuilder('Z', slotCapacity: 512, namePoolCapacity: 16384);
         var root = builder.AddRoot();
@@ -182,12 +202,12 @@ public class SearchEngineTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Search_Under_WhenCandidateHasACyclicParentColumn_ExcludesCyclicCandidateWithoutThrowing()
+    public async Task Search_Under_WhenCandidateHasACyclicParentColumn_ExcludesCyclicCandidateWithoutThrowing()
     {
         using var builder = new SyntheticBlockBuilder('Z');
         var root = builder.AddRoot();
@@ -210,12 +230,12 @@ public class SearchEngineTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Search_OverALargeDriveUsesEveryPartitionAndFindsEveryMatch()
+    public async Task Search_OverALargeDriveUsesEveryPartitionAndFindsEveryMatch()
     {
         using var builder = new SyntheticBlockBuilder('Y', slotCapacity: 300_000, namePoolCapacity: 8_000_000);
         var root = builder.AddRoot();
@@ -236,15 +256,64 @@ public class SearchEngineTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
+    }
+
+    /// <summary>
+    ///     The parallel path reports cancellation as <see cref="OperationCanceledException" />,
+    ///     not as an <see cref="AggregateException" /> a caller would have to unwrap: the loop
+    ///     carries the query's token, so the partitions that observe it all report the same
+    ///     cancellation.
+    /// </summary>
+    [TestMethod]
+    public async Task Search_OverALargeDriveWithACancelledToken_ThrowsOperationCanceled()
+    {
+        const int fileCount = (int)ScanPartitioning.SingleThreadedRowThreshold + 1024;
+        using var builder = new SyntheticBlockBuilder('Y', slotCapacity: (uint)fileCount + 8,
+            namePoolCapacity: (uint)fileCount * 32);
+        var root = builder.AddRoot();
+        for (var index = 0; index < fileCount; index++)
+        {
+            builder.AddRow($"file{index}.dat", root, RowFlags.InUse, index, Older, sequenceNumber: 0);
+        }
+
+        builder.Complete(Newer);
+
+        var block = builder.OpenForReading(out _)!;
+        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block)]);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var token = cancellation.Token;
+        try
+        {
+            Assert.ThrowsException<OperationCanceledException>(
+                () => SearchEngineTestAccess.Search(snapshot, new SearchQuery("*.dat"), token));
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
+    public void Search_Under_WithCancelledToken_ThrowsOperationCanceled()
+    {
+        var documents = FileEntry.Create(_snapshot, 0, _documentsRow);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var token = cancellation.Token;
+
+        Assert.ThrowsException<OperationCanceledException>(() =>
+            SearchEngineTestAccess.Search(_snapshot, new SearchQuery(null, Under: documents), token));
     }
 }
 
 static class SearchEngineTestAccess
 {
-    public static List<FileEntry> Search(Snapshot snapshot, SearchQuery query)
+    public static List<FileEntry> Search(Snapshot snapshot, SearchQuery query,
+        CancellationToken cancellationToken = default)
     {
-        return SearchEngine.Search(snapshot, query);
+        return SearchEngine.Search(snapshot, query, cancellationToken);
     }
 }

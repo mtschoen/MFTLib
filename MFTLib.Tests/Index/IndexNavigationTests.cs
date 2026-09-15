@@ -37,9 +37,9 @@ public partial class IndexNavigationTests
     }
 
     [TestCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        _snapshot.ReleaseNow();
+        await _snapshot.ReleaseNowAsync();
         _builder.Dispose();
     }
 
@@ -106,7 +106,7 @@ public partial class IndexNavigationTests
     }
 
     [TestMethod]
-    public void Path_OfATombstonedFile_StillResolvesThroughItsRetainedName()
+    public async Task Path_OfATombstonedFile_StillResolvesThroughItsRetainedName()
     {
         using var builder = new SyntheticBlockBuilder('Y');
         var root = builder.AddRoot();
@@ -123,12 +123,12 @@ public partial class IndexNavigationTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Path_OfALiveFileUnderATombstonedDirectory_StillResolvesAndIsStillUnderIt()
+    public async Task Path_OfALiveFileUnderATombstonedDirectory_StillResolvesAndIsStillUnderIt()
     {
         using var builder = new SyntheticBlockBuilder('V');
         var root = builder.AddRoot();
@@ -149,12 +149,12 @@ public partial class IndexNavigationTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Children_ExcludesTombstonedRows()
+    public async Task Children_ExcludesTombstonedRows()
     {
         using var builder = new SyntheticBlockBuilder('U');
         var root = builder.AddRoot();
@@ -173,12 +173,12 @@ public partial class IndexNavigationTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Path_WithACyclicParentColumn_TruncatesInsteadOfHanging()
+    public async Task Path_WithACyclicParentColumn_TruncatesInsteadOfHanging()
     {
         using var builder = new SyntheticBlockBuilder('W');
         builder.AddRoot();
@@ -197,12 +197,12 @@ public partial class IndexNavigationTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Path_AtTheDepthCap_ResolvesTheCompletePath()
+    public async Task Path_AtTheDepthCap_ResolvesTheCompletePath()
     {
         using var builder = new SyntheticBlockBuilder('X', slotCapacity: 512, namePoolCapacity: 16384);
         var root = builder.AddRoot();
@@ -225,12 +225,12 @@ public partial class IndexNavigationTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void Path_DeeperThanTheDepthCap_ThrowsInvalidDataException()
+    public async Task Path_DeeperThanTheDepthCap_ThrowsInvalidDataException()
     {
         using var builder = new SyntheticBlockBuilder('X', slotCapacity: 512, namePoolCapacity: 16384);
         var root = builder.AddRoot();
@@ -251,12 +251,12 @@ public partial class IndexNavigationTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void IsUnder_AncestorExactlyAtTheDepthCap_ReturnsTrue()
+    public async Task IsUnder_AncestorExactlyAtTheDepthCap_ReturnsTrue()
     {
         using var builder = new SyntheticBlockBuilder('Z', slotCapacity: 512, namePoolCapacity: 16384);
         var root = builder.AddRoot();
@@ -277,12 +277,12 @@ public partial class IndexNavigationTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 
     [TestMethod]
-    public void IsUnder_WithACyclicParentColumn_ReturnsFalseInsteadOfThrowing()
+    public async Task IsUnder_WithACyclicParentColumn_ReturnsFalseInsteadOfThrowing()
     {
         using var builder = new SyntheticBlockBuilder('W');
         var root = builder.AddRoot();
@@ -319,7 +319,7 @@ public partial class IndexNavigationTests
         }
         finally
         {
-            snapshot.ReleaseNow();
+            await snapshot.ReleaseNowAsync();
         }
     }
 }
