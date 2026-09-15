@@ -252,6 +252,53 @@ public class FileIndexWatchRescanTests
         await harness.Index.StopWatchingAsync(Token);
     }
 
+    [TestMethod]
+    public async Task RescanAsync_CancelledWhileAwaitingSwapGate_DisposesCompletedScanAndRestoresRetiredCache()
+    {
+        using var harness = new WatchHarness(
+            [new IndexWatchTarget('T', 11, 4242)]);
+
+        var swapGateField = typeof(FileIndex).GetField("_swapGate",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var swapGate = (SemaphoreSlim)swapGateField.GetValue(harness.Index)!;
+
+        await swapGate.WaitAsync(Token);
+        try
+        {
+            var driveBlocksField = typeof(FileIndex).GetField("_driveBlocks",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            var driveBlocks = (System.Collections.Generic.List<DriveBlock>)driveBlocksField.GetValue(harness.Index)!;
+            var initialBlock = driveBlocks[0];
+
+            using var rescanCts = new CancellationTokenSource();
+            harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+
+            var rescanTask = harness.Index.RescanAsync('T', rescanCts.Token);
+
+            while (!harness.ProducedBlocks.ContainsKey('T') && !rescanTask.IsCompleted)
+            {
+                await Task.Delay(10, Token);
+            }
+            await Task.Delay(50, Token);
+
+            rescanCts.Cancel();
+
+            await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => rescanTask);
+
+            var producedBlock = harness.ProducedBlocks['T'];
+            Assert.ThrowsException<ObjectDisposedException>(() => _ = producedBlock.Header);
+
+            Assert.AreSame(initialBlock, driveBlocks[0]);
+
+            var retiredFiles = Directory.GetFiles(harness.CacheDirectory, "*.retired-*");
+            Assert.AreEqual(0, retiredFiles.Length);
+        }
+        finally
+        {
+            swapGate.Release();
+        }
+    }
+
     static DriveStatus DriveFor(WatchHarness harness, char driveLetter)
     {
         return harness.Index.Drives.Single(drive => drive.DriveLetter == char.ToUpperInvariant(driveLetter));

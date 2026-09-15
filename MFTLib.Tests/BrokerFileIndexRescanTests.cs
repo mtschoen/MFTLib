@@ -56,6 +56,7 @@ public sealed class BrokerFileIndexRescanTests
             {
                 batchesD.Writer.TryWrite(([JournalEntryFactory.Create(40, 12600, "during.txt", UsnReason.FileCreate)],
                     new UsnJournalCursor(71, 12601)));
+                appliedD.Task.Wait(token);
             }
             yield return [new MftRecord(5, 5, new MftRecordFields(3), ".", null),
                 new MftRecord(20, 5, new MftRecordFields(1), $"scan-{scanNumber}.txt", null)];

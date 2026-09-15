@@ -137,25 +137,46 @@ public sealed partial class FileIndex
             return;
         }
 
-        await _swapGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // The watch failure entry is deliberately left alone here: clearing it happens once
-            // the gate is released, immediately before the re-arm, so the drive is never live
-            // again while it still looks dropped.
+            await _swapGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                // The watch failure entry is deliberately left alone here: clearing it happens once
+                // the gate is released, immediately before the re-arm, so the drive is never live
+                // again while it still looks dropped.
+                lock (_stateLock)
+                {
+                    _driveBlocks[driveOrdinal] = completedScan.DriveBlock;
+                    _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
+                    _discardedBlocksByOrdinal.Remove(driveOrdinal);
+                    _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
+                }
+
+                PublishSnapshot();
+            }
+            finally
+            {
+                _swapGate.Release();
+            }
+        }
+        catch
+        {
             lock (_stateLock)
             {
-                _driveBlocks[driveOrdinal] = completedScan.DriveBlock;
-                _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
-                _discardedBlocksByOrdinal.Remove(driveOrdinal);
-                _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
+                if (ReferenceEquals(_driveBlocks[driveOrdinal], completedScan.DriveBlock))
+                {
+                    _driveBlocks[driveOrdinal] = superseded;
+                }
             }
 
-            PublishSnapshot();
-        }
-        finally
-        {
-            _swapGate.Release();
+            completedScan.DriveBlock.Block.Dispose();
+            if (retiredPath is not null)
+            {
+                RestoreRetiredFile(retiredPath, blockPath, superseded);
+            }
+
+            throw;
         }
     }
 

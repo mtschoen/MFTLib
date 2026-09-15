@@ -65,6 +65,7 @@ internal sealed class WatchHarness : IDisposable
     }
 
     public FileIndex Index { get; }
+    public string CacheDirectory => _cacheDirectory;
 
     public IReadOnlyDictionary<char, BlockFile> ProducedBlocks => _producedBlocks;
 
