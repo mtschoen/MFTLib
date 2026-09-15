@@ -54,71 +54,91 @@ public sealed partial class JournalBrokerClient
         Action? transmissionStarted,
         CancellationToken cancellationToken)
     {
-        await _armOrderingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        ThrowIfControlUnavailable();
+        using var operationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _controlCancellation.Token);
+        var operationToken = operationCancellation.Token;
+        await _armOrderingGate.WaitAsync(operationToken).ConfigureAwait(false);
         var armEpochsByDrive = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            var normalizedCursors = cursorsByDrive
-                .Select(pair => new KeyValuePair<string, UsnJournalCursor>(
-                    NormalizeDriveLetter(pair.Key), pair.Value))
-                .ToArray();
+            ThrowIfControlUnavailable();
+            string watchSpec;
             lock (_liveChannelsLock)
             {
-                ValidateClaimedGenerationLocked();
-                foreach (var pair in normalizedCursors)
-                {
-                    armEpochsByDrive[pair.Key] = ArmDriveLocked(pair.Key);
-                }
+                watchSpec = ArmAndFormatWatchSpecLocked(cursorsByDrive, armEpochsByDrive);
             }
-
-            // Watch spec tokens are four fields: letter:journalId:nextUsn:armEpoch.
-            var specTokens = normalizedCursors.Select(pair =>
-            {
-                return FormattableString.Invariant(
-                    $"{pair.Key}:{pair.Value.JournalId}:{pair.Value.NextUsn}:{armEpochsByDrive[pair.Key]}");
-            });
-            var watchSpec = string.Join(",", specTokens);
 
             await WriteFrameAsync(
                 writer => BrokerProtocol.WriteStartWatch(writer, watchSpec),
-                transmissionStarted, cancellationToken).ConfigureAwait(false);
+                transmissionStarted, operationToken).ConfigureAwait(false);
 
             lock (_liveChannelsLock)
             {
-                if (_liveWatchGenerationStarted)
-                {
-                    ValidateClaimedGenerationLocked();
-                    return;
-                }
-
-                cancellationToken.ThrowIfCancellationRequested();
-
-                // Install the cancellation source, reader, and generation claim together.
-                // After a failed start or any stop, the next start either installs or reuses
-                // a live demux, or fails loudly; success without a reader is impossible.
-                var demuxCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                // Capture the token before Task.Run because a racing stop can dispose the
-                // source before the delegate starts; the captured token remains usable.
-                var demuxToken = demuxCancellation.Token;
-                _demuxCts = demuxCancellation;
-                _demuxTask = Task.Run(() => DemuxLoopAsync(demuxToken), CancellationToken.None);
-                _liveWatchGenerationStarted = true;
+                EnsureLiveDemuxStartedLocked(cancellationToken, operationToken);
             }
+        }
+        catch (OperationCanceledException) when (Volatile.Read(ref _disposeStarted) != 0 && !cancellationToken.IsCancellationRequested)
+        {
+            DisarmDrivesLocked(armEpochsByDrive.Keys);
+            ThrowIfControlUnavailable();
+            throw;
         }
         catch
         {
-            lock (_liveChannelsLock)
-            {
-                foreach (var drive in armEpochsByDrive.Keys)
-                {
-                    DisarmDriveLocked(drive);
-                }
-            }
+            DisarmDrivesLocked(armEpochsByDrive.Keys);
             throw;
         }
         finally
         {
             _armOrderingGate.Release();
+        }
+    }
+
+    string ArmAndFormatWatchSpecLocked(
+        IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
+        Dictionary<string, uint> armEpochsByDrive)
+    {
+        ValidateClaimedGenerationLocked();
+        var normalizedCursors = cursorsByDrive
+            .Select(pair => new KeyValuePair<string, UsnJournalCursor>(
+                NormalizeDriveLetter(pair.Key), pair.Value))
+            .ToArray();
+        foreach (var pair in normalizedCursors)
+        {
+            armEpochsByDrive[pair.Key] = ArmDriveLocked(pair.Key);
+        }
+        var specTokens = normalizedCursors.Select(pair => FormattableString.Invariant(
+            $"{pair.Key}:{pair.Value.JournalId}:{pair.Value.NextUsn}:{armEpochsByDrive[pair.Key]}"));
+        return string.Join(",", specTokens);
+    }
+
+    void EnsureLiveDemuxStartedLocked(CancellationToken cancellationToken, CancellationToken operationToken)
+    {
+        if (_liveWatchGenerationStarted)
+        {
+            ValidateClaimedGenerationLocked();
+            return;
+        }
+
+        operationToken.ThrowIfCancellationRequested();
+
+        var demuxCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _controlCancellation.Token);
+        var demuxToken = demuxCancellation.Token;
+        _demuxCts = demuxCancellation;
+        _demuxTask = Task.Run(() => DemuxLoopAsync(demuxToken), CancellationToken.None);
+        _liveWatchGenerationStarted = true;
+    }
+
+    void DisarmDrivesLocked(IEnumerable<string> drives)
+    {
+        lock (_liveChannelsLock)
+        {
+            foreach (var drive in drives)
+            {
+                DisarmDriveLocked(drive);
+            }
         }
     }
 
@@ -162,9 +182,14 @@ public sealed partial class JournalBrokerClient
     async Task SendDisarmDriveCoreAsync(string normalizedDrive, CancellationToken cancellationToken)
     {
         // Keep the local retirement and wire write in the same order as concurrent arms.
-        await _armOrderingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        ThrowIfControlUnavailable();
+        using var operationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _controlCancellation.Token);
+        var operationToken = operationCancellation.Token;
+        await _armOrderingGate.WaitAsync(operationToken).ConfigureAwait(false);
         try
         {
+            ThrowIfControlUnavailable();
             lock (_liveChannelsLock)
             {
                 // Complete the subscriber without waiting for a wire round trip.
@@ -172,7 +197,12 @@ public sealed partial class JournalBrokerClient
             }
 
             await WriteFrameAsync(writer => BrokerProtocol.WriteDisarmDrive(writer, normalizedDrive),
-                cancellationToken).ConfigureAwait(false);
+                operationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (Volatile.Read(ref _disposeStarted) != 0 && !cancellationToken.IsCancellationRequested)
+        {
+            ThrowIfControlUnavailable();
+            throw;
         }
         finally
         {
@@ -182,12 +212,46 @@ public sealed partial class JournalBrokerClient
 
     /// <summary>
     ///     Stop the live-watch demux and reset live-watch state so the same client can watch
-    ///     again (used by a rescan, which must reclaim the pipe as the arm-and-scan's sole
-    ///     reader while keeping the broker process - and its elevation - alive). No-op if no
-    ///     watch is running. Does NOT signal broker death: a clean stop leaves the client
+    ///     again (keeping the broker process - and its elevation - alive).
+    ///     When a live demux is running it owns the pipe and routes scan/query replies
+    ///     to the active serialized control exchange. With no live demux, the control
+    ///     exchange owns the foreground reader. The ordering gate fences that handoff.
+    ///     No-op if no watch is running. Does NOT signal broker death: a clean stop leaves the client
     ///     healthy for restart.
     /// </summary>
     public async Task StopLiveWatchAsync()
+    {
+        await _armOrderingGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (Volatile.Read(ref _disposeStarted) != 0)
+            {
+                return;
+            }
+            if (Volatile.Read(ref _controlFailure) != null)
+            {
+                Task? demux;
+                lock (_liveChannelsLock)
+                {
+                    demux = _demuxTask;
+                }
+                if (demux != null)
+                {
+                    await demux.ConfigureAwait(false);
+                }
+                // The normal core joins and disposes the ended demux's cancellation source.
+                await StopLiveWatchCoreAsync().ConfigureAwait(false);
+                return;
+            }
+            await StopLiveWatchCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _armOrderingGate.Release();
+        }
+    }
+
+    async Task StopLiveWatchCoreAsync()
     {
         CancellationTokenSource? demuxCancellation;
         Task? task;
@@ -213,16 +277,23 @@ public sealed partial class JournalBrokerClient
         // Ask the host to end the watch; the demux exits when it reads EndWatchAck
         // (draining any stray live batches in between) or on EOF if the broker is
         // already dead.
-        try
+        if (Volatile.Read(ref _controlFailure) == null)
         {
-            await WriteFrameAsync(BrokerProtocol.WriteEndWatch, CancellationToken.None)
-                .ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            // Swallowed intentionally: the pipe may already be gone, in which case
-            // the demux ends via EOF. Fall through to await it either way.
-            _ = exception;
+            try
+            {
+                await WriteFrameAsync(BrokerProtocol.WriteEndWatch, _controlCancellation.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (Volatile.Read(ref _disposeStarted) != 0)
+            {
+                // Disposal has already cancelled the demux; the join below releases reader ownership.
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Swallowed intentionally: the pipe may already be gone, in which case
+                // the demux ends via EOF. Fall through to await it either way.
+                _ = exception;
+            }
         }
 
         using (var timeout = new CancellationTokenSource(_endWatchAckTimeout))

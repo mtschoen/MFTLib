@@ -24,8 +24,11 @@ public sealed partial class JournalBrokerClient
     // died still gets an already-completed channel instead of blocking forever.
     bool _liveEnded;
 
-    // Single owner of the pipe during live watch: read frames and route each
-    // JournalBatch to its drive's channel until the broker dies or is cancelled.
+    // When a live demux is running it owns the pipe and routes scan/query replies
+    // to the active serialized control exchange. With no live demux, the control
+    // exchange owns the foreground reader. The ordering gate fences that handoff.
+    // Reads frames and routes each JournalBatch to its drive's channel until the
+    // broker dies or is cancelled.
     async Task DemuxLoopAsync(CancellationToken cancellationToken)
     {
         BrokerDiagnostics.Log($"DemuxLoopAsync started (t={Environment.CurrentManagedThreadId}).");
@@ -36,75 +39,84 @@ public sealed partial class JournalBrokerClient
                 var frame = await ReadFrameAsync(cancellationToken).ConfigureAwait(false);
                 if (frame == null)
                 {
+                    // EOF branch, before return: allow queries to report remaining-drive errors.
+                    CompleteControlReplies(null);
                     // SignalBrokerDeath was already called inside ReadFrameAsync on EOF.
                     CompleteAllLiveChannels(new InvalidOperationException("Broker pipe closed: Pipe EOF"));
                     return;
                 }
 
                 var value = frame.Value;
-                switch (value.Kind)
+                if (TryRouteControlFrame(value))
                 {
-                    case BrokerFrameKind.JournalBatch:
-                        {
-                            var batchDrive = NormalizeDriveLetter(value.RequireDrive());
-                            if (TryGetArmedLiveChannel(batchDrive, value.ArmEpoch) is { } batchChannel)
-                            {
-                                batchChannel.Writer.TryWrite((value.Entries, value.Cursor));
-                            }
-                            else
-                            {
-                                BrokerDiagnostics.Log($"Dropped a JournalBatch for drive {batchDrive} at arm epoch {value.ArmEpoch}.");
-                            }
-                            break;
-                        }
-
-                    case BrokerFrameKind.EndWatchAck:
-                        CompleteAllLiveChannels(null);
-                        return; // clean stop: the watch was ended at the client's request
-
-                    case BrokerFrameKind.Error:
-                        {
-                            var errorDrive = NormalizeDriveLetter(value.RequireDrive());
-                            if (!TryFaultArmedLiveChannel(errorDrive, value.ArmEpoch, new InvalidOperationException(value.RequireMessage())))
-                            {
-                                BrokerDiagnostics.Log($"Dropped an Error frame for drive {errorDrive} at arm epoch {value.ArmEpoch}.");
-                            }
-                            break;
-                        }
-
-                    case BrokerFrameKind.Warning:
-                        // A Warning belongs to the arm-and-scan path, which its own foreground
-                        // reader collects into BrokerScanResult.Warnings. One on a live channel
-                        // means the host and this client disagree about what the session is
-                        // doing, so the drive it names is the one whose stream can no longer be
-                        // trusted: fault it rather than ignore a frame with no contract here.
-                        // Scan warnings carry no epoch; a protocol disagreement belongs to no arm.
-                        FaultLiveChannel(NormalizeDriveLetter(value.RequireDrive()),
-                            new InvalidOperationException(
-                                $"Unexpected {BrokerFrameKind.Warning} frame on the live watch channel for drive " +
-                                $"{value.RequireDrive()}: {value.RequireMessage()}"));
-                        break;
-
-                        // Heartbeat / other frame kinds are not routed to a drive stream.
+                    continue;
                 }
+                if (value.Kind == BrokerFrameKind.EndWatchAck)
+                {
+                    // EndWatchAck branch, before return: an unexpected ack must not strand a scan.
+                    CompleteControlReplies(new InvalidOperationException("Live watch ended during a broker control exchange."));
+                    CompleteAllLiveChannels(null);
+                    return; // clean stop: the watch was ended at the client's request
+                }
+                DispatchLiveFrame(value);
             }
 
             // The loop can also exit because cancellation was observed at the top of
             // an iteration, rather than by an already-blocked read throwing below -
             // complete the channels the same way the OperationCanceledException catch
             // does, so a subscriber's await-foreach ends instead of hanging forever.
+            CompleteControlReplies(new InvalidOperationException("The broker demux stopped during a control exchange."));
             CompleteAllLiveChannels(null);
         }
         // Deliberate broad catch: any IO or protocol error on the pipe is broker death;
         // the watcher subscribers must see it as a fault. Cancellation ends quietly.
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
+            CompleteControlReplies(exception);
             SignalBrokerDeath(exception.Message);
             CompleteAllLiveChannels(new InvalidOperationException($"Broker pipe closed: {exception.Message}"));
         }
         catch (OperationCanceledException)
         {
+            CompleteControlReplies(new InvalidOperationException("The broker demux stopped during a control exchange."));
             CompleteAllLiveChannels(null);
+        }
+    }
+
+    void DispatchLiveFrame(BrokerFrame value)
+    {
+        switch (value.Kind)
+        {
+            case BrokerFrameKind.JournalBatch:
+                {
+                    var batchDrive = NormalizeDriveLetter(value.RequireDrive());
+                    if (TryGetArmedLiveChannel(batchDrive, value.ArmEpoch) is { } batchChannel)
+                    {
+                        batchChannel.Writer.TryWrite((value.Entries, value.Cursor));
+                    }
+                    else
+                    {
+                        BrokerDiagnostics.Log($"Dropped a JournalBatch for drive {batchDrive} at arm epoch {value.ArmEpoch}.");
+                    }
+                    break;
+                }
+
+            case BrokerFrameKind.Error:
+                {
+                    var errorDrive = NormalizeDriveLetter(value.RequireDrive());
+                    if (!TryFaultArmedLiveChannel(errorDrive, value.ArmEpoch, new InvalidOperationException(value.RequireMessage())))
+                    {
+                        BrokerDiagnostics.Log($"Dropped an Error frame for drive {errorDrive} at arm epoch {value.ArmEpoch}.");
+                    }
+                    break;
+                }
+
+            case BrokerFrameKind.Warning:
+                FaultLiveChannel(NormalizeDriveLetter(value.RequireDrive()),
+                    new InvalidOperationException(
+                        $"Unexpected {BrokerFrameKind.Warning} frame on the live watch channel for drive " +
+                        $"{value.RequireDrive()}: {value.RequireMessage()}"));
+                break;
         }
     }
 
@@ -201,6 +213,8 @@ public sealed partial class JournalBrokerClient
             _armedEpochsByDrive.Clear();
             _liveEnded = true;
             _liveEndError = error;
+            _controlExchange?.Replies.Writer.TryComplete(error ??
+                new InvalidOperationException("The broker demux ended during a control exchange."));
             foreach (var channel in _liveChannels.Values)
             {
                 channel.Writer.TryComplete(error);

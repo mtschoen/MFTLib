@@ -343,6 +343,24 @@ it. The client delivers a frame only while that is still the drive's current epo
 discarding batches and failures produced before a disarm or re-arm instead of delivering
 them into the replacement channel. `DisarmDrive` has no acknowledgement and needs none.
 
+The low-level JournalBrokerClient supports QueryVolumesAsync and
+ArmScanAndCatchUpAsync while other drives remain live-watched. FileIndex.RescanAsync
+uses this path to disarm one drive, rebuild and swap its block, then re-arm only
+that drive. The live demux remains the sole pipe reader during the exchange;
+epoch-zero scan replies are separate from epoch-tagged live batches and errors.
+Reply-bearing operations on one client are serialized. Watch start, disarm, and
+stop requests wait for an active exchange rather than taking over its reader.
+
+Cancellation before request transmission leaves the client reusable. Interruption
+after transmission makes the connection terminal because the protocol has no
+request IDs or per-scan cancellation acknowledgement. Dispose that client and
+establish a fresh broker connection before another scan; affected watch consumers
+receive the terminal failure. Do not retry on the interrupted pipe.
+
+JournalBrokerScanSession is a separate stateful API: its RescanAsync still requires
+StopWatchAsync first. This restriction does not apply to FileIndex's per-drive
+rescan through BrokerMftBlockProducer and its shared watch source.
+
 `BrokerIndexWatchSource` (see [the live watch bridge](#the-live-watch-bridge) above)
 builds on this primitive rather than replacing it: it is a `JournalBrokerClient` consumer
 like any other, merging every drive's `SendStartWatchAsync`/`CreateBatchSource` output

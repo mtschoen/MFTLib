@@ -40,8 +40,11 @@ public sealed partial class JournalBrokerClient(
     readonly object _mmfLifetimesLock = new();
     // Serialize scan, watch-control, and shutdown writes so frames cannot interleave.
     readonly SemaphoreSlim _writeLock = new(1, 1);
-    // Hold across epoch assignment or retirement and the frame write, so local arm
-    // state advances in wire order. A plain lock cannot span the awaited write.
+    // When a live demux is running it owns the pipe and routes scan/query replies
+    // to the active serialized control exchange. With no live demux, the control
+    // exchange owns the foreground reader. The ordering gate fences that handoff.
+    // Hold across epoch assignment or retirement, the frame write, active control exchanges,
+    // and watch stop, so local arm state advances in wire order.
     readonly SemaphoreSlim _armOrderingGate = new(1, 1);
 
     // Guards single-fire BrokerDied: 0 = not yet fired, 1 = fired. Swapped with

@@ -11,6 +11,25 @@ public sealed partial class JournalBrokerClient
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)
+        {
+            return;
+        }
+        await _controlCancellation.CancelAsync().ConfigureAwait(false);
+        // The effective operation token cancels before disposal waits for ownership.
+        await _armOrderingGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await DisposeClientCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _armOrderingGate.Release();
+        }
+    }
+
+    async Task DisposeClientCoreAsync()
+    {
         // Best-effort Shutdown: if the pipe is already gone, swallow the error.
         // Deliberate broad catch: the pipe may be in any state at dispose time -
         // broken, closed, or mid-frame. We must not throw from DisposeAsync.
@@ -69,7 +88,6 @@ public sealed partial class JournalBrokerClient
         }
 
         _writeLock.Dispose();
-        _armOrderingGate.Dispose();
     }
 
     // Fires BrokerDied at most once per client lifetime (guarded by Interlocked).

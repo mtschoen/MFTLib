@@ -11,36 +11,74 @@ internal sealed class InProcessBlockBrokerHarness : IAsyncDisposable
     readonly Task _serving;
     readonly Dictionary<string, BlockFile> _sections = new();
 
-    public InProcessBlockBrokerHarness(Action<BlockFile>? changeHeader = null, bool sourceFails = false,
-        MftRecordBatchSource? recordBatches = null, UsnJournalCatchUpSource? catchUp = null,
-        NtfsVolumeInformation? volumeInformation = null, UsnJournalCursorQuery? queryCursor = null)
+    public sealed class Options
+    {
+        public Action<BlockFile>? ChangeHeader { get; set; }
+        public bool SourceFails { get; set; }
+        public MftRecordBatchSource? RecordBatches { get; set; }
+        public UsnJournalCatchUpSource? CatchUp { get; set; }
+        public NtfsVolumeInformation? VolumeInformation { get; set; }
+        public UsnJournalCursorQuery? QueryCursor { get; set; }
+        public JournalBatchSource? WatchDrive { get; set; }
+    }
+
+    public InProcessBlockBrokerHarness(Options options)
     {
         var (client, server) = DuplexStream.CreatePair();
         _server = server;
         _writer = new RecordingBlockSectionWriter(name => _sections[name]);
         Client = new JournalBrokerClient(client,
-            (_, options) =>
+            (_, blockOptions) =>
             {
-                CreatedBlock = BlockFile.Create(options);
+                CreatedBlock = BlockFile.Create(blockOptions);
                 SectionName = $"test-section-{Guid.NewGuid():N}";
                 Lifetime = new CountingLifetime();
                 _sections.Add(SectionName, CreatedBlock);
                 return (SectionName, CreatedBlock, Lifetime);
             });
-        var host = new JournalBrokerHost(queryCursor ?? (_ => ArmedCursor),
+        var host = new JournalBrokerHost(options.QueryCursor ?? (_ => ArmedCursor),
             readJournal: (drive, cursor) =>
             {
-                changeHeader?.Invoke(CreatedBlock!);
-                return catchUp == null
+                options.ChangeHeader?.Invoke(CreatedBlock!);
+                return options.CatchUp == null
                     ? ([JournalEntryFactory.Create(20, 12400, "file.txt")], new UsnJournalCursor(71, 12500))
-                    : catchUp(drive, cursor);
+                    : options.CatchUp(drive, cursor);
             },
-            queryVolumeInfo: _ => volumeInformation ?? new NtfsVolumeInformation(1024 * 100, 1024, 0, 0, 0, 0),
-            scanDrive: recordBatches ?? ((_, _, _) => sourceFails
+            watchDrive: options.WatchDrive,
+            queryVolumeInfo: _ => options.VolumeInformation ?? new NtfsVolumeInformation(1024 * 100, 1024, 0, 0, 0, 0),
+            scanDrive: options.RecordBatches ?? ((_, _, _) => options.SourceFails
                 ? throw new IOException("batch failed")
                 : [[new MftRecord(5, 5, new MftRecordFields(3), ".", null),
                     new MftRecord(20, 5, new MftRecordFields(1), "file.txt", null)]]));
         _serving = host.ServeAsync(server, _writer, false, _timeout.Token);
+    }
+
+    public InProcessBlockBrokerHarness(Action<BlockFile>? changeHeader = null, bool sourceFails = false,
+        MftRecordBatchSource? recordBatches = null, UsnJournalCatchUpSource? catchUp = null,
+        NtfsVolumeInformation? volumeInformation = null, UsnJournalCursorQuery? queryCursor = null)
+        : this(new Options
+        {
+            ChangeHeader = changeHeader,
+            SourceFails = sourceFails,
+            RecordBatches = recordBatches,
+            CatchUp = catchUp,
+            VolumeInformation = volumeInformation,
+            QueryCursor = queryCursor
+        })
+    {
+    }
+
+    public InProcessBlockBrokerHarness(
+        MftRecordBatchSource? recordBatches,
+        UsnJournalCatchUpSource? catchUp,
+        JournalBatchSource? watchDrive)
+        : this(new Options
+        {
+            RecordBatches = recordBatches,
+            CatchUp = catchUp,
+            WatchDrive = watchDrive
+        })
+    {
     }
 
     public JournalBrokerClient Client { get; }

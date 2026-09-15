@@ -20,15 +20,24 @@ public sealed partial class JournalBrokerClient
         return ArmScanAndCatchUpCoreAsync(drives, options, transmissionStarted, cancellationToken);
     }
 
-    async Task<BrokerScanResult> ArmScanAndCatchUpCoreAsync(
+    Task<BrokerScanResult> ArmScanAndCatchUpCoreAsync(
         IReadOnlyList<string> drives,
         BrokerScanOptions options,
         Action? transmissionStarted,
+        CancellationToken cancellationToken) =>
+        RunControlExchangeAsync((exchange, token) =>
+            ArmScanExchangeAsync(drives, options, transmissionStarted, exchange, token), cancellationToken);
+
+    async Task<BrokerScanResult> ArmScanExchangeAsync(
+        IReadOnlyList<string> drives,
+        BrokerScanOptions options,
+        Action? transmissionStarted,
+        ControlExchange exchange,
         CancellationToken cancellationToken)
     {
         var blockTargets = ValidateBlockTargets(drives, options);
         var sectionNamesByDrive = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var volumeQuery = await QueryVolumesAsync(drives, transmissionStarted, cancellationToken).ConfigureAwait(false);
+        var volumeQuery = await QueryVolumesCoreAsync(drives, transmissionStarted, exchange, cancellationToken).ConfigureAwait(false);
         var collector = new ScanCollector(sectionNamesByDrive, drives.Select(NormalizeDriveLetter), options, TakeMmfLifetime)
         {
             TakePendingBlock = TakePendingBlock
@@ -36,16 +45,29 @@ public sealed partial class JournalBrokerClient
         try
         {
             var drivesSpec = PrepareDriveScan(drives, options, volumeQuery.Volumes, sectionNamesByDrive, blockTargets);
+            var expectedDrives = drives.Select(NormalizeDriveLetter).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var expectedSections = sectionNamesByDrive.Values.ToHashSet(StringComparer.Ordinal);
+            ExpectControlReplies(exchange, frame => frame.Kind switch
+            {
+                BrokerFrameKind.ScanReady => expectedSections.Contains(frame.RequireMmfName()),
+                BrokerFrameKind.Cursor or BrokerFrameKind.ScanProgress or BrokerFrameKind.Warning =>
+                    expectedDrives.Contains(frame.RequireDrive()),
+                BrokerFrameKind.JournalBatch or BrokerFrameKind.Error =>
+                    frame.ArmEpoch == BrokerFrame.NoArmEpoch && expectedDrives.Contains(frame.RequireDrive()),
+                _ => false
+            });
             await WriteFrameAsync(
                 writer => BrokerProtocol.WriteArmAndScan(writer, drivesSpec, options.KeepFileNames),
-                transmissionStarted, cancellationToken).ConfigureAwait(false);
+                () => { exchange.RequestInFlight = true; transmissionStarted?.Invoke(); },
+                cancellationToken).ConfigureAwait(false);
             while (!collector.IsComplete)
             {
-                var frame = await ReadFrameAsync(cancellationToken).ConfigureAwait(false)
+                var frame = await ReadControlFrameAsync(exchange, cancellationToken).ConfigureAwait(false)
                     ?? throw new EndOfStreamException("Broker disconnected before block scan and catch-up completed.");
                 collector.Apply(frame);
             }
 
+            exchange.RequestInFlight = false;
             return collector.ToResult();
         }
         catch

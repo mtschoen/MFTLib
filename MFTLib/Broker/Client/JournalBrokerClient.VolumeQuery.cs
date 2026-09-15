@@ -30,23 +30,35 @@ public sealed partial class JournalBrokerClient
         return QueryVolumesAsync(drives, null, cancellationToken);
     }
 
-    internal async Task<NtfsVolumeQueryResult> QueryVolumesAsync(
+    internal Task<NtfsVolumeQueryResult> QueryVolumesAsync(
         IReadOnlyList<string> drives,
         Action? transmissionStarted,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        RunControlExchangeAsync((exchange, token) =>
+            QueryVolumesCoreAsync(drives, transmissionStarted, exchange, token), cancellationToken);
+
+    async Task<NtfsVolumeQueryResult> QueryVolumesCoreAsync(
+        IReadOnlyList<string> drives,
+        Action? transmissionStarted,
+        ControlExchange exchange,
+        CancellationToken cancellationToken)
     {
         var normalizedDrives = drives.Select(NormalizeDriveLetter).ToArray();
         var drivesSpec = string.Join(
             ",", normalizedDrives.Select(letter => FormattableString.Invariant($"{letter}:0:0")));
 
-        await WriteFrameAsync(
-            writer => BrokerProtocol.WriteQueryVolumes(writer, drivesSpec),
-            transmissionStarted,
-            cancellationToken).ConfigureAwait(false);
-
         var volumes = new Dictionary<string, NtfsVolumeInformation>(StringComparer.OrdinalIgnoreCase);
         var errors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var remaining = new HashSet<string>(normalizedDrives, StringComparer.OrdinalIgnoreCase);
+
+        var expectedDrives = new HashSet<string>(normalizedDrives, StringComparer.OrdinalIgnoreCase);
+        ExpectControlReplies(exchange, frame =>
+            (frame.Kind == BrokerFrameKind.VolumeInfo ||
+             (frame.Kind == BrokerFrameKind.Error && frame.ArmEpoch == BrokerFrame.NoArmEpoch)) &&
+            expectedDrives.Contains(frame.RequireDrive()));
+        await WriteFrameAsync(writer => BrokerProtocol.WriteQueryVolumes(writer, drivesSpec),
+            () => { exchange.RequestInFlight = true; transmissionStarted?.Invoke(); },
+            cancellationToken).ConfigureAwait(false);
 
         // The host emits exactly one VolumeInfo or Error frame per requested drive (see
         // JournalBrokerHost.HandleQueryVolumesAsync), so this loop always terminates
@@ -54,7 +66,7 @@ public sealed partial class JournalBrokerClient
         // death mid-exchange.
         while (remaining.Count > 0)
         {
-            var frame = await ReadFrameAsync(cancellationToken).ConfigureAwait(false);
+            var frame = await ReadControlFrameAsync(exchange, cancellationToken).ConfigureAwait(false);
             if (frame == null)
             {
                 foreach (var drive in remaining)
@@ -91,6 +103,7 @@ public sealed partial class JournalBrokerClient
             }
         }
 
+        exchange.RequestInFlight = false;
         return new NtfsVolumeQueryResult(volumes, errors);
     }
 
