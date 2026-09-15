@@ -60,7 +60,7 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 
 The native DLL must be built Debug|x64 (linked with `/PROFILE`) for instrumentation. The script handles build, instrument, test, and report automatically. Settings in `native-coverage.runsettings`.
 
-The USN journal tests need admin. `scripts/native-coverage-elevated.ps1` self-elevates, runs `native-coverage.ps1` hidden, and writes results to `native-coverage-elevated.log` at the repository root. Pass `-TimeoutSeconds <int>` (default 600) to adjust the poll-loop timeout when running on slower hardware.
+The USN journal tests need admin. `scripts/native-coverage-elevated.ps1` self-elevates, runs `native-coverage.ps1` hidden, and streams results live to `native-coverage-elevated.log` at the repository root while the visible parent prints new log lines plus a heartbeat (every 30 seconds by default, configurable via `-HeartbeatSeconds` with a 2-second polling granularity). Pass `-TimeoutSeconds <int>` (default 1800) to adjust the warning threshold when running on slower hardware (the parent warns but continues waiting as long as the child process remains alive).
 
 ## Cleaning the working tree
 
