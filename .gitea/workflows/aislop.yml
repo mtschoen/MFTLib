@@ -72,9 +72,20 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Install C# lint engines (roslynator + jb / ReSharper CLT)
+        # roslynator is pinned to the fleet manifest version (0.13.0), so on a
+        # correctly provisioned Windows runner this step is a no-op instead of
+        # the downgrade it used to perform. 0.13.0 fixes roslynator's solution
+        # load under the .NET 10 SDK, which is what changes the finding set:
+        # `analyze MFTLib.sln` now succeeds, so every project in the solution is
+        # analyzed in one pass rather than aislop falling back to a per-project
+        # sweep of whatever happened to be restored.
+        # The step stays until file-wizard and MegaSchoen have moved too: the
+        # shared `-g` tool directory is only deterministic once no consumer
+        # re-pins it per job. Removing it once they have is tracked in
+        # schoen-lab#2829.
         shell: pwsh
         run: |
-          dotnet tool update -g roslynator.dotnet.cli --version 0.12.0 --allow-downgrade
+          dotnet tool update -g roslynator.dotnet.cli --version 0.13.0 --allow-downgrade
           dotnet tool update -g JetBrains.ReSharper.GlobalTools --version 2026.2.0 --allow-downgrade
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
 
