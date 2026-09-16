@@ -232,3 +232,10 @@ if (-not $Build) {
     Write-Host 'Next: .\init.ps1 -Build (.\init.bat -Build from cmd.exe),'
     Write-Host '      or .\scripts\run-coverage.ps1 for the full test run.'
 }
+
+# The provisioner step above is allowed to fail without failing the script, and
+# nothing resets $LASTEXITCODE afterward, so reaching this point with no earlier
+# `exit 1` still leaves the process exit code carrying that native failure.
+# Without this explicit success exit, `.\init.ps1 && next-command` silently skips
+# `next-command` after a fully successful run.
+exit 0
