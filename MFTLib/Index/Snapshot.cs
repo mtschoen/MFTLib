@@ -119,16 +119,7 @@ public sealed class Snapshot
     /// </summary>
     internal SnapshotBorrow Borrow()
     {
-        // Allocated before the count is taken, so nothing between the count and the caller's
-        // hands can throw and strand a borrow that no one holds the means to return.
-        var borrow = new SnapshotBorrow(this);
-        if (!_release.TryTakeBorrow())
-        {
-            throw new ObjectDisposedException(nameof(Snapshot),
-                "This snapshot has been released and can no longer be read.");
-        }
-
-        return borrow;
+        return new SnapshotBorrow(this);
     }
 
     /// <summary>

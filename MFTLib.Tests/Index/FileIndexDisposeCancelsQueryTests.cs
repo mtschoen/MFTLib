@@ -294,6 +294,46 @@ public class FileIndexDisposeCancelsQueryTests
     }
 
     /// <summary>
+    ///     A streaming enumeration in flight when disposal begins holds the same borrow and
+    ///     observes the same disposal-linked token as every other query on the index, so
+    ///     disposal cancels it rather than waiting out a whole-drive pass, and the block
+    ///     closes once the enumerator's borrow is returned.
+    /// </summary>
+    [TestMethod]
+    public async Task DisposeAsync_WhileAnEnumerationIsInFlight_CancelsItAndReleasesEveryBlock()
+    {
+        var index = await FileIndex.OpenAsync(LargeSyntheticDriveOptions(), CancellationToken.None);
+        var release = index.CurrentSnapshot.ReleaseState;
+        var scan = Task.Run(() =>
+        {
+            try
+            {
+                // Matches every file row, so the enumeration is still streaming when the
+                // handshake below sees its borrow.
+                foreach (var _ in index.Enumerate(new SearchQuery("file")))
+                {
+                }
+
+                return null;
+            }
+            catch (Exception exception)
+            {
+                return exception;
+            }
+        });
+
+        WaitUntilBorrowTaken(release, "the enumeration");
+
+        await index.DisposeAsync();
+        var outcome = await scan;
+
+        Assert.IsInstanceOfType<OperationCanceledException>(outcome,
+            $"an enumeration that held the snapshot when disposal began must be cancelled, not {outcome?.GetType().Name ?? "answered normally"}");
+        BlockFileHoldAssertions.AssertNotHeld(
+            Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
+    }
+
+    /// <summary>
     ///     Blocks until a reader has actually taken its borrow on <paramref name="release" />,
     ///     so the reader is provably inside the snapshot when the test disposes the index. A
     ///     reader that merely announced it was about to start proves nothing: disposal could win

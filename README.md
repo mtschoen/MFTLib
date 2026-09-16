@@ -373,15 +373,19 @@ holds, so the `.mlix` files are closed at a point the caller chooses; a `FileEnt
 held across that disposal reports `IsDisposed` and throws `ObjectDisposedException`
 on every read.
 
-Seven entry points scan rows: `Find`, `FindByName`, `Search`, `Largest`,
+Eight entry points scan rows: `Find`, `FindByName`, `Search`, `Enumerate`, `Largest`,
 `DuplicateNames` and `Root` on `FileIndex`, and `Children()` on a `FileEntry`. Each
 takes an optional `CancellationToken`, read before the first row and then at least
 every 4096 rows, and each holds the snapshot it reads for its whole duration.
 `DisposeAsync` waits for every one of those readers before it unmaps anything, so
-scanning on one thread while another disposes the index is safe. The six on
+scanning on one thread while another disposes the index is safe. The seven on
 `FileIndex` also observe the index's disposal, so disposing cancels them and each ends
 with `OperationCanceledException`, or `ObjectDisposedException` if it had not started;
-the wait is bounded by how long they take to reach their next checkpoint. `Children()`
+while actively scanning, the wait is bounded by how long they take to reach their
+next checkpoint. A suspended `Enumerate` enumerator holds its borrow between yields,
+so disposal waits until it advances or is disposed, or, if abandoned, until garbage
+collection and finalization return its borrow. Dispose enumerators promptly;
+collection timing is not guaranteed. `Children()`
 is the exception: a handle holds no reference to its index, so disposal waits that
 listing out instead, one pass over the drive's rows unless the caller passes a token.
 Every other `FileEntry` member reads a single row rather than scanning and carries no

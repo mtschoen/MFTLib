@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -53,6 +54,45 @@ public class SnapshotBorrowTests
         var thrown = Assert.ThrowsException<ObjectDisposedException>(() => snapshot.Borrow());
 
         StringAssert.Contains(thrown.ObjectName, nameof(Snapshot));
+    }
+
+    [TestMethod]
+    public async Task Borrow_RejectedDuringRelease_CollectionDoesNotReturnAnotherReadersBorrow()
+    {
+        using var builder = CompletedBuilder();
+        var driveBlock = OpenDriveBlock(builder);
+        var snapshot = Snapshot.Create([driveBlock]);
+        var borrow = snapshot.Borrow();
+        try
+        {
+            var release = snapshot.ReleaseNowAsync().AsTask();
+            Assert.IsTrue(snapshot.IsReleased);
+            RejectABorrow(snapshot);
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            Assert.AreEqual(1, snapshot.ReleaseState.OutstandingBorrowCount);
+            Assert.IsFalse(release.IsCompleted);
+            Assert.IsFalse(driveBlock.IsReleased);
+
+            borrow.Dispose();
+            await release;
+            Assert.AreEqual(0, snapshot.ReleaseState.OutstandingBorrowCount);
+            Assert.IsTrue(driveBlock.IsReleased);
+        }
+        finally
+        {
+            borrow.Dispose();
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static void RejectABorrow(Snapshot snapshot)
+    {
+        Assert.ThrowsException<ObjectDisposedException>(() => snapshot.Borrow());
     }
 
     [TestMethod]
@@ -134,5 +174,40 @@ public class SnapshotBorrowTests
         {
             await snapshot.ReleaseNowAsync();
         }
+    }
+
+    /// <summary>
+    ///     A borrow whose owner was abandoned without disposing it is returned by its
+    ///     finalizer, so a deterministic release is not held open for the rest of the
+    ///     process by a reader that no longer exists. The double collect mirrors the repo's
+    ///     other finalizer tests.
+    /// </summary>
+    [TestMethod]
+    public async Task Borrow_AbandonedWithoutDisposal_IsReturnedWhenCollected()
+    {
+        using var builder = CompletedBuilder();
+        var snapshot = Snapshot.Create([OpenDriveBlock(builder)]);
+        try
+        {
+            TakeAndAbandonABorrow(snapshot);
+            Assert.AreEqual(1, snapshot.ReleaseState.OutstandingBorrowCount);
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            Assert.AreEqual(0, snapshot.ReleaseState.OutstandingBorrowCount);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    /// <summary>No-inlined so the abandoned borrow is not kept reachable by this frame.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static void TakeAndAbandonABorrow(Snapshot snapshot)
+    {
+        _ = snapshot.Borrow();
     }
 }

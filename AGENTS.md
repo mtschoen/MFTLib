@@ -129,15 +129,19 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
 - **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop. The `MFTLib.Index` namespace provides a substrate-neutral columnar block format and query engine; see `docs/index-format.md`.
     - **Index namespace boundary**: `MFTLib.Index` depends on nothing in the flat `MFTLib` namespace or in `MFTLib.Interop` beyond an allowlist of journal value types (`UsnJournalEntry`, `UsnJournalEntryOptions`, `UsnReason`). Enforced by `MFTLib.Tests/Index/NamespaceBoundaryTests.cs`, an IL-level ArchUnitNET test over the built assembly, with a mandatory negative-control fixture. Not an aislop rule: the forbidden folders share the flat `MFTLib` namespace, so there is no `using` for an import rule to match. Growing the allowlist is a review decision.
     - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory.
-    - **Query lifetime**: the seven entry points that scan rows (`Find`, `FindByName`, `Search`, `Largest`,
+    - **Query lifetime**: the eight entry points that scan rows (`Find`, `FindByName`, `Search`, `Enumerate`, `Largest`,
       `DuplicateNames`, `Root`, and `FileEntry.Children`) each take an optional `CancellationToken`, observed
       before the first row and then at least every 4096 rows from inside `RowScanner`, and each holds a borrow
       on the `Snapshot` it reads for its whole duration. `FileEntry.Children` observes only its caller's token,
       since a handle holds no index reference; disposal waits that listing out rather than cancelling it. Every
       other `FileEntry` member reads one row and keeps the per-access `IsReleased` check instead.
-      `SnapshotRelease` counts borrows; `DisposeAsync` cancels a disposal token the six `FileIndex` queries
+      `SnapshotRelease` counts borrows; `DisposeAsync` cancels a disposal token the seven `FileIndex` queries
       are linked to, waits for the borrows on the current and retired snapshots to drop, and only then
-      unmaps. Scanning on one thread while another disposes is therefore safe. The snapshot finalizer path
+      unmaps. A suspended `Enumerate` enumerator holds its borrow between yields, so disposal waits until
+      it advances or is disposed, or, if abandoned, until garbage collection and finalization return the
+      borrow. Dispose enumerators promptly; collection timing is not guaranteed. The 4096-row checkpoint
+      bound applies to active scanning, not time spent suspended. Scanning on one thread while another
+      disposes is therefore safe. The snapshot finalizer path
       is unaffected: a borrow holds the snapshot, so a borrowed snapshot is never collected.
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.

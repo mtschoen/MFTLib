@@ -38,6 +38,44 @@ internal static class SearchEngine
     }
 
     /// <summary>
+    ///     The streaming half of <see cref="Search" />: the same drives in the same order and
+    ///     the same rows in ascending row order within each, so the entries produced are
+    ///     exactly the ones <see cref="Search" /> would return, without the list. Single
+    ///     threaded where <see cref="Search" /> partitions: the caller pulls rows one at a
+    ///     time, and the borrow <see cref="FileIndex.Enumerate" /> takes is what keeps the
+    ///     blocks mapped while it does.
+    /// </summary>
+    internal static IEnumerable<FileEntry> Enumerate(Snapshot snapshot, SearchQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (query.Under is { } underAncestor && !underAncestor.IsValid)
+        {
+            yield break;
+        }
+
+        foreach (var driveBlock in snapshot.DriveBlocks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (query.Under is { } under && (!under.IsValid || under.DriveOrdinal != driveBlock.DriveOrdinal))
+            {
+                continue;
+            }
+
+            foreach (var entry in EnumerateDrive(snapshot, driveBlock, query, cancellationToken))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return entry;
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    /// <summary>
     ///     Applies the cheap column predicates first and the subtree walk last, because
     ///     <see cref="IndexNavigation.IsUnder(BlockFile, uint, uint)" /> climbs the parent column for every candidate.
     /// </summary>
@@ -164,5 +202,55 @@ internal static class SearchEngine
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    /// <summary>
+    ///     One drive's matching rows in ascending row order. The cancellation cadence mirrors
+    ///     <see cref="RowScanner" />: the first row is a checkpoint, then one every
+    ///     <see cref="RowScanner.CancellationCheckIntervalRows" /> rows. A scanner itself
+    ///     cannot be used here because an iterator may not hold a ref struct across a
+    ///     <c>yield return</c>, so the row and its name are re-read per iteration by
+    ///     <see cref="RowMatches(BlockFile, uint, SearchQuery)" /> instead.
+    /// </summary>
+    static IEnumerable<FileEntry> EnumerateDrive(Snapshot snapshot, DriveBlock driveBlock,
+        SearchQuery query, CancellationToken cancellationToken)
+    {
+        var block = driveBlock.Block;
+        var rowCount = block.Header.RowCount;
+        var underRow = query.Under?.RowIndex ?? 0;
+        var rowsUntilCancellationCheck = 1u;
+
+        for (var rowIndex = 0u; rowIndex < rowCount; rowIndex++)
+        {
+            rowsUntilCancellationCheck--;
+            if (rowsUntilCancellationCheck == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                rowsUntilCancellationCheck = RowScanner.CancellationCheckIntervalRows;
+            }
+
+            if (!RowMatches(block, rowIndex, query))
+            {
+                continue;
+            }
+
+            if (query.Under is not null && !IndexNavigation.IsUnder(block, rowIndex, underRow))
+            {
+                continue;
+            }
+
+            yield return FileEntry.Create(snapshot, driveBlock.DriveOrdinal, rowIndex);
+        }
+    }
+
+    /// <summary>
+    ///     The row read and the name span live only inside this call, so the iterator above
+    ///     never holds a span or a ref across a <c>yield return</c>, which the language
+    ///     forbids.
+    /// </summary>
+    static bool RowMatches(BlockFile block, uint rowIndex, SearchQuery query)
+    {
+        ref readonly var row = ref block.Rows[(int)rowIndex];
+        return RowMatches(in row, NamePool.ReadRowName(block, rowIndex), query);
     }
 }

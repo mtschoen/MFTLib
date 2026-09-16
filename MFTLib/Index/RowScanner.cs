@@ -2,9 +2,10 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     A ref-struct enumerator over one drive block's rows and names, working directly on the
-///     mapped spans with no allocation. This is the internal scan escape hatch: the public
-///     query surface returns lists, and this is what those queries are built on. The range
-///     constructor is how a query partitions one drive across threads.
+///     mapped spans with no allocation. Internal by design (MFTLib#122): the public query
+///     surface is lists plus the streaming <see cref="FileIndex.Enumerate" />, and the engines
+///     behind them are built on this scanner. The range constructor is how a query partitions
+///     one drive across threads.
 /// </summary>
 internal ref struct RowScanner
 {

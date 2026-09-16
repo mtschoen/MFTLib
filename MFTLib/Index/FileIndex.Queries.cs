@@ -45,10 +45,62 @@ public sealed partial class FileIndex
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <seealso cref="Enumerate" />
     public IReadOnlyList<FileEntry> Search(SearchQuery query, CancellationToken cancellationToken = default)
     {
         using var scope = BeginQuery(cancellationToken);
         return SearchEngine.Search(scope.Snapshot, query, scope.CancellationToken);
+    }
+
+    /// <summary>
+    ///     The streaming form of <see cref="Search" />: the same matches in the same order,
+    ///     yielded one at a time instead of materialized into a list, for a consumer that
+    ///     filters most rows away and should not pay memory for the whole match set. This is
+    ///     the consumer escape hatch over the mapped rows; <see cref="RowScanner" /> itself
+    ///     stays internal by design.
+    /// </summary>
+    /// <param name="query">The predicates a row has to satisfy.</param>
+    /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
+    /// <returns>
+    ///     A cold enumerable: the call itself reads nothing and takes no borrow. Each
+    ///     enumeration borrows the current snapshot from the first row until the enumerator
+    ///     completes or is disposed, which a <c>foreach</c> does even on an early
+    ///     <c>break</c>. An enumerator abandoned without disposal holds its borrow until it
+    ///     is collected, and <see cref="DisposeAsync" /> waits for it like any other borrow.
+    ///     Entries stay readable after the enumeration ends, exactly as entries from
+    ///     <see cref="Search" /> do.
+    /// </returns>
+    /// <exception cref="InvalidDataException">
+    ///     A candidate's parent chain does not resolve within
+    ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops while applying the subtree
+    ///     restriction (<see cref="SearchQuery.Under" />). Where <see cref="Search" /> throws
+    ///     it before returning, the streaming form throws it from the MoveNext that reaches
+    ///     the candidate.
+    /// </exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
+    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
+    /// <seealso cref="Search" />
+    public IEnumerable<FileEntry> Enumerate(SearchQuery query, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return EnumerateCore(query, cancellationToken);
+    }
+
+    /// <summary>
+    ///     The iterator behind <see cref="Enumerate" />, split out so argument and disposal
+    ///     validation throw at call time while the borrow, like the scan, waits for the first
+    ///     MoveNext. The scope sits in a using inside the iterator, so the borrow and the
+    ///     linked token source are returned when the enumerator completes, is disposed, or
+    ///     faults.
+    /// </summary>
+    IEnumerable<FileEntry> EnumerateCore(SearchQuery query, CancellationToken cancellationToken)
+    {
+        using var scope = BeginQuery(cancellationToken);
+        foreach (var entry in SearchEngine.Enumerate(scope.Snapshot, query, scope.CancellationToken))
+        {
+            yield return entry;
+        }
     }
 
     /// <summary>
@@ -101,9 +153,10 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     The ref-struct escape hatch over one drive's mapped rows, for hot paths that cannot
-    ///     afford a materialized list. Internal in v1: the public surface is lists. The scanner
-    ///     outlives this call, so the caller passes in the borrow that keeps those rows mapped
-    ///     for as long as it reads them, rather than this method taking one it cannot hold.
+    ///     afford a materialized list. Internal by design (MFTLib#122): <see cref="Enumerate" />
+    ///     is the public streaming surface. The scanner outlives this call, so the caller passes
+    ///     in the borrow that keeps those rows mapped for as long as it reads them, rather than
+    ///     this method taking one it cannot hold.
     /// </summary>
     internal RowScanner Scan(SnapshotBorrow borrow, ushort driveOrdinal,
         CancellationToken cancellationToken = default)

@@ -190,20 +190,24 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// <remarks>
     ///     <para>
     ///         Disposing while another thread is running a scan is safe, and is what this method
-    ///         being asynchronous buys. Seven entry points scan rows, and each holds a borrow on
+    ///         being asynchronous buys. Eight entry points scan rows, and each holds a borrow on
     ///         the snapshot it reads for its whole duration: <see cref="Find" />,
-    ///         <see cref="FindByName" />, <see cref="Search" />, <see cref="Largest" />,
+    ///         <see cref="FindByName" />, <see cref="Search" />, <see cref="Enumerate" />, <see cref="Largest" />,
     ///         <see cref="DuplicateNames" /> and <see cref="Root" /> on this class, and
     ///         <see cref="FileEntry.Children" /> on a handle. Disposal waits for every one of
     ///         those borrows, on the current snapshot and on the retired ones, before it unmaps
     ///         anything.
     ///     </para>
     ///     <para>
-    ///         The six queries on this class also observe a token linked to the index's disposal,
+    ///         The seven queries on this class also observe a token linked to the index's disposal,
     ///         so disposal cancels them rather than waiting them out: each ends with
     ///         <see cref="OperationCanceledException" /> or, if it had not started,
     ///         <see cref="ObjectDisposedException" />, and the wait is as long as they take to
-    ///         reach their next checkpoint, at most 4096 rows. <see cref="FileEntry.Children" />
+    ///         reach their next checkpoint, at most 4096 rows of active scanning. A suspended
+    ///         <see cref="Enumerate" /> enumerator holds its borrow between yields: disposal waits
+    ///         until it advances or is disposed, or, if abandoned, until garbage collection and
+    ///         finalization return its borrow. Dispose enumerators promptly rather than relying on
+    ///         collection, whose timing is not guaranteed. <see cref="FileEntry.Children" />
     ///         is the exception: a handle carries no reference to its index, so there is no
     ///         disposal token to link and this method waits that listing out instead, which is one
     ///         pass over the drive's rows unless its caller passes a token of its own.

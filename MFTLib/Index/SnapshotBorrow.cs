@@ -10,11 +10,19 @@ namespace MFTLib.Index;
 internal sealed class SnapshotBorrow : IDisposable
 {
     readonly Snapshot _snapshot;
-    int _returned;
+    int _acquired;
 
     internal SnapshotBorrow(Snapshot snapshot)
     {
         _snapshot = snapshot;
+        if (!snapshot.ReleaseState.TryTakeBorrow())
+        {
+            throw new ObjectDisposedException(nameof(Snapshot),
+                "This snapshot has been released and can no longer be read.");
+        }
+
+        // Failed construction is finalizable too; only an admitted reader owns a count.
+        _acquired = 1;
     }
 
     /// <summary>The snapshot this borrow keeps mapped, for the query that took it to read through.</summary>
@@ -27,9 +35,15 @@ internal sealed class SnapshotBorrow : IDisposable
     /// </summary>
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _returned, 1) == 0)
+        if (Interlocked.Exchange(ref _acquired, 0) != 0)
         {
             _snapshot.ReleaseState.ReturnBorrow();
+            GC.SuppressFinalize(this);
         }
+    }
+
+    ~SnapshotBorrow()
+    {
+        Dispose();
     }
 }

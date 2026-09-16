@@ -247,6 +247,7 @@ public sealed class FileIndex : IAsyncDisposable
     public FileEntry? Find(string fullPath);
     public IReadOnlyList<FileEntry> FindByName(string name);
     public IReadOnlyList<FileEntry> Search(SearchQuery query);
+    public IEnumerable<FileEntry> Enumerate(SearchQuery query, CancellationToken ct = default);
     public IReadOnlyList<FileEntry> Largest(int count, FileEntry? under = null);
     public IReadOnlyList<DuplicateGroup> DuplicateNames();
     public FileEntry Root(char drive);
@@ -279,7 +280,9 @@ public sealed record SearchQuery(
 ```
 
 Every query is a parallel scan over the relevant columns of every current
-drive block and materializes a `List<FileEntry>`. `Search` returns the whole
+drive block and materializes a `List<FileEntry>`, with one streaming exception:
+`Enumerate` yields matching entries one at a time for consumers that filter
+heavily and cannot afford the materialized list. `Search` returns the whole
 match set; callers page by slicing. `FindByName` and `DuplicateNames` compare
 UTF-16 spans against the pool with NTFS case folding. `DuplicateNames` chains
 a fixed number of transient fixed-size hash sieve passes over name hashes,
@@ -288,8 +291,9 @@ whole chain.
 `Largest` is a partial sort by the size column. `Children` scans the parent
 column. `Find(fullPath)` walks down from the root by name at each level.
 
-Hot internals and a `Scan(...)` escape hatch expose ref-struct enumerators over
-spans for consumers that need them. The public surface is lists.
+`Enumerate(SearchQuery)` is the public streaming escape hatch over the mapped rows,
+yielding entries one at a time without materializing a list. Hot internals expose
+ref-struct enumerators over spans (`RowScanner`), which is internal by design (MFTLib#122).
 
 ## 6. Consumers
 
