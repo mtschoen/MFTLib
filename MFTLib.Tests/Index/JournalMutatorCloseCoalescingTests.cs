@@ -200,6 +200,75 @@ public class JournalMutatorCloseCoalescingTests
     }
 
     [TestMethod]
+    public async Task TwoRenamePairsWithoutAnInterveningClose_BothApplyAndTheCloseEchoesOnlyTheLast()
+    {
+        await using var fixture = new MutatorFixture();
+        var closeMoment = fixture.Timestamp.AddMinutes(1);
+
+        // NTFS emits one old-name/new-name record pair per rename and does not require a
+        // close between renames: this open cycle renames notes.txt to first.txt, then
+        // moves and renames it to second.txt at the root, all before the handle closes.
+        var firstPair = fixture.Apply(
+        [
+            Entry(7, 6, "notes.txt", UsnReason.RenameOldName, fixture.Timestamp, sequenceNumber: 1),
+            Entry(7, 6, "first.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
+        ]);
+        var secondPair = fixture.Apply(
+        [
+            Entry(7, 6, "first.txt", UsnReason.RenameOldName, fixture.Timestamp, sequenceNumber: 1),
+            Entry(7, 5, "second.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
+        ]);
+        var close = fixture.Apply(
+        [
+            Entry(7, 5, "second.txt", UsnReason.RenameOldName | UsnReason.RenameNewName | UsnReason.Close,
+                closeMoment, sequenceNumber: 1)
+        ]);
+
+        Assert.AreEqual(1, firstPair.Count);
+        Assert.AreEqual(FileChangeKind.Renamed, firstPair[0].Kind);
+        Assert.AreEqual(1, secondPair.Count,
+            "A second rename inside one open cycle is a new rename, not the close record's echo.");
+        Assert.AreEqual(FileChangeKind.Renamed, secondPair[0].Kind);
+        Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "first.txt"),
+            secondPair[0].PreviousPath);
+        Assert.AreEqual(0, close.Count,
+            "The close record repeats the second rename's name and parent, so it is the echo.");
+        Assert.AreEqual("second.txt", new string(NamePool.ReadRowName(fixture.Block, 7)));
+        Assert.AreEqual(5u, fixture.Block.Rows[7].ParentRow);
+        // The close record still restamps the row's metadata without a change event.
+        Assert.AreEqual(closeMoment.Ticks, fixture.Block.Rows[7].ModifiedTicks);
+    }
+
+    [TestMethod]
+    public async Task SameNameMoveInsideOneOpenCycle_ClassifiesAgainBecauseTheParentDiffers()
+    {
+        await using var fixture = new MutatorFixture();
+
+        // A move that keeps the file name is still a rename pair in the journal; only the
+        // parent changes. The echo key includes the parent, so this second pair classifies.
+        fixture.Apply(
+        [
+            Entry(7, 6, "first.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
+        ]);
+        var move = fixture.Apply(
+        [
+            Entry(7, 5, "first.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
+        ]);
+        var close = fixture.Apply(
+        [
+            Entry(7, 5, "first.txt", UsnReason.RenameNewName | UsnReason.Close,
+                fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)
+        ]);
+
+        Assert.AreEqual(1, move.Count,
+            "A RenameNewName carrying a parent the cycle has not applied is a move, not an echo.");
+        Assert.AreEqual(FileChangeKind.Renamed, move[0].Kind);
+        Assert.AreEqual(5u, fixture.Block.Rows[7].ParentRow);
+        Assert.AreEqual("first.txt", new string(NamePool.ReadRowName(fixture.Block, 7)));
+        Assert.AreEqual(0, close.Count);
+    }
+
+    [TestMethod]
     public async Task SequenceNumberChange_ResetsTheOpenCycleAndReportsTheNewIncarnation()
     {
         await using var fixture = new MutatorFixture();

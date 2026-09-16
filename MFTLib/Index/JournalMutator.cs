@@ -9,6 +9,10 @@ namespace MFTLib.Index;
 ///     coalesces that close record against the reasons the cycle already reported (tracked per
 ///     drive block in <see cref="ReportedReasonCycles" />), so one real transition raises one
 ///     change while the row still takes the close record's timestamp and attributes.
+///     Suppression is keyed on what the cycle applied, not on the reason bit alone: a second
+///     rename inside one open cycle (NTFS writes one record pair per rename and requires no
+///     close between renames) carries a new name or parent and classifies again; only the
+///     repetition of the applied name and parent is the echo.
 /// </summary>
 public sealed class JournalMutator
 {
@@ -73,6 +77,20 @@ public sealed class JournalMutator
         var meaningful = entry.Reason & ~(UsnReason.Close | UsnReason.RenameOldName);
         var classification = meaningful & ~reported;
 
+        // The reason bit alone cannot tell a repeated RenameNewName apart from a new
+        // rename: NTFS writes one old-name/new-name pair per rename and does not require a
+        // close between renames, so one open cycle can hold several real renames. Only the
+        // exact repetition of the name and parent this cycle already applied is the close
+        // record's (or a cumulative intermediate record's) echo; a different name or
+        // parent classifies as the new rename it is.
+        if ((classification & UsnReason.RenameNewName) == 0
+            && (meaningful & UsnReason.RenameNewName) != 0
+            && !cycles.IsReportedRenameEcho(rowIndex, entry.SequenceNumber, entry.FileName,
+                entry.ParentRecordNumber))
+        {
+            classification |= UsnReason.RenameNewName;
+        }
+
         FileChange? change;
         if ((classification & UsnReason.FileCreate) != 0)
         {
@@ -110,8 +128,10 @@ public sealed class JournalMutator
         {
             // Every meaningful bit of a reported record counts as reported, not only the
             // bit that won the classification: the record was reported once, and its
-            // remaining bits are subsumed by that one change.
-            cycles.MarkReported(rowIndex, entry.SequenceNumber, meaningful);
+            // remaining bits are subsumed by that one change. The name and parent ride
+            // along so the cycle can tell a rename echo from the next real rename.
+            cycles.MarkReported(rowIndex, entry.SequenceNumber, meaningful, entry.FileName,
+                entry.ParentRecordNumber);
         }
 
         return change;

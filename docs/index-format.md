@@ -165,10 +165,14 @@ that repeats the cycle's reasons plus `USN_REASON_CLOSE`, and the watch reads wi
 `ReturnOnlyOnClose = 0`, so every intermediate record arrives. `JournalMutator` tracks,
 per drive block, the reasons each row's open cycle already reported; a close record that
 adds no new reason restamps the row's `ModifiedTicks` and attributes without emitting a
-second change, so one real transition raises one change. The state is runtime-only - it
-is not part of this format, is not persisted, and is discarded with the block a rescan
-replaces. A sequence-number change on the row resets the cycle, since the MFT segment
-was reused by a new file.
+second change, so one real transition raises one change. A repeated reason bit is suppressed
+only as the echo of what the cycle already applied: a second `USN_REASON_RENAME_NEW_NAME`
+inside one open cycle carries a new name or parent and classifies again, because NTFS writes
+one old-name/new-name record pair per rename and does not require a close between renames.
+The rename echo is therefore keyed on the name and parent the record carries, not on the
+reason bit alone. The state is runtime-only - it is not part of this format, is not
+persisted, and is discarded with the block a rescan replaces. A sequence-number change on
+the row resets the cycle, since the MFT segment was reused by a new file.
 
 ## Sidecars
 
