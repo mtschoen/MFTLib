@@ -1,3 +1,4 @@
+using System.Reflection;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -259,15 +260,15 @@ public class FileIndexWatchRescanTests
             [new IndexWatchTarget('T', 11, 4242)]);
 
         var swapGateField = typeof(FileIndex).GetField("_swapGate",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            BindingFlags.NonPublic | BindingFlags.Instance)!;
         var swapGate = (SemaphoreSlim)swapGateField.GetValue(harness.Index)!;
 
         await swapGate.WaitAsync(Token);
         try
         {
             var driveBlocksField = typeof(FileIndex).GetField("_driveBlocks",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-            var driveBlocks = (System.Collections.Generic.List<DriveBlock>)driveBlocksField.GetValue(harness.Index)!;
+                BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var driveBlocks = (List<DriveBlock>)driveBlocksField.GetValue(harness.Index)!;
             var initialBlock = driveBlocks[0];
 
             using var rescanCts = new CancellationTokenSource();

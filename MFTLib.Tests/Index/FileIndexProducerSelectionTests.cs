@@ -178,6 +178,40 @@ public class FileIndexProducerSelectionTests
         Assert.AreEqual(0, index.Search(new SearchQuery(null)).Count);
     }
 
+    /// <summary>
+    ///     <see cref="FileIndexOptions.InitialOpenCacheOnly" />'s refusal contract: with no
+    ///     usable cache present, the drive is failed with the cache-only refusal message and the
+    ///     producer is never invoked. Asserting the invocation count, not just the end state, is
+    ///     what distinguishes "refused before scanning" from "scanned and happened to fail".
+    /// </summary>
+    [TestMethod]
+    public async Task Mft_WithInitialOpenCacheOnlyAndNoUsableCache_FailsTheDriveWithoutInvokingTheProducer()
+    {
+        var invocationCount = 0;
+        Task<MftBlockProduceResult> CountingProducer(MftBlockProduceRequest request, CancellationToken _)
+        {
+            invocationCount++;
+            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+        }
+
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('T', _treeRoot, 1)],
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Mft,
+            MftProducer = CountingProducer,
+            InitialOpenCacheOnly = true
+        }, TestContext.CancellationTokenSource.Token);
+
+        Assert.AreEqual(0, invocationCount, "a cache-only open must never attempt a scan");
+        var failed = index.Drives.Single();
+        Assert.AreEqual(DriveState.Failed, failed.State);
+        Assert.AreEqual(
+            "Drive T: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan.",
+            failed.MftProducerFailureMessage);
+    }
+
     [TestMethod]
     public async Task Mft_WithNoProducerConfiguredIsAConfigurationError()
     {

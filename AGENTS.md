@@ -192,9 +192,10 @@ It deliberately does NOT use `actions/setup-node`
 (its 7zr extraction dies with exit code 2 on the host-mode act_runner). The
 build step also mirrors `run-coverage.ps1`'s 64-bit-amd64-MSBuild recipe (the
 checkout path is WOW64-virtualized away from 32-bit MSBuild). See the traps in
-`~/schoen-lab/packages/local_ci/docs/project-ci-setup.md`. For the gate to block merges, add
-`aislop / quality-gate (pull_request)` to the branch-protection required checks
-on `main`.
+`~/schoen-lab/packages/local_ci/docs/project-ci-setup.md`. `aislop / quality-gate
+(pull_request)` is one of the required status checks in the branch protection
+rule on `main`, alongside `test / windows` and `test / linux`, so a failing gate
+blocks the merge.
 
 The global pin is a commit-ish, not a version. Do not assume a tag: the `v0.14.1`
 tag and the commit currently installed both report version `0.14.1` but are

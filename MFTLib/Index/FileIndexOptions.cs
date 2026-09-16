@@ -18,6 +18,11 @@ public sealed record FileIndexOptions
     ///     than graceful dispose, so no stale no-cache file is left behind.
     /// </summary>
     public bool NoCache { get; init; }
+
+    /// <summary>
+    ///     Opens each drive from its cache only. A drive with no usable cache (missing, corrupt,
+    ///     or incompatible) is reported as failed instead of falling back to a scan.
+    /// </summary>
     public bool InitialOpenCacheOnly { get; init; }
 
     public ProducerPolicy ProducerPolicy { get; init; } = ProducerPolicy.Mft;
