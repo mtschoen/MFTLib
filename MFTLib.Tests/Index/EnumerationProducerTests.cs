@@ -99,6 +99,14 @@ public class EnumerationProducerTests
     }
 
     [TestMethod]
+    public void CreateDirectoryEnumerationOptions_CarriesTheMeasuredFetchBufferSize()
+    {
+        var options = EnumerationProducer.CreateDirectoryEnumerationOptions();
+
+        Assert.AreEqual(64 * 1024, options.BufferSize);
+    }
+
+    [TestMethod]
     public void EnumerationResult_EqualityComparesEveryField()
     {
         var first = new EnumerationResult(7u, 128u, 2, CompactionNeeded: true);

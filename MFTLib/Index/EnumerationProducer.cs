@@ -17,6 +17,15 @@ public sealed class EnumerationProducer
     /// <summary>Bytes of name pool budgeted per row: 24 UTF-16 units is a generous mean name.</summary>
     const uint EstimatedNameBytesPerRow = 48;
 
+    /// <summary>
+    ///     Bytes the OS fills per directory fetch, sized up so a network share pays one round
+    ///     trip per buffer. Never worse than the framework default on local NTFS or a network
+    ///     share and 44% faster on local NTFS; 1 MB regresses badly on directory-heavy trees.
+    ///     Measurement: https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/29
+    ///     Docs: https://learn.microsoft.com/en-us/dotnet/api/system.io.enumerationoptions.buffersize
+    /// </summary>
+    internal const int EnumerationBufferSizeBytes = 64 * 1024;
+
     public EnumerationProducer(EnumerationProducerOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -102,6 +111,21 @@ public sealed class EnumerationProducer
             state.AccessDeniedSubtreeCount, writer.CompactionNeeded);
     }
 
+    internal static EnumerationOptions CreateDirectoryEnumerationOptions()
+    {
+        return new EnumerationOptions
+        {
+            RecurseSubdirectories = false,
+            IgnoreInaccessible = false,
+            // An MFT scan sees every record regardless of the hidden or system
+            // attribute, so the managed walk must too: the .NET default of skipping
+            // Hidden | System would make an enumeration block disagree with an
+            // MFT-derived one over the same volume.
+            AttributesToSkip = 0,
+            BufferSize = EnumerationBufferSizeBytes
+        };
+    }
+
     static void EnumerateOneDirectory(WalkState state, string directoryPath, uint directoryRow,
         Queue<(string Path, uint RowIndex)> pending, CancellationToken cancellationToken)
     {
@@ -114,16 +138,7 @@ public sealed class EnumerationProducer
             // not on the first MoveNext.
             var enumerable = new FileSystemEnumerable<bool>(directoryPath,
                 (ref entry) => state.WriteRow(ref entry, directoryRow, childDirectories),
-                new EnumerationOptions
-                {
-                    RecurseSubdirectories = false,
-                    IgnoreInaccessible = false,
-                    // An MFT scan sees every record regardless of the hidden or system
-                    // attribute, so the managed walk must too: the .NET default of skipping
-                    // Hidden | System would make an enumeration block disagree with an
-                    // MFT-derived one over the same volume.
-                    AttributesToSkip = 0
-                });
+                CreateDirectoryEnumerationOptions());
 
             foreach (var _ in enumerable)
             {

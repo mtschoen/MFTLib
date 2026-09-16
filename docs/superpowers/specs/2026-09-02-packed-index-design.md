@@ -160,8 +160,9 @@ Broker write path:
 
 Managed, in `MFTLib.Index`. Walks the volume with
 `FileSystemEnumerable<T>` and `FileSystemEntry` so no path or name string is
-allocated per entry, with large-fetch enabled on Windows so a network share
-pays one round trip per buffer. Writes rows straight into the block as it
+allocated per entry, with `EnumerationOptions.BufferSize` set to a 64 KB fetch
+buffer so a network share pays one round trip per buffer. Writes rows straight
+into the block as it
 walks. Emits progress on the same shape as the broker. No cursor, no live
 watch; a drive on this producer shows "rescan to refresh" on its card.
 
