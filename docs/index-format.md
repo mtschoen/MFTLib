@@ -101,6 +101,14 @@ point of the layout:
 - **Every write goes through `FileRow.WriteDescriptorWord`**, including a write
   that only means to change the flags, which must round-trip the offset and the
   length through the same call.
+- **A `BlockWriter` operation and `BlockFile.Dispose` never overlap.** Every
+  writer operation holds a block access scope for its full duration; disposal
+  refuses new scopes when it begins and waits for outstanding ones before
+  unmapping the view. A writer that arrives after disposal began fails with
+  `ObjectDisposedException`, never a torn or unmapped access. The raw
+  `BlockFile` properties are not part of this guarantee: their check-then-use
+  pattern protects a single owner, and readers are expected to hold a snapshot
+  borrow instead.
 
 ## Sequence region
 

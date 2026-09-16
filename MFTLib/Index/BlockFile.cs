@@ -8,18 +8,49 @@ namespace MFTLib.Index;
 ///     object's lifetime, so a property read is a pointer offset and touches only the pages it
 ///     actually reads. Named sections are a Windows broker concern and are not used here,
 ///     which is what keeps this type usable on Linux.
+///     Writes through <see cref="BlockWriter" /> hold a <see cref="BlockAccessScope" /> for each
+///     operation, and <see cref="Dispose" /> waits for outstanding scopes before unmapping, so a
+///     write racing disposal either finishes against mapped memory or, when disposal began first,
+///     fails with <see cref="ObjectDisposedException" />. Raw property reads are not part of that
+///     guarantee: their check-then-use pattern protects a single owner, and readers are expected
+///     to hold a snapshot borrow instead.
 /// </summary>
 public sealed unsafe class BlockFile : IDisposable
 {
     readonly MemoryMappedFile _mappedFile;
     readonly MemoryMappedViewAccessor _view;
 
+    /// <summary>
+    ///     Guards <see cref="_activeAccessCount" />, <see cref="_disposeStarted" /> and
+    ///     <see cref="_accessDrained" />. A writer admitted just before disposal begins is counted
+    ///     and waited for; one that arrives just after is refused. See <see cref="TryTakeAccess" />
+    ///     and <see cref="Dispose" />.
+    /// </summary>
+    readonly Lock _accessGate = new();
+    int _activeAccessCount;
+    bool _disposeStarted;
+
+    /// <summary>
+    ///     Created by a <see cref="Dispose" /> that finds writer accesses outstanding, and set when
+    ///     the last of them is handed back. Null while nothing is waiting, so a block disposed with
+    ///     no writer inside it allocates nothing.
+    /// </summary>
+    ManualResetEventSlim? _accessDrained;
+
     // Volatile so the disposal flag and the base pointer are read and written in program order
     // across threads: without it the guards below may observe _disposed as false while already
     // seeing a null _base, or a stale cached pointer. This orders the two against each other; it
-    // does not make a query safe to overlap a dispose. See FileIndex.DisposeAsync.
+    // does not make a raw property read safe to overlap a dispose. Readers go through snapshot
+    // borrows (see FileIndex.DisposeAsync); writers are serialized through BlockAccessScope.
     volatile byte* _base;
     volatile bool _disposed;
+
+    /// <summary>
+    ///     A test seam, held per instance rather than statically so two blocks never share it.
+    ///     Invoked once disposal has begun and before the view is unmapped, which is the window a
+    ///     racing writer has to observe.
+    /// </summary>
+    internal Action? _disposeStartedForTest;
 
     BlockFile(string path, long length, bool deleteOnClose, MemoryMappedFile mappedFile,
         MemoryMappedViewAccessor view)
@@ -43,6 +74,49 @@ public sealed unsafe class BlockFile : IDisposable
     ///     <see cref="FileOptions.DeleteOnClose" />, so the process is not required to delete it.
     /// </summary>
     public bool DeleteOnClose { get; }
+
+    /// <summary>
+    ///     Takes one writer access, or reports that disposal has begun and the view is on its way
+    ///     out. Taken under the access gate rather than through an interlocked increment so an
+    ///     access can never be admitted after the disposal flag is read but before the count moves.
+    /// </summary>
+    internal bool TryTakeAccess()
+    {
+        lock (_accessGate)
+        {
+            if (_disposeStarted)
+            {
+                return false;
+            }
+
+            _activeAccessCount++;
+            return true;
+        }
+    }
+
+    /// <summary>Hands one writer access back, waking a dispose waiting for the last of them.</summary>
+    internal void ReturnAccess()
+    {
+        lock (_accessGate)
+        {
+            _activeAccessCount--;
+            if (_activeAccessCount == 0)
+            {
+                _accessDrained?.Set();
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Takes a writer's claim on the view for one <see cref="BlockWriter" /> operation.
+    ///     Throws once disposal has begun: the view is being torn down, so a new writer is turned
+    ///     away with a catchable exception rather than joined to a region that is about to be
+    ///     unmapped.
+    /// </summary>
+    internal BlockAccessScope TakeAccess()
+    {
+        return new BlockAccessScope(this);
+    }
 
     public ref BlockHeader Header
     {
@@ -185,12 +259,38 @@ public sealed unsafe class BlockFile : IDisposable
         _view.Flush();
     }
 
+    /// <summary>
+    ///     Closes the view after every writer already inside the block has left it. Admission of
+    ///     new writer scopes closes first; then this waits, outside the access gate because a
+    ///     writer hands its access back through that gate, for the outstanding ones, bounded by
+    ///     one writer operation (a row write, or <see cref="BlockWriter.Complete" />'s flush);
+    ///     only then is the pointer released and the view unmapped. A call after disposal has
+    ///     begun returns without waiting, matching the long-standing contract that disposal is
+    ///     idempotent and owned by a single disposer.
+    /// </summary>
     public void Dispose()
     {
-        if (_disposed)
+        ManualResetEventSlim? drained;
+        lock (_accessGate)
         {
-            return;
+            if (_disposeStarted)
+            {
+                return;
+            }
+
+            _disposeStarted = true;
+            if (_activeAccessCount > 0)
+            {
+                _accessDrained ??= new ManualResetEventSlim();
+            }
+
+            drained = _accessDrained;
         }
+
+        _disposeStartedForTest?.Invoke();
+
+        // Invariant: blocks synchronously on the ManualResetEventSlim until in-flight writers drain, not on a Task.
+        drained?.Wait();
 
         _disposed = true;
         if (_base is not null)
@@ -201,6 +301,7 @@ public sealed unsafe class BlockFile : IDisposable
 
         _view.Dispose();
         _mappedFile.Dispose();
+        drained?.Dispose();
 
         // File deletion follows the operating system contract. When created with
         // FileOptions.DeleteOnClose, the last handle closure removes the backing file.

@@ -46,6 +46,13 @@ project. Warm tests need no block writer until a rescan. Your test assembly need
 `InternalsVisibleTo` from MFTLib. Disposing the session disposes the blocks still held in
 `LatestScan.BlockOutcomes`.
 
+A section writer that keeps serving after the client cancelled races the client's teardown: the
+block the writer is filling may be disposed on another thread mid-write. That race is memory-safe:
+the in-flight `BlockWriter` operation completes, `BlockFile.Dispose` waits for it before
+unmapping, and the writer's next operation throws `ObjectDisposedException`. A fixture should
+still stop its serving task when the session ends rather than rely on that exception as its only
+stop signal.
+
 ## Testing the FileIndex watch bridge
 
 A consumer testing `FileIndex` itself, rather than a hand-rolled `JournalBrokerScanSession`

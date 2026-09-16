@@ -143,6 +143,12 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       bound applies to active scanning, not time spent suspended. Scanning on one thread while another
       disposes is therefore safe. The snapshot finalizer path
       is unaffected: a borrow holds the snapshot, so a borrowed snapshot is never collected.
+    - **Writer lifetime**: every `BlockWriter` operation holds a `BlockAccessScope` on its
+      `BlockFile` for the operation's whole duration. `BlockFile.Dispose` refuses new scopes when
+      it begins and waits for outstanding ones before unmapping, so a write racing disposal either
+      completes against mapped memory or, if it arrives after disposal began, fails with
+      `ObjectDisposedException` instead of dereferencing an unmapped view. Raw `BlockFile`
+      property reads are not serialized against disposal; readers go through snapshot borrows.
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
     - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`; `MaterializeBatches`/`ReadRecordBatches` provide bounded-memory batch materialization over the same result.

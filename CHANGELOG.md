@@ -88,6 +88,7 @@ and the live watch bridge and consumer-gap closures tracked as
 
 ### Fixed
 
+- A `BlockWriter` write racing `BlockFile.Dispose` on another thread (a broker test fixture tearing down while its serving task is mid-row-write) could dereference an unmapped view and kill the process with an `AccessViolationException`; disposal now refuses new writer operations when it begins and waits for in-flight ones before unmapping, so a late writer fails with a catchable `ObjectDisposedException` (refiled from [git-wizard#181](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/181))
 - A drive faulting while a sibling drive is between disarm and re-arm during a rescan isolates the fault to that drive: the awaiting-reader marker spans the whole disarm-to-rearm window rather than clearing on return from disarm
 - A journal-invalidation `Error` frame for one drive faults that drive's batch source with `InvalidOperationException` while other drives keep streaming
 - `IndexNavigation.BuildPath`, `IsUnder`, and subtree-restricted queries explicitly throw `InvalidDataException` when a valid parent chain exceeds `BlockLayout.MaximumPathDepth` hops instead of silently returning truncated paths or false negatives, while preserving cycle detection
