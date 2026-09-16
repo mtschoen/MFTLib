@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using MFTLib.Index;
 
 namespace MFTLib;
 
@@ -18,6 +19,7 @@ public sealed partial class JournalBrokerHost
     readonly UsnJournalCatchUpSource _readJournal;
     readonly JournalBatchSource? _watchDrive;
     readonly NtfsVolumeInformationQuery? _queryVolumeInfo;
+    readonly GrowUsnJournalQuery? _growUsnJournal;
 
     internal static TimeSpan _progressThrottleInterval = TimeSpan.FromMilliseconds(250);
 
@@ -26,13 +28,15 @@ public sealed partial class JournalBrokerHost
         MftRecordBatchSource scanDrive,
         UsnJournalCatchUpSource readJournal,
         JournalBatchSource? watchDrive = null,
-        NtfsVolumeInformationQuery? queryVolumeInfo = null)
+        NtfsVolumeInformationQuery? queryVolumeInfo = null,
+        GrowUsnJournalQuery? growUsnJournal = null)
     {
         _queryCursor = queryCursor;
         _scanDrive = scanDrive;
         _readJournal = readJournal;
         _watchDrive = watchDrive;
         _queryVolumeInfo = queryVolumeInfo;
+        _growUsnJournal = growUsnJournal;
     }
 
     public (UsnJournalEntry[] Entries, UsnJournalCursor Updated) CatchUp(string driveLetter, UsnJournalCursor since)
@@ -189,7 +193,14 @@ public sealed partial class JournalBrokerHost
             ScanDriveRecordBatches,
             ReadJournal,
             WatchAndDisposeAsync,
-            QueryVolumeInfo);
+            QueryVolumeInfo,
+            GrowUsnJournal);
+    }
+
+    static UsnJournalSettings GrowUsnJournal(string drive, long maximumSize, long allocationDelta)
+    {
+        using var volume = MftVolume.Open(Bare(drive));
+        return volume.GrowUsnJournal(maximumSize, allocationDelta);
     }
 
     static UsnJournalCursor QueryCursor(string drive)

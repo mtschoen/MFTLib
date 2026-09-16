@@ -103,6 +103,8 @@ public static partial class BrokerProtocol
             BrokerFrameKind.Warning => ReadWarningFrame(payload),
             BrokerFrameKind.QueryVolumes => BrokerFrame.QueryVolumes(ReadString(payload, 0, out _)),
             BrokerFrameKind.VolumeInfo => ReadVolumeInfoFrame(payload),
+            BrokerFrameKind.GrowUsnJournal => ReadDriveAndJournalSizesFrame(payload, BrokerFrame.GrowUsnJournal),
+            BrokerFrameKind.UsnJournalSettings => ReadDriveAndJournalSizesFrame(payload, BrokerFrame.UsnJournalSettings),
             _ => throw new InvalidDataException($"Unknown frame kind: {kind}")
         };
     }
@@ -240,5 +242,15 @@ public static partial class BrokerProtocol
         offset += 4;
         var mftValidDataLength = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
         return BrokerFrame.VolumeInfo(drive, mftRecordCount, bytesPerFileRecordSegment, mftValidDataLength);
+    }
+
+    static BrokerFrame ReadDriveAndJournalSizesFrame(ReadOnlySpan<byte> payload,
+        Func<string, long, long, BrokerFrame> factory)
+    {
+        var drive = ReadString(payload, 0, out var offset);
+        var maximumSize = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        offset += 8;
+        var allocationDelta = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
+        return factory(drive, maximumSize, allocationDelta);
     }
 }

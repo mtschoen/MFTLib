@@ -136,4 +136,43 @@ public class UsnJournalLiveTests
         Assert.IsTrue(allEntries.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase)),
             $"Should find {tempFileName} in watched entries");
     }
+
+    [TestMethod]
+    [TestCategory("RequiresAdmin")]
+    public void GrowUsnJournal_OnRealVolume_GrowsAndReadsBack()
+    {
+        if (!IsAdmin())
+        {
+            Assert.Inconclusive("Requires admin");
+            return;
+        }
+
+        using var volume = MftVolume.Open("C");
+        var before = volume.QueryUsnJournalSettings();
+        if (before.MaximumSize >= 1024L * 1024 * 1024)
+        {
+            // Bound the cumulative growth across repeated runs: this test mutates a
+            // persistent, shared OS resource and cannot restore the old size (shrink is
+            // refused by design), so it opts out once the journal is already large.
+            Assert.Inconclusive("Journal maximum is already at or above 1 GB");
+            return;
+        }
+
+        var targetMaximum = before.MaximumSize + before.AllocationDelta;
+        var grown = volume.GrowUsnJournal(targetMaximum, before.AllocationDelta);
+
+        Assert.IsTrue(grown.MaximumSize >= targetMaximum,
+            $"Expected at least {targetMaximum} bytes, got {grown.MaximumSize}");
+
+        // Grow-only refusal, using the just-grown size (no second mutation).
+        try
+        {
+            volume.GrowUsnJournal(grown.MaximumSize, grown.AllocationDelta);
+            Assert.Fail("Expected InvalidOperationException");
+        }
+        catch (InvalidOperationException exception)
+        {
+            StringAssert.Contains(exception.Message, "only growth");
+        }
+    }
 }

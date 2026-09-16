@@ -281,6 +281,20 @@ attributes, filename, and convenience flags such as `IsCreate`, `IsDelete`, `IsR
 and `IsClose`. A journal entry contains the changed name and parent ID, not an eagerly
 resolved full path; maintain an index keyed by record number when full paths are needed.
 
+A watched volume whose change journal is too small wraps under load: records
+are overwritten before the watch reads them, the watch faults, and the drive
+needs a rescan. Windows sizes a new journal at 32 MB, which a busy system
+drive can wrap in minutes; the recommended sizing is a 128 MB maximum with a
+16 MB allocation delta (`UsnJournalRecommendations`).
+`FileIndex.QueryUsnJournalSettings(driveLetter)` reports a volume's current
+sizing without elevation, and `UsnJournalSettings.IsBelowRecommended` flags a
+volume below the recommendation. MFTLib never changes the journal on its own:
+enlarging it is an explicit call, `JournalBrokerClient.GrowUsnJournalAsync`,
+which the broker performs elevated and which only grows, refusing a requested
+maximum at or below the current one. Growing is persistent and shared with
+every other journal consumer on the volume (Windows Search, backup and
+replication agents), so surface it as a user action, not a startup default.
+
 ## Keep the application non-elevated
 
 For desktop applications and long-running tools, use the elevated broker instead of

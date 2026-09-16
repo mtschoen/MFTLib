@@ -70,6 +70,29 @@ and `DriveStatus.WatchFailureMessage` without ending any other drive's watch, an
 `FileIndex.RescanAsync` disarms, rebuilds, and re-arms that one drive on the running
 watch session, leaving every other drive undisturbed.
 
+### Sizing the USN change journal
+
+A live watch dies when the journal wraps before the watch reads the records it
+missed, and a wrapped journal turns the next warm start into a cold rescan.
+Windows creates the journal with a 32 MB maximum, which a busy volume wraps in
+minutes. MFTLib exposes the sizing but never changes it by itself.
+`FileIndex.QueryUsnJournalSettings(driveLetter)` reads `MaximumSize` and
+`AllocationDelta` without elevation (`FSCTL_QUERY_USN_JOURNAL` against a
+backup-semantics handle on the volume root; no broker needed).
+`UsnJournalRecommendations` carries the recommended values (128 MB maximum,
+16 MB allocation delta, what Everything recommends on Windows 10 and later) and
+`UsnJournalSettings.IsBelowRecommended` compares against them, so a consumer can
+warn without hard-coding numbers. When the user consents,
+`JournalBrokerClient.GrowUsnJournalAsync(driveLetter, maximumSize, allocationDelta)`
+asks the elevated host to resize the journal in place via
+`FSCTL_CREATE_USN_JOURNAL` (request frame kind 16, reply frame kind 17). The
+host refuses any requested maximum at or below the current one (grow only,
+never shrink) with an error the client rethrows as `InvalidOperationException`,
+and on success replies with the post-change settings read back from the volume.
+Growing the journal is a persistent change to a resource shared with Windows
+Search, backup agents, and replication, which is why the default is warn-only
+and the grow is an explicit consumer call.
+
 ## 1. Dispatch broker mode before normal startup
 
 The launched executable must recognize MFTLib's `--broker` mode before initializing the
@@ -351,8 +374,9 @@ it. The client delivers a frame only while that is still the drive's current epo
 discarding batches and failures produced before a disarm or re-arm instead of delivering
 them into the replacement channel. `DisarmDrive` has no acknowledgement and needs none.
 
-The low-level JournalBrokerClient supports QueryVolumesAsync and
-ArmScanAndCatchUpAsync while other drives remain live-watched. FileIndex.RescanAsync
+The low-level JournalBrokerClient supports QueryVolumesAsync,
+ArmScanAndCatchUpAsync, and GrowUsnJournalAsync while other drives remain
+live-watched. FileIndex.RescanAsync
 uses this path to disarm one drive, rebuild and swap its block, then re-arm only
 that drive. The live demux remains the sole pipe reader during the exchange;
 epoch-zero scan replies are separate from epoch-tagged live batches and errors.

@@ -272,7 +272,43 @@ public static partial class BrokerProtocol
         writer.Advance(offset);
     }
 
+    public static void WriteGrowUsnJournal(IBufferWriter<byte> writer, string drive,
+        long maximumSize, long allocationDelta)
+    {
+        WriteDriveAndJournalSizes(writer, BrokerFrameKind.GrowUsnJournal, drive, maximumSize, allocationDelta);
+    }
+
+    public static void WriteUsnJournalSettings(IBufferWriter<byte> writer, string drive,
+        long maximumSize, long allocationDelta)
+    {
+        WriteDriveAndJournalSizes(writer, BrokerFrameKind.UsnJournalSettings, drive, maximumSize, allocationDelta);
+    }
+
     // Private write helpers
+
+    // payload: [driveLen int32][driveBytes][maximumSize i64][allocationDelta i64]
+    static void WriteDriveAndJournalSizes(IBufferWriter<byte> writer, BrokerFrameKind kind,
+        string drive, long maximumSize, long allocationDelta)
+    {
+        var driveBytes = Encoding.Unicode.GetBytes(drive);
+        var payloadLength = 4 + driveBytes.Length + 8 + 8;
+        var totalLength = 1 + payloadLength;
+        var span = writer.GetSpan(4 + totalLength);
+        var offset = 0;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)kind;
+        offset += 1;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
+        offset += 4;
+        driveBytes.CopyTo(span[offset..]);
+        offset += driveBytes.Length;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], maximumSize);
+        offset += 8;
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], allocationDelta);
+        offset += 8;
+        writer.Advance(offset);
+    }
 
     static void WriteFrameNoPayload(IBufferWriter<byte> writer, BrokerFrameKind kind)
     {

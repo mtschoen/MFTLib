@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using MFTLib.Index;
 using MFTLib.Interop;
 
 namespace MFTLib;
@@ -19,6 +20,28 @@ public sealed partial class MftVolume
     /// </summary>
     public UsnJournalCursor QueryUsnJournal()
     {
+        var info = QueryJournalInfo();
+        return new UsnJournalCursor(info.JournalId, info.NextUsn);
+    }
+
+    /// <summary>
+    ///     Query the USN journal's sizing (maximum size and allocation delta), the two
+    ///     settings <see cref="GrowUsnJournal" /> changes. The native read has always
+    ///     marshaled them; this surfaces them. Compare against
+    ///     <see cref="UsnJournalRecommendations" /> to decide whether to warn.
+    /// </summary>
+    public UsnJournalSettings QueryUsnJournalSettings()
+    {
+        var info = QueryJournalInfo();
+        return new UsnJournalSettings
+        {
+            MaximumSize = checked((long)info.MaximumSize),
+            AllocationDelta = checked((long)info.AllocationDelta)
+        };
+    }
+
+    UsnJournalInfoNative QueryJournalInfo()
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var infoPtr = MFTLibNative._queryUsnJournal(_volumeHandle);
         if (infoPtr == IntPtr.Zero)
@@ -34,7 +57,7 @@ public sealed partial class MftVolume
                 throw new InvalidOperationException(info.ErrorMessage);
             }
 
-            return new UsnJournalCursor(info.JournalId, info.NextUsn);
+            return info;
         }
         finally
         {

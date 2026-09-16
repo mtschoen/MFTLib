@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
 using MFTLib.Interop;
@@ -34,6 +35,7 @@ public class UsnJournalSyntheticTests
         MFTLibNative.NativeResetTestState();
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
+        Kernel32.ResetToDefaults();
         foreach (var b in _buffers)
         {
             Marshal.FreeHGlobal(b);
@@ -151,6 +153,18 @@ public class UsnJournalSyntheticTests
             volume.QueryUsnJournal();
         });
         Assert.IsTrue(exception.Message.Contains("not active"));
+    }
+
+    [TestMethod]
+    public void QueryUsnJournalSettings_SyntheticSuccess_ReturnsSizing()
+    {
+        UseFakeHandle();
+        QueueSuccess(BuildQueryBuffer(maxSize: 0x08000000, allocDelta: 0x01000000));
+        using var volume = MftVolume.Open("C");
+        var settings = volume.QueryUsnJournalSettings();
+        Assert.AreEqual(0x08000000L, settings.MaximumSize);
+        Assert.AreEqual(0x01000000L, settings.AllocationDelta);
+        Assert.IsFalse(settings.IsBelowRecommended);
     }
 
     [TestMethod]
@@ -564,5 +578,146 @@ public class UsnJournalSyntheticTests
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("Error: 5"));
+    }
+
+    // --- GrowUsnJournal (managed FSCTL_CREATE_USN_JOURNAL path; Kernel32 seam swapped) ---
+
+    [TestMethod]
+    public void GrowUsnJournal_RequestedEqualToCurrent_RefusesWithoutIoctl()
+    {
+        UseFakeHandle();
+        QueueSuccess(BuildQueryBuffer(maxSize: 0x200000, allocDelta: 0x100000));
+        var createCalled = false;
+        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
+            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
+        {
+            createCalled = true;
+            bytesReturned = 0;
+            return true;
+        }
+
+        Kernel32._deviceIoControl = FakeDeviceIoControl;
+        try
+        {
+            using var volume = MftVolume.Open("C");
+            volume.GrowUsnJournal(0x200000, 0x100000);
+            Assert.Fail("Expected InvalidOperationException");
+        }
+        catch (InvalidOperationException exception)
+        {
+            StringAssert.Contains(exception.Message, "only growth");
+        }
+
+        Assert.IsFalse(createCalled);
+    }
+
+    [TestMethod]
+    public void GrowUsnJournal_RequestedBelowCurrent_RefusesWithoutIoctl()
+    {
+        UseFakeHandle();
+        QueueSuccess(BuildQueryBuffer(maxSize: 0x200000, allocDelta: 0x100000));
+        var createCalled = false;
+        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
+            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
+        {
+            createCalled = true;
+            bytesReturned = 0;
+            return true;
+        }
+
+        Kernel32._deviceIoControl = FakeDeviceIoControl;
+        try
+        {
+            using var volume = MftVolume.Open("C");
+            volume.GrowUsnJournal(0x100000, 0x100000);
+            Assert.Fail("Expected InvalidOperationException");
+        }
+        catch (InvalidOperationException exception)
+        {
+            StringAssert.Contains(exception.Message, "only growth");
+        }
+
+        Assert.IsFalse(createCalled);
+    }
+
+    [TestMethod]
+    public void GrowUsnJournal_ValidRequest_IssuesCreateAndReturnsPostChangeSettings()
+    {
+        UseFakeHandle();
+        QueueSuccess(BuildQueryBuffer(maxSize: 0x200000, allocDelta: 0x100000)); // pre-check
+        QueueSuccess(BuildQueryBuffer(maxSize: 0x400000, allocDelta: 0x200000)); // post-change
+        uint? capturedCode = null;
+        long capturedMaximum = 0;
+        long capturedDelta = 0;
+        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
+            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
+        {
+            capturedCode = ioControlCode;
+            capturedMaximum = Marshal.ReadInt64(inBuffer, 0);
+            capturedDelta = Marshal.ReadInt64(inBuffer, 8);
+            bytesReturned = 0;
+            return true;
+        }
+
+        Kernel32._deviceIoControl = FakeDeviceIoControl;
+        using var volume = MftVolume.Open("C");
+        var settings = volume.GrowUsnJournal(0x400000, 0x200000);
+        Assert.AreEqual(0x000900E7u, capturedCode);
+        Assert.AreEqual(0x400000L, capturedMaximum);
+        Assert.AreEqual(0x200000L, capturedDelta);
+        Assert.AreEqual(0x400000L, settings.MaximumSize);
+        Assert.AreEqual(0x200000L, settings.AllocationDelta);
+    }
+
+    [TestMethod]
+    public void GrowUsnJournal_CreateFails_ThrowsWin32Exception()
+    {
+        UseFakeHandle();
+        QueueSuccess(BuildQueryBuffer(maxSize: 0x200000, allocDelta: 0x100000));
+        static bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
+            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
+        {
+            bytesReturned = 0;
+            return false;
+        }
+
+        Kernel32._deviceIoControl = FakeDeviceIoControl;
+        try
+        {
+            using var volume = MftVolume.Open("C");
+            volume.GrowUsnJournal(0x400000, 0x100000);
+            Assert.Fail("Expected Win32Exception");
+        }
+        catch (Win32Exception)
+        {
+            // Expected
+        }
+    }
+
+    [TestMethod]
+    public void GrowUsnJournal_NonPositiveSizes_ThrowBeforeAnyIoctl()
+    {
+        UseFakeHandle();
+        try
+        {
+            using var volume = MftVolume.Open("C");
+            volume.GrowUsnJournal(0, 0x100000);
+            Assert.Fail("Expected ArgumentOutOfRangeException");
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // Expected
+        }
+
+        try
+        {
+            using var volume = MftVolume.Open("C");
+            volume.GrowUsnJournal(0x400000, 0);
+            Assert.Fail("Expected ArgumentOutOfRangeException");
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // Expected
+        }
     }
 }

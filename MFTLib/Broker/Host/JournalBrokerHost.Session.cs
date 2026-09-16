@@ -92,6 +92,12 @@ public sealed partial class JournalBrokerHost
 
                     break;
 
+                case BrokerFrameKind.GrowUsnJournal:
+                    await HandleGrowUsnJournalAsync(stream, frame.Value.RequireDrive(),
+                        frame.Value.JournalMaximumSize, frame.Value.JournalAllocationDelta,
+                        writeLock, cancellationToken).ConfigureAwait(false);
+                    break;
+
                 case BrokerFrameKind.StartWatch:
                     if (frame.Value.DrivesSpec is { } watchSpec)
                     {

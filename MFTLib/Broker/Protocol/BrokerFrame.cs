@@ -16,7 +16,9 @@ public enum BrokerFrameKind : byte
     Warning = 12,
     QueryVolumes = 13,
     VolumeInfo = 14,
-    DisarmDrive = 15
+    DisarmDrive = 15,
+    GrowUsnJournal = 16,
+    UsnJournalSettings = 17
 }
 
 public readonly record struct BrokerFrame
@@ -40,6 +42,9 @@ public readonly record struct BrokerFrame
     public BrokerScanProgress? Progress { get; private init; }
     public uint BytesPerFileRecordSegment { get; private init; }
     public long MftValidDataLength { get; private init; }
+    // Journal sizing payload of the GrowUsnJournal request and UsnJournalSettings reply.
+    public long JournalMaximumSize { get; private init; }
+    public long JournalAllocationDelta { get; private init; }
 
     // Drive-carrying frames always carry a real (possibly empty, never null) drive
     // string: BrokerProtocol.ReadFrame decodes it via a length-prefixed string, not a
@@ -231,6 +236,37 @@ public readonly record struct BrokerFrame
             RecordCount = mftRecordCount,
             BytesPerFileRecordSegment = bytesPerFileRecordSegment,
             MftValidDataLength = mftValidDataLength,
+            KeepFileNames = Array.Empty<string>()
+        };
+    }
+
+    // A request to resize one drive's USN journal in place. The host refuses any
+    // requested maximum at or below the current one (grow only) and answers with one
+    // UsnJournalSettings or Error frame, both tagged NoArmEpoch.
+    public static BrokerFrame GrowUsnJournal(string drive, long maximumSize, long allocationDelta)
+    {
+        return new BrokerFrame
+        {
+            Kind = BrokerFrameKind.GrowUsnJournal,
+            Entries = Array.Empty<UsnJournalEntry>(),
+            Drive = drive,
+            JournalMaximumSize = maximumSize,
+            JournalAllocationDelta = allocationDelta,
+            KeepFileNames = Array.Empty<string>()
+        };
+    }
+
+    // One drive's answer to a GrowUsnJournal request: the post-change journal sizing,
+    // read back from the volume after FSCTL_CREATE_USN_JOURNAL.
+    public static BrokerFrame UsnJournalSettings(string drive, long maximumSize, long allocationDelta)
+    {
+        return new BrokerFrame
+        {
+            Kind = BrokerFrameKind.UsnJournalSettings,
+            Entries = Array.Empty<UsnJournalEntry>(),
+            Drive = drive,
+            JournalMaximumSize = maximumSize,
+            JournalAllocationDelta = allocationDelta,
             KeepFileNames = Array.Empty<string>()
         };
     }
