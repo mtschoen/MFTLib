@@ -214,6 +214,129 @@ public class LookupEngineTests
         Assert.AreEqual("notes.txt", found.Value.Name);
         Assert.AreEqual(99L, found.Value.Size);
     }
+
+    /// <summary>
+    ///     The sequential reference the partitioned scan is held to: one drive at a time in
+    ///     snapshot order, rows ascending within each drive.
+    /// </summary>
+    static List<FileEntry> SequentialFindByName(Snapshot snapshot, string name, bool caseSensitive)
+    {
+        var reference = new List<FileEntry>();
+        foreach (var driveBlock in snapshot.DriveBlocks)
+        {
+            var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal);
+            while (scanner.MoveNext())
+            {
+                ref readonly var row = ref scanner.Current;
+                if (row.IsInUse && !row.IsDeleted &&
+                    NameMatching.EqualsName(scanner.CurrentName, name, caseSensitive))
+                {
+                    reference.Add(FileEntry.Create(snapshot, driveBlock.DriveOrdinal,
+                        scanner.CurrentRowIndex));
+                }
+            }
+        }
+
+        return reference;
+    }
+
+    [TestMethod]
+    public async Task FindByName_OverPartitionedBlocks_MatchesTheSequentialScanExactly()
+    {
+        const int fileCount = (int)ScanPartitioning.SingleThreadedRowThreshold + 1024;
+        using var firstBuilder = new SyntheticBlockBuilder(slotCapacity: (uint)fileCount + 8,
+            namePoolCapacity: (uint)fileCount * 32);
+        using var secondBuilder = new SyntheticBlockBuilder('U', slotCapacity: (uint)fileCount + 8,
+            namePoolCapacity: (uint)fileCount * 32);
+        var firstRoot = firstBuilder.AddRoot();
+        var secondRoot = secondBuilder.AddRoot();
+        for (var index = 0; index < fileCount; index++)
+        {
+            firstBuilder.AddRow($"file{index}.dat", firstRoot, RowFlags.InUse, index, Moment,
+                sequenceNumber: 0);
+            secondBuilder.AddRow($"file{index}.dat", secondRoot, RowFlags.InUse, index, Moment,
+                sequenceNumber: 0);
+        }
+
+        // One matching name planted at rows spread across both blocks, so it lands in several
+        // blocks and in several partitions within each block.
+        foreach (var needleRow in new[] { 100u, 16000u, 33000u })
+        {
+            firstBuilder.AddRowAt(needleRow, "needle.txt",
+                new RowColumns(firstRoot, RowFlags.InUse, 0, 1, Moment.Ticks, SequenceNumber: 0));
+        }
+
+        foreach (var needleRow in new[] { 42u, 20000u })
+        {
+            secondBuilder.AddRowAt(needleRow, "needle.txt",
+                new RowColumns(secondRoot, RowFlags.InUse, 0, 1, Moment.Ticks, SequenceNumber: 0));
+        }
+
+        firstBuilder.Complete(Moment);
+        secondBuilder.Complete(Moment);
+        var firstBlock = firstBuilder.OpenForReading(out _)!;
+        var secondBlock = secondBuilder.OpenForReading(out _)!;
+        var snapshot = Snapshot.Create([
+            new DriveBlock('T', 0, firstBlock),
+            new DriveBlock('U', 1, secondBlock)
+        ]);
+        try
+        {
+            var partitioned = LookupEngineTestAccess.FindByName(snapshot, "needle.txt",
+                caseSensitive: false);
+            var reference = SequentialFindByName(snapshot, "needle.txt", caseSensitive: false);
+
+            Assert.AreEqual(5, partitioned.Count);
+            CollectionAssert.AreEqual(
+                new[] { ('T', 100u), ('T', 16000u), ('T', 33000u), ('U', 42u), ('U', 20000u) },
+                partitioned.Select(entry => (entry.Id.DriveLetter, entry.RowIndex)).ToArray());
+            CollectionAssert.AreEqual(
+                reference.Select(entry => (entry.Id.DriveLetter, entry.RowIndex)).ToArray(),
+                partitioned.Select(entry => (entry.Id.DriveLetter, entry.RowIndex)).ToArray());
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    /// <summary>
+    ///     The parallel path reports cancellation as <see cref="OperationCanceledException" />,
+    ///     not as an <see cref="AggregateException" /> a caller would have to unwrap: the loop
+    ///     carries the query's token, so the partitions that observe it all report the same
+    ///     cancellation.
+    /// </summary>
+    [TestMethod]
+    public async Task FindByName_OverAPartitionedDriveWithACancelledToken_ThrowsOperationCanceled()
+    {
+        const int fileCount = (int)ScanPartitioning.SingleThreadedRowThreshold + 1024;
+        using var builder = new SyntheticBlockBuilder('Y', slotCapacity: (uint)fileCount + 8,
+            namePoolCapacity: (uint)fileCount * 32);
+        var root = builder.AddRoot();
+        for (var index = 0; index < fileCount; index++)
+        {
+            builder.AddRow($"file{index}.dat", root, RowFlags.InUse, index, Moment,
+                sequenceNumber: 0);
+        }
+
+        builder.Complete(Moment);
+
+        var block = builder.OpenForReading(out _)!;
+        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block)]);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var token = cancellation.Token;
+        try
+        {
+            Assert.ThrowsException<OperationCanceledException>(
+                () => LookupEngineTestAccess.FindByName(snapshot, "needle.txt",
+                    caseSensitive: false, token));
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
 }
 
 static class LookupEngineTestAccess
@@ -223,9 +346,10 @@ static class LookupEngineTestAccess
         return LookupEngine.Find(snapshot, fullPath);
     }
 
-    public static List<FileEntry> FindByName(Snapshot snapshot, string name, bool caseSensitive)
+    public static List<FileEntry> FindByName(Snapshot snapshot, string name, bool caseSensitive,
+        CancellationToken cancellationToken = default)
     {
-        return LookupEngine.FindByName(snapshot, name, caseSensitive);
+        return LookupEngine.FindByName(snapshot, name, caseSensitive, cancellationToken);
     }
 
     public static FileEntry Root(Snapshot snapshot, char driveLetter)
