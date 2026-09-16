@@ -216,6 +216,14 @@ marshal in your callback. Cancellation stops reporting and surfaces as
 `OperationCanceledException` from the scan call; do not wait for a final equality report
 after cancellation.
 
+`FileIndexOptions.Progress` samples only while a producer runs, so a warm start
+emits nothing on it. Per-drive progress across the whole open, warm starts
+included, comes from `FileIndexOptions.OpenProgress`: one `IndexDriveOpened`
+report per configured drive as it settles, carrying its 1-based ordinal and the
+configured drive count. See
+[the FileIndex overview](../README.md#build-a-live-index-with-fileindex) for the
+full contract.
+
 See [sizing blocks and customizing watch cursors](broker-scan-tuning.md) for
 `MftBlockCapacity` planning and direct volume-geometry queries.
 

@@ -122,10 +122,22 @@ public sealed partial class FileIndex : IAsyncDisposable
         var index = new FileIndex(options, cacheDirectoryPath);
         try
         {
+            var openProgress = options.OpenProgress;
+            var openOrdinal = 0;
             foreach (var drive in options.Drives)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await index.AddDriveAsync(drive, cancellationToken).ConfigureAwait(false);
+                if (openProgress is null)
+                {
+                    await index.AddDriveAsync(drive, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await index.AddDriveWithProgressAsync(drive, openOrdinal + 1, options.Drives.Count, openProgress,
+                        cancellationToken).ConfigureAwait(false);
+                }
+
+                openOrdinal++;
             }
         }
         catch
@@ -327,24 +339,46 @@ public sealed partial class FileIndex : IAsyncDisposable
     {
         foreach (var driveBlock in _driveBlocks)
         {
-            if (char.ToUpperInvariant(driveBlock.DriveLetter) != driveLetter)
+            if (char.ToUpperInvariant(driveBlock.DriveLetter) == driveLetter)
             {
-                continue;
+                return DescribeOnlineDriveBlock(driveBlock);
             }
-
-            var discardedBlock = _discardedBlocksByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var reason)
-                ? reason
-                : (BlockValidationResult?)null;
-            var annotations = new DriveStatusAnnotations(
-                discardedBlock,
-                _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-                _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-                _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-                _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal));
-            return DescribeDrive(driveBlock, in annotations);
         }
 
         return null;
+    }
+
+    DriveStatus DescribeOnlineDriveBlock(DriveBlock driveBlock)
+    {
+        var discardedBlock = _discardedBlocksByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var reason)
+            ? reason
+            : (BlockValidationResult?)null;
+        var annotations = new DriveStatusAnnotations(
+            discardedBlock,
+            _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal));
+        return DescribeDrive(driveBlock, in annotations);
+    }
+
+    DriveStatus DescribeSettledDrive(char driveLetter)
+    {
+        lock (_stateLock)
+        {
+            if (_driveBlocks.Count > 0 && char.ToUpperInvariant(_driveBlocks[^1].DriveLetter) == driveLetter)
+            {
+                return DescribeOnlineDriveBlock(_driveBlocks[^1]);
+            }
+
+            if (_blocklessDriveStatuses.Count > 0 &&
+                char.ToUpperInvariant(_blocklessDriveStatuses[^1].DriveLetter) == driveLetter)
+            {
+                return _blocklessDriveStatuses[^1];
+            }
+
+            return DescribeOnlineDrive(driveLetter) ?? DescribeBlocklessDrive(driveLetter);
+        }
     }
 
     DriveStatus DescribeBlocklessDrive(char driveLetter)

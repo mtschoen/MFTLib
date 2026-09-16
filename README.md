@@ -351,6 +351,20 @@ explicitly, never as an inherited fallback decision.
 operating system removes them when the last handle closes, including when the process
 is killed rather than shut down gracefully.
 
+`FileIndexOptions.OpenProgress` reports open-time progress per drive: `OpenAsync`
+fires one `IndexDriveOpened` per configured drive, in configured order and
+synchronously on the opening thread, after that drive settles: warm-started from
+cache, cold-scanned, declined by `InitialOpenCacheOnly`, offline, or failed. The
+report carries the drive letter, its 1-based ordinal in the configured drive
+list, the total configured drive count, and the settled `BlockSource` and
+`DriveState`, so a consumer can render "drive 3 of 9: G:" while the open is still
+in flight. A declined or failed drive still counts toward the total and still
+reports. It defaults to null, which reports and allocates nothing, and it fires
+on warm starts too, unlike `FileIndexOptions.Progress`, which samples only while
+a producer runs. `RescanAsync` stays silent: its caller already awaits the one
+drive it rescans. Marshalling belongs to the `IProgress<T>` implementation, the
+same convention `FileIndexOptions.Progress` uses.
+
 `FileEntry.Path` is a real filesystem path: the drive block's root directory joined
 with the entry's name chain using the host separator. It can be opened, and
 `FileIndex.Find` accepts it back, resolving a native path against the longest

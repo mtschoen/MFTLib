@@ -95,6 +95,47 @@ public sealed partial class FileIndex
         }
     }
 
+    /// <summary>
+    ///     Opens one drive, then reports its settled state to <paramref name="openProgress" />.
+    ///     The settled status is re-read under <see cref="_stateLock" /> through
+    ///     <see cref="DescribeSettledDrive" /> without traversing previously settled drives.
+    ///     If <see cref="AddDriveAsync" /> completed synchronously, progress reports
+    ///     synchronously without allocating an async state machine.
+    /// </summary>
+    Task AddDriveWithProgressAsync(IndexedDrive drive, int openOrdinal, int openTotal,
+        IProgress<IndexDriveOpened> openProgress, CancellationToken cancellationToken)
+    {
+        var task = AddDriveAsync(drive, cancellationToken);
+        if (task.IsCompletedSuccessfully)
+        {
+            ReportSettledDrive(drive, openOrdinal, openTotal, openProgress);
+            return Task.CompletedTask;
+        }
+
+        return ReportSettledDriveAwaitedAsync(task, drive, openOrdinal, openTotal, openProgress);
+    }
+
+    async Task ReportSettledDriveAwaitedAsync(Task task, IndexedDrive drive, int openOrdinal, int openTotal,
+        IProgress<IndexDriveOpened> openProgress)
+    {
+        await task.ConfigureAwait(false);
+        ReportSettledDrive(drive, openOrdinal, openTotal, openProgress);
+    }
+
+    void ReportSettledDrive(IndexedDrive drive, int openOrdinal, int openTotal,
+        IProgress<IndexDriveOpened> openProgress)
+    {
+        var settled = DescribeSettledDrive(char.ToUpperInvariant(drive.DriveLetter));
+        openProgress.Report(new IndexDriveOpened
+        {
+            DriveLetter = settled.DriveLetter,
+            Ordinal = openOrdinal,
+            Total = openTotal,
+            BlockSource = settled.BlockSource,
+            State = settled.State
+        });
+    }
+
     void RecordFailedDrive(char driveLetter, ushort driveOrdinal)
     {
         lock (_stateLock)

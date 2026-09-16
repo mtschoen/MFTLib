@@ -45,4 +45,19 @@ public sealed record FileIndexOptions
     public IIndexWatchSource? WatchSource { get; init; }
 
     public IProgress<IndexScanProgress>? Progress { get; init; }
+
+    /// <summary>
+    ///     Open-time per-drive progress: <see cref="FileIndex.OpenAsync" /> reports one
+    ///     <see cref="IndexDriveOpened" /> per configured drive, in <see cref="Drives" /> order,
+    ///     synchronously on the opening thread, after that drive settles, whatever the outcome:
+    ///     warm-started, cold-scanned, declined by <see cref="InitialOpenCacheOnly" />, offline,
+    ///     or failed. A declined or failed drive still counts toward the total and still reports.
+    ///     Null (the default) reports and allocates nothing. Only the initial open reports;
+    ///     <see cref="FileIndex.RescanAsync" /> stays silent, because its caller already awaits
+    ///     the one drive it rescans. Unlike <see cref="Progress" />, which samples only while a
+    ///     producer runs, this fires on warm starts too. Marshalling belongs to the
+    ///     <see cref="IProgress{T}" /> implementation, the same convention <see cref="Progress" />
+    ///     uses.
+    /// </summary>
+    public IProgress<IndexDriveOpened>? OpenProgress { get; init; }
 }
