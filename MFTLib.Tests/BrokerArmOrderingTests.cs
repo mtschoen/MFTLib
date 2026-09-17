@@ -146,6 +146,51 @@ public sealed class BrokerArmOrderingTests : BrokerBlockTestBase
     }
 
     [TestMethod]
+    public async Task QueryVolumesAsync_AfterAStopThatTimedOut_DrainsAStaleCaughtUpFrameWithoutKillingTheBroker()
+    {
+        var previousTimeout = JournalBrokerClient._endWatchAckTimeout;
+        JournalBrokerClient._endWatchAckTimeout = TimeSpan.FromMilliseconds(50);
+        try
+        {
+            var (clientSide, serverSide) = DuplexStream.CreatePair();
+            await using var client = MakeMinimalFakeClient(clientSide);
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            string? diedReason = null;
+            client.BrokerDied += reason => diedReason = reason;
+
+            await client.SendStartWatchAsync(WatchCursor("C", 7UL, 100L), cancellation.Token);
+            var startWatch = await ReadOneFrameAsync(serverSide, cancellation.Token);
+            var staleArmEpoch = WatchSpecArmEpochs.ForDrive(startWatch, "C");
+
+            await client.StopLiveWatchAsync().WaitAsync(cancellation.Token);
+            Assert.IsTrue(client.LastStopTimedOut);
+            Assert.AreEqual(BrokerFrameKind.EndWatch,
+                (await ReadOneFrameAsync(serverSide, cancellation.Token)).Kind);
+
+            // With the demux relinquished, the next control exchange reads the wire
+            // directly. The wedged broker's retired watch finally catches up and writes a
+            // CaughtUp frame tagged with the epoch the timed-out stop already gave up on,
+            // arriving ahead of the query's own reply on the same connection.
+            var query = client.QueryVolumesAsync(["C:\\"], cancellation.Token);
+            Assert.AreEqual(BrokerFrameKind.QueryVolumes,
+                (await ReadOneFrameAsync(serverSide, cancellation.Token)).Kind);
+            await WriteFrameAsync(serverSide,
+                writer => BrokerProtocol.WriteCaughtUp(writer, "C", staleArmEpoch), cancellation.Token);
+            await WriteFrameAsync(serverSide,
+                writer => BrokerProtocol.WriteVolumeInfo(writer, "C", 128, 1024, 128 * 1024), cancellation.Token);
+
+            var result = await query.WaitAsync(cancellation.Token);
+            Assert.AreEqual(128L, result.Volumes["C"].MftRecordCount);
+            Assert.IsNull(diedReason,
+                "A stale epoch-tagged CaughtUp frame must be drained, not treated as a control-exchange protocol error.");
+        }
+        finally
+        {
+            JournalBrokerClient._endWatchAckTimeout = previousTimeout;
+        }
+    }
+
+    [TestMethod]
     public async Task SendStartWatchAsync_ConcurrentArmsOfOneDrive_PutTheHigherEpochLastOnTheWire()
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();

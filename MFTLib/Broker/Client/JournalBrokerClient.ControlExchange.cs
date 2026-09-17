@@ -154,7 +154,7 @@ public sealed partial class JournalBrokerClient
             // Old epoch-tagged live frames can remain after a stop timeout.
             if (frame.Value.Kind == BrokerFrameKind.Heartbeat ||
                 frame.Value.Kind == BrokerFrameKind.EndWatchAck ||
-                (frame.Value.Kind is BrokerFrameKind.JournalBatch or BrokerFrameKind.Error &&
+                (frame.Value.Kind is BrokerFrameKind.JournalBatch or BrokerFrameKind.Error or BrokerFrameKind.CaughtUp &&
                  frame.Value.ArmEpoch != BrokerFrame.NoArmEpoch))
             {
                 continue;
