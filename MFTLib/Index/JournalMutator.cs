@@ -146,7 +146,8 @@ public sealed class JournalMutator
 
         var path = IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex);
         Writer.MarkTombstone(rowIndex);
-        return new FileChange(FileChangeKind.Deleted, FileEntry.Create(snapshot, driveOrdinal, rowIndex), path);
+        return new FileChange(FileChangeKind.Deleted, FileEntry.Create(snapshot, driveOrdinal, rowIndex), path,
+            entry.Timestamp);
     }
 
     /// <summary>
@@ -163,7 +164,7 @@ public sealed class JournalMutator
         if (hydrated)
         {
             return new FileChange(FileChangeKind.Created, FileEntry.Create(snapshot, driveOrdinal, rowIndex),
-                IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex));
+                IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex), entry.Timestamp);
         }
 
         return ApplyRename(snapshot, driveOrdinal, entry, rowIndex);
@@ -207,7 +208,7 @@ public sealed class JournalMutator
         }
 
         return new FileChange(FileChangeKind.Created, FileEntry.Create(snapshot, driveOrdinal, rowIndex),
-            IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex));
+            IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex), entry.Timestamp);
     }
 
     FileChange? ApplyRename(Snapshot snapshot, ushort driveOrdinal, UsnJournalEntry entry, uint rowIndex)
@@ -221,7 +222,7 @@ public sealed class JournalMutator
         Writer.Block.Rows[(int)rowIndex].ModifiedTicks = entry.Timestamp.Ticks;
         return new FileChange(FileChangeKind.Renamed,
             FileEntry.Create(snapshot, driveOrdinal, rowIndex), IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex),
-            previousPath);
+            entry.Timestamp, previousPath);
     }
 
     /// <summary>
@@ -250,7 +251,7 @@ public sealed class JournalMutator
         row.ModifiedTicks = entry.Timestamp.Ticks;
         row.Attributes = (uint)entry.FileAttributes;
         return new FileChange(FileChangeKind.Modified, FileEntry.Create(snapshot, driveOrdinal, rowIndex),
-            IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex));
+            IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex), entry.Timestamp);
     }
 
     /// <summary>

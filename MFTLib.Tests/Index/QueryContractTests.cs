@@ -64,12 +64,15 @@ public class QueryContractTests
     [TestMethod]
     public void FileChange_CarriesThePreviousPathOnlyForRenames()
     {
-        var created = new FileChange(FileChangeKind.Created, default, "T:\\");
-        var renamed = new FileChange(FileChangeKind.Renamed, default, "T:\\renamed.txt", "T:\\before.txt");
+        var moment = new DateTime(2026, 9, 17, 12, 0, 0, DateTimeKind.Utc);
+        var created = new FileChange(FileChangeKind.Created, default, "T:\\", moment);
+        var renamed = new FileChange(FileChangeKind.Renamed, default, "T:\\renamed.txt", moment, "T:\\before.txt");
 
         Assert.IsNull(created.PreviousPath);
         Assert.AreEqual("T:\\before.txt", renamed.PreviousPath);
         Assert.AreEqual(FileChangeKind.Renamed, renamed.Kind);
+        Assert.AreEqual(moment, created.Timestamp);
+        Assert.AreEqual(moment, renamed.Timestamp);
     }
 
     [TestMethod]
