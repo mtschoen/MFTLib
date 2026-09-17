@@ -12,11 +12,6 @@ public partial class JournalBrokerClientTests
     [SupportedOSPlatform("windows")]
     public async Task SpawnAndConnectAsync_DiagEnvVarSet_AppendsDiagFlag()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Named block sections require Windows.");
-        }
-
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
         try
         {
@@ -31,7 +26,153 @@ public partial class JournalBrokerClientTests
                 JournalBrokerClient.SpawnAndConnectAsync(launchBroker));
 
             Assert.IsNotNull(capturedArgs);
-            StringAssert.EndsWith(capturedArgs, "--diag");
+            StringAssert.Contains(capturedArgs, " --diag ");
+            StringAssert.Contains(capturedArgs, $" --diag-log \"{BrokerDiagnostics.LogPath}\"");
+            Assert.IsFalse(capturedArgs.Contains("--diag-include-self"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
+        }
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task SpawnAndConnectAsync_BrokerDiagnosticsEnabledProgrammatically_AppendsDiagFlag()
+    {
+        // BrokerDiagnostics.Enable("client") activates diagnostics programmatically without
+        // setting MFTLIB_BROKER_DIAG. SpawnAndConnectAsync must propagate --diag and --diag-log
+        // for this supported activation path as well.
+        BrokerDiagnostics.Enable("client");
+        try
+        {
+            string? capturedArgs = null;
+            var launchBroker = new Func<string, bool>(args =>
+            {
+                capturedArgs = args;
+                return false;
+            });
+
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+                JournalBrokerClient.SpawnAndConnectAsync(launchBroker));
+
+            Assert.IsNotNull(capturedArgs);
+            StringAssert.Contains(capturedArgs, " --diag ");
+            StringAssert.Contains(capturedArgs, $" --diag-log \"{BrokerDiagnostics.LogPath}\"");
+            Assert.IsFalse(capturedArgs.Contains("--diag-include-self"));
+        }
+        finally
+        {
+            BrokerDiagnostics.ResetToDefaults();
+        }
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task SpawnAndConnectAsync_RelativeLogDirectory_ForwardsResolvedFullPath()
+    {
+        var originalDirectory = BrokerDiagnostics.LogDirectory;
+        BrokerDiagnostics.LogDirectory = "relative-logs";
+        BrokerDiagnostics.Enable("client");
+        try
+        {
+            string? capturedArgs = null;
+            var launchBroker = new Func<string, bool>(args =>
+            {
+                capturedArgs = args;
+                return false;
+            });
+
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+                JournalBrokerClient.SpawnAndConnectAsync(launchBroker));
+
+            Assert.IsNotNull(capturedArgs);
+            var expectedPath = BrokerDiagnostics.LogPath;
+            Assert.IsTrue(Path.IsPathRooted(expectedPath));
+            StringAssert.Contains(capturedArgs, $" --diag-log \"{expectedPath}\"");
+        }
+        finally
+        {
+            BrokerDiagnostics.LogDirectory = originalDirectory;
+            BrokerDiagnostics.ResetToDefaults();
+        }
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task SpawnAndConnectAsync_IncludeSelfEnvVarSet_AppendsIncludeSelfFlag()
+    {
+        Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
+        Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG_INCLUDE_SELF", "1");
+        try
+        {
+            string? capturedArgs = null;
+            var launchBroker = new Func<string, bool>(args =>
+            {
+                capturedArgs = args;
+                return false; // decline immediately; this test only cares about the args string
+            });
+
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+                JournalBrokerClient.SpawnAndConnectAsync(launchBroker));
+
+            Assert.IsNotNull(capturedArgs);
+            StringAssert.EndsWith(capturedArgs, "--diag-include-self");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
+            Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG_INCLUDE_SELF", null);
+        }
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task SpawnAndConnectAsync_IncludeSelfSetProgrammatically_AppendsIncludeSelfFlag()
+    {
+        BrokerDiagnostics.Enable("client");
+        BrokerDiagnostics.IncludeSelfEntries = true;
+        try
+        {
+            string? capturedArgs = null;
+            var launchBroker = new Func<string, bool>(args =>
+            {
+                capturedArgs = args;
+                return false;
+            });
+
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+                JournalBrokerClient.SpawnAndConnectAsync(launchBroker));
+
+            Assert.IsNotNull(capturedArgs);
+            StringAssert.EndsWith(capturedArgs, "--diag-include-self");
+        }
+        finally
+        {
+            BrokerDiagnostics.ResetToDefaults();
+        }
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public async Task SpawnAndConnectAsync_DiagEnvVarUnset_OmitsAllDiagnosticsFlags()
+    {
+        Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
+        Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG_INCLUDE_SELF", null);
+        try
+        {
+            string? capturedArgs = null;
+            var launchBroker = new Func<string, bool>(args =>
+            {
+                capturedArgs = args;
+                return false;
+            });
+
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+                JournalBrokerClient.SpawnAndConnectAsync(launchBroker));
+
+            Assert.IsNotNull(capturedArgs);
+            Assert.IsFalse(capturedArgs.Contains("--diag"));
         }
         finally
         {

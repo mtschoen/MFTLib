@@ -426,6 +426,12 @@ for elevated launches. Both processes append frame and event traces to
 
 Diagnostics are best-effort and disabled by default.
 
+While diagnostics are enabled, the broker filters the diagnostics log files' own journal
+entries out of the watch stream (matched by file reference number, so a renamed log stays
+filtered); otherwise every logged frame would generate the journal traffic it observes.
+Set `MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` before spawning the client to keep those entries
+when debugging the diagnostics themselves.
+
 ## Deployment checklist
 
 - Target .NET 10 and Windows x64.

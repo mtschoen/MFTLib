@@ -92,6 +92,8 @@ and the live watch bridge and consumer-gap closures tracked as
 
 ### Fixed
 
+- Broker diagnostics no longer feed the watch they observe: while diagnostics are enabled, the broker drops journal entries for both `broker-diagnostics.log` files (its own and the client's, forwarded across the runas boundary as `--diag-log`) before building JournalBatch frames, and skips batches the filter empties, so a live watch with diagnostics on no longer generates self-sustaining journal traffic; `MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` opts back in ([file-wizard#299](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/299), [git-wizard#143](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/143))
+
 - A `BlockWriter` write racing `BlockFile.Dispose` on another thread (a broker test fixture tearing down while its serving task is mid-row-write) could dereference an unmapped view and kill the process with an `AccessViolationException`; disposal now refuses new writer operations when it begins and waits for in-flight ones before unmapping, so a late writer fails with a catchable `ObjectDisposedException` (refiled from [git-wizard#181](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/181))
 - A drive faulting while a sibling drive is between disarm and re-arm during a rescan isolates the fault to that drive: the awaiting-reader marker spans the whole disarm-to-rearm window rather than clearing on return from disarm
 - A journal-invalidation `Error` frame for one drive faults that drive's batch source with `InvalidOperationException` while other drives keep streaming

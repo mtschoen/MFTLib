@@ -27,9 +27,15 @@ public static class ElevatedEntryPoint
                     // ArmAndScan frames over the pipe, so it needs only the pipe name.
                     // --diag turns on frame tracing in the elevated child too (a runas
                     // launch does not reliably inherit the MFTLIB_BROKER_DIAG env var).
+                    // --diag-log carries the client process's log path and
+                    // --diag-include-self the opt-in to keep the logs' own journal
+                    // entries, for the same reason. Without --diag they are meaningless:
+                    // diagnostics are off, so nothing is filtered anyway.
                     if (HasFlag(args, "--diag"))
                     {
                         BrokerDiagnostics.Enable("broker");
+                        BrokerDiagnostics.ClientLogPath = FindOption(args, "--diag-log");
+                        BrokerDiagnostics.IncludeSelfEntries = HasFlag(args, "--diag-include-self");
                     }
 
                     runner.RunBroker(FindOption(args, "--pipe"), HasFlag(args, "--once"));

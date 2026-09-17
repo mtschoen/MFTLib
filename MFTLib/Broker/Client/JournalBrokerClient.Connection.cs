@@ -70,11 +70,23 @@ public sealed partial class JournalBrokerClient
         try
         {
             // Propagate the diagnostics flag to the elevated child explicitly: a runas
-            // launch does not reliably inherit the MFTLIB_BROKER_DIAG env var.
-            var diagFlag = Environment.GetEnvironmentVariable("MFTLIB_BROKER_DIAG") == "1"
-                ? " --diag"
-                : string.Empty;
-            if (!launchBroker(FormattableString.Invariant($"--broker --pipe {pipeName}{diagFlag}")))
+            // launch does not reliably inherit the MFTLIB_BROKER_DIAG env var. The child's
+            // own log path differs from this process's when the consumer set LogDirectory,
+            // so this process's log path travels alongside as --diag-log (quoted: temp
+            // paths can contain spaces), letting the broker filter both logs' journal
+            // entries; MFTLIB_BROKER_DIAG_INCLUDE_SELF crosses as --diag-include-self for
+            // the same inheritance reason.
+            var diagArgs = string.Empty;
+            if (BrokerDiagnostics.Enabled)
+            {
+                diagArgs = FormattableString.Invariant($" --diag --diag-log \"{BrokerDiagnostics.LogPath}\"");
+                if (BrokerDiagnostics.IncludeSelfEntries)
+                {
+                    diagArgs += " --diag-include-self";
+                }
+            }
+
+            if (!launchBroker(FormattableString.Invariant($"--broker --pipe {pipeName}{diagArgs}")))
             {
                 throw new InvalidOperationException(
                     "Failed to launch the elevated broker (the UAC prompt was declined?)");

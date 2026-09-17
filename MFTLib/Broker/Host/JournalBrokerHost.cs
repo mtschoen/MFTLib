@@ -84,13 +84,23 @@ public sealed partial class JournalBrokerHost
             // already passed as the explicit third argument above, which the
             // production implementation's `[EnumeratorCancellation]` parameter binds
             // directly - adding it again on the same token is redundant.
+            // While diagnostics are enabled, drop the diagnostics logs' own journal
+            // entries: each shipped frame is logged, the log write produces a USN record,
+            // and that record would ship as another frame. A batch the filter leaves empty
+            // is skipped entirely - shipping it would keep the loop alive, because even an
+            // empty frame gets logged.
+            var logFilter = BrokerDiagnostics.CreateLogFilter();
             await foreach (var (entries, cursor) in _watchDrive(drive, effectiveSince, cancellationToken)
                                .ConfigureAwait(false))
             {
                 yieldedAny = true;
-                await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteJournalBatch(writer, drive, request.ArmEpoch, cursor, entries), cancellationToken)
-                    .ConfigureAwait(false);
+                var filtered = logFilter?.Filter(drive, entries) ?? entries;
+                if (filtered.Length > 0)
+                {
+                    await WriteFrameAsync(stream, writeLock,
+                            writer => BrokerProtocol.WriteJournalBatch(writer, drive, request.ArmEpoch, cursor, filtered), cancellationToken)
+                        .ConfigureAwait(false);
+                }
 
                 if (!caughtUpReported && cursor.JournalId == tip.JournalId && cursor.NextUsn >= tip.NextUsn)
                 {

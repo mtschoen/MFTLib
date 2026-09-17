@@ -10,6 +10,12 @@ public class ElevatedEntryPointTests
     static readonly string[] LeadingExecutablePathArgs = [@"C:\apps\SomeApp.exe", "--broker", "--pipe", "p"];
     static readonly string[] ScanOnlyArgs = ["--scan-only"];
     static readonly string[] BrokerWithDiagArgs = ["--broker", "--pipe", "p", "--diag"];
+    static readonly string[] BrokerWithDiagLogArgs =
+        ["--broker", "--pipe", "p", "--diag", "--diag-log", @"C:\client-app\broker-diagnostics.log"];
+    static readonly string[] BrokerWithDiagIncludeSelfArgs =
+        ["--broker", "--pipe", "p", "--diag", "--diag-log", @"C:\client-app\broker-diagnostics.log", "--diag-include-self"];
+    static readonly string[] DiagLogWithoutDiagArgs =
+        ["--broker", "--pipe", "p", "--diag-log", @"C:\client-app\broker-diagnostics.log"];
     static readonly string[] PipeFlagWithNoValueArgs = ["--broker", "--pipe"];
     static readonly string[] NoPipeFlagArgs = ["--broker"];
 
@@ -90,6 +96,40 @@ public class ElevatedEntryPointTests
             BrokerDiagnostics.LogDirectory = originalDirectory;
             Directory.Delete(tempDir, true);
         }
+    }
+
+    [TestMethod]
+    public void TryHandle_BrokerModeWithDiagLog_ForwardsClientLogPathToDiagnostics()
+    {
+        var runner = new RecordingRunner();
+
+        var handled = ElevatedEntryPoint.TryHandle(BrokerWithDiagLogArgs, runner);
+
+        Assert.IsTrue(handled);
+        Assert.AreEqual(@"C:\client-app\broker-diagnostics.log", BrokerDiagnostics.ClientLogPath);
+        Assert.IsFalse(BrokerDiagnostics.IncludeSelfEntries);
+    }
+
+    [TestMethod]
+    public void TryHandle_BrokerModeWithDiagIncludeSelf_SetsIncludeSelfEntries()
+    {
+        var runner = new RecordingRunner();
+
+        var handled = ElevatedEntryPoint.TryHandle(BrokerWithDiagIncludeSelfArgs, runner);
+
+        Assert.IsTrue(handled);
+        Assert.IsTrue(BrokerDiagnostics.IncludeSelfEntries);
+    }
+
+    [TestMethod]
+    public void TryHandle_DiagLogWithoutDiag_LeavesClientLogPathNull()
+    {
+        var runner = new RecordingRunner();
+
+        var handled = ElevatedEntryPoint.TryHandle(DiagLogWithoutDiagArgs, runner);
+
+        Assert.IsTrue(handled);
+        Assert.IsNull(BrokerDiagnostics.ClientLogPath);
     }
 
     [TestMethod]

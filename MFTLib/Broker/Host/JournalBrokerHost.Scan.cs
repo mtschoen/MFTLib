@@ -230,6 +230,15 @@ public sealed partial class JournalBrokerHost
             updated = freshCursor;
         }
 
+        // The terminal catch-up batch always ships - the client's scan collector waits on
+        // it to complete the drive - but the diagnostics logs' own entries are still
+        // filtered out, so a scan that raced a busy diagnostics log does not replay them.
+        var logFilter = BrokerDiagnostics.CreateLogFilter();
+        if (logFilter != null)
+        {
+            entries = logFilter.Filter(request.Letter, entries);
+        }
+
         await WriteFrameAsync(stream, writeLock,
             writer => BrokerProtocol.WriteJournalBatch(writer, request.Letter, BrokerFrame.NoArmEpoch, updated, entries),
             cancellationToken).ConfigureAwait(false);
