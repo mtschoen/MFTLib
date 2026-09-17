@@ -194,6 +194,7 @@ public sealed partial class FileIndex
                     }
                 }
 
+                var slotContinuationToken = AddSlotContinuationDetacher();
                 foreach (var slot in _slots)
                 {
                     _registrations.Add(slot.RegisterFaultWaiter(task =>
@@ -214,24 +215,26 @@ public sealed partial class FileIndex
                     }
                     else
                     {
-                        slot.Task.ContinueWith(task =>
-                        {
-                            if (task.IsFaulted)
-                            {
-                                SignalFaulted(task.Exception);
-                            }
-                            else if (task.IsCanceled)
-                            {
-                                SignalCanceled();
-                            }
-                            else
-                            {
-                                SignalCompleted();
-                            }
-                        }, TaskScheduler.Default);
+                        // Faults and cancellations reach this coordinator through the slot's fault
+                        // registration above, which the slot invokes synchronously as it settles.
+                        slot.Task.ContinueWith(_ => SignalCompleted(), slotContinuationToken,
+                            TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
                     }
                 }
             }
+        }
+
+        /// <summary>
+        ///     Registers the token the slot-completion continuations are attached with, cancelled
+        ///     alongside the fault registrations once this coordinator settles. Cancelling a pending
+        ///     continuation removes it from its slot's task, so a drive that never catches up does
+        ///     not keep every finished coordinator reachable.
+        /// </summary>
+        CancellationToken AddSlotContinuationDetacher()
+        {
+            var detacher = new SlotContinuationDetacher();
+            _registrations.Add(detacher);
+            return detacher.Token;
         }
 
         public void Cancel()
@@ -344,6 +347,19 @@ public sealed partial class FileIndex
             }
 
             _registrations.Clear();
+        }
+
+        sealed class SlotContinuationDetacher : IDisposable
+        {
+            readonly CancellationTokenSource _cancellation = new();
+
+            public CancellationToken Token => _cancellation.Token;
+
+            public void Dispose()
+            {
+                _cancellation.Cancel();
+                _cancellation.Dispose();
+            }
         }
     }
 }

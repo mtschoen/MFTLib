@@ -99,6 +99,7 @@ and the live watch bridge and consumer-gap closures tracked as
 - Under capacity exhaustion (such as a delete following an unrecorded create), `JournalMutator` suppresses the `FileChangeKind.Deleted` change event when row hydration fails rather than emitting an invalid event for an unrecorded record
 - `Microsoft.SourceLink.GitHub` bumped from 8.0.0 to 10.0.401, moving the transitively pulled `Microsoft.Build.Tasks.Git` past the version affected by CVE-2026-62900 ([GHSA-23fw-v26w-5fgq](https://github.com/advisories/GHSA-23fw-v26w-5fgq))
 - A stale, epoch-tagged `CaughtUp` frame arriving after a `StopLiveWatchAsync` timeout could reach the next foreground control exchange before its own reply and throw `InvalidDataException`, killing the shared broker for every drive; the foreground reader now drains it the same way it already drains stale `JournalBatch` and `Error` frames (found via file-wizard PR #417 review)
+- An aggregate `FileIndex.WaitForCatchUpAsync(CancellationToken)` that ended by cancellation or fault stayed reachable from every drive still catching up, through a slot-completion continuation that could never be detached, so repeated bounded waits against a drive that never caught up accumulated one wait coordinator each; the continuations are now cancelled, which removes them from the pending drive, as soon as the aggregate wait completes, cancels, or faults ([MFTLib#182](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/182))
 
 ## 0.3.0
 

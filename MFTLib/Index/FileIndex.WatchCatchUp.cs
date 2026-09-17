@@ -221,7 +221,7 @@ public sealed partial class FileIndex
         cancellationToken.ThrowIfCancellationRequested();
 
         Task wait;
-        CatchUpCoordinator? coordinator = null;
+        CatchUpCoordinator? coordinator;
         lock (_stateLock)
         {
             if (_watchSession is not { } session)
@@ -253,7 +253,13 @@ public sealed partial class FileIndex
         return WaitCatchUpLinkedAsync(wait, cancellationToken, coordinator);
     }
 
-    static Task WhenAllCatchUpAsync(IReadOnlyList<WatchCatchUpSlot> slots, out CatchUpCoordinator? coordinator)
+    /// <summary>
+    ///     A test seam, held per instance: invoked with each aggregate-wait coordinator as it is
+    ///     created, so a test can watch whether the coordinator is collected after its wait ends.
+    /// </summary>
+    internal Action<object>? _catchUpCoordinatorCreatedForTest;
+
+    Task WhenAllCatchUpAsync(IReadOnlyList<WatchCatchUpSlot> slots, out CatchUpCoordinator? coordinator)
     {
         coordinator = null;
         if (slots.Count == 0)
@@ -273,6 +279,7 @@ public sealed partial class FileIndex
 
         var completionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         coordinator = new CatchUpCoordinator(slots, completionSource);
+        _catchUpCoordinatorCreatedForTest?.Invoke(coordinator);
         coordinator.Attach();
         return completionSource.Task;
     }
