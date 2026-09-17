@@ -54,7 +54,7 @@ public sealed partial class FileIndex
                         $"Drive {driveLetter}: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan.";
                 }
 
-                RecordFailedDrive(driveLetter, driveOrdinal);
+                RecordFailedDrive(driveLetter, driveOrdinal, DriveFailureKind.CacheDeclined);
                 return;
             }
 
@@ -62,7 +62,7 @@ public sealed partial class FileIndex
                 cancellationToken).ConfigureAwait(false);
             if (scanResult is not { } completedScan)
             {
-                RecordFailedDrive(driveLetter, driveOrdinal);
+                RecordFailedDrive(driveLetter, driveOrdinal, DriveFailureKind.ProducerFailed);
                 return;
             }
 
@@ -140,7 +140,7 @@ public sealed partial class FileIndex
         });
     }
 
-    void RecordFailedDrive(char driveLetter, ushort driveOrdinal)
+    void RecordFailedDrive(char driveLetter, ushort driveOrdinal, DriveFailureKind failureKind)
     {
         lock (_stateLock)
         {
@@ -155,7 +155,8 @@ public sealed partial class FileIndex
                 ScanTimestamp = DateTime.MinValue,
                 CompactionNeeded = false,
                 WatchSupported = false,
-                MftProducerFailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveOrdinal)
+                MftProducerFailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveOrdinal),
+                FailureKind = failureKind
             });
             _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
             _discardedBlocksByOrdinal.Remove(driveOrdinal);

@@ -8,25 +8,72 @@ public sealed partial class FileIndex
     ///     <see cref="FileIndex._watchSession" /> field is claimed, read, and cleared under
     ///     <see cref="FileIndex._stateLock" />.
     /// </summary>
-    sealed class WatchSession(CancellationTokenSource cancellation, IIndexWatchSource source,
-        IReadOnlyList<IndexWatchTarget> targets, CancellationToken callerToken)
+    sealed class WatchSession
     {
-        public CancellationTokenSource Cancellation { get; } = cancellation;
+        readonly List<IndexWatchTarget> _targets;
+        readonly Lock _targetsLock = new();
+
+        public WatchSession(CancellationTokenSource cancellation, IIndexWatchSource source,
+            IReadOnlyList<IndexWatchTarget> targets, CancellationToken callerToken)
+        {
+            Cancellation = cancellation;
+            Source = source;
+            CallerToken = callerToken;
+            _targets = [.. targets];
+        }
+
+        public CancellationTokenSource Cancellation { get; }
 
         // The exact source the pump is reading, so a rescan reaches the arm and disarm
         // operations of the stream in flight rather than of some other instance.
-        public IIndexWatchSource Source { get; } = source;
+        public IIndexWatchSource Source { get; }
 
         /// <summary>
-        ///     The drives this session armed, in the order <c>BuildWatchTargets</c> produced them:
-        ///     who a catch-up wait covers, and which drive letters count as watched.
+        ///     The drives this session is currently watching, including both initial targets and
+        ///     drives adopted and armed mid-session: who a catch-up wait covers, and which drive
+        ///     letters count as watched.
         /// </summary>
-        public IReadOnlyList<IndexWatchTarget> Targets { get; } = targets;
+        public IndexWatchTarget[] Targets
+        {
+            get
+            {
+                lock (_targetsLock)
+                {
+                    return _targets.ToArray();
+                }
+            }
+        }
 
         /// <summary>The token this session's source was linked to, which a restart relinks to.</summary>
-        public CancellationToken CallerToken { get; } = callerToken;
+        public CancellationToken CallerToken { get; }
 
         public Task<Exception?> Pump { get; set; } = Task.FromResult<Exception?>(null);
+
+        public void RegisterTarget(IndexWatchTarget target)
+        {
+            lock (_targetsLock)
+            {
+                var upperLetter = char.ToUpperInvariant(target.DriveLetter);
+                var index = _targets.FindIndex(t => char.ToUpperInvariant(t.DriveLetter) == upperLetter);
+                if (index >= 0)
+                {
+                    _targets[index] = target;
+                }
+                else
+                {
+                    _targets.Add(target);
+                }
+            }
+        }
+
+        public bool ContainsTarget(char driveLetter)
+        {
+            lock (_targetsLock)
+            {
+                var upperLetter = char.ToUpperInvariant(driveLetter);
+                return _targets.Any(t => char.ToUpperInvariant(t.DriveLetter) == upperLetter);
+            }
+        }
     }
 
     async Task<Exception?> PumpAsync(WatchSession session, IReadOnlyList<IndexWatchTarget> targets)
@@ -74,7 +121,7 @@ public sealed partial class FileIndex
                     CompleteWatchCatchUp(caughtUp.DriveLetter);
                 }
 
-                if (dropped && !AnyWatchedDriveRemains(targets, droppedDriveLettersWithoutOrdinal))
+                if (dropped && !AnyWatchedDriveRemains(session.Targets, droppedDriveLettersWithoutOrdinal))
                 {
                     // Every watched drive has failed. Breaking disposes the enumerator, which ends
                     // the watch at the source; the session stays so StopWatchingAsync still rethrows.
@@ -97,14 +144,17 @@ public sealed partial class FileIndex
         catch (Exception exception)
         {
             firstFault ??= exception;
-            FaultPendingWatchCatchUpLocked(targets, exception);
+            FaultPendingWatchCatchUpLocked(session.Targets, exception);
             RaiseWatchFaulted(new WatchFault(WatchFaultKind.Source, null, exception));
         }
 
-        if (firstFault is null && !cancellationToken.IsCancellationRequested &&
-            AnyWatchedDriveRemains(targets, droppedDriveLettersWithoutOrdinal))
+        if (firstFault is null && !cancellationToken.IsCancellationRequested)
         {
-            ReportSourceEndedWithoutStop(session, targets, droppedDriveLettersWithoutOrdinal);
+            var remainingTargets = session.Targets;
+            if (AnyWatchedDriveRemains(remainingTargets, droppedDriveLettersWithoutOrdinal))
+            {
+                ReportSourceEndedWithoutStop(session, remainingTargets, droppedDriveLettersWithoutOrdinal);
+            }
         }
 
         return firstFault;

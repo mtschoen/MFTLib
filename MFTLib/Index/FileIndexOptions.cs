@@ -21,7 +21,9 @@ public sealed record FileIndexOptions
 
     /// <summary>
     ///     Opens each drive from its cache only. A drive with no usable cache (missing, corrupt,
-    ///     or incompatible) is reported as failed instead of falling back to a scan.
+    ///     or incompatible) is reported as <see cref="DriveState.Failed" /> with
+    ///     <see cref="DriveFailureKind.CacheDeclined" /> instead of falling back to a scan, and
+    ///     <see cref="FileIndex.RescanAsync" /> remains available to scan it later.
     /// </summary>
     public bool InitialOpenCacheOnly { get; init; }
 

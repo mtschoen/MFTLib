@@ -45,12 +45,27 @@ public sealed record DriveStatus
     public BlockValidationResult? DiscardedBlock { get; init; }
 
     /// <summary>
-    ///     Set when this drive's MFT producer failed during opening or its latest rescan. A drive
-    ///     that fails during opening has <see cref="DriveState.Failed" /> and no block. A failed
+    ///     The detail behind <see cref="FailureKind" />: the MFT producer's error when the
+    ///     producer failed during opening or its latest rescan, or the cache-only refusal when
+    ///     <see cref="FileIndexOptions.InitialOpenCacheOnly" /> declined the drive. A drive that
+    ///     fails during opening has <see cref="DriveState.Failed" /> and no block. A failed
     ///     rescan leaves the previous block in place. Null after a successful MFT production,
     ///     when enumeration was selected explicitly, or on a warm start.
     /// </summary>
     public string? MftProducerFailureMessage { get; init; }
+
+    /// <summary>
+    ///     Why this drive is <see cref="DriveState.Failed" />:
+    ///     <see cref="DriveFailureKind.CacheDeclined" /> when a cache-only open declined it for
+    ///     lack of a usable cache block, <see cref="DriveFailureKind.ProducerFailed" /> when its
+    ///     MFT producer failed. <see cref="DriveFailureKind.None" /> in every other state,
+    ///     including <see cref="DriveState.Offline" />. A successful
+    ///     <see cref="FileIndex.RescanAsync" /> of a failed drive clears this back to
+    ///     <see cref="DriveFailureKind.None" /> along with the state; a failed rescan of a
+    ///     cache-declined drive moves it to <see cref="DriveFailureKind.ProducerFailed" />,
+    ///     because the scan itself is now what failed.
+    /// </summary>
+    public DriveFailureKind FailureKind { get; init; }
 
     /// <summary>
     ///     Set when this drive's live watch failed, from the message of the exception that ended

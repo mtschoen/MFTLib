@@ -1,6 +1,7 @@
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
+// Exceeds ~500 lines to keep cohesive MFT producer selection and rescan recovery tests together.
 namespace MFTLib.Tests.Index;
 
 /// <summary>
@@ -124,8 +125,10 @@ public class FileIndexProducerSelectionTests
         var failed = index.Drives.Single(drive => drive.DriveLetter == 'T');
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual("elevation declined", failed.MftProducerFailureMessage);
+        Assert.AreEqual(DriveFailureKind.ProducerFailed, failed.FailureKind);
         var ready = index.Drives.Single(drive => drive.DriveLetter == 'U');
         Assert.AreEqual(DriveState.Ready, ready.State);
+        Assert.AreEqual(DriveFailureKind.None, ready.FailureKind);
         Assert.IsNull(ready.DiscardedBlock);
     }
 
@@ -210,6 +213,7 @@ public class FileIndexProducerSelectionTests
         Assert.AreEqual(
             "Drive T: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan.",
             failed.MftProducerFailureMessage);
+        Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.FailureKind);
     }
 
     [TestMethod]
@@ -495,5 +499,97 @@ public class FileIndexProducerSelectionTests
         var afterRescan = index.ApplyJournalEntries('T', [closed], 7, 8193);
         Assert.AreEqual(1, afterRescan.Count);
         Assert.AreEqual(FileChangeKind.Created, afterRescan[0].Kind);
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_CacheDeclinedDrive_ScansItAndClearsTheFailureKind()
+    {
+        var invocationCount = 0;
+        Task<MftBlockProduceResult> Producer(MftBlockProduceRequest request, CancellationToken _)
+        {
+            invocationCount++;
+            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+        }
+
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Mft,
+            MftProducer = Producer,
+            InitialOpenCacheOnly = true
+        }, TestContext.CancellationTokenSource.Token);
+        Assert.AreEqual(0, invocationCount, "a cache-only open must never attempt a scan");
+        Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
+        Assert.AreEqual(DriveFailureKind.CacheDeclined, index.Drives.Single().FailureKind);
+
+        await index.RescanAsync('T', TestContext.CancellationTokenSource.Token);
+
+        Assert.AreEqual(1, invocationCount);
+        var status = index.Drives.Single();
+        Assert.AreEqual(DriveState.Ready, status.State);
+        Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
+        Assert.IsNull(status.MftProducerFailureMessage);
+        Assert.AreEqual(BlockSource.ProducedByScan, status.BlockSource);
+        Assert.AreEqual(ProducerKind.Mft, status.ProducerKind);
+        Assert.IsTrue(status.WatchSupported);
+        Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_CacheDeclinedDriveWhoseScanFails_StaysFailedAsProducerFailed()
+    {
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Mft,
+            MftProducer = (_, _) => throw new UnauthorizedAccessException("elevation declined"),
+            InitialOpenCacheOnly = true
+        }, TestContext.CancellationTokenSource.Token);
+        Assert.AreEqual(DriveFailureKind.CacheDeclined, index.Drives.Single().FailureKind);
+
+        await index.RescanAsync('T', TestContext.CancellationTokenSource.Token);
+
+        var status = index.Drives.Single();
+        Assert.AreEqual(DriveState.Failed, status.State);
+        Assert.AreEqual(DriveFailureKind.ProducerFailed, status.FailureKind);
+        Assert.AreEqual("elevation declined", status.MftProducerFailureMessage);
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_ProducerFailedDrive_ScansItAndClearsTheFailureKind()
+    {
+        var invocationCount = 0;
+        Task<MftBlockProduceResult> Producer(MftBlockProduceRequest request, CancellationToken _)
+        {
+            if (++invocationCount == 1)
+            {
+                throw new UnauthorizedAccessException("elevation declined");
+            }
+
+            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+        }
+
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Mft,
+            MftProducer = Producer
+        }, TestContext.CancellationTokenSource.Token);
+        Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
+        Assert.AreEqual(DriveFailureKind.ProducerFailed, index.Drives.Single().FailureKind);
+
+        await index.RescanAsync('T', TestContext.CancellationTokenSource.Token);
+
+        Assert.AreEqual(2, invocationCount);
+        var status = index.Drives.Single();
+        Assert.AreEqual(DriveState.Ready, status.State);
+        Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
+        Assert.IsNull(status.MftProducerFailureMessage);
+        Assert.AreEqual(BlockSource.ProducedByScan, status.BlockSource);
     }
 }

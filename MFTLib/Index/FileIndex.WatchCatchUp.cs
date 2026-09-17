@@ -171,14 +171,17 @@ public sealed partial class FileIndex
     ///     when the watch session ends. The wait is linked to the index's disposal token, so
     ///     disposing the index cancels it. A wait issued while its drive is mid-rescan tracks the
     ///     arm that is current at that moment; issue the wait after
-    ///     <see cref="RescanAsync" /> returns to track the re-armed catch-up.
+    ///     <see cref="RescanAsync" /> returns to track the re-armed catch-up. A drive a rescan
+    ///     armed mid-session (one that had no block when the session started) is waited the same
+    ///     way; its catch-up slot exists from the re-arm even though it is not among the
+    ///     session's initial targets.
     /// </summary>
     /// <exception cref="ArgumentException">
     ///     <paramref name="driveLetter" /> is not part of this index.
     /// </exception>
     /// <exception cref="InvalidOperationException">
-    ///     The drive is not being watched: no watch session is running, the drive is not among the
-    ///     session's targets, or the drive cannot be watched.
+    ///     The drive is not being watched: no watch session is running, or the drive has no
+    ///     catch-up slot on the running session (never armed, or not watchable).
     /// </exception>
     public Task WaitForCatchUpAsync(char driveLetter, CancellationToken cancellationToken)
     {
@@ -193,8 +196,11 @@ public sealed partial class FileIndex
         Task wait;
         lock (_stateLock)
         {
-            if (_watchSession is not { } session ||
-                !session.Targets.Any(target => char.ToUpperInvariant(target.DriveLetter) == upperDriveLetter) ||
+            // Armed-ness is the catch-up slot, which matches the session's registered targets:
+            // a blockless drive its rescan just adopted is registered and armed mid-session, so its
+            // slot exists from the re-arm and its wait is as real as any initial target's. Slots
+            // are cleared at session reclaim, so a drive with no slot is still refused.
+            if (_watchSession is null ||
                 !TryGetDriveOrdinalLocked(upperDriveLetter, out var driveOrdinal) ||
                 !_watchCatchUpByOrdinal.TryGetValue(driveOrdinal, out var slot))
             {
@@ -229,8 +235,9 @@ public sealed partial class FileIndex
                 throw new InvalidOperationException("No watch session is running, so there is no catch-up to wait for.");
             }
 
-            var slots = new List<WatchCatchUpSlot>(session.Targets.Count);
-            foreach (var target in session.Targets)
+            var targets = session.Targets;
+            var slots = new List<WatchCatchUpSlot>(targets.Length);
+            foreach (var target in targets)
             {
                 if (!TryGetDriveOrdinalLocked(target.DriveLetter, out var driveOrdinal) ||
                     !_watchCatchUpByOrdinal.TryGetValue(driveOrdinal, out var slot))

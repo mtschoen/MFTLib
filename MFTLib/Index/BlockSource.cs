@@ -9,7 +9,9 @@ namespace MFTLib.Index;
 public enum BlockSource
 {
     /// <summary>
-    ///     The drive has no block: it was offline at open, or its MFT producer failed.
+    ///     The drive has no block: it was offline at open, its MFT producer failed, or a
+    ///     cache-only open found no usable cache. <see cref="DriveStatus.FailureKind" />
+    ///     distinguishes the two failure kinds.
     /// </summary>
     None,
 

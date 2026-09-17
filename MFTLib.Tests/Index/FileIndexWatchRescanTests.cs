@@ -16,6 +16,37 @@ public class FileIndexWatchRescanTests
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
+    string _treeRoot = null!;
+    string _cacheDirectory = null!;
+
+    [TestInitialize]
+    public void Initialize()
+    {
+        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
+        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_treeRoot);
+        Directory.CreateDirectory(_cacheDirectory);
+    }
+
+    [TestCleanup]
+    public void Cleanup()
+    {
+        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
+        {
+            try
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
+            catch (IOException)
+            {
+                // A just-unmapped block file can stay locked briefly on Windows.
+            }
+        }
+    }
+
     [TestMethod]
     public async Task RescanAsync_WhileWatching_ReArmsOnlyTheRescannedDriveFromTheFreshCursorAndClearsItsFailure()
     {
@@ -303,5 +334,237 @@ public class FileIndexWatchRescanTests
     static DriveStatus DriveFor(WatchHarness harness, char driveLetter)
     {
         return harness.Index.Drives.Single(drive => drive.DriveLetter == char.ToUpperInvariant(driveLetter));
+    }
+
+    /// <summary>
+    ///     A small valid MFT-shaped block written at <paramref name="path" /> with the journal
+    ///     cursor stamped before completion, the same shape the producer-selection tests build.
+    ///     Pre-seeds 'U''s cache so a cache-only open warm-starts it while 'T' is declined, and
+    ///     builds the block a rescan of 'T' adopts.
+    /// </summary>
+    static void WriteMftShapedBlock(string path, uint volumeSerial, ulong journalId, long nextUsn)
+    {
+        var moment = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
+        var createOptions = new BlockFileCreateOptions
+        {
+            Path = path,
+            VolumeSerial = volumeSerial,
+            ProducerKind = ProducerKind.Mft,
+            RootRow = 5,
+            SlotCapacity = BlockLayout.ComputeSlotCapacity(8),
+            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(256)
+        };
+        using (var block = BlockFile.Create(createOptions))
+        {
+            var writer = new BlockWriter(block);
+            writer.TryWriteRow(0, "$MFT",
+                new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0,
+                    ModifiedTicks: moment.Ticks, SequenceNumber: 0));
+            writer.TryWriteRow(5, ".",
+                new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
+                    ModifiedTicks: moment.Ticks, SequenceNumber: 0));
+            writer.SetJournalCursor(journalId, nextUsn);
+            writer.Complete(moment);
+        }
+    }
+
+    /// <summary>
+    ///     Two MFT drives over one temp tree: 'U' gets a valid block pre-written at its canonical
+    ///     cache path (cursor 22/8484) so a cache-only open warm-starts it, and 'T' gets none, so
+    ///     the same open declines it. The producer runs only on a rescan of 'T'.
+    /// </summary>
+    FileIndexOptions CacheOnlyWatchOptions(FakeIndexWatchSource source, bool failDriveT)
+    {
+        WriteMftShapedBlock(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 2)),
+            volumeSerial: 2, journalId: 22, nextUsn: 8484);
+        return new FileIndexOptions
+        {
+            Drives = [new IndexedDrive('T', _treeRoot, 1), new IndexedDrive('U', _treeRoot, 2)],
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Mft,
+            MftProducer = (request, _cancellationToken) =>
+            {
+                if (failDriveT && char.ToUpperInvariant(request.DriveLetter) == 'T')
+                {
+                    throw new UnauthorizedAccessException("elevation declined");
+                }
+
+                WriteMftShapedBlock(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096);
+                return Task.FromResult(new MftBlockProduceResult(
+                    BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
+                    JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+            },
+            WatchSource = source,
+            InitialOpenCacheOnly = true
+        };
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_CacheDeclinedDriveWhileWatching_ArmsItWithoutADisarmAndAppliesItsBatches()
+    {
+        using var source = new FakeIndexWatchSource();
+        await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
+        var declined = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        Assert.AreEqual(DriveState.Failed, declined.State);
+        Assert.AreEqual(DriveFailureKind.CacheDeclined, declined.FailureKind);
+
+        await index.StartWatchingAsync(Token);
+        var targets = await source.SourceStartedAsync();
+        Assert.AreEqual('U', targets.Single().DriveLetter);
+
+        await index.RescanAsync('T', Token);
+
+        // 'T' was never on the stream, so there is nothing to disarm; the resume arms it once
+        // its scan produced a block.
+        CollectionAssert.AreEqual(new[] { "arm:T" }, source.WatchOperations.ToArray());
+        var recovered = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        Assert.AreEqual(DriveState.Ready, recovered.State);
+        Assert.AreEqual(DriveFailureKind.None, recovered.FailureKind);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, recovered.WatchCatchUp);
+
+        await source.PublishAsync(new JournalBatch('T',
+            [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalId: 7, NextUsn: 5000));
+        Assert.AreEqual(5000L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+
+        await source.PublishAsync(new DriveCaughtUp('T'));
+        await index.WaitForCatchUpAsync('T', Token);
+        Assert.AreEqual(WatchCatchUpState.CaughtUp,
+            index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUp);
+        await index.StopWatchingAsync(Token);
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_CacheDeclinedDriveWhileWatching_WhoseScanFails_StaysFailedAndKeepsTheWatchUntouched()
+    {
+        using var source = new FakeIndexWatchSource();
+        await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: true), Token);
+        await index.StartWatchingAsync(Token);
+        await source.SourceStartedAsync();
+
+        await index.RescanAsync('T', Token);
+
+        var status = index.Drives.Single(drive => drive.DriveLetter == 'T');
+        Assert.AreEqual(DriveState.Failed, status.State);
+        Assert.AreEqual(DriveFailureKind.ProducerFailed, status.FailureKind);
+        Assert.AreEqual("elevation declined", status.MftProducerFailureMessage);
+        Assert.AreEqual(0, source.WatchOperations.Count,
+            "a still-blockless drive was never disarmed and must not be armed either");
+
+        // The other drive never noticed.
+        await source.PublishAsync(new JournalBatch('U',
+            [WatchHarness.Create(recordNumber: 9, "u.txt")], JournalId: 22, NextUsn: 8500));
+        Assert.AreEqual(8500L, index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
+        await index.StopWatchingAsync(Token);
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_CacheDeclinedDriveWhileWatching_RescannedASecondTime_DisarmsAndRearmsIt()
+    {
+        using var source = new FakeIndexWatchSource();
+        await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
+        await index.StartWatchingAsync(Token);
+        await source.SourceStartedAsync();
+
+        // First rescan: adopts and arms 'T' without a disarm (it had no block).
+        await index.RescanAsync('T', Token);
+        CollectionAssert.AreEqual(new[] { "arm:T" }, source.WatchOperations.ToArray());
+
+        // Second rescan: 'T' is now part of the watch session, so it must be disarmed before
+        // scanning and re-armed afterwards.
+        await index.RescanAsync('T', Token);
+        CollectionAssert.AreEqual(new[] { "arm:T", "disarm:T", "arm:T" }, source.WatchOperations.ToArray());
+
+        await source.PublishAsync(new JournalBatch('T',
+            [WatchHarness.Create(recordNumber: 10, "second.txt")], JournalId: 7, NextUsn: 6000));
+        Assert.AreEqual(6000L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+
+        await index.StopWatchingAsync(Token);
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_CacheDeclinedDriveWhileWatching_WhenOnlyInitialDriveFaults_KeepsWatchingAdoptedDrive()
+    {
+        using var source = new FakeIndexWatchSource();
+        await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
+        await index.StartWatchingAsync(Token);
+        await source.SourceStartedAsync();
+
+        await index.RescanAsync('T', Token);
+
+        // 'U' was the only initial target. Dropping it must not terminate the watch pump
+        // because the adopted drive 'T' remains watched and healthy.
+        await source.PublishAsync(new DriveWatchFailure('U', new IOException("U journal error")));
+        Assert.IsNotNull(index.Drives.Single(drive => drive.DriveLetter == 'U').WatchFailureMessage);
+
+        await source.PublishAsync(new JournalBatch('T',
+            [WatchHarness.Create(recordNumber: 9, "surviving.txt")], JournalId: 7, NextUsn: 5500));
+        Assert.AreEqual(5500L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+        Assert.IsNull(index.Drives.Single(drive => drive.DriveLetter == 'T').WatchFailureMessage);
+
+        await Assert.ThrowsExceptionAsync<IOException>(() => index.StopWatchingAsync(Token));
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_CacheDeclinedDriveWhileWatching_StreamEndsWithoutStop_FaultsAdoptedDriveCatchUp()
+    {
+        using var source = new FakeIndexWatchSource();
+        await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
+        await index.StartWatchingAsync(Token);
+        await source.SourceStartedAsync();
+
+        await index.RescanAsync('T', Token);
+
+        var catchUpTask = index.WaitForCatchUpAsync('T', Token);
+
+        await source.CompleteSourceAsync();
+
+        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => catchUpTask);
+        StringAssert.Contains(thrown.Message, "ended its stream without being stopped");
+        Assert.AreEqual(WatchCatchUpState.Faulted,
+            index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUp);
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_CacheDeclinedDriveWhileWatching_AggregateWaitForCatchUp_WaitsForAdoptedDrive()
+    {
+        using var source = new FakeIndexWatchSource();
+        await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
+        await index.StartWatchingAsync(Token);
+        await source.SourceStartedAsync();
+
+        // Initial target 'U' catches up immediately.
+        await source.PublishAsync(new DriveCaughtUp('U'));
+
+        await index.RescanAsync('T', Token);
+
+        // Aggregate wait must include the adopted drive 'T' rather than completing prematurely.
+        var aggregateWait = index.WaitForCatchUpAsync(Token);
+        Assert.IsFalse(aggregateWait.IsCompleted);
+
+        await source.PublishAsync(new DriveCaughtUp('T'));
+        await aggregateWait.WaitAsync(FakeIndexWatchSource.HangGuard);
+        Assert.IsTrue(aggregateWait.IsCompletedSuccessfully);
+
+        await index.StopWatchingAsync(Token);
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_CacheDeclinedDriveWhileWatching_UnhandledSourceException_FaultsAdoptedDriveCatchUp()
+    {
+        using var source = new FakeIndexWatchSource();
+        await using var index = await FileIndex.OpenAsync(CacheOnlyWatchOptions(source, failDriveT: false), Token);
+        await index.StartWatchingAsync(Token);
+        await source.SourceStartedAsync();
+
+        await index.RescanAsync('T', Token);
+
+        var catchUpTask = index.WaitForCatchUpAsync('T', Token);
+        var sourceException = new InvalidOperationException("stream crashed");
+        await source.FaultSourceAsync(sourceException);
+
+        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => catchUpTask);
+        Assert.AreSame(sourceException, thrown);
+        Assert.AreEqual(WatchCatchUpState.Faulted,
+            index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUp);
     }
 }

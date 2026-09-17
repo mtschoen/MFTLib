@@ -44,6 +44,7 @@ and the live watch bridge and consumer-gap closures tracked as
 - `BrokerFrame.ArmEpoch` identifies the live arm that produced a frame; `BrokerFrame.NoArmEpoch` marks scan, catch-up, and volume-query frames
 - A stale persisted journal cursor is reported as that drive's `Error`, ending only its stream
 - Optional trailing `CancellationToken` parameters on every entry point that scans rows: `FileIndex.Find`, `FindByName`, `Search`, `Largest`, `DuplicateNames` and `Root`, and `FileEntry.Children`. The token is read before the first row and then at least every 4096 rows, so a whole-drive scan can be abandoned promptly; cancellation surfaces as `OperationCanceledException`
+- `DriveStatus.FailureKind` and the `DriveFailureKind` enum (`None`, `CacheDeclined`, `ProducerFailed`) say why a `DriveState.Failed` drive has no block: a cache-only open that found no usable cache reports `CacheDeclined`, an MFT producer failure reports `ProducerFailed`, and every other state reads `None`. `FileIndex.RescanAsync` now scans and adopts a blockless failed drive, clearing the kind to `None` on success and re-reporting the drive as `ProducerFailed` when that scan fails; an offline drive still refuses a rescan ([file-wizard#423](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/423))
 
 ### Changed
 

@@ -58,6 +58,7 @@ public class QueryContractTests
         Assert.IsFalse(status.WatchSupported);
         Assert.IsNull(status.DiscardedBlock);
         Assert.IsNull(status.WatchFailureMessage);
+        Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
     }
 
     [TestMethod]

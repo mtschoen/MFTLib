@@ -9,23 +9,13 @@ public sealed partial class FileIndex
     ///     <see cref="FileShare.Delete" />) so the new block can take the canonical name while a
     ///     handle from the retired snapshot keeps reading the renamed file until that snapshot is
     ///     released. If the scan fails or is cancelled, the previous in-memory block is left in
-    ///     place (nothing here mutates <see cref="_driveBlocks" /> or publishes a new snapshot
-    ///     until the scan succeeds), and the renamed-aside file is moved straight back to the
-    ///     canonical path so the on-disk cache is restored too: a failed rescan attempt never
-    ///     costs the drive its last good warm-start cache.
+    ///     place and the renamed-aside file is moved straight back to restore the on-disk cache.
     /// </summary>
     /// <remarks>
-    ///     A rescan while a watch is running disarms only this drive, swaps its block, clears its
-    ///     <see cref="DriveStatus.WatchFailureMessage" />, resets the re-armed drive's
-    ///     <see cref="DriveStatus.WatchCatchUp" /> to <see cref="WatchCatchUpState.CatchingUp" />,
-    ///     and re-arms only this drive from the fresh header cursor, while every other drive keeps
-    ///     streaming without losing a batch. Nothing produced for this drive before the re-arm is
-    ///     applied to the new block, whether it was still on the wire or already queued on the
-    ///     merged stream. A rescan issued after every drive has already faulted reclaims the
-    ///     session and starts a fresh one over every drive, discarding the fault it is recovering
-    ///     from. A failure to disarm or to re-arm surfaces from here, and records the drive's
-    ///     <see cref="DriveStatus.WatchFailureMessage" /> first, because either one leaves the
-    ///     drive off the watch with nothing coming to put it back.
+    ///     A rescan while watching disarms only this drive, swaps its block, resets catch-up to
+    ///     <see cref="WatchCatchUpState.CatchingUp" />, and re-arms it from the fresh cursor.
+    ///     A blockless drive is scanned and adopted rather than swapped; failed scans rewrite status
+    ///     to <see cref="DriveFailureKind.ProducerFailed" />. Offline drives are refused.
     /// </remarks>
     public async Task RescanAsync(char driveLetter, CancellationToken cancellationToken)
     {
@@ -42,9 +32,7 @@ public sealed partial class FileIndex
 
             // Disarming before the gate, never under it: the pump takes _swapGate synchronously
             // inside ApplyJournalEntriesCore, so touching the watch while this method holds the gate
-            // would deadlock the rescan against its own pump. Nothing here deadlocks the other way
-            // either, because the disarm awaits a reader that never takes the gate and the merged
-            // channel is unbounded, so a pump blocked on the gate never blocks a reader's write.
+            // would deadlock the rescan against its own pump.
             SuspendedWatch suspended;
             try
             {
@@ -52,9 +40,6 @@ public sealed partial class FileIndex
             }
             catch (Exception suspendFailure)
             {
-                // A disarm that throws has already stopped the drive at the source, so leaving its
-                // status healthy would be the same silent stop ResumeAfterFailedSwapAsync prevents on
-                // the swap path. Recording it announces the freeze before the caller sees the throw.
                 RecordWatchFailure(driveLetter, suspendFailure);
                 throw;
             }
@@ -65,11 +50,7 @@ public sealed partial class FileIndex
             }
             catch (Exception swapFailure)
             {
-                // A failed swap must not leave this drive disarmed at the source while its status still
-                // reads healthy: that is the silent stop the per-drive contract forbids. Nothing was
-                // swapped, so the block's header cursor is still true and the drive resumes from it.
-                await ResumeAfterFailedSwapAsync(driveLetter, suspended, swapFailure, cancellationToken)
-                    .ConfigureAwait(false);
+                await ResumeAfterFailedSwapAsync(driveLetter, suspended, swapFailure, cancellationToken).ConfigureAwait(false);
                 throw;
             }
 
@@ -79,9 +60,6 @@ public sealed partial class FileIndex
             }
             catch (Exception resumeFailure)
             {
-                // The swap succeeded, so the drive's block is current and only its watch is missing.
-                // The resume clears the drive's failure message before it arms, so without this the
-                // drive would read healthy while nothing was watching it.
                 RecordWatchFailure(driveLetter, resumeFailure);
                 throw;
             }
@@ -94,10 +72,7 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Puts the drive back on the watch after a swap that failed, so the caller's exception is
-    ///     the only consequence. When the re-arm itself fails the drive cannot be restored, so the
-    ///     freeze is made visible instead of left silent: the original failure names it on the
-    ///     drive and on the fault, because that is what stopped the rescan, and the re-arm failure
-    ///     travels alongside it as the reason the drive could not be put back.
+    ///     the only consequence.
     /// </summary>
     async Task ResumeAfterFailedSwapAsync(char driveLetter, SuspendedWatch suspended,
         Exception swapFailure, CancellationToken cancellationToken)
@@ -110,8 +85,7 @@ public sealed partial class FileIndex
         {
             RecordWatchFailure(driveLetter, swapFailure);
             throw new AggregateException(
-                $"Drive {driveLetter} could not be re-armed after its rescan failed, so its watch is stopped.",
-                swapFailure, resumeFailure);
+                $"Drive {driveLetter} could not be re-armed after its rescan failed, so its watch is stopped.", swapFailure, resumeFailure);
         }
     }
 
@@ -120,7 +94,8 @@ public sealed partial class FileIndex
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (!TryGetDriveOrdinal(driveLetter, out var driveOrdinal))
         {
-            throw new ArgumentException($"Drive {driveLetter} has no block.", nameof(driveLetter));
+            await ScanBlocklessDriveAsync(drive, driveLetter, cancellationToken).ConfigureAwait(false);
+            return;
         }
 
         DriveBlock superseded;
@@ -140,18 +115,77 @@ public sealed partial class FileIndex
 
         try
         {
-            await _swapGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                // The watch failure entry is deliberately left alone here: clearing it happens once
-                // the gate is released, immediately before the re-arm, so the drive is never live
-                // again while it still looks dropped.
-                lock (_stateLock)
+            await CommitBlockUnderSwapGateAsync(
+                () =>
                 {
                     _driveBlocks[driveOrdinal] = completedScan.DriveBlock;
                     _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
                     _discardedBlocksByOrdinal.Remove(driveOrdinal);
                     _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
+                },
+                () =>
+                {
+                    if (ReferenceEquals(_driveBlocks[driveOrdinal], completedScan.DriveBlock))
+                    {
+                        _driveBlocks[driveOrdinal] = superseded;
+                    }
+                },
+                completedScan.DriveBlock, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            if (retiredPath is not null)
+            {
+                RestoreRetiredFile(retiredPath, blockPath, superseded);
+            }
+
+            throw;
+        }
+    }
+
+    (DriveStatus Blockless, ushort DriveOrdinal) GetBlocklessDriveForRescan(char driveLetter)
+    {
+        lock (_stateLock)
+        {
+            var index = FindBlocklessStatusIndexLocked(driveLetter);
+            if (index < 0 || _blocklessDriveStatuses[index].State != DriveState.Failed)
+            {
+                throw new ArgumentException($"Drive {driveLetter} has no block.", nameof(driveLetter));
+            }
+
+            return (_blocklessDriveStatuses[index], (ushort)_driveBlocks.Count);
+        }
+    }
+
+    void RecordBlocklessProducerFailure(char driveLetter, ushort driveOrdinal)
+    {
+        lock (_stateLock)
+        {
+            var message = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveOrdinal);
+            _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
+            var index = FindBlocklessStatusIndexLocked(driveLetter);
+            if (index >= 0)
+            {
+                _blocklessDriveStatuses[index] = _blocklessDriveStatuses[index] with
+                {
+                    MftProducerFailureMessage = message,
+                    FailureKind = DriveFailureKind.ProducerFailed
+                };
+            }
+        }
+    }
+
+    async Task CommitBlockUnderSwapGateAsync(Action commit, Action rollback, DriveBlock driveBlock,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _swapGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                lock (_stateLock)
+                {
+                    commit();
                 }
 
                 PublishSnapshot();
@@ -165,21 +199,62 @@ public sealed partial class FileIndex
         {
             lock (_stateLock)
             {
-                if (ReferenceEquals(_driveBlocks[driveOrdinal], completedScan.DriveBlock))
-                {
-                    _driveBlocks[driveOrdinal] = superseded;
-                }
+                rollback();
             }
 
-            completedScan.DriveBlock.Block.Dispose();
-            if (retiredPath is not null)
-            {
-                RestoreRetiredFile(retiredPath, blockPath, superseded);
-            }
-
+            driveBlock.Block.Dispose();
             throw;
         }
     }
+
+    /// <summary>
+    ///     The rescan of a drive that has no block: one a cache-only open declined or whose
+    ///     producer failed. Scans and adopts rather than swapping.
+    /// </summary>
+    async Task ScanBlocklessDriveAsync(IndexedDrive drive, char driveLetter, CancellationToken cancellationToken)
+    {
+        var (blockless, driveOrdinal) = GetBlocklessDriveForRescan(driveLetter);
+        var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, ComputeScanBlockPath(drive),
+            cancellationToken).ConfigureAwait(false);
+        if (scanResult is not { } completedScan)
+        {
+            RecordBlocklessProducerFailure(driveLetter, driveOrdinal);
+            return;
+        }
+
+        await CommitBlockUnderSwapGateAsync(
+            () =>
+            {
+                _driveBlocks.Add(completedScan.DriveBlock);
+                _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
+                _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
+                var index = FindBlocklessStatusIndexLocked(driveLetter);
+                if (index >= 0)
+                {
+                    _blocklessDriveStatuses.RemoveAt(index);
+                }
+            },
+            () =>
+            {
+                if (_driveBlocks.Count > driveOrdinal &&
+                    ReferenceEquals(_driveBlocks[driveOrdinal], completedScan.DriveBlock))
+                {
+                    _driveBlocks.RemoveAt(driveOrdinal);
+                }
+
+                _blockSourcesByOrdinal.Remove(driveOrdinal);
+                _accessDeniedSubtreeCountByOrdinal.Remove(driveOrdinal);
+                if (FindBlocklessStatusIndexLocked(driveLetter) < 0)
+                {
+                    _blocklessDriveStatuses.Add(blockless);
+                }
+            },
+            completedScan.DriveBlock, cancellationToken).ConfigureAwait(false);
+    }
+
+    int FindBlocklessStatusIndexLocked(char driveLetter) =>
+        _blocklessDriveStatuses.FindIndex(status =>
+            char.ToUpperInvariant(status.DriveLetter) == char.ToUpperInvariant(driveLetter));
 
     /// <summary>
     ///     Runs the producer for a rescan and restores the renamed-aside cache file whenever the
@@ -188,11 +263,16 @@ public sealed partial class FileIndex
     async Task<ScanDriveResult?> ProduceRescannedBlockAsync(IndexedDrive drive, ushort driveOrdinal,
         string blockPath, string? retiredPath, DriveBlock superseded, CancellationToken cancellationToken)
     {
-        ScanDriveResult? scanResult;
         try
         {
-            scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, blockPath, cancellationToken)
+            var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, blockPath, cancellationToken)
                 .ConfigureAwait(false);
+            if (scanResult is null && retiredPath is not null)
+            {
+                RestoreRetiredFile(retiredPath, blockPath, superseded);
+            }
+
+            return scanResult;
         }
         catch
         {
@@ -203,23 +283,10 @@ public sealed partial class FileIndex
 
             throw;
         }
-
-        if (scanResult is null && retiredPath is not null)
-        {
-            RestoreRetiredFile(retiredPath, blockPath, superseded);
-        }
-
-        return scanResult;
     }
 
     /// <summary>
-    ///     Stops the rescanned drive at the watch source before the gate is taken. With no watch
-    ///     running this reports nothing and the rescan behaves exactly as it did. With a session
-    ///     whose pump has already finished, meaning every drive had faulted, it reclaims that
-    ///     session and reports that a fresh one must be started over every drive. A rescan that
-    ///     reads that pump as still running a moment before the final drive's fault ends it throws
-    ///     <see cref="InvalidOperationException" /> out of the source instead, which is loud,
-    ///     bounded, and clears on a retry.
+    ///     Stops the rescanned drive at the watch source before the gate is taken.
     /// </summary>
     async Task<SuspendedWatch> SuspendDriveForRescanAsync(char driveLetter, CancellationToken cancellationToken)
     {
@@ -243,44 +310,43 @@ public sealed partial class FileIndex
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                // This rescan is the recovery from exactly the fault that stop rethrows, so
-                // rethrowing it here would fail the recovery with the failure it recovers from.
-                // It was already announced through WatchFaulted when the pump observed it.
             }
 
             return new SuspendedWatch(null, RestartWholeSession: true, sessionToken);
         }
 
-        await session.Source.DisarmDriveAsync(driveLetter, cancellationToken).ConfigureAwait(false);
+        if (session.ContainsTarget(driveLetter))
+        {
+            await session.Source.DisarmDriveAsync(driveLetter, cancellationToken).ConfigureAwait(false);
+        }
+
         return new SuspendedWatch(session, RestartWholeSession: false, session.CallerToken);
     }
 
     /// <summary>
-    ///     Puts the rescanned drive back on the watch it was taken off. A whole-session restart
-    ///     links to the token the original session was linked to, not this rescan's, so a rescan
-    ///     never silently reparents the watch's lifetime; the rescan's own token still cancels the
-    ///     start call itself.
+    ///     Puts the rescanned drive back on the watch it was taken off.
     /// </summary>
     async Task ResumeDriveAfterRescanAsync(char driveLetter, SuspendedWatch suspended,
         CancellationToken cancellationToken)
     {
         if (suspended.Session is { } session)
         {
-            // Clear before arming, never after: a fresh batch arriving while this drive still
-            // looked dropped would be discarded and lost for good, and no batch for it can exist
-            // in between, because it is disarmed at the source.
+            lock (_stateLock)
+            {
+                if (!TryGetDriveOrdinalLocked(driveLetter, out _))
+                {
+                    return;
+                }
+            }
+
             var target = BuildWatchTarget(driveLetter);
+            session.RegisterTarget(target);
             ClearWatchFailure(driveLetter);
-            // The re-arm starts a fresh catch-up over the backlog the rescan's new cursor sits
-            // behind; an arm failure faults the fresh slot through RecordWatchFailure below.
             ArmWatchCatchUp(driveLetter);
             await session.Source.ArmDriveAsync(target, cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        // A message about a watch failure on a block that has just been replaced is no longer
-        // true, whether or not there is a session to arm this drive back onto. The catch-up slot
-        // goes with it: nothing is catching up, and a stale fault must not outlive its message.
         ClearWatchFailure(driveLetter);
         RemoveStaleFaultedCatchUp(driveLetter);
         if (suspended.RestartWholeSession)
@@ -298,15 +364,8 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Renames the file currently at <paramref name="canonicalPath" /> aside, if one exists
-    ///     (a prior rescan attempt that failed after renaming but before completing may have left
-    ///     nothing there, in which case there is nothing to move and null is returned), and
-    ///     schedules it for deletion once <paramref name="superseded" /> is fully released. The
-    ///     retired name uses a random suffix rather than a timestamp: two rescans of the same
-    ///     drive within one clock tick (Windows' clock granularity is roughly 15.6 milliseconds,
-    ///     and a small tree can scan faster than that) would otherwise collide while the first
-    ///     retired file is still held, and <see cref="File.Move(string, string)" /> throws on a
-    ///     destination that already exists.
+    ///     Renames the file currently at <paramref name="canonicalPath" /> aside, if one exists,
+    ///     and schedules it for deletion once <paramref name="superseded" /> is fully released.
     /// </summary>
     static string? RenameAsideForRescan(string canonicalPath, DriveBlock superseded)
     {
@@ -322,12 +381,7 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Undoes <see cref="RenameAsideForRescan" /> when the scan that was meant to replace the
-    ///     canonical file fails or is cancelled, so a failed rescan does not destroy an otherwise
-    ///     valid warm-start cache: without this, <paramref name="superseded" />'s scheduled
-    ///     delete would remove the only remaining copy of the drive's last good scan once this
-    ///     process exits, forcing a needless cold scan next time even though nothing was actually
-    ///     wrong with the data that was there before the rescan was attempted.
+    ///     Undoes <see cref="RenameAsideForRescan" /> when the scan fails or is cancelled.
     /// </summary>
     static void RestoreRetiredFile(string retiredPath, string canonicalPath, DriveBlock superseded)
     {
@@ -335,8 +389,6 @@ public sealed partial class FileIndex
         {
             if (File.Exists(retiredPath))
             {
-                // A failed producer can leave an incomplete file at the canonical path after
-                // releasing its mapping. Remove it before restoring the last good scan.
                 if (File.Exists(canonicalPath))
                 {
                     File.Delete(canonicalPath);
@@ -345,30 +397,14 @@ public sealed partial class FileIndex
                 File.Move(retiredPath, canonicalPath);
             }
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            // Best effort: if the move back fails, the retired file stays on disk under its
-            // renamed name. CleanupRetiredSiblings removes it on the next open for this drive,
-            // which then simply cold-scans instead of warm-starting - slower, never wrong.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Same reasoning as the IOException case above.
         }
 
-        // Whether or not the move back succeeded, the schedule set for the renamed path is no
-        // longer correct: either the file is back at its original name (nothing to delete under
-        // the old override) or it is still at the renamed name and the next open's cleanup owns
-        // it, not this block's eventual release.
         superseded.ClearScheduledDelete();
     }
 
-    /// <summary>
-    ///     Swaps in a new snapshot over the current <see cref="_driveBlocks" /> list and retains
-    ///     release state for each retired snapshot until disposal. The snapshot itself stays weakly
-    ///     referenced, so its finalizer remains the release path when its handles become unreachable
-    ///     while the index lives.
-    /// </summary>
+    /// <summary>Swaps in a new snapshot over the current <see cref="_driveBlocks" /> list.</summary>
     void PublishSnapshot()
     {
         Snapshot previous;
@@ -378,19 +414,11 @@ public sealed partial class FileIndex
             _snapshot = Snapshot.Create(_driveBlocks);
         }
 
-        // Complete, not started: a release that has begun still holds every block it has not
-        // reached yet, and dropping its record here would leave disposal with nothing to wait on.
         _retiredSnapshots.RemoveAll(retired => retired.Release.IsReleaseComplete);
         _retiredSnapshots.Add(new RetiredSnapshot(previous));
     }
 
-    /// <summary>
-    ///     Forces every retained release state to release its blocks now, including a retired
-    ///     snapshot that was collected before its finalizer ran, so disposal closes temp and cache
-    ///     files immediately. Waits out a release a finalizer already started rather than taking
-    ///     the started flag for a finished one, so this returns only once every retired block is
-    ///     genuinely closed.
-    /// </summary>
+    /// <summary>Forces every retained release state to release its blocks now.</summary>
     async ValueTask ReleaseAllRetiredSnapshotsAsync()
     {
         foreach (var retired in _retiredSnapshots)

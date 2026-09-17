@@ -75,6 +75,7 @@ public class FileIndexDriveStatusTests
         Assert.AreEqual('Z', index.Drives[0].DriveLetter);
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
         Assert.AreEqual(0u, index.Drives[0].LiveRowCount);
+        Assert.AreEqual(DriveFailureKind.None, index.Drives[0].FailureKind);
         Assert.AreEqual('T', index.Drives[1].DriveLetter);
         Assert.AreEqual(DriveState.Ready, index.Drives[1].State);
     }
