@@ -46,7 +46,8 @@ public partial class FileIndexResilienceTests
         }
     }
 
-    FileIndexOptions Options(bool noCache = false, IProgress<IndexScanProgress>? progress = null)
+    FileIndexOptions Options(bool noCache = false, IProgress<IndexScanProgress>? progress = null,
+        Action<string>? diagnostics = null)
     {
         return new FileIndexOptions
         {
@@ -54,7 +55,8 @@ public partial class FileIndexResilienceTests
             CacheDirectory = _cacheDirectory,
             NoCache = noCache,
             ProducerPolicy = ProducerPolicy.Enumeration,
-            Progress = progress
+            Progress = progress,
+            Diagnostics = diagnostics
         };
     }
 

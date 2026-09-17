@@ -57,9 +57,10 @@ public sealed record DriveStatus
     /// <summary>
     ///     Why this drive is <see cref="DriveState.Failed" />:
     ///     <see cref="DriveFailureKind.CacheDeclined" /> when a cache-only open declined it for
-    ///     lack of a usable cache block, <see cref="DriveFailureKind.ProducerFailed" /> when its
-    ///     MFT producer failed. <see cref="DriveFailureKind.None" /> in every other state,
-    ///     including <see cref="DriveState.Offline" />. A successful
+    ///     lack of a usable cache block, <see cref="DriveFailureKind.InUse" /> when the cache
+    ///     block is locked by another live index, <see cref="DriveFailureKind.ProducerFailed" />
+    ///     when its MFT producer failed. <see cref="DriveFailureKind.None" /> in every other
+    ///     state, including <see cref="DriveState.Offline" />. A successful
     ///     <see cref="FileIndex.RescanAsync" /> of a failed drive clears this back to
     ///     <see cref="DriveFailureKind.None" /> along with the state; a failed rescan of a
     ///     cache-declined drive moves it to <see cref="DriveFailureKind.ProducerFailed" />,

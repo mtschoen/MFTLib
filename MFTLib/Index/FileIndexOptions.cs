@@ -22,8 +22,9 @@ public sealed record FileIndexOptions
     /// <summary>
     ///     Opens each drive from its cache only. A drive with no usable cache (missing, corrupt,
     ///     or incompatible) is reported as <see cref="DriveState.Failed" /> with
-    ///     <see cref="DriveFailureKind.CacheDeclined" /> instead of falling back to a scan, and
-    ///     <see cref="FileIndex.RescanAsync" /> remains available to scan it later.
+    ///     <see cref="DriveFailureKind.CacheDeclined" /> (or <see cref="DriveFailureKind.InUse" />
+    ///     when another live index holds the cache block's owner lock) instead of falling back to
+    ///     a scan, and <see cref="FileIndex.RescanAsync" /> remains available to scan it later.
     /// </summary>
     public bool InitialOpenCacheOnly { get; init; }
 
@@ -62,4 +63,14 @@ public sealed record FileIndexOptions
     ///     uses.
     /// </summary>
     public IProgress<IndexDriveOpened>? OpenProgress { get; init; }
+
+    /// <summary>
+    ///     Receives one human-readable line for every block-file delete this index performs:
+    ///     the deleted path and the reason (a rejected cache validation, a stale ".retired-*"
+    ///     sweep, a superseded block's final release, a cancelled scan's partial replacement,
+    ///     or a rejected producer block). Invoked synchronously on whatever thread performs the
+    ///     delete, which can be a snapshot release inside <see cref="FileIndex.DisposeAsync" />,
+    ///     so a subscriber must be fast and non-blocking. Null (the default) logs nothing.
+    /// </summary>
+    public Action<string>? Diagnostics { get; init; }
 }

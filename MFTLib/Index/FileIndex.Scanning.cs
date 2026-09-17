@@ -18,15 +18,16 @@ public sealed partial class FileIndex
             driveOrdinal = (ushort)_driveBlocks.Count;
         }
 
-        // Cache-mode rescans can leave a renamed ".retired-*" sibling if a prior attempt
-        // aborted before it could remove it; no-cache blocks are now tied to
-        // FileOptions.DeleteOnClose and do not need sweep cleanup.
-        if (!_options.NoCache)
+        var slotOutcome = ResolveCanonicalOwnership(drive, driveLetter, driveOrdinal);
+        if (slotOutcome == CanonicalSlotOutcome.DeclinedInUse)
         {
-            CleanupRetiredSiblings(drive.DriveLetter, drive.VolumeSerial);
+            return;
         }
 
-        var warmStart = TryOpenExistingBlock(drive, driveOrdinal);
+        var ownsCanonicalSlot = slotOutcome == CanonicalSlotOutcome.Owned;
+        var warmStart = ownsCanonicalSlot
+            ? TryOpenExistingBlock(drive, driveOrdinal)
+            : new WarmStartResult(null, null);
         if (warmStart.DiscardedBlock is { } discardReason)
         {
             lock (_stateLock)
@@ -58,8 +59,9 @@ public sealed partial class FileIndex
                 return;
             }
 
-            var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, ComputeScanBlockPath(drive),
-                cancellationToken).ConfigureAwait(false);
+            var target = ComputeScanTarget(drive, ownsCanonicalSlot);
+            var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, target.Path,
+                target.DeleteOnClose, cancellationToken).ConfigureAwait(false);
             if (scanResult is not { } completedScan)
             {
                 RecordFailedDrive(driveLetter, driveOrdinal, DriveFailureKind.ProducerFailed);
@@ -77,25 +79,6 @@ public sealed partial class FileIndex
         lock (_stateLock)
         {
             _driveBlocks.Add(driveBlock);
-        }
-    }
-
-    void RecordOfflineDrive(char driveLetter)
-    {
-        lock (_stateLock)
-        {
-            _blocklessDriveStatuses.Add(new DriveStatus
-            {
-                DriveLetter = driveLetter,
-                ProducerKind = ProducerKind.Enumeration,
-                BlockSource = BlockSource.None,
-                State = DriveState.Offline,
-                RowCount = 0,
-                LiveRowCount = 0,
-                ScanTimestamp = DateTime.MinValue,
-                CompactionNeeded = false,
-                WatchSupported = false
-            });
         }
     }
 
@@ -140,30 +123,6 @@ public sealed partial class FileIndex
         });
     }
 
-    void RecordFailedDrive(char driveLetter, ushort driveOrdinal, DriveFailureKind failureKind)
-    {
-        lock (_stateLock)
-        {
-            _blocklessDriveStatuses.Add(new DriveStatus
-            {
-                DriveLetter = driveLetter,
-                ProducerKind = ProducerKind.Mft,
-                BlockSource = BlockSource.None,
-                State = DriveState.Failed,
-                RowCount = 0,
-                LiveRowCount = 0,
-                ScanTimestamp = DateTime.MinValue,
-                CompactionNeeded = false,
-                WatchSupported = false,
-                MftProducerFailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveOrdinal),
-                FailureKind = failureKind
-            });
-            _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
-            _discardedBlocksByOrdinal.Remove(driveOrdinal);
-            _blockSourcesByOrdinal.Remove(driveOrdinal);
-        }
-    }
-
     readonly record struct WarmStartResult(DriveBlock? DriveBlock, BlockValidationResult? DiscardedBlock);
 
     /// <summary>
@@ -187,12 +146,12 @@ public sealed partial class FileIndex
     ///     always propagates.
     /// </summary>
     async Task<ScanDriveResult?> ProduceDriveBlockAsync(IndexedDrive drive, ushort driveOrdinal, string blockPath,
-        CancellationToken cancellationToken)
+        bool deleteOnClose, CancellationToken cancellationToken)
     {
         if (_options.ProducerPolicy == ProducerPolicy.Enumeration)
         {
             return await Task
-                .Run(() => ScanDrive(drive, driveOrdinal, blockPath, _options.NoCache, cancellationToken),
+                .Run(() => ScanDrive(drive, driveOrdinal, blockPath, deleteOnClose, cancellationToken),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -203,7 +162,7 @@ public sealed partial class FileIndex
 
         try
         {
-            var mftScanResult = await RunMftProducerAsync(drive, driveOrdinal, blockPath, producer,
+            var mftScanResult = await RunMftProducerAsync(drive, driveOrdinal, blockPath, deleteOnClose, producer,
                 cancellationToken).ConfigureAwait(false);
             lock (_stateLock)
             {
@@ -247,14 +206,14 @@ public sealed partial class FileIndex
     ///     adopted as a warning on an otherwise-trusted block.
     /// </summary>
     async Task<ScanDriveResult> RunMftProducerAsync(IndexedDrive drive, ushort driveOrdinal, string blockPath,
-        MftBlockProducer producer, CancellationToken cancellationToken)
+        bool deleteOnClose, MftBlockProducer producer, CancellationToken cancellationToken)
     {
         var request = new MftBlockProduceRequest
         {
             DriveLetter = drive.DriveLetter,
             VolumeSerial = drive.VolumeSerial,
             BlockPath = blockPath,
-            DeleteOnClose = _options.NoCache,
+            DeleteOnClose = deleteOnClose,
             Progress = _options.Progress
         };
 
@@ -281,7 +240,8 @@ public sealed partial class FileIndex
             // pass BlockHeader.Validate like any other valid block. Deleting it here, mirroring
             // BuildAndInitialize and RestoreRetiredFile, keeps a later TryOpenExistingBlock from
             // warm-starting off a block whose cursor invariant was just rejected.
-            BlockFile.TryDeleteFailedCreate(blockPath);
+            BlockFile.TryDeleteFailedCreate(blockPath, _options.Diagnostics,
+                "the MFT producer's block failed the journal cursor consistency check");
             throw new InvalidOperationException(
                 $"The MFT producer's block header carries journal cursor ({header.UsnJournalId}, " +
                 $"{header.UsnNextUsn}) but its result reported cursor ({scanResult.JournalId}, " +
@@ -291,15 +251,13 @@ public sealed partial class FileIndex
         return scanResult;
     }
 
+    /// <summary>
+    ///     Called only with the owner lock already held, so validation can never race another index's
+    ///     mutation and the discard is of this index's own slot.
+    /// </summary>
     WarmStartResult TryOpenExistingBlock(IndexedDrive drive, ushort driveOrdinal)
     {
-        if (_options.NoCache)
-        {
-            return new WarmStartResult(null, null);
-        }
-
-        var path = Path.Combine(CacheDirectoryPath,
-            CacheDirectory.BlockFileName(drive.DriveLetter, drive.VolumeSerial));
+        var path = CanonicalBlockPath(drive);
         var existedBeforeOpen = File.Exists(path);
 
         // Ownership of a successfully opened block passes directly to the DriveBlock built in
@@ -313,7 +271,7 @@ public sealed partial class FileIndex
                 if (!NameMatching.EqualsName(cachedRoot, drive.RootDirectory, caseSensitive: !OperatingSystem.IsWindows()))
                 {
                     block.Dispose();
-                    TryDeleteBestEffort(path);
+                    TryDeleteBestEffort(path, $"cache validation failed: {BlockValidationResult.WrongRootDirectory}");
                     return new WarmStartResult(null, BlockValidationResult.WrongRootDirectory);
                 }
             }
@@ -324,20 +282,12 @@ public sealed partial class FileIndex
 
         if (validation != BlockValidationResult.WrongMagic || existedBeforeOpen)
         {
-            TryDeleteBestEffort(path);
+            TryDeleteBestEffort(path, $"cache validation failed: {validation}");
         }
 
         // A block is only "discarded" when one genuinely existed and was rejected; a first-ever
         // scan with nothing at the path is not a discard.
         return new WarmStartResult(null, existedBeforeOpen ? validation : null);
-    }
-
-    string ComputeScanBlockPath(IndexedDrive drive)
-    {
-        return _options.NoCache
-            ? Path.Combine(Path.GetTempPath(),
-                $"mftlib-nocache-{Guid.NewGuid():N}-{CacheDirectory.BlockFileName(drive.DriveLetter, drive.VolumeSerial)}")
-            : Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(drive.DriveLetter, drive.VolumeSerial));
     }
 
     /// <summary>
@@ -383,7 +333,8 @@ public sealed partial class FileIndex
             SlotCapacity = BlockLayout.ComputeSlotCapacity(estimatedRows),
             NamePoolCapacity =
                 BlockLayout.ComputeNamePoolCapacity(EnumerationProducer.EstimateNamePoolBytes(estimatedRows)),
-            DeleteOnClose = deleteOnClose
+            DeleteOnClose = deleteOnClose,
+            Diagnostics = _options.Diagnostics
         });
         try
         {
@@ -405,5 +356,4 @@ public sealed partial class FileIndex
             block?.Dispose();
         }
     }
-
 }

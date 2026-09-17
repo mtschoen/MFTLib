@@ -200,7 +200,7 @@ public sealed unsafe class BlockFile : IDisposable
                 block.Dispose();
             }
 
-            TryDeleteFailedCreate(options.Path);
+            TryDeleteFailedCreate(options.Path, options.Diagnostics);
             throw;
         }
     }
@@ -382,11 +382,13 @@ public sealed unsafe class BlockFile : IDisposable
         }
     }
 
-    internal static void TryDeleteFailedCreate(string path)
+    internal static void TryDeleteFailedCreate(string path, Action<string>? diagnostics = null,
+        string reason = "block creation or header initialization failed")
     {
         try
         {
             File.Delete(path);
+            diagnostics?.Invoke($"Deleted block file '{path}': {reason}.");
         }
         catch (IOException)
         {

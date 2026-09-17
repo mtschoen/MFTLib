@@ -361,13 +361,23 @@ reported `DriveState.Failed` and never falls back to a directory walk, and the
 enumeration producer runs only when a caller chooses `ProducerPolicy.Enumeration`
 explicitly, never as an inherited fallback decision. Why a `DriveState.Failed` drive has
 no block is reported as `DriveStatus.FailureKind`: `CacheDeclined` when
-`FileIndexOptions.InitialOpenCacheOnly` found no usable cache and forbade a scan, and
-`ProducerFailed` when the MFT producer itself failed. A failed drive of either kind
-accepts a per-drive `FileIndex.RescanAsync`, which scans it and clears the kind on success.
+`FileIndexOptions.InitialOpenCacheOnly` found no usable cache and forbade a scan, `InUse` when
+another live `FileIndex` holds the cache block's owner lock, and `ProducerFailed` when the MFT
+producer itself failed. A failed drive of either kind accepts a per-drive
+`FileIndex.RescanAsync`, which scans it and clears the kind on success.
 
 `FileIndexOptions.NoCache` blocks are created with `FileOptions.DeleteOnClose`, so the
 operating system removes them when the last handle closes, including when the process
 is killed rather than shut down gracefully.
+
+A cache-mode index takes a per-block owner lock - a sibling `<block>.lock` file held open with
+`FileShare.None` - for as long as it owns a canonical cache block, on Windows and on Linux.
+While another live index holds that lock, a second `FileIndex` never validates, renames, or
+deletes the block: a cache-only open reports the drive `Failed` with `DriveFailureKind.InUse`,
+and a non-cache-only open scans into a private delete-on-close block in the temp directory
+without replacing the canonical cache. The lock is released on disposal and by the operating
+system if the process dies, so a killed index never strands its cache slot. Every block-file
+delete is reported through `FileIndexOptions.Diagnostics` with the path and the reason.
 
 `FileIndexOptions.OpenProgress` reports open-time progress per drive: `OpenAsync`
 fires one `IndexDriveOpened` per configured drive, in configured order and

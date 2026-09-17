@@ -11,9 +11,9 @@ public delegate Task<MftBlockProduceResult> MftBlockProducer(
 
 /// <summary>
 ///     What the index needs one drive's block to be. The producer creates the file at
-///     <see cref="BlockPath" /> exactly: cache mode against no-cache mode is already resolved
-///     by the time this request is built, and <see cref="DeleteOnClose" /> says which one it
-///     was.
+///     <see cref="BlockPath" /> exactly: cache mode, no-cache mode, and the private block an
+///     in-use canonical slot falls back to are already resolved by the time this request is
+///     built, and <see cref="DeleteOnClose" /> says which one it was.
 /// </summary>
 public sealed record MftBlockProduceRequest
 {

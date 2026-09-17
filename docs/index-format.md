@@ -16,6 +16,19 @@ writes it and `CacheDirectory.EnumerateCached` reads a directory back into drive
 letters and serials, so a consumer never parses the name itself and a future
 format change is one edit rather than one edit per consumer.
 
+## Cache ownership
+
+A live index owns its canonical block through a sibling `<drive>-<serial>.mlix.lock` file held
+open with `FileShare.None` for the block's whole lifetime (an exclusive flock on Unix). A
+second `FileIndex` that cannot take the lock never validates, renames, or deletes the block:
+validating a block another index is mutating can observe a half-updated header or name
+descriptor, and deleting a mapped file's name succeeds on Windows. Cache-only opens report the
+drive `Failed` with `DriveFailureKind.InUse`; other opens scan into a private
+`mftlib-private-<guid>-<name>` temp file with delete-on-close, the same shape `NoCache` uses
+with its `mftlib-nocache-` prefix. The lock file itself is never deleted, because unlinking it
+races another opener's create-and-lock; a leftover lock file matches no block-file pattern and
+is re-locked in place.
+
 ## Layout
 
 Little-endian throughout. Every region boundary is 4096-byte aligned.

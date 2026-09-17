@@ -12,6 +12,7 @@ public sealed class DriveBlock
     int _referenceCount;
     bool _released;
     string? _deleteAtPathOverride;
+    Action<string>? _deleteDiagnostics;
 
     public DriveBlock(char driveLetter, ushort driveOrdinal, BlockFile block, string? rootDirectoryPath = null)
     {
@@ -105,12 +106,13 @@ public sealed class DriveBlock
     ///     <see cref="BlockFile.Path" /> - fixed at construction and never updated by an external
     ///     rename - no longer names the file that must be removed once this block is done.
     /// </summary>
-    internal void ScheduleDeleteAt(string path)
+    internal void ScheduleDeleteAt(string path, Action<string>? diagnostics = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         lock (_gate)
         {
             _deleteAtPathOverride = path;
+            _deleteDiagnostics = diagnostics;
         }
     }
 
@@ -125,6 +127,7 @@ public sealed class DriveBlock
         lock (_gate)
         {
             _deleteAtPathOverride = null;
+            _deleteDiagnostics = null;
         }
     }
 
@@ -132,6 +135,7 @@ public sealed class DriveBlock
     {
         bool shouldUnmap;
         string? deleteOverride;
+        Action<string>? deleteDiagnostics;
         lock (_gate)
         {
             if (_referenceCount == 0)
@@ -148,6 +152,7 @@ public sealed class DriveBlock
             }
 
             deleteOverride = _deleteAtPathOverride;
+            deleteDiagnostics = _deleteDiagnostics;
         }
 
         if (!shouldUnmap)
@@ -165,6 +170,8 @@ public sealed class DriveBlock
         try
         {
             File.Delete(path);
+            deleteDiagnostics?.Invoke(
+                $"Deleted block file '{path}': superseded by a completed rescan and fully released.");
         }
         catch (IOException)
         {

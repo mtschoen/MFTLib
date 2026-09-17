@@ -592,4 +592,25 @@ public class FileIndexProducerSelectionTests
         Assert.IsNull(status.MftProducerFailureMessage);
         Assert.AreEqual(BlockSource.ProducedByScan, status.BlockSource);
     }
+
+    [TestMethod]
+    public async Task OpenAsync_MftWithACursorMismatchedProducer_LogsTheRejectedBlocksDelete()
+    {
+        Task<MftBlockProduceResult> MismatchedProducer(MftBlockProduceRequest request, CancellationToken _)
+        {
+            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+                JournalId: 99, NextUsn: 12345, SkippedRecordCount: 0, CompactionNeeded: false));
+        }
+
+        var deletions = new List<string>();
+        var options = Options(ProducerPolicy.Mft, MismatchedProducer) with { Diagnostics = deletions.Add };
+        await using var failedIndex = await FileIndex.OpenAsync(options,
+            TestContext.CancellationTokenSource.Token);
+
+        Assert.AreEqual(DriveState.Failed, failedIndex.Drives.Single().State);
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
+        Assert.IsNotNull(line, "the rejected producer block's delete must be logged with its path");
+        StringAssert.Contains(line, "journal cursor");
+    }
 }

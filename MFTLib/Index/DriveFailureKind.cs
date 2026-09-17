@@ -25,5 +25,13 @@ public enum DriveFailureKind
     ///     The drive's MFT producer failed during opening or its latest rescan;
     ///     <see cref="DriveStatus.MftProducerFailureMessage" /> carries the producer's error.
     /// </summary>
-    ProducerFailed
+    ProducerFailed,
+
+    /// <summary>
+    ///     A cache-only open found the cache block's owner lock held by another live
+    ///     <see cref="FileIndex" />, so this index never validated, renamed, or deleted the
+    ///     file. A non-cache-only open scans into a private block instead of failing.
+    ///     <see cref="FileIndex.RescanAsync" /> scans such a drive and clears this kind.
+    /// </summary>
+    InUse
 }

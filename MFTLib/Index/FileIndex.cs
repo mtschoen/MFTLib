@@ -22,6 +22,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly Dictionary<ushort, string> _mftProducerFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, string> _watchFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, BlockSource> _blockSourcesByOrdinal = [];
+    readonly Dictionary<char, BlockOwnerLock> _canonicalLocksByLetter = [];
     readonly List<RetiredSnapshot> _retiredSnapshots = [];
     readonly FileIndexOptions _options;
     readonly SemaphoreSlim _rescanGate = new(1, 1);
@@ -260,7 +261,23 @@ public sealed partial class FileIndex : IAsyncDisposable
             cancellationFailure = ExceptionDispatchInfo.Capture(exception);
         }
 
-        await ReleaseSnapshotsForDisposalAsync(cancellationFailure).ConfigureAwait(false);
+        try
+        {
+            await ReleaseSnapshotsForDisposalAsync(cancellationFailure).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_stateLock)
+            {
+                foreach (var ownerLock in _canonicalLocksByLetter.Values)
+                {
+                    ownerLock.Dispose();
+                }
+
+                _canonicalLocksByLetter.Clear();
+            }
+        }
+
         cancellationFailure?.Throw();
     }
 
@@ -284,6 +301,12 @@ public sealed partial class FileIndex : IAsyncDisposable
             }
 
             _driveBlocks.Clear();
+            foreach (var ownerLock in _canonicalLocksByLetter.Values)
+            {
+                ownerLock.Dispose();
+            }
+
+            _canonicalLocksByLetter.Clear();
         }
     }
 

@@ -64,7 +64,8 @@ public static class NamedBlockSection
                     fileStream.Dispose();
                 }
 
-                BlockFile.TryDeleteFailedCreate(options.Path);
+                BlockFile.TryDeleteFailedCreate(options.Path, options.Diagnostics,
+                    "block creation or section initialization failed");
             }
         }
     }

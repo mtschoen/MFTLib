@@ -8,8 +8,10 @@ public sealed partial class FileIndex
     ///     even while it is still mapped, since <see cref="BlockFile" /> opens with
     ///     <see cref="FileShare.Delete" />) so the new block can take the canonical name while a
     ///     handle from the retired snapshot keeps reading the renamed file until that snapshot is
-    ///     released. If the scan fails or is cancelled, the previous in-memory block is left in
-    ///     place and the renamed-aside file is moved straight back to restore the on-disk cache.
+    ///     released. The rename only happens while this index holds the canonical path's owner
+    ///     lock; a block another index owns is never renamed. If the scan fails or is cancelled,
+    ///     the previous in-memory block is left in place and the renamed-aside file is moved
+    ///     straight back to restore the on-disk cache.
     /// </summary>
     /// <remarks>
     ///     A rescan while watching disarms only this drive, swaps its block, resets catch-up to
@@ -104,9 +106,15 @@ public sealed partial class FileIndex
             superseded = _driveBlocks[driveOrdinal];
         }
 
-        var blockPath = ComputeScanBlockPath(drive);
-        var retiredPath = _options.NoCache ? null : RenameAsideForRescan(blockPath, superseded);
-        var scanResult = await ProduceRescannedBlockAsync(drive, driveOrdinal, blockPath, retiredPath,
+        // The rename-aside is licensed by the owner lock: an index that does not hold it (its
+        // block came from a private scan while another index owned the slot) rescans privately
+        // again and never touches the canonical file.
+        var ownsCanonicalSlot = !_options.NoCache && EnsureCanonicalOwnership(drive);
+        var target = ComputeScanTarget(drive, ownsCanonicalSlot);
+        var retiredPath = target.OwnsCanonicalSlot
+            ? RenameAsideForRescan(target.Path, superseded, _options.Diagnostics)
+            : null;
+        var scanResult = await ProduceRescannedBlockAsync(drive, driveOrdinal, target, retiredPath,
             superseded, cancellationToken).ConfigureAwait(false);
         if (scanResult is not { } completedScan)
         {
@@ -136,7 +144,7 @@ public sealed partial class FileIndex
         {
             if (retiredPath is not null)
             {
-                RestoreRetiredFile(retiredPath, blockPath, superseded);
+                RestoreRetiredFile(retiredPath, target.Path, superseded, _options.Diagnostics);
             }
 
             throw;
@@ -214,11 +222,14 @@ public sealed partial class FileIndex
     async Task ScanBlocklessDriveAsync(IndexedDrive drive, char driveLetter, CancellationToken cancellationToken)
     {
         var (blockless, driveOrdinal) = GetBlocklessDriveForRescan(driveLetter);
-        var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, ComputeScanBlockPath(drive),
-            cancellationToken).ConfigureAwait(false);
+        var ownsCanonicalSlot = !_options.NoCache && EnsureCanonicalOwnership(drive);
+        var target = ComputeScanTarget(drive, ownsCanonicalSlot);
+        var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, target.Path,
+            target.DeleteOnClose, cancellationToken).ConfigureAwait(false);
         if (scanResult is not { } completedScan)
         {
             RecordBlocklessProducerFailure(driveLetter, driveOrdinal);
+            ReleaseCanonicalOwnership(driveLetter);
             return;
         }
 
@@ -261,15 +272,16 @@ public sealed partial class FileIndex
     ///     scan fails, is cancelled, or reports this drive failed. Null means nothing to swap.
     /// </summary>
     async Task<ScanDriveResult?> ProduceRescannedBlockAsync(IndexedDrive drive, ushort driveOrdinal,
-        string blockPath, string? retiredPath, DriveBlock superseded, CancellationToken cancellationToken)
+        ScanBlockTarget target, string? retiredPath, DriveBlock superseded,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, blockPath, cancellationToken)
-                .ConfigureAwait(false);
+            var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, target.Path, target.DeleteOnClose,
+                cancellationToken).ConfigureAwait(false);
             if (scanResult is null && retiredPath is not null)
             {
-                RestoreRetiredFile(retiredPath, blockPath, superseded);
+                RestoreRetiredFile(retiredPath, target.Path, superseded, _options.Diagnostics);
             }
 
             return scanResult;
@@ -278,7 +290,7 @@ public sealed partial class FileIndex
         {
             if (retiredPath is not null)
             {
-                RestoreRetiredFile(retiredPath, blockPath, superseded);
+                RestoreRetiredFile(retiredPath, target.Path, superseded, _options.Diagnostics);
             }
 
             throw;
@@ -361,72 +373,6 @@ public sealed partial class FileIndex
         {
             ClearWatchFailureLocked(driveLetter);
         }
-    }
-
-    /// <summary>
-    ///     Renames the file currently at <paramref name="canonicalPath" /> aside, if one exists,
-    ///     and schedules it for deletion once <paramref name="superseded" /> is fully released.
-    /// </summary>
-    static string? RenameAsideForRescan(string canonicalPath, DriveBlock superseded)
-    {
-        if (!File.Exists(canonicalPath))
-        {
-            return null;
-        }
-
-        var retiredPath = $"{canonicalPath}.retired-{Guid.NewGuid():N}";
-        File.Move(canonicalPath, retiredPath);
-        superseded.ScheduleDeleteAt(retiredPath);
-        return retiredPath;
-    }
-
-    /// <summary>
-    ///     Undoes <see cref="RenameAsideForRescan" /> when the scan fails or is cancelled.
-    /// </summary>
-    static void RestoreRetiredFile(string retiredPath, string canonicalPath, DriveBlock superseded)
-    {
-        try
-        {
-            if (File.Exists(retiredPath))
-            {
-                if (File.Exists(canonicalPath))
-                {
-                    File.Delete(canonicalPath);
-                }
-
-                File.Move(retiredPath, canonicalPath);
-            }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-        }
-
-        superseded.ClearScheduledDelete();
-    }
-
-    /// <summary>Swaps in a new snapshot over the current <see cref="_driveBlocks" /> list.</summary>
-    void PublishSnapshot()
-    {
-        Snapshot previous;
-        lock (_stateLock)
-        {
-            previous = _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
-            _snapshot = Snapshot.Create(_driveBlocks);
-        }
-
-        _retiredSnapshots.RemoveAll(retired => retired.Release.IsReleaseComplete);
-        _retiredSnapshots.Add(new RetiredSnapshot(previous));
-    }
-
-    /// <summary>Forces every retained release state to release its blocks now.</summary>
-    async ValueTask ReleaseAllRetiredSnapshotsAsync()
-    {
-        foreach (var retired in _retiredSnapshots)
-        {
-            await retired.Release.ReleaseAsync().ConfigureAwait(false);
-        }
-
-        _retiredSnapshots.Clear();
     }
 
     /// <summary>What a rescan took off the watch, and what it therefore has to put back.</summary>
