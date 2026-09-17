@@ -62,6 +62,17 @@ The native DLL must be built Debug|x64 (linked with `/PROFILE`) for instrumentat
 
 The USN journal tests need admin. `scripts/native-coverage-elevated.ps1` self-elevates, runs `native-coverage.ps1` hidden, and streams results live to `native-coverage-elevated.log` at the repository root while the visible parent prints new log lines plus a heartbeat (every 30 seconds by default, configurable via `-HeartbeatSeconds` with a 2-second polling granularity). Pass `-TimeoutSeconds <int>` (default 1800) to adjust the warning threshold when running on slower hardware (the parent warns but continues waiting as long as the child process remains alive).
 
+Tests that reference the process-wide native delegate seams in `MFTLibNative`
+or `FileUtilities`, including calls to either `ResetToDefaults`, must carry
+class-level `[DoNotParallelize]`. Keep cleanup resets, but do not rely on them
+for isolation from concurrently running test classes. `NativeSeamIsolationTests`
+checks compiled IL references, including nested generated methods and local
+test helpers, and includes non-executed violation controls. Run this guard on
+Windows as well as Linux: Linux compilation excludes several Windows-only test
+classes. For stress validation, use 32 ClassLevel MSTest workers with the
+existing Linux platform exclusions in `scripts/coverage-linux.sh`; do not add
+new exclusions to hide seam races.
+
 ## Cleaning the working tree
 
 `git clean -ffxd` must always be safe to run. It is the check that this checkout still matches a fresh clone, so it is run before starting new work, and it must never be the thing that loses something.

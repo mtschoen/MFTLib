@@ -6,6 +6,7 @@ using Microsoft.Win32.SafeHandles;
 namespace MFTLib.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public class UsnJournalEntryTests
 {
     [TestCleanup]

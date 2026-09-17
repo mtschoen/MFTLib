@@ -8,6 +8,7 @@ namespace MFTLib.Tests;
 ///     Run via: scripts/run-admin-tests.ps1
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 [TestCategory("RequiresAdmin")]
 public class MftVolumeAdminTests
 {

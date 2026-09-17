@@ -12,6 +12,7 @@ namespace MFTLib.Tests;
 ///     These run without admin elevation.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 public class MockVolumeTests
 {
     [TestCleanup]

@@ -10,6 +10,7 @@ namespace MFTLib.Tests;
 ///     driven through the existing internal Func seams.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 public class ElevationProviderTests
 {
     [TestCleanup]

@@ -12,6 +12,7 @@ namespace MFTLib.Tests.Index;
 ///     without invoking the garbage collector.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 public class FileIndexBlockReleaseTests
 {
     string _treeRoot = null!;

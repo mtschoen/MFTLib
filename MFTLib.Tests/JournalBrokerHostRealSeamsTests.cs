@@ -16,6 +16,7 @@ namespace MFTLib.Tests;
 ///     delegates JournalBrokerHostTests injects directly.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 public partial class JournalBrokerHostRealSeamsTests : BrokerBlockTestBase
 {
     [TestCleanup]

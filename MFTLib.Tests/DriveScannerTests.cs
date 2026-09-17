@@ -7,6 +7,7 @@ using TestProgram;
 namespace MFTLib.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public class DriveScannerTests
 {
     [TestCleanup]

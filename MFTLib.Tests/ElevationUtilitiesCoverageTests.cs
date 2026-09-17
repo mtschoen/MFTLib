@@ -10,6 +10,7 @@ namespace MFTLib.Tests;
 ///     cross-platform tests in ElevationUtilitiesTests.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 public class ElevationUtilitiesCoverageTests
 {
     [TestCleanup]
