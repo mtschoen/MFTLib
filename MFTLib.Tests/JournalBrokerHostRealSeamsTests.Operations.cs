@@ -105,6 +105,7 @@ public partial class JournalBrokerHostRealSeamsTests
     public async Task ServeAsync_StartWatch_UsesRealWatchAndDisposeSeam()
     {
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        MockWatchJournalTip();
 
         var callCount = 0;
         MFTLibNative._watchUsnJournalBatch = (_, startUsn, journalId) =>
@@ -120,9 +121,7 @@ public partial class JournalBrokerHostRealSeamsTests
         var host = JournalBrokerHost.CreateDefault();
         var (clientSide, serverSide) = DuplexStream.CreatePair();
 
-        // A non-zero JournalId means the host uses this cursor directly instead of
-        // calling queryCursor (which would need MFTLibNative._queryUsnJournal mocked
-        // too) - keeps this test focused on the watch seam.
+        // The cached cursor precedes the queried tip, so the batch must precede CaughtUp.
         var request = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
         await clientSide.WriteAsync(request.WrittenMemory);
@@ -135,6 +134,11 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
         Assert.AreEqual("watched.txt", frame.Entries[0].FileName);
 
+        var caughtUp = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp.Kind);
+        Assert.AreEqual("C", caughtUp.Drive);
+        Assert.AreEqual(1U, caughtUp.ArmEpoch);
+
         await cts.CancelAsync();
         await serveTask; // ServeAsync swallows OperationCanceledException internally
     }
@@ -143,6 +147,7 @@ public partial class JournalBrokerHostRealSeamsTests
     public async Task ServeAsync_StartWatch_CancelledBetweenEmptyBatches_EndsWatchCleanly()
     {
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        MockWatchJournalTip();
         // Not a `using var`: the token is captured by the WatchUsnJournalBatch mock
         // below, so it is disposed explicitly at the end instead - safe because that
         // Dispose() runs only after ServeAsync (which drives the mock) completes.

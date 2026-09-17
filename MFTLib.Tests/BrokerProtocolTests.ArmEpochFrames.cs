@@ -81,6 +81,46 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
+    public void CaughtUpFrame_RoundTripsItsDriveAndArmEpoch()
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+
+        BrokerProtocol.WriteCaughtUp(buffer, "D:\\", uint.MaxValue);
+
+        var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
+        Assert.AreEqual(buffer.WrittenCount, consumed);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, frame.Kind);
+        Assert.AreEqual("D:\\", frame.Drive);
+        Assert.AreEqual(uint.MaxValue, frame.ArmEpoch);
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_CaughtUpFrame_WithArmEpoch()
+    {
+        // [totalLength int32][kind byte][driveByteLen int32][drive UTF-16][armEpoch uint32]
+        // totalLength = kind(1) + len(4) + "D"(2) + epoch(4) = 11; the drive length is a byte
+        // count, matching WriteError/WriteJournalBatch (driveBytes.Length), not a char count.
+        byte[] expected =
+        [
+            0x0B, 0x00, 0x00, 0x00,
+            0x12, // CaughtUp follows the existing journal-size request (16) and reply (17).
+            0x02, 0x00, 0x00, 0x00,
+            0x44, 0x00,
+            0x2A, 0x00, 0x00, 0x00
+        ];
+
+        var buffer = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteCaughtUp(buffer, "D", 42);
+        CollectionAssert.AreEqual(expected, buffer.WrittenSpan.ToArray());
+
+        var frame = BrokerProtocol.ReadFrame(expected, out var consumed);
+        Assert.AreEqual(expected.Length, consumed);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, frame.Kind);
+        Assert.AreEqual("D", frame.Drive);
+        Assert.AreEqual(42U, frame.ArmEpoch);
+    }
+
+    [TestMethod]
     public void NoArmEpoch_IsZeroSoAScanFrameCanNeverMatchALiveArm()
     {
         Assert.AreEqual(0U, BrokerFrame.NoArmEpoch);

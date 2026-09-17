@@ -174,6 +174,22 @@ reason bit alone. The state is runtime-only - it is not part of this format, is 
 persisted, and is discarded with the block a rescan replaces. A sequence-number change on
 the row resets the cycle, since the MFT segment was reused by a new file.
 
+## Watch catch-up
+
+When a watch session starts or a drive is re-armed after a rescan, the drive arms from its persisted
+journal cursor (`USN journal id` and `USN next USN` in the block header). The broker or watch source
+captures the current journal tip for that arm. Backlog journal batches between the resumed cursor and
+the arm tip are streamed and applied to the block in place, advancing the header's `USN next USN` and
+updating `LiveRowCount` and file rows under `_swapGate`. Once all backlog batches up to the arm tip have
+been applied, an epoch-tagged `CaughtUp` marker transitions the drive's `DriveStatus.WatchCatchUp` from
+`WatchCatchUpState.CatchingUp` to `WatchCatchUpState.CaughtUp` and completes `FileIndex.WaitForCatchUpAsync`.
+Live journal mutations continue seamlessly from that point. If a drive's watch faults (before or after
+catch-up), its state transitions to `WatchCatchUpState.Faulted` and any pending or subsequent
+`WaitForCatchUpAsync` call faults with the drive's exception. The all-drives `WaitForCatchUpAsync` overload
+completes when the slowest drive catches up and faults immediately upon the first drive watch failure or
+cancellation. Disposing the index, cancelling the watch session, or superseding the arm through `RescanAsync`
+cancels pending catch-up waits.
+
 ## Sidecars
 
 A follow-up children table or name index is a separate file next to the block,

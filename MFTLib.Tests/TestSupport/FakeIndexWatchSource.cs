@@ -371,6 +371,7 @@ internal sealed class FakeIndexWatchSource : IIndexWatchSource, IDisposable
         {
             JournalBatch batch => char.ToUpperInvariant(batch.DriveLetter),
             DriveWatchFailure failure => char.ToUpperInvariant(failure.DriveLetter),
+            DriveCaughtUp caughtUp => char.ToUpperInvariant(caughtUp.DriveLetter),
             _ => throw new ArgumentOutOfRangeException(nameof(item), item, "Unknown watch stream item.")
         };
     }

@@ -184,6 +184,27 @@ public static partial class BrokerProtocol
         writer.Advance(offset);
     }
 
+    public static void WriteCaughtUp(IBufferWriter<byte> writer, string drive, uint armEpoch)
+    {
+        var driveBytes = Encoding.Unicode.GetBytes(drive);
+        // payload: [driveLen int32][driveBytes][armEpoch uint32]
+        var payloadLength = 4 + driveBytes.Length + 4;
+        var totalLength = 1 + payloadLength;
+        var span = writer.GetSpan(4 + totalLength);
+        var offset = 0;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)BrokerFrameKind.CaughtUp;
+        offset += 1;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
+        offset += 4;
+        driveBytes.CopyTo(span[offset..]);
+        offset += driveBytes.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], armEpoch);
+        offset += 4;
+        writer.Advance(offset);
+    }
+
     public static void WriteWarning(IBufferWriter<byte> writer, string drive, string message)
     {
         var driveBytes = Encoding.Unicode.GetBytes(drive);

@@ -13,19 +13,20 @@ public interface IIndexWatchSource
 {
     /// <summary>
     ///     Yields every watched drive's batches on one stream, resuming each drive from its
-    ///     target's cursor. A drive whose watch fails yields one
-    ///     <see cref="DriveWatchFailure" /> and stops being read, leaving every other drive
-    ///     flowing. The stream completes when <paramref name="cancellationToken" /> is cancelled
-    ///     or when every drive it was reading has yielded its failure, and it throws only when the
-    ///     source cannot start at all or when a failure cannot be attributed to one drive.
-    ///     Completing it while a drive is still being watched is a source fault: the index has no
-    ///     drive left to watch and no failure to explain it, so it announces the end as a
-    ///     <see cref="WatchFaultKind.Source" /> fault against every watched drive. Two targets
-    ///     naming one drive are rejected with an <see cref="ArgumentException" /> before the
-    ///     source starts. The index cancels <paramref name="cancellationToken" /> when the
-    ///     session stops and the implementation must then finish, since a source that ignores its
-    ///     token wedges <see cref="FileIndex.StopWatchingAsync" /> until that call's own token
-    ///     bounds the wait.
+    ///     target's cursor. A source yields one <see cref="DriveCaughtUp" /> per arm once the
+    ///     backlog present at that arm has been delivered, immediately when there is none. A drive
+    ///     whose watch fails yields one <see cref="DriveWatchFailure" /> instead of ever yielding
+    ///     its marker and stops being read, leaving every other drive flowing. The stream
+    ///     completes when <paramref name="cancellationToken" /> is cancelled or when every drive
+    ///     it was reading has yielded its failure, and it throws only when the source cannot start
+    ///     at all or when a failure cannot be attributed to one drive. Completing it while a drive
+    ///     is still being watched is a source fault: the index has no drive left to watch and no
+    ///     failure to explain it, so it announces the end as a <see cref="WatchFaultKind.Source" />
+    ///     fault against every watched drive. Two targets naming one drive are rejected with an
+    ///     <see cref="ArgumentException" /> before the source starts. The index cancels
+    ///     <paramref name="cancellationToken" /> when the session stops and the implementation
+    ///     must then finish, since a source that ignores its token wedges
+    ///     <see cref="FileIndex.StopWatchingAsync" /> until that call's own token bounds the wait.
     /// </summary>
     IAsyncEnumerable<WatchStreamItem> StartWatching(
         IReadOnlyList<IndexWatchTarget> targets, CancellationToken cancellationToken);

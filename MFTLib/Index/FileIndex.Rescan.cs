@@ -16,13 +16,14 @@ public sealed partial class FileIndex
     /// </summary>
     /// <remarks>
     ///     A rescan while a watch is running disarms only this drive, swaps its block, clears its
-    ///     <see cref="DriveStatus.WatchFailureMessage" />, and re-arms only this drive from the
-    ///     fresh header cursor, while every other drive keeps streaming without losing a batch.
-    ///     Nothing produced for this drive before the re-arm is applied to the new block, whether
-    ///     it was still on the wire or already queued on the merged stream. A rescan issued after
-    ///     every drive has already faulted reclaims the session and starts a fresh one over every
-    ///     drive, discarding the fault it is recovering from. A failure to disarm or to re-arm
-    ///     surfaces from here, and records the drive's
+    ///     <see cref="DriveStatus.WatchFailureMessage" />, resets the re-armed drive's
+    ///     <see cref="DriveStatus.WatchCatchUp" /> to <see cref="WatchCatchUpState.CatchingUp" />,
+    ///     and re-arms only this drive from the fresh header cursor, while every other drive keeps
+    ///     streaming without losing a batch. Nothing produced for this drive before the re-arm is
+    ///     applied to the new block, whether it was still on the wire or already queued on the
+    ///     merged stream. A rescan issued after every drive has already faulted reclaims the
+    ///     session and starts a fresh one over every drive, discarding the fault it is recovering
+    ///     from. A failure to disarm or to re-arm surfaces from here, and records the drive's
     ///     <see cref="DriveStatus.WatchFailureMessage" /> first, because either one leaves the
     ///     drive off the watch with nothing coming to put it back.
     /// </remarks>
@@ -270,13 +271,18 @@ public sealed partial class FileIndex
             // in between, because it is disarmed at the source.
             var target = BuildWatchTarget(driveLetter);
             ClearWatchFailure(driveLetter);
+            // The re-arm starts a fresh catch-up over the backlog the rescan's new cursor sits
+            // behind; an arm failure faults the fresh slot through RecordWatchFailure below.
+            ArmWatchCatchUp(driveLetter);
             await session.Source.ArmDriveAsync(target, cancellationToken).ConfigureAwait(false);
             return;
         }
 
         // A message about a watch failure on a block that has just been replaced is no longer
-        // true, whether or not there is a session to arm this drive back onto.
+        // true, whether or not there is a session to arm this drive back onto. The catch-up slot
+        // goes with it: nothing is catching up, and a stale fault must not outlive its message.
         ClearWatchFailure(driveLetter);
+        RemoveStaleFaultedCatchUp(driveLetter);
         if (suspended.RestartWholeSession)
         {
             await StartWatchingCoreAsync(suspended.SessionToken, cancellationToken).ConfigureAwait(false);

@@ -8,22 +8,7 @@ public sealed partial class FileIndex
         _driveConfigurations[driveLetter] = drive;
         if (!Directory.Exists(drive.RootDirectory))
         {
-            lock (_stateLock)
-            {
-                _blocklessDriveStatuses.Add(new DriveStatus
-                {
-                    DriveLetter = driveLetter,
-                    ProducerKind = ProducerKind.Enumeration,
-                    BlockSource = BlockSource.None,
-                    State = DriveState.Offline,
-                    RowCount = 0,
-                    LiveRowCount = 0,
-                    ScanTimestamp = DateTime.MinValue,
-                    CompactionNeeded = false,
-                    WatchSupported = false
-                });
-            }
-
+            RecordOfflineDrive(driveLetter);
             return;
         }
 
@@ -92,6 +77,25 @@ public sealed partial class FileIndex
         lock (_stateLock)
         {
             _driveBlocks.Add(driveBlock);
+        }
+    }
+
+    void RecordOfflineDrive(char driveLetter)
+    {
+        lock (_stateLock)
+        {
+            _blocklessDriveStatuses.Add(new DriveStatus
+            {
+                DriveLetter = driveLetter,
+                ProducerKind = ProducerKind.Enumeration,
+                BlockSource = BlockSource.None,
+                State = DriveState.Offline,
+                RowCount = 0,
+                LiveRowCount = 0,
+                ScanTimestamp = DateTime.MinValue,
+                CompactionNeeded = false,
+                WatchSupported = false
+            });
         }
     }
 

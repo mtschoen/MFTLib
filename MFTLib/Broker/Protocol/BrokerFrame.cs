@@ -18,7 +18,8 @@ public enum BrokerFrameKind : byte
     VolumeInfo = 14,
     DisarmDrive = 15,
     GrowUsnJournal = 16,
-    UsnJournalSettings = 17
+    UsnJournalSettings = 17,
+    CaughtUp = 18
 }
 
 public readonly record struct BrokerFrame
@@ -187,6 +188,21 @@ public readonly record struct BrokerFrame
             Drive = drive,
             KeepFileNames = Array.Empty<string>(),
             Message = message
+        };
+    }
+
+    // One drive's arm has delivered its whole initial journal backlog; everything after this
+    // frame is a live entry. It carries the arm epoch like JournalBatch and Error, so a
+    // superseded arm's marker is dropped with that arm's batches.
+    public static BrokerFrame CaughtUp(string drive, uint armEpoch)
+    {
+        return new BrokerFrame
+        {
+            Kind = BrokerFrameKind.CaughtUp,
+            ArmEpoch = armEpoch,
+            Entries = Array.Empty<UsnJournalEntry>(),
+            Drive = drive,
+            KeepFileNames = Array.Empty<string>()
         };
     }
 

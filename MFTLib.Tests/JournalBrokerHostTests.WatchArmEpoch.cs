@@ -104,7 +104,7 @@ public partial class JournalBrokerHostTests
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var host = CreateHost(
-            _ => throw new AssertFailedException("A cached cursor must not be re-queried."),
+            _ => new UsnJournalCursor(1UL, 0L),
             (_, _, _) => [],
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
             (_, _, _) => throw new InvalidOperationException(

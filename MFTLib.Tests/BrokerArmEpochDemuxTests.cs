@@ -209,6 +209,83 @@ public sealed class BrokerArmEpochDemuxTests : BrokerBlockTestBase
         StringAssert.Contains(exception.Message, "drive C");
     }
 
+    [TestMethod]
+    public async Task Demux_DeliversACaughtUpFrameToTheDrivesLiveItemStream()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var client = MakeMinimalFakeClient(clientSide);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        await client.SendStartWatchAsync(WatchCursor("C"), cancellation.Token);
+        var startWatch = await ReadOneFrameAsync(serverSide, cancellation.Token);
+        var armEpoch = WatchSpecArmEpochs.ForDrive(startWatch, "C");
+        await using var items = client.CreateLiveWatchItemSource()("C", default, cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        await WriteFrameAsync(serverSide, writer => BrokerProtocol.WriteCaughtUp(writer, "C", armEpoch),
+            cancellation.Token);
+
+        Assert.IsTrue(await items.MoveNextAsync().AsTask().WaitAsync(cancellation.Token));
+        Assert.IsInstanceOfType<LiveWatchItem.CaughtUpMarker>(items.Current);
+    }
+
+    [TestMethod]
+    public async Task Demux_CreateBatchSourceSkipsCaughtUpMarkersAndKeepsStreaming()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var client = MakeMinimalFakeClient(clientSide);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        await client.SendStartWatchAsync(WatchCursor("C"), cancellation.Token);
+        var startWatch = await ReadOneFrameAsync(serverSide, cancellation.Token);
+        var armEpoch = WatchSpecArmEpochs.ForDrive(startWatch, "C");
+        await using var batches = client.CreateBatchSource()("C", default, cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        await WriteFrameAsync(serverSide, writer =>
+        {
+            BrokerProtocol.WriteCaughtUp(writer, "C", armEpoch);
+            BrokerProtocol.WriteJournalBatch(writer, "C", armEpoch, new UsnJournalCursor(7UL, 110L),
+                [JournalEntryFactory.Create(1, 101L, "current.txt")]);
+        }, cancellation.Token);
+
+        Assert.IsTrue(await batches.MoveNextAsync().AsTask().WaitAsync(cancellation.Token));
+        Assert.AreEqual(110L, batches.Current.Cursor.NextUsn);
+        Assert.AreEqual("current.txt", batches.Current.Entries.Single().FileName);
+    }
+
+    [TestMethod]
+    public async Task Demux_DropsACaughtUpFrameTaggedWithASupersededArmEpoch()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var client = MakeMinimalFakeClient(clientSide);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        await client.SendStartWatchAsync(WatchCursor("C"), cancellation.Token);
+        var firstStartWatch = await ReadOneFrameAsync(serverSide, cancellation.Token);
+        var firstArmEpoch = WatchSpecArmEpochs.ForDrive(firstStartWatch, "C");
+        await client.SendStartWatchAsync(WatchCursor("C", 500L), cancellation.Token);
+        var secondStartWatch = await ReadOneFrameAsync(serverSide, cancellation.Token);
+        var secondArmEpoch = WatchSpecArmEpochs.ForDrive(secondStartWatch, "C");
+        await using var items = client.CreateLiveWatchItemSource()("C", default, cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        await WriteFrameAsync(serverSide, writer =>
+        {
+            BrokerProtocol.WriteCaughtUp(writer, "C", firstArmEpoch);
+            BrokerProtocol.WriteCaughtUp(writer, "C", secondArmEpoch);
+            BrokerProtocol.WriteJournalBatch(writer, "C", secondArmEpoch, new UsnJournalCursor(7UL, 510L),
+                [JournalEntryFactory.Create(2, 501L, "fresh.txt")]);
+        }, cancellation.Token);
+
+        Assert.IsTrue(await items.MoveNextAsync().AsTask().WaitAsync(cancellation.Token));
+        Assert.IsInstanceOfType<LiveWatchItem.CaughtUpMarker>(items.Current);
+        Assert.IsTrue(await items.MoveNextAsync().AsTask().WaitAsync(cancellation.Token));
+        Assert.IsInstanceOfType<LiveWatchItem.Batch>(items.Current);
+        var batch = (LiveWatchItem.Batch)items.Current;
+        Assert.AreEqual(510L, batch.Cursor.NextUsn);
+    }
+
     JournalBrokerClient MakeMinimalFakeClient(Stream pipe)
     {
         return new JournalBrokerClient(pipe,

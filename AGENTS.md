@@ -136,13 +136,24 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       since a handle holds no index reference; disposal waits that listing out rather than cancelling it. Every
       other `FileEntry` member reads one row and keeps the per-access `IsReleased` check instead.
       `SnapshotRelease` counts borrows; `DisposeAsync` cancels a disposal token the seven `FileIndex` queries
-      are linked to, waits for the borrows on the current and retired snapshots to drop, and only then
-      unmaps. A suspended `Enumerate` enumerator holds its borrow between yields, so disposal waits until
-      it advances or is disposed, or, if abandoned, until garbage collection and finalization return the
-      borrow. Dispose enumerators promptly; collection timing is not guaranteed. The 4096-row checkpoint
+      and `WaitForCatchUpAsync` waits are linked to, waits for the borrows on the current and retired snapshots
+      to drop, and only then unmaps. A suspended `Enumerate` enumerator holds its borrow between yields, so
+      disposal waits until it advances or is disposed, or, if abandoned, until garbage collection and finalization
+      return the borrow. Dispose enumerators promptly; collection timing is not guaranteed. The 4096-row checkpoint
       bound applies to active scanning, not time spent suspended. Scanning on one thread while another
       disposes is therefore safe. The snapshot finalizer path
       is unaffected: a borrow holds the snapshot, so a borrowed snapshot is never collected.
+    - **Watch and catch-up lifetime**: `FileIndex.StartWatchingAsync` arms each MFT-backed drive and
+      transitions its `DriveStatus.WatchCatchUp` to `WatchCatchUpState.CatchingUp`. Backlog batches up to
+      the journal tip captured at arm time are applied to the block before an epoch-tagged `CaughtUp`
+      marker flips the drive to `WatchCatchUpState.CaughtUp`. `FileIndex.WaitForCatchUpAsync(char driveLetter, CancellationToken)`
+      waits for a single drive's initial catch-up: completes immediately if already caught up, faults if the
+      drive's watch faults (before or after the call), and cancels if superseded by a rescan re-arm, session
+      cancellation, or index disposal. The all-drives overload `FileIndex.WaitForCatchUpAsync(CancellationToken)`
+      completes when the slowest drive catches up and faults immediately on the first drive watch failure or
+      cancellation. Like scan queries, catch-up waits are linked to the index's disposal token so disposing
+      the index cancels pending waits rather than waiting them out; session cancellation or unhandled source
+      exceptions fault or cancel pending waiters rather than stranding them.
     - **Writer lifetime**: every `BlockWriter` operation holds a `BlockAccessScope` on its
       `BlockFile` for the operation's whole duration. `BlockFile.Dispose` refuses new scopes when
       it begins and waits for outstanding ones before unmapping, so a write racing disposal either

@@ -363,13 +363,36 @@ public sealed partial class JournalBrokerClient
             string driveLetter, UsnJournalCursor since,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            var channel = GetOrAddLiveChannel(NormalizeDriveLetter(driveLetter));
-            // ReadAllAsync completes normally on Channel.Complete() and throws the
-            // demux's InvalidOperationException on Channel.Complete(error) (broker death).
-            await foreach (var batch in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            await foreach (var item in ReadItemsAsync(driveLetter, since, cancellationToken).ConfigureAwait(false))
             {
-                yield return batch;
+                if (item is LiveWatchItem.Batch batch)
+                {
+                    yield return (batch.Entries, batch.Cursor);
+                }
             }
+        }
+    }
+
+    /// <summary>
+    ///     Returns the item-level counterpart to <see cref="CreateBatchSource" />, carrying the
+    ///     drive's catch-up markers alongside its batches. Internal: the only consumer is
+    ///     <see cref="BrokerIndexWatchSource" />.
+    /// </summary>
+    internal LiveWatchItemSource CreateLiveWatchItemSource()
+    {
+        return ReadItemsAsync;
+    }
+
+    async IAsyncEnumerable<LiveWatchItem> ReadItemsAsync(
+        string driveLetter, UsnJournalCursor since,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var channel = GetOrAddLiveChannel(NormalizeDriveLetter(driveLetter));
+        // ReadAllAsync completes normally on Channel.Complete() and throws the
+        // demux's InvalidOperationException on Channel.Complete(error) (broker death).
+        await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            yield return item;
         }
     }
 }

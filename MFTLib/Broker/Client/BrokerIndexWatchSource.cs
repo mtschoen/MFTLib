@@ -64,7 +64,7 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
                 SingleReader = true,
                 SingleWriter = false
             });
-            stream = new LiveStream(client, client.CreateBatchSource(), channel.Writer,
+            stream = new LiveStream(client, client.CreateLiveWatchItemSource(), channel.Writer,
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken));
             StartStream(stream, targets);
         }
@@ -158,12 +158,12 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
 
     void StartDriveReaderLocked(LiveStream stream, IndexWatchTarget target, char driveLetter)
     {
-        _readersByDrive[driveLetter] = ReadDriveAsync(stream.BatchSource, target,
+        _readersByDrive[driveLetter] = ReadDriveAsync(stream.ItemSource, target,
             _armGenerationsByDrive.GetValueOrDefault(driveLetter), stream.Writer,
             stream.ReaderCancellation.Token);
     }
 
-    async Task ReadDriveAsync(JournalBatchSource batchSource, IndexWatchTarget target, int armGeneration,
+    async Task ReadDriveAsync(LiveWatchItemSource itemSource, IndexWatchTarget target, int armGeneration,
         ChannelWriter<TaggedItem> writer, CancellationToken cancellationToken)
     {
         var driveLetter = char.ToUpperInvariant(target.DriveLetter);
@@ -171,11 +171,17 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         var cursor = new UsnJournalCursor(target.JournalId, target.NextUsn);
         try
         {
-            await foreach (var batch in batchSource(normalizedDrive, cursor, cancellationToken).ConfigureAwait(false))
+            await foreach (var item in itemSource(normalizedDrive, cursor, cancellationToken).ConfigureAwait(false))
             {
-                await writer.WriteAsync(new TaggedItem(
-                    new JournalBatch(driveLetter, batch.Entries, batch.Cursor.JournalId, batch.Cursor.NextUsn),
-                    driveLetter, armGeneration), cancellationToken).ConfigureAwait(false);
+                WatchStreamItem streamItem = item switch
+                {
+                    LiveWatchItem.Batch batch => new JournalBatch(driveLetter, batch.Entries,
+                        batch.Cursor.JournalId, batch.Cursor.NextUsn),
+                    LiveWatchItem.CaughtUpMarker => new DriveCaughtUp(driveLetter),
+                    _ => throw new InvalidOperationException($"Unknown live watch item: {item.GetType().Name}.")
+                };
+                await writer.WriteAsync(new TaggedItem(streamItem, driveLetter, armGeneration),
+                    cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception exception) when (
@@ -319,6 +325,6 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     readonly record struct TaggedItem(WatchStreamItem Item, char DriveLetter, int ArmGeneration);
 
     /// <summary>Everything one running stream owns, so a per-drive member reaches it in one read.</summary>
-    sealed record LiveStream(JournalBrokerClient Client, JournalBatchSource BatchSource,
+    sealed record LiveStream(JournalBrokerClient Client, LiveWatchItemSource ItemSource,
         ChannelWriter<TaggedItem> Writer, CancellationTokenSource ReaderCancellation);
 }

@@ -30,6 +30,17 @@ public partial class JournalBrokerHostRealSeamsTests : BrokerBlockTestBase
         return new SafeFileHandle(new IntPtr(1), false);
     }
 
+    static void MockWatchJournalTip()
+    {
+        MFTLibNative._queryUsnJournal = _ =>
+        {
+            var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
+            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalId = 7, NextUsn = 200 }, pointer, false);
+            return pointer;
+        };
+        MFTLibNative._freeUsnJournalInfo = Marshal.FreeHGlobal;
+    }
+
     // Native filename entries include an in-use file, an unused file, and an empty name.
     static unsafe IntPtr BuildThreeNameRecordsResult()
     {

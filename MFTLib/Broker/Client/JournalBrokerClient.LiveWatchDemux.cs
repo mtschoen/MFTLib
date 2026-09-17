@@ -4,7 +4,7 @@ namespace MFTLib;
 
 public sealed partial class JournalBrokerClient
 {
-    readonly Dictionary<string, Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>> _liveChannels =
+    readonly Dictionary<string, Channel<LiveWatchItem>> _liveChannels =
         new(StringComparer.OrdinalIgnoreCase);
 
     readonly object _liveChannelsLock = new();
@@ -92,11 +92,25 @@ public sealed partial class JournalBrokerClient
                     var batchDrive = NormalizeDriveLetter(value.RequireDrive());
                     if (TryGetArmedLiveChannel(batchDrive, value.ArmEpoch) is { } batchChannel)
                     {
-                        batchChannel.Writer.TryWrite((value.Entries, value.Cursor));
+                        batchChannel.Writer.TryWrite(new LiveWatchItem.Batch(value.Entries, value.Cursor));
                     }
                     else
                     {
                         BrokerDiagnostics.Log($"Dropped a JournalBatch for drive {batchDrive} at arm epoch {value.ArmEpoch}.");
+                    }
+                    break;
+                }
+
+            case BrokerFrameKind.CaughtUp:
+                {
+                    var caughtUpDrive = NormalizeDriveLetter(value.RequireDrive());
+                    if (TryGetArmedLiveChannel(caughtUpDrive, value.ArmEpoch) is { } caughtUpChannel)
+                    {
+                        caughtUpChannel.Writer.TryWrite(new LiveWatchItem.CaughtUpMarker());
+                    }
+                    else
+                    {
+                        BrokerDiagnostics.Log($"Dropped a CaughtUp frame for drive {caughtUpDrive} at arm epoch {value.ArmEpoch}.");
                     }
                     break;
                 }
@@ -120,7 +134,7 @@ public sealed partial class JournalBrokerClient
         }
     }
 
-    Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> GetOrAddLiveChannel(string normalizedDrive)
+    Channel<LiveWatchItem> GetOrAddLiveChannel(string normalizedDrive)
     {
         lock (_liveChannelsLock)
         {
@@ -128,11 +142,11 @@ public sealed partial class JournalBrokerClient
         }
     }
 
-    Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> GetOrAddLiveChannelLocked(string normalizedDrive)
+    Channel<LiveWatchItem> GetOrAddLiveChannelLocked(string normalizedDrive)
     {
         if (!_liveChannels.TryGetValue(normalizedDrive, out var channel))
         {
-            channel = Channel.CreateUnbounded<(UsnJournalEntry[], UsnJournalCursor)>();
+            channel = Channel.CreateUnbounded<LiveWatchItem>();
             // If the broker already died, hand back an already-completed channel so
             // a late subscriber faults immediately rather than awaiting forever.
             if (_liveEnded)
@@ -170,7 +184,7 @@ public sealed partial class JournalBrokerClient
         }
     }
 
-    Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>? TryGetArmedLiveChannel(
+    Channel<LiveWatchItem>? TryGetArmedLiveChannel(
         string normalizedDrive, uint armEpoch)
     {
         lock (_liveChannelsLock)
@@ -199,7 +213,7 @@ public sealed partial class JournalBrokerClient
         _armedEpochsByDrive.Remove(normalizedDrive);
         if (!_liveChannels.TryGetValue(normalizedDrive, out var channel))
         {
-            channel = Channel.CreateUnbounded<(UsnJournalEntry[], UsnJournalCursor)>();
+            channel = Channel.CreateUnbounded<LiveWatchItem>();
             _liveChannels[normalizedDrive] = channel;
         }
 

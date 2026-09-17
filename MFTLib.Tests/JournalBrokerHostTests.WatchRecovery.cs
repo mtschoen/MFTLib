@@ -16,9 +16,7 @@ public partial class JournalBrokerHostTests
         UsnJournalCursor QueryCursor(string drive)
         {
             queryCallCount++;
-            return drive == "C"
-                ? new UsnJournalCursor(1UL, 999L)
-                : throw new AssertFailedException($"Unexpected cursor query for drive {drive}.");
+            return drive == "C" ? new UsnJournalCursor(1UL, 999L) : new UsnJournalCursor(2UL, 500L);
         }
 
         IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> WatchDrive(
@@ -54,7 +52,7 @@ public partial class JournalBrokerHostTests
         StringAssert.Contains(error.RequireMessage(), "USN journal entries have been deleted; full rescan needed");
         StringAssert.Contains(error.RequireMessage(), "rescan");
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Warning));
-        Assert.AreEqual(0, queryCallCount);
+        Assert.AreEqual(2, queryCallCount);
 
         var batch = frames.Single(frame => frame.Kind == BrokerFrameKind.JournalBatch);
         Assert.AreEqual("D", batch.Drive);
@@ -104,7 +102,7 @@ public partial class JournalBrokerHostTests
     {
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var host = CreateHost(
-            _ => throw new AssertFailedException("A cached cursor must not be re-queried."),
+            _ => new UsnJournalCursor(1UL, 0L),
             (_, _, _) => [],
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
             (_, _, _) => throw new UnauthorizedAccessException("Access is denied"));
@@ -131,10 +129,10 @@ public partial class JournalBrokerHostTests
         var queryCallCount = 0;
         var watchCallCount = 0;
         var host = CreateHost(
-            drive =>
+            _ =>
             {
                 queryCallCount++;
-                throw new AssertFailedException($"QueryCursor must not be called for cached drive {drive}.");
+                return new UsnJournalCursor(1UL, 0L);
             },
             (_, _, _) => [],
             (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
@@ -155,7 +153,7 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual("C", error.Drive);
         StringAssert.Contains(error.RequireMessage(), "USN journal wrapped before the cached cursor");
         Assert.AreEqual(1, watchCallCount);
-        Assert.AreEqual(0, queryCallCount);
+        Assert.AreEqual(1, queryCallCount);
         Assert.AreEqual(BrokerFrameKind.EndWatchAck,
             (await EndWatchAndReadAcknowledgementAsync(clientSide, cancellationSource.Token)).Kind);
 
@@ -177,6 +175,10 @@ public partial class JournalBrokerHostTests
         using var cancellationSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await WriteStartWatchAsync(clientSide, "C:0:0:1", cancellationSource.Token);
         var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cancellationSource.Token);
+
+        var caughtUp = await ReadOneFrameAsync(clientSide).WaitAsync(cancellationSource.Token);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp.Kind);
+        Assert.AreEqual(1U, caughtUp.ArmEpoch);
 
         var error = await ReadOneFrameAsync(clientSide).WaitAsync(cancellationSource.Token);
         Assert.AreEqual(BrokerFrameKind.Error, error.Kind);
@@ -218,7 +220,7 @@ public partial class JournalBrokerHostTests
         StringAssert.Contains(error.RequireMessage(), "7:100");
         StringAssert.Contains(error.RequireMessage(), "Journal ID mismatch");
         StringAssert.Contains(error.RequireMessage(), "rescan");
-        Assert.AreEqual(0, queryCallCount);
+        Assert.AreEqual(1, queryCallCount);
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Warning));
         Assert.AreEqual(BrokerFrameKind.EndWatchAck, frames[^1].Kind);
 

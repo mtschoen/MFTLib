@@ -68,7 +68,10 @@ public partial class JournalBrokerHostTests
         var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
 
         var first = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, first.Kind);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, first.Kind);
+        Assert.AreEqual(1U, first.ArmEpoch);
+        var batch = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
         Assert.AreEqual(new UsnJournalCursor(9UL, 500L), watchedFrom);
 
         await cts.CancelAsync();

@@ -99,6 +99,7 @@ public static partial class BrokerProtocol
             BrokerFrameKind.Cursor => ReadCursorFrame(payload),
             BrokerFrameKind.JournalBatch => ReadJournalBatchFrame(payload),
             BrokerFrameKind.Error => ReadErrorFrame(payload),
+            BrokerFrameKind.CaughtUp => ReadCaughtUpFrame(payload),
             BrokerFrameKind.ScanProgress => ReadScanProgressFrame(payload),
             BrokerFrameKind.Warning => ReadWarningFrame(payload),
             BrokerFrameKind.QueryVolumes => BrokerFrame.QueryVolumes(ReadString(payload, 0, out _)),
@@ -183,6 +184,13 @@ public static partial class BrokerProtocol
         offset += 4;
         var message = ReadString(payload, offset, out _);
         return BrokerFrame.Error(drive, armEpoch, message);
+    }
+
+    static BrokerFrame ReadCaughtUpFrame(ReadOnlySpan<byte> payload)
+    {
+        var drive = ReadString(payload, 0, out var offset);
+        var armEpoch = BinaryPrimitives.ReadUInt32LittleEndian(payload[offset..]);
+        return BrokerFrame.CaughtUp(drive, armEpoch);
     }
 
     static BrokerFrame ReadWarningFrame(ReadOnlySpan<byte> payload)

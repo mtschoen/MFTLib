@@ -60,4 +60,19 @@ public sealed record DriveStatus
     ///     rescan. Null while the watch is healthy or not running.
     /// </summary>
     public string? WatchFailureMessage { get; init; }
+
+    /// <summary>
+    ///     Where this drive's live watch stands in draining the journal backlog that was present
+    ///     when its current arm started. Session-scoped: <see cref="WatchCatchUpState.NotStarted" />
+    ///     whenever no session is draining the drive (before the first
+    ///     <see cref="FileIndex.StartWatchingAsync" /> and again after
+    ///     <see cref="FileIndex.StopWatchingAsync" />), <see cref="WatchCatchUpState.CatchingUp" />
+    ///     while an arm applies its backlog, <see cref="WatchCatchUpState.CaughtUp" /> once that
+    ///     backlog has been applied and the drive is on live entries, and
+    ///     <see cref="WatchCatchUpState.Faulted" /> when the drive's watch fails, with detail in
+    ///     <see cref="WatchFailureMessage" />. <see cref="FileIndex.RescanAsync" /> resets the one
+    ///     drive it re-arms to <see cref="WatchCatchUpState.CatchingUp" />. Always
+    ///     <see cref="WatchCatchUpState.NotStarted" /> for a drive that cannot be watched.
+    /// </summary>
+    public WatchCatchUpState WatchCatchUp { get; init; }
 }

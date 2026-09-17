@@ -212,7 +212,7 @@ public sealed class BrokerArmOrderingTests : BrokerBlockTestBase
                 .GetAsyncEnumerator(cancellation.Token);
             moveNext = batches.MoveNextAsync().AsTask();
             var liveChannels = GetPrivateField<
-                Dictionary<string, Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>>>(
+                Dictionary<string, Channel<LiveWatchItem>>>(
                     client, "_liveChannels");
             var replacementChannelCompletion = liveChannels["C"].Reader.Completion;
 

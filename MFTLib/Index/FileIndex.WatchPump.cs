@@ -3,19 +3,25 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     One watch session's cancellation, pump, and source held together, so a start racing a
-    ///     stop cannot claim one and publish another. A single
+    ///     One watch session's cancellation, pump, source, and targets held together, so a start
+    ///     racing a stop cannot claim one and publish another. A single
     ///     <see cref="FileIndex._watchSession" /> field is claimed, read, and cleared under
     ///     <see cref="FileIndex._stateLock" />.
     /// </summary>
     sealed class WatchSession(CancellationTokenSource cancellation, IIndexWatchSource source,
-        CancellationToken callerToken)
+        IReadOnlyList<IndexWatchTarget> targets, CancellationToken callerToken)
     {
         public CancellationTokenSource Cancellation { get; } = cancellation;
 
         // The exact source the pump is reading, so a rescan reaches the arm and disarm
         // operations of the stream in flight rather than of some other instance.
         public IIndexWatchSource Source { get; } = source;
+
+        /// <summary>
+        ///     The drives this session armed, in the order <c>BuildWatchTargets</c> produced them:
+        ///     who a catch-up wait covers, and which drive letters count as watched.
+        /// </summary>
+        public IReadOnlyList<IndexWatchTarget> Targets { get; } = targets;
 
         /// <summary>The token this session's source was linked to, which a restart relinks to.</summary>
         public CancellationToken CallerToken { get; } = callerToken;
@@ -62,6 +68,11 @@ public sealed partial class FileIndex
                     dropped = !TryApplyBatch(batch, droppedDriveLettersWithoutOrdinal,
                         cancellationToken, ref firstFault);
                 }
+                else if (item is DriveCaughtUp caughtUp &&
+                         !IsDriveWatchFaulted(caughtUp.DriveLetter, droppedDriveLettersWithoutOrdinal))
+                {
+                    CompleteWatchCatchUp(caughtUp.DriveLetter);
+                }
 
                 if (dropped && !AnyWatchedDriveRemains(targets, droppedDriveLettersWithoutOrdinal))
                 {
@@ -75,6 +86,7 @@ public sealed partial class FileIndex
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            CancelPendingWatchCatchUpLocked();
             if (firstFault is null)
             {
                 throw;
@@ -85,6 +97,7 @@ public sealed partial class FileIndex
         catch (Exception exception)
         {
             firstFault ??= exception;
+            FaultPendingWatchCatchUpLocked(targets, exception);
             RaiseWatchFaulted(new WatchFault(WatchFaultKind.Source, null, exception));
         }
 
@@ -120,6 +133,7 @@ public sealed partial class FileIndex
                 if (TryGetDriveOrdinalLocked(target.DriveLetter, out var driveOrdinal))
                 {
                     _watchFailureMessagesByOrdinal.TryAdd(driveOrdinal, sourceEnded.Message);
+                    FaultWatchCatchUpLocked(driveOrdinal, sourceEnded);
                 }
                 else
                 {
@@ -193,9 +207,14 @@ public sealed partial class FileIndex
         bool firstDrop;
         lock (_stateLock)
         {
-            firstDrop = TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal)
+            var hasOrdinal = TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal);
+            firstDrop = hasOrdinal
                 ? _watchFailureMessagesByOrdinal.TryAdd(driveOrdinal, exception.Message)
                 : droppedDriveLettersWithoutOrdinal.Add(char.ToUpperInvariant(driveLetter));
+            if (firstDrop && hasOrdinal)
+            {
+                FaultWatchCatchUpLocked(driveOrdinal, exception);
+            }
         }
 
         if (!firstDrop)

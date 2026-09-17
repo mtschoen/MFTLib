@@ -60,11 +60,25 @@ public sealed partial class JournalBrokerHost
         var yieldedAny = false;
         try
         {
-            // A (0,0) cursor means the caller had no cached cursor for this drive (a warm
-            // start with an unknown cursor). Resolve the current cursor and watch from
-            // now so the live watch still works; only the pre-launch gap is lost, and
-            // there is no cached cursor that could have gone stale.
-            var effectiveSince = since.JournalId == 0 ? _queryCursor(drive) : since;
+            // The journal tip at arm time is what bounds this arm's backlog: every record up to
+            // it must be delivered before the drive can be called caught up. One query per arm,
+            // and the same query resolves a (0,0) sentinel into a watch-from-now cursor, so only
+            // the pre-launch gap is lost, and there is no cached cursor that could have gone stale.
+            var tip = _queryCursor(drive);
+            var effectiveSince = since.JournalId == 0 ? tip : since;
+
+            // No backlog at all: the drive starts on live entries, so the marker leads. The
+            // journal id guard runs on both comparisons: two journals' USN offsets are not
+            // comparable, and a mismatched tip belongs to a dead journal generation.
+            var caughtUpReported = effectiveSince.JournalId == tip.JournalId &&
+                                   effectiveSince.NextUsn >= tip.NextUsn;
+            if (caughtUpReported)
+            {
+                await WriteFrameAsync(stream, writeLock,
+                        writer => BrokerProtocol.WriteCaughtUp(writer, drive, request.ArmEpoch),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
             // No `.WithCancellation(cancellationToken)` here: cancellationToken is
             // already passed as the explicit third argument above, which the
@@ -77,6 +91,15 @@ public sealed partial class JournalBrokerHost
                 await WriteFrameAsync(stream, writeLock,
                         writer => BrokerProtocol.WriteJournalBatch(writer, drive, request.ArmEpoch, cursor, entries), cancellationToken)
                     .ConfigureAwait(false);
+
+                if (!caughtUpReported && cursor.JournalId == tip.JournalId && cursor.NextUsn >= tip.NextUsn)
+                {
+                    await WriteFrameAsync(stream, writeLock,
+                            writer => BrokerProtocol.WriteCaughtUp(writer, drive, request.ArmEpoch),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    caughtUpReported = true;
+                }
             }
         }
         catch (OperationCanceledException)

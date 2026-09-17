@@ -28,15 +28,17 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Starts one pump over every MFT-backed drive. Each drive resumes from the journal cursor
-    ///     persisted in its current block header, and every armed drive's
-    ///     <see cref="DriveStatus.WatchFailureMessage" /> is cleared. Cancelling
-    ///     <paramref name="cancellationToken" /> ends the session and raises no fault; the session
-    ///     is reclaimed by <see cref="StopWatchingAsync" /> or <see cref="DisposeAsync" />. An index
-    ///     with no watchable drives has nothing to start and completes immediately. A source whose
-    ///     stream ends while drives are still watched, without a stop and without cancellation,
-    ///     raises a <see cref="WatchFaultKind.Source" /> fault carrying no drive letter, marks
-    ///     every watched drive's <see cref="DriveStatus.WatchFailureMessage" />, and releases the
-    ///     session, so this method can be called again to start a fresh one.
+    ///     persisted in its current block header, every armed drive's
+    ///     <see cref="DriveStatus.WatchFailureMessage" /> is cleared, and its
+    ///     <see cref="DriveStatus.WatchCatchUp" /> begins at <see cref="WatchCatchUpState.CatchingUp" />.
+    ///     Cancelling <paramref name="cancellationToken" /> ends the session and raises no fault;
+    ///     the session is reclaimed by <see cref="StopWatchingAsync" /> or
+    ///     <see cref="DisposeAsync" />. An index with no watchable drives has nothing to start and
+    ///     completes immediately. A source whose stream ends while drives are still watched,
+    ///     without a stop and without cancellation, raises a <see cref="WatchFaultKind.Source" />
+    ///     fault carrying no drive letter, marks every watched drive's
+    ///     <see cref="DriveStatus.WatchFailureMessage" />, and releases the session, so this
+    ///     method can be called again to start a fresh one.
     /// </summary>
     public Task StartWatchingAsync(CancellationToken cancellationToken)
     {
@@ -73,8 +75,23 @@ public sealed partial class FileIndex
             }
 
             ClearWatchFailures(targets);
+            foreach (var target in targets)
+            {
+                ArmWatchCatchUpLocked(target.DriveLetter);
+            }
+
             var session = new WatchSession(
-                CancellationTokenSource.CreateLinkedTokenSource(sessionToken), source, sessionToken);
+                CancellationTokenSource.CreateLinkedTokenSource(sessionToken), source, targets, sessionToken);
+            session.Cancellation.Token.Register(() =>
+            {
+                lock (_stateLock)
+                {
+                    if (ReferenceEquals(_watchSession, session))
+                    {
+                        CancelPendingWatchCatchUpLocked();
+                    }
+                }
+            });
             session.Pump = PumpAsync(session, targets);
             _watchSession = session;
         }
@@ -85,6 +102,8 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Cancels the current watch, waits for its pump to finish, and rethrows the first fault
     ///     observed during the session. Calling this when no watch is active has no effect.
+    ///     Reclaiming the session resets every watched drive's
+    ///     <see cref="DriveStatus.WatchCatchUp" /> to <see cref="WatchCatchUpState.NotStarted" />.
     ///     <paramref name="cancellationToken" /> bounds the wait: cancelling it abandons the wait
     ///     and throws, and deliberately leaves the session in place so a later stop or
     ///     <see cref="DisposeAsync" /> can still reclaim it. A source that ignores the token this
@@ -133,6 +152,7 @@ public sealed partial class FileIndex
                     if (ReferenceEquals(_watchSession, session))
                     {
                         _watchSession = null;
+                        ResetWatchCatchUpLocked();
                     }
                 }
 
