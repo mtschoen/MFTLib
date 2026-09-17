@@ -41,6 +41,19 @@ if (git tag -l $tag) {
     exit 1
 }
 
+# --- Push destinations ---
+# The tag is pushed to these URLs directly instead of through local remote
+# names: remote names differ per checkout (chonkers: origin=GitHub, gitea=Gitea;
+# llamabox: origin=Gitea, github=GitHub), and a remote name's destination can
+# be silently redirected by a configured pushurl. A literal URL cannot be
+# renamed or redirected out from under this script.
+$giteaRepositoryUrl = "gitea@gitea.fleet.sticktoitive.net:schoen/MFTLib.git"
+$githubRepositoryUrl = "git@github.com:mtschoen/MFTLib.git"
+
+Write-Host "The release tag will be pushed to Gitea at $giteaRepositoryUrl." -ForegroundColor Cyan
+Write-Host "The release tag will be pushed to GitHub at $githubRepositoryUrl." -ForegroundColor Cyan
+Write-Host ""
+
 # --- Verify the release commit is present on GitHub ---
 # SourceLink (PublishRepositoryUrl=true + SourceLink.GitHub) embeds the exact commit
 # being packed into the package, and symbol resolution for package consumers needs
@@ -75,12 +88,44 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "Release commit $releaseCommit is not present on GitHub main ($githubMirrorUrl)." -ForegroundColor Red
     Write-Host "GitHub main is currently at $githubMainCommit." -ForegroundColor Red
     Write-Host "Push the release commit to GitHub and re-run:" -ForegroundColor Yellow
-    Write-Host "  git push github main" -ForegroundColor Yellow
-    Write-Host "  (or, if the github remote is not configured locally: git push $githubMirrorUrl main)" -ForegroundColor Yellow
+    Write-Host "  git push $githubRepositoryUrl main" -ForegroundColor Yellow
     exit 1
 }
 
 Write-Host "Release commit $releaseCommit is present on GitHub main." -ForegroundColor Green
+Write-Host ""
+
+# --- Verify the release commit is present on Gitea ---
+# Gitea is the canonical forge for this repository. This check runs in both
+# dry-run and -Publish modes, alongside the GitHub mirror check above, so a
+# release commit that has not reached Gitea main surfaces before the coverage
+# run and pack, not only right before the tag is pushed.
+Write-Host "Verifying release commit $releaseCommit is present on Gitea main ($giteaRepositoryUrl)..." -ForegroundColor Cyan
+
+$giteaMainReference = git ls-remote $giteaRepositoryUrl refs/heads/main
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Could not reach Gitea ($giteaRepositoryUrl) with git ls-remote. Check network connectivity and try again." -ForegroundColor Red
+    exit 1
+}
+
+$giteaMainCommit = ($giteaMainReference -split "`t")[0]
+
+git fetch $giteaRepositoryUrl main
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Could not fetch main from Gitea ($giteaRepositoryUrl)." -ForegroundColor Red
+    exit 1
+}
+
+git merge-base --is-ancestor $releaseCommit FETCH_HEAD
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Release commit $releaseCommit is not present on Gitea main ($giteaRepositoryUrl)." -ForegroundColor Red
+    Write-Host "Gitea main is currently at $giteaMainCommit." -ForegroundColor Red
+    Write-Host "Push the release commit to Gitea and re-run:" -ForegroundColor Yellow
+    Write-Host "  git push $giteaRepositoryUrl main" -ForegroundColor Yellow
+    exit 1
+}
+
+Write-Host "Release commit $releaseCommit is present on Gitea main." -ForegroundColor Green
 Write-Host ""
 
 # --- Clean and restore ---
@@ -159,12 +204,27 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Published MFTLib $version to NuGet." -ForegroundColor Green
 
 # --- Tag and push ---
+# Gitea is the canonical forge, so the tag goes there first and a failed push
+# there is fatal: a tag missing from Gitea is the release-blocking hazard this
+# script guards against. Gitea's push mirror to GitHub can also prune refs
+# that Gitea lacks, so a tag pushed to GitHub only can later disappear there.
+# Both pushes target the URLs above directly: a remote name is a per-checkout
+# label, and its pushurl could point somewhere other than what the name implies.
 Write-Host ""
 Write-Host "Tagging $tag..." -ForegroundColor Cyan
 git tag $tag
-git push origin $tag
-if (git remote | Where-Object { $_ -eq "github" }) {
-    git push github $tag
+
+Write-Host "Pushing tag $tag to Gitea ($giteaRepositoryUrl)..." -ForegroundColor Cyan
+git push $giteaRepositoryUrl "refs/tags/$tag"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to push tag $tag to Gitea ($giteaRepositoryUrl). Gitea is the canonical forge for this repository; aborting so the tag is not left missing there." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Pushing tag $tag to GitHub ($githubRepositoryUrl)..." -ForegroundColor Cyan
+git push $githubRepositoryUrl "refs/tags/$tag"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to push tag $tag to GitHub ($githubRepositoryUrl)." -ForegroundColor Red
 }
 
 # --- Create GitHub release ---

@@ -35,12 +35,15 @@ Ensure the exact merged history on Gitea `main` is mirrored to GitHub so SourceL
 A Gitea push mirror to GitHub now syncs `main` on every commit (with an 8 hour fallback
 sync), and `scripts/release.ps1` refuses to run unless the release commit is present on
 GitHub `main`, so this step is a manual fallback rather than the only line of defense.
-Note: in this repository, remote `origin` points to Gitea and remote `github` points to GitHub:
+Note: remote names for Gitea and GitHub vary per checkout, and
+`scripts/release.ps1` pushes the release tag directly to the Gitea and GitHub
+URLs rather than through a local remote name, so use the URLs directly here
+too, regardless of local remote naming:
 
 ```bash
 git switch main
-git pull --ff-only origin main
-git push github main
+git pull --ff-only https://gitea.fleet.sticktoitive.net/schoen/MFTLib.git main
+git push https://github.com/mtschoen/MFTLib.git main
 ```
 
 ### 2. Validate downstream consumers (pre-publish sanity check)
@@ -65,8 +68,9 @@ On Windows (`chonkers`):
 ```
 
 This requires a clean tree, no existing `v0.3.0` tag, and the release commit already present
-on GitHub `main` (the script verifies this with `git ls-remote` and `git merge-base --is-ancestor`
-against the public mirror before doing anything else, in both dry-run and `-Publish` modes).
+on both Gitea `main` and GitHub `main` (the script verifies each with `git ls-remote` and
+`git merge-base --is-ancestor` before doing anything else, in both dry-run and `-Publish` modes,
+and prints the Gitea and GitHub URLs that will receive the tag).
 It resolves 64-bit MSBuild via `vswhere`,
 executes `scripts/run-coverage.ps1 -Configuration Release` (verifying full managed and elevated coverage),
 and packs `MFTLib.0.3.0.nupkg` and `.snupkg` with `ContinuousIntegrationBuild=true` without publishing.
@@ -80,16 +84,16 @@ On Windows (`chonkers`):
 ```
 
 Publishing requires the NuGet key at `C:\Users\mtsch\nugetkey` (`~/nugetkey`), authenticated GitHub tooling (`gh`),
-and the exact release commit already pushed to GitHub (`git push github main`).
+and the exact release commit already pushed to GitHub (`git push https://github.com/mtschoen/MFTLib.git main`,
+or `git push <your github remote> main` if one is configured).
 The script:
 1. Pushes the package to nuget.org via `dotnet nuget push`.
-2. Creates the git tag `v0.3.0` and pushes it to `origin` (and to `github` if the `github` remote is configured).
+2. Creates the git tag `v0.3.0` and pushes it directly to the Gitea URL
+   (`gitea@gitea.fleet.sticktoitive.net:schoen/MFTLib.git`) first, then the GitHub URL
+   (`git@github.com:mtschoen/MFTLib.git`), never through a local remote name. The Gitea
+   push is fatal on failure, since Gitea is the canonical forge and its push mirror to
+   GitHub can prune refs GitHub-only pushes would otherwise leave behind.
 3. Creates the GitHub release with `CHANGELOG.md` release notes via `gh release create`.
-
-If the `github` remote is not configured in the local repository, push the tag manually:
-```bash
-git push github v0.3.0
-```
 
 ### 5. Replace temporary consumer bridges
 
