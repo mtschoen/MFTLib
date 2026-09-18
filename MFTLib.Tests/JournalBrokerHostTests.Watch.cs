@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -251,4 +252,132 @@ public partial class JournalBrokerHostTests
         await serveTask;
     }
 
+    [TestMethod]
+    public async Task ServeAsync_WatchBatchWriteHitsBrokenPipe_SessionEndsNormally()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var brokenServer = new BrokenPipeStream(serverSide);
+        var secondBatchGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = CreateHost(
+            _ => new UsnJournalCursor(7UL, 100L),
+            (_, _, _) => [],
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
+            (_, _, cancellationToken) => GatedWatch(
+                ([SampleEntry()], new UsnJournalCursor(7UL, 110L)),
+                secondBatchGate.Task,
+                ([SampleEntry()], new UsnJournalCursor(7UL, 120L)),
+                cancellationToken));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await WriteStartWatchAsync(clientSide, "C:7:100:1", cts.Token);
+
+        var serveTask = host.ServeAsync(brokenServer, CreateSectionWriter(), false, cts.Token);
+
+        // The watch is live over the healthy pipe: the leading CaughtUp (the armed cursor
+        // equals the journal tip) and one batch arrive.
+        var caughtUp = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp.Kind);
+        var batch = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
+
+        // The client goes away while its watch is still armed. Breaking the pipe and only
+        // then releasing the pending batch keeps the disconnect deterministic: the serve
+        // loop is still blocked on its read, so no cancellation can pre-empt the write
+        // that is about to land on the dead client end.
+        brokenServer.BreakPipe();
+        secondBatchGate.SetResult();
+        await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
+        await clientSide.DisposeAsync();
+
+        // A client disconnect is the normal end of a broker session: ServeAsync completes
+        // rather than faulting with the broken-pipe IOException out of
+        // StopWatchGenerationAsync, which is what killed the elevated broker child.
+        await serveTask.WaitAsync(cts.Token);
+    }
+
+    [TestMethod]
+    public async Task ServeAsync_WatchFaultsWithBrokenPipe_ErrorFrameUnsendable_SessionEndsNormally()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var brokenServer = new BrokenPipeStream(serverSide);
+        var faultGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = CreateHost(
+            _ => new UsnJournalCursor(7UL, 100L),
+            (_, _, _) => [],
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
+            (_, _, _) => FaultingAfterGate(
+                ([SampleEntry()], new UsnJournalCursor(7UL, 110L)), faultGate.Task));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await WriteStartWatchAsync(clientSide, "C:7:100:1", cts.Token);
+
+        var serveTask = host.ServeAsync(brokenServer, CreateSectionWriter(), false, cts.Token);
+
+        var caughtUp = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp.Kind);
+        var batch = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
+
+        // The pipe dies, then the watch faults for real: the per-drive Error frame that
+        // reports the fault has no one left to receive it, and its write fails too.
+        brokenServer.BreakPipe();
+        faultGate.SetResult();
+        await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
+        await clientSide.DisposeAsync();
+
+        await serveTask.WaitAsync(cts.Token);
+    }
+
+    [TestMethod]
+    public async Task ServeAsync_LeadingCaughtUpWriteHitsBrokenPipe_SessionEndsNormally()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        // The pipe is already gone by the time the watch arms, so the leading CaughtUp for a
+        // cursor that sits at the journal tip is the first frame to land on the dead client.
+        await using var brokenServer = new BrokenPipeStream(serverSide);
+        brokenServer.BreakPipe();
+        var host = CreateHost(
+            _ => new UsnJournalCursor(7UL, 100L),
+            (_, _, _) => [],
+            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
+            (_, _, cancellationToken) => FakeWatch([([SampleEntry()], new UsnJournalCursor(7UL, 110L))],
+                cancellationToken));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await WriteStartWatchAsync(clientSide, "C:7:100:1", cts.Token);
+
+        var serveTask = host.ServeAsync(brokenServer, CreateSectionWriter(), false, cts.Token);
+
+        await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
+        await clientSide.DisposeAsync();
+
+        await serveTask.WaitAsync(cts.Token);
+    }
+
+    // Yields one batch, parks until the gate completes (the point where the test breaks the
+    // pipe), yields a second batch whose frame write then fails, and finally blocks like a
+    // live watch until cancelled.
+    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> GatedWatch(
+        (UsnJournalEntry[], UsnJournalCursor) firstBatch,
+        Task secondBatchGate,
+        (UsnJournalEntry[], UsnJournalCursor) secondBatch,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        yield return firstBatch;
+        await secondBatchGate;
+        yield return secondBatch;
+        await Task.Delay(Timeout.Infinite, cancellationToken);
+    }
+
+    // Yields one batch, parks until the gate completes, then faults for real. With the pipe
+    // broken at the gate, the host's attempt to report the fault as an Error frame fails too -
+    // the exact double failure the client-disconnect guard exists for.
+    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> FaultingAfterGate(
+        (UsnJournalEntry[], UsnJournalCursor) firstBatch,
+        Task faultGate)
+    {
+        yield return firstBatch;
+        await faultGate;
+        throw new InvalidOperationException("journal wrapped mid-stream");
+    }
 }

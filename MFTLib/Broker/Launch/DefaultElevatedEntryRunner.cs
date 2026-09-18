@@ -32,12 +32,17 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
 
         // Block the elevated child's entry thread for the whole broker session: this
         // process exists solely to serve the broker, so there is no other work to
-        // yield to. Safe from the usual sync-over-async deadlock risk because a
-        // console entry point has no SynchronizationContext to resume onto - every
-        // ServeAsync continuation runs on a thread-pool thread, not this one.
+        // yield to. What makes the blocking wait safe is the awaited chain, not the
+        // shape of the entry point - a consumer's elevated child can enter here on a
+        // thread that does carry a SynchronizationContext (file-wizard dispatches
+        // ElevatedEntryPoint.TryHandle from its WinUI App constructor, on the UI
+        // thread's DispatcherQueueSynchronizationContext). Every await from
+        // ServeAsync down to the native journal wait uses ConfigureAwait(false), so
+        // the first incomplete await already leaves the caller's context and no
+        // continuation is ever posted back to this thread for GetResult() to block on.
         JournalBrokerHost.CreateDefault()
             .ServeAsync(stream, new RealBlockSectionWriter(), oneShot, CancellationToken.None)
-            // aislop-ignore-next-line csharp-sync-over-async -- a console entry point has no SynchronizationContext to resume onto, so GetAwaiter().GetResult() cannot deadlock here
+            // aislop-ignore-next-line csharp-sync-over-async -- every await in the ServeAsync chain uses ConfigureAwait(false), so no continuation needs the calling thread's SynchronizationContext and GetResult() cannot deadlock even when the entry thread has one
             .GetAwaiter().GetResult();
 
         _exitProcess(0);

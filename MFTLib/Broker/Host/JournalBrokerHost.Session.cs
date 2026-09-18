@@ -19,7 +19,12 @@ public sealed partial class JournalBrokerHost
     ///     Every live <c>JournalBatch</c> and <c>Error</c> echoes that epoch so the client
     ///     can distinguish the current arm's frames from frames an earlier arm produced.
     ///     Returns on <c>Shutdown</c>, on EOF, or after one arm-and-scan when
-    ///     <paramref name="oneShot" /> is set (a single-UAC CLI-style path).
+    ///     <paramref name="oneShot" /> is set (a single-UAC CLI-style path). A client
+    ///     that closes the pipe while drives are watched ends the session the same way
+    ///     EOF does: a watch whose frame write fails on the broken pipe stops quietly
+    ///     (no <c>Error</c> frame can reach a gone client), so the watch tasks complete
+    ///     rather than fault and this method returns normally instead of crashing the
+    ///     elevated child.
     /// </summary>
     /// <param name="stream">The connected pipe to serve.</param>
     /// <param name="blockSectionWriter">
@@ -147,9 +152,10 @@ public sealed partial class JournalBrokerHost
     }
 
     // Cancel one drive's task, await its quiescence, and forget it. StreamWatchAsync
-    // catches OperationCanceledException internally and always returns normally, so this
-    // await cannot fault. A drive that is not armed is not an error: a client may disarm
-    // a drive whose stream the host already ended with its Error frame.
+    // catches OperationCanceledException internally and returns quietly on a frame write
+    // that found the client's pipe gone, so it always returns normally and this await
+    // cannot fault. A drive that is not armed is not an error: a client may disarm a drive
+    // whose stream the host already ended with its Error frame.
     static async Task DisarmWatchDriveAsync(WatchGeneration watch, string drive)
     {
         if (!watch.DriveWatches.Remove(drive, out var driveWatch))

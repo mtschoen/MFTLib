@@ -49,35 +49,27 @@ public sealed partial class JournalBrokerHost
     {
         var drive = request.Letter;
         var since = new UsnJournalCursor(request.JournalId, request.NextUsn);
-        if (_watchDrive == null)
-        {
-            await WriteFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteError(writer, drive, request.ArmEpoch, "Broker has no watch source"), cancellationToken)
-                .ConfigureAwait(false);
-            return;
-        }
-
         var yieldedAny = false;
         try
         {
-            // The journal tip at arm time is what bounds this arm's backlog: every record up to
-            // it must be delivered before the drive can be called caught up. One query per arm,
-            // and the same query resolves a (0,0) sentinel into a watch-from-now cursor, so only
-            // the pre-launch gap is lost, and there is no cached cursor that could have gone stale.
-            var tip = _queryCursor(drive);
-            var effectiveSince = since.JournalId == 0 ? tip : since;
-
-            // No backlog at all: the drive starts on live entries, so the marker leads. The
-            // journal id guard runs on both comparisons: two journals' USN offsets are not
-            // comparable, and a mismatched tip belongs to a dead journal generation.
-            var caughtUpReported = effectiveSince.JournalId == tip.JournalId &&
-                                   effectiveSince.NextUsn >= tip.NextUsn;
-            if (caughtUpReported)
+            if (_watchDrive == null)
             {
-                await WriteFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteCaughtUp(writer, drive, request.ArmEpoch),
+                await TryWriteWatchFrameAsync(stream, writeLock,
+                        writer => BrokerProtocol.WriteError(writer, drive, request.ArmEpoch, "Broker has no watch source"),
                         cancellationToken)
                     .ConfigureAwait(false);
+                return;
+            }
+
+            // ArmWatchAsync returns null, and every frame write below returns false, when a
+            // write found the client's end of the pipe gone. That is the normal way a broker
+            // session ends and not a watch failure, so this drive's watch returns here and
+            // its task completes instead of faulting: nothing can be reported to a client
+            // that is gone.
+            if (await ArmWatchAsync(stream, request, writeLock, since, cancellationToken)
+                    .ConfigureAwait(false) is not { } arm)
+            {
+                return;
             }
 
             // No `.WithCancellation(cancellationToken)` here: cancellationToken is
@@ -90,24 +82,30 @@ public sealed partial class JournalBrokerHost
             // is skipped entirely - shipping it would keep the loop alive, because even an
             // empty frame gets logged.
             var logFilter = BrokerDiagnostics.CreateLogFilter();
-            await foreach (var (entries, cursor) in _watchDrive(drive, effectiveSince, cancellationToken)
+            var caughtUpReported = arm.CaughtUpReported;
+            await foreach (var (entries, cursor) in _watchDrive(drive, arm.Since, cancellationToken)
                                .ConfigureAwait(false))
             {
                 yieldedAny = true;
                 var filtered = logFilter?.Filter(drive, entries) ?? entries;
-                if (filtered.Length > 0)
+                if (filtered.Length > 0 &&
+                    !await TryWriteWatchFrameAsync(stream, writeLock,
+                        writer => BrokerProtocol.WriteJournalBatch(writer, drive, request.ArmEpoch, cursor, filtered),
+                        cancellationToken).ConfigureAwait(false))
                 {
-                    await WriteFrameAsync(stream, writeLock,
-                            writer => BrokerProtocol.WriteJournalBatch(writer, drive, request.ArmEpoch, cursor, filtered), cancellationToken)
-                        .ConfigureAwait(false);
+                    return;
                 }
 
-                if (!caughtUpReported && cursor.JournalId == tip.JournalId && cursor.NextUsn >= tip.NextUsn)
+                if (!caughtUpReported && cursor.JournalId == arm.Tip.JournalId &&
+                    cursor.NextUsn >= arm.Tip.NextUsn)
                 {
-                    await WriteFrameAsync(stream, writeLock,
+                    if (!await TryWriteWatchFrameAsync(stream, writeLock,
                             writer => BrokerProtocol.WriteCaughtUp(writer, drive, request.ArmEpoch),
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                            cancellationToken).ConfigureAwait(false))
+                    {
+                        return;
+                    }
+
                     caughtUpReported = true;
                 }
             }
@@ -123,11 +121,46 @@ public sealed partial class JournalBrokerHost
         // diverge from the volume in silence. A rescan is the only recovery.
         catch (Exception exception)
         {
-            await WriteFrameAsync(stream, writeLock,
+            // A false result means the client disconnected between the failure and this
+            // report, so there is no one left to receive the Error frame and this watch ends
+            // quietly, exactly as the write-side returns above do.
+            await TryWriteWatchFrameAsync(stream, writeLock,
                     writer => BrokerProtocol.WriteError(writer, drive, request.ArmEpoch,
                         DescribeWatchFailure(drive, since, yieldedAny, exception)), CancellationToken.None)
                 .ConfigureAwait(false);
         }
+    }
+
+    // Resolves what bounds this arm's backlog and reports the leading CaughtUp marker when
+    // the armed cursor already sits at the journal tip. Returns null when that marker's
+    // write found the client's pipe already gone, which ends the watch quietly.
+    async Task<(UsnJournalCursor Tip, UsnJournalCursor Since, bool CaughtUpReported)?> ArmWatchAsync(
+        Stream stream, WatchDriveRequest request, SemaphoreSlim writeLock, UsnJournalCursor since,
+        CancellationToken cancellationToken)
+    {
+        var drive = request.Letter;
+
+        // The journal tip at arm time is what bounds this arm's backlog: every record up to
+        // it must be delivered before the drive can be called caught up. One query per arm,
+        // and the same query resolves a (0,0) sentinel into a watch-from-now cursor, so only
+        // the pre-launch gap is lost, and there is no cached cursor that could have gone stale.
+        var tip = _queryCursor(drive);
+        var effectiveSince = since.JournalId == 0 ? tip : since;
+
+        // No backlog at all: the drive starts on live entries, so the marker leads. The
+        // journal id guard runs on both comparisons: two journals' USN offsets are not
+        // comparable, and a mismatched tip belongs to a dead journal generation.
+        var caughtUpReported = effectiveSince.JournalId == tip.JournalId &&
+                               effectiveSince.NextUsn >= tip.NextUsn;
+        if (caughtUpReported &&
+            !await TryWriteWatchFrameAsync(stream, writeLock,
+                writer => BrokerProtocol.WriteCaughtUp(writer, drive, request.ArmEpoch), cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return (tip, effectiveSince, caughtUpReported);
     }
 
     // A cached cursor can fall outside the journal's live window before StartWatch is
@@ -168,6 +201,29 @@ public sealed partial class JournalBrokerHost
         finally
         {
             writeLock.Release();
+        }
+    }
+
+    // WriteFrameAsync for the watch loop. Returns false when the write failed because the
+    // client end of the pipe is gone (IOException: "Pipe is broken" / ERROR_NO_DATA), which
+    // is how a broker session normally ends rather than a watch failure - the caller stops
+    // that drive's watch quietly so its task completes instead of faulting. Everything else
+    // WriteFrameAsync can throw (cancellation, frame serialization) propagates unchanged,
+    // and only a frame write is translated: a real drive fault - InvalidOperationException
+    // from the journal query or watch, or FileUtilities' "Unable to open volume" IOException
+    // - never passes through this wrapper, so it keeps travelling as this drive's Error frame.
+    static async Task<bool> TryWriteWatchFrameAsync(Stream stream, SemaphoreSlim writeLock,
+        Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await WriteFrameAsync(stream, writeLock, write, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (IOException)
+        {
+            // The client closed its end of the pipe; no frame can reach it any more.
+            return false;
         }
     }
 
