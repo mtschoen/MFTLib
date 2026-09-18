@@ -1,9 +1,13 @@
 # .gitea/workflows/sync-consumers.yml
 name: sync-consumers
 # Keeps every consumer repo's MFTLib pin in sync with main.
-# Convention: a consumer repo carries .mftlib/pin (one line, the 40-char
-# commit sha of MFTLib its CI is pinned to). This workflow bumps that pin
-# across all opting-in consumer repositories on every push to main.
+# Convention: a consumer repo pins MFTLib with a git submodule whose url
+# resolves to this repository, declared in .gitmodules on its default branch.
+# Both consumers declare it at external/MFTLib with the relative url
+# ../MFTLib.git. The submodule gitlink is the pin, so this workflow bumps that
+# gitlink across every consumer on every push to main. A run that matches no
+# consumer fails rather than reporting success: a green fan-out that updated
+# nothing hides pin drift.
 #
 # Required one-time setup: create a Gitea Actions secret named
 # MFTLIB_SYNC_TOKEN on this repository, holding a personal access token for
@@ -33,6 +37,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
+      # Run before the fan-out, not only in the test workflow: this job holds
+      # the write token and pushes branches into other repositories, so a
+      # broken detection or bump path must not get that far.
+      - name: Test the sync script
+        run: bash scripts/sync_consumers.tests.sh
 
       - name: Sync consumer repos to the new MFTLib pin
         env:

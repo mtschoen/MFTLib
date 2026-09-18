@@ -10,46 +10,39 @@
 # consumer repository this script updates, or repos/search will not surface
 # private ones and the push/PR-create calls below will 403.
 #
-# Convention: a consumer repo opts in by carrying a file
-# .mftlib/pin on its default branch containing exactly the 40-char
-# sha of the MFTLib commit its CI is pinned to. A repo without that
-# file is not a consumer and is skipped silently.
+# Convention: a consumer repository pins MFTLib with a git submodule whose url
+# resolves to this repository. Both consumers declare that submodule at
+# external/MFTLib with the relative url ../MFTLib.git; the path is read from
+# .gitmodules rather than assumed. The gitlink is the single source of truth
+# for the pin, so the bump commits the new sha into the gitlink and opens a
+# pull request. A repository with no such submodule is not a consumer.
+#
+# Matching zero consumers is a failure, not a success. A fan-out that bumps
+# nothing while reporting green suppresses the signal that the pins drifted,
+# which is how both consumers fell four MFTLib pull requests behind (#194).
 #
 # Usage: sync_consumers.sh <new-sha>
 # Required env: GITEA_TOKEN
 # Optional env: GITEA_URL (default https://gitea.fleet.sticktoitive.net),
 #               GITEA_OWNER (default schoen), SELF_REPO (default MFTLib)
+#
+# Tests: bash scripts/sync_consumers.tests.sh
 
 set -u
 set -o pipefail
 
-NEW_SHA="${1:?usage: sync_consumers.sh <new-sha>}"
-if [[ ! "$NEW_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
-	echo "sync_consumers.sh: invalid sha '$NEW_SHA' (must be a 40-char hex string)" >&2
-	exit 1
-fi
+SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./mftlib_submodules.sh
+source "$SCRIPT_DIRECTORY/mftlib_submodules.sh"
 
 GITEA_URL="${GITEA_URL:-https://gitea.fleet.sticktoitive.net}"
 GITEA_OWNER="${GITEA_OWNER:-schoen}"
 SELF_REPO="${SELF_REPO:-MFTLib}"
-: "${GITEA_TOKEN:?GITEA_TOKEN env var is required}"
-
-for tool in curl git jq base64; do
-	if ! command -v "$tool" >/dev/null 2>&1; then
-		echo "sync_consumers.sh: required tool '$tool' not found on PATH" >&2
-		exit 1
-	fi
-done
 
 BRANCH="chore/mftlib-pin-bump"
-SHORT_SHA="${NEW_SHA:0:12}"
-PIN_FILE=".mftlib/pin"
-SCRATCH="$(mktemp -d)"
-trap 'rm -rf "$SCRATCH"' EXIT
+GITMODULES_FILE=".gitmodules"
+GITLINK_MODE="160000"
 
-auth_header="Authorization: token $GITEA_TOKEN"
-attempted=0
-failed=0
 declare -a SUMMARY
 
 record() {
@@ -68,6 +61,50 @@ authed_url() {
 	local scheme="${url%%://*}"
 	local rest="${url#*://}"
 	printf '%s://claude-code:%s@%s' "$scheme" "$GITEA_TOKEN" "$rest"
+}
+
+api_contents() {
+	# api_contents <repo> <branch> <path>: fetch one path's contents-API
+	# document into $SCRATCH/contents.json. Returns 2 when the path does not
+	# exist on that branch and 1 on any other transport failure.
+	local repo="$1" branch="$2" path="$3"
+	local encoded_branch encoded_path http_status
+	encoded_branch="$(printf '%s' "$branch" | jq -sRr @uri)"
+	encoded_path="$(printf '%s' "$path" | jq -sRr @uri)"
+	http_status="$(curl -sS -o "$SCRATCH/contents.json" -w '%{http_code}' -H "$auth_header" \
+		"$GITEA_URL/api/v1/repos/$GITEA_OWNER/$repo/contents/$encoded_path?ref=$encoded_branch")" || return 1
+	case "$http_status" in
+	200) return 0 ;;
+	404) return 2 ;;
+	*) return 1 ;;
+	esac
+}
+
+api_read_file() {
+	# api_read_file <repo> <branch> <path>: echo a text file's decoded
+	# contents. Returns the same codes as api_contents.
+	local repo="$1" branch="$2" path="$3"
+	local decoded
+	api_contents "$repo" "$branch" "$path" || return $?
+	decoded="$(jq -r '.content // empty' "$SCRATCH/contents.json" | tr -d '\n' | base64 -d)" || return 1
+	printf '%s' "$decoded"
+}
+
+api_read_gitlink_sha() {
+	# api_read_gitlink_sha <repo> <branch> <submodule_path>: echo the commit sha
+	# the gitlink at that path records. Returns 2 when the path does not exist
+	# on that branch and 1 when it exists but is not a usable submodule gitlink,
+	# so a malformed entry can never be committed into a consumer.
+	local repo="$1" branch="$2" path="$3"
+	local entry_type sha
+	api_contents "$repo" "$branch" "$path" || return $?
+	entry_type="$(jq -r '.type // empty' "$SCRATCH/contents.json")"
+	[ "$entry_type" = "submodule" ] || return 1
+	sha="$(jq -r '.sha // empty' "$SCRATCH/contents.json")"
+	case "$sha" in
+	'' | *[!0-9a-fA-F]*) return 1 ;;
+	esac
+	printf '%s' "$sha"
 }
 
 resolve_owner_uid() {
@@ -97,64 +134,35 @@ list_consumer_candidates() {
 	done
 }
 
-fetch_current_pin() {
-	# fetch_current_pin <repo> <default_branch>
-	# Echoes the current pinned sha and returns 0, or returns 2 if the repo
-	# is not a consumer (no .mftlib/pin file), or 1 on any other
-	# fetch failure.
-	local repo="$1" branch="$2"
-	local body_file="$SCRATCH/contents.json"
-	local encoded_branch
-	encoded_branch="$(printf '%s' "$branch" | jq -sRr @uri)"
-	local status
-	status="$(curl -sS -o "$body_file" -w '%{http_code}' -H "$auth_header" \
-		"$GITEA_URL/api/v1/repos/$GITEA_OWNER/$repo/contents/$PIN_FILE?ref=$encoded_branch")"
-	if [ "$status" = "404" ]; then
-		return 2
-	fi
-	if [ "$status" != "200" ]; then
-		return 1
-	fi
-	jq -r '.content' "$body_file" | tr -d '\n' | base64 -d | tr -d '[:space:]'
-}
-
-update_consumer() {
-	# update_consumer <repo> <default_branch> <clone_url>
-	local repo="$1" branch="$2" clone_url="$3"
-	local repo_dir="$SCRATCH/$repo"
-	rm -rf "$repo_dir"
-
-	local push_url
-	push_url="$(authed_url "$clone_url")"
-
-	if ! git clone --quiet --depth 1 --branch "$branch" "$push_url" "$repo_dir" >/dev/null 2>&1; then
-		record "$repo" "failed" "clone of $branch failed"
-		return 1
-	fi
-
+bump_gitlink() {
+	# bump_gitlink <repo_dir> <branch> <newline_separated_paths>: create the
+	# bump branch and commit the new sha into every listed gitlink.
+	local repo_dir="$1" branch="$2" paths="$3"
+	local path
 	(
 		cd "$repo_dir" || exit 1
 		git config user.name claude-code
 		git config user.email claude-code@noreply.sticktoitive.net
-		git checkout --quiet -b "$BRANCH"
-		mkdir -p "$(dirname "$PIN_FILE")"
-		printf '%s\n' "$NEW_SHA" >"$PIN_FILE"
-		git add "$PIN_FILE"
+		git checkout --quiet -b "$branch"
+		while IFS= read -r path; do
+			[ -n "$path" ] || continue
+			# --cacheinfo writes the gitlink straight into the index. The new
+			# MFTLib commit is absent from this shallow clone and never needs
+			# to be present, because nothing here checks the submodule out.
+			git update-index --cacheinfo "$GITLINK_MODE,$NEW_SHA,$path" || exit 1
+		done <<<"$paths"
 		git commit --quiet -m "chore: bump MFTLib pin to $SHORT_SHA"
-	) || {
-		record "$repo" "failed" "local commit failed"
-		return 1
-	}
+	)
+}
 
-	if ! git -C "$repo_dir" push --quiet --force "$push_url" "HEAD:refs/heads/$BRANCH" >/dev/null 2>&1; then
-		record "$repo" "failed" "force-push to $BRANCH failed"
-		return 1
-	fi
-
-	local pr_body pr_status pr_response
+open_pull_request() {
+	# open_pull_request <repo> <base_branch> <newline_separated_paths>
+	local repo="$1" base_branch="$2" paths="$3"
+	local detail pr_body pr_status pr_response
+	detail="${paths//$'\n'/, }"
 	pr_body="$(jq -n --arg title "chore: bump MFTLib pin to $SHORT_SHA" \
-		--arg head "$BRANCH" --arg base "$branch" \
-		--arg body "Automated update of $PIN_FILE to $NEW_SHA by sync-consumers." \
+		--arg head "$BRANCH" --arg base "$base_branch" \
+		--arg body "Automated update of the $detail submodule gitlink to $NEW_SHA by sync-consumers." \
 		'{title: $title, head: $head, base: $base, body: $body}')"
 	pr_response="$SCRATCH/pr_response.json"
 	pr_status="$(curl -sS -o "$pr_response" -w '%{http_code}' -X POST \
@@ -178,62 +186,160 @@ update_consumer() {
 	esac
 }
 
+update_consumer() {
+	# update_consumer <repo> <default_branch> <clone_url> <newline_separated_paths>
+	local repo="$1" branch="$2" clone_url="$3" paths="$4"
+	local repo_dir="$SCRATCH/$repo"
+	rm -rf "$repo_dir"
+
+	local push_url
+	push_url="$(authed_url "$clone_url")"
+
+	# No --recurse-submodules: the consumer's submodule content is irrelevant
+	# to a gitlink bump, and fetching it would pull all of MFTLib's history.
+	if ! git clone --quiet --depth 1 --branch "$branch" "$push_url" "$repo_dir" >/dev/null 2>&1; then
+		record "$repo" "failed" "clone of $branch failed"
+		return 1
+	fi
+
+	if ! bump_gitlink "$repo_dir" "$BRANCH" "$paths"; then
+		record "$repo" "failed" "local gitlink commit failed"
+		return 1
+	fi
+
+	if ! git -C "$repo_dir" push --quiet --force "$push_url" "HEAD:refs/heads/$BRANCH" >/dev/null 2>&1; then
+		record "$repo" "failed" "force-push to $BRANCH failed"
+		return 1
+	fi
+
+	open_pull_request "$repo" "$branch" "$paths"
+}
+
 process_repo() {
 	local repo="$1" branch="$2" clone_url="$3"
 	[ "$repo" = "$SELF_REPO" ] && return 0
+	candidates_seen=$((candidates_seen + 1))
 
-	local current_sha
-	current_sha="$(fetch_current_pin "$repo" "$branch")"
-	local rc=$?
-	if [ "$rc" -eq 2 ]; then
-		return 0 # not a consumer, skip silently
+	local gitmodules exit_code
+	gitmodules="$(api_read_file "$repo" "$branch" "$GITMODULES_FILE")"
+	exit_code=$?
+	if [ "$exit_code" -eq 2 ]; then
+		return 0 # no submodules at all, so nothing pins MFTLib
 	fi
-	if [ "$rc" -ne 0 ]; then
+	if [ "$exit_code" -ne 0 ]; then
 		attempted=$((attempted + 1))
 		failed=$((failed + 1))
-		record "$repo" "failed" "could not read $PIN_FILE"
+		record "$repo" "failed" "could not read $GITMODULES_FILE"
 		return 0
 	fi
-	if [ "$current_sha" = "$NEW_SHA" ]; then
+
+	local paths
+	paths="$(mftlib_submodule_paths "$SELF_REPO_URL" "$clone_url" "$gitmodules")"
+	if [ -z "$paths" ]; then
+		return 0 # has submodules, none of them MFTLib
+	fi
+	matched=$((matched + 1))
+
+	local path current_sha stale_paths=""
+	while IFS= read -r path; do
+		[ -n "$path" ] || continue
+		current_sha="$(api_read_gitlink_sha "$repo" "$branch" "$path")"
+		exit_code=$?
+		if [ "$exit_code" -ne 0 ]; then
+			attempted=$((attempted + 1))
+			failed=$((failed + 1))
+			record "$repo" "failed" "$path is declared in $GITMODULES_FILE but is not a readable gitlink"
+			return 0
+		fi
+		if [ "$current_sha" != "$NEW_SHA" ]; then
+			stale_paths+="$path"$'\n'
+		fi
+	done <<<"$paths"
+
+	if [ -z "$stale_paths" ]; then
 		record "$repo" "skipped" "already pinned to $SHORT_SHA"
 		return 0
 	fi
+	stale_paths="${stale_paths%$'\n'}"
 
 	attempted=$((attempted + 1))
-	if ! update_consumer "$repo" "$branch" "$clone_url"; then
+	if ! update_consumer "$repo" "$branch" "$clone_url" "$stale_paths"; then
 		failed=$((failed + 1))
 	fi
 }
 
-if ! OWNER_UID="$(resolve_owner_uid)" || [ -z "$OWNER_UID" ]; then
-	echo "sync_consumers.sh: could not resolve a Gitea user id for owner '$GITEA_OWNER'" >&2
-	exit 1
+main() {
+	NEW_SHA="${1:?usage: sync_consumers.sh <new-sha>}"
+	if [[ ! "$NEW_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+		echo "sync_consumers.sh: invalid sha '$NEW_SHA' (must be a 40-char hex string)" >&2
+		exit 1
+	fi
+	SHORT_SHA="${NEW_SHA:0:12}"
+	SELF_REPO_URL="$GITEA_URL/$GITEA_OWNER/$SELF_REPO"
+	: "${GITEA_TOKEN:?GITEA_TOKEN env var is required}"
+
+	for tool in curl git jq base64; do
+		if ! command -v "$tool" >/dev/null 2>&1; then
+			echo "sync_consumers.sh: required tool '$tool' not found on PATH" >&2
+			exit 1
+		fi
+	done
+
+	SCRATCH="$(mktemp -d)"
+	trap 'rm -rf "$SCRATCH"' EXIT
+	auth_header="Authorization: token $GITEA_TOKEN"
+
+	SUMMARY=()
+	candidates_seen=0
+	matched=0
+	attempted=0
+	failed=0
+
+	if ! OWNER_UID="$(resolve_owner_uid)" || [ -z "$OWNER_UID" ]; then
+		echo "sync_consumers.sh: could not resolve a Gitea user id for owner '$GITEA_OWNER'" >&2
+		exit 1
+	fi
+
+	local candidates
+	if ! candidates="$(list_consumer_candidates)"; then
+		echo "sync_consumers.sh: failed to list consumer candidate repositories from Gitea" >&2
+		exit 1
+	fi
+	if [ -z "$candidates" ]; then
+		echo "sync_consumers.sh: repos/search returned no repos for owner $GITEA_OWNER" >&2
+		exit 1
+	fi
+
+	local name default_branch clone_url
+	while IFS=$'\t' read -r name default_branch clone_url; do
+		[ -z "$name" ] && continue
+		process_repo "$name" "$default_branch" "$clone_url"
+	done <<<"$candidates"
+
+	echo
+	echo "sync-consumers summary for sha $NEW_SHA:"
+	printf '%-28s %-18s %s\n' "REPO" "RESULT" "DETAIL"
+	for row in ${SUMMARY[@]+"${SUMMARY[@]}"}; do
+		echo "$row"
+	done
+	echo "examined $candidates_seen repos, matched $matched consumers, attempted $attempted bumps, $failed failed"
+
+	if [ "$matched" -eq 0 ]; then
+		echo "sync_consumers.sh: no repository owned by $GITEA_OWNER pins $SELF_REPO with a submodule gitlink" >&2
+		echo "sync_consumers.sh: examined $candidates_seen candidates with $failed read failures; refusing to report success on zero matches" >&2
+		exit 1
+	fi
+
+	# Any failure is a failure, not just total failure: a consumer whose bump
+	# errored is still pinned to an older MFTLib, and a green run would hide it.
+	if [ "$failed" -gt 0 ]; then
+		echo "sync_consumers.sh: $failed of $attempted attempted repos failed and are still pinned to an older MFTLib" >&2
+		exit 1
+	fi
+
+	exit 0
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+	main "$@"
 fi
-
-if ! candidates="$(list_consumer_candidates)"; then
-	echo "sync_consumers.sh: failed to list consumer candidate repositories from Gitea" >&2
-	exit 1
-fi
-if [ -z "$candidates" ]; then
-	echo "sync_consumers.sh: repos/search returned no repos for owner $GITEA_OWNER" >&2
-	exit 1
-fi
-
-while IFS=$'\t' read -r name default_branch clone_url; do
-	[ -z "$name" ] && continue
-	process_repo "$name" "$default_branch" "$clone_url"
-done <<<"$candidates"
-
-echo
-echo "sync-consumers summary for sha $NEW_SHA:"
-printf '%-28s %-18s %s\n' "REPO" "RESULT" "DETAIL"
-for row in "${SUMMARY[@]}"; do
-	echo "$row"
-done
-
-if [ "$attempted" -gt 0 ] && [ "$failed" -eq "$attempted" ]; then
-	echo "sync_consumers.sh: every attempted repo ($attempted) failed" >&2
-	exit 1
-fi
-
-exit 0

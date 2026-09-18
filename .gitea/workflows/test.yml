@@ -284,6 +284,14 @@ jobs:
           fi
           echo "pin_only=$PIN_ONLY" >> "$GITHUB_OUTPUT"
 
+      # Needs only bash, git and jq, all present on ubuntu-latest, so it runs
+      # ahead of the toolchain setup and gives a fast signal on the fan-out
+      # script itself. Issue #194: the script reported success while matching
+      # no consumer at all, and nothing in CI exercised it.
+      - name: Test the consumer sync script
+        if: steps.changed-files.outputs.pin_only != 'true'
+        run: bash scripts/sync_consumers.tests.sh
+
       - name: Install build deps
         if: steps.changed-files.outputs.pin_only != 'true'
         # gcovr from apt (universe) instead of pip: the runner's egress to
