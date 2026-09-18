@@ -10,7 +10,7 @@ public sealed partial class JournalBrokerHost
         {
             if (_queryVolumeInfo == null)
             {
-                await WriteFrameAsync(stream, writeLock,
+                await WriteReplyFrameAsync(stream, writeLock,
                         writer => BrokerProtocol.WriteError(writer, request.Letter, BrokerFrame.NoArmEpoch,
                             "Broker has no volume information source"),
                         cancellationToken)
@@ -21,7 +21,7 @@ public sealed partial class JournalBrokerHost
             try
             {
                 var info = _queryVolumeInfo(request.Letter);
-                await WriteFrameAsync(stream, writeLock,
+                await WriteReplyFrameAsync(stream, writeLock,
                         writer => BrokerProtocol.WriteVolumeInfo(
                             writer, request.Letter, info.MftRecordCount, info.BytesPerFileRecordSegment,
                             info.MftValidDataLength),
@@ -31,10 +31,13 @@ public sealed partial class JournalBrokerHost
             // Deliberate per-drive boundary, matching HandleArmAndScanAsync: one drive's
             // query failure (access denied, volume closed) becomes an Error frame for
             // that drive, and the remaining drives are still queried. Cancellation is not
-            // a per-drive error and propagates to end the session.
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            // a per-drive error and propagates to end the session, and neither is a
+            // client disconnect: a reply that cannot reach the client ends the session
+            // rather than becoming one more drive's Error frame.
+            catch (Exception exception) when (exception is not OperationCanceledException
+                                              and not ClientDisconnectedException)
             {
-                await WriteFrameAsync(stream, writeLock,
+                await WriteReplyFrameAsync(stream, writeLock,
                         writer => BrokerProtocol.WriteError(writer, request.Letter, BrokerFrame.NoArmEpoch, exception.Message),
                         cancellationToken)
                     .ConfigureAwait(false);

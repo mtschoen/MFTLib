@@ -54,7 +54,7 @@ public sealed partial class JournalBrokerHost
         {
             if (_watchDrive == null)
             {
-                await TryWriteWatchFrameAsync(stream, writeLock,
+                await TryWriteFrameAsync(stream, writeLock,
                         writer => BrokerProtocol.WriteError(writer, drive, request.ArmEpoch, "Broker has no watch source"),
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -89,7 +89,7 @@ public sealed partial class JournalBrokerHost
                 yieldedAny = true;
                 var filtered = logFilter?.Filter(drive, entries) ?? entries;
                 if (filtered.Length > 0 &&
-                    !await TryWriteWatchFrameAsync(stream, writeLock,
+                    !await TryWriteFrameAsync(stream, writeLock,
                         writer => BrokerProtocol.WriteJournalBatch(writer, drive, request.ArmEpoch, cursor, filtered),
                         cancellationToken).ConfigureAwait(false))
                 {
@@ -99,7 +99,7 @@ public sealed partial class JournalBrokerHost
                 if (!caughtUpReported && cursor.JournalId == arm.Tip.JournalId &&
                     cursor.NextUsn >= arm.Tip.NextUsn)
                 {
-                    if (!await TryWriteWatchFrameAsync(stream, writeLock,
+                    if (!await TryWriteFrameAsync(stream, writeLock,
                             writer => BrokerProtocol.WriteCaughtUp(writer, drive, request.ArmEpoch),
                             cancellationToken).ConfigureAwait(false))
                     {
@@ -124,7 +124,7 @@ public sealed partial class JournalBrokerHost
             // A false result means the client disconnected between the failure and this
             // report, so there is no one left to receive the Error frame and this watch ends
             // quietly, exactly as the write-side returns above do.
-            await TryWriteWatchFrameAsync(stream, writeLock,
+            await TryWriteFrameAsync(stream, writeLock,
                     writer => BrokerProtocol.WriteError(writer, drive, request.ArmEpoch,
                         DescribeWatchFailure(drive, since, yieldedAny, exception)), CancellationToken.None)
                 .ConfigureAwait(false);
@@ -153,7 +153,7 @@ public sealed partial class JournalBrokerHost
         var caughtUpReported = effectiveSince.JournalId == tip.JournalId &&
                                effectiveSince.NextUsn >= tip.NextUsn;
         if (caughtUpReported &&
-            !await TryWriteWatchFrameAsync(stream, writeLock,
+            !await TryWriteFrameAsync(stream, writeLock,
                 writer => BrokerProtocol.WriteCaughtUp(writer, drive, request.ArmEpoch), cancellationToken)
                 .ConfigureAwait(false))
         {
@@ -204,15 +204,16 @@ public sealed partial class JournalBrokerHost
         }
     }
 
-    // WriteFrameAsync for the watch loop. Returns false when the write failed because the
-    // client end of the pipe is gone (IOException: "Pipe is broken" / ERROR_NO_DATA), which
-    // is how a broker session normally ends rather than a watch failure - the caller stops
-    // that drive's watch quietly so its task completes instead of faulting. Everything else
-    // WriteFrameAsync can throw (cancellation, frame serialization) propagates unchanged,
+    // WriteFrameAsync with the broken pipe translated into a false result: the write failed
+    // because the client end of the pipe is gone (IOException: "Pipe is broken" /
+    // ERROR_NO_DATA), which is how a broker session normally ends rather than a failure. The
+    // watch loop reads false as "stop this drive's watch quietly so its task completes
+    // instead of faulting"; WriteReplyFrameAsync reads it as "the session is over". Everything
+    // else WriteFrameAsync can throw (cancellation, frame serialization) propagates unchanged,
     // and only a frame write is translated: a real drive fault - InvalidOperationException
     // from the journal query or watch, or FileUtilities' "Unable to open volume" IOException
     // - never passes through this wrapper, so it keeps travelling as this drive's Error frame.
-    static async Task<bool> TryWriteWatchFrameAsync(Stream stream, SemaphoreSlim writeLock,
+    static async Task<bool> TryWriteFrameAsync(Stream stream, SemaphoreSlim writeLock,
         Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken)
     {
         try
@@ -224,6 +225,21 @@ public sealed partial class JournalBrokerHost
         {
             // The client closed its end of the pipe; no frame can reach it any more.
             return false;
+        }
+    }
+
+    // WriteFrameAsync for the request/response paths. They have no per-drive watch to stop
+    // quietly: a reply that cannot reach the client ends the whole session, because there is
+    // nobody left to serve and no failure left to explain. Throwing is what lets that one
+    // fact unwind every nested step of a request - the scan pipeline, its progress pump, and
+    // the per-drive catches that would otherwise report it as one more drive's Error frame -
+    // up to ServeAsync, which translates it into a normal return.
+    static async Task WriteReplyFrameAsync(Stream stream, SemaphoreSlim writeLock,
+        Action<ArrayBufferWriter<byte>> write, CancellationToken cancellationToken)
+    {
+        if (!await TryWriteFrameAsync(stream, writeLock, write, cancellationToken).ConfigureAwait(false))
+        {
+            throw new ClientDisconnectedException();
         }
     }
 

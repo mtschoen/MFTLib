@@ -24,7 +24,11 @@ public sealed partial class JournalBrokerHost
     ///     EOF does: a watch whose frame write fails on the broken pipe stops quietly
     ///     (no <c>Error</c> frame can reach a gone client), so the watch tasks complete
     ///     rather than fault and this method returns normally instead of crashing the
-    ///     elevated child.
+    ///     elevated child. A client that closes the pipe while a request is being
+    ///     answered ends the session the same way: the reply write that finds the pipe
+    ///     gone ends the session rather than throwing its <see cref="IOException" /> out
+    ///     of the elevated child, and any watch generation still live is stopped on the
+    ///     way out.
     /// </summary>
     /// <param name="stream">The connected pipe to serve.</param>
     /// <param name="blockSectionWriter">
@@ -49,6 +53,12 @@ public sealed partial class JournalBrokerHost
         catch (OperationCanceledException)
         {
             // Cancellation is the normal shutdown signal for a live watch session.
+        }
+        catch (ClientDisconnectedException)
+        {
+            // A reply found the client's end of the pipe gone, so the session is over: there
+            // is nobody left to serve, and no further frame can be delivered. The finally
+            // below stops any watch generation that was still live.
         }
         finally
         {
@@ -118,7 +128,7 @@ public sealed partial class JournalBrokerHost
 
                 case BrokerFrameKind.EndWatch:
                     await StopWatchGenerationAsync(watch).ConfigureAwait(false);
-                    await WriteFrameAsync(stream, writeLock, BrokerProtocol.WriteEndWatchAck, cancellationToken)
+                    await WriteReplyFrameAsync(stream, writeLock, BrokerProtocol.WriteEndWatchAck, cancellationToken)
                         .ConfigureAwait(false);
                     break;
 

@@ -27,11 +27,14 @@ public sealed partial class JournalBrokerHost
             // frame and the remaining drives still proceed - matching the existing
             // non-fatal per-drive journal contract. A throw here would abort the
             // whole session, losing the other drives' scans. Cancellation is not a
-            // per-drive error: let it propagate to end the session cleanly.
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            // per-drive error: let it propagate to end the session cleanly. Neither
+            // is a client disconnect - there is nobody left to report the drive to,
+            // and no point scanning the drives after it, so it ends the session too.
+            catch (Exception exception) when (exception is not OperationCanceledException
+                                              and not ClientDisconnectedException)
             {
                 var message = exception.Message;
-                await WriteFrameAsync(stream, writeLock,
+                await WriteReplyFrameAsync(stream, writeLock,
                         writer => BrokerProtocol.WriteError(writer, request.Letter, BrokerFrame.NoArmEpoch, message),
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -68,6 +71,10 @@ public sealed partial class JournalBrokerHost
                     writeLock, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
+        // The pump is awaited before the completion frames are written. A client that
+        // disappeared mid-scan is usually noticed by one of the pump's progress writes, and
+        // the ClientDisconnectedException that write throws surfaces through this await, so
+        // the session ends here instead of writing completion frames nobody can receive.
         finally
         {
             await pumpTask.ConfigureAwait(false);
@@ -101,7 +108,7 @@ public sealed partial class JournalBrokerHost
                         lastEmit = now;
                         throttled = null;
                         var progressToEmit = progress;
-                        await WriteFrameAsync(stream, writeLock,
+                        await WriteReplyFrameAsync(stream, writeLock,
                             writer => BrokerProtocol.WriteScanProgress(writer, progressToEmit),
                             cancellationToken).ConfigureAwait(false);
                     }
@@ -118,7 +125,7 @@ public sealed partial class JournalBrokerHost
             // must not reach this flush - a cancelled scan emits no partial final frame.
             if (throttled is { } pending)
             {
-                await WriteFrameAsync(stream, writeLock,
+                await WriteReplyFrameAsync(stream, writeLock,
                     writer => BrokerProtocol.WriteScanProgress(writer, pending),
                     cancellationToken).ConfigureAwait(false);
             }
@@ -146,7 +153,7 @@ public sealed partial class JournalBrokerHost
 
             Task EmitCursorAsync(UsnJournalCursor armedCursor)
             {
-                return WriteFrameAsync(stream, writeLock,
+                return WriteReplyFrameAsync(stream, writeLock,
                     writer => BrokerProtocol.WriteCursor(writer, input.Request.Letter, armedCursor), cancellationToken);
             }
 
@@ -194,11 +201,11 @@ public sealed partial class JournalBrokerHost
             Elapsed = scanOutput.scanElapsed
         };
 
-        await WriteFrameAsync(stream, writeLock,
+        await WriteReplyFrameAsync(stream, writeLock,
             writer => BrokerProtocol.WriteScanProgress(writer, finalProgress),
             cancellationToken).ConfigureAwait(false);
 
-        await WriteFrameAsync(stream, writeLock,
+        await WriteReplyFrameAsync(stream, writeLock,
             writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, scanOutput.writeResult.RowCount,
                 scanOutput.writeResult.NamePoolUsedBytes, scanOutput.writeResult.SkippedRecordCount),
             cancellationToken).ConfigureAwait(false);
@@ -221,7 +228,7 @@ public sealed partial class JournalBrokerHost
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             var freshCursor = _queryCursor(request.Letter);
-            await WriteFrameAsync(stream, writeLock,
+            await WriteReplyFrameAsync(stream, writeLock,
                 writer => BrokerProtocol.WriteWarning(writer, request.Letter,
                     $"Catch-up after scan failed: {exception.Message}; watching from the current journal " +
                     "position, changes made during the scan were not replayed"),
@@ -239,7 +246,7 @@ public sealed partial class JournalBrokerHost
             entries = logFilter.Filter(request.Letter, entries);
         }
 
-        await WriteFrameAsync(stream, writeLock,
+        await WriteReplyFrameAsync(stream, writeLock,
             writer => BrokerProtocol.WriteJournalBatch(writer, request.Letter, BrokerFrame.NoArmEpoch, updated, entries),
             cancellationToken).ConfigureAwait(false);
     }
