@@ -267,84 +267,92 @@ public partial class JournalBrokerHostRealSeamsTests
         MockWatchJournalTip();
 
         const int driveCount = 3;
-        using var watchEntered = new CountdownEvent(driveCount);
-        var cancelSignaled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        MFTLibNative._cancelUsnJournalWatch = _ =>
+        var watchEntered = new CountdownEvent(driveCount);
+        try
         {
-            cancelSignaled.TrySetResult();
-            return true;
-        };
+            var cancelSignaled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        MFTLibNative._watchUsnJournalBatch = (_, startUsn, journalId) =>
-        {
-            watchEntered.Signal();
-            // Simulate the kernel wait during live watch until cancellation/CancelIoEx arrives.
-            cancelSignaled.Task.GetAwaiter().GetResult();
-            // Return the synchronous ERROR_OPERATION_ABORTED result:
-            // an empty result with original cursor untouched and no error message.
-            return BuildEmptyWatchResult(journalId, startUsn);
-        };
-        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
-
-        var host = JournalBrokerHost.CreateDefault();
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        using var timeoutRegistration = cts.Token.Register(() => cancelSignaled.TrySetCanceled());
-
-        var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
-
-        // Arm watches across several drives with cursors matching the journal tip (7:200).
-        var startRequest = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(startRequest, "C:7:200:1,D:7:200:2,E:7:300:3");
-        await clientSide.WriteAsync(startRequest.WrittenMemory, cts.Token);
-        await clientSide.FlushAsync(cts.Token);
-
-        // Verify each drive reaches CaughtUp.
-        var caughtUpDrives = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < driveCount; i++)
-        {
-            var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-            Assert.AreEqual(BrokerFrameKind.CaughtUp, frame.Kind);
-            Assert.IsNotNull(frame.Drive);
-            caughtUpDrives.Add(frame.Drive);
-        }
-
-        Assert.AreEqual(driveCount, caughtUpDrives.Count);
-
-        // Ensure all drives are actively waiting inside the native watch seam before EndWatch is issued.
-        watchEntered.Wait(cts.Token);
-
-        // Deliberate EndWatch across the armed drives.
-        var endRequest = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteEndWatch(endRequest);
-        await clientSide.WriteAsync(endRequest.WrittenMemory, cts.Token);
-        await clientSide.FlushAsync(cts.Token);
-
-        // Drain frames between EndWatch and EndWatchAck, asserting zero Error (kind=7) frames are emitted.
-        var framesBetween = new List<BrokerFrame>();
-        while (true)
-        {
-            var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-            if (frame.Kind == BrokerFrameKind.EndWatchAck)
+            MFTLibNative._cancelUsnJournalWatch = _ =>
             {
-                break;
+                cancelSignaled.TrySetResult();
+                return true;
+            };
+
+            MFTLibNative._watchUsnJournalBatch = (_, startUsn, journalId) =>
+            {
+                watchEntered.Signal();
+                // Simulate the kernel wait during live watch until cancellation/CancelIoEx arrives.
+                cancelSignaled.Task.GetAwaiter().GetResult();
+                // Return the synchronous ERROR_OPERATION_ABORTED result:
+                // an empty result with original cursor untouched and no error message.
+                return BuildEmptyWatchResult(journalId, startUsn);
+            };
+            MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
+
+            var host = JournalBrokerHost.CreateDefault();
+            var (clientSide, serverSide) = DuplexStream.CreatePair();
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var timeoutRegistration = cts.Token.Register(() => cancelSignaled.TrySetCanceled());
+
+            var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
+
+            // Arm watches across several drives with cursors matching the journal tip (7:200).
+            var startRequest = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteStartWatch(startRequest, "C:7:200:1,D:7:200:2,E:7:300:3");
+            await clientSide.WriteAsync(startRequest.WrittenMemory, cts.Token);
+            await clientSide.FlushAsync(cts.Token);
+
+            // Verify each drive reaches CaughtUp.
+            var caughtUpDrives = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < driveCount; i++)
+            {
+                var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
+                Assert.AreEqual(BrokerFrameKind.CaughtUp, frame.Kind);
+                Assert.IsNotNull(frame.Drive);
+                caughtUpDrives.Add(frame.Drive);
             }
 
-            framesBetween.Add(frame);
+            Assert.AreEqual(driveCount, caughtUpDrives.Count);
+
+            // Ensure all drives are actively waiting inside the native watch seam before EndWatch is issued.
+            watchEntered.Wait(cts.Token);
+
+            // Deliberate EndWatch across the armed drives.
+            var endRequest = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteEndWatch(endRequest);
+            await clientSide.WriteAsync(endRequest.WrittenMemory, cts.Token);
+            await clientSide.FlushAsync(cts.Token);
+
+            // Drain frames between EndWatch and EndWatchAck, asserting zero Error (kind=7) frames are emitted.
+            var framesBetween = new List<BrokerFrame>();
+            while (true)
+            {
+                var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
+                if (frame.Kind == BrokerFrameKind.EndWatchAck)
+                {
+                    break;
+                }
+
+                framesBetween.Add(frame);
+            }
+
+            Assert.AreEqual(0, framesBetween.Count(frame => frame.Kind == BrokerFrameKind.Error),
+                "Expected zero Error (kind=7) frames between EndWatch and its ack.");
+            Assert.AreEqual(0, framesBetween.Count,
+                "Expected EndWatchAck to follow immediately without intervening frames.");
+
+            // Shut down the broker session cleanly.
+            var shutdownRequest = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteShutdown(shutdownRequest);
+            await clientSide.WriteAsync(shutdownRequest.WrittenMemory, cts.Token);
+            await clientSide.FlushAsync(cts.Token);
+            await serveTask;
         }
-
-        Assert.AreEqual(0, framesBetween.Count(frame => frame.Kind == BrokerFrameKind.Error),
-            "Expected zero Error (kind=7) frames between EndWatch and its ack.");
-        Assert.AreEqual(0, framesBetween.Count,
-            "Expected EndWatchAck to follow immediately without intervening frames.");
-
-        // Shut down the broker session cleanly.
-        var shutdownRequest = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteShutdown(shutdownRequest);
-        await clientSide.WriteAsync(shutdownRequest.WrittenMemory, cts.Token);
-        await clientSide.FlushAsync(cts.Token);
-        await serveTask;
+        finally
+        {
+            MFTLibNative.ResetToDefaults();
+            watchEntered.Dispose();
+        }
     }
 }
