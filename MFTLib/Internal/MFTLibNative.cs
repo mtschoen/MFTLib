@@ -30,6 +30,8 @@ static class MFTLibNative
     internal static Func<SafeHandle, long, ulong, IntPtr> _readUsnJournal = NativeReadUsnJournal;
     internal static Action<IntPtr> _freeUsnJournalResult = NativeFreeUsnJournalResult;
     internal static Func<SafeHandle, long, ulong, IntPtr> _watchUsnJournalBatch = NativeWatchUsnJournalBatch;
+    internal static Func<SafeHandle, long, ulong, SafeHandle, IntPtr> _watchUsnJournalBatchCancelable =
+        NativeWatchUsnJournalBatchCancelable;
     internal static Func<SafeHandle, bool> _cancelUsnJournalWatch = NativeCancelUsnJournalWatch;
 
     static IntPtr NativeParseMFTRecordsWithProgressDefault(
@@ -147,6 +149,10 @@ static class MFTLibNative
     [DllImport(LibraryName, EntryPoint = "WatchUsnJournalBatch", CallingConvention = CallingConvention.Cdecl)]
     static extern IntPtr NativeWatchUsnJournalBatch(SafeHandle volumeHandle, long startUsn, ulong journalId);
 
+    [DllImport(LibraryName, EntryPoint = "WatchUsnJournalBatchCancelable", CallingConvention = CallingConvention.Cdecl)]
+    static extern IntPtr NativeWatchUsnJournalBatchCancelable(SafeHandle volumeHandle, long startUsn, ulong journalId,
+        SafeHandle cancellationEvent);
+
     [DllImport(LibraryName, EntryPoint = "CancelUsnJournalWatch", CallingConvention = CallingConvention.Cdecl)]
     [return: MarshalAs(UnmanagedType.Bool)]
     static extern bool NativeCancelUsnJournalWatch(SafeHandle volumeHandle);
@@ -179,6 +185,7 @@ static class MFTLibNative
         _readUsnJournal = NativeReadUsnJournal;
         _freeUsnJournalResult = NativeFreeUsnJournalResult;
         _watchUsnJournalBatch = NativeWatchUsnJournalBatch;
+        _watchUsnJournalBatchCancelable = NativeWatchUsnJournalBatchCancelable;
         _cancelUsnJournalWatch = NativeCancelUsnJournalWatch;
     }
 

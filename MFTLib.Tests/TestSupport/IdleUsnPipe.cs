@@ -9,9 +9,9 @@ namespace MFTLib.Tests.TestSupport;
 internal sealed class IdleUsnPipe : IDisposable
 {
     readonly NamedPipeServerStream _writer;
-    internal readonly EventWaitHandle BeforeIssue = new(false, EventResetMode.ManualReset);
-    internal readonly EventWaitHandle ContinueIssue = new(false, EventResetMode.ManualReset);
-    internal readonly EventWaitHandle Issued = new(false, EventResetMode.ManualReset);
+    internal EventWaitHandle BeforeIssue { get; } = new(false, EventResetMode.ManualReset);
+    internal EventWaitHandle ContinueIssue { get; } = new(false, EventResetMode.ManualReset);
+    internal EventWaitHandle Issued { get; } = new(false, EventResetMode.ManualReset);
     internal SafeFileHandle Handle { get; private set; } = new(IntPtr.Zero, true);
 
     IdleUsnPipe(string name)
@@ -37,6 +37,7 @@ internal sealed class IdleUsnPipe : IDisposable
             await connected.WaitAsync(TimeSpan.FromSeconds(10));
             MFTLibNative.NativeSetUsnWatchPipe(pipe.Handle, pipe.BeforeIssue.SafeWaitHandle,
                 pipe.ContinueIssue.SafeWaitHandle, pipe.Issued.SafeWaitHandle, gateReadNumber);
+            FileUtilities._getWatchVolumeHandle = pipe.BorrowHandle;
             return pipe;
         }
         catch
@@ -46,7 +47,7 @@ internal sealed class IdleUsnPipe : IDisposable
         }
     }
 
-    internal SafeFileHandle BorrowHandle() => new(Handle.DangerousGetHandle(), false);
+    internal SafeFileHandle BorrowHandle(string? _ = null) => new(Handle.DangerousGetHandle(), false);
 
     internal async Task SendEmptyBatchAsync(long nextUsn)
     {

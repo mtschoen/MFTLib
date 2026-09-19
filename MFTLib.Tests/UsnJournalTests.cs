@@ -14,11 +14,34 @@ public class UsnJournalTests
     {
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
+        Kernel32.ResetToDefaults();
     }
 
     static SafeFileHandle FakeHandle()
     {
         return new SafeFileHandle(new IntPtr(1), false);
+    }
+
+    [TestMethod]
+    public void VolumeHandleFactories_OnlyWatchRequestsOverlappedIo()
+    {
+        var flags = new List<uint>();
+        Kernel32._createFile = (path, access, share, security, disposition, attributes, template) =>
+        {
+            Assert.AreEqual(@"\\.\C:", path);
+            Assert.AreEqual(0x80000000u, access);
+            Assert.AreEqual(3u, share);
+            Assert.AreEqual(3u, disposition);
+            Assert.AreEqual(IntPtr.Zero, security);
+            Assert.AreEqual(IntPtr.Zero, template);
+            flags.Add(attributes);
+            return FakeHandle();
+        };
+
+        using var synchronous = FileUtilities._getVolumeHandle(@"\\.\C:");
+        using var watch = FileUtilities._getWatchVolumeHandle(@"\\.\C:");
+
+        CollectionAssert.AreEqual(new uint[] { 0, 0x40000000 }, flags.ToArray());
     }
 
     [TestMethod]
@@ -351,7 +374,7 @@ public class UsnJournalTests
     {
         var callCount = 0;
 
-        MFTLibNative._watchUsnJournalBatch = (_, startUsn, journalId) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
         {
             callCount++;
             if (callCount == 1)
@@ -364,6 +387,7 @@ public class UsnJournalTests
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
 
         using var volume = MftVolume.Open("C");
         using var cancellationTokenSource = new CancellationTokenSource();
@@ -384,7 +408,7 @@ public class UsnJournalTests
     [TestMethod]
     public async Task WatchUsnJournal_ErrorInBatch_Throws()
     {
-        MFTLibNative._watchUsnJournalBatch = (_, _, _) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, _, _) =>
         {
             var nativeResult = new UsnJournalResultNative
             {
@@ -397,6 +421,7 @@ public class UsnJournalTests
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
 
         using var volume = MftVolume.Open("C");
         using var cancellationTokenSource = new CancellationTokenSource();
@@ -413,9 +438,10 @@ public class UsnJournalTests
     [TestMethod]
     public async Task WatchUsnJournal_NullPointer_Throws()
     {
-        MFTLibNative._watchUsnJournalBatch = (_, _, _) => IntPtr.Zero;
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, _, _) => IntPtr.Zero;
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
 
         using var volume = MftVolume.Open("C");
         using var cancellationTokenSource = new CancellationTokenSource();
@@ -436,7 +462,7 @@ public class UsnJournalTests
         // and the token is already cancelled by the time we check.
         using var cancellationTokenSource = new CancellationTokenSource();
 
-        MFTLibNative._watchUsnJournalBatch = (_, startUsn, journalId) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
         {
             // Simulate CancelIoEx race: cancel token then return empty result.
             // ReSharper disable once AccessToDisposedClosure
@@ -447,6 +473,7 @@ public class UsnJournalTests
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         MFTLibNative._freeUsnJournalResult = _ => { };
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
 
         // ReSharper disable once AccessToDisposedClosure
         // volume is captured by the async enumerator state machine; ReSharper cannot prove the using scope
@@ -482,9 +509,10 @@ public class UsnJournalTests
     [TestMethod]
     public async Task WatchUsnJournalWithCursor_NullPointer_Throws()
     {
-        MFTLibNative._watchUsnJournalBatch = (_, _, _) => IntPtr.Zero;
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, _, _) => IntPtr.Zero;
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
 
         using var volume = MftVolume.Open("C");
         using var cancellationTokenSource = new CancellationTokenSource();
@@ -501,7 +529,7 @@ public class UsnJournalTests
     [TestMethod]
     public async Task WatchUsnJournalWithCursor_ErrorInBatch_Throws()
     {
-        MFTLibNative._watchUsnJournalBatch = (_, _, _) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, _, _) =>
         {
             var nativeResult = new UsnJournalResultNative { ErrorMessage = "USN journal is not active" };
             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
@@ -511,6 +539,7 @@ public class UsnJournalTests
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
 
         using var volume = MftVolume.Open("C");
         using var cancellationTokenSource = new CancellationTokenSource();
@@ -529,7 +558,7 @@ public class UsnJournalTests
     {
         // Call 1 returns empty (not cancelled) → continue; call 2 returns an entry → yield (entries, cursor).
         var callCount = 0;
-        MFTLibNative._watchUsnJournalBatch = (_, startUsn, journalId) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
         {
             callCount++;
             return callCount == 1
@@ -539,6 +568,7 @@ public class UsnJournalTests
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
 
         using var volume = MftVolume.Open("C");
         using var cancellationTokenSource = new CancellationTokenSource();
@@ -563,7 +593,7 @@ public class UsnJournalTests
     {
         using var cancellationTokenSource = new CancellationTokenSource();
 
-        MFTLibNative._watchUsnJournalBatch = (_, startUsn, journalId) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
         {
             // Simulate CancelIoEx race: cancel token then return empty result.
             // ReSharper disable once AccessToDisposedClosure
@@ -573,6 +603,7 @@ public class UsnJournalTests
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         MFTLibNative._freeUsnJournalResult = _ => { };
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
 
         // ReSharper disable once AccessToDisposedClosure
         using var volume = MftVolume.Open("C");

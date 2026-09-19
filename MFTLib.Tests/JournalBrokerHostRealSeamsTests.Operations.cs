@@ -105,10 +105,11 @@ public partial class JournalBrokerHostRealSeamsTests
     public async Task ServeAsync_StartWatch_UsesRealWatchAndDisposeSeam()
     {
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
         MockWatchJournalTip();
 
         var callCount = 0;
-        MFTLibNative._watchUsnJournalBatch = (_, startUsn, journalId) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
         {
             callCount++;
             return callCount == 1
@@ -147,6 +148,7 @@ public partial class JournalBrokerHostRealSeamsTests
     public async Task ServeAsync_StartWatch_CancelledBetweenEmptyBatches_EndsWatchCleanly()
     {
         FileUtilities._getVolumeHandle = _ => FakeHandle();
+        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
         MockWatchJournalTip();
         // Not a `using var`: the token is captured by the WatchUsnJournalBatch mock
         // below, so it is disposed explicitly at the end instead - safe because that
@@ -154,7 +156,7 @@ public partial class JournalBrokerHostRealSeamsTests
         var cts = new CancellationTokenSource();
         Action cancel = cts.Cancel;
 
-        MFTLibNative._watchUsnJournalBatch = (_, startUsn, journalId) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
         {
             // Simulate cancellation racing the kernel wait: cancel, then return an
             // empty batch. MftVolume.WatchUsnJournalWithCursor treats "empty batch +

@@ -2,6 +2,8 @@
 
 #ifdef _WIN32
 
+    #include <array>
+
     #include "../framework.h"
     #include "../mft_api.h"
     #include "../internal.h"
@@ -44,6 +46,33 @@ BOOL UsnGetOverlappedResult(HANDLE handle, LPOVERLAPPED overlapped, LPDWORD byte
         return FALSE;
     }
     return GetOverlappedResult(handle, overlapped, bytesReturned, wait);
+}
+
+BOOL CompleteWatchRead(HANDLE volumeHandle, OVERLAPPED* overlapped, DWORD* bytesReturned, HANDLE cancellationEvent) {
+    if (cancellationEvent != nullptr) {
+        const std::array<HANDLE, 2> events = {cancellationEvent, overlapped->hEvent};
+        const DWORD waitResult = WaitForMultipleObjects(2, events.data(), FALSE, INFINITE);
+        if (waitResult == WAIT_OBJECT_0) {
+            const BOOL cancelled = CancelIoEx(volumeHandle, overlapped);
+            const DWORD cancellationError = cancelled != FALSE ? ERROR_SUCCESS : GetLastError();
+            const BOOL completed = UsnGetOverlappedResult(volumeHandle, overlapped, bytesReturned, TRUE);
+            const DWORD completionError = completed != FALSE ? ERROR_SUCCESS : GetLastError();
+            if (cancellationError != ERROR_SUCCESS && cancellationError != ERROR_NOT_FOUND) {
+                SetLastError(cancellationError);
+                return FALSE;
+            }
+            SetLastError(completionError);
+            return completed;
+        }
+        if (waitResult != WAIT_OBJECT_0 + 1) {
+            const DWORD waitError = waitResult == WAIT_FAILED ? GetLastError() : ERROR_INVALID_FUNCTION;
+            CancelIoEx(volumeHandle, overlapped);
+            UsnGetOverlappedResult(volumeHandle, overlapped, bytesReturned, TRUE);
+            SetLastError(waitError);
+            return FALSE;
+        }
+    }
+    return UsnGetOverlappedResult(volumeHandle, overlapped, bytesReturned, TRUE);
 }
 
 // Translates a USN read error into result->errorMessage. ERROR_HANDLE_EOF and
@@ -286,8 +315,9 @@ EXPORT void FreeUsnJournalResult(const UsnJournalResult* result) {
     }
 }
 
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
-EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId) {
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): internal counterpart of the fixed C-ABI signatures
+UsnJournalResult* WatchUsnJournalBatchCore(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId,
+                                           HANDLE cancellationEvent) {
     auto* result = new UsnJournalResult{};
     result->journalId = journalId;
     result->nextUsn = startUsn;
@@ -325,32 +355,35 @@ EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t start
         volumeHandle, FSCTL_READ_USN_JOURNAL, IoBuffer{&readData, static_cast<DWORD>(sizeof(readData))},
         IoBuffer{readBuffer, static_cast<DWORD>(readBufferSize)}, &bytesReturned, &overlapped);
 
-    if (success == 0) {
-        DWORD error = GetLastError();
-        if (error == ERROR_IO_PENDING) {
-            success = UsnGetOverlappedResult(volumeHandle, &overlapped, &bytesReturned, TRUE);
-            if (success == 0) {
-                error = GetLastError();
-                if (error == ERROR_OPERATION_ABORTED) {
-                    CloseHandle(overlapped.hEvent);
-                    VirtualFree(readBuffer, 0, MEM_RELEASE);
-                    return result;
-                }
-            }
+    DWORD error = success != FALSE ? ERROR_SUCCESS : GetLastError();
+    if (success == FALSE && error == ERROR_IO_PENDING) {
+        success = CompleteWatchRead(volumeHandle, &overlapped, &bytesReturned, cancellationEvent);
+        error = success != FALSE ? ERROR_SUCCESS : GetLastError();
+    }
+    if (success == FALSE) {
+        CloseHandle(overlapped.hEvent);
+        VirtualFree(readBuffer, 0, MEM_RELEASE);
+        if (error != ERROR_OPERATION_ABORTED) {
+            ApplyUsnReadError(result, error, L"FSCTL_READ_USN_JOURNAL watch failed");
         }
-
-        if (success == 0) {
-            CloseHandle(overlapped.hEvent);
-            VirtualFree(readBuffer, 0, MEM_RELEASE);
-            ApplyUsnReadError(result, GetLastError(), L"FSCTL_READ_USN_JOURNAL watch failed");
-            return result;
-        }
+        return result;
     }
 
     CloseHandle(overlapped.hEvent);
     PopulateWatchEntries(result, readBuffer, bytesReturned);
     VirtualFree(readBuffer, 0, MEM_RELEASE);
     return result;
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
+EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId) {
+    return WatchUsnJournalBatchCore(volumeHandle, startUsn, journalId, nullptr);
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
+EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId,
+                                                        HANDLE cancellationEvent) {
+    return WatchUsnJournalBatchCore(volumeHandle, startUsn, journalId, cancellationEvent);
 }
 
 EXPORT BOOL CancelUsnJournalWatch(HANDLE volumeHandle) { return CancelIoEx(volumeHandle, nullptr); }
