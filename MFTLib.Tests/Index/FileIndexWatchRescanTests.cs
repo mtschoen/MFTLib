@@ -69,7 +69,7 @@ public class FileIndexWatchRescanTests
             [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalId: 13, NextUsn: 9500));
         Assert.AreEqual(9500L, harness.BlockFor('T').Header.UsnNextUsn);
 
-        await Assert.ThrowsExceptionAsync<IOException>(() => harness.Index.StopWatchingAsync(Token));
+        await harness.Index.StopWatchingAsync(Token);
     }
 
     [TestMethod]

@@ -47,7 +47,9 @@ public sealed partial class FileIndex
         /// <summary>The token this session's source was linked to, which a restart relinks to.</summary>
         public CancellationToken CallerToken { get; }
 
-        public Task<Exception?> Pump { get; set; } = Task.FromResult<Exception?>(null);
+        public WatchSessionFaults Faults { get; } = new();
+
+        public Task Pump { get; set; } = Task.CompletedTask;
 
         public void RegisterTarget(IndexWatchTarget target)
         {
@@ -76,7 +78,7 @@ public sealed partial class FileIndex
         }
     }
 
-    async Task<Exception?> PumpAsync(WatchSession session, IReadOnlyList<IndexWatchTarget> targets)
+    async Task PumpAsync(WatchSession session, IReadOnlyList<IndexWatchTarget> targets)
     {
         // Read before the yield, which is to say inside StartWatchingCoreAsync's lock and while
         // the session is provably still this index's own, so nothing here reads a token source a
@@ -94,7 +96,6 @@ public sealed partial class FileIndex
         // the same rule arming follows for every drive that does have an ordinal.
         var droppedDriveLettersWithoutOrdinal = new HashSet<char>();
 
-        Exception? firstFault = null;
         var dropped = false;
         try
         {
@@ -103,9 +104,8 @@ public sealed partial class FileIndex
                 if (item is DriveWatchFailure failure)
                 {
                     if (DropDrive(failure.DriveLetter, failure.Exception, WatchFaultKind.Source,
-                            droppedDriveLettersWithoutOrdinal))
+                            droppedDriveLettersWithoutOrdinal, session))
                     {
-                        firstFault ??= failure.Exception;
                         dropped = true;
                     }
                 }
@@ -113,7 +113,7 @@ public sealed partial class FileIndex
                          !IsDriveWatchFaulted(batch.DriveLetter, droppedDriveLettersWithoutOrdinal))
                 {
                     dropped = !TryApplyBatch(batch, droppedDriveLettersWithoutOrdinal,
-                        cancellationToken, ref firstFault);
+                        session, cancellationToken);
                 }
                 else if (item is DriveCaughtUp caughtUp &&
                          !IsDriveWatchFaulted(caughtUp.DriveLetter, droppedDriveLettersWithoutOrdinal))
@@ -134,21 +134,30 @@ public sealed partial class FileIndex
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             CancelPendingWatchCatchUpLocked();
-            if (firstFault is null)
+            lock (_stateLock)
             {
-                throw;
+                if (!session.Faults.HasFaults)
+                {
+                    throw;
+                }
             }
-
-            // Preserve a fault already observed before an ordinary stop cancelled the source.
         }
         catch (Exception exception)
         {
-            firstFault ??= exception;
+            lock (_stateLock)
+            {
+                session.Faults.RecordSource(exception);
+            }
             FaultPendingWatchCatchUpLocked(session.Targets, exception);
             RaiseWatchFaulted(new WatchFault(WatchFaultKind.Source, null, exception));
         }
 
-        if (firstFault is null && !cancellationToken.IsCancellationRequested)
+        bool hasOutstandingFaults;
+        lock (_stateLock)
+        {
+            hasOutstandingFaults = session.Faults.HasFaults;
+        }
+        if (!hasOutstandingFaults && !cancellationToken.IsCancellationRequested)
         {
             var remainingTargets = session.Targets;
             if (AnyWatchedDriveRemains(remainingTargets, droppedDriveLettersWithoutOrdinal))
@@ -156,8 +165,6 @@ public sealed partial class FileIndex
                 ReportSourceEndedWithoutStop(session, remainingTargets, droppedDriveLettersWithoutOrdinal);
             }
         }
-
-        return firstFault;
     }
 
     /// <summary>
@@ -212,7 +219,7 @@ public sealed partial class FileIndex
     ///     and drops no drive.
     /// </summary>
     bool TryApplyBatch(JournalBatch batch, HashSet<char> droppedDriveLettersWithoutOrdinal,
-        CancellationToken cancellationToken, ref Exception? firstFault)
+        WatchSession session, CancellationToken cancellationToken)
     {
         IReadOnlyList<FileChange> changes;
         try
@@ -222,8 +229,8 @@ public sealed partial class FileIndex
         catch (Exception exception) when (
             exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            firstFault ??= exception;
-            DropDrive(batch.DriveLetter, exception, WatchFaultKind.Apply, droppedDriveLettersWithoutOrdinal);
+            DropDrive(batch.DriveLetter, exception, WatchFaultKind.Apply,
+                droppedDriveLettersWithoutOrdinal, session);
             return false;
         }
 
@@ -234,12 +241,13 @@ public sealed partial class FileIndex
         catch (Exception exception) when (
             exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            if (firstFault is null)
+            bool firstSubscriberFault;
+            lock (_stateLock)
             {
-                firstFault = exception;
-
-                // The mutation and the cursor are already durable when a subscriber runs, so a
-                // broken handler is not this drive's problem and does not drop it.
+                firstSubscriberFault = session.Faults.RecordSubscriber(exception);
+            }
+            if (firstSubscriberFault)
+            {
                 RaiseWatchFaulted(new WatchFault(WatchFaultKind.Subscriber, batch.DriveLetter, exception));
             }
         }
@@ -252,7 +260,7 @@ public sealed partial class FileIndex
     ///     already dropped so a second failure for it changes nothing.
     /// </summary>
     bool DropDrive(char driveLetter, Exception exception, WatchFaultKind kind,
-        HashSet<char> droppedDriveLettersWithoutOrdinal)
+        HashSet<char> droppedDriveLettersWithoutOrdinal, WatchSession? session = null)
     {
         bool firstDrop;
         lock (_stateLock)
@@ -261,6 +269,10 @@ public sealed partial class FileIndex
             firstDrop = hasOrdinal
                 ? _watchFailureMessagesByOrdinal.TryAdd(driveOrdinal, exception.Message)
                 : droppedDriveLettersWithoutOrdinal.Add(char.ToUpperInvariant(driveLetter));
+            if (firstDrop)
+            {
+                session?.Faults.RecordDrive(driveLetter, exception);
+            }
             if (firstDrop && hasOrdinal)
             {
                 FaultWatchCatchUpLocked(driveOrdinal, exception);
