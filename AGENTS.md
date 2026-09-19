@@ -52,6 +52,27 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 .\scripts\run-coverage.ps1 -NonInteractive  # skip admin tests (CI / headless)
 ```
 
+The Windows CI publisher validates coverage before posting `pr-crew/coverage`.
+A drop of more than 10 percentage points from the latest successful main-line
+coverage status, or zero covered executable lines in a tested namespace, posts
+a nonnumeric error status and fails the publishing step. Failed collection,
+missing/malformed reports, and unavailable baseline lookup also fail closed.
+The baseline follows main's first-parent history (up to 100 commits), using
+the latest successful coverage status on the nearest measured commit; it is
+not a hard-coded percentage. The tested namespace checks cover MFTLib,
+MFTLib.Index, TestProgram, and Benchmark; extend that list and its regression
+fixtures when adding another tested executable namespace.
+
+Run `pwsh -NoProfile -File scripts/test-coverage-status.ps1` for the offline
+publisher regression checks. On a rejected run, inspect the `windows-coverage`
+artifact: `MFTLib.Tests/coverage.xml`, `MFTLib.Tests/coverage-report/`, and
+`MFTLib.Tests/coverage-run.stdout.log` plus `coverage-run.stderr.log`. Collection
+output is captured raw and printed after the child exits. Preserve the artifact
+and rerun CI to distinguish a transient measurement failure from a reproducible
+drop. An error is not a trusted low-coverage reading and still blocks the gate.
+The collector-exit race is an unverified hypothesis; this guard does not repair
+hit collection or change the admin coverage merge path.
+
 **Native (C++):** Microsoft.CodeCoverage.Console via `scripts/native-coverage.ps1`:
 ```powershell
 .\scripts\native-coverage.ps1           # cobertura XML output
@@ -72,6 +93,23 @@ Windows as well as Linux: Linux compilation excludes several Windows-only test
 classes. For stress validation, use 32 ClassLevel MSTest workers with the
 existing Linux platform exclusions in `scripts/coverage-linux.sh`; do not add
 new exclusions to hide seam races.
+
+MFTLib.Tests activates default-cache isolation from a module initializer, so
+`dotnet test`, IDE runners, and the coverage scripts all reject accidental use
+of the real per-user cache. Consumer test assemblies can opt in by referencing
+MFTLibTestExtensions and calling
+`MFTLibTestExtensions.CacheDirectoryIsolation.ForbidDefaultCacheDirectory()`
+from their own `[ModuleInitializer]` before opening indexes. Referencing the
+assembly alone does not activate protection.
+
+Activation is idempotent and one-way for the test process; there is no reset,
+and it is not part of the native delegate seam family. It is not inherited by
+child processes. Once activated, `CacheDirectory.ResolveDefaultPath()` throws
+`InvalidOperationException`; tests must set `FileIndexOptions.CacheDirectory`
+to an owned temporary path, including empty-drive and `NoCache` opens. The
+guard runs before `FileIndex.OpenAsync` creates the cache directory. It blocks
+default resolution, not arbitrary explicitly supplied paths. Production hosts
+that do not opt in retain the existing default-cache behavior.
 
 ## Cleaning the working tree
 

@@ -18,6 +18,10 @@ public sealed partial class FileIndex
     ///     <see cref="WatchCatchUpState.CatchingUp" />, and re-arms it from the fresh cursor.
     ///     A blockless drive is scanned and adopted rather than swapped; failed scans rewrite status
     ///     to <see cref="DriveFailureKind.ProducerFailed" />. Offline drives are refused.
+    ///     Watch faults are tracked per drive: a successful re-arm clears this drive's outstanding
+    ///     watch fault, so <see cref="StopWatchingAsync" /> no longer rethrows it, and leaves every
+    ///     other drive's fault, subscriber faults, and source faults in place. If the re-arm fails,
+    ///     the drive's earlier fault is restored unless a newer fault for it was recorded meanwhile.
     /// </remarks>
     public async Task RescanAsync(char driveLetter, CancellationToken cancellationToken)
     {
@@ -353,9 +357,25 @@ public sealed partial class FileIndex
 
             var target = BuildWatchTarget(driveLetter);
             session.RegisterTarget(target);
-            ClearWatchFailure(driveLetter);
+            WatchSessionFaults.Entry? previousFault;
+            lock (_stateLock)
+            {
+                previousFault = session.Faults.TakeDrive(driveLetter);
+                ClearWatchFailureLocked(driveLetter);
+            }
             ArmWatchCatchUp(driveLetter);
-            await session.Source.ArmDriveAsync(target, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await session.Source.ArmDriveAsync(target, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                lock (_stateLock)
+                {
+                    session.Faults.RestoreDrive(driveLetter, previousFault);
+                }
+                throw;
+            }
             return;
         }
 

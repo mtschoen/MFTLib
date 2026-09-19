@@ -363,6 +363,8 @@ UsnJournalResult* WatchUsnJournalBatchCore(HANDLE volumeHandle, int64_t startUsn
     if (success == FALSE) {
         CloseHandle(overlapped.hEvent);
         VirtualFree(readBuffer, 0, MEM_RELEASE);
+        // ERROR_OPERATION_ABORTED is the CancelIoEx-driven stop and returns an empty result so the managed iterator
+        // can end the stream normally.
         if (error != ERROR_OPERATION_ABORTED) {
             ApplyUsnReadError(result, error, L"FSCTL_READ_USN_JOURNAL watch failed");
         }

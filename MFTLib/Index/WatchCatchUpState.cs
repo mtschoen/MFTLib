@@ -82,6 +82,9 @@ public sealed partial class FileIndex
                 Waiter = faultedSource;
             }
 
+            // The slot owns both notifications even when no caller requests a catch-up wait.
+            _ = FaultWaiter.Task.Exception;
+            _ = Waiter.Task.Exception;
             InvokeFaultWaiterContinuations(FaultWaiter.Task);
         }
 

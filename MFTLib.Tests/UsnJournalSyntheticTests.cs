@@ -442,21 +442,34 @@ public partial class UsnJournalSyntheticTests
         MFTLibNative._cancelUsnJournalWatch(FakeHandle());
     }
 
-    [TestMethod]
-    public void WatchUsnJournal_OverlappedAbort_ReturnsEmpty()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void WatchUsnJournal_OperationAborted_ReturnsEmptyAtOriginalCursor(bool pending)
     {
         UseFakeHandle();
-        // Force the IOCTL to report ERROR_IO_PENDING, then the overlapped wait to
-        // report ERROR_OPERATION_ABORTED — the watch cancel path.
-        MFTLibNative.NativeSetUsnIoFailError(997 /*ERROR_IO_PENDING*/, 1);
-        MFTLibNative.NativeSetUsnOverlappedAbort();
+        MFTLibNative.NativeSetUsnIoFailError(pending ? 997U : 995U, 1);
+        if (pending)
+        {
+            MFTLibNative.NativeSetUsnOverlappedAbort();
+        }
+
         using var volume = MftVolume.Open("C");
-        var resultPtr =
-            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
-        var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-        MFTLibNative._freeUsnJournalResult(resultPtr);
-        Assert.AreEqual(0UL, result.EntryCount);
-        Assert.IsTrue(string.IsNullOrEmpty(result.ErrorMessage));
+        var resultPointer = MFTLibNative._watchUsnJournalBatch(
+            volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+        Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+        try
+        {
+            var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPointer);
+            Assert.AreEqual(0UL, result.EntryCount);
+            Assert.IsTrue(string.IsNullOrEmpty(result.ErrorMessage), result.ErrorMessage);
+            Assert.AreEqual(Cursor.NextUsn, result.NextUsn);
+            Assert.AreEqual(Cursor.JournalId, result.JournalId);
+        }
+        finally
+        {
+            MFTLibNative._freeUsnJournalResult(resultPointer);
+        }
     }
 
     [TestMethod]

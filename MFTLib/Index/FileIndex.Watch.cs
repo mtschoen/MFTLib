@@ -100,8 +100,14 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Cancels the current watch, waits for its pump to finish, and rethrows the first fault
-    ///     observed during the session. Calling this when no watch is active has no effect.
+    ///     Cancels the current watch, waits for its pump to finish, and rethrows the earliest fault
+    ///     still outstanding at teardown. The session tracks faults per drive, plus one slot for
+    ///     subscriber faults and one for a failure of the whole source: a drive whose watch
+    ///     faulted and was then recovered by a successful <see cref="RescanAsync" /> re-arm no
+    ///     longer has an outstanding fault, so this call does not rethrow it, while a later fault
+    ///     on that drive, or any fault on another drive, is still rethrown. When nothing is
+    ///     outstanding the call completes normally. Calling this when no watch is active has no
+    ///     effect.
     ///     Reclaiming the session resets every watched drive's
     ///     <see cref="DriveStatus.WatchCatchUp" /> to <see cref="WatchCatchUpState.NotStarted" />.
     ///     <paramref name="cancellationToken" /> bounds the wait: cancelling it abandons the wait
@@ -122,12 +128,12 @@ public sealed partial class FileIndex
             return;
         }
 
-        Exception? firstFault = null;
+        Exception? outstandingFault = null;
         var pumpFinished = false;
         try
         {
             await session.Cancellation.CancelAsync().ConfigureAwait(false);
-            firstFault = await session.Pump.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await session.Pump.WaitAsync(cancellationToken).ConfigureAwait(false);
             pumpFinished = true;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -149,6 +155,7 @@ public sealed partial class FileIndex
             {
                 lock (_stateLock)
                 {
+                    outstandingFault = session.Faults.FirstOutstanding;
                     if (ReferenceEquals(_watchSession, session))
                     {
                         _watchSession = null;
@@ -160,9 +167,9 @@ public sealed partial class FileIndex
             }
         }
 
-        if (firstFault is not null)
+        if (outstandingFault is not null)
         {
-            ExceptionDispatchInfo.Capture(firstFault).Throw();
+            ExceptionDispatchInfo.Capture(outstandingFault).Throw();
         }
     }
 

@@ -13,7 +13,32 @@ namespace MFTLib.Index;
 /// </summary>
 public static class CacheDirectory
 {
+    static int _defaultCacheDirectoryForbidden;
+
+    /// <summary>Returns the per-user default index cache directory path.</summary>
+    /// <exception cref="InvalidOperationException">
+    ///     Default-cache resolution was forbidden by the test host through
+    ///     <c>CacheDirectoryIsolation.ForbidDefaultCacheDirectory</c>.
+    ///     Set <see cref="FileIndexOptions.CacheDirectory" /> to a temporary path.
+    /// </exception>
     public static string ResolveDefaultPath()
+    {
+        if (Volatile.Read(ref _defaultCacheDirectoryForbidden) != 0)
+        {
+            throw new InvalidOperationException(
+                "CacheDirectoryIsolation.ForbidDefaultCacheDirectory has forbidden default cache resolution. " +
+                "Set FileIndexOptions.CacheDirectory to a temporary path.");
+        }
+
+        return ComputeDefaultPath();
+    }
+
+    internal static void ForbidDefaultCacheDirectory()
+    {
+        Interlocked.Exchange(ref _defaultCacheDirectoryForbidden, 1);
+    }
+
+    static string ComputeDefaultPath()
     {
         var applicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (string.IsNullOrEmpty(applicationData))
@@ -60,6 +85,64 @@ public static class CacheDirectory
         }
 
         return cached;
+    }
+
+    /// <summary>
+    ///     Inspects selected cached blocks while holding each block's slot lock. A missing
+    ///     directory returns an empty list. A lock that is held or cannot be opened reports
+    ///     InUse without reading any block bytes; an unreadable or rejected block reports
+    ///     Invalid using the reason returned by BlockFile.Open.
+    ///     Inspection creates a persistent .lock sibling when absent and never unlinks it.
+    ///     The block is disposed before its lock is released, after the root name has been
+    ///     copied into a managed string. Results describe inspection time, not a reservation.
+    /// </summary>
+    /// <param name="cacheDirectoryPath">The cache directory to inspect.</param>
+    /// <param name="driveLetters">
+    ///     Uppercase drive letters to include, or null for all. Filtering happens before any
+    ///     lock attempt, so excluded blocks have no lock file opened or created.
+    /// </param>
+    public static IReadOnlyList<CachedBlockStatus> InspectCached(
+        string cacheDirectoryPath, IReadOnlySet<char>? driveLetters = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
+        var statuses = new List<CachedBlockStatus>();
+        foreach (var file in EnumerateCached(cacheDirectoryPath))
+        {
+            if (driveLetters is not null && !driveLetters.Contains(file.DriveLetter))
+            {
+                continue;
+            }
+
+            statuses.Add(InspectCachedFile(file));
+        }
+
+        return statuses;
+    }
+
+    static CachedBlockStatus InspectCachedFile(CachedBlockFile file)
+    {
+        using var owner = BlockOwnerLock.TryAcquire(file.Path);
+        if (owner is null)
+        {
+            return new CachedBlockStatus(file, CachedBlockAvailability.InUse, null, null, null);
+        }
+
+        using var block = BlockFile.Open(file.Path, file.VolumeSerial, out var validation);
+        if (block is null)
+        {
+            return new CachedBlockStatus(file, CachedBlockAvailability.Invalid, validation, null, null);
+        }
+
+        var producerKind = block.Header.ProducerKind;
+        var rootDirectory = producerKind switch
+        {
+            ProducerKind.Mft => $"{file.DriveLetter}:\\",
+            ProducerKind.Enumeration when block.Header.RowCount > 0 =>
+                NamePool.ReadRowName(block, 0).ToString(),
+            _ => null
+        };
+        return new CachedBlockStatus(file, CachedBlockAvailability.Available,
+            validation, producerKind, rootDirectory);
     }
 
     const string BlockFileExtension = ".mlix";

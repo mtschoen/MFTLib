@@ -219,8 +219,9 @@ public sealed unsafe class BlockFile : IDisposable
     ///     Maps an existing block and validates it. A rejected block returns null with the reason
     ///     in <paramref name="validation" />, and the caller discards the file and rescans. A
     ///     missing or unreadable file reports <see cref="BlockValidationResult.WrongMagic" />
-    ///     rather than throwing, because "there is no usable block here" is one outcome with one
-    ///     response.
+    ///     rather than throwing: "no usable block here" is one outcome with one response. Only the
+    ///     slot owner, or a caller that confirmed the file is quiescent, may call this: opening a block
+    ///     another index is writing is undefined and racy (see <see cref="CacheDirectory.InspectCached" />).
     /// </summary>
     public static BlockFile? Open(string path, uint expectedVolumeSerial, out BlockValidationResult validation)
     {
