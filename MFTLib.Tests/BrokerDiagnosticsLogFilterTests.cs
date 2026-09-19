@@ -144,15 +144,15 @@ public class BrokerDiagnosticsLogFilterTests
     {
         const ulong initialReference = 9101;
         const ulong replacementReference = 9103;
-        var currentReference = initialReference;
-        var resolveCount = 0;
+        var currentReference = new System.Runtime.CompilerServices.StrongBox<ulong>(initialReference);
+        var resolveCount = new System.Runtime.CompilerServices.StrongBox<int>(0);
 
         BrokerDiagnosticsLogFilter._resolveFileReference = path =>
         {
             if (path == OwnLogPath)
             {
-                resolveCount++;
-                return currentReference;
+                resolveCount.Value++;
+                return currentReference.Value;
             }
 
             return null;
@@ -167,12 +167,12 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(4242, "unrelated1.txt")
         };
         var kept1 = filter.Filter("C", batch1);
-        Assert.AreEqual(1, resolveCount);
+        Assert.AreEqual(1, resolveCount.Value);
         Assert.AreEqual(1, kept1.Length);
         Assert.AreEqual("unrelated1.txt", kept1[0].FileName);
 
         // Simulate log rotation / replacement: file at OwnLogPath now has replacementReference.
-        currentReference = replacementReference;
+        currentReference.Value = replacementReference;
 
         // Batch 2: contains an entry from the renamed original file AND an entry from the new replacement file.
         var batch2 = new[]
@@ -182,7 +182,7 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(4243, "unrelated2.txt")
         };
         var kept2 = filter.Filter("C", batch2);
-        Assert.AreEqual(2, resolveCount);
+        Assert.AreEqual(2, resolveCount.Value);
         Assert.AreEqual(1, kept2.Length);
         Assert.AreEqual("unrelated2.txt", kept2[0].FileName);
 
@@ -193,7 +193,7 @@ public class BrokerDiagnosticsLogFilterTests
             Entry(4244, "unrelated3.txt")
         };
         var kept3 = filter.Filter("C", batch3);
-        Assert.AreEqual(3, resolveCount);
+        Assert.AreEqual(3, resolveCount.Value);
         Assert.AreEqual(1, kept3.Length);
         Assert.AreEqual("unrelated3.txt", kept3[0].FileName);
     }

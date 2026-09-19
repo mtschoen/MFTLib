@@ -62,6 +62,6 @@ bool UsnIoInjectSuccess(void* outBuffer, unsigned long outBufferSize, unsigned l
 // Test seam: force the overlapped wait to report ERROR_OPERATION_ABORTED,
 // exercising the watch cancel path without a real pending IOCTL.
 bool UsnIoShouldAbortOverlapped();
-bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesReturned,
-                         OVERLAPPED* overlapped, BOOL& success);
+bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesReturned, OVERLAPPED* overlapped,
+                         BOOL& success);
 #endif

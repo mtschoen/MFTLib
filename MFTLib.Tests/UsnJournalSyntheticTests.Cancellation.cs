@@ -15,7 +15,8 @@ public partial class UsnJournalSyntheticTests
     public async Task EndWatch_IdleNativeRead_Acknowledges(bool cancelBeforeIssue, int readNumber)
     {
         using var pipe = await IdleUsnPipe.CreateAsync(readNumber);
-        FileUtilities._getVolumeHandle = _ => pipe.BorrowHandle();
+        var pipeRef = pipe;
+        FileUtilities._getVolumeHandle = _ => pipeRef.BorrowHandle();
         QueueSuccess(BuildQueryBuffer(journalId: 7, nextUsn: 200));
         var cancellationAttempted = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -78,7 +79,8 @@ public partial class UsnJournalSyntheticTests
     public async Task Watch_IdleNativeRead_CancellationCompletes(bool withCursor, bool beforeIssue)
     {
         using var pipe = await IdleUsnPipe.CreateAsync(1);
-        FileUtilities._getVolumeHandle = _ => pipe.BorrowHandle();
+        var pipeRef = pipe;
+        FileUtilities._getVolumeHandle = _ => pipeRef.BorrowHandle();
         using var volume = MftVolume.Open("C");
         using var cancellation = new CancellationTokenSource();
         var watch = ConsumeIdleWatchAsync(volume, withCursor, cancellation.Token);
