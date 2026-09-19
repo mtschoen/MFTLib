@@ -94,6 +94,23 @@ classes. For stress validation, use 32 ClassLevel MSTest workers with the
 existing Linux platform exclusions in `scripts/coverage-linux.sh`; do not add
 new exclusions to hide seam races.
 
+MFTLib.Tests activates default-cache isolation from a module initializer, so
+`dotnet test`, IDE runners, and the coverage scripts all reject accidental use
+of the real per-user cache. Consumer test assemblies can opt in by referencing
+MFTLibTestExtensions and calling
+`MFTLibTestExtensions.CacheDirectoryIsolation.ForbidDefaultCacheDirectory()`
+from their own `[ModuleInitializer]` before opening indexes. Referencing the
+assembly alone does not activate protection.
+
+Activation is idempotent and one-way for the test process; there is no reset,
+and it is not part of the native delegate seam family. It is not inherited by
+child processes. Once activated, `CacheDirectory.ResolveDefaultPath()` throws
+`InvalidOperationException`; tests must set `FileIndexOptions.CacheDirectory`
+to an owned temporary path, including empty-drive and `NoCache` opens. The
+guard runs before `FileIndex.OpenAsync` creates the cache directory. It blocks
+default resolution, not arbitrary explicitly supplied paths. Production hosts
+that do not opt in retain the existing default-cache behavior.
+
 ## Cleaning the working tree
 
 `git clean -ffxd` must always be safe to run. It is the check that this checkout still matches a fresh clone, so it is run before starting new work, and it must never be the thing that loses something.

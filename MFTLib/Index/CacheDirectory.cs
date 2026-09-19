@@ -13,7 +13,32 @@ namespace MFTLib.Index;
 /// </summary>
 public static class CacheDirectory
 {
+    static int _defaultCacheDirectoryForbidden;
+
+    /// <summary>Returns the per-user default index cache directory path.</summary>
+    /// <exception cref="InvalidOperationException">
+    ///     Default-cache resolution was forbidden by the test host through
+    ///     <c>CacheDirectoryIsolation.ForbidDefaultCacheDirectory</c>.
+    ///     Set <see cref="FileIndexOptions.CacheDirectory" /> to a temporary path.
+    /// </exception>
     public static string ResolveDefaultPath()
+    {
+        if (Volatile.Read(ref _defaultCacheDirectoryForbidden) != 0)
+        {
+            throw new InvalidOperationException(
+                "CacheDirectoryIsolation.ForbidDefaultCacheDirectory has forbidden default cache resolution. " +
+                "Set FileIndexOptions.CacheDirectory to a temporary path.");
+        }
+
+        return ComputeDefaultPath();
+    }
+
+    internal static void ForbidDefaultCacheDirectory()
+    {
+        Interlocked.Exchange(ref _defaultCacheDirectoryForbidden, 1);
+    }
+
+    static string ComputeDefaultPath()
     {
         var applicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (string.IsNullOrEmpty(applicationData))

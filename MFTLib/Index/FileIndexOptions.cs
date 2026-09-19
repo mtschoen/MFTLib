@@ -8,7 +8,12 @@ public sealed record FileIndexOptions
 {
     public IReadOnlyList<IndexedDrive> Drives { get; init; } = [];
 
-    /// <summary>Null resolves to <see cref="CacheDirectory.ResolveDefaultPath" />.</summary>
+    /// <summary>
+    ///     Null resolves to <see cref="MFTLib.Index.CacheDirectory.ResolveDefaultPath" />.
+    ///     Test hosts that activate <c>CacheDirectoryIsolation.ForbidDefaultCacheDirectory</c>
+    ///     must supply a temporary path; null then causes <see cref="FileIndex.OpenAsync" />
+    ///     to throw <see cref="InvalidOperationException" /> before directory creation.
+    /// </summary>
     public string? CacheDirectory { get; init; }
 
     /// <summary>
