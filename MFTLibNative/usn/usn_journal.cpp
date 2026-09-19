@@ -27,6 +27,11 @@ BOOL UsnDeviceIoControl(HANDLE handle, DWORD ioControlCode, IoBuffer input, IoBu
     if (UsnIoInjectSuccess(output.data, output.size, bytesReturned)) {
         return TRUE;
     }
+    BOOL pipeSuccess = FALSE;
+    if (ioControlCode == FSCTL_READ_USN_JOURNAL &&
+        TryUsnWatchPipeRead(handle, output.data, output.size, bytesReturned, overlapped, pipeSuccess)) {
+        return pipeSuccess;
+    }
     return DeviceIoControl(handle, ioControlCode, input.data, input.size, output.data, output.size, bytesReturned,
                            overlapped);
 }
