@@ -203,6 +203,11 @@ completes when the slowest drive catches up and faults immediately upon the firs
 cancellation. Disposing the index, cancelling the watch session, or superseding the arm through `RescanAsync`
 cancels pending catch-up waits.
 
+Calling `WaitForCatchUpAsync` is optional. The index observes its internally owned failure
+notification tasks even when no caller waits for catch-up; drive failures still reach
+`WatchFaulted` and `DriveStatus.WatchFailureMessage`. Pending and subsequent catch-up waits
+continue to throw the drive's exception.
+
 ## Sidecars
 
 A follow-up children table or name index is a separate file next to the block,
