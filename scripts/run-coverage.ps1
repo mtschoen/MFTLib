@@ -32,6 +32,12 @@ $jsonFile     = Join-Path $coverageDir "coverage.json"
 $coberturaFile= Join-Path $coverageDir "coverage.xml"
 $reportDir    = Join-Path $coverageDir "coverage-report"
 
+foreach ($path in @($jsonFile, $coberturaFile, $reportDir)) {
+    if (Test-Path -LiteralPath $path) {
+        Remove-Item -LiteralPath $path -Recurse -Force
+    }
+}
+
 # Build strategy for a mixed C#/C++ solution on VS BuildTools runner:
 #
 # Step 1 - dotnet restore: generates project.assets.json for C# projects.
@@ -81,10 +87,6 @@ foreach ($proj in $managedProjects) {
         exit 1
     }
 }
-
-# Clean stale coverage
-Remove-Item $jsonFile -ErrorAction SilentlyContinue
-Remove-Item $coberturaFile -ErrorAction SilentlyContinue
 
 # Run non-admin tests - output JSON for MergeWith compatibility (or cobertura if non-interactive)
 if ($NonInteractive) {
@@ -169,13 +171,18 @@ try {
     Remove-Item $jsonFile -ErrorAction SilentlyContinue
 }
 
-# Generate summary
-reportgenerator -reports:"$coberturaFile" -targetdir:"$reportDir" -reporttypes:"TextSummary" 2>&1 | Out-Null
-
-if (Test-Path "$reportDir\Summary.txt") {
-    Write-Host "`n--- Coverage Report ---" -ForegroundColor Cyan
-    Get-Content "$reportDir\Summary.txt"
+& reportgenerator "-reports:$coberturaFile" "-targetdir:$reportDir" '-reporttypes:TextSummary'
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'Coverage report generation failed.' -ForegroundColor Red
+    exit 1
 }
+$summaryPath = Join-Path $reportDir 'Summary.txt'
+if (-not (Test-Path -LiteralPath $summaryPath)) {
+    Write-Host 'Coverage report summary was not generated.' -ForegroundColor Red
+    exit 1
+}
+Write-Host "`n--- Coverage Report ---" -ForegroundColor Cyan
+Get-Content -LiteralPath $summaryPath
 
 # Cleanup (skip in non-interactive mode so CI can upload artifacts)
 if (-not $NonInteractive) {

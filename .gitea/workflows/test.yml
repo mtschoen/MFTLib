@@ -77,11 +77,27 @@ jobs:
           dotnet tool update --global dotnet-reportgenerator-globaltool
           echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
 
+      - name: Test coverage status guard
+        if: steps.changed-files.outputs.pin_only != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/test-coverage-status.ps1
+
       - name: Run coverage
+        id: coverage
         if: steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh
         working-directory: ${{ github.workspace }}
-        run: scripts\run-coverage.ps1 -NonInteractive
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stdout = 'MFTLib.Tests/coverage-run.stdout.log'
+          $stderr = 'MFTLib.Tests/coverage-run.stderr.log'
+          $process = Start-Process -FilePath (Get-Command pwsh).Source `
+            -ArgumentList '-NoProfile', '-File', 'scripts/run-coverage.ps1', '-NonInteractive' `
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr `
+            -NoNewWindow -Wait -PassThru
+          Get-Content -LiteralPath $stdout
+          Get-Content -LiteralPath $stderr
+          exit $process.ExitCode
 
       - name: Upload coverage artifact
         if: always() && steps.changed-files.outputs.pin_only != 'true'
@@ -91,28 +107,16 @@ jobs:
           path: |
             MFTLib.Tests/coverage.xml
             MFTLib.Tests/coverage-report/**
+            MFTLib.Tests/coverage-run.stdout.log
+            MFTLib.Tests/coverage-run.stderr.log
 
       - name: Post coverage status
         if: always() && steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          $summary = "MFTLib.Tests/coverage-report/Summary.txt"
-          $pct = $null
-          if (Test-Path $summary) {
-            $match = Select-String -Path $summary -Pattern 'Line coverage:\s*([\d.]+)%' | Select-Object -First 1
-            if ($match) { $pct = $match.Matches[0].Groups[1].Value }
-          }
-          if ($null -eq $pct) { $state = "error"; $desc = "coverage measurement failed" }
-          else { $state = "success"; $desc = "$pct% line coverage" }
-          $runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-          $body = @{ context = "pr-crew/coverage"; state = $state; description = $desc; target_url = $runUrl } | ConvertTo-Json -Compress
-          curl.exe -s -X POST `
-            -H "Authorization: token $env:GITHUB_TOKEN" `
-            -H "Content-Type: application/json" `
-            -d $body `
-            "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY/statuses/$env:GITHUB_SHA"
+          COVERAGE_OUTCOME: ${{ steps.coverage.outcome }}
+        run: pwsh -NoProfile -File scripts/post-coverage-status.ps1
 
       # Genuine, reproducible verification of the post-clean init standard
       # (AGENTS.md "Cleaning the working tree"): git clean -ffxd must be safe
