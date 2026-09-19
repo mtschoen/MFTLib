@@ -171,6 +171,17 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       completes against mapped memory or, if it arrives after disposal began, fails with
       `ObjectDisposedException` instead of dereferencing an unmapped view. Raw `BlockFile`
       property reads are not serialized against disposal; readers go through snapshot borrows.
+    - **Block ownership**: a cache-mode `FileIndex` holds a sibling `<block>.lock` (opened with
+      `FileShare.None`, an exclusive non-blocking `flock` on Unix) for as long as it owns a canonical
+      cache block, and that lock is taken before any validation, retired-sibling sweep, rename, or
+      delete. A second `FileIndex` over the same cache directory, in any process, that cannot take the
+      lock reports the drive `Failed` with `DriveFailureKind.InUse` on a cache-only open; a non-cache-only
+      open instead scans into a private `mftlib-private-*` delete-on-close block and leaves the canonical
+      cache untouched. `.lock` files are deliberately never unlinked (unlinking races a fresh
+      create-and-lock), so cache-pruning tooling must leave `*.mlix.lock` alone. `FileIndexOptions.Diagnostics`
+      and `BlockFileCreateOptions.Diagnostics` receive one line per block-file delete with the path and
+      reason; null by default. Consumers that deliberately shared one cache block between two live indexes
+      must open the second with `NoCache` or expect the in-use outcome.
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
     - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`; `MaterializeBatches`/`ReadRecordBatches` provide bounded-memory batch materialization over the same result.
