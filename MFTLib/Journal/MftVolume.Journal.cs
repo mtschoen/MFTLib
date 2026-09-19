@@ -192,6 +192,9 @@ public sealed partial class MftVolume
                     yield break;
                 }
 
+                // If ERROR_OPERATION_ABORTED (995) arrives without a requested cancellation,
+                // the loop silently retries instead of surfacing an error; acceptable today
+                // because CancelIoEx is only invoked from this token's registration.
                 continue;
             }
 
@@ -255,6 +258,9 @@ public sealed partial class MftVolume
                     yield break;
                 }
 
+                // If ERROR_OPERATION_ABORTED (995) arrives without a requested cancellation,
+                // the loop silently retries instead of surfacing an error; acceptable today
+                // because CancelIoEx is only invoked from this token's registration.
                 continue;
             }
 

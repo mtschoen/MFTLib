@@ -326,18 +326,17 @@ EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t start
             success = UsnGetOverlappedResult(volumeHandle, &overlapped, &bytesReturned, TRUE);
             if (success == 0) {
                 error = GetLastError();
-                if (error == ERROR_OPERATION_ABORTED) {
-                    CloseHandle(overlapped.hEvent);
-                    VirtualFree(readBuffer, 0, MEM_RELEASE);
-                    return result;
-                }
             }
         }
 
         if (success == 0) {
             CloseHandle(overlapped.hEvent);
             VirtualFree(readBuffer, 0, MEM_RELEASE);
-            ApplyUsnReadError(result, GetLastError(), L"FSCTL_READ_USN_JOURNAL watch failed");
+            // ERROR_OPERATION_ABORTED is the CancelIoEx-driven stop and returns an empty result so the managed iterator
+            // can end the stream normally.
+            if (error != ERROR_OPERATION_ABORTED) {
+                ApplyUsnReadError(result, error, L"FSCTL_READ_USN_JOURNAL watch failed");
+            }
             return result;
         }
     }

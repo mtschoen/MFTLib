@@ -144,7 +144,6 @@ public class BrokerDiagnosticsLogFilterTests
     {
         const ulong initialReference = 9101;
         const ulong replacementReference = 9103;
-        var currentReference = initialReference;
         var resolveCount = 0;
 
         BrokerDiagnosticsLogFilter._resolveFileReference = path =>
@@ -152,7 +151,7 @@ public class BrokerDiagnosticsLogFilterTests
             if (path == OwnLogPath)
             {
                 resolveCount++;
-                return currentReference;
+                return initialReference;
             }
 
             return null;
@@ -172,7 +171,16 @@ public class BrokerDiagnosticsLogFilterTests
         Assert.AreEqual("unrelated1.txt", kept1[0].FileName);
 
         // Simulate log rotation / replacement: file at OwnLogPath now has replacementReference.
-        currentReference = replacementReference;
+        BrokerDiagnosticsLogFilter._resolveFileReference = path =>
+        {
+            if (path == OwnLogPath)
+            {
+                resolveCount++;
+                return replacementReference;
+            }
+
+            return null;
+        };
 
         // Batch 2: contains an entry from the renamed original file AND an entry from the new replacement file.
         var batch2 = new[]
