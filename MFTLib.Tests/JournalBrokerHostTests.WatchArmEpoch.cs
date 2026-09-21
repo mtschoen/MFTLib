@@ -1,4 +1,5 @@
 using System.Buffers;
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -102,6 +103,9 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task StartWatch_TagsAPerDriveErrorWithTheArmEpochThatProducedIt()
     {
+        using var journal = JournalCheckpointCheck.OverrideJournalForTest(drive => drive == 'C'
+            ? new JournalWindow(8UL, 0L, 1000L, 64L, 4096L)
+            : null);
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         var host = CreateHost(
             _ => new UsnJournalCursor(1UL, 0L),

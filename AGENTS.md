@@ -216,12 +216,18 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       `RecordCheckpointLossForFaultedDrive`: any watch fault on an MFT-backed drive asks the live
       journal about that drive's current block cursor, which is both what `BuildWatchTarget` armed
       the watch from and what every applied batch has advanced it to. Running the check on every
-      fault rather than on a classified subset is deliberate, because no journal error code
-      reaches managed code: `ApplyUsnReadError` in `MFTLibNative/usn/usn_journal.cpp` turns
-      ERROR_JOURNAL_ENTRY_DELETED and its siblings into English strings in the result's fixed
-      `errorMessage` buffer, which is why `JournalBrokerHost.IsJournalCursorException` resorts to
-      substring matching. Do not add more of that: the journal is the only honest classifier, and
-      it records nothing for an unrelated fault by construction. The journal read runs
+      fault rather than on a classified subset is deliberate,
+      because no journal error code reaches managed code: `ApplyUsnReadError` in
+      `MFTLibNative/usn/usn_journal.cpp` turns native failures into English strings in
+      the result's fixed `errorMessage` buffer. The journal is the classifier on both
+      sides: `JournalBrokerHost.DescribeWatchFailure` calls `JournalCheckpointCheck.Check`
+      for a failed nonzero cached-cursor startup, adding rescan wording only when the
+      live journal proves that cursor is lost. A retained cursor or an unavailable
+      query keeps the original message. Sentinel starts and failures after a batch
+      keep their original messages without this broker query. The index independently
+      checks its current block cursor on every watch fault, including mid-session
+      failures, and records nothing new when that position is still retained or the
+      journal cannot answer. Neither path classifies exception wording. The journal read runs
       outside `_stateLock` and the loss is recorded only while the block whose cursor it describes
       is still the drive's block, so it cannot resurrect a report a concurrent rescan cleared.
       A source stream that ends without a stop classifies every drive it was watching the same way.

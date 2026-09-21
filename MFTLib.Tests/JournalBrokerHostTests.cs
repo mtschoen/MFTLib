@@ -7,6 +7,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public partial class JournalBrokerHostTests : BrokerBlockTestBase
 {
     static readonly string[] KeepFileNamesGit = [".git"];

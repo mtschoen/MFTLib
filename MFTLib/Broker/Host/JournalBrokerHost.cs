@@ -163,15 +163,15 @@ public sealed partial class JournalBrokerHost
         return (tip, effectiveSince, caughtUpReported);
     }
 
-    // A cached cursor can fall outside the journal's live window before StartWatch is
-    // called: a default 32 MB journal wrapping within minutes on a busy system drive, or
-    // the journal being recreated with a new id. That failure names the cursor and the
-    // rescan, so a consumer can tell "this drive needs rebuilding" from "this drive hit
-    // an access or volume error". A failure after batches have flowed, or from a (0,0)
-    // sentinel start that had no cached cursor to be stale, carries its own message.
+    // A failed cached-cursor startup gets rescan wording only when the journal now
+    // proves that position is lost. Unknown journal state preserves the original
+    // error, as do sentinel starts and failures after batches have flowed.
     static string DescribeWatchFailure(string drive, UsnJournalCursor since, bool yieldedAny, Exception exception)
     {
-        if (yieldedAny || since.JournalId == 0 || !IsJournalCursorException(exception))
+        if (yieldedAny || since.JournalId == 0 ||
+            !JournalBrokerClient.TryNormalizeDriveLetter(drive, out var normalizedDrive) ||
+            JournalCheckpointCheck.Check(normalizedDrive[0], since.JournalId, since.NextUsn,
+                JournalCheckpointLossDetection.LiveWatch) is null)
         {
             return exception.Message;
         }
@@ -354,21 +354,6 @@ public sealed partial class JournalBrokerHost
         }
     }
 
-    static bool IsJournalCursorException(Exception exception)
-    {
-        var message = exception.Message;
-        return !string.IsNullOrEmpty(message) &&
-               (message.Contains("deleted", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("wrapped", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("rescan", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("not active", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("deletion", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("recreated", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("cursor", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("1181", StringComparison.Ordinal) ||
-                message.Contains("1179", StringComparison.Ordinal) ||
-                message.Contains("1178", StringComparison.Ordinal));
-    }
 
     sealed class DirectProgress<T>(Action<T> handler) : IProgress<T>
     {
