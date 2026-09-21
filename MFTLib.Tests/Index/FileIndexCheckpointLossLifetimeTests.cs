@@ -6,8 +6,9 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     Who owns a <see cref="JournalCheckpointLoss" /> and how long it lives: a drive that
 ///     never settles must not leave its report behind for whichever drive reuses its ordinal,
-///     a cache-only open must still say why it declined the cache, and a rescan that replaces
-///     the block must drop a report that no longer explains the block in place.
+///     a cache-only open that adopts a block despite a lost checkpoint must still say why, and
+///     a rescan that replaces the block must drop a report that no longer explains the block
+///     in place.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -181,12 +182,13 @@ public class FileIndexCheckpointLossLifetimeTests
     // --- Cache-only ---
 
     /// <summary>
-    ///     The surface that matters most for a cache-only consumer: the cache was declined, and
-    ///     this is why, and the size a journal would need to be at least to have kept the
-    ///     checkpoint.
+    ///     The surface that matters most for a cache-only consumer: a cache-only open never
+    ///     watches and the block is still a correct snapshot as of its age, so it is adopted
+    ///     despite the lost checkpoint, and the status still says why the checkpoint could not
+    ///     be resumed and the size a journal would need to be at least to have kept it.
     /// </summary>
     [TestMethod]
-    public async Task CacheOnlyDeclinedOverATrimmedCheckpoint_ReportsWhyAndTheSize()
+    public async Task CacheOnlyAdoptsATrimmedCheckpoint_ReportsWhyAndTheSize()
     {
         var drive = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(drive);
@@ -196,11 +198,12 @@ public class FileIndexCheckpointLossLifetimeTests
             Options(ProduceMftShapedBlock, cacheOnly: true, drives: drive), CancellationToken.None);
 
         var status = index.Drives.Single();
-        Assert.AreEqual(DriveState.Failed, status.State);
-        Assert.AreEqual(DriveFailureKind.CacheDeclined, status.FailureKind);
+        Assert.AreEqual(DriveState.Ready, status.State);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.BlockSource);
+        Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
 
         var loss = status.CheckpointLoss;
-        Assert.IsNotNull(loss, "a cache-only open must still say why the cache was unusable");
+        Assert.IsNotNull(loss, "a cache-only open must still say why the checkpoint could not be resumed");
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual('T', loss.DriveLetter);
         Assert.AreEqual(CachedNextUsn, loss.CheckpointUsn);
@@ -209,7 +212,7 @@ public class FileIndexCheckpointLossLifetimeTests
     }
 
     [TestMethod]
-    public async Task CacheOnlyDeclinedOverARecreatedJournal_ReportsTheLossWithNoSize()
+    public async Task CacheOnlyAdoptsOverARecreatedJournal_ReportsTheLossWithNoSize()
     {
         var drive = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(drive);
@@ -219,7 +222,8 @@ public class FileIndexCheckpointLossLifetimeTests
             Options(ProduceMftShapedBlock, cacheOnly: true, drives: drive), CancellationToken.None);
 
         var status = index.Drives.Single();
-        Assert.AreEqual(DriveFailureKind.CacheDeclined, status.FailureKind);
+        Assert.AreEqual(DriveState.Ready, status.State);
+        Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
 
         var loss = status.CheckpointLoss;
         Assert.IsNotNull(loss);

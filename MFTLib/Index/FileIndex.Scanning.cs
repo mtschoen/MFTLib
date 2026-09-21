@@ -260,6 +260,15 @@ public sealed partial class FileIndex
     ///     rescans once and keeps the reason. Only an MFT-backed block carries a checkpoint:
     ///     an enumeration block is not watched through the journal, so nothing about it can
     ///     have fallen out of one.
+    ///     <para>
+    ///         <see cref="FileIndexOptions.InitialOpenCacheOnly" /> forbids the scan that would
+    ///         otherwise follow a rejection, so the reasoning above does not apply to it: a
+    ///         cache-only open never watches, and the block is still a correct snapshot as of
+    ///         its age, so it is adopted anyway rather than failing the drive. The ordinal is
+    ///         recorded in <see cref="_cacheOnlyUnresumableCheckpointOrdinals" /> so a later
+    ///         <see cref="StartWatchingAsync" /> does not silently arm a watch from a cursor the
+    ///         journal no longer holds.
+    ///     </para>
     /// </summary>
     WarmStartResult RejectUnresumableCheckpoint(char driveLetter, ushort driveOrdinal, WarmStartResult warmStart)
     {
@@ -282,6 +291,17 @@ public sealed partial class FileIndex
             lock (_stateLock)
             {
                 _checkpointLossesByOrdinal[driveOrdinal] = loss;
+            }
+
+            if (_options.InitialOpenCacheOnly)
+            {
+                lock (_stateLock)
+                {
+                    _cacheOnlyUnresumableCheckpointOrdinals.Add(driveOrdinal);
+                }
+
+                accepted = true;
+                return warmStart;
             }
 
             return new WarmStartResult(null, warmStart.DiscardedBlock);

@@ -243,6 +243,27 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       `IndexVolumeChangeSource.Journals.cs`, file-wizard's `JournalSettingsPresenter`), so
       clearing it would make their hint vanish on an unrelated error. A `LiveWatch` loss replaces
       a `DriveOpening` one as the newer fact about the same drive; a rescan clears either.
+      `FileIndexOptions.InitialOpenCacheOnly` changes what an unresumable checkpoint does at open:
+      a cache-only open never watches, and the block is still a correct snapshot as of its age, so
+      `RejectUnresumableCheckpoint` adopts it instead of failing the drive - `DriveStatus.State`
+      reads `Ready` and `BlockSource.WarmStartedFromCache`, with `CheckpointLoss` still set so a
+      consumer sees why the checkpoint could not be resumed. The drive's ordinal is recorded in
+      `FileIndex._cacheOnlyUnresumableCheckpointOrdinals` so a later `StartWatchingAsync` leaves it
+      out of the watch rather than arming a cursor the journal no longer holds: `BuildWatchTargets`
+      splits it out and `RecordUnresumableCheckpointWatchFailureLocked` reports it the same way any
+      other watch failure is, through `DriveStatus.WatchFailureMessage` and
+      `WatchCatchUpState.Faulted`, pointing at `FileIndex.RescanAsync`. A successful rescan writes a
+      fresh cursor, clears the ordinal alongside `CheckpointLoss`, and arms the drive onto whatever
+      watch session is running by the time the scan finishes - `ResumeDriveAfterRescanAsync` reads
+      `_watchSession` fresh at resume time rather than trusting the session captured before the scan
+      ran, because a session can start (excluding this drive, since its block has not swapped yet)
+      while the scan is still in flight; without the fresh read the drive would join no session at
+      all even though one now exists (PR 230 review finding 2). A rescan whose scan fails without
+      throwing (`ProduceRescannedBlockAsync` returns null) leaves the old, still-unresumable block in
+      place; `ResumeDriveAfterRescanAsync` checks `_cacheOnlyUnresumableCheckpointOrdinals` before
+      registering or arming anything, so a failed scan leaves the drive's refusal exactly as it was
+      instead of arming a cursor the journal still cannot resume (PR 230 review finding 1). The
+      whole cache-only adoption behavior traces to file-wizard#481.
     - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory.
     - **Query lifetime**: the eight entry points that scan rows (`Find`, `FindByName`, `Search`, `Enumerate`, `Largest`,
       `DuplicateNames`, `Root`, and `FileEntry.Children`) each take an optional `CancellationToken`, observed

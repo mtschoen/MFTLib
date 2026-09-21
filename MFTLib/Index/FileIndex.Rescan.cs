@@ -22,6 +22,17 @@ public sealed partial class FileIndex
     ///     watch fault, so <see cref="StopWatchingAsync" /> no longer rethrows it, and leaves every
     ///     other drive's fault, subscriber faults, and source faults in place. If the re-arm fails,
     ///     the drive's earlier fault is restored unless a newer fault for it was recorded meanwhile.
+    ///     <para>
+    ///         A drive a cache-only open adopted despite a lost journal checkpoint (see
+    ///         <see cref="FileIndexOptions.InitialOpenCacheOnly" />) is never disarmed here, since
+    ///         it was never armed. If the scan replaces its block, the fresh cursor is armed onto
+    ///         whatever watch session is running by the time the scan finishes, even one that
+    ///         started after this call began: the session captured at the start is a snapshot, not
+    ///         a lock, so a session can appear while the scan is still in flight. If the scan
+    ///         fails without producing a new block, the old, still-unresumable block is left in
+    ///         place and the drive's watch refusal is left exactly as it was, rather than being
+    ///         armed from a cursor the journal still cannot resume.
+    ///     </para>
     /// </remarks>
     public async Task RescanAsync(char driveLetter, CancellationToken cancellationToken)
     {
@@ -76,25 +87,6 @@ public sealed partial class FileIndex
         }
     }
 
-    /// <summary>
-    ///     Puts the drive back on the watch after a swap that failed, so the caller's exception is
-    ///     the only consequence.
-    /// </summary>
-    async Task ResumeAfterFailedSwapAsync(char driveLetter, SuspendedWatch suspended,
-        Exception swapFailure, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await ResumeDriveAfterRescanAsync(driveLetter, suspended, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception resumeFailure)
-        {
-            RecordWatchFailure(driveLetter, swapFailure);
-            throw new AggregateException(
-                $"Drive {driveLetter} could not be re-armed after its rescan failed, so its watch is stopped.", swapFailure, resumeFailure);
-        }
-    }
-
     async Task SwapDriveBlockAsync(IndexedDrive drive, char driveLetter, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -133,9 +125,11 @@ public sealed partial class FileIndex
                     _driveBlocks[driveOrdinal] = completedScan.DriveBlock;
                     _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
                     _discardedBlocksByOrdinal.Remove(driveOrdinal);
-                    // Both of these explain how the block being replaced came to be, so both
-                    // stop applying the moment a new block takes its place.
+                    // All three explain how the block being replaced came to be (or, for the
+                    // last one, that it could not be watched), so all three stop applying the
+                    // moment a new block with a fresh cursor takes its place.
                     _checkpointLossesByOrdinal.Remove(driveOrdinal);
+                    _cacheOnlyUnresumableCheckpointOrdinals.Remove(driveOrdinal);
                     _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
                 },
                 () =>
@@ -303,102 +297,4 @@ public sealed partial class FileIndex
             throw;
         }
     }
-
-    /// <summary>
-    ///     Stops the rescanned drive at the watch source before the gate is taken.
-    /// </summary>
-    async Task<SuspendedWatch> SuspendDriveForRescanAsync(char driveLetter, CancellationToken cancellationToken)
-    {
-        WatchSession? session;
-        lock (_stateLock)
-        {
-            session = _watchSession;
-        }
-
-        if (session is null)
-        {
-            return default;
-        }
-
-        if (session.Pump.IsCompleted)
-        {
-            var sessionToken = session.CallerToken;
-            try
-            {
-                await StopWatchingAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-            }
-
-            return new SuspendedWatch(null, RestartWholeSession: true, sessionToken);
-        }
-
-        if (session.ContainsTarget(driveLetter))
-        {
-            await session.Source.DisarmDriveAsync(driveLetter, cancellationToken).ConfigureAwait(false);
-        }
-
-        return new SuspendedWatch(session, RestartWholeSession: false, session.CallerToken);
-    }
-
-    /// <summary>
-    ///     Puts the rescanned drive back on the watch it was taken off.
-    /// </summary>
-    async Task ResumeDriveAfterRescanAsync(char driveLetter, SuspendedWatch suspended,
-        CancellationToken cancellationToken)
-    {
-        if (suspended.Session is { } session)
-        {
-            lock (_stateLock)
-            {
-                if (!TryGetDriveOrdinalLocked(driveLetter, out _))
-                {
-                    return;
-                }
-            }
-
-            var target = BuildWatchTarget(driveLetter);
-            session.RegisterTarget(target);
-            WatchSessionFaults.Entry? previousFault;
-            lock (_stateLock)
-            {
-                previousFault = session.Faults.TakeDrive(driveLetter);
-                ClearWatchFailureLocked(driveLetter);
-            }
-            ArmWatchCatchUp(driveLetter);
-            try
-            {
-                await session.Source.ArmDriveAsync(target, cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                lock (_stateLock)
-                {
-                    session.Faults.RestoreDrive(driveLetter, previousFault);
-                }
-                throw;
-            }
-            return;
-        }
-
-        ClearWatchFailure(driveLetter);
-        RemoveStaleFaultedCatchUp(driveLetter);
-        if (suspended.RestartWholeSession)
-        {
-            await StartWatchingCoreAsync(suspended.SessionToken, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    void ClearWatchFailure(char driveLetter)
-    {
-        lock (_stateLock)
-        {
-            ClearWatchFailureLocked(driveLetter);
-        }
-    }
-
-    /// <summary>What a rescan took off the watch, and what it therefore has to put back.</summary>
-    readonly record struct SuspendedWatch(WatchSession? Session, bool RestartWholeSession,
-        CancellationToken SessionToken);
 }

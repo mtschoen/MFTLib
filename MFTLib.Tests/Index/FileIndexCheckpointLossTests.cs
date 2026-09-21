@@ -254,8 +254,14 @@ public class FileIndexCheckpointLossTests
         Assert.IsNull(loss.SizeThatWouldHaveRetained);
     }
 
+    /// <summary>
+    ///     A cache-only open never watches and the block is still a correct snapshot as of its
+    ///     age, so it is adopted despite the lost checkpoint rather than failing the drive; the
+    ///     size hint that does not fit in a <see cref="long" /> is exactly as absent as it is on
+    ///     the non-cache-only path.
+    /// </summary>
     [TestMethod]
-    public async Task UnrepresentableRetentionSize_CacheOnlyDeclinesAndClosesCandidate()
+    public async Task UnrepresentableRetentionSize_CacheOnlyAdoptsTheBlockAndReportsTheLoss()
     {
         await SeedCacheAsync();
         using var journal = Journal(CachedJournalId,
@@ -270,14 +276,13 @@ public class FileIndexCheckpointLossTests
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         var drive = reopened.Drives.Single();
-        Assert.AreEqual(DriveState.Failed, drive.State);
-        Assert.AreEqual(DriveFailureKind.CacheDeclined, drive.FailureKind);
+        Assert.AreEqual(DriveState.Ready, drive.State);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.BlockSource);
+        Assert.AreEqual(DriveFailureKind.None, drive.FailureKind);
         Assert.IsNotNull(drive.CheckpointLoss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, drive.CheckpointLoss.Cause);
         Assert.IsNull(drive.CheckpointLoss.SizeThatWouldHaveRetained);
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
-        using var exclusive = new FileStream(blockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        Assert.IsTrue(exclusive.Length > 0);
+        Assert.IsTrue(reopened.Root('T').IsValid, "the adopted block must still answer queries");
     }
 
     [TestMethod]

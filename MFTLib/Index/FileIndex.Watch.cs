@@ -39,6 +39,15 @@ public sealed partial class FileIndex
     ///     fault carrying no drive letter, marks every watched drive's
     ///     <see cref="DriveStatus.WatchFailureMessage" />, and releases the session, so this
     ///     method can be called again to start a fresh one.
+    ///     <para>
+    ///         An MFT-backed drive a cache-only open adopted despite a lost journal checkpoint is
+    ///         left out of the pump rather than armed from a cursor the journal no longer holds:
+    ///         its <see cref="DriveStatus.WatchFailureMessage" /> explains the refusal and its
+    ///         <see cref="DriveStatus.WatchCatchUp" /> reads <see cref="WatchCatchUpState.Faulted" />,
+    ///         even if it is the only drive and this call therefore starts no session at all. Only
+    ///         <see cref="RescanAsync" /> clears it, by writing a fresh cursor and arming the drive
+    ///         onto a session already running, or leaving it ready for the next call to this method.
+    ///     </para>
     /// </summary>
     public Task StartWatchingAsync(CancellationToken cancellationToken)
     {
@@ -57,7 +66,18 @@ public sealed partial class FileIndex
         ObjectDisposedException.ThrowIf(_disposed, this);
         startCancellationToken.ThrowIfCancellationRequested();
 
-        var targets = BuildWatchTargets();
+        var (targets, unresumableDrives) = BuildWatchTargets();
+        if (unresumableDrives.Count > 0)
+        {
+            lock (_stateLock)
+            {
+                foreach (var unresumable in unresumableDrives)
+                {
+                    RecordUnresumableCheckpointWatchFailureLocked(unresumable.DriveLetter, unresumable.DriveOrdinal);
+                }
+            }
+        }
+
         if (targets.Count == 0)
         {
             return Task.CompletedTask;
@@ -181,21 +201,60 @@ public sealed partial class FileIndex
         }
     }
 
-    List<IndexWatchTarget> BuildWatchTargets()
+    /// <summary>One MFT-backed drive left out of a watch because its cursor cannot be resumed.</summary>
+    readonly record struct UnresumableWatchDrive(char DriveLetter, ushort DriveOrdinal);
+
+    /// <summary>
+    ///     Every MFT-backed drive's watch target, split from the drives
+    ///     <see cref="_cacheOnlyUnresumableCheckpointOrdinals" /> marks unresumable: arming a
+    ///     watch from one of those would resume from a journal cursor the journal no longer
+    ///     holds, so they are reported separately instead of silently joining the stream.
+    /// </summary>
+    (List<IndexWatchTarget> Targets, List<UnresumableWatchDrive> Unresumable) BuildWatchTargets()
     {
         lock (_stateLock)
         {
             var targets = new List<IndexWatchTarget>(_driveBlocks.Count);
+            List<UnresumableWatchDrive>? unresumable = null;
             foreach (var driveBlock in _driveBlocks)
             {
-                if (driveBlock.ProducerKind == ProducerKind.Mft)
+                if (driveBlock.ProducerKind != ProducerKind.Mft)
                 {
-                    targets.Add(BuildWatchTarget(driveBlock));
+                    continue;
                 }
+
+                if (_cacheOnlyUnresumableCheckpointOrdinals.Contains(driveBlock.DriveOrdinal))
+                {
+                    (unresumable ??= []).Add(
+                        new UnresumableWatchDrive(driveBlock.DriveLetter, driveBlock.DriveOrdinal));
+                    continue;
+                }
+
+                targets.Add(BuildWatchTarget(driveBlock));
             }
 
-            return targets;
+            return (targets, unresumable ?? []);
         }
+    }
+
+    /// <summary>
+    ///     Marks one drive's watch as unarmable because a cache-only open adopted its block
+    ///     despite a lost journal checkpoint: resuming from that cursor would read a position the
+    ///     journal no longer holds. Reported the same way any other watch failure is, so a
+    ///     consumer sees one explanation rather than a silently short target list. A successful
+    ///     <see cref="RescanAsync" /> writes a fresh cursor, which clears this drive's entry in
+    ///     <see cref="_cacheOnlyUnresumableCheckpointOrdinals" /> and, through the same paths an
+    ///     ordinary watch-fault recovery uses, this failure message and faulted catch-up slot.
+    ///     The caller holds <see cref="_stateLock" />.
+    /// </summary>
+    void RecordUnresumableCheckpointWatchFailureLocked(char driveLetter, ushort driveOrdinal)
+    {
+        var failure = new InvalidOperationException(
+            $"Drive {driveLetter} cannot be watched: a cache-only open adopted its cached block " +
+            "despite a journal checkpoint that could no longer be resumed. Call FileIndex.RescanAsync " +
+            "for this drive before watching it.");
+        _watchFailureMessagesByOrdinal[driveOrdinal] = failure.Message;
+        FaultWatchCatchUpLocked(driveOrdinal, failure);
     }
 
     /// <summary>One drive's counterpart to <see cref="BuildWatchTargets" />, for a re-arm.</summary>

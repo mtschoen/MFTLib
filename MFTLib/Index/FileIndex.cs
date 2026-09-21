@@ -29,6 +29,18 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     can explain the rescan once the index is open.
     /// </summary>
     readonly Dictionary<ushort, JournalCheckpointLoss> _checkpointLossesByOrdinal = [];
+
+    /// <summary>
+    ///     Ordinals of drives a cache-only open adopted despite a lost journal checkpoint (see
+    ///     <see cref="RejectUnresumableCheckpoint" />): <see cref="FileIndexOptions.InitialOpenCacheOnly" />
+    ///     never watches, and the block is still a correct snapshot as of its age, so the open
+    ///     keeps it rather than failing the drive. <see cref="BuildWatchTargets" /> reads this to
+    ///     keep such a drive off a later <see cref="StartWatchingAsync" />, since arming a watch
+    ///     from that block's cursor would resume from a position the journal no longer holds.
+    ///     A successful <see cref="RescanAsync" /> writes a fresh cursor and clears the ordinal
+    ///     from here along with <see cref="_checkpointLossesByOrdinal" />.
+    /// </summary>
+    readonly HashSet<ushort> _cacheOnlyUnresumableCheckpointOrdinals = [];
     readonly Dictionary<char, BlockOwnerLock> _canonicalLocksByLetter = [];
     readonly List<RetiredSnapshot> _retiredSnapshots = [];
     readonly FileIndexOptions _options;

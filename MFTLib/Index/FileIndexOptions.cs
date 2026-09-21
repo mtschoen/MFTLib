@@ -30,6 +30,12 @@ public sealed record FileIndexOptions
     ///     <see cref="DriveFailureKind.CacheDeclined" /> (or <see cref="DriveFailureKind.InUse" />
     ///     when another live index holds the cache block's owner lock) instead of falling back to
     ///     a scan, and <see cref="FileIndex.RescanAsync" /> remains available to scan it later.
+    ///     A cache block whose journal checkpoint the journal no longer holds is different: this
+    ///     open never watches, and the block is still a correct snapshot as of its age, so it is
+    ///     adopted instead of declined, with <see cref="DriveStatus.CheckpointLoss" /> set to say
+    ///     why the checkpoint could not be resumed. Such a drive is left out of a later
+    ///     <see cref="FileIndex.StartWatchingAsync" /> (see <see cref="DriveStatus.WatchFailureMessage" />)
+    ///     until <see cref="FileIndex.RescanAsync" /> gives it a fresh cursor.
     /// </summary>
     public bool InitialOpenCacheOnly { get; init; }
 
