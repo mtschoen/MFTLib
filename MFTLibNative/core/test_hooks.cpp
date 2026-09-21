@@ -25,6 +25,11 @@ std::array<uint32_t, 8> g_usnIoSize = {};
 int g_usnIoHead = 0;
 int g_usnIoCount = 0;
 int g_usnOverlappedAbort = 0;
+HANDLE g_usnWatchPipe = nullptr;
+HANDLE g_usnBeforeIssue = nullptr;
+HANDLE g_usnContinueIssue = nullptr;
+HANDLE g_usnIssued = nullptr;
+int g_usnGateReadNumber = 0;
 #endif
 }  // namespace
 
@@ -105,6 +110,28 @@ bool UsnIoShouldAbortOverlapped() {
     g_usnOverlappedAbort = 0;
     return true;
 }
+
+bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesReturned, OVERLAPPED* overlapped,
+                         BOOL& success) {
+    if (g_usnWatchPipe == nullptr || handle != g_usnWatchPipe || overlapped == nullptr) {
+        return false;
+    }
+    const bool gate = --g_usnGateReadNumber == 0;
+    if (gate) {
+        SetEvent(g_usnBeforeIssue);
+        if (WaitForSingleObject(g_usnContinueIssue, INFINITE) != WAIT_OBJECT_0) {
+            success = FALSE;
+            return true;
+        }
+    }
+    success = ReadFile(handle, buffer, size, bytesReturned, overlapped);
+    const DWORD error = success != FALSE ? ERROR_SUCCESS : GetLastError();
+    if (gate) {
+        SetEvent(g_usnIssued);
+    }
+    SetLastError(error);
+    return true;
+}
 #endif
 
 extern "C" {
@@ -137,6 +164,14 @@ EXPORT void SetUsnIoSuccess(const uint8_t* data, uint32_t size) {
 }
 
 EXPORT void SetUsnOverlappedAbort() { g_usnOverlappedAbort = 1; }
+EXPORT void SetUsnWatchPipe(HANDLE handle, HANDLE beforeIssue, HANDLE continueIssue, HANDLE issued,
+                            int gateReadNumber) {
+    g_usnWatchPipe = handle;
+    g_usnBeforeIssue = beforeIssue;
+    g_usnContinueIssue = continueIssue;
+    g_usnIssued = issued;
+    g_usnGateReadNumber = gateReadNumber;
+}
 EXPORT void ResetTestState() {
     g_maxThreads = 0;
     g_allocFailCountdown = 0;
@@ -152,6 +187,11 @@ EXPORT void ResetTestState() {
     g_usnIoHead = 0;
     g_usnIoCount = 0;
     g_usnOverlappedAbort = 0;
+    g_usnWatchPipe = nullptr;
+    g_usnBeforeIssue = nullptr;
+    g_usnContinueIssue = nullptr;
+    g_usnIssued = nullptr;
+    g_usnGateReadNumber = 0;
 }
 #else
 EXPORT void ResetTestState() {

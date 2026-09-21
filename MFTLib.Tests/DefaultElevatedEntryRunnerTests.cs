@@ -70,6 +70,7 @@ public class DefaultElevatedEntryRunnerTests
         // seams its watch path uses - the test process is not elevated (the same technique
         // as JournalBrokerHostRealSeamsTests).
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+        FileUtilities._getWatchVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
         MFTLibNative._queryUsnJournal = _ =>
         {
             var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
@@ -86,7 +87,7 @@ public class DefaultElevatedEntryRunnerTests
         // the one that lands on the broken pipe, which is what used to kill the child.
         var watchEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseWatch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        MFTLibNative._watchUsnJournalBatch = (_, _, journalId) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, journalId, _) =>
         {
             watchEntered.TrySetResult();
             releaseWatch.Task.GetAwaiter().GetResult();

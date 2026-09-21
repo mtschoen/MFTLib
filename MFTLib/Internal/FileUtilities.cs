@@ -6,8 +6,13 @@ namespace MFTLib;
 static class FileUtilities
 {
     internal static Func<string, SafeFileHandle> _getVolumeHandle = NativeGetVolumeHandle;
+    internal static Func<string, SafeFileHandle> _getWatchVolumeHandle = NativeGetWatchVolumeHandle;
 
-    static SafeFileHandle NativeGetVolumeHandle(string volume)
+    static SafeFileHandle NativeGetVolumeHandle(string volume) => OpenVolumeHandle(volume, 0);
+
+    static SafeFileHandle NativeGetWatchVolumeHandle(string volume) => OpenVolumeHandle(volume, FILE_FLAG_OVERLAPPED);
+
+    static SafeFileHandle OpenVolumeHandle(string volume, uint flags)
     {
         var volumeHandle = Kernel32._createFile(
             volume,
@@ -15,7 +20,7 @@ static class FileUtilities
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             IntPtr.Zero,
             OPEN_EXISTING,
-            0,
+            flags,
             IntPtr.Zero);
 
         if (volumeHandle.IsInvalid)
@@ -29,6 +34,7 @@ static class FileUtilities
     internal static void ResetToDefaults()
     {
         _getVolumeHandle = NativeGetVolumeHandle;
+        _getWatchVolumeHandle = NativeGetWatchVolumeHandle;
     }
 
     // ReSharper disable InconsistentNaming
@@ -37,5 +43,6 @@ static class FileUtilities
     const uint FILE_SHARE_READ = 0x00000001;
 
     const uint FILE_SHARE_WRITE = 0x00000002;
+    const uint FILE_FLAG_OVERLAPPED = 0x40000000;
     // ReSharper restore InconsistentNaming
 }

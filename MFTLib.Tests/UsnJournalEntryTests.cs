@@ -38,10 +38,11 @@ public class UsnJournalEntryTests
     [TestMethod]
     public async Task SequenceNumber_MarshalsFromNativeWatchEntry()
     {
-        MFTLibNative._watchUsnJournalBatch = (_, _, _) => BuildSingleEntryWatchResult();
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, _, _) => BuildSingleEntryWatchResult();
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         MFTLibNative._freeUsnJournalResult = FreeWatchResult;
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+        FileUtilities._getWatchVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
 
         using var volume = MftVolume.Open("C");
         await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(1, 0)))

@@ -138,10 +138,35 @@ public sealed partial class MftVolume
         return entries;
     }
 
+    static void CancelWatch(object? state)
+    {
+        if (state is not ValueTuple<EventWaitHandle, SafeHandle> cancellationState)
+        {
+            throw new InvalidOperationException("Watch cancellation state is missing");
+        }
+
+        var (cancellationEvent, watchHandle) = cancellationState;
+        cancellationEvent.Set();
+        MFTLibNative._cancelUsnJournalWatch(watchHandle);
+    }
+
+    static IntPtr ReadWatchBatch(object? state)
+    {
+        if (state is not ValueTuple<SafeHandle, long, ulong, SafeHandle> readState)
+        {
+            throw new InvalidOperationException("Watch read state is missing");
+        }
+
+        var (watchHandle, currentUsn, journalId, cancellationEvent) = readState;
+        return MFTLibNative._watchUsnJournalBatchCancelable(
+            watchHandle, currentUsn, journalId, cancellationEvent);
+    }
+
     /// <summary>
     ///     Yields batches of USN journal entries as filesystem changes arrive.
     ///     Blocks on the kernel (zero CPU) until new entries appear.
-    ///     Cancel the token to stop watching - unblocks the kernel wait via CancelIoEx.
+    ///     Cancellation remains observable across read issuance and interrupts an idle kernel wait.
+    ///     The pending read completes before its native buffers and cancellation event are released.
     /// </summary>
     public async IAsyncEnumerable<UsnJournalEntry[]> WatchUsnJournal(
         UsnJournalCursor since,
@@ -151,17 +176,22 @@ public sealed partial class MftVolume
         var nextUsn = since.NextUsn;
         var journalId = since.JournalId;
 
-        await using var registration = cancellationToken.Register(() =>
-            MFTLibNative._cancelUsnJournalWatch(_volumeHandle));
+        using var watchHandle = FileUtilities._getWatchVolumeHandle(_volumePath);
+        using var cancellationEvent = new EventWaitHandle(false, EventResetMode.ManualReset);
+        await using var registration = cancellationToken.Register(
+            CancelWatch, (cancellationEvent, (SafeHandle)watchHandle));
 
         while (!cancellationToken.IsCancellationRequested)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
             var currentUsn = nextUsn;
-            var resultPtr = await Task.Run(
-                () => MFTLibNative._watchUsnJournalBatch(_volumeHandle, currentUsn, journalId),
-                cancellationToken).ConfigureAwait(false);
+            var resultPtr = await Task.Factory.StartNew(
+                ReadWatchBatch,
+                ((SafeHandle)watchHandle, currentUsn, journalId, (SafeHandle)cancellationEvent.SafeWaitHandle),
+                cancellationToken,
+                TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default).ConfigureAwait(false);
 
             if (resultPtr == IntPtr.Zero)
             {
@@ -215,17 +245,22 @@ public sealed partial class MftVolume
         var nextUsn = since.NextUsn;
         var journalId = since.JournalId;
 
-        await using var registration = cancellationToken.Register(() =>
-            MFTLibNative._cancelUsnJournalWatch(_volumeHandle));
+        using var watchHandle = FileUtilities._getWatchVolumeHandle(_volumePath);
+        using var cancellationEvent = new EventWaitHandle(false, EventResetMode.ManualReset);
+        await using var registration = cancellationToken.Register(
+            CancelWatch, (cancellationEvent, (SafeHandle)watchHandle));
 
         while (!cancellationToken.IsCancellationRequested)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
             var currentUsn = nextUsn;
-            var resultPtr = await Task.Run(
-                () => MFTLibNative._watchUsnJournalBatch(_volumeHandle, currentUsn, journalId),
-                cancellationToken).ConfigureAwait(false);
+            var resultPtr = await Task.Factory.StartNew(
+                ReadWatchBatch,
+                ((SafeHandle)watchHandle, currentUsn, journalId, (SafeHandle)cancellationEvent.SafeWaitHandle),
+                cancellationToken,
+                TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default).ConfigureAwait(false);
 
             if (resultPtr == IntPtr.Zero)
             {

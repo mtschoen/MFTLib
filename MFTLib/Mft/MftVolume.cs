@@ -7,13 +7,15 @@ public sealed partial class MftVolume : IDisposable
 {
     readonly uint _bufferSizeRecords;
     readonly string _driveLetter;
+    readonly string _volumePath;
     readonly SafeFileHandle _volumeHandle;
     bool _disposed;
 
-    MftVolume(SafeFileHandle volumeHandle, string driveLetter, uint bufferSizeRecords)
+    MftVolume(SafeFileHandle volumeHandle, string volumePath, uint bufferSizeRecords)
     {
         _volumeHandle = volumeHandle;
-        _driveLetter = driveLetter;
+        _volumePath = volumePath;
+        _driveLetter = ExtractDriveLetter(volumePath);
         _bufferSizeRecords = bufferSizeRecords;
     }
 
@@ -36,9 +38,7 @@ public sealed partial class MftVolume : IDisposable
         var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
         var handle = FileUtilities._getVolumeHandle(normalizedPath);
 
-        var driveLetter = ExtractDriveLetter(normalizedPath);
-
-        return new MftVolume(handle, driveLetter, bufferSizeRecords);
+        return new MftVolume(handle, normalizedPath, bufferSizeRecords);
     }
 
     public MftRecord[] ReadAllRecords()

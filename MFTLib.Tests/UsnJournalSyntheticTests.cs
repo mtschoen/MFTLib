@@ -18,7 +18,7 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class UsnJournalSyntheticTests
+public partial class UsnJournalSyntheticTests
 {
     // Win32 error constants (mirror the native error branches).
     const uint ERROR_HANDLE_EOF = 38;
