@@ -155,6 +155,73 @@ bump_gitlink() {
 	)
 }
 
+find_pull_request_index() {
+	# find_pull_request_index <repo> <base_branch> <head_branch>: echo the open
+	# pull request's index for that base/head pair. Returns 2 when no matching
+	# pull request exists and 1 on any other transport failure.
+	local repo="$1" base_branch="$2" head_branch="$3"
+	local encoded_base encoded_head http_status response
+	encoded_base="$(printf '%s' "$base_branch" | jq -sRr @uri)"
+	encoded_head="$(printf '%s' "$head_branch" | jq -sRr @uri)"
+	response="$SCRATCH/existing_pr.json"
+	http_status="$(curl -sS -o "$response" -w '%{http_code}' -H "$auth_header" \
+		"$GITEA_URL/api/v1/repos/$GITEA_OWNER/$repo/pulls/$encoded_base/$encoded_head")" || return 1
+	case "$http_status" in
+	200) ;;
+	404) return 2 ;;
+	*) return 1 ;;
+	esac
+	jq -r '.number // empty' "$response"
+}
+
+update_pull_request() {
+	# update_pull_request <repo> <index> <title> <body>: PATCH an existing pull
+	# request's title and body. Echoes the pull request's html_url on success.
+	# The deployed Gitea (1.27.1, per its live swagger.v1.json) documents only
+	# 201 for a successful PATCH here, matching the 201 the create call already
+	# treats as success below; 200 is also accepted in case a future Gitea
+	# version returns it instead.
+	local repo="$1" index="$2" title="$3" body="$4"
+	local patch_body patch_response patch_status
+	patch_body="$(jq -n --arg title "$title" --arg body "$body" '{title: $title, body: $body}')"
+	patch_response="$SCRATCH/pr_patch_response.json"
+	patch_status="$(curl -sS -o "$patch_response" -w '%{http_code}' -X PATCH \
+		-H "$auth_header" -H "Content-Type: application/json" \
+		--data-binary "$patch_body" \
+		"$GITEA_URL/api/v1/repos/$GITEA_OWNER/$repo/pulls/$index")"
+	case "$patch_status" in
+	200 | 201) ;;
+	*) return 1 ;;
+	esac
+	jq -r '.html_url // empty' "$patch_response"
+}
+
+refresh_existing_pull_request() {
+	# refresh_existing_pull_request <repo> <base_branch> <newline_separated_paths>
+	# An open pull request for BRANCH already exists (the create call returned
+	# 409). Find its index and PATCH its title and body so they name the sha
+	# the branch now pins, instead of leaving the wording from when the pull
+	# request was first opened (file-wizard#478).
+	local repo="$1" base_branch="$2" paths="$3"
+	local detail title body index url
+	detail="${paths//$'\n'/, }"
+	title="chore: bump MFTLib pin to $SHORT_SHA"
+	body="Automated update of the $detail submodule gitlink to $NEW_SHA by sync-consumers."
+
+	if ! index="$(find_pull_request_index "$repo" "$base_branch" "$BRANCH")" || [ -z "$index" ]; then
+		record "$repo" "failed" "PR already open but its index could not be found"
+		return 1
+	fi
+
+	if ! url="$(update_pull_request "$repo" "$index" "$title" "$body")"; then
+		record "$repo" "failed" "PR update (PATCH) failed for #$index"
+		return 1
+	fi
+
+	record "$repo" "updated" "PR #$index refreshed to $SHORT_SHA (${url:-no url})"
+	return 0
+}
+
 open_pull_request() {
 	# open_pull_request <repo> <base_branch> <newline_separated_paths>
 	local repo="$1" base_branch="$2" paths="$3"
@@ -176,8 +243,8 @@ open_pull_request() {
 		return 0
 		;;
 	409)
-		record "$repo" "updated" "PR already open, force-push refreshed it"
-		return 0
+		refresh_existing_pull_request "$repo" "$base_branch" "$paths"
+		return $?
 		;;
 	*)
 		record "$repo" "failed" "PR create returned $pr_status"

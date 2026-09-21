@@ -210,6 +210,30 @@ open_pull_request() {
 	return 0
 }
 
+# Fakes for the two helpers refresh_existing_pull_request calls, used by the
+# unit tests below that exercise the real refresh_existing_pull_request. Each
+# call is logged so a test can assert on the arguments it was given, and each
+# outcome is controlled by the FIND_PR_INDEX_* / UPDATE_PR_* variables the
+# test sets beforehand.
+
+FIND_PR_INDEX_LOG="$FIXTURE_ROOT/find_pr_index.log"
+FIND_PR_INDEX_RESULT=""
+FIND_PR_INDEX_EXIT=0
+find_pull_request_index() {
+	printf '%s|%s|%s\n' "$1" "$2" "$3" >>"$FIND_PR_INDEX_LOG"
+	printf '%s' "$FIND_PR_INDEX_RESULT"
+	return "$FIND_PR_INDEX_EXIT"
+}
+
+UPDATE_PR_LOG="$FIXTURE_ROOT/update_pr.log"
+UPDATE_PR_EXIT=0
+UPDATE_PR_URL=""
+update_pull_request() {
+	printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >>"$UPDATE_PR_LOG"
+	[ "$UPDATE_PR_EXIT" -eq 0 ] || return "$UPDATE_PR_EXIT"
+	printf '%s' "$UPDATE_PR_URL"
+}
+
 run_sync() {
 	# run_sync <new_sha>: run main in a subshell, capturing streams and status.
 	: >"$PR_LOG"
@@ -270,6 +294,118 @@ assert_equals "" \
 assert_equals "" \
 	"$(mftlib_submodule_paths "$SELF_REPO_URL" "$CONSUMER_URL" "")" \
 	"ignores an empty .gitmodules"
+
+# --- unit tests: existing pull request refresh ------------------------------
+# refresh_existing_pull_request is the real, unstubbed script function; only
+# the two helpers it calls (find_pull_request_index, update_pull_request) are
+# faked above, so these tests exercise the actual detection-and-PATCH logic
+# without needing a live Gitea server.
+
+start_test "an existing open pull request has its title and body refreshed to the new sha"
+SHORT_SHA="${NEW_SHA:0:12}"
+SUMMARY=()
+: >"$FIND_PR_INDEX_LOG"
+: >"$UPDATE_PR_LOG"
+FIND_PR_INDEX_RESULT="42"
+FIND_PR_INDEX_EXIT=0
+UPDATE_PR_EXIT=0
+UPDATE_PR_URL="$FIXTURE_GITEA/schoen/consumer-refresh/pulls/42"
+refresh_existing_pull_request "consumer-refresh" "main" "external/MFTLib"
+REFRESH_STATUS=$?
+assert_equals "0" "$REFRESH_STATUS" "reports success"
+assert_contains "$(cat "$FIND_PR_INDEX_LOG")" "consumer-refresh|main|$BRANCH" \
+	"looks up the existing pull request by repo, base branch and head branch"
+assert_contains "$(cat "$UPDATE_PR_LOG")" \
+	"consumer-refresh|42|chore: bump MFTLib pin to $SHORT_SHA|Automated update of the external/MFTLib submodule gitlink to $NEW_SHA by sync-consumers." \
+	"PATCHes the existing pull request with a title and body naming the new sha"
+assert_contains "${SUMMARY[*]}" "updated" "records the refresh as updated"
+assert_contains "${SUMMARY[*]}" "#42" "names the pull request index in the summary"
+
+start_test "a failed PATCH on an existing pull request is reported as failed, not swallowed"
+SUMMARY=()
+: >"$FIND_PR_INDEX_LOG"
+: >"$UPDATE_PR_LOG"
+FIND_PR_INDEX_RESULT="42"
+FIND_PR_INDEX_EXIT=0
+UPDATE_PR_EXIT=1
+refresh_existing_pull_request "consumer-refresh" "main" "external/MFTLib"
+REFRESH_STATUS=$?
+assert_equals "1" "$REFRESH_STATUS" "reports failure"
+assert_contains "${SUMMARY[*]}" "failed" "records the failed PATCH"
+assert_contains "${SUMMARY[*]}" "consumer-refresh" "names the repo in the summary"
+
+# --- transport-level regression: real HTTP status handling ------------------
+# The two tests above fake find_pull_request_index and update_pull_request as
+# whole functions, so they never exercise the real curl calls or the status
+# codes the script compares against. This test re-sources the real script in
+# a subshell, so find_pull_request_index, update_pull_request and
+# refresh_existing_pull_request are their actual implementations, and fakes
+# only curl itself, at the transport level, to check the real status-code
+# comparisons against the codes Gitea actually returns.
+
+run_patch_transport_test() {
+	# Runs in a subshell of its own ($(...) below), so every assignment here,
+	# including the source below re-establishing BRANCH, SHORT_SHA and NEW_SHA
+	# as globals inside that subshell, is local to it and never reaches the
+	# rest of this file; `local` here only silences shellcheck's SC2030/SC2031
+	# cross-scope warnings, which otherwise fire on unrelated later reads of
+	# the same names elsewhere in this file.
+	local BRANCH SHORT_SHA NEW_SHA SCRATCH
+
+	# shellcheck source=scripts/sync_consumers.sh
+	source "$SCRIPT_PATH"
+
+	curl() {
+		# Fakes only the two calls refresh_existing_pull_request makes: a GET
+		# lookup (no -X, defaults to GET) and a PATCH update. Real Gitea
+		# (1.27.1, per its live swagger.v1.json) answers the GET with 200 and
+		# the PATCH with 201, never 200, which is the exact case this test
+		# guards.
+		local output_file="" method="GET" arg
+		while [ $# -gt 0 ]; do
+			arg="$1"
+			case "$arg" in
+			-o) output_file="$2"; shift 2 ;;
+			-X) method="$2"; shift 2 ;;
+			-H | -w | --data-binary) shift 2 ;;
+			-sS | -sSf) shift ;;
+			*) shift ;;
+			esac
+		done
+		case "$method" in
+		GET)
+			printf '{"number": 42, "html_url": "https://fixture.invalid/schoen/consumer-refresh/pulls/42"}' >"$output_file"
+			printf '200'
+			;;
+		PATCH)
+			printf '{"html_url": "https://fixture.invalid/schoen/consumer-refresh/pulls/42"}' >"$output_file"
+			printf '201'
+			;;
+		*)
+			printf '{}' >"$output_file"
+			printf '000'
+			;;
+		esac
+	}
+
+	auth_header="Authorization: token fixture-token"
+	GITEA_URL="https://fixture.invalid"
+	GITEA_OWNER="schoen"
+	SHORT_SHA="abc123456789"
+	NEW_SHA="abc123456789abc123456789abc123456789abc"
+	SCRATCH="$(mktemp -d)"
+	SUMMARY=()
+
+	refresh_existing_pull_request "consumer-refresh" "main" "external/MFTLib"
+	printf 'STATUS=%s\n' "$?"
+	printf 'SUMMARY=%s\n' "${SUMMARY[*]}"
+}
+
+start_test "a PATCH answered with HTTP 201 (Gitea's documented success code) is recorded as updated, not failed"
+TRANSPORT_SUMMARY="$(run_patch_transport_test)"
+assert_contains "$TRANSPORT_SUMMARY" "STATUS=0" "refresh_existing_pull_request succeeds against a real 201 PATCH response"
+assert_contains "$TRANSPORT_SUMMARY" "SUMMARY=consumer-refresh" "the consumer is named in the recorded summary"
+assert_contains "$TRANSPORT_SUMMARY" "updated" "the consumer is recorded as updated, not failed"
 
 # --- integration tests: full main run against fixture repos ----------------
 
