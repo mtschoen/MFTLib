@@ -111,6 +111,30 @@ guard runs before `FileIndex.OpenAsync` creates the cache directory. It blocks
 default resolution, not arbitrary explicitly supplied paths. Production hosts
 that do not opt in retain the existing default-cache behavior.
 
+The same initializer activates journal isolation, through
+`MFTLibTestExtensions.JournalIsolation.ForbidLiveJournalReads()`, on the same
+one-way idempotent terms. Opening a drive reads the live USN journal to decide
+whether a cached block's checkpoint is still resumable, so a test that
+warm-starts a synthetic MFT-kind block over a drive letter that happens to name
+a real NTFS volume would have that block rejected as `JournalRecreated`: a
+synthetic journal id never matches a real one. The same test would cold-scan on
+one machine and warm-start on another. Measured before the guard, nine existing
+test methods reached the live read on letters `T` and `U`, which pass here only
+because neither letter is mounted on this machine.
+
+Unlike the cache guard this one does **not** throw. Warm-starting is a
+legitimate thing for a test to do and most such tests have no interest in the
+journal, so the guard returns "cannot say", which is exactly what a volume with
+no readable journal already answers; the outcome becomes deterministic instead
+of becoming an error. `DriveStatus.CheckpointLoss` is therefore always null
+under the guard unless a test installs `JournalCheckpointCheck`'s journal
+override. A test whose subject really is a real volume overrides with
+`JournalCheckpointCheck.ReadLiveJournal`, which bypasses the guard; three tests
+in `UsnJournalVolumeInteropTests` do. The flag is written once at module
+initialization and only read afterwards, so it is safe under parallel test
+execution and is not part of the native delegate seam family; the journal
+override beside it is not, which is why its users carry `[DoNotParallelize]`.
+
 ## Cleaning the working tree
 
 `git clean -ffxd` must always be safe to run. It is the check that this checkout still matches a fresh clone, so it is run before starting new work, and it must never be the thing that loses something.

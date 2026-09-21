@@ -142,6 +142,7 @@ public class UsnJournalVolumeInteropTests
         }
 
         FailIoControl(UsnJournalVolumeInterop.FsctlQueryUsnJournal, ErrorJournalNotActive);
+        using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
 
         Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0xABCD, checkpointUsn: 10));
     }
@@ -149,6 +150,8 @@ public class UsnJournalVolumeInteropTests
     /// <summary>
     ///     The check against a real volume, through the real unelevated handle. C:'s journal
     ///     id is never zero, so a checkpoint claiming journal 0 is always a recreated journal.
+    ///     The test process forbids live journal reads, so this opts back in explicitly: it is
+    ///     the one test whose subject is a real volume.
     /// </summary>
     [TestMethod]
     [SupportedOSPlatform("windows")]
@@ -159,6 +162,7 @@ public class UsnJournalVolumeInteropTests
             return;
         }
 
+        using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
         var loss = JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0);
 
         Assert.IsNotNull(loss);
@@ -169,6 +173,28 @@ public class UsnJournalVolumeInteropTests
         Assert.IsTrue(loss.MaximumSize > 0);
         Assert.IsNull(loss.SizeThatWouldHaveRetained, "no size would have kept a different journal's checkpoint");
         Assert.IsNull(loss.BytesBehind);
+    }
+
+    /// <summary>
+    ///     The guard the test process installs: without an override, no real volume is read,
+    ///     so a warm start over a drive letter that happens to exist decides the same way as
+    ///     one over a letter that does not.
+    /// </summary>
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public void LiveJournalReadsAreForbiddenInThisTestProcess()
+    {
+        if (SkipOffWindows())
+        {
+            return;
+        }
+
+        // C: really does have a journal, and really would answer, yet the check says nothing.
+        Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0));
+
+        // The real read is still reachable for a test that asks for it.
+        using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
+        Assert.IsNotNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0));
     }
 
     [TestMethod]
