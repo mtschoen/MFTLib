@@ -299,42 +299,58 @@ foreach (var drive in index.Drives)
         continue;
     }
 
-    if (loss.SizeThatWouldHaveRetained is { } size)
+    switch (loss.Cause)
     {
-        Console.WriteLine(
-            $"Drive {loss.DriveLetter}: the last checkpoint was {loss.BytesBehind} bytes " +
-            $"older than the journal still holds, so a full rescan was needed. A journal of " +
-            $"{size} bytes (it is {loss.MaximumSize} now) would have avoided it.");
-    }
-    else
-    {
-        Console.WriteLine(
-            $"Drive {loss.DriveLetter}: the change journal was recreated, so the last " +
-            "checkpoint no longer refers to anything and a full rescan was needed.");
+        case JournalCheckpointLossCause.CheckpointTrimmed when loss.SizeThatWouldHaveRetained is { } size:
+            Console.WriteLine(
+                $"Drive {loss.DriveLetter}: the last checkpoint was {loss.BytesBehind} bytes " +
+                $"older than the journal still holds, so a full rescan was needed. A journal " +
+                $"of at least {size} bytes (it is {loss.MaximumSize} now) would have kept the " +
+                "checkpoint.");
+            break;
+        case JournalCheckpointLossCause.CheckpointTrimmed:
+            Console.WriteLine(
+                $"Drive {loss.DriveLetter}: the last checkpoint was {loss.BytesBehind} bytes " +
+                "older than the journal still holds, so a full rescan was needed. No size to " +
+                "offer: it does not fit in a long.");
+            break;
+        default:
+            Console.WriteLine(
+                $"Drive {loss.DriveLetter}: the change journal was recreated, so the last " +
+                "checkpoint no longer refers to anything and a full rescan was needed.");
+            break;
     }
 }
 ```
 
 USNs are byte offsets into the journal, so every number there is exact integer
 arithmetic on values read off the volume: `BytesBehind` is `FirstUsn` minus the
-checkpoint, and `SizeThatWouldHaveRetained` is `NextUsn` minus the checkpoint
-rounded up to the journal's allocation delta. There is no clock and no estimate.
+checkpoint, and `SizeThatWouldHaveRetained` is `NextUsn` minus the checkpoint,
+rounded up to the journal's allocation delta, plus one more allocation delta.
+That margin comes from NTFS's documented trimming behavior in
+`CREATE_USN_JOURNAL_DATA` and `USN_JOURNAL_DATA`: the maximum is a target and a
+trim can leave the journal below it. The value is not a live measurement, and
+there is no clock, rate or cap.
 
 The report is attached to the drive it describes, for as long as the block it
 explains is in place. A `FileIndexOptions.InitialOpenCacheOnly` open reports it
 too: that drive comes back `DriveState.Failed` with
 `DriveFailureKind.CacheDeclined`, which says the cache was refused, while
-`CheckpointLoss` says why and what size would have prevented it. A successful
+`CheckpointLoss` says why and the size a journal would need to be at least to
+have kept the checkpoint. A successful
 `RescanAsync` clears it, because the block it explained has been replaced.
 
 `Cause` separates the two situations MFTLib can actually tell apart.
 `CheckpointTrimmed` means the journal is the one the checkpoint came from and has
-trimmed past it, so a larger journal would have kept it and
-`SizeThatWouldHaveRetained` says how large. `JournalRecreated` means the journal
+trimmed past it, so `SizeThatWouldHaveRetained` says the size a journal would
+need to be at least to have kept the checkpoint, when that size fits in a
+`long`; it is null when it does not. `JournalRecreated` means the journal
 was deleted and recreated and carries a different id, so the checkpoint refers to
 a journal that no longer exists: no size would have helped, and none is offered.
-A drive that warm-started, or whose volume could not answer the query at all,
-reports `CheckpointLoss` as null rather than guessing.
+A consumer decides what to say from `Cause`, not from whether the size is null,
+since both causes can leave it null. A drive that warm-started, or whose volume
+could not answer the query at all, reports `CheckpointLoss` as null rather than
+guessing.
 
 Turning that into the user's choice is the consumer's job: show the size,
 say what the journal is now, and let the user decide whether a journal that large

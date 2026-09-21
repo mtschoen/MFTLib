@@ -5,31 +5,32 @@ namespace MFTLib.Index;
 /// <summary>
 ///     The arithmetic behind <see cref="JournalCheckpointLoss" />. A USN is a byte offset into
 ///     the change journal, so the distance between two of them is a byte count and the journal
-///     size that would have kept a checkpoint is that distance rounded up to the unit NTFS
-///     allocates in. Exact integer arithmetic over numbers the volume reports: there is no
-///     clock, no rate and no estimate anywhere in it.
+///     minimum size that could have kept a checkpoint is that distance rounded up to the unit
+///     NTFS allocates in, plus one more allocation unit. The extra unit follows the documented
+///     trimming behavior in CREATE_USN_JOURNAL_DATA and USN_JOURNAL_DATA: the maximum is a
+///     target, and NTFS can trim the journal to below it. This is exact integer arithmetic over
+///     numbers the volume reports, not a live measurement: there is no clock, rate or cap.
 /// </summary>
 static class JournalSizeArithmetic
 {
     /// <summary>
-    ///     The journal maximum size that would have kept <paramref name="checkpointUsn" />
-    ///     readable: the bytes between it and the journal's tip, rounded up to a whole
-    ///     <paramref name="allocationDelta" />, because NTFS grows and trims the journal in
-    ///     units of that size.
+    ///     The journal maximum size that would need to be at least this large to have kept
+    ///     <paramref name="checkpointUsn" /> readable: the bytes between it and the journal's
+    ///     tip, rounded up to a whole <paramref name="allocationDelta" />, plus one more
+    ///     allocation delta. The margin follows the documented trimming behavior in
+    ///     CREATE_USN_JOURNAL_DATA and USN_JOURNAL_DATA, not a live measurement.
     /// </summary>
     /// <param name="checkpointUsn">The USN a cached block was resumable from.</param>
     /// <param name="nextUsn">The USN the journal's next record will be written at.</param>
     /// <param name="allocationDelta">The journal's allocation unit; must be positive.</param>
     /// <returns>
-    ///     The rounded-up size, or zero when the checkpoint was at or past the tip and so
-    ///     implies no size at all.
+    ///     The rounded-up span plus one allocation delta.
     /// </returns>
     /// <exception cref="ArgumentOutOfRangeException">
     ///     A USN is negative, or <paramref name="allocationDelta" /> is not positive.
     /// </exception>
     /// <exception cref="OverflowException">
-    ///     Rounding the span up to the next allocation unit does not fit in a
-    ///     <see cref="long" />.
+    ///     The rounded span plus one allocation delta does not fit in a <see cref="long" />.
     /// </exception>
     public static long SizeThatWouldHaveRetained(long checkpointUsn, long nextUsn, long allocationDelta)
     {
@@ -37,17 +38,12 @@ static class JournalSizeArithmetic
         ArgumentOutOfRangeException.ThrowIfNegative(nextUsn);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(allocationDelta);
 
-        if (checkpointUsn >= nextUsn)
-        {
-            return 0;
-        }
-
-        // BigInteger for the round-up alone: the span always fits a long, but adding the
-        // rounding slack to a span near long.MaxValue does not, and that must surface as an
-        // overflow rather than wrap into a small, believable journal size.
-        var span = (BigInteger)nextUsn - checkpointUsn;
+        // BigInteger keeps both the round-up and the extra allocation delta exact. A result
+        // beyond long.MaxValue must surface as overflow rather than wrap into a small,
+        // believable journal size.
+        var span = BigInteger.Max(0, (BigInteger)nextUsn - checkpointUsn);
         var units = (span + allocationDelta - 1) / allocationDelta;
-        return checked((long)(units * allocationDelta));
+        return checked((long)((units + 1) * allocationDelta));
     }
 
     /// <summary>

@@ -84,20 +84,27 @@ the live journal through that same unelevated handle before adopting a cached
 block, and when the block's checkpoint is no longer in the journal it cold-scans
 and fills in `DriveStatus.CheckpointLoss`: the checkpoint, the journal's
 `FirstUsn` and `NextUsn` at that moment, its `AllocationDelta` and `MaximumSize`,
-how far behind the checkpoint was, and the journal size that would have retained
-it. `Cause` says whether the same journal trimmed past the checkpoint
-(`CheckpointTrimmed`, where `SizeThatWouldHaveRetained` is the number to offer)
-or the journal was recreated (`JournalRecreated`, where no size would have
-helped). A volume that cannot answer reports nothing rather than a guess.
+how far behind the checkpoint was, and the size a journal would need to be at
+least to have kept it. `SizeThatWouldHaveRetained` is the checkpoint-to-tip span
+rounded up to `AllocationDelta`, plus one more allocation delta. The margin comes
+from NTFS's documented trimming behavior in `CREATE_USN_JOURNAL_DATA` and
+`USN_JOURNAL_DATA`, not from a live measurement. `Cause` says whether the same
+journal trimmed past the checkpoint (`CheckpointTrimmed`, where this is the size to offer,
+when it fits in a `long`) or the journal was recreated (`JournalRecreated`, where
+no size would have helped). A consumer branches on `Cause`, not on whether the
+size is null: an oversized span leaves `SizeThatWouldHaveRetained` null under
+`CheckpointTrimmed` too. A volume that cannot answer reports nothing rather than
+a guess.
 
 A cache-only open reports it too, which is the one case where the consumer is
 told why no index could be opened at all: that drive comes back
 `DriveFailureKind.CacheDeclined` with the loss attached. A successful
 `RescanAsync` clears it, since the block it explained has been replaced.
 
-That report is what a consumer turns into a hint: the last checkpoint was too old
-so a rescan was needed, and a journal of this size would have avoided it. When
-the user consents,
+That report is what a consumer turns into a hint: when `Cause` is
+`CheckpointTrimmed` and a size is present, the last checkpoint was too old so
+a rescan was needed, and a journal of at least that size would have kept it.
+When the user consents,
 `JournalBrokerClient.GrowUsnJournalAsync(driveLetter, maximumSize, allocationDelta)`
 asks the elevated host to resize the journal in place via
 `FSCTL_CREATE_USN_JOURNAL` (request frame kind 16, reply frame kind 17). The

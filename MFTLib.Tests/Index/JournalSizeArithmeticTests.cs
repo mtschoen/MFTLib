@@ -5,26 +5,26 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     The one piece of arithmetic behind the rescan hint. USNs are byte offsets into the
-///     journal, so the size that would have retained a checkpoint is exact integer
-///     arithmetic over them: no clock, no rate, no estimate.
+///     journal, so the at-least size is exact integer arithmetic over them: no clock, rate or
+///     estimate.
 /// </summary>
 [TestClass]
 public class JournalSizeArithmeticTests
 {
     [TestMethod]
-    public void SizeThatWouldHaveRetained_IsTheSpanRoundedUpToTheAllocationDelta()
+    public void SizeThatWouldHaveRetained_AddsOneAllocationDeltaAfterRoundingTheSpan()
     {
-        // 100 bytes behind the tip, in 64-byte allocation units, needs two units.
-        Assert.AreEqual(128L,
-            JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 900, nextUsn: 1_000, allocationDelta: 64));
-        // An exact multiple is not rounded up to the next unit.
-        Assert.AreEqual(128L,
-            JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 872, nextUsn: 1_000, allocationDelta: 64));
-        // One byte over a unit boundary takes a whole further unit.
+        // 100 bytes behind the tip rounds to two units, then the trimming margin adds one.
         Assert.AreEqual(192L,
+            JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 900, nextUsn: 1_000, allocationDelta: 64));
+        // An exact two-unit span still receives the one-unit trimming margin.
+        Assert.AreEqual(192L,
+            JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 872, nextUsn: 1_000, allocationDelta: 64));
+        // One byte over two units rounds to three, then receives the one-unit margin.
+        Assert.AreEqual(256L,
             JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 871, nextUsn: 1_000, allocationDelta: 64));
-        // A delta of one leaves the span untouched.
-        Assert.AreEqual(100L,
+        // A delta of one adds exactly one byte after rounding.
+        Assert.AreEqual(101L,
             JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 900, nextUsn: 1_000, allocationDelta: 1));
     }
 
@@ -32,23 +32,30 @@ public class JournalSizeArithmeticTests
     public void SizeThatWouldHaveRetained_RealisticJournalNumbers()
     {
         // A checkpoint 300 MB behind the tip of a journal whose allocation delta is 64 MB:
-        // five 64 MB units cover it, four do not.
+        // five 64 MB units cover the span, then one unit supplies the trimming margin.
         const long megabyte = 1024 * 1024;
-        Assert.AreEqual(320 * megabyte,
+        Assert.AreEqual(384 * megabyte,
             JournalSizeArithmetic.SizeThatWouldHaveRetained(
                 checkpointUsn: 1_000_000_000, nextUsn: 1_000_000_000 + 300 * megabyte,
                 allocationDelta: 64 * megabyte));
     }
 
     [TestMethod]
-    public void SizeThatWouldHaveRetained_CheckpointAtOrBeyondTheTip_NeedsNothing()
+    public void SizeThatWouldHaveRetained_ZeroSpan_IsOneAllocationDelta()
     {
-        // The checkpoint was not behind at all, so no journal size is implied by it.
-        Assert.AreEqual(0L,
+        Assert.AreEqual(64L,
             JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 1_000, nextUsn: 1_000, allocationDelta: 64));
-        Assert.AreEqual(0L,
+    }
+
+    [TestMethod]
+    public void SizeThatWouldHaveRetained_CheckpointPastTheTip_IsClampedToOneAllocationDelta()
+    {
+        // Unreachable from a real journal read, since the caller only asks when the
+        // checkpoint is behind the tip, but the arithmetic still treats a negative span the
+        // same as a zero one rather than producing a negative or nonsensical result.
+        Assert.AreEqual(64L,
             JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 1_001, nextUsn: 1_000, allocationDelta: 64));
-        Assert.AreEqual(0L,
+        Assert.AreEqual(64L,
             JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: long.MaxValue, nextUsn: 0, allocationDelta: 64));
     }
 
@@ -73,17 +80,19 @@ public class JournalSizeArithmeticTests
     }
 
     [TestMethod]
-    public void SizeThatWouldHaveRetained_RoundingPastTheRangeOfTheResult_Overflows()
+    public void SizeThatWouldHaveRetained_ExtraAllocationDeltaMovesTheOverflowBoundary()
     {
-        // The span fits, but rounding it up to the next allocation unit does not.
+        const long largestAlignedResult = long.MaxValue - (long.MaxValue % 64);
+        const long largestSpanThatFits = largestAlignedResult - 64;
+
+        Assert.AreEqual(largestAlignedResult,
+            JournalSizeArithmetic.SizeThatWouldHaveRetained(
+                checkpointUsn: 0, nextUsn: largestSpanThatFits, allocationDelta: 64));
+
+        // One more byte rounds the span to the largest aligned value, leaving no room for the margin.
         Assert.ThrowsException<OverflowException>(() =>
             JournalSizeArithmetic.SizeThatWouldHaveRetained(
-                checkpointUsn: 0, nextUsn: long.MaxValue, allocationDelta: 64));
-
-        // The largest span that still rounds cleanly is returned rather than refused.
-        const long span = long.MaxValue - (long.MaxValue % 64);
-        Assert.AreEqual(span,
-            JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn: 0, nextUsn: span, allocationDelta: 64));
+                checkpointUsn: 0, nextUsn: largestSpanThatFits + 1, allocationDelta: 64));
     }
 
     [TestMethod]

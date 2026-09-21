@@ -182,7 +182,8 @@ public class FileIndexCheckpointLossLifetimeTests
 
     /// <summary>
     ///     The surface that matters most for a cache-only consumer: the cache was declined, and
-    ///     this is why, and this is the journal size that would have prevented it.
+    ///     this is why, and the size a journal would need to be at least to have kept the
+    ///     checkpoint.
     /// </summary>
     [TestMethod]
     public async Task CacheOnlyDeclinedOverATrimmedCheckpoint_ReportsWhyAndTheSize()
@@ -204,7 +205,7 @@ public class FileIndexCheckpointLossLifetimeTests
         Assert.AreEqual('T', loss.DriveLetter);
         Assert.AreEqual(CachedNextUsn, loss.CheckpointUsn);
         Assert.AreEqual(500L, loss.BytesBehind);
-        Assert.AreEqual(4_032L, loss.SizeThatWouldHaveRetained);
+        Assert.AreEqual(4_096L, loss.SizeThatWouldHaveRetained);
     }
 
     [TestMethod]
@@ -223,7 +224,7 @@ public class FileIndexCheckpointLossLifetimeTests
         var loss = status.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
-        Assert.IsNull(loss.SizeThatWouldHaveRetained, "no journal size would have kept it");
+        Assert.IsNull(loss.SizeThatWouldHaveRetained, "different journal instances have no comparable span");
         Assert.IsNull(loss.BytesBehind);
     }
 

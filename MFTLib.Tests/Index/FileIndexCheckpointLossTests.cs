@@ -6,9 +6,9 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     What a consumer sees when a cached block cannot be resumed because the journal no
 ///     longer holds its checkpoint: the drive is cold-scanned, and its status carries the
-///     reason and the journal size that would have avoided the rescan. The journal read is
-///     swapped out through <c>JournalCheckpointCheck._journalOverride</c>, so these run on
-///     every platform and never touch a real volume.
+///     reason and the size a journal would need to be at least to have kept the checkpoint.
+///     The journal read is swapped out through <c>JournalCheckpointCheck._journalOverride</c>,
+///     so these run on every platform and never touch a real volume.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -124,7 +124,7 @@ public class FileIndexCheckpointLossTests
     }
 
     [TestMethod]
-    public async Task CheckpointTrimmedAway_RescansAndReportsTheSizeThatWouldHaveKeptIt()
+    public async Task CheckpointTrimmedAway_RescansAndReportsRoundedSpanPlusMargin()
     {
         await SeedCacheAsync();
         // The journal has moved on past the cached checkpoint by 500 bytes, and its tip is
@@ -147,8 +147,8 @@ public class FileIndexCheckpointLossTests
         Assert.AreEqual(CachedNextUsn + 500, loss.FirstUsn);
         Assert.AreEqual(CachedNextUsn + 4_000, loss.NextUsn);
         Assert.AreEqual(500L, loss.BytesBehind);
-        // 4000 bytes back to the checkpoint, rounded up to a 64-byte allocation unit.
-        Assert.AreEqual(4_032L, loss.SizeThatWouldHaveRetained);
+        // The 4000-byte span rounds to 4032, then the trimming margin adds one 64-byte delta.
+        Assert.AreEqual(4_096L, loss.SizeThatWouldHaveRetained);
     }
 
     [TestMethod]
@@ -165,7 +165,7 @@ public class FileIndexCheckpointLossTests
         var loss = drive.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
-        Assert.IsNull(loss.SizeThatWouldHaveRetained, "no journal size would have kept it");
+        Assert.IsNull(loss.SizeThatWouldHaveRetained, "different journal instances have no comparable span");
         Assert.IsNull(loss.BytesBehind);
     }
 
@@ -212,5 +212,89 @@ public class FileIndexCheckpointLossTests
         Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().BlockSource);
         Assert.IsNull(reopened.Drives.Single().CheckpointLoss);
         Assert.AreEqual(0, checkedDrives);
+    }
+
+    [TestMethod]
+    public async Task UnrepresentableRetentionSize_RescansWithNullHintAndClosesCandidate()
+    {
+        await SeedCacheAsync();
+        using var journal = Journal(CachedJournalId,
+            firstUsn: CachedNextUsn + 500, nextUsn: long.MaxValue,
+            allocationDelta: 1L << 62);
+        var scanCount = 0;
+        var options = Options() with
+        {
+            MftProducer = (request, cancellationToken) =>
+            {
+                using (var exclusive = new FileStream(request.BlockPath,
+                           FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    Assert.IsTrue(exclusive.Length > 0);
+                }
+
+                scanCount++;
+                return ProduceMftShapedBlock(request, cancellationToken);
+            }
+        };
+
+        await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
+
+        Assert.AreEqual(1, scanCount);
+        var drive = reopened.Drives.Single();
+        Assert.AreEqual(DriveState.Ready, drive.State);
+        Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
+        var loss = drive.CheckpointLoss;
+        Assert.IsNotNull(loss);
+        Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
+        Assert.AreEqual(CachedNextUsn, loss.CheckpointUsn);
+        Assert.AreEqual(CachedNextUsn + 500, loss.FirstUsn);
+        Assert.AreEqual(long.MaxValue, loss.NextUsn);
+        Assert.AreEqual(1L << 62, loss.AllocationDelta);
+        Assert.AreEqual(500L, loss.BytesBehind);
+        Assert.IsNull(loss.SizeThatWouldHaveRetained);
+    }
+
+    [TestMethod]
+    public async Task UnrepresentableRetentionSize_CacheOnlyDeclinesAndClosesCandidate()
+    {
+        await SeedCacheAsync();
+        using var journal = Journal(CachedJournalId,
+            firstUsn: CachedNextUsn + 500, nextUsn: long.MaxValue,
+            allocationDelta: 1L << 62);
+        var options = Options() with
+        {
+            InitialOpenCacheOnly = true,
+            MftProducer = (_, _) => throw new AssertFailedException("Cache-only must not scan.")
+        };
+
+        await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
+
+        var drive = reopened.Drives.Single();
+        Assert.AreEqual(DriveState.Failed, drive.State);
+        Assert.AreEqual(DriveFailureKind.CacheDeclined, drive.FailureKind);
+        Assert.IsNotNull(drive.CheckpointLoss);
+        Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, drive.CheckpointLoss.Cause);
+        Assert.IsNull(drive.CheckpointLoss.SizeThatWouldHaveRetained);
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        using var exclusive = new FileStream(blockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.IsTrue(exclusive.Length > 0);
+    }
+
+    [TestMethod]
+    public async Task CheckpointQueryThrows_PropagatesAndClosesUnpublishedCandidate()
+    {
+        await SeedCacheAsync();
+        var failure = new InvalidOperationException("Injected journal query failure.");
+        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => throw failure);
+
+        var observed = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        {
+            await using var unexpected = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        });
+
+        Assert.AreSame(failure, observed);
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        using var exclusive = new FileStream(blockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.IsTrue(exclusive.Length > 0);
     }
 }

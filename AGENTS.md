@@ -206,8 +206,11 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       whose `BlockHeader.UsnNextUsn` is below the journal's `FirstUsn`, or whose
       `BlockHeader.UsnJournalId` no longer matches, cannot be resumed, so the drive cold-scans
       and `DriveStatus.CheckpointLoss` records the checkpoint, the journal window, and the size
-      that would have retained it (`JournalSizeArithmetic`, exact integer arithmetic on USN byte
-      offsets). A volume that cannot answer the query warm-starts as before and reports nothing.
+      a journal would need to be at least to have kept it (`JournalSizeArithmetic`: the
+      checkpoint-to-tip span rounded up to the allocation delta, plus one more allocation delta).
+      The margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
+      USN_JOURNAL_DATA, not a live measurement. A volume that cannot answer the query warm-starts
+      as before and reports nothing.
     - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory.
     - **Query lifetime**: the eight entry points that scan rows (`Find`, `FindByName`, `Search`, `Enumerate`, `Largest`,
       `DuplicateNames`, `Root`, and `FileEntry.Children`) each take an optional `CancellationToken`, observed

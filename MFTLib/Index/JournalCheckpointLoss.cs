@@ -5,8 +5,9 @@ public enum JournalCheckpointLossCause
 {
     /// <summary>
     ///     The journal is the same one the checkpoint came from, and it has trimmed past it.
-    ///     A larger journal would have kept the checkpoint, so
-    ///     <see cref="JournalCheckpointLoss.SizeThatWouldHaveRetained" /> says how large.
+    ///     <see cref="JournalCheckpointLoss.SizeThatWouldHaveRetained" /> says the size a
+    ///     journal would need to be at least to have kept the checkpoint, or null when that
+    ///     size does not fit in a <see cref="long" />.
     /// </summary>
     CheckpointTrimmed,
 
@@ -21,7 +22,7 @@ public enum JournalCheckpointLossCause
 /// <summary>
 ///     What MFTLib found when a drive's cached block could not be resumed and the drive was
 ///     rescanned instead: the checkpoint that was lost, the journal as it stood when the loss
-///     was detected, and, when a larger journal would have prevented it, how large.
+///     was detected, and the size a journal would need to be at least to have kept it.
 ///     <para>
 ///         Every number here is read off the volume, not inferred. USNs are byte offsets into
 ///         the journal, so the distance between two of them is a byte count.
@@ -65,12 +66,16 @@ public sealed record JournalCheckpointLoss
     public long? BytesBehind { get; init; }
 
     /// <summary>
-    ///     The journal maximum size in bytes that would have kept the checkpoint readable:
-    ///     <see cref="NextUsn" /> minus <see cref="CheckpointUsn" />, rounded up to
-    ///     <see cref="AllocationDelta" />. This is the number to offer the user alongside
-    ///     <c>JournalBrokerClient.GrowUsnJournalAsync</c>. Null for
-    ///     <see cref="JournalCheckpointLossCause.JournalRecreated" />, where no size would have
-    ///     helped.
+    ///     A journal's maximum size in bytes would need to be at least this large to have kept
+    ///     the checkpoint readable: <see cref="NextUsn" /> minus <see cref="CheckpointUsn" />,
+    ///     rounded up to <see cref="AllocationDelta" />, plus one more allocation delta. The
+    ///     margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
+    ///     USN_JOURNAL_DATA, not a live measurement. This is the size to offer the user
+    ///     alongside <c>JournalBrokerClient.GrowUsnJournalAsync</c>, when there is one to offer.
+    ///     Null for <see cref="JournalCheckpointLossCause.JournalRecreated" />, where no size
+    ///     would have helped, and also null for <see cref="JournalCheckpointLossCause.CheckpointTrimmed" />
+    ///     when the size does not fit in a <see cref="long" />: a consumer branches on
+    ///     <see cref="Cause" /> to tell the two apart, not on whether this is null.
     /// </summary>
     public long? SizeThatWouldHaveRetained { get; init; }
 }
