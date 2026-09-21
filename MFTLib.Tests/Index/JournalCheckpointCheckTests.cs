@@ -142,4 +142,35 @@ public class JournalCheckpointCheckTests
         Assert.IsTrue(loss.SizeThatWouldHaveRetained > loss.MaximumSize,
             "the hint is only worth showing when it asks for a bigger journal than the current one");
     }
+
+    [TestMethod]
+    public void TrimmedCheckpoint_UnrepresentableRetentionSize_PreservesLossWithoutHint()
+    {
+        using var journal = Journal(firstUsn: 1, nextUsn: long.MaxValue, allocationDelta: 64);
+
+        var loss = JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 0);
+
+        Assert.IsNotNull(loss);
+        Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
+        Assert.AreEqual('C', loss.DriveLetter);
+        Assert.AreEqual(0L, loss.CheckpointUsn);
+        Assert.AreEqual(1L, loss.FirstUsn);
+        Assert.AreEqual(long.MaxValue, loss.NextUsn);
+        Assert.AreEqual(64L, loss.AllocationDelta);
+        Assert.AreEqual(128L * 1024 * 1024, loss.MaximumSize);
+        Assert.AreEqual(1L, loss.BytesBehind);
+        Assert.IsNull(loss.SizeThatWouldHaveRetained);
+    }
+
+    [TestMethod]
+    public void TrimmedCheckpoint_LargestAlignedRetentionSize_RemainsExact()
+    {
+        const long largestAlignedSize = long.MaxValue - 63;
+        using var journal = Journal(firstUsn: 1, nextUsn: largestAlignedSize, allocationDelta: 64);
+
+        var loss = JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 0);
+
+        Assert.IsNotNull(loss);
+        Assert.AreEqual(largestAlignedSize, loss.SizeThatWouldHaveRetained);
+    }
 }

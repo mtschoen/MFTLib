@@ -82,9 +82,21 @@ static class JournalCheckpointCheck
             AllocationDelta = allocationDelta,
             MaximumSize = maximumSize,
             BytesBehind = JournalSizeArithmetic.BytesBehind(checkpointUsn, firstUsn),
-            SizeThatWouldHaveRetained =
-                JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn, nextUsn, allocationDelta)
+            SizeThatWouldHaveRetained = RetentionSizeHint(checkpointUsn, nextUsn, allocationDelta)
         };
+    }
+
+    static long? RetentionSizeHint(long checkpointUsn, long nextUsn, long allocationDelta)
+    {
+        try
+        {
+            return JournalSizeArithmetic.SizeThatWouldHaveRetained(checkpointUsn, nextUsn, allocationDelta);
+        }
+        catch (OverflowException)
+        {
+            // The loss remains valid when its optional retention size cannot fit in a long.
+            return null;
+        }
     }
 
     static JournalWindow? ReadJournal(char driveLetter)

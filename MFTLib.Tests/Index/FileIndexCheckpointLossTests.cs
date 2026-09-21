@@ -213,4 +213,88 @@ public class FileIndexCheckpointLossTests
         Assert.IsNull(reopened.Drives.Single().CheckpointLoss);
         Assert.AreEqual(0, checkedDrives);
     }
+
+    [TestMethod]
+    public async Task UnrepresentableRetentionSize_RescansWithNullHintAndClosesCandidate()
+    {
+        await SeedCacheAsync();
+        using var journal = Journal(CachedJournalId,
+            firstUsn: CachedNextUsn + 500, nextUsn: long.MaxValue,
+            allocationDelta: 1L << 62);
+        var scanCount = 0;
+        var options = Options() with
+        {
+            MftProducer = (request, cancellationToken) =>
+            {
+                using (var exclusive = new FileStream(request.BlockPath,
+                           FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    Assert.IsTrue(exclusive.Length > 0);
+                }
+
+                scanCount++;
+                return ProduceMftShapedBlock(request, cancellationToken);
+            }
+        };
+
+        await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
+
+        Assert.AreEqual(1, scanCount);
+        var drive = reopened.Drives.Single();
+        Assert.AreEqual(DriveState.Ready, drive.State);
+        Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
+        var loss = drive.CheckpointLoss;
+        Assert.IsNotNull(loss);
+        Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
+        Assert.AreEqual(CachedNextUsn, loss.CheckpointUsn);
+        Assert.AreEqual(CachedNextUsn + 500, loss.FirstUsn);
+        Assert.AreEqual(long.MaxValue, loss.NextUsn);
+        Assert.AreEqual(1L << 62, loss.AllocationDelta);
+        Assert.AreEqual(500L, loss.BytesBehind);
+        Assert.IsNull(loss.SizeThatWouldHaveRetained);
+    }
+
+    [TestMethod]
+    public async Task UnrepresentableRetentionSize_CacheOnlyDeclinesAndClosesCandidate()
+    {
+        await SeedCacheAsync();
+        using var journal = Journal(CachedJournalId,
+            firstUsn: CachedNextUsn + 500, nextUsn: long.MaxValue,
+            allocationDelta: 1L << 62);
+        var options = Options() with
+        {
+            InitialOpenCacheOnly = true,
+            MftProducer = (_, _) => throw new AssertFailedException("Cache-only must not scan.")
+        };
+
+        await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
+
+        var drive = reopened.Drives.Single();
+        Assert.AreEqual(DriveState.Failed, drive.State);
+        Assert.AreEqual(DriveFailureKind.CacheDeclined, drive.FailureKind);
+        Assert.IsNotNull(drive.CheckpointLoss);
+        Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, drive.CheckpointLoss.Cause);
+        Assert.IsNull(drive.CheckpointLoss.SizeThatWouldHaveRetained);
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        using var exclusive = new FileStream(blockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.IsTrue(exclusive.Length > 0);
+    }
+
+    [TestMethod]
+    public async Task CheckpointQueryThrows_PropagatesAndClosesUnpublishedCandidate()
+    {
+        await SeedCacheAsync();
+        var failure = new InvalidOperationException("Injected journal query failure.");
+        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => throw failure);
+
+        var observed = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        {
+            await using var unexpected = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        });
+
+        Assert.AreSame(failure, observed);
+        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
+        using var exclusive = new FileStream(blockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.IsTrue(exclusive.Length > 0);
+    }
 }

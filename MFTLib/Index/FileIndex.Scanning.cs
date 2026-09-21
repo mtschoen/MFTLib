@@ -254,10 +254,6 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Called only with the owner lock already held, so validation can never race another index's
-    ///     mutation and the discard is of this index's own slot.
-    /// </summary>
-    /// <summary>
     ///     Drops a warm-start candidate whose journal checkpoint the journal no longer holds,
     ///     recording why. Adopting such a block arms a watch that dies on its first read and
     ///     rescans anyway, with nothing left to tell the consumer why; rejecting it here
@@ -272,22 +268,31 @@ public sealed partial class FileIndex
             return warmStart;
         }
 
-        ref readonly var header = ref candidate.Block.Header;
-        if (JournalCheckpointCheck.Check(driveLetter, header.UsnJournalId, header.UsnNextUsn) is not { } loss)
+        var accepted = false;
+        try
         {
-            return warmStart;
-        }
+            ref readonly var header = ref candidate.Block.Header;
+            if (JournalCheckpointCheck.Check(driveLetter, header.UsnJournalId, header.UsnNextUsn) is not { } loss)
+            {
+                accepted = true;
+                return warmStart;
+            }
 
-        lock (_stateLock)
+            lock (_stateLock)
+            {
+                _checkpointLossesByOrdinal[driveOrdinal] = loss;
+            }
+
+            return new WarmStartResult(null, warmStart.DiscardedBlock);
+        }
+        finally
         {
-            _checkpointLossesByOrdinal[driveOrdinal] = loss;
+            if (!accepted)
+            {
+                // An unpublished candidate owns no references; close its mapping directly.
+                candidate.Block.Dispose();
+            }
         }
-
-        // The candidate was never adopted, so it holds no reference to release: unmap the
-        // block file directly, the same way a block rejected during validation is closed. The
-        // file itself stays, because the cold scan that follows rewrites it at the same path.
-        candidate.Block.Dispose();
-        return new WarmStartResult(null, warmStart.DiscardedBlock);
     }
 
     WarmStartResult TryOpenExistingBlock(IndexedDrive drive, ushort driveOrdinal)
