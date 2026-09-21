@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using MFTLib.Index;
@@ -263,17 +264,30 @@ public partial class JournalBrokerHostRealSeamsTests
     }
 
     /// <summary>
-    ///     Owns the CountdownEvent and cancellation signal for
+    ///     Owns the CountdownEvent and per-drive cancellation signals for
     ///     <see cref="ServeAsync_EndWatch_AcrossSeveralArmedDrives_SynchronousAbort_EmitsZeroErrorFramesBeforeAck" />.
     ///     Exposing the seam behavior as instance methods, assigned by method group rather than by an inline
     ///     lambda, means the native delegates never directly close over the CountdownEvent that method disposes.
+    ///     Production cancels each armed drive's native read independently: <c>MftVolume.Journal.cs</c> opens a
+    ///     dedicated watch handle per drive and its cancellation registration calls
+    ///     <c>MFTLibNative._cancelUsnJournalWatch</c> with that drive's own handle only, never a sibling's. The
+    ///     cancellation signal here is keyed the same way, by the <see cref="SafeHandle" /> instance each drive
+    ///     was armed with (<see cref="FakeHandle" /> returns a distinct instance per call even though every
+    ///     instance wraps the same raw value 1, so reference identity is a valid key). Releasing all three drives
+    ///     off one shared signal let a drive whose own token had not yet flipped
+    ///     <c>CancellationToken.IsCancellationRequested</c> unblock on a sibling's cancel, loop back, and call
+    ///     <see cref="WatchUsnJournalBatchCancelable" /> a second time after the countdown had already reached
+    ///     zero, throwing <see cref="InvalidOperationException" /> out of the watch loop and surfacing as an
+    ///     Error frame instead of the deliberate-stop's normal empty stream end.
     /// </summary>
     sealed class SynchronousAbortWatchSeam : IDisposable
     {
         readonly CountdownEvent _watchEntered;
 
-        readonly TaskCompletionSource _cancelSignaled =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        readonly ConcurrentDictionary<SafeHandle, TaskCompletionSource> _cancelSignaledByHandle =
+            new(ReferenceEqualityComparer.Instance);
+
+        volatile bool _timedOut;
 
         public SynchronousAbortWatchSeam(int driveCount)
         {
@@ -282,7 +296,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
         public bool CancelUsnJournalWatch(SafeHandle volumeHandle)
         {
-            _cancelSignaled.TrySetResult();
+            GetCancelSignal(volumeHandle).TrySetResult();
             return true;
         }
 
@@ -290,8 +304,8 @@ public partial class JournalBrokerHostRealSeamsTests
             SafeHandle cancellationHandle)
         {
             _watchEntered.Signal();
-            // Simulate the kernel wait during live watch until cancellation/CancelIoEx arrives.
-            _cancelSignaled.Task.GetAwaiter().GetResult();
+            // Simulate the kernel wait during live watch until this drive's own cancel arrives.
+            GetCancelSignal(volumeHandle).Task.GetAwaiter().GetResult();
             // Return the synchronous ERROR_OPERATION_ABORTED result:
             // an empty result with original cursor untouched and no error message.
             return BuildEmptyWatchResult(journalId, startUsn);
@@ -302,9 +316,28 @@ public partial class JournalBrokerHostRealSeamsTests
             _watchEntered.Wait(token);
         }
 
+        // Safety net for the outer test timeout: releases every drive currently blocked, and
+        // marks future arrivals so a drive that has not called WatchUsnJournalBatchCancelable
+        // yet does not block forever on a signal this method could not have created early.
         public void CancelOnTimeout()
         {
-            _cancelSignaled.TrySetCanceled();
+            _timedOut = true;
+            foreach (var signal in _cancelSignaledByHandle.Values)
+            {
+                signal.TrySetCanceled();
+            }
+        }
+
+        TaskCompletionSource GetCancelSignal(SafeHandle volumeHandle)
+        {
+            var signal = _cancelSignaledByHandle.GetOrAdd(volumeHandle,
+                static _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+            if (_timedOut)
+            {
+                signal.TrySetCanceled();
+            }
+
+            return signal;
         }
 
         public void Dispose()
@@ -376,8 +409,11 @@ public partial class JournalBrokerHostRealSeamsTests
                 framesBetween.Add(frame);
             }
 
-            Assert.AreEqual(0, framesBetween.Count(frame => frame.Kind == BrokerFrameKind.Error),
-                "Expected zero Error (kind=7) frames between EndWatch and its ack.");
+            var errorFrames = framesBetween.Where(frame => frame.Kind == BrokerFrameKind.Error).ToList();
+            var errorPayloads = string.Join("; ",
+                errorFrames.Select(frame => $"drive={frame.Drive}, message=\"{frame.Message}\""));
+            Assert.AreEqual(0, errorFrames.Count,
+                $"Expected zero Error (kind=7) frames between EndWatch and its ack. Captured: {errorPayloads}");
             Assert.AreEqual(0, framesBetween.Count,
                 "Expected EndWatchAck to follow immediately without intervening frames.");
 
