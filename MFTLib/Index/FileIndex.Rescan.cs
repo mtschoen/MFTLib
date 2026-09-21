@@ -133,6 +133,9 @@ public sealed partial class FileIndex
                     _driveBlocks[driveOrdinal] = completedScan.DriveBlock;
                     _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
                     _discardedBlocksByOrdinal.Remove(driveOrdinal);
+                    // Both of these explain how the block being replaced came to be, so both
+                    // stop applying the moment a new block takes its place.
+                    _checkpointLossesByOrdinal.Remove(driveOrdinal);
                     _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
                 },
                 () =>

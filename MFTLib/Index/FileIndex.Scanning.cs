@@ -36,6 +36,8 @@ public sealed partial class FileIndex
             }
         }
 
+        warmStart = RejectUnresumableCheckpoint(driveLetter, driveOrdinal, warmStart);
+
         DriveBlock driveBlock;
         if (warmStart.DriveBlock is { } warmStartedBlock)
         {
@@ -255,6 +257,39 @@ public sealed partial class FileIndex
     ///     Called only with the owner lock already held, so validation can never race another index's
     ///     mutation and the discard is of this index's own slot.
     /// </summary>
+    /// <summary>
+    ///     Drops a warm-start candidate whose journal checkpoint the journal no longer holds,
+    ///     recording why. Adopting such a block arms a watch that dies on its first read and
+    ///     rescans anyway, with nothing left to tell the consumer why; rejecting it here
+    ///     rescans once and keeps the reason. Only an MFT-backed block carries a checkpoint:
+    ///     an enumeration block is not watched through the journal, so nothing about it can
+    ///     have fallen out of one.
+    /// </summary>
+    WarmStartResult RejectUnresumableCheckpoint(char driveLetter, ushort driveOrdinal, WarmStartResult warmStart)
+    {
+        if (warmStart.DriveBlock is not { ProducerKind: ProducerKind.Mft } candidate)
+        {
+            return warmStart;
+        }
+
+        ref readonly var header = ref candidate.Block.Header;
+        if (JournalCheckpointCheck.Check(driveLetter, header.UsnJournalId, header.UsnNextUsn) is not { } loss)
+        {
+            return warmStart;
+        }
+
+        lock (_stateLock)
+        {
+            _checkpointLossesByOrdinal[driveOrdinal] = loss;
+        }
+
+        // The candidate was never adopted, so it holds no reference to release: unmap the
+        // block file directly, the same way a block rejected during validation is closed. The
+        // file itself stays, because the cold scan that follows rewrites it at the same path.
+        candidate.Block.Dispose();
+        return new WarmStartResult(null, warmStart.DiscardedBlock);
+    }
+
     WarmStartResult TryOpenExistingBlock(IndexedDrive drive, ushort driveOrdinal)
     {
         var path = CanonicalBlockPath(drive);

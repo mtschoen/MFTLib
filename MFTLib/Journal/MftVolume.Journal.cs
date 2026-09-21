@@ -26,9 +26,8 @@ public sealed partial class MftVolume
 
     /// <summary>
     ///     Query the USN journal's sizing (maximum size and allocation delta), the two
-    ///     settings <see cref="GrowUsnJournal" /> changes. The native read has always
-    ///     marshaled them; this surfaces them. Compare against
-    ///     <see cref="UsnJournalRecommendations" /> to decide whether to warn.
+    ///     settings <see cref="GrowUsnJournal" /> changes. Returns the current maximum size
+    ///     and allocation delta. Consumers own retention targets and sizing policy.
     /// </summary>
     public UsnJournalSettings QueryUsnJournalSettings()
     {

@@ -14,8 +14,9 @@ public sealed partial class JournalBrokerClient
     ///     watches on the other drives, serialized with the client's other reply-bearing
     ///     operations. MFTLib never calls this by itself: resizing a journal is a
     ///     persistent change to a resource shared with Windows Search, backup agents, and
-    ///     replication, so it belongs behind an explicit consumer action. Compare against
-    ///     <see cref="UsnJournalRecommendations" /> when deciding what to ask for.
+    ///     replication, so it belongs behind an explicit consumer action. The caller supplies
+    ///     a maximum derived from its own retention target and cap. MFTLib never initiates
+    ///     growth automatically.
     /// </summary>
     public Task<UsnJournalSettings> GrowUsnJournalAsync(
         char driveLetter, long maximumSize, long allocationDelta, CancellationToken cancellationToken = default)

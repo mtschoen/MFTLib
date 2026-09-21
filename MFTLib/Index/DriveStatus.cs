@@ -91,4 +91,14 @@ public sealed record DriveStatus
     ///     <see cref="WatchCatchUpState.NotStarted" /> for a drive that cannot be watched.
     /// </summary>
     public WatchCatchUpState WatchCatchUp { get; init; }
+
+    /// <summary>
+    ///     Set when this drive had a cached block that could not be resumed because its
+    ///     journal checkpoint was gone, so the drive was cold-scanned instead. It carries the
+    ///     checkpoint, the journal as it stood at that moment, and, when a larger journal
+    ///     would have prevented the rescan, how large it would have had to be. Null when the
+    ///     drive warm-started, had no cache to resume, or was rejected for a reason unrelated
+    ///     to the journal, which <see cref="DiscardedBlock" /> covers.
+    /// </summary>
+    public JournalCheckpointLoss? CheckpointLoss { get; init; }
 }

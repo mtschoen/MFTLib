@@ -79,10 +79,25 @@ minutes. MFTLib exposes the sizing but never changes it by itself.
 `FileIndex.QueryUsnJournalSettings(driveLetter)` reads `MaximumSize` and
 `AllocationDelta` without elevation (`FSCTL_QUERY_USN_JOURNAL` against a
 backup-semantics handle on the volume root; no broker needed).
-`UsnJournalRecommendations` carries the recommended values (128 MB maximum,
-16 MB allocation delta, what Everything recommends on Windows 10 and later) and
-`UsnJournalSettings.IsBelowRecommended` compares against them, so a consumer can
-warn without hard-coding numbers. When the user consents,
+The moment worth acting on is a rescan the journal forced. Opening a drive reads
+the live journal through that same unelevated handle before adopting a cached
+block, and when the block's checkpoint is no longer in the journal it cold-scans
+and fills in `DriveStatus.CheckpointLoss`: the checkpoint, the journal's
+`FirstUsn` and `NextUsn` at that moment, its `AllocationDelta` and `MaximumSize`,
+how far behind the checkpoint was, and the journal size that would have retained
+it. `Cause` says whether the same journal trimmed past the checkpoint
+(`CheckpointTrimmed`, where `SizeThatWouldHaveRetained` is the number to offer)
+or the journal was recreated (`JournalRecreated`, where no size would have
+helped). A volume that cannot answer reports nothing rather than a guess.
+
+A cache-only open reports it too, which is the one case where the consumer is
+told why no index could be opened at all: that drive comes back
+`DriveFailureKind.CacheDeclined` with the loss attached. A successful
+`RescanAsync` clears it, since the block it explained has been replaced.
+
+That report is what a consumer turns into a hint: the last checkpoint was too old
+so a rescan was needed, and a journal of this size would have avoided it. When
+the user consents,
 `JournalBrokerClient.GrowUsnJournalAsync(driveLetter, maximumSize, allocationDelta)`
 asks the elevated host to resize the journal in place via
 `FSCTL_CREATE_USN_JOURNAL` (request frame kind 16, reply frame kind 17). The
@@ -90,8 +105,8 @@ host refuses any requested maximum at or below the current one (grow only,
 never shrink) with an error the client rethrows as `InvalidOperationException`,
 and on success replies with the post-change settings read back from the volume.
 Growing the journal is a persistent change to a resource shared with Windows
-Search, backup agents, and replication, which is why the default is warn-only
-and the grow is an explicit consumer call.
+Search, backup agents, and replication, which is why MFTLib only reports and the
+grow is an explicit consumer call.
 
 ## 1. Dispatch broker mode before normal startup
 

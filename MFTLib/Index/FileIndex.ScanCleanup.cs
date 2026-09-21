@@ -77,11 +77,20 @@ public sealed partial class FileIndex
                     ? discarded
                     : null,
                 MftProducerFailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveOrdinal),
-                FailureKind = failureKind
+                FailureKind = failureKind,
+                // A cache-only open declines the drive precisely because the checkpoint was
+                // lost, so this is where that reason has to reach the consumer: the drive ends
+                // up with no block, and so never travels through DescribeDrive.
+                CheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveOrdinal)
             });
             _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
             _discardedBlocksByOrdinal.Remove(driveOrdinal);
             _blockSourcesByOrdinal.Remove(driveOrdinal);
+
+            // A drive that never adds a block does not consume its ordinal, so everything keyed
+            // by it has to go once the status above has taken its own copy. Otherwise the next
+            // drive to take this ordinal inherits this drive's report.
+            _checkpointLossesByOrdinal.Remove(driveOrdinal);
             ReleaseCanonicalOwnershipLocked(driveLetter);
         }
     }

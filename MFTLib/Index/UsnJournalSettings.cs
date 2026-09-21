@@ -8,20 +8,11 @@ namespace MFTLib.Index;
 /// </summary>
 public readonly record struct UsnJournalSettings
 {
-    /// <summary>The journal's maximum size in bytes: the ring buffer's capacity.</summary>
+    /// <summary>The journal's configured maximum size in bytes, used by Windows as a trimming target.</summary>
     public required long MaximumSize { get; init; }
 
     /// <summary>
-    ///     The allocation delta in bytes: how much the journal file grows by when it needs
-    ///     more room, and the granularity sizes round to.
+    ///     The journal's configured allocation delta in bytes.
     /// </summary>
     public required long AllocationDelta { get; init; }
-
-    /// <summary>
-    ///     True when <see cref="MaximumSize" /> is below
-    ///     <see cref="UsnJournalRecommendations.RecommendedMaximumSize" />. Consumers surface
-    ///     this as a warning with an explicit enlarge action; MFTLib never changes the
-    ///     sizing by itself.
-    /// </summary>
-    public bool IsBelowRecommended => MaximumSize < UsnJournalRecommendations.RecommendedMaximumSize;
 }

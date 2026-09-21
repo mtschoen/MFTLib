@@ -125,6 +125,7 @@ dotnet build external\MFTLib\MFTLibTestExtensions\MFTLibTestExtensions.csproj -c
 | Process records while native memory is alive | `MftVolume.StreamRecords` |
 | Resume from a persisted journal cursor | `MftVolume.ReadUsnJournal` |
 | Continuously receive changes | `WatchUsnJournalWithCursor` or broker batches |
+| Explain a rescan forced by the change journal | `DriveStatus.CheckpointLoss` |
 
 ## Quick start: find records by name
 
@@ -276,11 +277,71 @@ resolved full path; maintain an index keyed by record number when full paths are
 A watched volume whose change journal is too small wraps under load: records
 are overwritten before the watch reads them, the watch faults, and the drive
 needs a rescan. Windows sizes a new journal at 32 MB, which a busy system
-drive can wrap in minutes; the recommended sizing is a 128 MB maximum with a
-16 MB allocation delta (`UsnJournalRecommendations`).
-`FileIndex.QueryUsnJournalSettings(driveLetter)` reports a volume's current
-sizing without elevation, and `UsnJournalSettings.IsBelowRecommended` flags a
-volume below the recommendation. MFTLib never changes the journal on its own:
+drive can wrap in minutes.
+
+`FileIndex.QueryUsnJournalSettings(driveLetter)` reports a volume's configured
+sizing, `MaximumSize` and `AllocationDelta`, without elevation.
+
+### When a rescan happened because the journal moved on
+
+The only journal event that costs anything is the checkpoint in a drive's cached
+block falling out of the journal, because the drive must then be scanned from
+scratch instead of caught up. When opening a drive finds that, it cold-scans and
+records what it found on that drive's status:
+
+```csharp
+await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
+
+foreach (var drive in index.Drives)
+{
+    if (drive.CheckpointLoss is not { } loss)
+    {
+        continue;
+    }
+
+    if (loss.SizeThatWouldHaveRetained is { } size)
+    {
+        Console.WriteLine(
+            $"Drive {loss.DriveLetter}: the last checkpoint was {loss.BytesBehind} bytes " +
+            $"older than the journal still holds, so a full rescan was needed. A journal of " +
+            $"{size} bytes (it is {loss.MaximumSize} now) would have avoided it.");
+    }
+    else
+    {
+        Console.WriteLine(
+            $"Drive {loss.DriveLetter}: the change journal was recreated, so the last " +
+            "checkpoint no longer refers to anything and a full rescan was needed.");
+    }
+}
+```
+
+USNs are byte offsets into the journal, so every number there is exact integer
+arithmetic on values read off the volume: `BytesBehind` is `FirstUsn` minus the
+checkpoint, and `SizeThatWouldHaveRetained` is `NextUsn` minus the checkpoint
+rounded up to the journal's allocation delta. There is no clock and no estimate.
+
+The report is attached to the drive it describes, for as long as the block it
+explains is in place. A `FileIndexOptions.InitialOpenCacheOnly` open reports it
+too: that drive comes back `DriveState.Failed` with
+`DriveFailureKind.CacheDeclined`, which says the cache was refused, while
+`CheckpointLoss` says why and what size would have prevented it. A successful
+`RescanAsync` clears it, because the block it explained has been replaced.
+
+`Cause` separates the two situations MFTLib can actually tell apart.
+`CheckpointTrimmed` means the journal is the one the checkpoint came from and has
+trimmed past it, so a larger journal would have kept it and
+`SizeThatWouldHaveRetained` says how large. `JournalRecreated` means the journal
+was deleted and recreated and carries a different id, so the checkpoint refers to
+a journal that no longer exists: no size would have helped, and none is offered.
+A drive that warm-started, or whose volume could not answer the query at all,
+reports `CheckpointLoss` as null rather than guessing.
+
+Turning that into the user's choice is the consumer's job: show the size,
+say what the journal is now, and let the user decide whether a journal that large
+is worth it or whether an occasional rescan is cheaper. Scans are fast by design,
+so a rescan is an acceptable outcome, not a failure.
+
+MFTLib never changes the journal on its own:
 enlarging it is an explicit call, `JournalBrokerClient.GrowUsnJournalAsync`,
 which the broker performs elevated and which only grows, refusing a requested
 maximum at or below the current one. Growing is persistent and shared with

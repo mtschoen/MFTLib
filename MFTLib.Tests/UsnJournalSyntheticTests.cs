@@ -164,7 +164,6 @@ public partial class UsnJournalSyntheticTests
         var settings = volume.QueryUsnJournalSettings();
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
-        Assert.IsFalse(settings.IsBelowRecommended);
     }
 
     [TestMethod]

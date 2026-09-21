@@ -22,6 +22,13 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly Dictionary<ushort, string> _mftProducerFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, string> _watchFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, BlockSource> _blockSourcesByOrdinal = [];
+
+    /// <summary>
+    ///     One entry per drive whose cached block was rejected because its journal checkpoint
+    ///     could no longer be resumed. It outlives the cold scan that follows, so a consumer
+    ///     can explain the rescan once the index is open.
+    /// </summary>
+    readonly Dictionary<ushort, JournalCheckpointLoss> _checkpointLossesByOrdinal = [];
     readonly Dictionary<char, BlockOwnerLock> _canonicalLocksByLetter = [];
     readonly List<RetiredSnapshot> _retiredSnapshots = [];
     readonly FileIndexOptions _options;
@@ -334,7 +341,8 @@ public sealed partial class FileIndex : IAsyncDisposable
             _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            GetWatchCatchUpState(driveBlock.DriveOrdinal));
+            GetWatchCatchUpState(driveBlock.DriveOrdinal),
+            _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal));
         return DescribeDrive(driveBlock, in annotations);
     }
 
@@ -378,7 +386,8 @@ public sealed partial class FileIndex : IAsyncDisposable
         string? MftProducerFailureMessage,
         string? WatchFailureMessage,
         BlockSource BlockSource,
-        WatchCatchUpState WatchCatchUp);
+        WatchCatchUpState WatchCatchUp,
+        JournalCheckpointLoss? CheckpointLoss);
 
     static DriveStatus DescribeDrive(DriveBlock driveBlock, in DriveStatusAnnotations annotations)
     {
@@ -398,7 +407,8 @@ public sealed partial class FileIndex : IAsyncDisposable
             DiscardedBlock = annotations.DiscardedBlock,
             MftProducerFailureMessage = annotations.MftProducerFailureMessage,
             WatchFailureMessage = annotations.WatchFailureMessage,
-            WatchCatchUp = annotations.WatchCatchUp
+            WatchCatchUp = annotations.WatchCatchUp,
+            CheckpointLoss = annotations.CheckpointLoss
         };
     }
 }
