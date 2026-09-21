@@ -262,6 +262,57 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual("Users", NamePool.ReadRowName(writer.Block, 100).ToString());
     }
 
+    /// <summary>
+    ///     Owns the CountdownEvent and cancellation signal for
+    ///     <see cref="ServeAsync_EndWatch_AcrossSeveralArmedDrives_SynchronousAbort_EmitsZeroErrorFramesBeforeAck" />.
+    ///     Exposing the seam behavior as instance methods, assigned by method group rather than by an inline
+    ///     lambda, means the native delegates never directly close over the CountdownEvent that method disposes.
+    /// </summary>
+    sealed class SynchronousAbortWatchSeam : IDisposable
+    {
+        readonly CountdownEvent _watchEntered;
+
+        readonly TaskCompletionSource _cancelSignaled =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public SynchronousAbortWatchSeam(int driveCount)
+        {
+            _watchEntered = new CountdownEvent(driveCount);
+        }
+
+        public bool CancelUsnJournalWatch(SafeHandle volumeHandle)
+        {
+            _cancelSignaled.TrySetResult();
+            return true;
+        }
+
+        public IntPtr WatchUsnJournalBatchCancelable(SafeHandle volumeHandle, long startUsn, ulong journalId,
+            SafeHandle cancellationHandle)
+        {
+            _watchEntered.Signal();
+            // Simulate the kernel wait during live watch until cancellation/CancelIoEx arrives.
+            _cancelSignaled.Task.GetAwaiter().GetResult();
+            // Return the synchronous ERROR_OPERATION_ABORTED result:
+            // an empty result with original cursor untouched and no error message.
+            return BuildEmptyWatchResult(journalId, startUsn);
+        }
+
+        public void WaitForAllDrivesEntered(CancellationToken token)
+        {
+            _watchEntered.Wait(token);
+        }
+
+        public void CancelOnTimeout()
+        {
+            _cancelSignaled.TrySetCanceled();
+        }
+
+        public void Dispose()
+        {
+            _watchEntered.Dispose();
+        }
+    }
+
     [TestMethod]
     public async Task ServeAsync_EndWatch_AcrossSeveralArmedDrives_SynchronousAbort_EmitsZeroErrorFramesBeforeAck()
     {
@@ -270,33 +321,18 @@ public partial class JournalBrokerHostRealSeamsTests
         MockWatchJournalTip();
 
         const int driveCount = 3;
-        var watchEntered = new CountdownEvent(driveCount);
+        var seam = new SynchronousAbortWatchSeam(driveCount);
         try
         {
-            var cancelSignaled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            MFTLibNative._cancelUsnJournalWatch = _ =>
-            {
-                cancelSignaled.TrySetResult();
-                return true;
-            };
-
-            MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
-            {
-                watchEntered.Signal();
-                // Simulate the kernel wait during live watch until cancellation/CancelIoEx arrives.
-                cancelSignaled.Task.GetAwaiter().GetResult();
-                // Return the synchronous ERROR_OPERATION_ABORTED result:
-                // an empty result with original cursor untouched and no error message.
-                return BuildEmptyWatchResult(journalId, startUsn);
-            };
+            MFTLibNative._cancelUsnJournalWatch = seam.CancelUsnJournalWatch;
+            MFTLibNative._watchUsnJournalBatchCancelable = seam.WatchUsnJournalBatchCancelable;
             MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
 
             var host = JournalBrokerHost.CreateDefault();
             var (clientSide, serverSide) = DuplexStream.CreatePair();
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            using var timeoutRegistration = cts.Token.Register(() => cancelSignaled.TrySetCanceled());
+            using var timeoutRegistration = cts.Token.Register(seam.CancelOnTimeout);
 
             var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
 
@@ -319,7 +355,7 @@ public partial class JournalBrokerHostRealSeamsTests
             Assert.AreEqual(driveCount, caughtUpDrives.Count);
 
             // Ensure all drives are actively waiting inside the native watch seam before EndWatch is issued.
-            watchEntered.Wait(cts.Token);
+            seam.WaitForAllDrivesEntered(cts.Token);
 
             // Deliberate EndWatch across the armed drives.
             var endRequest = new ArrayBufferWriter<byte>();
@@ -355,7 +391,7 @@ public partial class JournalBrokerHostRealSeamsTests
         finally
         {
             MFTLibNative.ResetToDefaults();
-            watchEntered.Dispose();
+            seam.Dispose();
         }
     }
 }
