@@ -71,4 +71,30 @@ public partial class JournalBrokerClientTests
         Assert.AreEqual("during-scan.txt", live.Current.Entries.Single().FileName);
         Assert.IsFalse(guarded.ConcurrentReadAttempted);
     }
+
+    [TestMethod]
+    public async Task ControlExchange_UnexpectedFrameKindDuringScan_ThrowsInvalidData()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var token = timeout.Token;
+        var (transport, server) = DuplexStream.CreatePair();
+        await using var peer = server;
+        await using var client = MakeMinimalFakeClient(transport);
+
+        var scan = client.ArmScanAndCatchUpAsync(DriveC, CreateOptions(), token);
+        Assert.AreEqual(BrokerFrameKind.QueryVolumes, (await ReadControlRequestAsync(server, token)).Kind);
+        await SendControlReplyAsync(server,
+            writer => BrokerProtocol.WriteVolumeInfo(writer, "C", 128, 1024, 128 * 1024), token);
+        Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await ReadControlRequestAsync(server, token)).Kind);
+
+        // A VolumeInfo frame is none of: accepted by the scan exchange, an epoch-tagged
+        // leftover, a heartbeat, or an EndWatchAck, so the foreground read must reject it
+        // instead of silently misrouting it into the collector.
+        await SendControlReplyAsync(server,
+            writer => BrokerProtocol.WriteVolumeInfo(writer, "C", 128, 1024, 128 * 1024), token);
+
+        var exception = await Assert.ThrowsExceptionAsync<InvalidDataException>(() => scan);
+        StringAssert.Contains(exception.Message, "Unexpected");
+        StringAssert.Contains(exception.Message, nameof(BrokerFrameKind.VolumeInfo));
+    }
 }

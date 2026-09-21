@@ -46,4 +46,28 @@ public class UsnJournalSettingsQueryLiveTests
 
         Assert.ThrowsException<PlatformNotSupportedException>(() => UsnJournalSettingsQuery.Query('C'));
     }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public void Query_ForADriveLetterThatDoesNotExist_ThrowsIOExceptionNamingTheRoot()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Requires a Windows host to open drive roots");
+            return;
+        }
+
+        var missing = Enumerable.Range('D', 'Z' - 'D' + 1)
+            .Select(value => (char)value)
+            .FirstOrDefault(letter => !Directory.Exists($"{letter}:\\"));
+        if (missing == '\0')
+        {
+            Assert.Inconclusive("Every drive letter D-Z exists on this machine");
+            return;
+        }
+
+        var exception = Assert.ThrowsException<IOException>(() => UsnJournalSettingsQuery.Query(missing));
+
+        StringAssert.Contains(exception.Message, $"{missing}:\\");
+    }
 }

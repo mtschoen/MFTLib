@@ -374,4 +374,47 @@ public partial class JournalBrokerScanSessionTests
 
         await session.DisposeAsync();
     }
+
+    [TestMethod]
+    public async Task StartFromCursorsAsync_WithANullDriveKey_ThrowsArgumentExceptionBeforeConnecting()
+    {
+        // IReadOnlyDictionary (unlike Dictionary) permits a null key, so the guard has
+        // to exist; a caller-supplied map can carry one only through a custom implementation.
+        var cursors = new NullKeyCursorDictionary();
+        var connectCalled = false;
+
+        var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            JournalBrokerScanSession.StartFromCursorsAsync(
+                (Func<CancellationToken, Task<JournalBrokerClient>>)(_ =>
+                {
+                    connectCalled = true;
+                    throw new InvalidOperationException("The cursor guard runs before any connection.");
+                }),
+                cursors, BrokerScanProfile.Full, CancellationToken.None));
+
+        Assert.AreEqual("cursorsByDrive", exception.ParamName);
+        Assert.IsFalse(connectCalled);
+    }
+
+    sealed class NullKeyCursorDictionary : IReadOnlyDictionary<string, UsnJournalCursor>
+    {
+        public int Count => 1;
+        public IEnumerable<string> Keys => [null!];
+        public IEnumerable<UsnJournalCursor> Values => [default];
+        public UsnJournalCursor this[string key] => throw new KeyNotFoundException();
+        public bool ContainsKey(string key) => false;
+
+        public bool TryGetValue(string key, out UsnJournalCursor value)
+        {
+            value = default;
+            return false;
+        }
+
+        public IEnumerator<KeyValuePair<string, UsnJournalCursor>> GetEnumerator()
+        {
+            yield return new KeyValuePair<string, UsnJournalCursor>(null!, default);
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
 }

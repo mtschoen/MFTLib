@@ -283,4 +283,30 @@ public class JournalMutatorCloseCoalescingTests
         Assert.AreEqual(1, second.Count);
         Assert.AreEqual(FileChangeKind.Created, second[0].Kind);
     }
+
+    /// <summary>
+    ///     The echo check's guard directly: no open cycle, a cycle for another
+    ///     incarnation (sequence number moved on), and a cycle that never reported a
+    ///     rename all answer "not an echo". The mutator's own classification filter
+    ///     never calls it in those states, so this pins the guard's contract at the
+    ///     <see cref="ReportedReasonCycles" /> boundary.
+    /// </summary>
+    [TestMethod]
+    public void IsReportedRenameEcho_WithoutAMatchingRenameCycle_ReturnsFalse()
+    {
+        var cycles = new ReportedReasonCycles();
+
+        Assert.IsFalse(cycles.IsReportedRenameEcho(9, 1, "renamed.txt", 6),
+            "No open cycle for the row.");
+
+        cycles.MarkReported(9, 1, UsnReason.DataOverwrite, "renamed.txt", 6);
+        Assert.IsFalse(cycles.IsReportedRenameEcho(9, 1, "renamed.txt", 6),
+            "The open cycle reported no rename.");
+
+        cycles.MarkReported(9, 1, UsnReason.DataOverwrite | UsnReason.RenameNewName, "renamed.txt", 6);
+        Assert.IsFalse(cycles.IsReportedRenameEcho(9, 2, "renamed.txt", 6),
+            "The cycle belongs to a different incarnation of the record.");
+        Assert.IsTrue(cycles.IsReportedRenameEcho(9, 1, "renamed.txt", 6),
+            "Same incarnation, same name and parent: the echo the guard exists to detect.");
+    }
 }

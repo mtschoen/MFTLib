@@ -307,6 +307,26 @@ public class SearchEngineTests
         Assert.ThrowsException<OperationCanceledException>(() =>
             SearchEngineTestAccess.Search(_snapshot, new SearchQuery(null, Under: documents), token));
     }
+
+    /// <summary>
+    ///     A block whose producer wrote no rows at all partitions to no ranges, so the
+    ///     search completes empty without starting the parallel machinery.
+    /// </summary>
+    [TestMethod]
+    public async Task Search_OverAnEmptyDriveBlock_ReturnsNoResults()
+    {
+        using var builder = new SyntheticBlockBuilder('Y');
+        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, builder.OpenForWriting())]);
+        try
+        {
+            Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
+            Assert.AreEqual(0, SearchEngineTestAccess.Search(snapshot, new SearchQuery(null)).Count);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
 }
 
 static class SearchEngineTestAccess

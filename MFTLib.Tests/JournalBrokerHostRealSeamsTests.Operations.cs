@@ -2,10 +2,12 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using MFTLib.Index;
 using MFTLib.Interop;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib.Tests;
 
@@ -344,6 +346,141 @@ public partial class JournalBrokerHostRealSeamsTests
         {
             _watchEntered.Dispose();
         }
+    }
+
+    [TestMethod]
+    public async Task ServeAsync_GrowUsnJournal_UsesRealMftVolumeSeams()
+    {
+        FileUtilities._getVolumeHandle = _ => FakeHandle();
+
+        // The pre-check reports the journal smaller than the request, so the grow is
+        // issued; the post-change read returns the grown sizing.
+        var preChange = BuildJournalInfoPointer(maximumSize: 0x200000, allocationDelta: 0x100000);
+        var postChange = BuildJournalInfoPointer(maximumSize: 0x400000, allocationDelta: 0x200000);
+        var queryCount = 0;
+        uint? capturedIoctl = null;
+        long capturedMaximum = 0;
+        long capturedDelta = 0;
+        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
+            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
+        {
+            capturedIoctl = ioControlCode;
+            capturedMaximum = Marshal.ReadInt64(inBuffer, 0);
+            capturedDelta = Marshal.ReadInt64(inBuffer, 8);
+            bytesReturned = 0;
+            return true;
+        }
+
+        try
+        {
+            MFTLibNative._queryUsnJournal = _ => ++queryCount == 1 ? preChange : postChange;
+            MFTLibNative._freeUsnJournalInfo = _ => { }; // the two buffers are freed by this test
+            Kernel32._deviceIoControl = FakeDeviceIoControl;
+
+            var host = JournalBrokerHost.CreateDefault();
+            var (clientSide, serverSide) = DuplexStream.CreatePair();
+            var request = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteGrowUsnJournal(request, "C", 0x400000, 0x200000);
+            await clientSide.WriteAsync(request.WrittenMemory);
+            await clientSide.FlushAsync();
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
+
+            var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
+
+            Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
+            Assert.AreEqual("C", frame.Drive);
+            Assert.AreEqual(0x400000L, frame.JournalMaximumSize);
+            Assert.AreEqual(0x200000L, frame.JournalAllocationDelta);
+            Assert.AreEqual(0x000900E7u, capturedIoctl, "FSCTL_CREATE_USN_JOURNAL");
+            Assert.AreEqual(0x400000L, capturedMaximum);
+            Assert.AreEqual(0x200000L, capturedDelta);
+            Assert.AreEqual(2, queryCount, "The grow reads the sizing before and after the change.");
+
+            await ShutdownAndAwaitAsync(clientSide, serveTask, cts);
+        }
+        finally
+        {
+            Kernel32.ResetToDefaults();
+            Marshal.FreeHGlobal(preChange);
+            Marshal.FreeHGlobal(postChange);
+        }
+    }
+
+    [TestMethod]
+    [SupportedOSPlatform("windows")] // NtfsVolumeInformation.Query is Windows-only
+    public async Task ServeAsync_QueryVolumes_UsesRealNtfsVolumeInformationSeam()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("FSCTL_GET_NTFS_VOLUME_DATA requires Windows");
+            return;
+        }
+
+        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        var native = new NtfsVolumeDataBufferNative
+        {
+            MftValidDataLength = 409_600,
+            BytesPerFileRecordSegment = 1024
+        };
+        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
+            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
+        {
+            Marshal.StructureToPtr(native, outBuffer, false);
+            bytesReturned = (uint)Marshal.SizeOf<NtfsVolumeDataBufferNative>();
+            return true;
+        }
+
+        try
+        {
+            Kernel32._deviceIoControl = FakeDeviceIoControl;
+
+            var host = JournalBrokerHost.CreateDefault();
+            var (clientSide, serverSide) = DuplexStream.CreatePair();
+            var request = new ArrayBufferWriter<byte>();
+            BrokerProtocol.WriteQueryVolumes(request, "C:0:0");
+            await clientSide.WriteAsync(request.WrittenMemory);
+            await clientSide.FlushAsync();
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
+
+            var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
+
+            Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
+            Assert.AreEqual("C", frame.Drive);
+            Assert.AreEqual(409_600L, frame.MftValidDataLength);
+            Assert.AreEqual(1024u, frame.BytesPerFileRecordSegment);
+
+            await ShutdownAndAwaitAsync(clientSide, serveTask, cts);
+        }
+        finally
+        {
+            Kernel32.ResetToDefaults();
+        }
+    }
+
+    static IntPtr BuildJournalInfoPointer(ulong maximumSize, ulong allocationDelta)
+    {
+        var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
+        Marshal.StructureToPtr(new UsnJournalInfoNative
+        {
+            JournalId = 7,
+            NextUsn = 200,
+            MaximumSize = maximumSize,
+            AllocationDelta = allocationDelta
+        }, pointer, false);
+        return pointer;
+    }
+
+    static async Task ShutdownAndAwaitAsync(Stream clientSide, Task serveTask, CancellationTokenSource cts)
+    {
+        var shutdown = new ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteShutdown(shutdown);
+        await clientSide.WriteAsync(shutdown.WrittenMemory, cts.Token);
+        await clientSide.FlushAsync(cts.Token);
+        await serveTask;
     }
 
     [TestMethod]

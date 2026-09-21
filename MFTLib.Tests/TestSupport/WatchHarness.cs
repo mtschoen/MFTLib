@@ -1,3 +1,4 @@
+using System.Reflection;
 using MFTLib.Index;
 using MFTLib.Tests.Index;
 
@@ -127,6 +128,36 @@ internal sealed class WatchHarness : IDisposable
     public Task SourceEndedAsync() => Source.SourceEndedAsync();
 
     public Task CompleteSourceAsync() => Source.CompleteSourceAsync();
+
+    /// <summary>
+    ///     Polls until the watch session's pump task has completed, so a caller that goes on to
+    ///     rescan takes the reclaim path deterministically instead of racing the pump's final
+    ///     unwind. <see cref="SourceEndedAsync" /> only signals that the source's own iterator
+    ///     reached its <c>finally</c>; <see cref="FakeIndexWatchSource" /> stops answering source
+    ///     calls (such as a disarm) right there, but the pump that owns the pipeline still has
+    ///     fault handling and bookkeeping to run after that point before its own task completes.
+    ///     A rescan that starts in that window can still see an active session and try to disarm a
+    ///     drive against a source whose stream has already ended. The session and its pump are
+    ///     internal state, so this reaches them by reflection.
+    /// </summary>
+    public async Task WaitForPumpToCompleteAsync()
+    {
+        var sessionField = typeof(FileIndex).GetField("_watchSession",
+            BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var deadline = DateTime.UtcNow + FakeIndexWatchSource.HangGuard;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (sessionField.GetValue(Index) is { } session &&
+                session.GetType().GetProperty("Pump")!.GetValue(session) is Task { IsCompleted: true })
+            {
+                return;
+            }
+
+            await Task.Delay(20);
+        }
+
+        throw new TimeoutException("The watch pump did not complete in time.");
+    }
 
     public async Task FaultSourceAsync(Exception exception)
     {

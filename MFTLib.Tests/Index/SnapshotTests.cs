@@ -145,4 +145,55 @@ public class SnapshotTests
 
         Assert.ThrowsException<InvalidOperationException>(() => Snapshot.Create([driveBlock]));
     }
+
+    [TestMethod]
+    public void Create_WhenALaterBlockIsAlreadyReleased_ReturnsTheReferencesItTook()
+    {
+        using var firstBuilder = CompletedBuilder('T');
+        using var secondBuilder = CompletedBuilder('U');
+        var kept = OpenDriveBlock(firstBuilder, 0);
+        var released = OpenDriveBlock(secondBuilder, 1);
+        Assert.IsTrue(released.TryAddReference());
+        released.Release();
+
+        var exception = Assert.ThrowsException<InvalidOperationException>(
+            () => Snapshot.Create([kept, released]));
+
+        StringAssert.Contains(exception.Message, "was already released");
+        // The reference taken on the first block before the failure must be handed back,
+        // not leaked: the create failed, so nothing may hold the block.
+        Assert.AreEqual(0, kept.ReferenceCount);
+        Assert.IsTrue(kept.IsReleased);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static WeakReference<Snapshot> CreateUnrootedSnapshotWithFailingRelease(DriveBlock driveBlock)
+    {
+        var snapshot = Snapshot.Create([driveBlock]);
+        snapshot.ReleaseState._releaseStartedForTest =
+            () => throw new InvalidOperationException("Simulated release failure.");
+        return new WeakReference<Snapshot>(snapshot);
+    }
+
+    [TestMethod]
+    public void Finalizer_WhenTheReleaseThrows_SwallowsItAndCompletesTheRelease()
+    {
+        using var builder = CompletedBuilder('T');
+        var driveBlock = OpenDriveBlock(builder, 0);
+        var weakSnapshot = CreateUnrootedSnapshotWithFailingRelease(driveBlock);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        // An exception escaping a finalizer terminates the process, so reaching this
+        // assertion at all is half of the contract; the other half is that the failed
+        // release ran before any block was touched, leaving the reference in place.
+        Assert.IsFalse(weakSnapshot.TryGetTarget(out _));
+        Assert.AreEqual(1, driveBlock.ReferenceCount, "the failed release ran before any block was released");
+        Assert.IsFalse(driveBlock.IsReleased);
+
+        // Balance the reference the abandoned snapshot still holds.
+        driveBlock.Release();
+    }
 }

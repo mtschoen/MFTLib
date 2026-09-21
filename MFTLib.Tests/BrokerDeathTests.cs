@@ -105,6 +105,29 @@ public class BrokerDeathTests : BrokerBlockTestBase
         await client.DisposeAsync();
     }
 
+    [TestMethod]
+    public async Task ControlOperation_AfterBrokerDeath_ThrowsConnectionEnded()
+    {
+        // A pipe EOF during a live watch latches broker death without poisoning the
+        // control exchange; the next control operation must fail with the clear
+        // "connection has ended" error rather than writing into a dead pipe.
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var client = MakeMinimalFakeClient(clientSide);
+        var died = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.BrokerDied += _ => died.TrySetResult();
+
+        await client.SendStartWatchAsync(WatchCursors("C"));
+
+        await serverSide.DisposeAsync(); // EOF -> demux latches the death
+        await died.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => client.QueryVolumesAsync(["C"]));
+        StringAssert.Contains(exception.Message, "broker connection has ended");
+
+        await client.DisposeAsync();
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     JournalBrokerClient MakeMinimalFakeClient(Stream pipe)

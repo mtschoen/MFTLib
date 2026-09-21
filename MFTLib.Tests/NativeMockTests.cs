@@ -55,6 +55,17 @@ public class NativeMockTests
     }
 
     [TestMethod]
+    public void GenerateFixtureMFT_ReturnsFalse_ThrowsInvalidOperationNamingThePath()
+    {
+        MFTLibNative._generateFixtureMft = _ => false;
+
+        var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+            MftVolume.GenerateFixtureMFT("fake-fixture.bin"));
+
+        StringAssert.Contains(exception.Message, "fake-fixture.bin");
+    }
+
+    [TestMethod]
     public void StreamRecords_NullReturn_ThrowsInvalidOperation()
     {
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);

@@ -158,6 +158,35 @@ public class FileIndexWatchCatchUpTests
     }
 
     [TestMethod]
+    public async Task WaitForCatchUpAsync_AllDrives_WithASingleWatchedDrive_CompletesWithItsCatchUp()
+    {
+        using var harness = new WatchHarness();
+        await harness.Index.StartWatchingAsync(Token);
+        await harness.SourceStartedAsync();
+
+        var wait = harness.Index.WaitForCatchUpAsync(Token);
+        await harness.PublishAsync(new DriveCaughtUp('T'));
+
+        await wait.WaitAsync(FakeIndexWatchSource.HangGuard);
+        Assert.AreEqual(WatchCatchUpState.CaughtUp, DriveFor(harness, 'T').WatchCatchUp);
+    }
+
+    [TestMethod]
+    public async Task WaitForCatchUpAsync_AllDrives_WhenEveryDriveAlreadyCaughtUp_IsCompleteAtIssue()
+    {
+        using var harness = new WatchHarness(
+            [new IndexWatchTarget('T', 7, 100), new IndexWatchTarget('U', 7, 100)]);
+        await harness.Index.StartWatchingAsync(Token);
+        await harness.SourceStartedAsync();
+        await harness.PublishAsync(new DriveCaughtUp('T'));
+        await harness.PublishAsync(new DriveCaughtUp('U'));
+
+        var wait = harness.Index.WaitForCatchUpAsync(Token);
+
+        Assert.IsTrue(wait.IsCompletedSuccessfully);
+    }
+
+    [TestMethod]
     public async Task WaitForCatchUpAsync_FaultsWhenTheDrivesWatchFaults()
     {
         using var harness = new WatchHarness();

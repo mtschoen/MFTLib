@@ -337,6 +337,28 @@ public class LookupEngineTests
             await snapshot.ReleaseNowAsync();
         }
     }
+
+    /// <summary>
+    ///     A block whose producer wrote no rows at all has a zero row count, so the
+    ///     partitioner returns no ranges and the scan completes empty rather than
+    ///     touching the partition machinery.
+    /// </summary>
+    [TestMethod]
+    public async Task FindByName_OverAnEmptyDriveBlock_ReturnsNoResults()
+    {
+        using var builder = new SyntheticBlockBuilder('Y');
+        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, builder.OpenForWriting())]);
+        try
+        {
+            Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
+            Assert.AreEqual(0,
+                LookupEngineTestAccess.FindByName(snapshot, "needle.txt", caseSensitive: false).Count);
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
 }
 
 static class LookupEngineTestAccess

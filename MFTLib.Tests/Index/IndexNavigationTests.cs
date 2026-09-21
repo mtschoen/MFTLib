@@ -106,6 +106,66 @@ public partial class IndexNavigationTests
     }
 
     [TestMethod]
+    public async Task IsUnder_WithAnInvalidOrADifferentDriveEntry_ReturnsFalse()
+    {
+        using var secondBuilder = new SyntheticBlockBuilder('U');
+        var secondRoot = secondBuilder.AddRoot();
+        secondBuilder.Complete(Moment);
+        var secondBlock = secondBuilder.OpenForReading(out _)!;
+        var secondSnapshot = Snapshot.Create([new DriveBlock('U', 1, secondBlock, rootDirectoryPath: TestDriveRoot.For('U'))]);
+        try
+        {
+            var report = Entry(_reportRow);
+            var foreignRoot = FileEntry.Create(secondSnapshot, 1, secondRoot);
+
+            // Different drives are never under one another, and a default handle is
+            // never under anything (nor is anything under it).
+            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(report, foreignRoot));
+            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(foreignRoot, report));
+            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(default, report));
+            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(report, default));
+        }
+        finally
+        {
+            await secondSnapshot.ReleaseNowAsync();
+        }
+    }
+
+    /// <summary>
+    ///     The walk hits the depth cap without reaching the target, and the row it stands on
+    ///     turns out to be self-parented (a root): that is a truncated chain, not a deep
+    ///     match, so the answer is false rather than the depth-exceeded throw.
+    /// </summary>
+    [TestMethod]
+    public async Task IsUnder_WhenTheCappedChainEndsAtARoot_ReturnsFalse()
+    {
+        using var builder = new SyntheticBlockBuilder('Z', slotCapacity: 512, namePoolCapacity: 16384);
+        var root = builder.AddRoot();
+        var unrelated = builder.AddRow("unrelated", root, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        var candidate = root;
+        for (var level = 0; level < BlockLayout.MaximumPathDepth; level++)
+        {
+            candidate = builder.AddRow($"d{level}", candidate, RowFlags.InUse | RowFlags.Directory, 0, Moment, sequenceNumber: 0);
+        }
+
+        builder.Complete(Moment);
+        var block = builder.OpenForReading(out _)!;
+        var snapshot = Snapshot.Create([new DriveBlock('Z', 0, block, rootDirectoryPath: TestDriveRoot.For('Z'))]);
+        try
+        {
+            // The candidate sits exactly MaximumPathDepth hops below the root; the target
+            // is a real row that is not on that chain.
+            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(
+                FileEntry.Create(snapshot, 0, candidate),
+                FileEntry.Create(snapshot, 0, unrelated)));
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
     public async Task Path_OfATombstonedFile_StillResolvesThroughItsRetainedName()
     {
         using var builder = new SyntheticBlockBuilder('Y');

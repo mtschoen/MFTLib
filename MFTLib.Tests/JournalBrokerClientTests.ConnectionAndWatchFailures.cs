@@ -251,4 +251,81 @@ public partial class JournalBrokerClientTests
         _ = serverSide;
     }
 
+    [TestMethod]
+    public async Task StopLiveWatchAsync_AfterDispose_IsANoOp()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var peer = serverSide;
+        var client = MakeMinimalFakeClient(clientSide);
+
+        await client.DisposeAsync();
+
+        // A stop after disposal has nothing left to stop: it must return quietly
+        // instead of throwing ObjectDisposedException over an already-clean client.
+        await client.StopLiveWatchAsync();
+    }
+
+    [TestMethod]
+    public async Task StopLiveWatchAsync_WithALatchedControlFailure_JoinsTheEndedDemuxAndReturns()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var token = timeout.Token;
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var peer = serverSide;
+        await using var client = MakeMinimalFakeClient(clientSide);
+
+        await client.SendStartWatchAsync(
+            new Dictionary<string, UsnJournalCursor> { ["D"] = new(9UL, 100L) }, token);
+        Assert.AreEqual(BrokerFrameKind.StartWatch, (await ReadControlRequestAsync(serverSide, token)).Kind);
+
+        // A caller-cancelled query with a request on the wire aborts the control
+        // exchange, which latches the control failure and stops the demux.
+        using var queryCancellation = new CancellationTokenSource();
+        var query = client.QueryVolumesAsync(["C"], queryCancellation.Token);
+        Assert.AreEqual(BrokerFrameKind.QueryVolumes, (await ReadControlRequestAsync(serverSide, token)).Kind);
+        await queryCancellation.CancelAsync();
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => query);
+
+        // The stop must join the ended demux and reclaim the watch without
+        // re-surfacing the latched control failure.
+        await client.StopLiveWatchAsync().WaitAsync(token);
+    }
+
+    [TestMethod]
+    public async Task SendDisarmDriveAsync_WhenDisposalCancelsItMidWrite_ThrowsObjectDisposed()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var token = timeout.Token;
+        var (transport, server) = DuplexStream.CreatePair();
+        await using var peer = server;
+        // The DisarmDrive frame write parks mid-frame inside the exchange, observing its
+        // operation token, so disposal's cancellation of the control token unwinds the
+        // write on its own: no release timing can race the cancellation callback.
+        await using var gated = new CancellableGateFrameWriteStream(transport, BrokerFrameKind.DisarmDrive);
+        // Deliberately not an `await using`: the explicit mid-test disposal is the
+        // behavior under test, mirroring DisposeAsync_CalledTwice_DoesNotThrow.
+        var client = MakeMinimalFakeClient(gated);
+        try
+        {
+            await client.SendStartWatchAsync(
+                new Dictionary<string, UsnJournalCursor> { ["D"] = new(9UL, 100L) }, token);
+
+            var disarm = client.SendDisarmDriveAsync("D", token);
+            await gated.Entered.WaitAsync(token);
+            var dispose = client.DisposeAsync().AsTask();
+
+            // The write's cancellation arrives because the client is being disposed, so the
+            // caller faces ObjectDisposedException rather than a bare OperationCanceledException.
+            await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => disarm.WaitAsync(token));
+
+            gated.Release();
+            await dispose.WaitAsync(token);
+        }
+        catch
+        {
+            await client.DisposeAsync();
+            throw;
+        }
+    }
+
 }

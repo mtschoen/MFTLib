@@ -144,6 +144,7 @@ public class BrokerDiagnosticsLogFilterTests
     {
         const ulong initialReference = 9101;
         const ulong replacementReference = 9103;
+        var currentReference = new System.Runtime.CompilerServices.StrongBox<ulong>(initialReference);
         var resolveCount = 0;
 
         BrokerDiagnosticsLogFilter._resolveFileReference = path =>
@@ -151,7 +152,7 @@ public class BrokerDiagnosticsLogFilterTests
             if (path == OwnLogPath)
             {
                 resolveCount++;
-                return initialReference;
+                return currentReference.Value;
             }
 
             return null;
@@ -171,16 +172,7 @@ public class BrokerDiagnosticsLogFilterTests
         Assert.AreEqual("unrelated1.txt", kept1[0].FileName);
 
         // Simulate log rotation / replacement: file at OwnLogPath now has replacementReference.
-        BrokerDiagnosticsLogFilter._resolveFileReference = path =>
-        {
-            if (path == OwnLogPath)
-            {
-                resolveCount++;
-                return replacementReference;
-            }
-
-            return null;
-        };
+        currentReference.Value = replacementReference;
 
         // Batch 2: contains an entry from the renamed original file AND an entry from the new replacement file.
         var batch2 = new[]
@@ -353,5 +345,71 @@ public class BrokerDiagnosticsLogFilterTests
         {
             Directory.Delete(directory, true);
         }
+    }
+
+    [TestMethod]
+    public void ResolveFileReference_ForAMissingFile_ReturnsNull()
+    {
+        // Exercise the real CreateFileW + GetFileInformationByHandle path, not the seam:
+        // a file that does not exist cannot be opened, so the reference stays null.
+        BrokerDiagnosticsLogFilter._resolveFileReference = BrokerDiagnosticsLogFilter.ResolveFileReference;
+        var missing = Path.Combine(Path.GetTempPath(),
+            $"mftlib-missing-{Guid.NewGuid():N}", "broker-diagnostics.log");
+
+        Assert.IsNull(BrokerDiagnosticsLogFilter.ResolveFileReference(missing));
+    }
+
+    [TestMethod]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public void TryGetDriveLetter_ForARelativePath_ResolvesAgainstTheCurrentDrive()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("The relative-path fallback runs only on Windows.");
+        }
+
+        var resolved = BrokerDiagnosticsLogFilter.TryGetDriveLetter("relative-name.log", out var driveLetter);
+
+        Assert.IsTrue(resolved);
+        var currentRoot = Path.GetPathRoot(Environment.CurrentDirectory);
+        Assert.IsNotNull(currentRoot);
+        Assert.AreEqual(char.ToUpperInvariant(currentRoot[0]).ToString(), driveLetter);
+    }
+
+    [TestMethod]
+    public void TryGetDriveLetter_ForAPathGetFullPathRejects_ReturnsFalse()
+    {
+        // An embedded NUL makes Path.GetFullPath throw ArgumentException on Windows;
+        // the filter treats the path as unmatchable rather than letting it escape.
+        Assert.IsFalse(BrokerDiagnosticsLogFilter.TryGetDriveLetter("bad\0path.log", out var driveLetter));
+        Assert.AreEqual(string.Empty, driveLetter);
+    }
+
+    [TestMethod]
+    public void Filter_WithAWhitespaceOwnLogPath_KeepsItVerbatimAndFiltersNothing()
+    {
+        // A whitespace log path is kept as-is (nothing to normalize) and can never
+        // resolve to a drive's file reference, so the filter stays inert.
+        var filter = new BrokerDiagnosticsLogFilter("   ", null);
+        var entries = new[] { Entry(4242, "unrelated.txt") };
+
+        var kept = filter.Filter("C", entries);
+
+        Assert.AreEqual(1, kept.Length);
+        Assert.AreEqual("unrelated.txt", kept[0].FileName);
+    }
+
+    [TestMethod]
+    public void Filter_WithAnOwnLogPathGetFullPathRejects_KeepsTheRawPathAndFiltersNothing()
+    {
+        // Same contract as the whitespace case, through the GetFullPath catch: the raw
+        // path is kept and the filter stays inert rather than throwing from its ctor.
+        var filter = new BrokerDiagnosticsLogFilter("bad\0path.log", null);
+        var entries = new[] { Entry(4242, "unrelated.txt") };
+
+        var kept = filter.Filter("C", entries);
+
+        Assert.AreEqual(1, kept.Length);
+        Assert.AreEqual("unrelated.txt", kept[0].FileName);
     }
 }

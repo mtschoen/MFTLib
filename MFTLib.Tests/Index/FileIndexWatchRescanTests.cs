@@ -135,6 +135,15 @@ public class FileIndexWatchRescanTests
         await harness.PublishAsync(new DriveWatchFailure('U', new IOException("U's journal wrapped")));
         await harness.SourceEndedAsync();
 
+        // SourceEndedAsync only signals that the source's own iterator reached its finally
+        // (FakeIndexWatchSource stops answering source calls right there); the pump still has
+        // fault bookkeeping to run after that before its own task completes. Every drive already
+        // faulted here, so the session stays claimed (FileIndex.WatchPump.ReportSourceEndedWithoutStop
+        // is skipped) until RescanAsync's SuspendDriveForRescanAsync sees the pump as done and
+        // reclaims it; calling RescanAsync before that can still see an active session and try to
+        // disarm a drive against a source whose stream already ended.
+        await harness.WaitForPumpToCompleteAsync();
+
         await harness.Index.RescanAsync('T', Token);
         await harness.SourceStartedAsync();
 
