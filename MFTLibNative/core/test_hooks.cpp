@@ -111,8 +111,8 @@ bool UsnIoShouldAbortOverlapped() {
     return true;
 }
 
-bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesReturned,
-                         OVERLAPPED* overlapped, BOOL& success) {
+bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesReturned, OVERLAPPED* overlapped,
+                         BOOL& success) {
     if (g_usnWatchPipe == nullptr || handle != g_usnWatchPipe || overlapped == nullptr) {
         return false;
     }
@@ -164,8 +164,8 @@ EXPORT void SetUsnIoSuccess(const uint8_t* data, uint32_t size) {
 }
 
 EXPORT void SetUsnOverlappedAbort() { g_usnOverlappedAbort = 1; }
-EXPORT void SetUsnWatchPipe(HANDLE handle, HANDLE beforeIssue, HANDLE continueIssue,
-                            HANDLE issued, int gateReadNumber) {
+EXPORT void SetUsnWatchPipe(HANDLE handle, HANDLE beforeIssue, HANDLE continueIssue, HANDLE issued,
+                            int gateReadNumber) {
     g_usnWatchPipe = handle;
     g_usnBeforeIssue = beforeIssue;
     g_usnContinueIssue = continueIssue;
