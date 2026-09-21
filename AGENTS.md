@@ -114,13 +114,14 @@ that do not opt in retain the existing default-cache behavior.
 The same initializer activates journal isolation, through
 `MFTLibTestExtensions.JournalIsolation.ForbidLiveJournalReads()`, on the same
 one-way idempotent terms. Opening a drive reads the live USN journal to decide
-whether a cached block's checkpoint is still resumable, so a test that
-warm-starts a synthetic MFT-kind block over a drive letter that happens to name
-a real NTFS volume would have that block rejected as `JournalRecreated`: a
-synthetic journal id never matches a real one. The same test would cold-scan on
-one machine and warm-start on another. Measured before the guard, nine existing
-test methods reached the live read on letters `T` and `U`, which pass here only
-because neither letter is mounted on this machine.
+whether a cached block's checkpoint is still resumable, and a faulting watch
+reads it again to decide whether that drive's position is still in the journal,
+so a test that warm-starts or watches a synthetic MFT-kind block over a drive
+letter that happens to name a real NTFS volume would have that block rejected as
+`JournalRecreated`: a synthetic journal id never matches a real one. The same
+test would cold-scan on one machine and warm-start on another. Measured before
+the guard, nine existing test methods reached the live read on letters `T` and
+`U`, which pass here only because neither letter is mounted on this machine.
 
 Unlike the cache guard this one does **not** throw. Warm-starting is a
 legitimate thing for a test to do and most such tests have no interest in the
@@ -211,6 +212,31 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       The margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
       USN_JOURNAL_DATA, not a live measurement. A volume that cannot answer the query warm-starts
       as before and reports nothing.
+      The same check also runs mid-session, from `FileIndex.WatchPump`'s
+      `RecordCheckpointLossForFaultedDrive`: any watch fault on an MFT-backed drive asks the live
+      journal about that drive's current block cursor, which is both what `BuildWatchTarget` armed
+      the watch from and what every applied batch has advanced it to. Running the check on every
+      fault rather than on a classified subset is deliberate, because no journal error code
+      reaches managed code: `ApplyUsnReadError` in `MFTLibNative/usn/usn_journal.cpp` turns
+      ERROR_JOURNAL_ENTRY_DELETED and its siblings into English strings in the result's fixed
+      `errorMessage` buffer, which is why `JournalBrokerHost.IsJournalCursorException` resorts to
+      substring matching. Do not add more of that: the journal is the only honest classifier, and
+      it records nothing for an unrelated fault by construction. The journal read runs
+      outside `_stateLock` and the loss is recorded only while the block whose cursor it describes
+      is still the drive's block, so it cannot resurrect a report a concurrent rescan cleared.
+      A source stream that ends without a stop classifies every drive it was watching the same way.
+      `JournalCheckpointLoss.DetectedDuring` (`JournalCheckpointLossDetection.DriveOpening` or
+      `.LiveWatch`) records which check produced a report, because a report outlives the moment
+      that produced it: a drive that cold-scanned at open carries its report for the whole
+      session, so without the label a `WatchFaulted` handler reading a non-null `CheckpointLoss`
+      would blame the journal for an unrelated fault (PR 227 review finding). A watch fault that
+      finds the position still in the journal leaves any existing report untouched rather than
+      clearing it. Do not "fix" that by clearing: the open's report explains the block still in
+      place and an unrelated fault does not falsify it, and consumers build their
+      grow-the-journal hint from exactly that report (git-wizard's `JournalWarning` via
+      `IndexVolumeChangeSource.Journals.cs`, file-wizard's `JournalSettingsPresenter`), so
+      clearing it would make their hint vanish on an unrelated error. A `LiveWatch` loss replaces
+      a `DriveOpening` one as the newer fact about the same drive; a rescan clears either.
     - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory.
     - **Query lifetime**: the eight entry points that scan rows (`Find`, `FindByName`, `Search`, `Enumerate`, `Largest`,
       `DuplicateNames`, `Root`, and `FileEntry.Children`) each take an optional `CancellationToken`, observed

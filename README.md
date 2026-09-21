@@ -125,7 +125,7 @@ dotnet build external\MFTLib\MFTLibTestExtensions\MFTLibTestExtensions.csproj -c
 | Process records while native memory is alive | `MftVolume.StreamRecords` |
 | Resume from a persisted journal cursor | `MftVolume.ReadUsnJournal` |
 | Continuously receive changes | `WatchUsnJournalWithCursor` or broker batches |
-| Explain a rescan forced by the change journal | `DriveStatus.CheckpointLoss` |
+| Explain a rescan the change journal forced, at open or mid-watch | `DriveStatus.CheckpointLoss` |
 
 ## Quick start: find records by name
 
@@ -284,10 +284,13 @@ sizing, `MaximumSize` and `AllocationDelta`, without elevation.
 
 ### When a rescan happened because the journal moved on
 
-The only journal event that costs anything is the checkpoint in a drive's cached
-block falling out of the journal, because the drive must then be scanned from
-scratch instead of caught up. When opening a drive finds that, it cold-scans and
-records what it found on that drive's status:
+The only journal event that costs anything is a drive's journal position falling
+out of the journal, because the drive must then be scanned from scratch instead
+of caught up. It happens in two places and reports the same way in both. Opening
+a drive finds it in a cached block's checkpoint and cold-scans; a live watch that
+faults is asked the same question about the position it had reached, so a watch
+the journal outran says so rather than only reporting that it died. Either way it
+is recorded on that drive's status:
 
 ```csharp
 await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -340,6 +343,53 @@ too: that drive comes back `DriveState.Failed` with
 have kept the checkpoint. A successful
 `RescanAsync` clears it, because the block it explained has been replaced.
 
+A loss found mid-session sits alongside `WatchFailureMessage` and
+`WatchCatchUp` of `WatchCatchUpState.Faulted`, and answers the question those two
+cannot: the watch did not merely stop, the journal moved past where it had
+reached. The drive keeps its block and every query still answers from it, with
+nothing after that position applied, so `RescanAsync(driveLetter, token)` is what
+makes it current and re-arms its watch. Subscribe to `FileIndex.WatchFaulted` to
+see it as it happens: the report is recorded before the fault is announced, so a
+handler that reads `index.Drives` already has it.
+
+**In a fault handler, branch on `DetectedDuring`, not on the loss being
+non-null.** A report lives until a rescan replaces the block it explains, so a
+drive that cold-scanned at open still carries that report while it is being
+watched, and an unrelated fault later would otherwise read as the journal's
+doing. `DetectedDuring` says which check found it:
+
+```csharp
+index.WatchFaulted += fault =>
+{
+    if (fault.DriveLetter is not { } driveLetter)
+    {
+        return;
+    }
+
+    var drive = index.Drives.Single(d => d.DriveLetter == char.ToUpperInvariant(driveLetter));
+    if (drive.CheckpointLoss is { DetectedDuring: JournalCheckpointLossDetection.LiveWatch } loss)
+    {
+        // The journal outran this drive. It stays behind until a rescan rebuilds it.
+        OfferRescan(loss);
+        return;
+    }
+
+    // Anything else is a plain watch failure, whatever else the drive is carrying.
+    ReportWatchFailure(drive.WatchFailureMessage);
+};
+```
+
+`JournalCheckpointLossDetection.DriveOpening` means the report explains why this
+session cold-scanned at open. That rescan has already happened, so it is
+informational: show the journal-size hint, but do not read it as a diagnosis of
+a fault. `LiveWatch` means the drive is behind now and wants `RescanAsync`. A
+watch that fails for any other reason leaves the report exactly as it was,
+`DriveOpening` label included, or leaves it null, because the classification is
+the journal's answer about that drive's position rather than a reading of the
+exception that ended the watch. A `LiveWatch` loss replaces an earlier
+`DriveOpening` one, as the newer fact about the same drive; an unrelated fault
+neither rewrites nor deletes what is there.
+
 `Cause` separates the two situations MFTLib can actually tell apart.
 `CheckpointTrimmed` means the journal is the one the checkpoint came from and has
 trimmed past it, so `SizeThatWouldHaveRetained` says the size a journal would
@@ -348,9 +398,12 @@ need to be at least to have kept the checkpoint, when that size fits in a
 was deleted and recreated and carries a different id, so the checkpoint refers to
 a journal that no longer exists: no size would have helped, and none is offered.
 A consumer decides what to say from `Cause`, not from whether the size is null,
-since both causes can leave it null. A drive that warm-started, or whose volume
-could not answer the query at all, reports `CheckpointLoss` as null rather than
-guessing.
+since both causes can leave it null. `Cause` and `DetectedDuring` answer
+different questions and are read together: `Cause` says whether a journal size
+would have helped, `DetectedDuring` says whether the drive needs anything done
+about it now. A drive that warm-started, whose watch has never lost its
+position, or whose volume could not answer the query at all, reports
+`CheckpointLoss` as null rather than guessing.
 
 Turning that into the user's choice is the consumer's job: show the size,
 say what the journal is now, and let the user decide whether a journal that large

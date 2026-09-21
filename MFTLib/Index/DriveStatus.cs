@@ -93,12 +93,34 @@ public sealed record DriveStatus
     public WatchCatchUpState WatchCatchUp { get; init; }
 
     /// <summary>
-    ///     Set when this drive had a cached block that could not be resumed because its
-    ///     journal checkpoint was gone, so the drive was cold-scanned instead. It carries the
-    ///     checkpoint, the journal as it stood at that moment, and the size a journal would
-    ///     need to be at least to have kept the checkpoint. Null when the drive warm-started,
-    ///     had no cache to resume, or was rejected for a reason unrelated to the journal,
-    ///     which <see cref="DiscardedBlock" /> covers.
+    ///     Set when this drive's journal position fell out of the journal, so catching the
+    ///     drive up is no longer possible and only a full scan can. It carries the position,
+    ///     the journal as it stood at that moment, and the size a journal would need to be at
+    ///     least to have kept the position.
+    ///     <para>
+    ///         Two paths fill it in, both from the same unelevated read of the live journal.
+    ///         At open, a cached block whose checkpoint is gone is rejected and the drive is
+    ///         cold-scanned. Mid-session, a live watch that faults is asked the same question
+    ///         about the position it had reached, which is why a watch that dies because the
+    ///         journal moved past it reports more than <see cref="WatchFailureMessage" />. In
+    ///         that case the drive keeps its block and its rows: nothing after the position has
+    ///         been applied, and <see cref="FileIndex.RescanAsync" /> is what makes it current
+    ///         again.
+    ///     </para>
+    ///     <para>
+    ///         A report outlives the moment that produced it, so on its own it is not evidence
+    ///         about a fault being handled now. Read
+    ///         <see cref="JournalCheckpointLoss.DetectedDuring" /> to tell the two apart: inside
+    ///         a <see cref="FileIndex.WatchFaulted" /> handler, only
+    ///         <see cref="JournalCheckpointLossDetection.LiveWatch" /> means the journal outran
+    ///         this drive. A report reading
+    ///         <see cref="JournalCheckpointLossDetection.DriveOpening" /> beside a faulted watch
+    ///         is the open's standing explanation of a cold scan and says nothing about the
+    ///         fault; an unrelated fault neither rewrites nor deletes it.
+    ///     </para>
+    ///     Null when the drive warm-started, had no cache to resume, was rejected for a reason
+    ///     unrelated to the journal (which <see cref="DiscardedBlock" /> covers), or has never
+    ///     lost its position at either moment.
     /// </summary>
     public JournalCheckpointLoss? CheckpointLoss { get; init; }
 }

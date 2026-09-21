@@ -1,5 +1,32 @@
 namespace MFTLib.Index;
 
+/// <summary>
+///     Which of MFTLib's two journal-position checks found the loss. A report outlives the
+///     moment that produced it, so without this a consumer reading
+///     <see cref="DriveStatus.CheckpointLoss" /> from inside a
+///     <see cref="FileIndex.WatchFaulted" /> handler could not tell a report about the fault it
+///     is handling from one the open left behind.
+/// </summary>
+public enum JournalCheckpointLossDetection
+{
+    /// <summary>
+    ///     Found while opening the drive, checking a cached block's checkpoint before adopting
+    ///     it. The rescan this explains has already happened, so there is nothing to do about
+    ///     the drive itself: the report is the standing explanation of why this session
+    ///     cold-scanned, and of the journal size that would have avoided it.
+    /// </summary>
+    DriveOpening,
+
+    /// <summary>
+    ///     Found when the drive's live watch faulted, against the position that watch had
+    ///     reached. This one is actionable: nothing after that position has been applied, so
+    ///     the drive stays behind until <see cref="FileIndex.RescanAsync" /> rebuilds it. A
+    ///     watch fault that leaves the report reading <see cref="DriveOpening" />, or leaves it
+    ///     null, was not the journal outrunning the index.
+    /// </summary>
+    LiveWatch
+}
+
 /// <summary>Why a cached block's journal checkpoint could not be resumed.</summary>
 public enum JournalCheckpointLossCause
 {
@@ -20,9 +47,11 @@ public enum JournalCheckpointLossCause
 }
 
 /// <summary>
-///     What MFTLib found when a drive's cached block could not be resumed and the drive was
-///     rescanned instead: the checkpoint that was lost, the journal as it stood when the loss
-///     was detected, and the size a journal would need to be at least to have kept it.
+///     What MFTLib found when a drive's journal position could no longer be resumed, so the
+///     drive needs a full scan rather than a catch-up: the position that was lost, the journal
+///     as it stood when the loss was detected, and the size a journal would need to be at least
+///     to have kept it. The position is a cached block's checkpoint when a warm start found it
+///     gone, and the position a live watch had reached when that watch faulted.
 ///     <para>
 ///         Every number here is read off the volume, not inferred. USNs are byte offsets into
 ///         the journal, so the distance between two of them is a byte count.
@@ -34,14 +63,25 @@ public sealed record JournalCheckpointLoss
     public required char DriveLetter { get; init; }
 
     /// <summary>
+    ///     Which check found this, and so whether the drive still needs anything done about it.
+    ///     A report is replaced only by a newer report for the same drive or cleared by a
+    ///     successful <see cref="FileIndex.RescanAsync" />, never by an unrelated watch fault,
+    ///     so a handler that acts on a loss reads this before deciding the fault it is handling
+    ///     was the journal's doing.
+    /// </summary>
+    public required JournalCheckpointLossDetection DetectedDuring { get; init; }
+
+    /// <summary>
     ///     Which of the two situations this was, and therefore whether a journal size is
     ///     offered at all. MFTLib reports only causes it can detect from the journal itself.
     /// </summary>
     public required JournalCheckpointLossCause Cause { get; init; }
 
     /// <summary>
-    ///     Where the cached block left off, and so the point the journal would have had to
-    ///     still reach back to for this drive to be caught up instead of rescanned.
+    ///     Where the drive's block left off, and so the point the journal would have had to
+    ///     still reach back to for this drive to be caught up instead of rescanned. That is the
+    ///     cached checkpoint for a loss found at open, and the position the live watch had
+    ///     reached for one found when a watch faulted.
     /// </summary>
     public required long CheckpointUsn { get; init; }
 

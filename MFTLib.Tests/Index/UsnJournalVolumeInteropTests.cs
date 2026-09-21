@@ -144,7 +144,8 @@ public class UsnJournalVolumeInteropTests
         FailIoControl(UsnJournalVolumeInterop.FsctlQueryUsnJournal, ErrorJournalNotActive);
         using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
 
-        Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0xABCD, checkpointUsn: 10));
+        Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0xABCD, checkpointUsn: 10,
+            JournalCheckpointLossDetection.DriveOpening));
     }
 
     /// <summary>
@@ -163,7 +164,8 @@ public class UsnJournalVolumeInteropTests
         }
 
         using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
-        var loss = JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0);
+        var loss = JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0,
+            JournalCheckpointLossDetection.DriveOpening);
 
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
@@ -191,11 +193,13 @@ public class UsnJournalVolumeInteropTests
         }
 
         // C: really does have a journal, and really would answer, yet the check says nothing.
-        Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0));
+        Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0,
+            JournalCheckpointLossDetection.DriveOpening));
 
         // The real read is still reachable for a test that asks for it.
         using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
-        Assert.IsNotNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0));
+        Assert.IsNotNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0,
+            JournalCheckpointLossDetection.DriveOpening));
     }
 
     [TestMethod]

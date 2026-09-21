@@ -272,7 +272,8 @@ public sealed partial class FileIndex
         try
         {
             ref readonly var header = ref candidate.Block.Header;
-            if (JournalCheckpointCheck.Check(driveLetter, header.UsnJournalId, header.UsnNextUsn) is not { } loss)
+            if (JournalCheckpointCheck.Check(driveLetter, header.UsnJournalId, header.UsnNextUsn,
+                    JournalCheckpointLossDetection.DriveOpening) is not { } loss)
             {
                 accepted = true;
                 return warmStart;

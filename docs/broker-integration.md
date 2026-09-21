@@ -101,8 +101,34 @@ told why no index could be opened at all: that drive comes back
 `DriveFailureKind.CacheDeclined` with the loss attached. A successful
 `RescanAsync` clears it, since the block it explained has been replaced.
 
+The same read answers for a watch that dies mid-session. When a drive's live
+watch faults, MFTLib asks the journal about the position that watch had reached,
+which is the drive's block cursor and so the same number a warm start would ask
+about, and fills in `CheckpointLoss` on exactly the same terms when the journal
+has moved past it. The classification is the journal's answer, not a reading of
+the exception. Nothing in the broker protocol changes for this, since the query
+is unelevated and runs on the client side. A drive in that state keeps its block
+and its rows, with nothing after the lost position applied; `RescanAsync` is what
+makes it current again and re-arms its watch, and clears the report with the
+block it described. The report is recorded before the `WatchFaulted` event is
+raised, so a handler that reads `index.Drives` already sees it.
+
+`JournalCheckpointLoss.DetectedDuring` says which of the two checks produced a
+report, and a fault handler branches on it rather than on the report merely being
+present. A report lives until a rescan replaces the block it explains, so a drive
+that cold-scanned at open carries a `DriveOpening` report for the rest of the
+session, including while it is watched and including after an unrelated watch
+fault. Only `LiveWatch` means the journal outran the drive and the drive is
+behind now; `DriveOpening` is the standing explanation of a cold scan that has
+already happened, and is informational. A fault that has nothing to do with the
+journal leaves whatever is there untouched, label included, rather than
+rewriting it or deleting it: the open's report did not stop being true because a
+volume handle was later revoked, and a consumer showing its journal-size hint
+does not want that hint to vanish on an unrelated error. A `LiveWatch` report
+replaces a `DriveOpening` one, being the newer fact about the same drive.
+
 That report is what a consumer turns into a hint: when `Cause` is
-`CheckpointTrimmed` and a size is present, the last checkpoint was too old so
+`CheckpointTrimmed` and a size is present, the last position was too old so
 a rescan was needed, and a journal of at least that size would have kept it.
 When the user consents,
 `JournalBrokerClient.GrowUsnJournalAsync(driveLetter, maximumSize, allocationDelta)`

@@ -8,12 +8,14 @@ internal readonly record struct JournalWindow(
     ulong JournalId, long FirstUsn, long NextUsn, long AllocationDelta, long MaximumSize);
 
 /// <summary>
-///     Decides whether a cached block's journal checkpoint can still be resumed, by reading
-///     the live journal through the same unelevated volume-root handle the settings query
-///     uses. A warm start that adopts an unresumable checkpoint does not fail at open: it
-///     arms a watch that dies on its first read, so the drive ends up rescanned anyway, with
-///     nothing left to tell the user why. Checking first turns that into one cold scan and
-///     one <see cref="JournalCheckpointLoss" />.
+///     Decides whether a block's journal position can still be resumed, by reading the live
+///     journal through the same unelevated volume-root handle the settings query uses. A warm
+///     start that adopts an unresumable checkpoint does not fail at open: it arms a watch that
+///     dies on its first read, so the drive ends up rescanned anyway, with nothing left to tell
+///     the user why. Checking first turns that into one cold scan and one
+///     <see cref="JournalCheckpointLoss" />. The same check answers for a watch that faults
+///     mid-session, where the position asked about is the one that watch had reached, so both
+///     paths report the same fields from the same arithmetic.
 /// </summary>
 static class JournalCheckpointCheck
 {
@@ -32,9 +34,16 @@ static class JournalCheckpointCheck
     ///     yields null: MFTLib reports causes it can detect and invents none.
     /// </summary>
     /// <param name="driveLetter">The drive to read the journal of.</param>
-    /// <param name="checkpointJournalId">The journal id the cached block was written against.</param>
-    /// <param name="checkpointUsn">The USN the cached block would resume from.</param>
-    public static JournalCheckpointLoss? Check(char driveLetter, ulong checkpointJournalId, long checkpointUsn)
+    /// <param name="checkpointJournalId">The journal id the block's cursor was written against.</param>
+    /// <param name="checkpointUsn">The USN the drive would resume from.</param>
+    /// <param name="detectedDuring">
+    ///     Which caller is asking, stamped onto any loss returned. The two callers run at
+    ///     different moments and their reports outlive those moments, so a report has to carry
+    ///     which one produced it rather than leaving a reader to infer it from context that is
+    ///     gone by the time the report is read.
+    /// </param>
+    public static JournalCheckpointLoss? Check(char driveLetter, ulong checkpointJournalId, long checkpointUsn,
+        JournalCheckpointLossDetection detectedDuring)
     {
         if (ReadJournal(driveLetter) is not { } journal)
         {
@@ -57,6 +66,7 @@ static class JournalCheckpointCheck
             return new JournalCheckpointLoss
             {
                 DriveLetter = driveLetter,
+                DetectedDuring = detectedDuring,
                 Cause = JournalCheckpointLossCause.JournalRecreated,
                 CheckpointUsn = checkpointUsn,
                 FirstUsn = firstUsn,
@@ -75,6 +85,7 @@ static class JournalCheckpointCheck
         return new JournalCheckpointLoss
         {
             DriveLetter = driveLetter,
+            DetectedDuring = detectedDuring,
             Cause = JournalCheckpointLossCause.CheckpointTrimmed,
             CheckpointUsn = checkpointUsn,
             FirstUsn = firstUsn,

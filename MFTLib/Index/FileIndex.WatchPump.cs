@@ -183,6 +183,14 @@ public sealed partial class FileIndex
     {
         var sourceEnded = new InvalidOperationException(
             "The watch source ended its stream without being stopped, so no drive is being watched.");
+
+        // Before the lock, because each of these reads the live journal. Every drive here is
+        // losing its watch, so each is asked the same question a single drive's drop asks.
+        foreach (var target in targets)
+        {
+            RecordCheckpointLossForFaultedDrive(target.DriveLetter);
+        }
+
         lock (_stateLock)
         {
             foreach (var target in targets)
@@ -284,6 +292,9 @@ public sealed partial class FileIndex
             return false;
         }
 
+        // Before the announcement, so a handler that reads Drives from inside it already sees
+        // the reason this drive stopped rather than only the message that it did.
+        RecordCheckpointLossForFaultedDrive(driveLetter);
         RaiseWatchFaulted(new WatchFault(kind, driveLetter, exception));
         return true;
     }
