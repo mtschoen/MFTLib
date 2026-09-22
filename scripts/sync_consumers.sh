@@ -155,23 +155,48 @@ bump_gitlink() {
 	)
 }
 
-find_pull_request_index() {
-	# find_pull_request_index <repo> <base_branch> <head_branch>: echo the open
-	# pull request's index for that base/head pair. Returns 2 when no matching
-	# pull request exists and 1 on any other transport failure.
+find_open_pull_request_index() {
+	# find_open_pull_request_index <repo> <base_branch> <head_branch>: echo the
+	# index of the single open pull request for that base/head pair.
+	#
+	# GET /pulls/{base}/{head} returns the oldest pull request for a branch
+	# pair on this Gitea regardless of state, not the open one: sync-consumers
+	# job 92400 on MFTLib push c029d31 used it and PATCHed file-wizard's
+	# long-closed PR 441 instead of its open PR 478, because file-wizard has
+	# carried eleven pull requests on chore/mftlib-pin-bump over time. This
+	# instead lists open pull requests (state=open, base_branch filtered
+	# server-side) and matches head client-side; this Gitea's live
+	# swagger.v1.json documents no head filter on the list endpoint. Returns 2
+	# when no open pull request matches, 3 when more than one does (never
+	# guess which to update), and 1 on any other transport failure.
 	local repo="$1" base_branch="$2" head_branch="$3"
-	local encoded_base encoded_head http_status response
+	local encoded_base page limit body count matches match_count
 	encoded_base="$(printf '%s' "$base_branch" | jq -sRr @uri)"
-	encoded_head="$(printf '%s' "$head_branch" | jq -sRr @uri)"
-	response="$SCRATCH/existing_pr.json"
-	http_status="$(curl -sS -o "$response" -w '%{http_code}' -H "$auth_header" \
-		"$GITEA_URL/api/v1/repos/$GITEA_OWNER/$repo/pulls/$encoded_base/$encoded_head")" || return 1
-	case "$http_status" in
-	200) ;;
-	404) return 2 ;;
-	*) return 1 ;;
-	esac
-	jq -r '.number // empty' "$response"
+	page=1
+	limit=50
+	matches=""
+	while :; do
+		body="$(curl -sSf -H "$auth_header" \
+			"$GITEA_URL/api/v1/repos/$GITEA_OWNER/$repo/pulls?state=open&base_branch=$encoded_base&limit=$limit&page=$page")" || return 1
+		count="$(printf '%s' "$body" | jq -r 'length // empty' 2>/dev/null)" || return 1
+		case "$count" in
+		'' | *[!0-9]*) return 1 ;;
+		esac
+		[ "$count" -eq 0 ] && break
+		matches+="$(printf '%s' "$body" | jq -r --arg head "$head_branch" '.[] | select(.head.ref == $head) | .number')"$'\n'
+		[ "$count" -lt "$limit" ] && break
+		page=$((page + 1))
+	done
+
+	matches="$(printf '%s' "$matches" | sed '/^$/d')"
+	if [ -z "$matches" ]; then
+		return 2
+	fi
+	match_count="$(printf '%s\n' "$matches" | wc -l | tr -d ' ')"
+	if [ "$match_count" -ne 1 ]; then
+		return 3
+	fi
+	printf '%s' "$matches"
 }
 
 update_pull_request() {
@@ -203,15 +228,28 @@ refresh_existing_pull_request() {
 	# the branch now pins, instead of leaving the wording from when the pull
 	# request was first opened (file-wizard#478).
 	local repo="$1" base_branch="$2" paths="$3"
-	local detail title body index url
+	local detail title body index exit_code url
 	detail="${paths//$'\n'/, }"
 	title="chore: bump MFTLib pin to $SHORT_SHA"
 	body="Automated update of the $detail submodule gitlink to $NEW_SHA by sync-consumers."
 
-	if ! index="$(find_pull_request_index "$repo" "$base_branch" "$BRANCH")" || [ -z "$index" ]; then
-		record "$repo" "failed" "PR already open but its index could not be found"
+	index="$(find_open_pull_request_index "$repo" "$base_branch" "$BRANCH")"
+	exit_code=$?
+	case "$exit_code" in
+	0) ;;
+	2)
+		record "$repo" "failed" "PR create returned 409 but no pull request is open for $BRANCH against $base_branch"
 		return 1
-	fi
+		;;
+	3)
+		record "$repo" "failed" "PR create returned 409 but more than one pull request is open for $BRANCH against $base_branch; refusing to guess which to update"
+		return 1
+		;;
+	*)
+		record "$repo" "failed" "could not look up the open pull request for $BRANCH"
+		return 1
+		;;
+	esac
 
 	if ! url="$(update_pull_request "$repo" "$index" "$title" "$body")"; then
 		record "$repo" "failed" "PR update (PATCH) failed for #$index"

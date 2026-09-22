@@ -58,6 +58,14 @@ assert_contains() {
 	esac
 }
 
+assert_not_contains() {
+	# assert_not_contains <haystack> <needle> <label>
+	case "$1" in
+	*"$2"*) fail_assertion "$3: '$2' unexpectedly found in output" ;;
+	*) printf 'ok   %s\n' "$3" ;;
+	esac
+}
+
 # --- fixtures ---------------------------------------------------------------
 
 seed_bare_repo() {
@@ -214,12 +222,14 @@ open_pull_request() {
 # unit tests below that exercise the real refresh_existing_pull_request. Each
 # call is logged so a test can assert on the arguments it was given, and each
 # outcome is controlled by the FIND_PR_INDEX_* / UPDATE_PR_* variables the
-# test sets beforehand.
+# test sets beforehand. FIND_PR_INDEX_EXIT follows find_open_pull_request_index's
+# own contract: 0 success, 2 no open match, 3 more than one open match, 1 any
+# other failure.
 
 FIND_PR_INDEX_LOG="$FIXTURE_ROOT/find_pr_index.log"
 FIND_PR_INDEX_RESULT=""
 FIND_PR_INDEX_EXIT=0
-find_pull_request_index() {
+find_open_pull_request_index() {
 	printf '%s|%s|%s\n' "$1" "$2" "$3" >>"$FIND_PR_INDEX_LOG"
 	printf '%s' "$FIND_PR_INDEX_RESULT"
 	return "$FIND_PR_INDEX_EXIT"
@@ -297,9 +307,11 @@ assert_equals "" \
 
 # --- unit tests: existing pull request refresh ------------------------------
 # refresh_existing_pull_request is the real, unstubbed script function; only
-# the two helpers it calls (find_pull_request_index, update_pull_request) are
-# faked above, so these tests exercise the actual detection-and-PATCH logic
-# without needing a live Gitea server.
+# the two helpers it calls (find_open_pull_request_index, update_pull_request)
+# are faked above, so these tests exercise the actual detection-and-PATCH
+# logic without needing a live Gitea server. FIND_PR_INDEX_EXIT follows
+# find_open_pull_request_index's own contract: 0 success, 2 no open match, 3
+# more than one open match, 1 any other failure.
 
 start_test "an existing open pull request has its title and body refreshed to the new sha"
 SHORT_SHA="${NEW_SHA:0:12}"
@@ -334,60 +346,109 @@ assert_equals "1" "$REFRESH_STATUS" "reports failure"
 assert_contains "${SUMMARY[*]}" "failed" "records the failed PATCH"
 assert_contains "${SUMMARY[*]}" "consumer-refresh" "names the repo in the summary"
 
-# --- transport-level regression: real HTTP status handling ------------------
-# The two tests above fake find_pull_request_index and update_pull_request as
-# whole functions, so they never exercise the real curl calls or the status
-# codes the script compares against. This test re-sources the real script in
-# a subshell, so find_pull_request_index, update_pull_request and
-# refresh_existing_pull_request are their actual implementations, and fakes
-# only curl itself, at the transport level, to check the real status-code
-# comparisons against the codes Gitea actually returns.
+start_test "zero open pull requests on a 409 is a contradiction: recorded as failed, never patched"
+SUMMARY=()
+: >"$FIND_PR_INDEX_LOG"
+: >"$UPDATE_PR_LOG"
+FIND_PR_INDEX_RESULT=""
+FIND_PR_INDEX_EXIT=2
+refresh_existing_pull_request "consumer-refresh" "main" "external/MFTLib"
+REFRESH_STATUS=$?
+assert_equals "1" "$REFRESH_STATUS" "reports failure"
+assert_contains "${SUMMARY[*]}" "failed" "records the failure"
+assert_contains "${SUMMARY[*]}" "no pull request is open" "the summary explains why: none is open"
+assert_equals "" "$(cat "$UPDATE_PR_LOG")" "never calls update_pull_request"
 
-run_patch_transport_test() {
-	# Runs in a subshell of its own ($(...) below), so every assignment here,
-	# including the source below re-establishing BRANCH, SHORT_SHA and NEW_SHA
-	# as globals inside that subshell, is local to it and never reaches the
-	# rest of this file; `local` here only silences shellcheck's SC2030/SC2031
-	# cross-scope warnings, which otherwise fire on unrelated later reads of
-	# the same names elsewhere in this file.
+start_test "more than one open pull request matching the branch is a contradiction: recorded as failed, never guessed"
+SUMMARY=()
+: >"$FIND_PR_INDEX_LOG"
+: >"$UPDATE_PR_LOG"
+FIND_PR_INDEX_RESULT=""
+FIND_PR_INDEX_EXIT=3
+refresh_existing_pull_request "consumer-refresh" "main" "external/MFTLib"
+REFRESH_STATUS=$?
+assert_equals "1" "$REFRESH_STATUS" "reports failure"
+assert_contains "${SUMMARY[*]}" "failed" "records the failure"
+assert_contains "${SUMMARY[*]}" "more than one pull request is open" "the summary explains why: more than one is open"
+assert_equals "" "$(cat "$UPDATE_PR_LOG")" "never calls update_pull_request"
+
+# --- transport-level regression: real HTTP status handling and endpoint choice
+# The tests above fake find_open_pull_request_index and update_pull_request as
+# whole functions, so they never exercise the real curl calls, the endpoint
+# chosen, or the status codes the script compares against. These tests
+# re-source the real script in a subshell, so find_open_pull_request_index,
+# update_pull_request and refresh_existing_pull_request are their actual
+# implementations, and fake only curl itself, at the transport level.
+
+run_transport_test() {
+	# run_transport_test <old_endpoint_pr_number> <open_prs_json> <repo>
+	# <base_branch> <paths>: runs in a subshell of its own ($(...) below), so
+	# every assignment here, including the source below re-establishing
+	# BRANCH, SHORT_SHA and NEW_SHA as globals inside that subshell, is local
+	# to it and never reaches the rest of this file; `local` here only
+	# silences shellcheck's SC2030/SC2031 cross-scope warnings, which
+	# otherwise fire on unrelated later reads of the same names elsewhere in
+	# this file.
+	#
+	# curl is faked to answer the three call shapes the real functions make:
+	#   - PATCH .../pulls/{index} (update_pull_request; -o/-w and -X PATCH):
+	#     answers 201, Gitea's real documented success code.
+	#   - GET .../pulls?state=open&... (find_open_pull_request_index's list
+	#     call; no -o/-w): answers with $open_prs_json, a JSON array of open
+	#     pull requests, as real Gitea would once its state=open filter has
+	#     already excluded anything merged or closed.
+	#   - GET .../pulls/{base}/{head} (the retired, buggy per-pair lookup;
+	#     -o/-w but no -X): answers 200 with pull request number
+	#     $old_endpoint_pr_number, reproducing Gitea returning the oldest pull
+	#     request for the pair regardless of state (sync-consumers job 92400
+	#     on MFTLib push c029d31, which PATCHed file-wizard's long-merged PR
+	#     441 instead of its open PR 478). The fixed script never calls this
+	#     endpoint; a version that regresses back to calling it will reach
+	#     this branch and PATCH the wrong pull request, exactly reproducing
+	#     the incident.
+	local old_endpoint_pr_number="$1" open_prs_json="$2" repo="$3" base_branch="$4" paths="$5"
 	local BRANCH SHORT_SHA NEW_SHA SCRATCH
 
 	# shellcheck source=scripts/sync_consumers.sh
 	source "$SCRIPT_PATH"
 
 	curl() {
-		# Fakes only the two calls refresh_existing_pull_request makes: a GET
-		# lookup (no -X, defaults to GET) and a PATCH update. Real Gitea
-		# (1.27.1, per its live swagger.v1.json) answers the GET with 200 and
-		# the PATCH with 201, never 200, which is the exact case this test
-		# guards.
-		local output_file="" method="GET" arg
+		local output_file="" method="GET" url arg
 		while [ $# -gt 0 ]; do
 			arg="$1"
 			case "$arg" in
 			-o) output_file="$2"; shift 2 ;;
 			-X) method="$2"; shift 2 ;;
-			-H | -w | --data-binary) shift 2 ;;
+			-H | --data-binary) shift 2 ;;
+			-w) shift 2 ;;
 			-sS | -sSf) shift ;;
-			*) shift ;;
+			*) url="$arg"; shift ;;
 			esac
 		done
-		case "$method" in
-		GET)
-			printf '{"number": 42, "html_url": "https://fixture.invalid/schoen/consumer-refresh/pulls/42"}' >"$output_file"
-			printf '200'
-			;;
-		PATCH)
-			printf '{"html_url": "https://fixture.invalid/schoen/consumer-refresh/pulls/42"}' >"$output_file"
+
+		if [ "$method" = "PATCH" ]; then
+			printf '{"html_url": "https://fixture.invalid/schoen/%s/pulls/%s"}' "$FIXTURE_REPO_NAME" "${url##*/}" >"$output_file"
 			printf '201'
+			return 0
+		fi
+
+		case "$url" in
+		*'?state=open'*)
+			printf '%s' "$FIXTURE_OPEN_PRS_JSON"
+			return 0
 			;;
 		*)
-			printf '{}' >"$output_file"
-			printf '000'
+			printf '{"number": %s, "html_url": "https://fixture.invalid/schoen/%s/pulls/%s"}' \
+				"$FIXTURE_OLD_ENDPOINT_PR_NUMBER" "$FIXTURE_REPO_NAME" "$FIXTURE_OLD_ENDPOINT_PR_NUMBER" >"$output_file"
+			printf '200'
+			return 0
 			;;
 		esac
 	}
 
+	FIXTURE_OLD_ENDPOINT_PR_NUMBER="$old_endpoint_pr_number"
+	FIXTURE_OPEN_PRS_JSON="$open_prs_json"
+	FIXTURE_REPO_NAME="$repo"
 	auth_header="Authorization: token fixture-token"
 	GITEA_URL="https://fixture.invalid"
 	GITEA_OWNER="schoen"
@@ -396,16 +457,27 @@ run_patch_transport_test() {
 	SCRATCH="$(mktemp -d)"
 	SUMMARY=()
 
-	refresh_existing_pull_request "consumer-refresh" "main" "external/MFTLib"
+	refresh_existing_pull_request "$repo" "$base_branch" "$paths"
 	printf 'STATUS=%s\n' "$?"
 	printf 'SUMMARY=%s\n' "${SUMMARY[*]}"
 }
 
 start_test "a PATCH answered with HTTP 201 (Gitea's documented success code) is recorded as updated, not failed"
-TRANSPORT_SUMMARY="$(run_patch_transport_test)"
+TRANSPORT_SUMMARY="$(run_transport_test 42 \
+	'[{"number": 42, "head": {"ref": "chore/mftlib-pin-bump"}}]' \
+	consumer-refresh main external/MFTLib)"
 assert_contains "$TRANSPORT_SUMMARY" "STATUS=0" "refresh_existing_pull_request succeeds against a real 201 PATCH response"
 assert_contains "$TRANSPORT_SUMMARY" "SUMMARY=consumer-refresh" "the consumer is named in the recorded summary"
 assert_contains "$TRANSPORT_SUMMARY" "updated" "the consumer is recorded as updated, not failed"
+
+start_test "the open pull request is patched, not the oldest match the retired base/head endpoint would have returned"
+TRANSPORT_SUMMARY="$(run_transport_test 441 \
+	'[{"number": 478, "head": {"ref": "chore/mftlib-pin-bump"}}]' \
+	file-wizard main external/MFTLib)"
+assert_contains "$TRANSPORT_SUMMARY" "STATUS=0" "refresh_existing_pull_request succeeds"
+assert_contains "$TRANSPORT_SUMMARY" "updated" "the consumer is recorded as updated"
+assert_contains "$TRANSPORT_SUMMARY" "#478" "pull request 478, the open one, is patched"
+assert_not_contains "$TRANSPORT_SUMMARY" "441" "pull request 441, the long-merged one, is never named as patched"
 
 # --- integration tests: full main run against fixture repos ----------------
 
