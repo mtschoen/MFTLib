@@ -148,6 +148,90 @@ public static class CacheDirectory
         };
     }
 
+    /// <summary>
+    ///     Eagerly deletes selected canonical cached blocks under their non-blocking slot locks.
+    ///     Missing directories return an empty list. Unavailable locks report InUse; deletion
+    ///     I/O and access failures report Failed with a reason, without stopping other attempts.
+    ///     Lock files are created when needed and never deleted. Block contents are not validated.
+    ///     Results describe each attempt, not a reservation against later cache creation.
+    /// </summary>
+    /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
+    /// <param name="driveLetters">Uppercase drive letters to include, or null for all.</param>
+    /// <param name="diagnostics">
+    ///     Optional synchronous success logger, invoked while ownership is held. It should return
+    ///     promptly and not throw. Callback exceptions propagate after deletion; ownership is released.
+    /// </param>
+    /// <remarks>
+    ///     Deleted includes an inventory entry already removed before this attempt. Directory-level
+    ///     enumeration follows EnumerateCached. Filtering precedes lock acquisition. Retired siblings,
+    ///     unrelated names and subdirectories are not candidates.
+    /// </remarks>
+    public static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
+        string cacheDirectoryPath, IReadOnlySet<char>? driveLetters = null,
+        Action<string>? diagnostics = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
+        var results = new List<CachedBlockDeletionResult>();
+        foreach (var file in EnumerateCached(cacheDirectoryPath))
+        {
+            if (driveLetters is not null && !driveLetters.Contains(file.DriveLetter))
+            {
+                continue;
+            }
+
+            results.Add(DeleteCachedFile(file, diagnostics));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    ///     A test seam with no synchronization, safe only while the test host runs one test at a
+    ///     time for the class that installs it. Invoked after a candidate block's owner lock is
+    ///     taken and before the file is deleted, so a test can park a delete mid-flight while
+    ///     still holding the lock and observe how a concurrent <see cref="FileIndex.OpenAsync" />
+    ///     over the same slot behaves. Mirrors <see cref="JournalCheckpointCheck._journalOverride" />.
+    /// </summary>
+    internal static Action<string>? _beforeDeleteForTest;
+
+    internal static IDisposable ParkBeforeDeleteForTest(Action<string> beforeDelete)
+    {
+        var previous = _beforeDeleteForTest;
+        _beforeDeleteForTest = beforeDelete;
+        return new RestoreBeforeDelete(previous);
+    }
+
+    sealed class RestoreBeforeDelete(Action<string>? previous) : IDisposable
+    {
+        public void Dispose()
+        {
+            _beforeDeleteForTest = previous;
+        }
+    }
+
+    static CachedBlockDeletionResult DeleteCachedFile(CachedBlockFile file, Action<string>? diagnostics)
+    {
+        using var owner = BlockOwnerLock.TryAcquire(file.Path);
+        if (owner is null)
+        {
+            return new CachedBlockDeletionResult(file, CachedBlockDeletionOutcome.InUse, null);
+        }
+
+        _beforeDeleteForTest?.Invoke(file.Path);
+
+        try
+        {
+            File.Delete(file.Path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return new CachedBlockDeletionResult(file, CachedBlockDeletionOutcome.Failed, exception.Message);
+        }
+
+        diagnostics?.Invoke($"Deleted block file '{file.Path}': clearing a cached block.");
+        return new CachedBlockDeletionResult(file, CachedBlockDeletionOutcome.Deleted, null);
+    }
+
     const string BlockFileExtension = ".mlix";
 
     /// <summary>

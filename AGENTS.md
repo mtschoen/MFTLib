@@ -317,7 +317,19 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       create-and-lock), so cache-pruning tooling must leave `*.mlix.lock` alone. `FileIndexOptions.Diagnostics`
       and `BlockFileCreateOptions.Diagnostics` receive one line per block-file delete with the path and
       reason; null by default. Consumers that deliberately shared one cache block between two live indexes
-      must open the second with `NoCache` or expect the in-use outcome.
+      must open the second with `NoCache` or expect the in-use outcome. `CacheDirectory.DeleteCached(cacheDirectoryPath,
+      driveLetters, diagnostics)` is the lock-safe way for a consumer to clear cache blocks: it takes each
+      candidate block's owner lock non-blockingly and deletes only while holding it, the same rule `FileIndex`
+      itself follows, so it never deletes, renames, or unlinks a block a live `FileIndex` still owns. A block
+      whose lock is already held reports `CachedBlockDeletionOutcome.InUse` and is left untouched; a delete
+      that fails after the lock is taken reports `Failed` with the filesystem error message, and neither
+      outcome stops the remaining candidates. `.lock` files are never deleted by this path either, for the
+      same create-and-lock race reason as above. Each attempt returns a `CachedBlockDeletionResult` (the
+      `CachedBlockFile` inventory entry, the `CachedBlockDeletionOutcome`, and a `FailureReason` that is
+      non-null only for `Failed`); an already-absent file is reported `Deleted`, an idempotent success rather
+      than a `Failed`. A successful delete logs through the optional `diagnostics` callback with the same
+      "Deleted block file '...'" shape `FileIndexOptions.Diagnostics` uses elsewhere, invoked synchronously
+      while the block's lock is still held.
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
     - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`; `MaterializeBatches`/`ReadRecordBatches` provide bounded-memory batch materialization over the same result.

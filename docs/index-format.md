@@ -30,6 +30,27 @@ with its `mftlib-nocache-` prefix. The lock file itself is never deleted, becaus
 races another opener's create-and-lock; a leftover lock file matches no block-file pattern and
 is re-locked in place.
 
+## Deleting cached blocks
+
+`CacheDirectory.DeleteCached(cacheDirectoryPath, driveLetters = null, diagnostics = null)` is the
+lock-safe way to clear cache blocks: it enumerates the directory the same way `EnumerateCached`
+does, then for each candidate takes that block's owner lock non-blockingly and deletes the block
+file only while holding it, so it is bound by the same ownership rule as `FileIndex` itself and
+can never delete, rename, or unlink a block a live index still owns. A block whose lock is held
+(or cannot be opened) reports `CachedBlockDeletionOutcome.InUse` and is left on disk untouched; a
+delete that fails once the lock is taken reports `Failed` with the filesystem exception message.
+Neither outcome stops the remaining candidates in the same call. A missing cache directory
+returns an empty result, and an inventory entry that is already gone by the time its delete runs
+is reported `Deleted`, an idempotent success rather than a failure.
+
+Each attempt is a `CachedBlockDeletionResult`: the `CachedBlockFile` inventory entry that
+identifies it, the `CachedBlockDeletionOutcome`, and a `FailureReason` string that is non-null
+only for `Failed`. Lock files are never deleted by this path, for the same create-and-lock race
+reason as above, so a `*.mlix.lock` file survives every outcome. A successful delete invokes the
+optional `diagnostics` callback synchronously, while the block's lock is still held, with the
+same "Deleted block file '...'" shape `FileIndexOptions.Diagnostics` uses elsewhere in the
+library.
+
 ## Layout
 
 Little-endian throughout. Every region boundary is 4096-byte aligned.
