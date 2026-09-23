@@ -62,8 +62,30 @@ public static class CacheDirectory
     ///     <c>foreach</c>. Nothing is opened or validated here; validation stays in the open path,
     ///     which already reports per-drive failures, and every field on the record comes from the
     ///     directory entry the walk already read, so no per-file stat can fail mid-listing.
+    ///     Rejected filenames are silently excluded; use the callback overload to observe them.
     /// </summary>
     public static IReadOnlyList<CachedBlockFile> EnumerateCached(string cacheDirectoryPath)
+        => EnumerateCached(cacheDirectoryPath, null);
+
+    /// <summary>
+    ///     The cached drives in <paramref name="cacheDirectoryPath" />, one record per file whose
+    ///     name this class wrote. The listing is eager rather than lazy so a missing directory is
+    ///     an empty result at the call rather than a deferred throw from the caller's own
+    ///     <c>foreach</c>. Nothing is opened or validated here; validation stays in the open path,
+    ///     which already reports per-drive failures, and every field on the record comes from the
+    ///     directory entry the walk already read, so no per-file stat can fail mid-listing.
+    /// </summary>
+    /// <param name="cacheDirectoryPath">The cache directory to enumerate.</param>
+    /// <param name="rejectedFile">
+    ///     Optional synchronous callback for each non-canonical filename encountered by the
+    ///     top-level block-file enumeration. Reports the full path and a human-readable reason;
+    ///     no file contents are opened and no lock is created for the rejected entry. Only
+    ///     canonical filenames enter the returned list. Ordering is unspecified. Exceptions propagate
+    ///     immediately, before any canonical inspection or deletion in this call. Return promptly
+    ///     and do not mutate the directory during enumeration.
+    /// </param>
+    public static IReadOnlyList<CachedBlockFile> EnumerateCached(
+        string cacheDirectoryPath, Action<CachedBlockRejection>? rejectedFile)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
         var directory = new DirectoryInfo(cacheDirectoryPath);
@@ -77,6 +99,7 @@ public static class CacheDirectory
         {
             if (!TryParseBlockFileName(file.Name, out var driveLetter, out var volumeSerial))
             {
+                rejectedFile?.Invoke(new CachedBlockRejection(file.FullName, "Invalid block filename."));
                 continue;
             }
 
@@ -95,6 +118,7 @@ public static class CacheDirectory
     ///     Inspection creates a persistent .lock sibling when absent and never unlinks it.
     ///     The block is disposed before its lock is released, after the root name has been
     ///     copied into a managed string. Results describe inspection time, not a reservation.
+    ///     Rejected filenames are silently excluded; use the callback overload to observe them.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to inspect.</param>
     /// <param name="driveLetters">
@@ -103,10 +127,37 @@ public static class CacheDirectory
     /// </param>
     public static IReadOnlyList<CachedBlockStatus> InspectCached(
         string cacheDirectoryPath, IReadOnlySet<char>? driveLetters = null)
+        => InspectCached(cacheDirectoryPath, driveLetters, null);
+
+    /// <summary>
+    ///     Inspects selected cached blocks while holding each block's slot lock. A missing
+    ///     directory returns an empty list. A lock that is held or cannot be opened reports
+    ///     InUse without reading any block bytes; an unreadable or rejected block reports
+    ///     Invalid using the reason returned by BlockFile.Open.
+    ///     Inspection creates a persistent .lock sibling when absent and never unlinks it.
+    ///     The block is disposed before its lock is released, after the root name has been
+    ///     copied into a managed string. Results describe inspection time, not a reservation.
+    /// </summary>
+    /// <param name="cacheDirectoryPath">The cache directory to inspect.</param>
+    /// <param name="driveLetters">
+    ///     Uppercase drive letters to include, or null for all. Filtering happens before any
+    ///     lock attempt, so excluded blocks have no lock file opened or created.
+    /// </param>
+    /// <param name="rejectedFile">
+    ///     Optional synchronous callback for each non-canonical filename encountered by the
+    ///     top-level block-file enumeration. Reports the full path and a human-readable reason;
+    ///     no file contents are opened and no lock is created for the rejected entry. Reports
+    ///     are not filtered by drive selection. Ordering is unspecified. Exceptions propagate
+    ///     immediately, before any canonical inspection or deletion in this call. Return promptly
+    ///     and do not mutate the directory during enumeration.
+    /// </param>
+    public static IReadOnlyList<CachedBlockStatus> InspectCached(
+        string cacheDirectoryPath, IReadOnlySet<char>? driveLetters,
+        Action<CachedBlockRejection>? rejectedFile)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
         var statuses = new List<CachedBlockStatus>();
-        foreach (var file in EnumerateCached(cacheDirectoryPath))
+        foreach (var file in EnumerateCached(cacheDirectoryPath, rejectedFile))
         {
             if (driveLetters is not null && !driveLetters.Contains(file.DriveLetter))
             {
@@ -154,6 +205,7 @@ public static class CacheDirectory
     ///     I/O and access failures report Failed with a reason, without stopping other attempts.
     ///     Lock files are created when needed and never deleted. Block contents are not validated.
     ///     Results describe each attempt, not a reservation against later cache creation.
+    ///     Rejected filenames are silently excluded; use the callback overload to observe them.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
     /// <param name="driveLetters">Uppercase drive letters to include, or null for all.</param>
@@ -169,10 +221,41 @@ public static class CacheDirectory
     public static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
         string cacheDirectoryPath, IReadOnlySet<char>? driveLetters = null,
         Action<string>? diagnostics = null)
+        => DeleteCached(cacheDirectoryPath, driveLetters, diagnostics, null);
+
+    /// <summary>
+    ///     Eagerly deletes selected canonical cached blocks under their non-blocking slot locks.
+    ///     Missing directories return an empty list. Unavailable locks report InUse; deletion
+    ///     I/O and access failures report Failed with a reason, without stopping other attempts.
+    ///     Lock files are created when needed and never deleted. Block contents are not validated.
+    ///     Results describe each attempt, not a reservation against later cache creation.
+    /// </summary>
+    /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
+    /// <param name="driveLetters">Uppercase drive letters to include, or null for all.</param>
+    /// <param name="diagnostics">
+    ///     Optional synchronous success logger, invoked while ownership is held. It should return
+    ///     promptly and not throw. Callback exceptions propagate after deletion; ownership is released.
+    /// </param>
+    /// <param name="rejectedFile">
+    ///     Optional synchronous callback for each non-canonical filename encountered by the
+    ///     top-level block-file enumeration. Reports the full path and a human-readable reason;
+    ///     no file contents are opened and no lock is created for the rejected entry. Reports
+    ///     are not filtered by drive selection. Ordering is unspecified. Exceptions propagate
+    ///     immediately, before any canonical inspection or deletion in this call. Return promptly
+    ///     and do not mutate the directory during enumeration.
+    /// </param>
+    /// <remarks>
+    ///     Deleted includes an inventory entry already removed before this attempt. Directory-level
+    ///     enumeration follows EnumerateCached. Filtering precedes lock acquisition. Retired siblings,
+    ///     unrelated names and subdirectories are not candidates.
+    /// </remarks>
+    public static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
+        string cacheDirectoryPath, IReadOnlySet<char>? driveLetters,
+        Action<string>? diagnostics, Action<CachedBlockRejection>? rejectedFile)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
         var results = new List<CachedBlockDeletionResult>();
-        foreach (var file in EnumerateCached(cacheDirectoryPath))
+        foreach (var file in EnumerateCached(cacheDirectoryPath, rejectedFile))
         {
             if (driveLetters is not null && !driveLetters.Contains(file.DriveLetter))
             {

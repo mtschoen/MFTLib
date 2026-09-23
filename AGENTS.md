@@ -329,7 +329,14 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       non-null only for `Failed`); an already-absent file is reported `Deleted`, an idempotent success rather
       than a `Failed`. A successful delete logs through the optional `diagnostics` callback with the same
       "Deleted block file '...'" shape `FileIndexOptions.Diagnostics` uses elsewhere, invoked synchronously
-      while the block's lock is still held.
+      while the block's lock is still held. `CacheDirectory.EnumerateCached`, `InspectCached`, and
+      `DeleteCached` also have callback overloads that report rejected filenames via
+      `Action<CachedBlockRejection>? rejectedFile`, carrying a full `Path` and human-readable `Reason`.
+      Existing overloads and canonical result lists retain their behavior. Reporting happens synchronously
+      during eager enumeration, before drive filtering and any inspection/deletion lock, including for empty
+      selections; callback exceptions propagate before canonical work. Rejected files are never opened, locked,
+      or deleted. The deletion success logger remains separate. Consumers can collect these reports to
+      preserve their own corruption diagnostics without globbing the cache directory themselves.
       `DriveStatus.CacheSlot` reports the current published block's backing:
       `CacheSlotState.OwnedCanonical` for the canonical slot held by this index,
       `PrivateFallback` for a private fallback block, and `NotApplicable` for

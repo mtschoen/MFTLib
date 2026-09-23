@@ -17,6 +17,19 @@ writes it and `CacheDirectory.EnumerateCached` reads a directory back into drive
 letters and serials, so a consumer never parses the name itself and a future
 format change is one edit rather than one edit per consumer.
 
+The callback overloads of `EnumerateCached`, `InspectCached`, and `DeleteCached` accept an `Action<CachedBlockRejection>? rejectedFile`. Each non-canonical filename encountered by the existing top-level `*.mlix` enumeration is reported with its full `Path` and a human-readable `Reason` (`Invalid block filename.`). The canonical lists returned by these APIs do not include rejected files. Rejections are reported before drive filtering, including when the selected drive set is empty, because a rejected name has no validated drive identity. A lowercase drive letter or lowercase hexadecimal serial is non-canonical even on a case-insensitive filesystem.
+
+Reporting does not open, validate, lock, rename, or delete the rejected file. Lock siblings, retired siblings, and subdirectories are not inventory candidates. The callback is synchronous, its ordering is unspecified, and it should return promptly without modifying the enumerated directory. A thrown callback exception aborts the call before any canonical inspection or deletion begins. Missing or empty directories produce no notifications. Existing overloads retain their previous behavior and silently exclude rejected names.
+
+```csharp
+var rejected = new List<CachedBlockRejection>();
+var statuses = CacheDirectory.InspectCached(cacheDirectoryPath, null, rejected.Add);
+foreach (var entry in rejected)
+{
+    Console.WriteLine($"{entry.Path}: {entry.Reason}");
+}
+```
+
 ## Cache ownership
 
 A live index owns its canonical block through a sibling `<drive>-<serial>.mlix.lock` file held
@@ -79,6 +92,8 @@ reason as above, so a `*.mlix.lock` file survives every outcome. A successful de
 optional `diagnostics` callback synchronously, while the block's lock is still held, with the
 same "Deleted block file '...'" shape `FileIndexOptions.Diagnostics` uses elsewhere in the
 library.
+
+To observe rejected filenames while clearing the canonical cache, call `CacheDirectory.DeleteCached(cacheDirectoryPath, driveLetters, diagnostics, rejectedFile)`. The fourth argument is the filename-rejection callback; the third remains the success logger invoked under the canonical block's owner lock. Rejected entries never become deletion results and are always left untouched. Supplying a null rejection callback disables reporting.
 
 ## Layout
 
