@@ -22,6 +22,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly Dictionary<ushort, string> _mftProducerFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, string> _watchFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, BlockSource> _blockSourcesByOrdinal = [];
+    readonly Dictionary<ushort, CacheSlotState> _cacheSlotsByOrdinal = [];
 
     /// <summary>
     ///     One entry per drive whose cached block was rejected because its journal checkpoint
@@ -353,6 +354,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             GetWatchCatchUpState(driveBlock.DriveOrdinal),
             _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal));
         return DescribeDrive(driveBlock, in annotations);
@@ -398,6 +400,7 @@ public sealed partial class FileIndex : IAsyncDisposable
         string? MftProducerFailureMessage,
         string? WatchFailureMessage,
         BlockSource BlockSource,
+        CacheSlotState CacheSlot,
         WatchCatchUpState WatchCatchUp,
         JournalCheckpointLoss? CheckpointLoss);
 
@@ -409,6 +412,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             DriveLetter = driveBlock.DriveLetter,
             ProducerKind = driveBlock.ProducerKind,
             BlockSource = annotations.BlockSource,
+            CacheSlot = annotations.CacheSlot,
             State = header.IsCompactionNeeded ? DriveState.Stale : DriveState.Ready,
             RowCount = header.RowCount,
             LiveRowCount = header.LiveRowCount,

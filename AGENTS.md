@@ -330,6 +330,17 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       than a `Failed`. A successful delete logs through the optional `diagnostics` callback with the same
       "Deleted block file '...'" shape `FileIndexOptions.Diagnostics` uses elsewhere, invoked synchronously
       while the block's lock is still held.
+      `DriveStatus.CacheSlot` reports the current published block's backing:
+      `CacheSlotState.OwnedCanonical` for the canonical slot held by this index,
+      `PrivateFallback` for a private fallback block, and `NotApplicable` for
+      NoCache and blockless (failed or offline) drives. It is independent of
+      `BlockSource`: both canonical and private scans report `ProducedByScan`.
+      The status is captured under the state lock; reread `FileIndex.Drives` after
+      a rescan. Taking a lock for an in-flight rescan does not change the old
+      private block's status; only publishing the replacement does. A failed or
+      cancelled scan that leaves the old block in place leaves its backing status
+      in place too. The value identifies no process and does not promise that a
+      private block's slot is still held elsewhere.
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
     - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`; `MaterializeBatches`/`ReadRecordBatches` provide bounded-memory batch materialization over the same result.

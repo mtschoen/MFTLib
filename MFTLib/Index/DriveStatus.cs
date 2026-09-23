@@ -17,6 +17,16 @@ public sealed record DriveStatus
     /// </summary>
     public required BlockSource BlockSource { get; init; }
 
+    /// <summary>
+    ///     The current block's cache-slot backing, captured with this status. Read
+    ///     <see cref="FileIndex.Drives" /> again after a rescan for an updated value.
+    ///     <see cref="CacheSlotState.NotApplicable" /> for NoCache or blockless drives.
+    ///     This does not identify another owner or promise that a private block's slot
+    ///     is still held elsewhere. <see cref="BlockSource" /> independently describes
+    ///     how the current block was obtained.
+    /// </summary>
+    public CacheSlotState CacheSlot { get; init; }
+
     public required DriveState State { get; init; }
 
     public required uint RowCount { get; init; }

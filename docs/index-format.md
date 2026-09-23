@@ -30,6 +30,35 @@ with its `mftlib-nocache-` prefix. The lock file itself is never deleted, becaus
 races another opener's create-and-lock; a leftover lock file matches no block-file pattern and
 is re-locked in place.
 
+### Observing a drive's backing
+
+Read `FileIndex.Drives` and inspect `DriveStatus.CacheSlot`:
+
+| Value | Meaning |
+| --- | --- |
+| `CacheSlotState.OwnedCanonical` | This drive's current block belongs to the canonical cache slot held by this index. |
+| `CacheSlotState.PrivateFallback` | This drive's current block was scanned privately because its canonical slot was unavailable when the scan target was selected. |
+| `CacheSlotState.NotApplicable` | NoCache is enabled, or the drive has no block (failed or offline). |
+
+Both Ready and Stale blocks retain their backing classification. This is
+separate from `DriveStatus.BlockSource`: a canonical cold scan and a private
+fallback scan both read `ProducedByScan`; a canonical warm start reads
+`WarmStartedFromCache`.
+
+A returned status is a point-in-time value. Reread `index.Drives` after a
+rescan. If the previous owner exits, an existing private block stays private
+until a successful rescan publishes a canonical replacement. Acquiring the
+slot while that scan runs does not relabel the old private block. A failed
+or cancelled scan which retains the old block retains its backing status.
+During a canonical rescan the old file may be temporarily renamed aside;
+the backing classification describes its slot, not a path-existence guarantee.
+
+The value contains no PID, process name, or user, and PrivateFallback does
+not assert that another owner is still alive. It adds observability only:
+normal opens still scan privately on contention, cache-only opens still
+fail with InUse, and private blocks still use delete-on-close. No block
+format or native ABI version changes are involved.
+
 ## Deleting cached blocks
 
 `CacheDirectory.DeleteCached(cacheDirectoryPath, driveLetters = null, diagnostics = null)` is the

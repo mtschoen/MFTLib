@@ -97,9 +97,11 @@ public sealed partial class FileIndex
         }
 
         DriveBlock superseded;
+        CacheSlotState previousCacheSlot;
         lock (_stateLock)
         {
             superseded = _driveBlocks[driveOrdinal];
+            previousCacheSlot = _cacheSlotsByOrdinal.GetValueOrDefault(driveOrdinal);
         }
 
         // The rename-aside is licensed by the owner lock: an index that does not hold it (its
@@ -123,6 +125,7 @@ public sealed partial class FileIndex
                 () =>
                 {
                     _driveBlocks[driveOrdinal] = completedScan.DriveBlock;
+                    _cacheSlotsByOrdinal[driveOrdinal] = DescribeCacheSlot(target.OwnsCanonicalSlot);
                     _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
                     _discardedBlocksByOrdinal.Remove(driveOrdinal);
                     // All three explain how the block being replaced came to be (or, for the
@@ -137,6 +140,7 @@ public sealed partial class FileIndex
                     if (ReferenceEquals(_driveBlocks[driveOrdinal], completedScan.DriveBlock))
                     {
                         _driveBlocks[driveOrdinal] = superseded;
+                        _cacheSlotsByOrdinal[driveOrdinal] = previousCacheSlot;
                     }
                 },
                 completedScan.DriveBlock, cancellationToken).ConfigureAwait(false);
@@ -238,6 +242,7 @@ public sealed partial class FileIndex
             () =>
             {
                 _driveBlocks.Add(completedScan.DriveBlock);
+                _cacheSlotsByOrdinal[driveOrdinal] = DescribeCacheSlot(target.OwnsCanonicalSlot);
                 _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
                 _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
                 var index = FindBlocklessStatusIndexLocked(driveLetter);
@@ -255,6 +260,7 @@ public sealed partial class FileIndex
                 }
 
                 _blockSourcesByOrdinal.Remove(driveOrdinal);
+                _cacheSlotsByOrdinal.Remove(driveOrdinal);
                 _accessDeniedSubtreeCountByOrdinal.Remove(driveOrdinal);
                 if (FindBlocklessStatusIndexLocked(driveLetter) < 0)
                 {

@@ -84,6 +84,7 @@ public sealed partial class FileIndex
         lock (_stateLock)
         {
             _driveBlocks.Add(driveBlock);
+            _cacheSlotsByOrdinal[driveOrdinal] = DescribeCacheSlot(ownsCanonicalSlot);
         }
     }
 

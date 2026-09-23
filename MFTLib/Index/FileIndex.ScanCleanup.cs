@@ -86,6 +86,7 @@ public sealed partial class FileIndex
             _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
             _discardedBlocksByOrdinal.Remove(driveOrdinal);
             _blockSourcesByOrdinal.Remove(driveOrdinal);
+            _cacheSlotsByOrdinal.Remove(driveOrdinal);
 
             // A drive that never adds a block does not consume its ordinal, so everything keyed
             // by it has to go once the status above has taken its own copy. Otherwise the next
@@ -97,6 +98,13 @@ public sealed partial class FileIndex
 
     string CanonicalBlockPath(IndexedDrive drive) =>
         Path.Combine(CacheDirectoryPath, CacheDirectory.BlockFileName(drive.DriveLetter, drive.VolumeSerial));
+
+    CacheSlotState DescribeCacheSlot(bool ownsCanonicalSlot) =>
+        _options.NoCache
+            ? CacheSlotState.NotApplicable
+            : ownsCanonicalSlot
+                ? CacheSlotState.OwnedCanonical
+                : CacheSlotState.PrivateFallback;
 
     /// <summary>
     ///     Where one drive's scan writes. <see cref="ScanBlockTarget.OwnsCanonicalSlot" /> is
