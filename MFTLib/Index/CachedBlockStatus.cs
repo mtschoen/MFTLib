@@ -14,4 +14,8 @@ public sealed record CachedBlockStatus(
     CachedBlockAvailability Availability,
     BlockValidationResult? Validation,
     ProducerKind? ProducerKind,
-    string? RootDirectory);
+    string? RootDirectory)
+{
+    /// <summary>The validated block's tag, or null when the block could not be inspected.</summary>
+    public CacheTag? CacheTag { get; init; }
+}

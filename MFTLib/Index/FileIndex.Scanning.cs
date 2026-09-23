@@ -57,7 +57,10 @@ public sealed partial class FileIndex
                         $"Drive {driveLetter}: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan.";
                 }
 
-                RecordFailedDrive(driveLetter, driveOrdinal, DriveFailureKind.CacheDeclined);
+                var failureKind = warmStart.DiscardedBlock == BlockValidationResult.WrongCacheTag
+                    ? DriveFailureKind.CacheTagMismatch
+                    : DriveFailureKind.CacheDeclined;
+                RecordFailedDrive(driveLetter, driveOrdinal, failureKind);
                 return;
             }
 
@@ -216,10 +219,12 @@ public sealed partial class FileIndex
             VolumeSerial = drive.VolumeSerial,
             BlockPath = blockPath,
             DeleteOnClose = deleteOnClose,
-            Progress = _options.Progress
+            Progress = _options.Progress,
+            CacheTag = _options.CacheTag
         };
 
         var produceResult = await producer(request, cancellationToken).ConfigureAwait(false);
+        ValidateProducedCacheTag(produceResult, blockPath);
 
         // produceResult.Block's ownership passes directly to the DriveBlock built here, which
         // releases it through the reference-counted Release() (see DriveBlock's own summary),
@@ -326,6 +331,11 @@ public sealed partial class FileIndex
         // (see DriveBlock's own summary), not through IDisposable.
         if (BlockFile.Open(path, drive.VolumeSerial, out var validation) is { } block)
         {
+            if (block.Header.CacheTag != _options.CacheTag)
+            {
+                return RejectCacheTag(block, path);
+            }
+
             if (block.Header.ProducerKind == ProducerKind.Enumeration)
             {
                 var cachedRoot = NamePool.ReadRowName(block, 0);
@@ -395,7 +405,8 @@ public sealed partial class FileIndex
             NamePoolCapacity =
                 BlockLayout.ComputeNamePoolCapacity(EnumerationProducer.EstimateNamePoolBytes(estimatedRows)),
             DeleteOnClose = deleteOnClose,
-            Diagnostics = _options.Diagnostics
+            Diagnostics = _options.Diagnostics,
+            CacheTag = _options.CacheTag
         });
         try
         {

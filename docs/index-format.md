@@ -1,9 +1,10 @@
 # Packed index block format
 
-One block file per volume holds a volume's whole file inventory. It is the live
-index, the on-disk cache, and the producer's write target at the same time. A
-block is rebuildable from the filesystem by definition, so there is no migration
-code: a version, serial, or completeness mismatch means discard and rescan.
+One block file per volume holds the inventory selected by the consumer's scan.
+It is the live index, the on-disk cache, and the producer's write target at the
+same time. A block is rebuildable from the filesystem, so there is no migration
+code: incompatible format, identity, serial, or completeness means reject the
+cache and rescan on a normal open.
 
 ## File name
 
@@ -35,7 +36,7 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 
 | Region | Offset | Size |
 | --- | --- | --- |
-| Header | 0 | 4096 (104-byte declared header, including alignment padding) |
+| Header | 0 | 4096 (112-byte declared header, including alignment padding) |
 | Rows | 4096 | `slot capacity * 32`, rounded up to a page |
 | Sequence region | after rows | `slot capacity * 2`, rounded up to a page |
 | Name pool | after sequence region | `name pool capacity`, rounded up to a page |
@@ -62,9 +63,13 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 80 | name pool offset | u64 | |
 | 88 | live row count | u32 | Rows in use and not tombstoned; maintained by `BlockWriter` |
 | 96 | sequence region offset | u64 | |
+| 104 | consumer FourCC | u32 | Four ASCII bytes in source order; zero means unspecified when version is also zero |
+| 108 | consumer version | u32 | Opaque consumer-owned version; compared exactly |
 
-The format version is 2. The declared header ends at byte 104 to preserve 8-byte
-alignment; the header region remains one 4096-byte page.
+The format version is 3. The declared header ends at byte 112; the header
+region remains one 4096-byte page and every existing field retains its offset.
+Version-2 blocks fail the existing format check and are rebuilt on the next
+normal open. Cache-only opens cannot rebuild them and decline the drive.
 
 The complete flag is written last. A producer that dies mid-write leaves a block
 without it, which a reader rejects.
@@ -73,6 +78,36 @@ The root row is a row index, not a producer-independent constant. Enumeration
 blocks assign the volume root to row 0. MFT blocks preserve NTFS record indexes,
 so the volume root is normally row 5. Readers begin root lookup and path descent
 at this header value.
+
+## Consumer cache identity
+
+`FileIndexOptions.CacheTag` is an optional `CacheTag`, constructed from exactly
+four ASCII characters and a `uint` version. The all-zero default means
+unspecified, not match-any. Codes are case-sensitive and neither component is
+interpreted by MFTLib. The consumer increments its version whenever its scan
+profile or keep-list changes the rows it stores. For example:
+
+    CacheTag = new CacheTag("GITW", 1)
+
+Both fields are initialized before a block is marked complete, for initial
+scans, rescans and private/no-cache blocks. A custom `MftBlockProducer` must
+copy `MftBlockProduceRequest.CacheTag` into `BlockFileCreateOptions.CacheTag`;
+returning a differently tagged block is a producer failure. The built-in
+`BrokerMftBlockProducer` forwards it through the client-created block target.
+
+After structural validation, warm opening compares both fields to the
+requested tag before adopting the block or checking its journal cursor.
+A mismatch records `BlockValidationResult.WrongCacheTag`, disposes and
+best-effort deletes the rejected cache under its owner lock, then cold-scans.
+With `InitialOpenCacheOnly`, it instead reports `DriveState.Failed` and
+`DriveFailureKind.CacheTagMismatch`. `RescanAsync` can recover that drive.
+Both paths emit a `Diagnostics` line identifying the stored and requested
+tags. ASCII control characters in tag diagnostics are escaped.
+
+`CacheDirectory.InspectCached` returns `CachedBlockStatus.CacheTag` for an
+Available block. Invalid or InUse results have null tags because their headers
+were not safely inspected. Cache filenames still contain only drive and serial.
+The tag does not provide shared-cache multiplexing or validate scan filters.
 
 ## Row
 

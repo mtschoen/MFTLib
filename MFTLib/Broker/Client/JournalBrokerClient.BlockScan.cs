@@ -42,7 +42,8 @@ public sealed partial class JournalBrokerClient
             ProducerKind = ProducerKind.Mft,
             RootRow = 5,
             SlotCapacity = slotCapacity,
-            NamePoolCapacity = namePoolCapacity
+            NamePoolCapacity = namePoolCapacity,
+            CacheTag = target.CacheTag
         };
         var (sectionName, block, lifetime) = createDriveBlockSection(letter, options);
         lock (_mmfLifetimesLock)

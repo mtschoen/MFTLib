@@ -36,4 +36,12 @@ public sealed record BlockFileCreateOptions
     ///     <see cref="FileIndexOptions.Diagnostics" /> by the index; producers may leave it null.
     /// </summary>
     public Action<string>? Diagnostics { get; init; }
+
+    /// <summary>
+    ///     The consumer identity to record in the header; a mismatch on a later warm-start
+    ///     attempt makes <see cref="BlockValidationResult.WrongCacheTag" /> the outcome instead
+    ///     of <see cref="BlockValidationResult.Valid" />. Written before the block is marked
+    ///     complete.
+    /// </summary>
+    public CacheTag CacheTag { get; init; }
 }

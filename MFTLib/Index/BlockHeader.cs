@@ -42,6 +42,9 @@ public struct BlockHeader
     /// </summary>
     [FieldOffset(88)] public uint LiveRowCount;
     [FieldOffset(96)] public ulong SequenceRegionOffset;
+    [FieldOffset(104)] public uint CacheTagFourCc;
+    [FieldOffset(108)] public uint CacheTagVersion;
+    public readonly CacheTag CacheTag => CacheTag.FromStorage(CacheTagFourCc, CacheTagVersion);
 
     public readonly bool IsComplete => (Flags & BlockFlags.Complete) != 0;
 
@@ -76,6 +79,11 @@ public struct BlockHeader
         if (header.VolumeSerial != expectedVolumeSerial)
         {
             return BlockValidationResult.WrongVolumeSerial;
+        }
+
+        if (!CacheTag.IsValidStorage(header.CacheTagFourCc))
+        {
+            return BlockValidationResult.WrongCacheTag;
         }
 
         return ValidateRegions(in header, fileLength);

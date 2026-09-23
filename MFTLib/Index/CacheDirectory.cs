@@ -142,7 +142,10 @@ public static class CacheDirectory
             _ => null
         };
         return new CachedBlockStatus(file, CachedBlockAvailability.Available,
-            validation, producerKind, rootDirectory);
+            validation, producerKind, rootDirectory)
+        {
+            CacheTag = block.Header.CacheTag
+        };
     }
 
     const string BlockFileExtension = ".mlix";

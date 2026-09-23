@@ -149,6 +149,18 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
+    public void Validate_MalformedStoredCacheTagFourCc_IsRejected()
+    {
+        // On-disk bytes are untrusted: a byte above 0x7f cannot have come from CacheTag's
+        // public constructor, which enforces four ASCII characters, so it must not be
+        // reported as a valid, trustworthy tag.
+        var header = ValidHeader();
+        header.CacheTagFourCc = 0x80000000;
+        Assert.AreEqual(BlockValidationResult.WrongCacheTag,
+            BlockHeader.Validate(in header, 0xDEADBEEF, ValidFileLength()));
+    }
+
+    [TestMethod]
     public void CompletionAndCompactionProperties_ReadFlags()
     {
         var header = ValidHeader();
@@ -171,9 +183,9 @@ public class BlockHeaderTests
     }
 
     [TestMethod]
-    public void FormatVersion_IsTwo()
+    public void FormatVersion_IsThree()
     {
-        Assert.AreEqual(2u, BlockLayout.FormatVersion);
+        Assert.AreEqual(3u, BlockLayout.FormatVersion);
     }
 
     [TestMethod]

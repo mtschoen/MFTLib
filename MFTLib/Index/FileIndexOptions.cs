@@ -27,9 +27,10 @@ public sealed record FileIndexOptions
     /// <summary>
     ///     Opens each drive from its cache only. A drive with no usable cache (missing, corrupt,
     ///     or incompatible) is reported as <see cref="DriveState.Failed" /> with
-    ///     <see cref="DriveFailureKind.CacheDeclined" /> (or <see cref="DriveFailureKind.InUse" />
-    ///     when another live index holds the cache block's owner lock) instead of falling back to
-    ///     a scan, and <see cref="FileIndex.RescanAsync" /> remains available to scan it later.
+    ///     <see cref="DriveFailureKind.CacheDeclined" />, <see cref="DriveFailureKind.CacheTagMismatch" />
+    ///     (or <see cref="DriveFailureKind.InUse" /> when another live index holds the cache block's
+    ///     owner lock) instead of falling back to a scan, and <see cref="FileIndex.RescanAsync" />
+    ///     remains available to scan it later.
     ///     A cache block whose journal checkpoint the journal no longer holds is different: this
     ///     open never watches, and the block is still a correct snapshot as of its age, so it is
     ///     adopted instead of declined, with <see cref="DriveStatus.CheckpointLoss" /> set to say
@@ -76,12 +77,20 @@ public sealed record FileIndexOptions
     public IProgress<IndexDriveOpened>? OpenProgress { get; init; }
 
     /// <summary>
-    ///     Receives one human-readable line for every block-file delete this index performs:
-    ///     the deleted path and the reason (a rejected cache validation, a stale ".retired-*"
-    ///     sweep, a superseded block's final release, a cancelled scan's partial replacement,
-    ///     or a rejected producer block). Invoked synchronously on whatever thread performs the
-    ///     delete, which can be a snapshot release inside <see cref="FileIndex.DisposeAsync" />,
+    ///     Receives human-readable block-file deletion lines and cache-tag mismatch lines.
+    ///     A tag mismatch includes both stored and requested tags even when deletion fails.
+    ///     Invoked synchronously on whatever thread performs the delete or encounters a mismatch,
+    ///     which can be a snapshot release inside <see cref="FileIndex.DisposeAsync" />,
     ///     so a subscriber must be fast and non-blocking. Null (the default) logs nothing.
     /// </summary>
     public Action<string>? Diagnostics { get; init; }
+
+    /// <summary>
+    ///     An optional consumer cache tag identifying the scan shape (profile and keep-list).
+    ///     The tag is validated on construction: the FourCC must contain exactly four ASCII characters.
+    ///     The default value is all zeros, meaning unspecified. Comparison matches both the FourCC and
+    ///     version exactly. The consumer owns and increments its version whenever its scan shape changes.
+    ///     MFTLib does not interpret the tag or compare scan filters.
+    /// </summary>
+    public CacheTag CacheTag { get; init; }
 }

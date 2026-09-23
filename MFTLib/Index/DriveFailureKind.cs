@@ -33,5 +33,13 @@ public enum DriveFailureKind
     ///     file. A non-cache-only open scans into a private block instead of failing.
     ///     <see cref="FileIndex.RescanAsync" /> scans such a drive and clears this kind.
     /// </summary>
-    InUse
+    InUse,
+
+    /// <summary>
+    ///     A cache-only open found a cached block whose consumer cache tag (FourCC or version)
+    ///     differs from <see cref="FileIndexOptions.CacheTag" />. The block was discarded and
+    ///     best-effort deleted, and the scan that would build a replacement was forbidden.
+    ///     <see cref="FileIndex.RescanAsync" /> scans such a drive and clears this kind.
+    /// </summary>
+    CacheTagMismatch
 }

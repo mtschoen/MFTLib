@@ -82,6 +82,33 @@ public class BrokerMftBlockProducerTests
     }
 
     [TestMethod]
+    public async Task Produce_MismatchedCacheTagFailsAndDisposesBlock()
+    {
+        // The broker adapter itself, not just the caller, must catch a block whose stored tag
+        // does not match what was requested: a mismatch is a producer failure, so it must not
+        // reach the validated-result callback or be handed back as an adopted block.
+        var requested = new CacheTag("GITW", 7);
+        var stored = new CacheTag("FILE", 1);
+        await using var harness = new InProcessBlockBrokerHarness(block =>
+        {
+            block.Header.CacheTagFourCc = stored.PackedFourCc;
+            block.Header.CacheTagVersion = stored.Version;
+        });
+        var invocations = 0;
+        var producer = new BrokerMftBlockProducer(harness.ConnectAsync,
+            scanCompleted: _ => invocations++).CreateProducer();
+
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => producer(harness.Request with { CacheTag = requested }, harness.CancellationToken));
+
+        StringAssert.Contains(exception.Message, "cache tag");
+        Assert.AreEqual(0, invocations, "the callback must not run for a block whose tag does not match the request");
+        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
+        BlockFileAssertions.IsDisposed(harness.CreatedBlock!);
+        Assert.IsFalse(File.Exists(harness.Request.BlockPath));
+    }
+
+    [TestMethod]
     public async Task Produce_InvalidHeader_DoesNotInvokeScanCompleted()
     {
         // The producer disposes the block on every failure path, so a callback that ran
@@ -234,7 +261,20 @@ public class BrokerMftBlockProducerTests
         }
     }
 
+    [TestMethod]
+    public async Task Produce_PreservesRequestedCacheTagThroughHostCompletion()
+    {
+        await using var harness = new InProcessBlockBrokerHarness();
+        var tag = new CacheTag("GITW", 7);
+        var producer = new BrokerMftBlockProducer(harness.ConnectAsync).CreateProducer();
+        var result = await producer(harness.Request with { CacheTag = tag }, harness.CancellationToken);
+        using var block = result.Block;
+        Assert.AreEqual(tag, block.Header.CacheTag);
+        Assert.IsTrue(block.Header.IsComplete);
+        Assert.AreEqual(ArmedCursor.JournalId, block.Header.UsnJournalId);
+        Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
+    }
+
     static BlockScanTarget CreateTemporaryTarget() =>
         new(Path.Combine(Path.GetTempPath(), $"producer-duplicate-{Guid.NewGuid():N}.bin"), 123, true);
-
 }

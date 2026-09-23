@@ -26,6 +26,13 @@ public sealed record MftBlockProduceRequest
     public bool DeleteOnClose { get; init; }
 
     public IProgress<IndexScanProgress>? Progress { get; init; }
+
+    /// <summary>
+    ///     The consumer cache tag for the block. A custom MFT producer must copy this into
+    ///     <see cref="BlockFileCreateOptions.CacheTag" /> before calling <see cref="BlockWriter.Complete" />;
+    ///     returning a differently tagged block is a producer failure.
+    /// </summary>
+    public CacheTag CacheTag { get; init; }
 }
 
 /// <summary>
