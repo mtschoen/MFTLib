@@ -134,10 +134,15 @@ public sealed partial class FileIndex
     {
         lock (_stateLock)
         {
-            return !TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal) ||
-                   _watchFailureMessagesByOrdinal.ContainsKey(driveOrdinal) ||
-                   _cacheOnlyUnresumableCheckpointOrdinals.Contains(driveOrdinal);
+            return RequiresReplacementForWatchRecoveryLocked(driveLetter);
         }
+    }
+
+    bool RequiresReplacementForWatchRecoveryLocked(char driveLetter)
+    {
+        return !TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal) ||
+               _watchFailureMessagesByOrdinal.ContainsKey(driveOrdinal) ||
+               _cacheOnlyUnresumableCheckpointOrdinals.Contains(driveOrdinal);
     }
 
     async Task<BlockReplacementOutcome> SwapDriveBlockAsync(IndexedDrive drive, char driveLetter, CancellationToken cancellationToken)

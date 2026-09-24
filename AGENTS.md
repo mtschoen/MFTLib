@@ -271,8 +271,8 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       while the scan is still in flight; without the fresh read the drive would join no session at
       all even though one now exists (PR 230 review finding 2). A rescan whose scan fails without
       throwing (`ProduceRescannedBlockAsync` returns null) leaves the old, still-unresumable block in
-      place; `ResumeDriveAfterRescanAsync` checks `_cacheOnlyUnresumableCheckpointOrdinals` before
-      registering or arming anything, so a failed scan leaves the drive's refusal exactly as it was
+      place; `ResumeDriveAfterRescanAsync` checks `_cacheOnlyUnresumableCheckpointOrdinals` (through
+      `LeavesDriveFaultedLocked`) before registering or arming anything, so a failed scan leaves the drive's refusal exactly as it was
       instead of arming a cursor the journal still cannot resume (PR 230 review finding 1). The
       whole cache-only adoption behavior traces to file-wizard#481.
       A rescan of a drive that was already watch-faulted requires a committed replacement
@@ -282,7 +282,14 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       watch fault, and CheckpointLoss intact. Non-cancellation producer failures remain
       visible through MftProducerFailureMessage. Such a failure neither arms the old cursor
       nor restarts a session on that drive's behalf. A previously healthy drive may restore
-      its old watch after a failed rescan. Suspension remembers an ended session without
+      its old watch after a failed rescan, but only if it is still healthy when resume decides:
+      a watch failure recorded while the producer ran (an item the pump accepted before the
+      disarm and applied or failed afterwards, or a stream that ended without a stop, which
+      faults every target including the disarmed drive) counts the same as one present at
+      entry. Resume re-checks `RequiresReplacementForWatchRecoveryLocked` under `_stateLock`
+      at each step that would clear the failure, re-arm, reclaim the ended session, or restart
+      (`LeavesDriveFaultedLocked`), so a failed rescan never erases that newer fault or arms the
+      cursor it condemns. Suspension remembers an ended session without
       reclaiming it, preserving its faults and restart intent until an eligible recovery
       or an explicit stop. Successful replacement retains per-drive re-arm and last-drive
       restart behavior, and healthy siblings are never stopped for the failed attempt.

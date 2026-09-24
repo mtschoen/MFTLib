@@ -100,6 +100,12 @@ public sealed partial class FileIndex
     ///     <para>
     ///         A drive that required replacement at suspension is left untouched when no replacement
     ///         was committed. This decision precedes session reclamation as well as re-arming.
+    ///         The same holds for a drive whose watch failure was recorded after the rescan began,
+    ///         while its producer ran: an item the pump accepted before the disarm can still fault
+    ///         the drive afterwards, and a stream that ends without a stop faults every target, the
+    ///         disarmed drive included. So every step that would clear the failure or reclaim the
+    ///         session checks the drive again under <see cref="_stateLock" />
+    ///         (<see cref="LeavesDriveFaultedLocked" />).
     ///     </para>
     /// </remarks>
     async Task ResumeDriveAfterRescanAsync(char driveLetter, SuspendedWatch suspended,
@@ -114,24 +120,48 @@ public sealed partial class FileIndex
         WatchSession? currentSession;
         lock (_stateLock)
         {
+            if (LeavesDriveFaultedLocked(driveLetter, replacement))
+            {
+                return;
+            }
+
             currentSession = _watchSession;
         }
 
         if (currentSession is { } session)
         {
-            if (await TryReArmOnRunningSessionAsync(driveLetter, session, cancellationToken).ConfigureAwait(false))
+            if (await TryReArmOnRunningSessionAsync(driveLetter, session, replacement, cancellationToken)
+                    .ConfigureAwait(false))
             {
                 return;
             }
 
             var restartFrom = EndedWithoutCancellation(session) ? session : null;
-            await ReclaimEndedWatchSessionAsync(session, driveLetter, cancellationToken).ConfigureAwait(false);
-            await ClearAndRestartAfterRescanAsync(driveLetter, restartFrom, cancellationToken).ConfigureAwait(false);
+            if (!await ReclaimEndedWatchSessionAsync(session, driveLetter, replacement, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                return;
+            }
+
+            await ClearAndRestartAfterRescanAsync(driveLetter, replacement, restartFrom, cancellationToken)
+                .ConfigureAwait(false);
             return;
         }
 
-        await ClearAndRestartAfterRescanAsync(driveLetter,
+        await ClearAndRestartAfterRescanAsync(driveLetter, replacement,
             suspended.RestartWholeSession ? suspended.Session : null, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    ///     Whether a rescan that committed no replacement must leave its drive alone because the
+    ///     drive now needs one: a watch failure recorded after the rescan began still describes the
+    ///     unchanged block and its cursor, which that failure may say the journal no longer holds.
+    ///     The caller holds <see cref="_stateLock" />.
+    /// </summary>
+    bool LeavesDriveFaultedLocked(char driveLetter, BlockReplacementOutcome replacement)
+    {
+        return replacement == BlockReplacementOutcome.NotReplaced &&
+               RequiresReplacementForWatchRecoveryLocked(driveLetter);
     }
 
     /// <summary>
@@ -144,7 +174,7 @@ public sealed partial class FileIndex
     ///     failure restores the drive's earlier session fault and propagates.
     /// </summary>
     async Task<bool> TryReArmOnRunningSessionAsync(char driveLetter, WatchSession session,
-        CancellationToken cancellationToken)
+        BlockReplacementOutcome replacement, CancellationToken cancellationToken)
     {
         IndexWatchTarget target;
         WatchSessionFaults.Entry? previousFault;
@@ -155,20 +185,15 @@ public sealed partial class FileIndex
                 return false;
             }
 
-            if (!TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
+            if (LeavesDriveFaultedLocked(driveLetter, replacement))
             {
-                return true;
-            }
-
-            if (_cacheOnlyUnresumableCheckpointOrdinals.Contains(driveOrdinal))
-            {
-                // The scan did not replace the block (it failed without throwing, or was
-                // never run because the caller decided not to), so the block's cursor is
-                // still the one the journal cannot resume. Registering or arming it onto the
-                // session would resume from that cursor; leave the drive's existing refusal
-                // (WatchFailureMessage, WatchCatchUpState.Faulted) exactly as it was instead
-                // of arming it or clearing the message that explains why it is not watched
-                // (PR 230 review finding 1).
+                // The scan did not replace the block, so its cursor is still the one a recorded
+                // watch failure or an unresumable checkpoint condemns, even when that failure
+                // arrived after the rescan began. Registering or arming it onto the session would
+                // resume from that cursor; leave the drive's existing refusal
+                // (WatchFailureMessage, WatchCatchUpState.Faulted) exactly as it was instead of
+                // arming it or clearing the message that explains why it is not watched (PR 230
+                // review finding 1).
                 return true;
             }
 
@@ -237,13 +262,19 @@ public sealed partial class FileIndex
     ///     Clears the rescanned drive's watch failure, stale faulted catch-up, and retained fault,
     ///     then, when <paramref name="restartFrom" /> names the ended session to replace, starts a
     ///     fresh session linked to that session's caller token. The fresh session leaves out every
-    ///     other drive still carrying a recorded watch failure.
+    ///     other drive still carrying a recorded watch failure. A drive that
+    ///     <see cref="LeavesDriveFaultedLocked" /> is neither cleared nor used to restart.
     /// </summary>
-    Task ClearAndRestartAfterRescanAsync(char driveLetter, WatchSession? restartFrom,
-        CancellationToken cancellationToken)
+    Task ClearAndRestartAfterRescanAsync(char driveLetter, BlockReplacementOutcome replacement,
+        WatchSession? restartFrom, CancellationToken cancellationToken)
     {
         lock (_stateLock)
         {
+            if (LeavesDriveFaultedLocked(driveLetter, replacement))
+            {
+                return Task.CompletedTask;
+            }
+
             ClearWatchFailureLocked(driveLetter);
             _unreportedWatchFaults.TakeDrive(driveLetter);
         }
@@ -264,14 +295,22 @@ public sealed partial class FileIndex
     ///     fresh session follows and however that session later ends. A session a stop already
     ///     released was reported by that stop, so nothing is retained from it. The session is not
     ///     cancelled here: its pump has already decided to stop, so this only waits for it.
+    ///     Returns false without reclaiming when, once the pump has finished, the recovered drive
+    ///     <see cref="LeavesDriveFaultedLocked" />: the session then stays claimed, so
+    ///     <see cref="StopWatchingAsync" /> still rethrows that drive's fault.
     /// </summary>
-    async Task ReclaimEndedWatchSessionAsync(WatchSession session, char recoveredDriveLetter,
-        CancellationToken cancellationToken)
+    async Task<bool> ReclaimEndedWatchSessionAsync(WatchSession session, char recoveredDriveLetter,
+        BlockReplacementOutcome replacement, CancellationToken cancellationToken)
     {
         await session.Pump.WaitAsync(cancellationToken).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         cancellationToken.ThrowIfCancellationRequested();
         lock (_stateLock)
         {
+            if (LeavesDriveFaultedLocked(recoveredDriveLetter, replacement))
+            {
+                return false;
+            }
+
             if (ReferenceEquals(_watchSession, session))
             {
                 _watchSession = null;
@@ -281,6 +320,7 @@ public sealed partial class FileIndex
         }
 
         session.Cancellation.Dispose();
+        return true;
     }
 
     /// <summary>
