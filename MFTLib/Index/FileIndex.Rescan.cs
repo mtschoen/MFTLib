@@ -66,6 +66,17 @@ public sealed partial class FileIndex
     ///         session as ended. <see cref="StartWatchingAsync" /> still clears every armed drive's
     ///         failure.
     ///     </para>
+    ///     <para>
+    ///         A rescan issued any time after <see cref="StartWatchingAsync" /> completes finds the
+    ///         session's stream ready for its disarm and re-arm, because that start completes only
+    ///         once the source reports readiness. A session found still starting, whether because
+    ///         the start has not been awaited or because it began while this rescan's scan ran, is
+    ///         waited for before its source is asked to disarm or arm, bounded by
+    ///         <paramref name="cancellationToken" />; a rescan cancelled during that wait has touched
+    ///         nothing and records no failure against the drive. If that start fails or is cancelled instead, it
+    ///         is the start that reports the failure and releases the session: this rescan neither
+    ///         disarms nor arms anything on it and starts no session in its place.
+    ///     </para>
     /// </remarks>
     public async Task RescanAsync(char driveLetter, CancellationToken cancellationToken)
     {
@@ -79,6 +90,7 @@ public sealed partial class FileIndex
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            await WaitForCurrentWatchSessionToStartAsync(cancellationToken).ConfigureAwait(false);
             var requiresReplacement = RequiresReplacementForWatchRecovery(driveLetter);
 
             // Disarming before the gate, never under it: the pump takes _swapGate synchronously

@@ -60,9 +60,12 @@ public class WatchFailureObservationTests
         index.WatchFaulted += OnFault;
         try
         {
-            await index.StartWatchingAsync(broker.CancellationToken);
+            // The scripted pipe does not buffer, so the StartWatch frame has to be read before the
+            // source can publish its stream and the start can report ready.
+            var starting = index.StartWatchingAsync(broker.CancellationToken);
             var start = await broker.ReadFrameAsync();
             Assert.AreEqual(BrokerFrameKind.StartWatch, start.Kind);
+            await starting;
             var epoch = broker.ArmEpochForDrive(start, 'T');
             if (caughtUpFirst)
             {

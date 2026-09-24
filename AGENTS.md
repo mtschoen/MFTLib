@@ -337,6 +337,32 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       bound applies to active scanning, not time spent suspended. Scanning on one thread while another
       disposes is therefore safe. The snapshot finalizer path
       is unaffected: a borrow holds the snapshot, so a borrowed snapshot is never collected.
+    - **Watch start readiness**: `FileIndex.StartWatchingAsync` completes only once the session's
+      source reports that its stream accepts per-drive arm and disarm, so a `RescanAsync` issued any
+      time after it returns finds a running stream (MFTLib issue 247). The index always starts a
+      source through `IIndexWatchSource.StartWatching(targets, reportStreamReady, cancellationToken)`;
+      readiness belongs to one `WatchSession` (`WatchSession.Ready`), so no other session's source
+      can satisfy it, and the pump settles it before it finishes, so no waiter is stranded. A first
+      item also counts as ready. Readiness is not catch-up: `WaitForCatchUpAsync` stays the separate
+      backlog wait. `BrokerIndexWatchSource` reports readiness once connected, the StartWatch frame is
+      sent, and its stream is published with every initial reader running; its internal
+      `BeforeStreamPublishedForTest` gate lets a test hold the window between the frame and the
+      publish. A source implementing only the two-argument `StartWatching` gets the default
+      interface member, which reports readiness once the stream's first `MoveNextAsync` call has
+      returned control with the stream still running, pending or having produced an item
+      (`ReadyOnFirstMoveWatchStream`); a first call that already ended the stream or faulted reports
+      nothing, so the start fails with it. That closes the interval before the pump invokes the
+      source for every source, and covers a source that goes live before its first incomplete
+      await, but not one that awaits a connection first: such a source's failure or end after that
+      await faults the running session rather than the start. A stream that throws or ends
+      before it is ready fails the start with that exception after the usual `WatchFaulted` source
+      announcement; cancelling the start's token, or a stop or dispose, before readiness cancels it.
+      Either way the start cancels and releases the unready session once its pump finishes, so the
+      fault is reported by the start rather than by a later `StopWatchingAsync` and a fresh start is
+      accepted. The waits run outside `_stateLock` and `_swapGate`; zero-target starts complete
+      without invoking the source. A rescan that meets a session still starting waits for it before
+      disarming or arming (a rescan cancelled during that wait records nothing against its drive),
+      and leaves a session whose start failed or was cancelled to that start.
     - **Watch and catch-up lifetime**: `FileIndex.StartWatchingAsync` arms each MFT-backed drive and
       transitions its `DriveStatus.WatchCatchUp` to `WatchCatchUpState.CatchingUp`. Backlog batches up to
       the journal tip captured at arm time are applied to the block before an epoch-tagged `CaughtUp`

@@ -34,6 +34,12 @@ public sealed partial class FileIndex
     ///     one step later: the stream it would have stopped is already gone, so the failure becomes
     ///     a restart instead of a rescan failure. A disarm that fails on a session still running is
     ///     this drive's own failure and propagates.
+    ///     <para>
+    ///         A session still starting is waited for first, bounded by
+    ///         <paramref name="cancellationToken" />, so its source is never asked to disarm before
+    ///         it is ready. A session whose start failed or was cancelled is left to the start that
+    ///         reports it: nothing is disarmed and the resume restarts nothing in its place.
+    ///     </para>
     /// </remarks>
     async Task<SuspendedWatch> SuspendDriveForRescanAsync(char driveLetter, CancellationToken cancellationToken)
     {
@@ -46,6 +52,11 @@ public sealed partial class FileIndex
         if (session is null)
         {
             return default;
+        }
+
+        if (!await WaitForWatchSessionReadyAsync(session, cancellationToken).ConfigureAwait(false))
+        {
+            return new SuspendedWatch(session, RestartWholeSession: false);
         }
 
         if (session.Pump.IsCompleted)
@@ -107,6 +118,13 @@ public sealed partial class FileIndex
     ///         session checks the drive again under <see cref="_stateLock" />
     ///         (<see cref="LeavesDriveFaultedLocked" />).
     ///     </para>
+    ///     <para>
+    ///         A session found still starting, typically one a <see cref="StartWatchingAsync" />
+    ///         began while the scan ran, is waited for before the drive is armed on it, bounded by
+    ///         <paramref name="cancellationToken" />. If that start fails or is cancelled, the start
+    ///         reports it and releases the session, so the drive's failure is cleared without arming
+    ///         it or starting another session.
+    ///     </para>
     /// </remarks>
     async Task ResumeDriveAfterRescanAsync(char driveLetter, SuspendedWatch suspended,
         BlockReplacementOutcome replacement, bool requiresReplacement,
@@ -130,6 +148,13 @@ public sealed partial class FileIndex
 
         if (currentSession is { } session)
         {
+            if (!await WaitForWatchSessionReadyAsync(session, cancellationToken).ConfigureAwait(false))
+            {
+                await ClearAndRestartAfterRescanAsync(driveLetter, replacement, restartFrom: null, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
             if (await TryReArmOnRunningSessionAsync(driveLetter, session, replacement, cancellationToken)
                     .ConfigureAwait(false))
             {
@@ -256,6 +281,44 @@ public sealed partial class FileIndex
         }
 
         return HasWatchSessionEnded(session);
+    }
+
+    /// <summary>
+    ///     Waits, bounded by <paramref name="cancellationToken" />, for <paramref name="session" />
+    ///     to finish starting, and reports whether it became ready. The wait holds neither
+    ///     <see cref="_stateLock" /> nor <see cref="_swapGate" />, and it always ends: the pump
+    ///     settles readiness before it finishes, however the stream ends.
+    /// </summary>
+    static async Task<bool> WaitForWatchSessionReadyAsync(WatchSession session, CancellationToken cancellationToken)
+    {
+        // A session that has already settled is answered without consulting the token, so a
+        // rescan whose token is cancelled later behaves exactly as it did before readiness existed.
+        if (!session.Ready.IsCompleted)
+        {
+            await session.Ready.WaitAsync(cancellationToken).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        return session.Ready.IsCompletedSuccessfully;
+    }
+
+    /// <summary>
+    ///     Waits for whichever session is current to finish starting, before a rescan does anything
+    ///     that would record a failure against its drive. A rescan cancelled here has touched
+    ///     nothing, so it leaves the drive exactly as it was rather than marking it faulted on a
+    ///     session that is about to arm it.
+    /// </summary>
+    Task WaitForCurrentWatchSessionToStartAsync(CancellationToken cancellationToken)
+    {
+        WatchSession? session;
+        lock (_stateLock)
+        {
+            session = _watchSession;
+        }
+
+        return session is null
+            ? Task.CompletedTask
+            : WaitForWatchSessionReadyAsync(session, cancellationToken);
     }
 
     /// <summary>

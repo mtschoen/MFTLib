@@ -31,10 +31,40 @@ public sealed partial class FileIndex
     ///     persisted in its current block header, every armed drive's
     ///     <see cref="DriveStatus.WatchFailureMessage" /> is cleared, and its
     ///     <see cref="DriveStatus.WatchCatchUp" /> begins at <see cref="WatchCatchUpState.CatchingUp" />.
-    ///     Cancelling <paramref name="cancellationToken" /> ends the session and raises no fault;
-    ///     the session is reclaimed by <see cref="StopWatchingAsync" /> or
-    ///     <see cref="DisposeAsync" />. An index with no watchable drives has nothing to start and
-    ///     completes immediately. A source whose stream ends while drives are still watched,
+    ///     <para>
+    ///         The returned task completes once the session's source reports that its stream is
+    ///         ready for per-drive arm and disarm (see
+    ///         <see cref="IIndexWatchSource.StartWatching(IReadOnlyList{IndexWatchTarget}, Action, CancellationToken)" />),
+    ///         so a <see cref="RescanAsync" /> issued any time after it completes finds a running
+    ///         stream. Readiness is not catch-up: no item need have been delivered and no drive need
+    ///         have caught up, which <see cref="WaitForCatchUpAsync(CancellationToken)" /> waits for.
+    ///         The guarantee is as strong as the source's report. <see cref="BrokerIndexWatchSource" />
+    ///         reports readiness once the broker is connected, the watch is requested, and every
+    ///         drive's reader is running. A source that implements only
+    ///         <see cref="IIndexWatchSource.StartWatching(IReadOnlyList{IndexWatchTarget}, CancellationToken)" />
+    ///         is reported ready once its stream's first <see cref="IAsyncEnumerator{T}.MoveNextAsync" />
+    ///         call has returned control with the stream still running (pending, or having produced
+    ///         an item), which covers a source that makes itself live before its first incomplete
+    ///         await but not one that awaits a connection first. Such a source failing or ending
+    ///         after that await faults the running session rather than this start.
+    ///     </para>
+    ///     <para>
+    ///         A stream that throws, or ends, before it is ready fails this task with that exception
+    ///         (an ended stream with an <see cref="InvalidOperationException" />), after the
+    ///         <see cref="WatchFaulted" /> announcement a source fault always gets. Cancelling
+    ///         <paramref name="cancellationToken" /> before the stream is ready cancels this task,
+    ///         and so does a <see cref="StopWatchingAsync" /> or <see cref="DisposeAsync" /> that
+    ///         ends the session first. In each case the unready session is cancelled and released
+    ///         once its pump has finished, so the fault is reported here rather than by a later
+    ///         <see cref="StopWatchingAsync" />, and this method can be called again. Releasing it
+    ///         waits for the source to finish, so a source that ignores its cancellation token
+    ///         wedges this call the way it wedges <see cref="StopWatchingAsync" />.
+    ///     </para>
+    ///     Once the stream is ready, cancelling <paramref name="cancellationToken" /> ends the
+    ///     session and raises no fault; the session is reclaimed by <see cref="StopWatchingAsync" />
+    ///     or <see cref="DisposeAsync" />. An index with no watchable drives has nothing to start and
+    ///     completes immediately without invoking the source. A source whose stream ends while
+    ///     drives are still watched,
     ///     without a stop and without cancellation, raises a <see cref="WatchFaultKind.Source" />
     ///     fault carrying no drive letter, marks every watched drive's
     ///     <see cref="DriveStatus.WatchFailureMessage" />, and releases the session, so this
@@ -52,79 +82,6 @@ public sealed partial class FileIndex
     public Task StartWatchingAsync(CancellationToken cancellationToken)
     {
         return StartWatchingCoreAsync(cancellationToken, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Not an <c>async</c> method, because nothing here awaits once the pump yields on its
-    ///     own, so its validation throws synchronously rather than through the returned task.
-    ///     <paramref name="sessionToken" /> is what the session's lifetime is linked to and
-    ///     <paramref name="startCancellationToken" /> only guards this call, which is how a rescan
-    ///     restarts a whole session without reparenting the watch's lifetime to itself.
-    ///     <paramref name="rescannedDriveLetter" /> is set only for that restart. It recovers one
-    ///     drive, so every other drive still carrying a recorded watch failure is left out of the
-    ///     new session with its message and faulted catch-up intact: its own failure, including a
-    ///     live-watch <see cref="JournalCheckpointLoss" />, still stands and needs its own rescan.
-    ///     The ended session's other faults were already retained in
-    ///     <see cref="_unreportedWatchFaults" /> when the rescan reclaimed it. The public start
-    ///     clears every armed drive's failure instead.
-    /// </summary>
-    Task StartWatchingCoreAsync(CancellationToken sessionToken, CancellationToken startCancellationToken,
-        char? rescannedDriveLetter = null)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        startCancellationToken.ThrowIfCancellationRequested();
-
-        var (targets, unresumableDrives) = BuildWatchTargets(rescannedDriveLetter);
-        if (unresumableDrives.Count > 0)
-        {
-            lock (_stateLock)
-            {
-                foreach (var unresumable in unresumableDrives)
-                {
-                    RecordUnresumableCheckpointWatchFailureLocked(unresumable.DriveLetter, unresumable.DriveOrdinal);
-                }
-            }
-        }
-
-        if (targets.Count == 0)
-        {
-            return Task.CompletedTask;
-        }
-
-        var source = _options.WatchSource ?? throw new InvalidOperationException(
-            $"{targets.Count} drive(s) support a live watch but " +
-            $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.WatchSource)} is not set.");
-
-        lock (_stateLock)
-        {
-            if (_watchSession is not null)
-            {
-                throw new InvalidOperationException("This index is already watching.");
-            }
-
-            ClearWatchFailures(targets);
-            foreach (var target in targets)
-            {
-                ArmWatchCatchUpLocked(target.DriveLetter);
-            }
-
-            var session = new WatchSession(
-                CancellationTokenSource.CreateLinkedTokenSource(sessionToken), source, targets, sessionToken);
-            session.Cancellation.Token.Register(() =>
-            {
-                lock (_stateLock)
-                {
-                    if (ReferenceEquals(_watchSession, session))
-                    {
-                        CancelPendingWatchCatchUpLocked();
-                    }
-                }
-            });
-            session.Pump = PumpAsync(session, targets);
-            _watchSession = session;
-        }
-
-        return Task.CompletedTask;
     }
 
     /// <summary>

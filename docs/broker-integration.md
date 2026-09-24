@@ -61,6 +61,15 @@ await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 await index.StartWatchingAsync(cancellationToken);
 ```
 
+`StartWatchingAsync` returns once the watch source is ready for per-drive arm and disarm:
+the broker is connected, the watch is requested, and every drive's reader is running. A
+`RescanAsync` issued any time after it returns therefore finds a running stream. It does not
+wait for any drive to catch up; await `index.WaitForCatchUpAsync(cancellationToken)` for that.
+Because the call now covers connecting, a broker that cannot be reached, or a stream that fails
+before it is ready, fails the call with that exception (after the `WatchFaulted` source
+announcement), and cancelling `cancellationToken` before readiness cancels it. Either way the
+unready session is released, so `StartWatchingAsync` can simply be called again.
+
 Each drive's watch resumes from the cursor stamped in its own block header, which is the
 cursor armed before that drive's cold scan, not the cursor advanced past the scan's own
 catch-up entries. Starting the live watch from the armed cursor deliberately replays the

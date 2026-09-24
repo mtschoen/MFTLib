@@ -62,3 +62,22 @@ consumer, fakes `FileIndexOptions.WatchSource` directly: implement `IIndexWatchS
 broker connection at all. This is how this repository's own `FileIndex` watch tests avoid
 elevation; there is no `MFTLib.TestExtensions` type for it because `IIndexWatchSource` is
 already a small, public seam.
+
+`FileIndex.StartWatchingAsync` completes once the source reports that its stream is ready for
+per-drive arm and disarm. A fake that implements only the two-argument `StartWatching` gets the
+interface's default readiness, which is reported as soon as the stream's first `MoveNextAsync`
+call returns control with the stream still running: still pending, or having produced an item.
+A first call that already ended the stream or threw reports nothing, so the start fails with
+that end or exception. For an async iterator that is its first incomplete await, so a fake over an
+in-memory queue that marks itself live before awaiting its queue needs nothing more, and
+`StartWatchingAsync` returns with that fake already answering `ArmDriveAsync` and
+`DisarmDriveAsync`. The default cannot see past that first await: a fake that awaits something
+(a connection, a gate) before it accepts per-drive calls is reported ready while it is still
+waiting, so a rescan in that window can be rejected, and a failure after that await faults the
+running session instead of the start. Such a fake, or one that wants to hold a
+test inside the start, implements the three-argument
+`StartWatching(targets, reportStreamReady, cancellationToken)` overload and calls
+`reportStreamReady` itself once it accepts per-drive calls; `StartWatchingAsync` then stays
+incomplete until it does. Throwing from the stream before that fails the start with the thrown
+exception. A fake whose stream needs its test to read a frame or release a gate before it can
+become ready must be started without awaiting, the gate driven, and the start awaited after.

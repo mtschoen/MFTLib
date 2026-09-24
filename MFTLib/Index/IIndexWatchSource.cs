@@ -3,11 +3,20 @@ namespace MFTLib.Index;
 /// <summary>
 ///     Supplies one merged stream of watch items for the drives an index watches, and arms and
 ///     disarms individual drives on that stream while it runs. One instance runs at most one
-///     stream at a time: <see cref="StartWatching" /> throws
-///     <see cref="InvalidOperationException" /> when one is already live, and the two per-drive
-///     members throw it when none is. The interface declares no disposal member and needs none:
-///     the index ends a stream by cancelling the token it passed to <see cref="StartWatching" />,
-///     which runs the implementation's own cleanup.
+///     stream at a time: starting a stream throws <see cref="InvalidOperationException" /> when
+///     one is already live, and the two per-drive members throw it when none is. The interface
+///     declares no disposal member and needs none: the index ends a stream by cancelling the token
+///     it passed when starting it, which runs the implementation's own cleanup.
+///     <para>
+///         <see cref="FileIndex" /> always starts a stream through
+///         <see cref="StartWatching(IReadOnlyList{IndexWatchTarget}, Action, CancellationToken)" />,
+///         and <see cref="FileIndex.StartWatchingAsync" /> completes only once that stream has
+///         reported it is ready. How strong that guarantee is depends on the source: one that
+///         overrides that overload reports readiness itself, and one that implements only
+///         <see cref="StartWatching(IReadOnlyList{IndexWatchTarget}, CancellationToken)" /> gets
+///         the default, which reports readiness once the stream's first
+///         <see cref="IAsyncEnumerator{T}.MoveNextAsync" /> call has returned control.
+///     </para>
 /// </summary>
 public interface IIndexWatchSource
 {
@@ -30,6 +39,42 @@ public interface IIndexWatchSource
     /// </summary>
     IAsyncEnumerable<WatchStreamItem> StartWatching(
         IReadOnlyList<IndexWatchTarget> targets, CancellationToken cancellationToken);
+
+    /// <summary>
+    ///     Starts the same stream as
+    ///     <see cref="StartWatching(IReadOnlyList{IndexWatchTarget}, CancellationToken)" /> and
+    ///     calls <paramref name="reportStreamReady" /> once the stream accepts
+    ///     <see cref="ArmDriveAsync" /> and <see cref="DisarmDriveAsync" />, which is the moment
+    ///     <see cref="FileIndex.StartWatchingAsync" /> waits for. Readiness is about per-drive
+    ///     control, not data: a source reports it without having yielded anything and without
+    ///     any drive having caught up, which <see cref="FileIndex.WaitForCatchUpAsync(CancellationToken)" />
+    ///     waits for separately. The callback belongs to this one stream, may be called from any
+    ///     thread, and may be called more than once; only the first call counts. A source that
+    ///     cannot become ready throws from the stream, or ends it, instead of calling it; the index
+    ///     then fails the start with that exception. Yielding an item also counts as ready, since a
+    ///     source cannot yield without a running stream.
+    ///     <para>
+    ///         The default implementation calls
+    ///         <see cref="StartWatching(IReadOnlyList{IndexWatchTarget}, CancellationToken)" /> and
+    ///         reports readiness as soon as the stream's first
+    ///         <see cref="IAsyncEnumerator{T}.MoveNextAsync" /> call returns control with the stream
+    ///         still running: the call is still pending, or it has already produced an item. A
+    ///         pending call is an async iterator that has run its code up to its first incomplete
+    ///         await, so a source that makes itself ready before that point, as a source over an
+    ///         in-memory queue does, is ready when reported. A first call that has already ended the
+    ///         stream or faulted reports nothing, so the start fails with that end or fault. A
+    ///         source that awaits anything, such as a connection, before accepting per-drive calls
+    ///         must override this member and report readiness itself: the default cannot see past
+    ///         that await, so a per-drive call made in that window can still be rejected, and a
+    ///         failure or end after it arrives as a fault of a running session, not of the start.
+    ///     </para>
+    /// </summary>
+    IAsyncEnumerable<WatchStreamItem> StartWatching(
+        IReadOnlyList<IndexWatchTarget> targets, Action reportStreamReady, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(reportStreamReady);
+        return new ReadyOnFirstMoveWatchStream(StartWatching(targets, cancellationToken), reportStreamReady);
+    }
 
     /// <summary>
     ///     Adds or replaces one drive on the running stream, resuming it from

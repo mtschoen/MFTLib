@@ -46,6 +46,32 @@ public class BrokerIndexWatchSourceTests
     }
 
     [TestMethod]
+    public async Task WatchSource_ReportsReadyOncePublished_BeforeAnyItemAndWithAPerDriveCallAccepted()
+    {
+        await using var harness = new ScriptedWatchBrokerHarness();
+        IIndexWatchSource source = new BrokerIndexWatchSource(harness.ConnectAsync);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var streamCancellation = CancellationTokenSource.CreateLinkedTokenSource(harness.CancellationToken);
+        await using var reader = source.StartWatching([new IndexWatchTarget('C', 7, 100)],
+            () => ready.TrySetResult(), streamCancellation.Token).GetAsyncEnumerator();
+
+        var first = reader.MoveNextAsync().AsTask();
+        Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
+        await ready.Task.WaitAsync(harness.CancellationToken);
+
+        // Ready is about per-drive control, not data: nothing has been delivered, and a disarm
+        // is accepted and reaches the wire instead of being rejected for want of a stream.
+        Assert.IsFalse(first.IsCompleted);
+        await source.DisarmDriveAsync('C', harness.CancellationToken);
+        Assert.AreEqual(BrokerFrameKind.DisarmDrive, (await harness.ReadFrameAsync()).Kind);
+
+        await streamCancellation.CancelAsync();
+        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
+        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => first);
+    }
+
+    [TestMethod]
     public async Task WatchSource_LeavesTheBorrowedClientReadyForAnotherWatch()
     {
         await using var harness = new ScriptedWatchBrokerHarness();

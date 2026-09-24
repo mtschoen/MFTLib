@@ -40,10 +40,31 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         _connectAsync = connectAsync;
     }
 
+    /// <summary>
+    ///     Test-only gate awaited after the StartWatch frame is on the wire and before the stream
+    ///     is published, the one window in which the broker has the watch but this source cannot
+    ///     yet arm or disarm a drive. Null, and skipped, outside tests.
+    /// </summary>
+    internal Func<CancellationToken, Task>? BeforeStreamPublishedForTest { get; set; }
+
+    public IAsyncEnumerable<WatchStreamItem> StartWatching(
+        IReadOnlyList<IndexWatchTarget> targets, CancellationToken cancellationToken)
+    {
+        return StartWatching(targets, static () => { }, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Reports readiness once the stream is published, which is after the broker connection is
+    ///     established, the StartWatch frame is on the wire, and every initial drive has a reader:
+    ///     from then on <see cref="ArmDriveAsync" /> and <see cref="DisarmDriveAsync" /> find a
+    ///     running stream. A connection or send failure, or cancellation before that point, throws
+    ///     from the stream instead.
+    /// </summary>
     public async IAsyncEnumerable<WatchStreamItem> StartWatching(
-        IReadOnlyList<IndexWatchTarget> targets,
+        IReadOnlyList<IndexWatchTarget> targets, Action reportStreamReady,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(reportStreamReady);
         ValidateTargets(targets);
         cancellationToken.ThrowIfCancellationRequested();
         ClaimStream();
@@ -59,6 +80,11 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
             // the consumer token can leave that acknowledgement to terminate the next watch.
             await client.SendStartWatchAsync(BuildCursors(targets), CancellationToken.None)
                 .ConfigureAwait(false);
+            if (BeforeStreamPublishedForTest is { } beforeStreamPublished)
+            {
+                await beforeStreamPublished(cancellationToken).ConfigureAwait(false);
+            }
+
             channel = Channel.CreateUnbounded<TaggedItem>(new UnboundedChannelOptions
             {
                 SingleReader = true,
@@ -73,6 +99,8 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
             ReleaseStream();
             throw;
         }
+
+        reportStreamReady();
 
         try
         {

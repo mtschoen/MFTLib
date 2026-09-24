@@ -2,100 +2,6 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    /// <summary>
-    ///     One watch session's cancellation, pump, source, and targets held together, so a start
-    ///     racing a stop cannot claim one and publish another. A single
-    ///     <see cref="FileIndex._watchSession" /> field is claimed, read, and cleared under
-    ///     <see cref="FileIndex._stateLock" />.
-    /// </summary>
-    sealed class WatchSession
-    {
-        readonly List<IndexWatchTarget> _targets;
-        readonly Lock _targetsLock = new();
-        bool _streamStarted;
-
-        public WatchSession(CancellationTokenSource cancellation, IIndexWatchSource source,
-            IReadOnlyList<IndexWatchTarget> targets, CancellationToken callerToken)
-        {
-            Cancellation = cancellation;
-            Source = source;
-            CallerToken = callerToken;
-            _targets = [.. targets];
-        }
-
-        public CancellationTokenSource Cancellation { get; }
-
-        // The exact source the pump is reading, so a rescan reaches the arm and disarm
-        // operations of the stream in flight rather than of some other instance.
-        public IIndexWatchSource Source { get; }
-
-        /// <summary>
-        ///     The drives this session is currently watching, including both initial targets and
-        ///     drives adopted and armed mid-session: who a catch-up wait covers, and which drive
-        ///     letters count as watched.
-        /// </summary>
-        public IndexWatchTarget[] Targets
-        {
-            get
-            {
-                lock (_targetsLock)
-                {
-                    return _targets.ToArray();
-                }
-            }
-        }
-
-        /// <summary>The token this session's source was linked to, which a restart relinks to.</summary>
-        public CancellationToken CallerToken { get; }
-
-        public WatchSessionFaults Faults { get; } = new();
-
-        public Task Pump { get; set; } = Task.CompletedTask;
-
-        /// <summary>
-        ///     Set once the pump has received its first item. A source cannot yield without a
-        ///     running stream, so from then on a <see cref="WatchStreamNotRunningException" /> from
-        ///     this session's source means its stream has been released.
-        /// </summary>
-        public bool StreamStarted => Volatile.Read(ref _streamStarted);
-
-        /// <summary>
-        ///     Set under <see cref="FileIndex._stateLock" /> once the pump has stopped reading: when
-        ///     it decides no watched drive remains, before the source releases its stream, and when
-        ///     the stream ends for any other reason. A rescan reads it under the same lock to choose
-        ///     between re-arming its drive on this session and starting a fresh one.
-        /// </summary>
-        public bool Ended { get; set; }
-
-        public void MarkStreamStarted() => Volatile.Write(ref _streamStarted, true);
-
-        public void RegisterTarget(IndexWatchTarget target)
-        {
-            lock (_targetsLock)
-            {
-                var upperLetter = char.ToUpperInvariant(target.DriveLetter);
-                var index = _targets.FindIndex(t => char.ToUpperInvariant(t.DriveLetter) == upperLetter);
-                if (index >= 0)
-                {
-                    _targets[index] = target;
-                }
-                else
-                {
-                    _targets.Add(target);
-                }
-            }
-        }
-
-        public bool ContainsTarget(char driveLetter)
-        {
-            lock (_targetsLock)
-            {
-                var upperLetter = char.ToUpperInvariant(driveLetter);
-                return _targets.Any(t => char.ToUpperInvariant(t.DriveLetter) == upperLetter);
-            }
-        }
-    }
-
     async Task PumpAsync(WatchSession session, IReadOnlyList<IndexWatchTarget> targets)
     {
         // Read before the yield, which is to say inside StartWatchingCoreAsync's lock and while
@@ -114,45 +20,26 @@ public sealed partial class FileIndex
         // the same rule arming follows for every drive that does have an ordinal.
         var droppedDriveLettersWithoutOrdinal = new HashSet<char>();
 
-        var dropped = false;
+        Exception? streamFailure = null;
         try
         {
-            await foreach (var item in source.StartWatching(targets, cancellationToken).ConfigureAwait(false))
+            await foreach (var item in source.StartWatching(targets, session.MarkReady, cancellationToken)
+                               .ConfigureAwait(false))
             {
                 session.MarkStreamStarted();
-                if (item is DriveWatchFailure failure)
-                {
-                    if (DropDrive(failure.DriveLetter, failure.Exception, WatchFaultKind.Source,
-                            droppedDriveLettersWithoutOrdinal, session))
-                    {
-                        dropped = true;
-                    }
-                }
-                else if (item is JournalBatch batch &&
-                         !IsDriveWatchFaulted(batch.DriveLetter, droppedDriveLettersWithoutOrdinal))
-                {
-                    dropped = !TryApplyBatch(batch, droppedDriveLettersWithoutOrdinal,
-                        session, cancellationToken);
-                }
-                else if (item is DriveCaughtUp caughtUp &&
-                         !IsDriveWatchFaulted(caughtUp.DriveLetter, droppedDriveLettersWithoutOrdinal))
-                {
-                    CompleteWatchCatchUp(caughtUp.DriveLetter);
-                }
-
-                if (dropped && EndSessionIfNoWatchedDriveRemains(session, droppedDriveLettersWithoutOrdinal))
+                if (ApplyWatchItem(item, session, droppedDriveLettersWithoutOrdinal, cancellationToken) &&
+                    EndSessionIfNoWatchedDriveRemains(session, droppedDriveLettersWithoutOrdinal))
                 {
                     // Every watched drive has failed. Breaking disposes the enumerator, which ends
                     // the watch at the source; the session stays so StopWatchingAsync still rethrows.
                     break;
                 }
-
-                dropped = false;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             CancelPendingWatchCatchUpLocked();
+            session.SettleReadinessForEndedStream(null, cancellationToken);
             lock (_stateLock)
             {
                 if (!session.Faults.HasFaults)
@@ -163,14 +50,13 @@ public sealed partial class FileIndex
         }
         catch (Exception exception)
         {
-            lock (_stateLock)
-            {
-                session.Faults.RecordSource(exception);
-            }
-            FaultPendingWatchCatchUpLocked(session.Targets, exception);
-            RaiseWatchFaulted(new WatchFault(WatchFaultKind.Source, null, exception));
+            streamFailure = exception;
+            RecordStreamFailure(session, exception);
         }
 
+        // Before the end-of-stream bookkeeping, which can release the session: whoever is waiting
+        // for this session to become ready learns why it never will before anything else moves.
+        session.SettleReadinessForEndedStream(streamFailure, cancellationToken);
         if (!EndSessionAndCheckForOutstandingFaults(session) && !cancellationToken.IsCancellationRequested)
         {
             var remainingTargets = session.Targets;
@@ -179,6 +65,46 @@ public sealed partial class FileIndex
                 ReportSourceEndedWithoutStop(session, remainingTargets, droppedDriveLettersWithoutOrdinal);
             }
         }
+    }
+
+    /// <summary>
+    ///     Applies one stream item and reports whether it dropped a drive, which is the only case
+    ///     in which the pump asks whether any watched drive remains.
+    /// </summary>
+    bool ApplyWatchItem(WatchStreamItem item, WatchSession session,
+        HashSet<char> droppedDriveLettersWithoutOrdinal, CancellationToken cancellationToken)
+    {
+        if (item is DriveWatchFailure failure)
+        {
+            return DropDrive(failure.DriveLetter, failure.Exception, WatchFaultKind.Source,
+                droppedDriveLettersWithoutOrdinal, session);
+        }
+
+        if (item is JournalBatch batch &&
+            !IsDriveWatchFaulted(batch.DriveLetter, droppedDriveLettersWithoutOrdinal))
+        {
+            return !TryApplyBatch(batch, droppedDriveLettersWithoutOrdinal, session, cancellationToken);
+        }
+
+        if (item is DriveCaughtUp caughtUp &&
+            !IsDriveWatchFaulted(caughtUp.DriveLetter, droppedDriveLettersWithoutOrdinal))
+        {
+            CompleteWatchCatchUp(caughtUp.DriveLetter);
+        }
+
+        return false;
+    }
+
+    /// <summary>A failure of the whole stream, recorded against the session and announced once.</summary>
+    void RecordStreamFailure(WatchSession session, Exception exception)
+    {
+        lock (_stateLock)
+        {
+            session.Faults.RecordSource(exception);
+        }
+
+        FaultPendingWatchCatchUpLocked(session.Targets, exception);
+        RaiseWatchFaulted(new WatchFault(WatchFaultKind.Source, null, exception));
     }
 
     /// <summary>

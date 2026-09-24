@@ -131,25 +131,20 @@ public class FileIndexWatchPumpTests
         var sourceFault = new OperationCanceledException("source aborted");
         using var harness = new WatchHarness(new ThrowingWatchSource(sourceFault));
         var faults = new List<WatchFault>();
-        var announced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        harness.Index.WatchFaulted += fault =>
-        {
-            faults.Add(fault);
-            announced.TrySetResult();
-        };
+        harness.Index.WatchFaulted += faults.Add;
 
-        await harness.Index.StartWatchingAsync(Token);
-
-        // Waiting for the announcement, not for time: the pump yields before it touches the
-        // source, so stopping first would cancel the session before the source ever threw.
-        await announced.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        // The source throws before it is ready, so the start itself reports the failure, as the
+        // source's own exception rather than as a cancellation of this call.
         var thrown = await Assert.ThrowsExceptionAsync<OperationCanceledException>(
-            () => harness.Index.StopWatchingAsync(Token));
+            () => harness.Index.StartWatchingAsync(Token));
 
         Assert.AreSame(sourceFault, thrown);
         Assert.AreEqual(1, faults.Count);
         Assert.AreEqual(WatchFaultKind.Source, faults[0].Kind);
         Assert.IsNull(faults[0].DriveLetter);
+
+        // Reported once, through the start: the session is released and a stop has nothing left.
+        await harness.Index.StopWatchingAsync(Token);
     }
 
     [TestMethod]
