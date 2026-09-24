@@ -37,7 +37,8 @@ public interface IIndexWatchSource
     ///     arm. Replacing a drive that is already armed retires the old reader before starting
     ///     the fresh one, and must do so without ending any other drive's watch.
     ///     <paramref name="cancellationToken" /> bounds the wait for a retiring reader, so a
-    ///     wedged reader surfaces as a cancellation rather than a hang.
+    ///     wedged reader surfaces as a cancellation rather than a hang. Throws
+    ///     <see cref="WatchStreamNotRunningException" /> when no stream is running.
     /// </summary>
     Task ArmDriveAsync(IndexWatchTarget target, CancellationToken cancellationToken);
 
@@ -45,7 +46,8 @@ public interface IIndexWatchSource
     ///     Stops one drive's items. This is not a failure and yields no
     ///     <see cref="DriveWatchFailure" />; it completes only once nothing further for that
     ///     drive can reach the stream. <paramref name="cancellationToken" /> bounds the wait for
-    ///     the retiring reader, for the same reason <see cref="ArmDriveAsync" /> takes one.
+    ///     the retiring reader, for the same reason <see cref="ArmDriveAsync" /> takes one. Throws
+    ///     <see cref="WatchStreamNotRunningException" /> when no stream is running.
     /// </summary>
     Task DisarmDriveAsync(char driveLetter, CancellationToken cancellationToken);
 }

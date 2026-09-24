@@ -16,8 +16,7 @@ internal sealed class FakeIndexWatchSource : IIndexWatchSource, IDisposable
     public static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(10);
 
     readonly Lock _stateLock = new();
-    readonly Channel<PendingItem> _items = Channel.CreateUnbounded<PendingItem>(
-        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+    Channel<PendingItem> _items = CreateItemChannel();
     readonly Dictionary<char, int> _armGenerationsByDrive = [];
     readonly HashSet<char> _stopRequestedDrives = [];
     readonly List<char> _disarmedDrives = [];
@@ -26,6 +25,7 @@ internal sealed class FakeIndexWatchSource : IIndexWatchSource, IDisposable
     readonly List<SessionSignals> _sessions = [];
     readonly TaskCompletionSource _sourceCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly CancellationTokenSource _wedgeRelease = new();
+    readonly TaskCompletionSource _rejectionObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     TaskCompletionSource? _holdRelease;
     Exception? _nextArmFailure;
@@ -217,13 +217,13 @@ internal sealed class FakeIndexWatchSource : IIndexWatchSource, IDisposable
 
     public Task FaultSourceAsync(Exception exception)
     {
-        _items.Writer.TryComplete(exception);
+        CurrentItems().Writer.TryComplete(exception);
         return SourceEndedAsync();
     }
 
     public Task CompleteSourceAsync()
     {
-        _items.Writer.TryComplete();
+        CurrentItems().Writer.TryComplete();
         return _sourceCompleted.Task.WaitAsync(HangGuard);
     }
 
@@ -269,8 +269,10 @@ internal sealed class FakeIndexWatchSource : IIndexWatchSource, IDisposable
     {
         SessionSignals signals;
         CancellationToken readToken;
+        Channel<PendingItem> items;
         lock (_stateLock)
         {
+            items = _items;
             _sourceInvocationCount++;
             _streamLive = true;
             readToken = _ignoreCancellation ? _wedgeRelease.Token : cancellationToken;
@@ -281,7 +283,7 @@ internal sealed class FakeIndexWatchSource : IIndexWatchSource, IDisposable
         signals.Started.TrySetResult([.. targets]);
         try
         {
-            await foreach (var pending in _items.Reader.ReadAllAsync(readToken).ConfigureAwait(false))
+            await foreach (var pending in items.Reader.ReadAllAsync(readToken).ConfigureAwait(false))
             {
                 await WaitWhileHeldAsync(readToken).ConfigureAwait(false);
                 if (IsStale(pending))
@@ -306,6 +308,14 @@ internal sealed class FakeIndexWatchSource : IIndexWatchSource, IDisposable
             lock (_stateLock)
             {
                 _streamLive = false;
+
+                // A stream that ended because its channel was completed or faulted hands the next
+                // stream a fresh channel, so a session restarted after this one reads its own
+                // items instead of inheriting the end or the fault.
+                if (ReferenceEquals(_items, items) && items.Reader.Completion.IsCompleted)
+                {
+                    _items = CreateItemChannel();
+                }
             }
 
             SourceEnding?.Invoke();
@@ -316,6 +326,20 @@ internal sealed class FakeIndexWatchSource : IIndexWatchSource, IDisposable
             }
 
             signals.Ended.TrySetResult();
+        }
+    }
+
+    static Channel<PendingItem> CreateItemChannel()
+    {
+        return Channel.CreateUnbounded<PendingItem>(
+            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+    }
+
+    Channel<PendingItem> CurrentItems()
+    {
+        lock (_stateLock)
+        {
+            return _items;
         }
     }
 
@@ -357,11 +381,18 @@ internal sealed class FakeIndexWatchSource : IIndexWatchSource, IDisposable
         return _sessions[^1];
     }
 
+    /// <summary>Completes the first time an arm or disarm is rejected for want of a running stream.</summary>
+    public Task RejectionObservedAsync()
+    {
+        return _rejectionObserved.Task.WaitAsync(HangGuard);
+    }
+
     void ThrowIfNoStreamLocked(string operation)
     {
         if (!_streamLive)
         {
-            throw new InvalidOperationException($"No stream is running, so there is no drive to {operation}.");
+            _rejectionObserved.TrySetResult();
+            throw new WatchStreamNotRunningException($"No stream is running, so there is no drive to {operation}.");
         }
     }
 

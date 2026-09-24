@@ -230,9 +230,9 @@ public partial class BrokerIndexWatchSourceArmingTests
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        await Assert.ThrowsExceptionAsync<WatchStreamNotRunningException>(
             () => source.ArmDriveAsync(new IndexWatchTarget('C', 7, 100), harness.CancellationToken));
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        await Assert.ThrowsExceptionAsync<WatchStreamNotRunningException>(
             () => source.DisarmDriveAsync('C', harness.CancellationToken));
 
         Assert.AreEqual(0, harness.ConnectionCount);

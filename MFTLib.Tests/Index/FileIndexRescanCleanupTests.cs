@@ -234,10 +234,11 @@ public class FileIndexRescanCleanupTests
     }
 
     [TestMethod]
-    public async Task RescanAsync_WhenTheEndedSessionRecordedASubscriberFault_SwallowsItAndStartsAFreshSession()
+    public async Task RescanAsync_WhenTheEndedSessionRecordedASubscriberFault_CarriesItIntoAFreshSession()
     {
         using var harness = new WatchHarness();
-        harness.Index.Changed += _ => throw new InvalidOperationException("the subscriber blew up");
+        var subscriberFault = new InvalidOperationException("the subscriber blew up");
+        harness.Index.Changed += _ => throw subscriberFault;
         await harness.Index.StartWatchingAsync(Token);
         await harness.SourceStartedAsync();
 
@@ -261,7 +262,10 @@ public class FileIndexRescanCleanupTests
             "the rescan reclaimed the ended session and started a fresh one");
         Assert.AreEqual(DriveState.Ready, harness.Index.Drives.Single().State);
 
-        await harness.Index.StopWatchingAsync(Token);
+        // The rescan recovers its drive, not the subscriber, so the stop still reports it.
+        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => harness.Index.StopWatchingAsync(Token));
+        Assert.AreSame(subscriberFault, thrown);
     }
 
     /// <summary>

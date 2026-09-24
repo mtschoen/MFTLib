@@ -275,6 +275,35 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       registering or arming anything, so a failed scan leaves the drive's refusal exactly as it was
       instead of arming a cursor the journal still cannot resume (PR 230 review finding 1). The
       whole cache-only adoption behavior traces to file-wizard#481.
+      A rescan also survives the watch session ending while it is in flight (MFTLib issue 241). When
+      the last watched drive faults, the pump marks the session `Ended` under `_stateLock` before it
+      releases the source stream, and it makes that decision under the same lock a rescan's resume
+      holds while it clears its drive's failure and registers it again, so a re-arm either keeps the
+      session alive or finds it ended. The resume re-arms on the current session only while it is
+      not ended, its pump has not completed, and its cancellation is not requested. Otherwise, or when
+      the arm fails and the session is found ended by then, or when the rescan's disarm fails on an
+      already-ended session, the rescan reclaims the session and starts a fresh one instead of arming
+      a released stream. A session ended through cancellation is reclaimed but not restarted, and a
+      running session is never stopped for this. That rescan-triggered restart clears the watch
+      failure and faulted catch-up of the rescanned drive only. Every other drive keeps its recorded
+      failure, faulted catch-up, and `CheckpointLoss`, and any drive with a recorded failure is left
+      out of the new session's targets, which is what keeps a drive whose `LiveWatch` loss says its
+      cursor is gone from being armed from that cursor; each such drive needs its own rescan. When
+      the rescan reclaims the ended session it moves that session's outstanding faults, other than
+      the rescanned drive's, into the index-level `_unreportedWatchFaults` ledger rather than into
+      any session, so no later session can drop them by ending cleanly and releasing itself, and a
+      restart that starts no session or a session ended by cancellation loses nothing either. The
+      next `StopWatchingAsync` rethrows the earliest of them ahead of its own session's faults, even
+      when no session is left, then clears the ledger; a rescan that recovers one of those drives
+      removes its entry. The pump's own `HasFaults` never sees them. A source that
+      releases its stream does so in its iterator's `finally`, before the pump can mark the session
+      ended, so a disarm or arm rejected in that window with `WatchStreamNotRunningException` (the
+      type `IIndexWatchSource` sources throw when no stream runs) on a session whose stream already
+      delivered an item makes the rescan wait for the pump, bounded by its token, before classifying
+      the failure. A rejection before the first item cannot be told apart from a stream not yet
+      started, so it is judged on the session state as it stands. Public
+      `StartWatchingAsync` keeps clearing every armed drive's failure and leaves the retained
+      faults for the next stop.
     - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory.
     - **Query lifetime**: the eight entry points that scan rows (`Find`, `FindByName`, `Search`, `Enumerate`, `Largest`,
       `DuplicateNames`, `Root`, and `FileEntry.Children`) each take an optional `CancellationToken`, observed

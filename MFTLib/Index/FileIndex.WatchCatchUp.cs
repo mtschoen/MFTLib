@@ -34,15 +34,6 @@ public sealed partial class FileIndex
         }
     }
 
-    /// <summary>The lock-taking counterpart the rescan path calls outside the pump.</summary>
-    void ArmWatchCatchUp(char driveLetter)
-    {
-        lock (_stateLock)
-        {
-            ArmWatchCatchUpLocked(driveLetter);
-        }
-    }
-
     /// <summary>
     ///     Flips one drive to <see cref="WatchCatchUpState.CaughtUp" /> when its arm's marker
     ///     arrives. A marker for a drive that is not catching up (unknown, superseded, already
@@ -95,6 +86,30 @@ public sealed partial class FileIndex
             }
 
             _watchCatchUpByOrdinal.Clear();
+        }
+    }
+
+    /// <summary>
+    ///     <see cref="ResetWatchCatchUpLocked" /> for a session a rescan reclaims: a drive whose
+    ///     watch failure message is still recorded keeps its <see cref="WatchCatchUpState.Faulted" />
+    ///     slot, because the rescan recovers only its own drive and the other drives' failures
+    ///     remain true. The caller holds <see cref="_stateLock" />.
+    /// </summary>
+    void ResetWatchCatchUpKeepingRecordedFailuresLocked()
+    {
+        lock (_stateLock)
+        {
+            foreach (var (driveOrdinal, slot) in _watchCatchUpByOrdinal.ToArray())
+            {
+                if (slot.State == WatchCatchUpState.Faulted &&
+                    _watchFailureMessagesByOrdinal.ContainsKey(driveOrdinal))
+                {
+                    continue;
+                }
+
+                slot.Cancel();
+                _watchCatchUpByOrdinal.Remove(driveOrdinal);
+            }
         }
     }
 

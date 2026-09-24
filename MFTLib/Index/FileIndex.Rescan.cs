@@ -33,6 +33,28 @@ public sealed partial class FileIndex
     ///         place and the drive's watch refusal is left exactly as it was, rather than being
     ///         armed from a cursor the journal still cannot resume.
     ///     </para>
+    ///     <para>
+    ///         If the watch session ends while the rescan is in flight, because every watched
+    ///         drive failed and the pump stopped reading, the drive is not armed onto that
+    ///         session's released stream. The rescan reclaims the ended session and starts a fresh
+    ///         one in its place, unless the session ended through cancellation, and it never stops
+    ///         a session that is still running to do so. That restart recovers only this drive: it
+    ///         clears this drive's <see cref="DriveStatus.WatchFailureMessage" /> and faulted
+    ///         <see cref="DriveStatus.WatchCatchUp" />, keeps every other drive's recorded failure,
+    ///         faulted catch-up, and <see cref="DriveStatus.CheckpointLoss" />, and leaves every
+    ///         drive with a recorded failure out of the new session. A drive whose live watch lost
+    ///         its journal checkpoint is therefore never armed from a cursor the journal no longer
+    ///         holds; each such drive needs its own rescan, which arms it onto the running session.
+    ///         The ended session's outstanding faults, other drives', subscriber, and source faults
+    ///         alike, are retained on the index until the next <see cref="StopWatchingAsync" />,
+    ///         which rethrows the earliest of them even if the fresh session has since ended on its
+    ///         own. A disarm or arm the source rejects with
+    ///         <see cref="WatchStreamNotRunningException" /> after the session's stream started
+    ///         means the stream was released while the pump was still finishing, so the rescan
+    ///         waits for the pump, bounded by <paramref name="cancellationToken" />, and treats the
+    ///         session as ended. <see cref="StartWatchingAsync" /> still clears every armed drive's
+    ///         failure.
+    ///     </para>
     /// </remarks>
     public async Task RescanAsync(char driveLetter, CancellationToken cancellationToken)
     {

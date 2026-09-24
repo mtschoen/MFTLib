@@ -135,27 +135,27 @@ public class FileIndexWatchRescanTests
         await harness.PublishAsync(new DriveWatchFailure('U', new IOException("U's journal wrapped")));
         await harness.SourceEndedAsync();
 
-        // SourceEndedAsync only signals that the source's own iterator reached its finally
-        // (FakeIndexWatchSource stops answering source calls right there); the pump still has
-        // fault bookkeeping to run after that before its own task completes. Every drive already
-        // faulted here, so the session stays claimed (FileIndex.WatchPump.ReportSourceEndedWithoutStop
-        // is skipped) until RescanAsync's SuspendDriveForRescanAsync sees the pump as done and
-        // reclaims it; calling RescanAsync before that can still see an active session and try to
-        // disarm a drive against a source whose stream already ended.
+        // Fenced on pump completion so this pins the suspend step that finds the pump already
+        // finished. The orderings where the session ends while the rescan is in flight are in
+        // FileIndexWatchRescanEndedSessionTests.
         await harness.WaitForPumpToCompleteAsync();
 
         await harness.Index.RescanAsync('T', Token);
-        await harness.SourceStartedAsync();
+        var targets = await harness.SourceStartedAsync();
 
         Assert.AreEqual(2, harness.SourceInvocationCount);
         Assert.AreEqual(0, harness.WatchOperations.Count, "A dead session is restarted whole, not re-armed.");
+        Assert.AreEqual('T', targets.Single().DriveLetter, "U's own failure still stands, so it needs its own rescan.");
         Assert.IsNull(DriveFor(harness, 'T').WatchFailureMessage);
-        Assert.IsNull(DriveFor(harness, 'U').WatchFailureMessage);
+        Assert.AreEqual("U's journal wrapped", DriveFor(harness, 'U').WatchFailureMessage);
 
-        await harness.PublishAsync(new JournalBatch('U',
-            [WatchHarness.Create(recordNumber: 10, "u.txt")], JournalId: 22, NextUsn: 9000));
-        Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
-        await harness.Index.StopWatchingAsync(Token);
+        await harness.PublishAsync(new JournalBatch('T',
+            [WatchHarness.Create(recordNumber: 10, "t.txt")], JournalId: 11, NextUsn: 9000));
+        Assert.AreEqual(9000L, harness.BlockFor('T').Header.UsnNextUsn);
+
+        // T's fault was recovered by the rescan; U's was carried into the fresh session.
+        var thrown = await Assert.ThrowsExceptionAsync<IOException>(() => harness.Index.StopWatchingAsync(Token));
+        Assert.AreEqual("U's journal wrapped", thrown.Message);
     }
 
     [TestMethod]

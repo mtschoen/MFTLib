@@ -265,7 +265,7 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
 
     LiveStream ClaimedStreamLocked(string operation)
     {
-        return _stream ?? throw new InvalidOperationException(
+        return _stream ?? throw new WatchStreamNotRunningException(
             $"No stream is running on this watch source, so there is no drive to {operation} on it.");
     }
 

@@ -18,9 +18,12 @@ internal sealed class WatchHarness : IDisposable
     readonly Dictionary<char, IndexWatchTarget> _cursorsByDrive;
     readonly Dictionary<char, BlockFile> _producedBlocks = [];
     readonly Dictionary<char, Exception> _productionFailuresByDrive = [];
+    readonly Dictionary<char, TestGate> _productionHoldsByDrive = [];
+    readonly List<TestGate> _gates = [];
     readonly string _cacheDirectory;
     readonly char _firstDriveLetter;
     readonly FakeIndexWatchSource? _source;
+    TestGate? _sourceEndingHold;
 
     public WatchHarness(ulong journalId = 7, long nextUsn = 100)
         : this(useDefaultWatchSource: true, watchSource: null,
@@ -123,9 +126,40 @@ internal sealed class WatchHarness : IDisposable
         _productionFailuresByDrive[char.ToUpperInvariant(driveLetter)] = failure;
     }
 
+    /// <summary>
+    ///     Parks this drive's next scan inside the producer until the returned gate is released.
+    ///     The gate's <see cref="TestGate.Entered" /> completes once the scan has started, which for
+    ///     a rescan means the drive has already been taken off the watch.
+    /// </summary>
+    public TestGate HoldNextProduction(char driveLetter)
+    {
+        var gate = TrackGate();
+        lock (_productionHoldsByDrive)
+        {
+            _productionHoldsByDrive[char.ToUpperInvariant(driveLetter)] = gate;
+        }
+
+        return gate;
+    }
+
+    /// <summary>
+    ///     Parks the next source stream inside its <c>finally</c>, after it has stopped answering
+    ///     arm and disarm calls but before the pump that reads it can complete. The gate's
+    ///     <see cref="TestGate.Entered" /> completes once the stream is parked there.
+    /// </summary>
+    public TestGate HoldSourceEnding()
+    {
+        var gate = TrackGate();
+        Volatile.Write(ref _sourceEndingHold, gate);
+        return gate;
+    }
+
     public Task<IReadOnlyList<IndexWatchTarget>> SourceStartedAsync() => Source.SourceStartedAsync();
 
     public Task SourceEndedAsync() => Source.SourceEndedAsync();
+
+    /// <summary>Completes the first time the source rejects an arm or disarm for want of a stream.</summary>
+    public Task SourceRejectedAsync() => Source.RejectionObservedAsync();
 
     public Task CompleteSourceAsync() => Source.CompleteSourceAsync();
 
@@ -207,6 +241,14 @@ internal sealed class WatchHarness : IDisposable
         // Teardown must never be the thing that wedges: a test that failed before releasing a
         // deliberately unresponsive source would otherwise hang here instead of reporting.
         _source?.ReleaseWedgedSource();
+        lock (_gates)
+        {
+            foreach (var gate in _gates)
+            {
+                gate.Release();
+            }
+        }
+
         Index.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _source?.Dispose();
         foreach (var blockBuilder in _blockBuilders.Values)
@@ -217,10 +259,33 @@ internal sealed class WatchHarness : IDisposable
         Directory.Delete(_cacheDirectory, recursive: true);
     }
 
-    Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
+    TestGate TrackGate()
+    {
+        var gate = new TestGate();
+        lock (_gates)
+        {
+            _gates.Add(gate);
+        }
+
+        return gate;
+    }
+
+    async Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var driveLetter = char.ToUpperInvariant(request.DriveLetter);
+        TestGate? hold;
+        lock (_productionHoldsByDrive)
+        {
+            _productionHoldsByDrive.Remove(driveLetter, out hold);
+        }
+
+        if (hold is not null)
+        {
+            hold.MarkEntered();
+            await hold.WaitForReleaseAsync(cancellationToken);
+        }
+
         if (_productionFailuresByDrive.Remove(driveLetter, out var productionFailure))
         {
             throw productionFailure;
@@ -230,8 +295,8 @@ internal sealed class WatchHarness : IDisposable
         var block = _blockBuilders[driveLetter].OpenForReading(out var validation) ??
                     throw new InvalidOperationException($"Synthetic watch block was invalid: {validation}.");
         _producedBlocks[driveLetter] = block;
-        return Task.FromResult(new MftBlockProduceResult(block, cursor.JournalId, cursor.NextUsn,
-            SkippedRecordCount: 0, CompactionNeeded: false));
+        return new MftBlockProduceResult(block, cursor.JournalId, cursor.NextUsn,
+            SkippedRecordCount: 0, CompactionNeeded: false);
     }
 
     /// <summary>
@@ -240,6 +305,12 @@ internal sealed class WatchHarness : IDisposable
     /// </summary>
     void RecordSourceEnding()
     {
+        if (Interlocked.Exchange(ref _sourceEndingHold, null) is { } hold)
+        {
+            hold.MarkEntered();
+            hold.WaitForRelease();
+        }
+
         try
         {
             _ = BlockFor(_firstDriveLetter).Header.Generation;

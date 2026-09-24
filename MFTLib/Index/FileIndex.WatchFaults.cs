@@ -3,7 +3,18 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     Outstanding pump faults for one session. Callers hold the index's state lock.
+    ///     Faults a rescan took over from a session it reclaimed, other than the rescanned drive's,
+    ///     that no <see cref="StopWatchingAsync" /> has reported yet. They belong to no running
+    ///     session, so a session that later ends cleanly and releases itself cannot drop them, and
+    ///     the next stop reports the earliest of them ahead of any fault its own session raised,
+    ///     then clears them. A later rescan that recovers one of these drives removes its entry.
+    ///     Read and written under <see cref="_stateLock" />.
+    /// </summary>
+    readonly WatchSessionFaults _unreportedWatchFaults = new();
+
+    /// <summary>
+    ///     Outstanding pump faults for one session, or, as <see cref="_unreportedWatchFaults" />,
+    ///     the faults rescans retained from reclaimed sessions. Callers hold the index's state lock.
     ///     Drive recovery removes only its normalized letter slot; session faults survive it.
     /// </summary>
     sealed class WatchSessionFaults
@@ -19,6 +30,26 @@ public sealed partial class FileIndex
 
         public Exception? FirstOutstanding => _entries.Values
             .OrderBy(entry => entry.Sequence).FirstOrDefault()?.Exception;
+
+        /// <summary>
+        ///     Takes on every fault still outstanding in <paramref name="previous" /> except the slot
+        ///     of <paramref name="recoveredDriveLetter" />, in the order they were raised and after
+        ///     everything already held, so the earliest fault stays the one a stop rethrows. A slot
+        ///     already held keeps its older fault.
+        /// </summary>
+        public void RetainFrom(WatchSessionFaults previous, char recoveredDriveLetter)
+        {
+            var recoveredSlot = (int)char.ToUpperInvariant(recoveredDriveLetter);
+            foreach (var (slot, entry) in previous._entries.OrderBy(pair => pair.Value.Sequence))
+            {
+                if (slot != recoveredSlot)
+                {
+                    Record(slot, entry.Exception);
+                }
+            }
+        }
+
+        public void Clear() => _entries.Clear();
 
         public void RecordDrive(char driveLetter, Exception exception) =>
             Record(char.ToUpperInvariant(driveLetter), exception);

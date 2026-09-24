@@ -12,6 +12,7 @@ public sealed partial class FileIndex
     {
         readonly List<IndexWatchTarget> _targets;
         readonly Lock _targetsLock = new();
+        bool _streamStarted;
 
         public WatchSession(CancellationTokenSource cancellation, IIndexWatchSource source,
             IReadOnlyList<IndexWatchTarget> targets, CancellationToken callerToken)
@@ -50,6 +51,23 @@ public sealed partial class FileIndex
         public WatchSessionFaults Faults { get; } = new();
 
         public Task Pump { get; set; } = Task.CompletedTask;
+
+        /// <summary>
+        ///     Set once the pump has received its first item. A source cannot yield without a
+        ///     running stream, so from then on a <see cref="WatchStreamNotRunningException" /> from
+        ///     this session's source means its stream has been released.
+        /// </summary>
+        public bool StreamStarted => Volatile.Read(ref _streamStarted);
+
+        /// <summary>
+        ///     Set under <see cref="FileIndex._stateLock" /> once the pump has stopped reading: when
+        ///     it decides no watched drive remains, before the source releases its stream, and when
+        ///     the stream ends for any other reason. A rescan reads it under the same lock to choose
+        ///     between re-arming its drive on this session and starting a fresh one.
+        /// </summary>
+        public bool Ended { get; set; }
+
+        public void MarkStreamStarted() => Volatile.Write(ref _streamStarted, true);
 
         public void RegisterTarget(IndexWatchTarget target)
         {
@@ -101,6 +119,7 @@ public sealed partial class FileIndex
         {
             await foreach (var item in source.StartWatching(targets, cancellationToken).ConfigureAwait(false))
             {
+                session.MarkStreamStarted();
                 if (item is DriveWatchFailure failure)
                 {
                     if (DropDrive(failure.DriveLetter, failure.Exception, WatchFaultKind.Source,
@@ -121,7 +140,7 @@ public sealed partial class FileIndex
                     CompleteWatchCatchUp(caughtUp.DriveLetter);
                 }
 
-                if (dropped && !AnyWatchedDriveRemains(session.Targets, droppedDriveLettersWithoutOrdinal))
+                if (dropped && EndSessionIfNoWatchedDriveRemains(session, droppedDriveLettersWithoutOrdinal))
                 {
                     // Every watched drive has failed. Breaking disposes the enumerator, which ends
                     // the watch at the source; the session stays so StopWatchingAsync still rethrows.
@@ -152,18 +171,26 @@ public sealed partial class FileIndex
             RaiseWatchFaulted(new WatchFault(WatchFaultKind.Source, null, exception));
         }
 
-        bool hasOutstandingFaults;
-        lock (_stateLock)
-        {
-            hasOutstandingFaults = session.Faults.HasFaults;
-        }
-        if (!hasOutstandingFaults && !cancellationToken.IsCancellationRequested)
+        if (!EndSessionAndCheckForOutstandingFaults(session) && !cancellationToken.IsCancellationRequested)
         {
             var remainingTargets = session.Targets;
             if (AnyWatchedDriveRemains(remainingTargets, droppedDriveLettersWithoutOrdinal))
             {
                 ReportSourceEndedWithoutStop(session, remainingTargets, droppedDriveLettersWithoutOrdinal);
             }
+        }
+    }
+
+    /// <summary>
+    ///     Marks the session <see cref="WatchSession.Ended" /> once its stream is over, however it
+    ///     ended, and reports whether any fault is still outstanding on it.
+    /// </summary>
+    bool EndSessionAndCheckForOutstandingFaults(WatchSession session)
+    {
+        lock (_stateLock)
+        {
+            session.Ended = true;
+            return session.Faults.HasFaults;
         }
     }
 
@@ -318,6 +345,27 @@ public sealed partial class FileIndex
     void RecordWatchFailure(char driveLetter, Exception exception)
     {
         DropDrive(driveLetter, exception, WatchFaultKind.Source, []);
+    }
+
+    /// <summary>
+    ///     Decides whether the pump stops after a drop, and marks the session
+    ///     <see cref="WatchSession.Ended" /> when it does. The whole decision runs under
+    ///     <see cref="_stateLock" />, the lock a rescan holds while it clears its drive's failure
+    ///     and registers the drive again, so a concurrent re-arm either counts as a watched drive
+    ///     here or finds the session already marked ended.
+    /// </summary>
+    bool EndSessionIfNoWatchedDriveRemains(WatchSession session, HashSet<char> droppedDriveLettersWithoutOrdinal)
+    {
+        lock (_stateLock)
+        {
+            if (AnyWatchedDriveRemains(session.Targets, droppedDriveLettersWithoutOrdinal))
+            {
+                return false;
+            }
+
+            session.Ended = true;
+            return true;
+        }
     }
 
     /// <summary>
