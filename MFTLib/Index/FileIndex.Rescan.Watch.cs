@@ -3,15 +3,16 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     Puts the drive back on the watch after a swap that failed, so the caller's exception is
-    ///     the only consequence.
+    ///     Restores a previously healthy drive's old watch after a failed swap. A drive that
+    ///     required replacement retains its earlier fault instead; the swap exception propagates.
     /// </summary>
     async Task ResumeAfterFailedSwapAsync(char driveLetter, SuspendedWatch suspended,
-        Exception swapFailure, CancellationToken cancellationToken)
+        bool requiresReplacement, Exception swapFailure, CancellationToken cancellationToken)
     {
         try
         {
-            await ResumeDriveAfterRescanAsync(driveLetter, suspended, cancellationToken).ConfigureAwait(false);
+            await ResumeDriveAfterRescanAsync(driveLetter, suspended, BlockReplacementOutcome.NotReplaced,
+                requiresReplacement, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception resumeFailure)
         {
@@ -25,8 +26,10 @@ public sealed partial class FileIndex
     ///     Stops the rescanned drive at the watch source before the gate is taken.
     /// </summary>
     /// <remarks>
-    ///     A session whose pump has already completed is reclaimed here and restarted once the scan
-    ///     finishes. A disarm that fails on a session that has ended by the time the failure is
+    ///     A session whose pump has already completed is remembered here, without reclaiming it.
+    ///     Resume reclaims it only when the replacement outcome permits recovery, so a failed
+    ///     attempt preserves its outstanding faults and a later successful attempt can restart it.
+    ///     A disarm that fails on a session that has ended by the time the failure is
     ///     examined (see <see cref="HasSessionEndedAfterRejectionAsync" />) is the same case reached
     ///     one step later: the stream it would have stopped is already gone, so the failure becomes
     ///     a restart instead of a rescan failure. A disarm that fails on a session still running is
@@ -47,9 +50,7 @@ public sealed partial class FileIndex
 
         if (session.Pump.IsCompleted)
         {
-            var restart = EndedWithoutCancellation(session);
-            await ReclaimEndedWatchSessionAsync(session, driveLetter, cancellationToken).ConfigureAwait(false);
-            return new SuspendedWatch(session, restart);
+            return new SuspendedWatch(session, EndedWithoutCancellation(session));
         }
 
         if (session.ContainsTarget(driveLetter))
@@ -96,10 +97,20 @@ public sealed partial class FileIndex
     ///     <paramref name="suspended" /> remains the answer for the one case a fresh read cannot
     ///     recover: no session at all exists right now, but one did at suspend time and had
     ///     already ended without a stop (<see cref="SuspendedWatch.RestartWholeSession" />).
+    ///     <para>
+    ///         A drive that required replacement at suspension is left untouched when no replacement
+    ///         was committed. This decision precedes session reclamation as well as re-arming.
+    ///     </para>
     /// </remarks>
     async Task ResumeDriveAfterRescanAsync(char driveLetter, SuspendedWatch suspended,
+        BlockReplacementOutcome replacement, bool requiresReplacement,
         CancellationToken cancellationToken)
     {
+        if (requiresReplacement && replacement == BlockReplacementOutcome.NotReplaced)
+        {
+            return;
+        }
+
         WatchSession? currentSession;
         lock (_stateLock)
         {
@@ -295,7 +306,7 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     What a rescan took off the watch, and what it therefore has to put back.
+    ///     The session observed before a rescan and its restart intent.
     ///     <see cref="Session" /> is the session the rescan found at suspend time and disarmed on,
     ///     if it disarmed at all. <see cref="ResumeDriveAfterRescanAsync" /> re-reads the live watch
     ///     session instead of trusting it, so the carried session supplies only what a fresh read

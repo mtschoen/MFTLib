@@ -275,6 +275,17 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       registering or arming anything, so a failed scan leaves the drive's refusal exactly as it was
       instead of arming a cursor the journal still cannot resume (PR 230 review finding 1). The
       whole cache-only adoption behavior traces to file-wizard#481.
+      A rescan of a drive that was already watch-faulted requires a committed replacement
+      block before it can recover that watch. The swap/adoption step reports an explicit
+      internal replacement outcome; null production, a thrown swap, and cancellation before
+      replacement leave the prior block, WatchFailureMessage, faulted catch-up, outstanding
+      watch fault, and CheckpointLoss intact. Non-cancellation producer failures remain
+      visible through MftProducerFailureMessage. Such a failure neither arms the old cursor
+      nor restarts a session on that drive's behalf. A previously healthy drive may restore
+      its old watch after a failed rescan. Suspension remembers an ended session without
+      reclaiming it, preserving its faults and restart intent until an eligible recovery
+      or an explicit stop. Successful replacement retains per-drive re-arm and last-drive
+      restart behavior, and healthy siblings are never stopped for the failed attempt.
       A rescan also survives the watch session ending while it is in flight (MFTLib issue 241). When
       the last watched drive faults, the pump marks the session `Ended` under `_stateLock` before it
       releases the source stream, and it makes that decision under the same lock a rescan's resume
@@ -289,7 +300,7 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       failure, faulted catch-up, and `CheckpointLoss`, and any drive with a recorded failure is left
       out of the new session's targets, which is what keeps a drive whose `LiveWatch` loss says its
       cursor is gone from being armed from that cursor; each such drive needs its own rescan. When
-      the rescan reclaims the ended session it moves that session's outstanding faults, other than
+      an eligible rescan recovery reclaims the ended session it moves that session's outstanding faults, other than
       the rescanned drive's, into the index-level `_unreportedWatchFaults` ledger rather than into
       any session, so no later session can drop them by ending cleanly and releasing itself, and a
       restart that starts no session or a session ended by cancellation loses nothing either. The

@@ -23,6 +23,17 @@ public sealed partial class FileIndex
     ///     other drive's fault, subscriber faults, and source faults in place. If the re-arm fails,
     ///     the drive's earlier fault is restored unless a newer fault for it was recorded meanwhile.
     ///     <para>
+    ///         A drive whose watch was already faulted when this rescan began is recovered only
+    ///         after a replacement block is committed. If production returns no block, throws,
+    ///         or is cancelled before replacement, its previous block, watch failure, faulted
+    ///         catch-up, outstanding watch fault, and checkpoint-loss report remain in place.
+    ///         The drive is neither re-armed from its old cursor nor used to restart an ended
+    ///         watch session. Non-cancellation producer failures are available through
+    ///         <see cref="DriveStatus.MftProducerFailureMessage" /> even when this task completes
+    ///         normally. A previously healthy drive may instead resume its old watch after a
+    ///         failed rescan. Other drives continue watching independently.
+    ///     </para>
+    ///     <para>
     ///         A drive a cache-only open adopted despite a lost journal checkpoint (see
     ///         <see cref="FileIndexOptions.InitialOpenCacheOnly" />) is never disarmed here, since
     ///         it was never armed. If the scan replaces its block, the fresh cursor is armed onto
@@ -36,7 +47,7 @@ public sealed partial class FileIndex
     ///     <para>
     ///         If the watch session ends while the rescan is in flight, because every watched
     ///         drive failed and the pump stopped reading, the drive is not armed onto that
-    ///         session's released stream. The rescan reclaims the ended session and starts a fresh
+    ///         session's released stream. After an eligible recovery, the rescan reclaims the ended session and starts a fresh
     ///         one in its place, unless the session ended through cancellation, and it never stops
     ///         a session that is still running to do so. That restart recovers only this drive: it
     ///         clears this drive's <see cref="DriveStatus.WatchFailureMessage" /> and faulted
@@ -68,6 +79,7 @@ public sealed partial class FileIndex
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            var requiresReplacement = RequiresReplacementForWatchRecovery(driveLetter);
 
             // Disarming before the gate, never under it: the pump takes _swapGate synchronously
             // inside ApplyJournalEntriesCore, so touching the watch while this method holds the gate
@@ -83,19 +95,22 @@ public sealed partial class FileIndex
                 throw;
             }
 
+            BlockReplacementOutcome replacement;
             try
             {
-                await SwapDriveBlockAsync(drive, driveLetter, cancellationToken).ConfigureAwait(false);
+                replacement = await SwapDriveBlockAsync(drive, driveLetter, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception swapFailure)
             {
-                await ResumeAfterFailedSwapAsync(driveLetter, suspended, swapFailure, cancellationToken).ConfigureAwait(false);
+                await ResumeAfterFailedSwapAsync(driveLetter, suspended, requiresReplacement,
+                    swapFailure, cancellationToken).ConfigureAwait(false);
                 throw;
             }
 
             try
             {
-                await ResumeDriveAfterRescanAsync(driveLetter, suspended, cancellationToken).ConfigureAwait(false);
+                await ResumeDriveAfterRescanAsync(driveLetter, suspended, replacement,
+                    requiresReplacement, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception resumeFailure)
             {
@@ -109,21 +124,40 @@ public sealed partial class FileIndex
         }
     }
 
-    async Task SwapDriveBlockAsync(IndexedDrive drive, char driveLetter, CancellationToken cancellationToken)
+    enum BlockReplacementOutcome
+    {
+        NotReplaced,
+        Replaced
+    }
+
+    bool RequiresReplacementForWatchRecovery(char driveLetter)
+    {
+        lock (_stateLock)
+        {
+            return !TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal) ||
+                   _watchFailureMessagesByOrdinal.ContainsKey(driveOrdinal) ||
+                   _cacheOnlyUnresumableCheckpointOrdinals.Contains(driveOrdinal);
+        }
+    }
+
+    async Task<BlockReplacementOutcome> SwapDriveBlockAsync(IndexedDrive drive, char driveLetter, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (!TryGetDriveOrdinal(driveLetter, out var driveOrdinal))
         {
-            await ScanBlocklessDriveAsync(drive, driveLetter, cancellationToken).ConfigureAwait(false);
-            return;
+            return await ScanBlocklessDriveAsync(drive, driveLetter, cancellationToken).ConfigureAwait(false);
         }
 
         DriveBlock superseded;
         CacheSlotState previousCacheSlot;
+        JournalCheckpointLoss? previousCheckpointLoss;
+        bool previouslyUnresumable;
         lock (_stateLock)
         {
             superseded = _driveBlocks[driveOrdinal];
             previousCacheSlot = _cacheSlotsByOrdinal.GetValueOrDefault(driveOrdinal);
+            previousCheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveOrdinal);
+            previouslyUnresumable = _cacheOnlyUnresumableCheckpointOrdinals.Contains(driveOrdinal);
         }
 
         // The rename-aside is licensed by the owner lock: an index that does not hold it (its
@@ -138,7 +172,7 @@ public sealed partial class FileIndex
             superseded, cancellationToken).ConfigureAwait(false);
         if (scanResult is not { } completedScan)
         {
-            return;
+            return BlockReplacementOutcome.NotReplaced;
         }
 
         try
@@ -163,9 +197,19 @@ public sealed partial class FileIndex
                     {
                         _driveBlocks[driveOrdinal] = superseded;
                         _cacheSlotsByOrdinal[driveOrdinal] = previousCacheSlot;
+                        if (previousCheckpointLoss is not null)
+                        {
+                            _checkpointLossesByOrdinal[driveOrdinal] = previousCheckpointLoss;
+                        }
+
+                        if (previouslyUnresumable)
+                        {
+                            _cacheOnlyUnresumableCheckpointOrdinals.Add(driveOrdinal);
+                        }
                     }
                 },
                 completedScan.DriveBlock, cancellationToken).ConfigureAwait(false);
+            return BlockReplacementOutcome.Replaced;
         }
         catch
         {
@@ -246,7 +290,7 @@ public sealed partial class FileIndex
     ///     The rescan of a drive that has no block: one a cache-only open declined or whose
     ///     producer failed. Scans and adopts rather than swapping.
     /// </summary>
-    async Task ScanBlocklessDriveAsync(IndexedDrive drive, char driveLetter, CancellationToken cancellationToken)
+    async Task<BlockReplacementOutcome> ScanBlocklessDriveAsync(IndexedDrive drive, char driveLetter, CancellationToken cancellationToken)
     {
         var (blockless, driveOrdinal) = GetBlocklessDriveForRescan(driveLetter);
         var ownsCanonicalSlot = !_options.NoCache && EnsureCanonicalOwnership(drive);
@@ -257,7 +301,7 @@ public sealed partial class FileIndex
         {
             RecordBlocklessProducerFailure(driveLetter, driveOrdinal);
             ReleaseCanonicalOwnership(driveLetter);
-            return;
+            return BlockReplacementOutcome.NotReplaced;
         }
 
         await CommitBlockUnderSwapGateAsync(
@@ -290,6 +334,7 @@ public sealed partial class FileIndex
                 }
             },
             completedScan.DriveBlock, cancellationToken).ConfigureAwait(false);
+        return BlockReplacementOutcome.Replaced;
     }
 
     int FindBlocklessStatusIndexLocked(char driveLetter) =>

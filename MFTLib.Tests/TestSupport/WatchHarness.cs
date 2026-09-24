@@ -17,6 +17,7 @@ internal sealed class WatchHarness : IDisposable
     readonly Dictionary<char, SyntheticBlockBuilder> _blockBuilders;
     readonly Dictionary<char, IndexWatchTarget> _cursorsByDrive;
     readonly Dictionary<char, BlockFile> _producedBlocks = [];
+    readonly Dictionary<char, TaskCompletionSource<BlockFile>> _productionObserversByDrive = [];
     readonly Dictionary<char, Exception> _productionFailuresByDrive = [];
     readonly Dictionary<char, TestGate> _productionHoldsByDrive = [];
     readonly List<TestGate> _gates = [];
@@ -140,6 +141,17 @@ internal sealed class WatchHarness : IDisposable
         }
 
         return gate;
+    }
+
+    public Task<BlockFile> ObserveNextProducedBlock(char driveLetter)
+    {
+        var completion = new TaskCompletionSource<BlockFile>(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (_productionObserversByDrive)
+        {
+            _productionObserversByDrive.Add(char.ToUpperInvariant(driveLetter), completion);
+        }
+
+        return completion.Task;
     }
 
     /// <summary>
@@ -295,6 +307,14 @@ internal sealed class WatchHarness : IDisposable
         var block = _blockBuilders[driveLetter].OpenForReading(out var validation) ??
                     throw new InvalidOperationException($"Synthetic watch block was invalid: {validation}.");
         _producedBlocks[driveLetter] = block;
+        lock (_productionObserversByDrive)
+        {
+            if (_productionObserversByDrive.Remove(driveLetter, out var completion))
+            {
+                completion.TrySetResult(block);
+            }
+        }
+
         return new MftBlockProduceResult(block, cursor.JournalId, cursor.NextUsn,
             SkippedRecordCount: 0, CompactionNeeded: false);
     }
