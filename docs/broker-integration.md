@@ -70,6 +70,15 @@ before it is ready, fails the call with that exception (after the `WatchFaulted`
 announcement), and cancelling `cancellationToken` before readiness cancels it. Either way the
 unready session is released, so `StartWatchingAsync` can simply be called again.
 
+Cancellation, `StopWatchingAsync`, and `DisposeAsync` end a start promptly even while the
+StartWatch frame is stuck on the broker pipe. The frame is never abandoned half-written: the
+send finishes in the background and the watch it started is then stopped cleanly, with the
+broker's acknowledgement read, before the source starts another. A `StartWatchingAsync` issued
+in that interval waits for the cleanup, bounded by its own token, and then starts normally. If
+the cleanup fails, for example because the broker never acknowledged the stop, that source
+refuses every later start with an `InvalidOperationException`; reconnect and create a new
+watch source (and index) to watch again.
+
 Each drive's watch resumes from the cursor stamped in its own block header, which is the
 cursor armed before that drive's cold scan, not the cursor advanced past the scan's own
 catch-up entries. Starting the live watch from the armed cursor deliberately replays the

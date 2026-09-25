@@ -36,6 +36,11 @@ public interface IIndexWatchSource
     ///     <paramref name="cancellationToken" /> when the session stops and the implementation
     ///     must then finish, since a source that ignores its token wedges
     ///     <see cref="FileIndex.StopWatchingAsync" /> until that call's own token bounds the wait.
+    ///     The same holds before the stream is ready: a start that is cancelled, stopped, or
+    ///     disposed waits for the stream to end before it returns, so a source must observe the
+    ///     token at every await during startup too, and hand off any step it must not interrupt
+    ///     rather than wait for it, as <see cref="BrokerIndexWatchSource" /> does with its
+    ///     StartWatch send.
     /// </summary>
     IAsyncEnumerable<WatchStreamItem> StartWatching(
         IReadOnlyList<IndexWatchTarget> targets, CancellationToken cancellationToken);

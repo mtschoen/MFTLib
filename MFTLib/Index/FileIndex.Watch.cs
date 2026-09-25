@@ -59,6 +59,12 @@ public sealed partial class FileIndex
     ///         <see cref="StopWatchingAsync" />, and this method can be called again. Releasing it
     ///         waits for the source to finish, so a source that ignores its cancellation token
     ///         wedges this call the way it wedges <see cref="StopWatchingAsync" />.
+    ///         <see cref="BrokerIndexWatchSource" /> observes it at every startup step, including
+    ///         while its StartWatch send is blocked on the broker pipe, so with the broker source
+    ///         this call is bounded by <paramref name="cancellationToken" /> and by a stop or
+    ///         disposal. The send is left to finish in the background and the watch it started is
+    ///         torn down before the source will start another, so a later call to this method
+    ///         waits for that teardown, bounded by its own token.
     ///     </para>
     ///     Once the stream is ready, cancelling <paramref name="cancellationToken" /> ends the
     ///     session and raises no fault; the session is reclaimed by <see cref="StopWatchingAsync" />

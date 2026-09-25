@@ -20,14 +20,17 @@ internal sealed class InProcessBlockBrokerHarness : IAsyncDisposable
         public NtfsVolumeInformation? VolumeInformation { get; set; }
         public UsnJournalCursorQuery? QueryCursor { get; set; }
         public JournalBatchSource? WatchDrive { get; set; }
+
+        /// <summary>Wraps the client's end of the pipe, so a test can gate or observe its frames.</summary>
+        public Func<Stream, Stream>? WrapClientTransport { get; set; }
     }
 
     public InProcessBlockBrokerHarness(Options options)
     {
-        var (client, server) = DuplexStream.CreatePair();
+        var (clientTransport, server) = DuplexStream.CreatePair();
         _server = server;
         _writer = new RecordingBlockSectionWriter(name => _sections[name]);
-        Client = new JournalBrokerClient(client,
+        Client = new JournalBrokerClient(options.WrapClientTransport?.Invoke(clientTransport) ?? clientTransport,
             (_, blockOptions) =>
             {
                 CreatedBlock = BlockFile.Create(blockOptions);

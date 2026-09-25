@@ -59,6 +59,18 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     ///     from then on <see cref="ArmDriveAsync" /> and <see cref="DisarmDriveAsync" /> find a
     ///     running stream. A connection or send failure, or cancellation before that point, throws
     ///     from the stream instead.
+    ///     <para>
+    ///         Cancellation is observed promptly at every step, including while the StartWatch send
+    ///         is blocked on the client's arm-ordering gate or on the pipe write. The send itself is
+    ///         not cancelled: it finishes in the background, and the live watch it started is then
+    ///         stopped through <see cref="JournalBrokerClient.StopLiveWatchAsync" />, which reads the
+    ///         broker's acknowledgement so it cannot end a later watch. Until that teardown is done
+    ///         the stream stays claimed, and a new start on this source waits for it, bounded by its
+    ///         own token, rather than being rejected. A teardown that fails, including a stop that times
+    ///         out without the acknowledgement, fails that start and every later one on this source
+    ///         with an <see cref="InvalidOperationException" />, since the acknowledgement could still
+    ///         arrive and end a later watch on the same connection.
+    ///     </para>
     /// </summary>
     public async IAsyncEnumerable<WatchStreamItem> StartWatching(
         IReadOnlyList<IndexWatchTarget> targets, Action reportStreamReady,
@@ -67,19 +79,24 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         ArgumentNullException.ThrowIfNull(reportStreamReady);
         ValidateTargets(targets);
         cancellationToken.ThrowIfCancellationRequested();
-        ClaimStream();
+        await ClaimStreamAsync(cancellationToken).ConfigureAwait(false);
 
         LiveStream stream;
         Channel<TaggedItem> channel;
+        PendingStartWatch? pendingStart = null;
         try
         {
             var client = await _connectAsync(cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Keep the demux alive until StopLiveWatchAsync reads EndWatchAck. Cancelling it with
-            // the consumer token can leave that acknowledgement to terminate the next watch.
-            await client.SendStartWatchAsync(BuildCursors(targets), CancellationToken.None)
-                .ConfigureAwait(false);
+            // The send itself is never cancelled, so the demux it starts stays alive until
+            // StopLiveWatchAsync reads EndWatchAck: cancelling it with the consumer token can leave
+            // that acknowledgement to terminate the next watch, and cancelling the write can leave
+            // half a frame on the pipe. Only this wait for it observes the token. A send the wait
+            // gives up on finishes in the background and is torn down by RetireAbandonedStart.
+            pendingStart = new PendingStartWatch(client,
+                client.SendStartWatchAsync(BuildCursors(targets), CancellationToken.None));
+            await pendingStart.Value.Send.WaitAsync(cancellationToken).ConfigureAwait(false);
             if (BeforeStreamPublishedForTest is { } beforeStreamPublished)
             {
                 await beforeStreamPublished(cancellationToken).ConfigureAwait(false);
@@ -96,7 +113,15 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         }
         catch
         {
-            ReleaseStream();
+            if (pendingStart is { } abandoned && IsStillInFlightOrSent(abandoned.Send))
+            {
+                RetireAbandonedStart(abandoned);
+            }
+            else
+            {
+                ReleaseStream();
+            }
+
             throw;
         }
 
@@ -150,20 +175,6 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         return targets.ToDictionary(
             target => JournalBrokerClient.NormalizeDriveLetter(target.DriveLetter.ToString()),
             target => new UsnJournalCursor(target.JournalId, target.NextUsn));
-    }
-
-    void ClaimStream()
-    {
-        lock (_streamLock)
-        {
-            if (_streamClaimed)
-            {
-                throw new InvalidOperationException(
-                    "This watch source is already running a stream. One instance runs at most one at a time.");
-            }
-
-            _streamClaimed = true;
-        }
     }
 
     void StartStream(LiveStream stream, IReadOnlyList<IndexWatchTarget> targets)
