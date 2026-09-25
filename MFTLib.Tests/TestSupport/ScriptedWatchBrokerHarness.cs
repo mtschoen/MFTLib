@@ -78,6 +78,16 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
         await _server.FlushAsync(_hangGuard.Token);
     }
 
+    public Task WriteAcknowledgementAsync(BrokerFrame startWatch)
+    {
+        return WriteAcknowledgementAsync(startWatch.WatchGeneration);
+    }
+
+    public Task WriteAcknowledgementAsync(uint watchGeneration = 1)
+    {
+        return WriteAsync(writer => BrokerProtocol.WriteEndWatchAck(writer, watchGeneration));
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _client.DisposeAsync();

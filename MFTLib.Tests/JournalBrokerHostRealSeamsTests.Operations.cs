@@ -127,7 +127,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
         // The cached cursor precedes the queried tip, so the batch must precede CaughtUp.
         var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
+        BrokerProtocol.WriteStartWatch(request, "C:7:100:1", 1U);
         await clientSide.WriteAsync(request.WrittenMemory);
         await clientSide.FlushAsync();
 
@@ -175,7 +175,7 @@ public partial class JournalBrokerHostRealSeamsTests
         var (clientSide, serverSide) = DuplexStream.CreatePair();
 
         var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
+        BrokerProtocol.WriteStartWatch(request, "C:7:100:1", 1U);
         await clientSide.WriteAsync(request.WrittenMemory, cts.Token);
         await clientSide.FlushAsync(cts.Token);
 
@@ -508,7 +508,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
             // Arm watches across several drives with cursors matching the journal tip (7:200).
             var startRequest = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteStartWatch(startRequest, "C:7:200:1,D:7:200:2,E:7:300:3");
+            BrokerProtocol.WriteStartWatch(startRequest, "C:7:200:1,D:7:200:2,E:7:300:3", 1U);
             await clientSide.WriteAsync(startRequest.WrittenMemory, cts.Token);
             await clientSide.FlushAsync(cts.Token);
 

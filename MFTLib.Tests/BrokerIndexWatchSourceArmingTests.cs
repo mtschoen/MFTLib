@@ -379,7 +379,7 @@ public partial class BrokerIndexWatchSourceArmingTests
     {
         var disposal = enumerator.DisposeAsync();
         Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.WriteAcknowledgementAsync();
         await disposal;
     }
 

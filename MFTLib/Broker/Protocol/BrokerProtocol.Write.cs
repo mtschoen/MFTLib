@@ -42,9 +42,30 @@ public static partial class BrokerProtocol
         writer.Advance(offset);
     }
 
-    public static void WriteStartWatch(IBufferWriter<byte> writer, string drivesSpec)
+    public static void WriteStartWatch(IBufferWriter<byte> writer, string drivesSpec, uint watchGeneration)
     {
-        WriteFrameWithString(writer, BrokerFrameKind.StartWatch, drivesSpec);
+        if (watchGeneration == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(watchGeneration), watchGeneration, "Watch generation must be non-zero.");
+        }
+
+        var specBytes = Encoding.Unicode.GetBytes(drivesSpec);
+        // payload: [watchGeneration uint32][specLen int32][specBytes]
+        var payloadLength = 4 + 4 + specBytes.Length;
+        var totalLength = 1 + payloadLength;
+        var span = writer.GetSpan(4 + totalLength);
+        var offset = 0;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)BrokerFrameKind.StartWatch;
+        offset += 1;
+        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], watchGeneration);
+        offset += 4;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], specBytes.Length);
+        offset += 4;
+        specBytes.CopyTo(span[offset..]);
+        offset += specBytes.Length;
+        writer.Advance(offset);
     }
 
     public static void WriteDisarmDrive(IBufferWriter<byte> writer, string drive)
@@ -67,9 +88,25 @@ public static partial class BrokerProtocol
         WriteFrameNoPayload(writer, BrokerFrameKind.EndWatch);
     }
 
-    public static void WriteEndWatchAck(IBufferWriter<byte> writer)
+    public static void WriteEndWatchAck(IBufferWriter<byte> writer, uint watchGeneration)
     {
-        WriteFrameNoPayload(writer, BrokerFrameKind.EndWatchAck);
+        if (watchGeneration == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(watchGeneration), watchGeneration, "Watch generation must be non-zero.");
+        }
+
+        // payload: [watchGeneration uint32]
+        var payloadLength = 4;
+        var totalLength = 1 + payloadLength;
+        var span = writer.GetSpan(4 + totalLength);
+        var offset = 0;
+        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
+        offset += 4;
+        span[offset] = (byte)BrokerFrameKind.EndWatchAck;
+        offset += 1;
+        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], watchGeneration);
+        offset += 4;
+        writer.Advance(offset);
     }
 
     public static void WriteScanReady(IBufferWriter<byte> writer, string mmfName, long rowCount, long namePoolUsedBytes, long skippedRecordCount)

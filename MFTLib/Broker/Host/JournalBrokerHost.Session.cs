@@ -116,7 +116,7 @@ public sealed partial class JournalBrokerHost
                 case BrokerFrameKind.StartWatch:
                     if (frame.Value.DrivesSpec is { } watchSpec)
                     {
-                        await ArmWatchDrivesAsync(stream, writeLock, watch, watchSpec, cancellationToken)
+                        await ArmWatchDrivesAsync(stream, writeLock, watch, watchSpec, frame.Value.WatchGeneration, cancellationToken)
                             .ConfigureAwait(false);
                     }
 
@@ -127,8 +127,14 @@ public sealed partial class JournalBrokerHost
                     break;
 
                 case BrokerFrameKind.EndWatch:
+                    var endingGeneration = watch.Generation;
+                    if (endingGeneration == 0)
+                    {
+                        throw new InvalidOperationException("No watch generation is currently active to end.");
+                    }
                     await StopWatchGenerationAsync(watch).ConfigureAwait(false);
-                    await WriteReplyFrameAsync(stream, writeLock, BrokerProtocol.WriteEndWatchAck, cancellationToken)
+                    await WriteReplyFrameAsync(stream, writeLock,
+                        writer => BrokerProtocol.WriteEndWatchAck(writer, endingGeneration), cancellationToken)
                         .ConfigureAwait(false);
                     break;
 
@@ -143,14 +149,21 @@ public sealed partial class JournalBrokerHost
         SemaphoreSlim writeLock,
         WatchGeneration watch,
         string watchSpec,
+        uint watchGeneration,
         CancellationToken cancellationToken)
     {
-        // Arming a drive that is already armed stops its task and awaits it to a stop
-        // before the fresh one starts, so one drive never has two tasks writing frames at
-        // once. That is what replaces the old refusal to act on a second StartWatch: the
-        // refusal existed only because the frame loop had no way to retire a running
-        // generation safely, and awaiting one drive to a stop is that way. Drives this
-        // spec does not name are not touched.
+        if (watchGeneration == 0)
+        {
+            throw new InvalidOperationException("Watch generation cannot be zero.");
+        }
+
+        if (watch.Cancellation != null && watch.Generation != watchGeneration)
+        {
+            throw new InvalidOperationException(
+                $"Conflicting watch generation {watchGeneration} while generation {watch.Generation} is still active.");
+        }
+
+        watch.Generation = watchGeneration;
         watch.Cancellation ??= CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         foreach (var request in ParseWatchSpec(watchSpec))
         {
@@ -195,12 +208,14 @@ public sealed partial class JournalBrokerHost
         watch.DriveWatches.Clear();
         watch.Cancellation.Dispose();
         watch.Cancellation = null;
+        watch.Generation = 0;
     }
 
     sealed class WatchGeneration
     {
         public readonly Dictionary<string, DriveWatch> DriveWatches = new(StringComparer.OrdinalIgnoreCase);
         public CancellationTokenSource? Cancellation;
+        public uint Generation;
     }
 
     sealed class DriveWatch : IDisposable

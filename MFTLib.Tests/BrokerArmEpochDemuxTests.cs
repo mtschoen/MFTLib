@@ -55,7 +55,7 @@ public sealed class BrokerArmEpochDemuxTests : BrokerBlockTestBase
         {
             BrokerProtocol.WriteJournalBatch(writer, "C", existingArmEpoch,
                 new UsnJournalCursor(7UL, 110L), [JournalEntryFactory.Create(1, 101L, "existing.txt")]);
-            BrokerProtocol.WriteEndWatchAck(writer);
+            BrokerProtocol.WriteEndWatchAck(writer, firstStartWatch.WatchGeneration);
         }, cancellation.Token);
 
         Assert.IsTrue(await batches.MoveNextAsync().AsTask().WaitAsync(cancellation.Token));
@@ -179,7 +179,7 @@ public sealed class BrokerArmEpochDemuxTests : BrokerBlockTestBase
         await using var driveCBatches = client.CreateBatchSource()("C", default, cancellation.Token)
             .GetAsyncEnumerator(cancellation.Token);
         var driveCMoveNext = driveCBatches.MoveNextAsync().AsTask();
-        await WriteFrameAsync(serverSide, BrokerProtocol.WriteEndWatchAck, cancellation.Token);
+        await WriteFrameAsync(serverSide, writer => BrokerProtocol.WriteEndWatchAck(writer, driveDStartWatch.WatchGeneration), cancellation.Token);
         Assert.IsFalse(await driveCMoveNext.WaitAsync(cancellation.Token));
     }
 

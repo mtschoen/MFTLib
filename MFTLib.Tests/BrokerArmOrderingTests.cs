@@ -114,80 +114,66 @@ public sealed class BrokerArmOrderingTests : BrokerBlockTestBase
     }
 
     [TestMethod]
-    public async Task SendStartWatchAsync_AfterAStopThatTimedOut_NeverReissuesAnEarlierEpoch()
+    public async Task SendStartWatchAsync_AfterAStopThatWasCancelled_NeverReissuesAnEarlierEpoch()
     {
-        var previousTimeout = JournalBrokerClient._endWatchAckTimeout;
-        JournalBrokerClient._endWatchAckTimeout = TimeSpan.FromMilliseconds(50);
-        try
-        {
-            var (clientSide, serverSide) = DuplexStream.CreatePair();
-            await using var client = MakeMinimalFakeClient(clientSide);
-            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var client = MakeMinimalFakeClient(clientSide);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
-            await client.SendStartWatchAsync(WatchCursor("C", 7UL, 100L), cancellation.Token);
-            var firstStartWatch = await ReadOneFrameAsync(serverSide, cancellation.Token);
-            var firstArmEpoch = WatchSpecArmEpochs.ForDrive(firstStartWatch, "C");
+        await client.SendStartWatchAsync(WatchCursor("C", 7UL, 100L), cancellation.Token);
+        var firstStartWatch = await ReadOneFrameAsync(serverSide, cancellation.Token);
+        var firstArmEpoch = WatchSpecArmEpochs.ForDrive(firstStartWatch, "C");
 
-            await client.StopLiveWatchAsync().WaitAsync(cancellation.Token);
-            Assert.IsTrue(client.LastStopTimedOut);
-            Assert.AreEqual(BrokerFrameKind.EndWatch,
-                (await ReadOneFrameAsync(serverSide, cancellation.Token)).Kind);
+        using var stopCts = new CancellationTokenSource();
+        var stopTask = client.StopLiveWatchAsync(stopCts.Token);
+        Assert.AreEqual(BrokerFrameKind.EndWatch,
+            (await ReadOneFrameAsync(serverSide, cancellation.Token)).Kind);
+        await stopCts.CancelAsync();
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => stopTask);
 
-            await client.SendStartWatchAsync(WatchCursor("C", 7UL, 500L), cancellation.Token);
-            var secondStartWatch = await ReadOneFrameAsync(serverSide, cancellation.Token);
-            var secondArmEpoch = WatchSpecArmEpochs.ForDrive(secondStartWatch, "C");
+        await client.SendStartWatchAsync(WatchCursor("C", 7UL, 500L), cancellation.Token);
+        var secondStartWatch = await ReadOneFrameAsync(serverSide, cancellation.Token);
+        var secondArmEpoch = WatchSpecArmEpochs.ForDrive(secondStartWatch, "C");
 
-            Assert.IsTrue(secondArmEpoch > firstArmEpoch);
-        }
-        finally
-        {
-            JournalBrokerClient._endWatchAckTimeout = previousTimeout;
-        }
+        Assert.IsTrue(secondArmEpoch > firstArmEpoch);
     }
 
     [TestMethod]
-    public async Task QueryVolumesAsync_AfterAStopThatTimedOut_DrainsAStaleCaughtUpFrameWithoutKillingTheBroker()
+    public async Task QueryVolumesAsync_AfterAStopThatWasCancelled_DrainsAStaleCaughtUpFrameWithoutKillingTheBroker()
     {
-        var previousTimeout = JournalBrokerClient._endWatchAckTimeout;
-        JournalBrokerClient._endWatchAckTimeout = TimeSpan.FromMilliseconds(50);
-        try
-        {
-            var (clientSide, serverSide) = DuplexStream.CreatePair();
-            await using var client = MakeMinimalFakeClient(clientSide);
-            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            string? diedReason = null;
-            client.BrokerDied += reason => diedReason = reason;
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var client = MakeMinimalFakeClient(clientSide);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        string? diedReason = null;
+        client.BrokerDied += reason => diedReason = reason;
 
-            await client.SendStartWatchAsync(WatchCursor("C", 7UL, 100L), cancellation.Token);
-            var startWatch = await ReadOneFrameAsync(serverSide, cancellation.Token);
-            var staleArmEpoch = WatchSpecArmEpochs.ForDrive(startWatch, "C");
+        await client.SendStartWatchAsync(WatchCursor("C", 7UL, 100L), cancellation.Token);
+        var startWatch = await ReadOneFrameAsync(serverSide, cancellation.Token);
+        var staleArmEpoch = WatchSpecArmEpochs.ForDrive(startWatch, "C");
 
-            await client.StopLiveWatchAsync().WaitAsync(cancellation.Token);
-            Assert.IsTrue(client.LastStopTimedOut);
-            Assert.AreEqual(BrokerFrameKind.EndWatch,
-                (await ReadOneFrameAsync(serverSide, cancellation.Token)).Kind);
+        using var stopCts = new CancellationTokenSource();
+        var stopTask = client.StopLiveWatchAsync(stopCts.Token);
+        Assert.AreEqual(BrokerFrameKind.EndWatch,
+            (await ReadOneFrameAsync(serverSide, cancellation.Token)).Kind);
+        await stopCts.CancelAsync();
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => stopTask);
 
-            // With the demux relinquished, the next control exchange reads the wire
-            // directly. The wedged broker's retired watch finally catches up and writes a
-            // CaughtUp frame tagged with the epoch the timed-out stop already gave up on,
-            // arriving ahead of the query's own reply on the same connection.
-            var query = client.QueryVolumesAsync(["C:\\"], cancellation.Token);
-            Assert.AreEqual(BrokerFrameKind.QueryVolumes,
-                (await ReadOneFrameAsync(serverSide, cancellation.Token)).Kind);
-            await WriteFrameAsync(serverSide,
-                writer => BrokerProtocol.WriteCaughtUp(writer, "C", staleArmEpoch), cancellation.Token);
-            await WriteFrameAsync(serverSide,
-                writer => BrokerProtocol.WriteVolumeInfo(writer, "C", 128, 1024, 128 * 1024), cancellation.Token);
+        // With the demux relinquished, the next control exchange reads the wire
+        // directly. The wedged broker's retired watch finally catches up and writes a
+        // CaughtUp frame tagged with the epoch the cancelled stop already gave up on,
+        // arriving ahead of the query's own reply on the same connection.
+        var query = client.QueryVolumesAsync(["C:\\"], cancellation.Token);
+        Assert.AreEqual(BrokerFrameKind.QueryVolumes,
+            (await ReadOneFrameAsync(serverSide, cancellation.Token)).Kind);
+        await WriteFrameAsync(serverSide,
+            writer => BrokerProtocol.WriteCaughtUp(writer, "C", staleArmEpoch), cancellation.Token);
+        await WriteFrameAsync(serverSide,
+            writer => BrokerProtocol.WriteVolumeInfo(writer, "C", 128, 1024, 128 * 1024), cancellation.Token);
 
-            var result = await query.WaitAsync(cancellation.Token);
-            Assert.AreEqual(128L, result.Volumes["C"].MftRecordCount);
-            Assert.IsNull(diedReason,
-                "A stale epoch-tagged CaughtUp frame must be drained, not treated as a control-exchange protocol error.");
-        }
-        finally
-        {
-            JournalBrokerClient._endWatchAckTimeout = previousTimeout;
-        }
+        var result = await query.WaitAsync(cancellation.Token);
+        Assert.AreEqual(128L, result.Volumes["C"].MftRecordCount);
+        Assert.IsNull(diedReason,
+            "A stale epoch-tagged CaughtUp frame must be drained, not treated as a control-exchange protocol error.");
     }
 
     [TestMethod]

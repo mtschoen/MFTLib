@@ -100,4 +100,13 @@ public interface IIndexWatchSource
     ///     <see cref="WatchStreamNotRunningException" /> when no stream is running.
     /// </summary>
     Task DisarmDriveAsync(char driveLetter, CancellationToken cancellationToken);
+
+    /// <summary>
+    ///     Requests that the current watch stream begin stopping with the caller's cancellation
+    ///     token bounding the stop acknowledgement wait.
+    ///     The default implementation does nothing.
+    /// </summary>
+    void RequestStop(CancellationToken cancellationToken)
+    {
+    }
 }

@@ -26,7 +26,7 @@ public class BrokerIndexWatchSourceCaughtUpTests
         });
 
         Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.WriteAcknowledgementAsync(start);
 
         var items = await consumption;
         Assert.AreEqual(2, items.Count);
@@ -67,7 +67,7 @@ public class BrokerIndexWatchSourceCaughtUpTests
         });
 
         Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.WriteAcknowledgementAsync(secondArm);
 
         var items = await consumption;
         Assert.AreEqual(2, items.Count);

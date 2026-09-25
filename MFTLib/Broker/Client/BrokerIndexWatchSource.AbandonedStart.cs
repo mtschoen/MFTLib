@@ -88,13 +88,12 @@ public sealed partial class BrokerIndexWatchSource
 
     /// <summary>
     ///     Lets the abandoned send finish, then ends the live watch it started the same way a running
-    ///     stream ends, through <see cref="JournalBrokerClient.StopLiveWatchAsync" />, whose demux
-    ///     reads the broker's EndWatchAck before it returns. That read is what keeps the
-    ///     acknowledgement from reaching, and ending, the next watch on the same client. A stop that
-    ///     timed out without reading it, or any other teardown failure, is recorded in
-    ///     <see cref="_abandonedStartRetirementFailure" /> rather than thrown, so the task itself
-    ///     never faults and nothing depends on a later start to observe it. The stream is released
-    ///     last, after the failure is recorded, so no claim can slip in between the two.
+    ///     stream ends, through <see cref="JournalBrokerClient.StopLiveWatchAsync" />.
+    ///     With generation fencing, any late EndWatchAck for this generation is ignored by the demux
+    ///     of any subsequent watch, so the connection remains safe to reuse. Only genuine send, write,
+    ///     transport, or cleanup errors are recorded in <see cref="_abandonedStartRetirementFailure" />.
+    ///     The stream is released last, after the failure is recorded, so no claim can slip in between
+    ///     the two.
     /// </summary>
     async Task RetireAbandonedStartAsync(PendingStartWatch abandoned)
     {
@@ -105,12 +104,13 @@ public sealed partial class BrokerIndexWatchSource
             await abandoned.Send.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             if (abandoned.Send.IsCompletedSuccessfully)
             {
-                await abandoned.Client.StopLiveWatchAsync().ConfigureAwait(false);
-                if (abandoned.Client.LastStopTimedOut)
+                try
                 {
-                    throw new TimeoutException(
-                        "The broker did not send EndWatchAck for the abandoned watch before the stop gave up " +
-                        "waiting, so that acknowledgement could still arrive and end a later watch.");
+                    await abandoned.Client.StopLiveWatchAsync(abandoned.StartupToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (abandoned.StartupToken.IsCancellationRequested)
+                {
+                    // An abandoned stop wait is expected when the startup token was cancelled.
                 }
             }
         }
@@ -127,6 +127,6 @@ public sealed partial class BrokerIndexWatchSource
         }
     }
 
-    /// <summary>A StartWatch send and the client it was issued on, held together for its teardown.</summary>
-    readonly record struct PendingStartWatch(JournalBrokerClient Client, Task Send);
+    /// <summary>A StartWatch send, its client, and the cancelled startup token, held together for its teardown.</summary>
+    readonly record struct PendingStartWatch(JournalBrokerClient Client, Task Send, CancellationToken StartupToken);
 }

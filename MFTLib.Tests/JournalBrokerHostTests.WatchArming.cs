@@ -226,9 +226,11 @@ public partial class JournalBrokerHostTests
         }
     }
 
-    static Task WriteStartWatchAsync(Stream stream, string watchSpec, CancellationToken cancellationToken)
+    static Task WriteStartWatchAsync(Stream stream, string watchSpec, CancellationToken cancellationToken,
+        uint watchGeneration = 1U)
     {
-        return WriteBrokerRequestAsync(stream, writer => BrokerProtocol.WriteStartWatch(writer, watchSpec),
+        return WriteBrokerRequestAsync(stream,
+            writer => BrokerProtocol.WriteStartWatch(writer, watchSpec, watchGeneration),
             cancellationToken);
     }
 

@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections;
+using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -112,10 +113,11 @@ public partial class BrokerProtocolTests
     public void StartWatchFrame_RoundTrips_DrivesSpec()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(buffer, "C:1:100:1");
+        BrokerProtocol.WriteStartWatch(buffer, "C:1:100:1", 17U);
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
 
         Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
+        Assert.AreEqual(17U, frame.WatchGeneration);
         Assert.AreEqual("C:1:100:1", frame.DrivesSpec);
         Assert.AreEqual(buffer.WrittenCount, consumed);
     }
@@ -154,13 +156,14 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void EndWatchAckFrame_RoundTrips_NoPayload()
+    public void EndWatchAckFrame_RoundTrips_WatchGeneration()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteEndWatchAck(buffer);
+        BrokerProtocol.WriteEndWatchAck(buffer, 17U);
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
 
         Assert.AreEqual(BrokerFrameKind.EndWatchAck, frame.Kind);
+        Assert.AreEqual(17U, frame.WatchGeneration);
         Assert.AreEqual(buffer.WrittenCount, consumed);
     }
 
@@ -247,7 +250,17 @@ public partial class BrokerProtocolTests
         AssertWireBytes(BrokerProtocol.WriteShutdown, [0x01, 0x00, 0x00, 0x00, 0x03]);
         AssertWireBytes(BrokerProtocol.WriteHeartbeat, [0x01, 0x00, 0x00, 0x00, 0x08]);
         AssertWireBytes(BrokerProtocol.WriteEndWatch, [0x01, 0x00, 0x00, 0x00, 0x09]);
-        AssertWireBytes(BrokerProtocol.WriteEndWatchAck, [0x01, 0x00, 0x00, 0x00, 0x0A]);
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_EndWatchAckFrame()
+    {
+        AssertWireBytes(w => BrokerProtocol.WriteEndWatchAck(w, 17U),
+        [
+            0x05, 0x00, 0x00, 0x00, // totalLength = 5
+            0x0A, // kind = EndWatchAck
+            0x11, 0x00, 0x00, 0x00 // watchGeneration = 17
+        ]);
     }
 
     [TestMethod]
@@ -325,8 +338,9 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void Factory_StartWatch_PopulatesDrivesSpec()
     {
-        var frame = BrokerFrame.StartWatch("C:1:100:1");
+        var frame = BrokerFrame.StartWatch("C:1:100:1", 17U);
         Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
+        Assert.AreEqual(17U, frame.WatchGeneration);
         Assert.AreEqual("C:1:100:1", frame.DrivesSpec);
         Assert.AreEqual(0, frame.Entries.Length);
     }
@@ -337,9 +351,16 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(BrokerFrameKind.Shutdown, BrokerFrame.Shutdown().Kind);
         Assert.AreEqual(BrokerFrameKind.Heartbeat, BrokerFrame.Heartbeat().Kind);
         Assert.AreEqual(BrokerFrameKind.EndWatch, BrokerFrame.EndWatch().Kind);
-        Assert.AreEqual(BrokerFrameKind.EndWatchAck, BrokerFrame.EndWatchAck().Kind);
         Assert.AreEqual(0, BrokerFrame.Shutdown().Entries.Length);
-        Assert.AreEqual(0, BrokerFrame.EndWatchAck().Entries.Length);
+    }
+
+    [TestMethod]
+    public void Factory_EndWatchAck_PopulatesGeneration()
+    {
+        var frame = BrokerFrame.EndWatchAck(17U);
+        Assert.AreEqual(BrokerFrameKind.EndWatchAck, frame.Kind);
+        Assert.AreEqual(17U, frame.WatchGeneration);
+        Assert.AreEqual(0, frame.Entries.Length);
     }
 
     [TestMethod]
@@ -362,5 +383,59 @@ public partial class BrokerProtocolTests
         Assert.AreEqual("C", frame.Drive);
         Assert.AreEqual(cursor, frame.Cursor);
         Assert.AreEqual(0, frame.Entries.Length);
+    }
+
+    [TestMethod]
+    public void ReadFrame_StartWatch_ZeroGeneration_ThrowsInvalidDataException()
+    {
+        byte[] payload = [0x09, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(payload, out _));
+    }
+
+    [TestMethod]
+    public void ReadFrame_StartWatch_ShortPayload_ThrowsInvalidDataException()
+    {
+        byte[] payload = [0x07, 0x00, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00];
+        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(payload, out _));
+    }
+
+    [TestMethod]
+    public void ReadFrame_EndWatchAck_ZeroLengthPayload_ThrowsInvalidDataException()
+    {
+        byte[] payload = [0x01, 0x00, 0x00, 0x00, 0x0A];
+        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(payload, out _));
+    }
+
+    [TestMethod]
+    public void ReadFrame_EndWatchAck_ZeroGeneration_ThrowsInvalidDataException()
+    {
+        byte[] payload = [0x05, 0x00, 0x00, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x00];
+        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(payload, out _));
+    }
+
+    [TestMethod]
+    public void Factory_StartWatch_ZeroGeneration_ThrowsArgumentOutOfRangeException()
+    {
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => BrokerFrame.StartWatch("C:1:100:1", 0U));
+    }
+
+    [TestMethod]
+    public void Factory_EndWatchAck_ZeroGeneration_ThrowsArgumentOutOfRangeException()
+    {
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => BrokerFrame.EndWatchAck(0U));
+    }
+
+    [TestMethod]
+    public void WriteStartWatch_ZeroGeneration_ThrowsArgumentOutOfRangeException()
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => BrokerProtocol.WriteStartWatch(buffer, "C:1:100:1", 0U));
+    }
+
+    [TestMethod]
+    public void WriteEndWatchAck_ZeroGeneration_ThrowsArgumentOutOfRangeException()
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => BrokerProtocol.WriteEndWatchAck(buffer, 0U));
     }
 }

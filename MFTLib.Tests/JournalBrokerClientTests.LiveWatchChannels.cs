@@ -10,7 +10,7 @@ public partial class JournalBrokerClientTests
     [TestMethod]
     public void WatchSpecArmEpochs_ForDrive_MatchesDriveLetterCaseInsensitively()
     {
-        var startWatch = BrokerFrame.StartWatch("C:7:100:4");
+        var startWatch = BrokerFrame.StartWatch("C:7:100:4", 1U);
 
         Assert.AreEqual(4U, WatchSpecArmEpochs.ForDrive(startWatch, "c"));
     }
@@ -18,7 +18,7 @@ public partial class JournalBrokerClientTests
     [TestMethod]
     public void WatchSpecArmEpochs_ForDrive_MissingDrive_ThrowsWithDriveAndSpec()
     {
-        var startWatch = BrokerFrame.StartWatch("C:7:100:4");
+        var startWatch = BrokerFrame.StartWatch("C:7:100:4", 1U);
 
         var exception = Assert.ThrowsException<AssertFailedException>(() =>
             WatchSpecArmEpochs.ForDrive(startWatch, "D"));
@@ -57,7 +57,7 @@ public partial class JournalBrokerClientTests
             frames.Add(await ReadOneFrameAsync(serverStream).WaitAsync(cancellationToken));
             frames.Add(await ReadOneFrameAsync(serverStream).WaitAsync(cancellationToken));
             var acknowledgement = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteEndWatchAck(acknowledgement);
+            BrokerProtocol.WriteEndWatchAck(acknowledgement, frames.Last().WatchGeneration);
             await serverStream.WriteAsync(acknowledgement.WrittenMemory, cancellationToken);
             await serverStream.FlushAsync(cancellationToken);
         }
@@ -80,10 +80,10 @@ public partial class JournalBrokerClientTests
             }
         });
 
-        await ReadOneFrameAsync(serverSide); // consume the StartWatch request
+        var start = await ReadOneFrameAsync(serverSide); // consume the StartWatch request
 
         var acknowledgement = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteEndWatchAck(acknowledgement);
+        BrokerProtocol.WriteEndWatchAck(acknowledgement, start.WatchGeneration);
         await serverSide.WriteAsync(acknowledgement.WrittenMemory);
         await serverSide.FlushAsync();
 

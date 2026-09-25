@@ -195,11 +195,11 @@ public sealed partial class JournalBrokerScanSession
     ///     Stop live watching and return the session to
     ///     <see cref="JournalBrokerSessionState.Parked" />, keeping the elevated process
     ///     alive for a subsequent rescan or <see cref="StartWatchAsync" />.
-    ///     No-op if already parked. Takes no cancellation token, mirroring
-    ///     <see cref="JournalBrokerClient.StopLiveWatchAsync" />, which bounds itself with
-    ///     its own ack timeout.
+    ///     No-op if already parked. <paramref name="cancellationToken" /> bounds the wait for
+    ///     the stop acknowledgement; cancelling it leaves the elevated process alive and the
+    ///     session operable for a subsequent watch or rescan.
     /// </summary>
-    public async Task StopWatchAsync()
+    public async Task StopWatchAsync(CancellationToken cancellationToken = default)
     {
         Task stopTask;
         lock (_stateLock)
@@ -215,7 +215,7 @@ public sealed partial class JournalBrokerScanSession
                 var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 stopTask = completion.Task;
                 _stopTask = stopTask;
-                _ = StopWatchCoreAsync(completion);
+                _ = StopWatchCoreAsync(completion, cancellationToken);
             }
             else
             {
@@ -223,15 +223,23 @@ public sealed partial class JournalBrokerScanSession
             }
         }
 
-        await stopTask.ConfigureAwait(false);
+        try
+        {
+            await stopTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw;
+        }
     }
 
-    async Task StopWatchCoreAsync(TaskCompletionSource completion)
+    async Task StopWatchCoreAsync(TaskCompletionSource completion, CancellationToken cancellationToken)
     {
         Exception? error = null;
         try
         {
-            await _client.StopLiveWatchAsync().ConfigureAwait(false);
+            await _client.StopLiveWatchAsync(cancellationToken).ConfigureAwait(false);
 
             // See StartWatchAsync: recheck under the lock so a Dispose or fault that
             // landed during the await above is never resurrected back to Parked. The
@@ -243,6 +251,19 @@ public sealed partial class JournalBrokerScanSession
                 EnsureOperableLocked();
                 _state = JournalBrokerSessionState.Parked;
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            lock (_stateLock)
+            {
+                _batchSource = null;
+                if (_state == JournalBrokerSessionState.Watching)
+                {
+                    _state = JournalBrokerSessionState.Parked;
+                }
+            }
+
+            error = new OperationCanceledException(cancellationToken);
         }
         catch (Exception exception)
         {
@@ -257,6 +278,17 @@ public sealed partial class JournalBrokerScanSession
         if (error == null)
         {
             completion.SetResult();
+        }
+        else if (error is OperationCanceledException oce)
+        {
+            if (oce.CancellationToken.CanBeCanceled)
+            {
+                completion.SetCanceled(oce.CancellationToken);
+            }
+            else
+            {
+                completion.SetCanceled(CancellationToken.None);
+            }
         }
         else
         {

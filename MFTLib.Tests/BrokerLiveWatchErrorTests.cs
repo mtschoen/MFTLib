@@ -55,7 +55,7 @@ public class BrokerLiveWatchErrorTests : BrokerBlockTestBase
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteError(response, "D", WatchSpecArmEpochs.ForDrive(startWatch, "D"), "journal wrapped");
         BrokerProtocol.WriteJournalBatch(response, "C", epochC, cursor, [entry]);
-        BrokerProtocol.WriteEndWatchAck(response);
+        BrokerProtocol.WriteEndWatchAck(response, startWatch.WatchGeneration);
         await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
         await serverSide.FlushAsync(CancellationToken.None);
 
@@ -127,7 +127,7 @@ public class BrokerLiveWatchErrorTests : BrokerBlockTestBase
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteWarning(response, "D", "unexpected live warning");
         BrokerProtocol.WriteJournalBatch(response, "C", epochC, cursor, [entry]);
-        BrokerProtocol.WriteEndWatchAck(response);
+        BrokerProtocol.WriteEndWatchAck(response, startWatch.WatchGeneration);
         await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
         await serverSide.FlushAsync(CancellationToken.None);
 
@@ -186,7 +186,7 @@ public class BrokerLiveWatchErrorTests : BrokerBlockTestBase
         var driveDCursor = new UsnJournalCursor(7UL, 310L);
         response.Clear();
         BrokerProtocol.WriteJournalBatch(response, "D", epochD, driveDCursor, [JournalEntryFactory.Create(2, 301, "d.txt")]);
-        BrokerProtocol.WriteEndWatchAck(response);
+        BrokerProtocol.WriteEndWatchAck(response, startWatchD.WatchGeneration);
         await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
         await serverSide.FlushAsync(CancellationToken.None);
 

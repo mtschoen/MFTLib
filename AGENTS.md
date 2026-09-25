@@ -365,20 +365,19 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       and leaves a session whose start failed or was cancelled to that start.
       The start's wait is bounded by its token and by a stop or dispose even while the broker's
       StartWatch send is blocked on the client's arm-ordering gate or the pipe write (MFTLib issue
-      250): `BrokerIndexWatchSource` never cancels that send (cancelling it could leave the
-      EndWatchAck to end the next watch, or half a frame on the pipe), it only stops waiting for it
-      with `WaitAsync(token)`. A send abandoned that way finishes in the background, and
-      `RetireAbandonedStartAsync` then runs `StopLiveWatchAsync`, whose demux reads the EndWatchAck,
+      250): `BrokerIndexWatchSource` never cancels that send (cancelling it could leave half a
+      frame on the pipe), it only stops waiting for it with `WaitAsync(token)`. A send abandoned
+      that way finishes in the background, and `RetireAbandonedStartAsync` then runs
+      `StopLiveWatchAsync(startupToken)`, whose demux reads the EndWatchAck or unwinds on cancellation,
       before releasing the stream. The source's stream stays claimed until then, and a new
       `StartWatching` on the same source waits for that teardown (bounded by its own token) instead
       of being rejected, so the next StartWatch frame is never sent ahead of the old watch's
-      EndWatch. A teardown that fails, including a `StopLiveWatchAsync` that timed out
-      (`LastStopTimedOut`) without reading the ack, is recorded rather than thrown, so the
-      retirement task never faults, and it fails every later start on that source with an
-      `InvalidOperationException` wrapping it: the ack could still arrive and end a later watch on
-      the same connection, so the consumer needs a new connection and source. The ordinary
-      `StopWatchingAsync` path (`StopStreamAsync`) does not check `LastStopTimedOut` and still
-      releases the source after a timed-out stop.
+      EndWatch. `BrokerFrame.StartWatch` and `BrokerFrame.EndWatchAck` carry a monotonic nonzero
+      `uint` `WatchGeneration`, so stale acknowledgements for earlier watch generations are ignored
+      by the client demux rather than terminating a subsequent watch. An abandoned start teardown
+      whose stop was cancelled therefore leaves the connection clean and reusable for subsequent
+      generations. Genuine transport or write failures during teardown remain recorded and fail
+      subsequent starts on that source with an `InvalidOperationException` wrapping the failure.
     - **Watch and catch-up lifetime**: `FileIndex.StartWatchingAsync` arms each MFT-backed drive and
       transitions its `DriveStatus.WatchCatchUp` to `WatchCatchUpState.CatchingUp`. Backlog batches up to
       the journal tip captured at arm time are applied to the block before an epoch-tagged `CaughtUp`

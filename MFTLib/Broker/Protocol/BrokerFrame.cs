@@ -29,6 +29,8 @@ public readonly record struct BrokerFrame
     public BrokerFrameKind Kind { get; private init; }
     // Live batches and errors are delivered only while this is the drive's current epoch.
     public uint ArmEpoch { get; private init; }
+    // Live watch generation ID for StartWatch and EndWatchAck frames. Zero is invalid.
+    public uint WatchGeneration { get; private init; }
     public string? Drive { get; private init; }
     public UsnJournalCursor Cursor { get; private init; }
     public UsnJournalEntry[] Entries { get; private init; }
@@ -81,13 +83,19 @@ public readonly record struct BrokerFrame
         };
     }
 
-    public static BrokerFrame StartWatch(string drivesSpec)
+    public static BrokerFrame StartWatch(string drivesSpec, uint watchGeneration)
     {
+        if (watchGeneration == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(watchGeneration), watchGeneration, "Watch generation must be non-zero.");
+        }
+
         return new BrokerFrame
         {
             Kind = BrokerFrameKind.StartWatch,
             Entries = Array.Empty<UsnJournalEntry>(),
             DrivesSpec = drivesSpec,
+            WatchGeneration = watchGeneration,
             KeepFileNames = Array.Empty<string>()
         };
     }
@@ -122,9 +130,20 @@ public readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.EndWatch);
     }
 
-    public static BrokerFrame EndWatchAck()
+    public static BrokerFrame EndWatchAck(uint watchGeneration)
     {
-        return Empty(BrokerFrameKind.EndWatchAck);
+        if (watchGeneration == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(watchGeneration), watchGeneration, "Watch generation must be non-zero.");
+        }
+
+        return new BrokerFrame
+        {
+            Kind = BrokerFrameKind.EndWatchAck,
+            Entries = Array.Empty<UsnJournalEntry>(),
+            WatchGeneration = watchGeneration,
+            KeepFileNames = Array.Empty<string>()
+        };
     }
 
     public static BrokerFrame ScanReady(string mmfName, long rowCount, long namePoolUsedBytes, long skippedRecordCount)

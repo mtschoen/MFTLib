@@ -175,7 +175,7 @@ public partial class JournalBrokerClientTests
         var previousCts = (CancellationTokenSource)demuxCtsField.GetValue(client)!;
         demuxCtsField.SetValue(client, null);
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(client.StopLiveWatchAsync);
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => client.StopLiveWatchAsync());
 
         await previousCts.CancelAsync();
         previousCts.Dispose();
@@ -235,20 +235,125 @@ public partial class JournalBrokerClientTests
     }
 
     [TestMethod]
-    public async Task StopLiveWatchAsync_NoAckWithinTimeout_ForcesDemuxDown()
+    public async Task StopLiveWatchAsync_Cancellation_LeavesClientReusableAndIgnoresStaleAck()
     {
-        JournalBrokerClient._endWatchAckTimeout = TimeSpan.FromMilliseconds(50);
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var peer = serverSide;
+        await using var client = MakeMinimalFakeClient(clientSide);
 
+        // First watch session: generation 1
+        await client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 100L) });
+        var firstStart = await ReadOneFrameAsync(serverSide);
+        Assert.AreEqual(1U, firstStart.WatchGeneration);
+
+        // Cancel the stop wait
+        using var stopCts = new CancellationTokenSource();
+        var stopTask = client.StopLiveWatchAsync(stopCts.Token);
+        var endWatch = await ReadOneFrameAsync(serverSide);
+        Assert.AreEqual(BrokerFrameKind.EndWatch, endWatch.Kind);
+        stopCts.Cancel();
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => stopTask);
+
+        // A stale ack arrives from the broker for generation 1 after caller cancelled stop
+        var staleAck = new System.Buffers.ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteEndWatchAck(staleAck, 1U);
+        await serverSide.WriteAsync(staleAck.WrittenMemory);
+        await serverSide.FlushAsync();
+
+        // Start a second watch session: client must be reusable and allocate generation 2
+        await client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor> { ["D"] = new(8UL, 200L) });
+        var secondStart = await ReadOneFrameAsync(serverSide);
+        Assert.AreEqual(2U, secondStart.WatchGeneration);
+
+        // Complete the second watch with a matching generation 2 ack
+        var matchingAck = new System.Buffers.ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteEndWatchAck(matchingAck, 2U);
+        await serverSide.WriteAsync(matchingAck.WrittenMemory);
+        await serverSide.FlushAsync();
+
+        // Stop live watch for generation 2 completes cleanly
+        await client.StopLiveWatchAsync();
+    }
+
+    [TestMethod]
+    public async Task StopLiveWatchAsync_FutureGenerationAck_FaultsDemux()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var peer = serverSide;
+        await using var client = MakeMinimalFakeClient(clientSide);
+
+        string? deathMessage = null;
+        client.BrokerDied += message => deathMessage = message;
+
+        await client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 100L) });
+        var start = await ReadOneFrameAsync(serverSide);
+        Assert.AreEqual(1U, start.WatchGeneration);
+
+        // Server writes an ack with future generation (5 > 1)
+        var futureAck = new System.Buffers.ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteEndWatchAck(futureAck, 5U);
+        await serverSide.WriteAsync(futureAck.WrittenMemory);
+        await serverSide.FlushAsync();
+
+        var batchSource = client.CreateBatchSource();
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in batchSource("C", default, CancellationToken.None))
+            {
+            }
+        });
+
+        Assert.IsNotNull(deathMessage);
+        StringAssert.Contains(deathMessage, "future watch generation");
+    }
+
+    [TestMethod]
+    public async Task StopLiveWatchAsync_BrokerEOF_CompletesCleanlyWithoutTimeout()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         await using var client = MakeMinimalFakeClient(clientSide);
-        await client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 100L) });
 
-        // The broker side never sends EndWatchAck (a wedged broker); StopLiveWatchAsync
-        // must not hang - it forces the demux down once the (shrunk) timeout elapses.
-        await client.StopLiveWatchAsync();
-        Assert.IsTrue(client.LastStopTimedOut, "StopLiveWatchAsync must force demux down via timeout when broker sends no ack.");
+        await client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 100L) }, timeout.Token);
+        var start = await ReadOneFrameAsync(serverSide).WaitAsync(timeout.Token);
+        Assert.AreEqual(1U, start.WatchGeneration);
 
-        _ = serverSide;
+        // Server closes stream unexpectedly (EOF) while client stops
+        var stopTask = client.StopLiveWatchAsync();
+        await serverSide.DisposeAsync();
+
+        // Must complete cleanly without hanging
+        await stopTask.WaitAsync(timeout.Token);
+    }
+
+    [TestMethod]
+    public async Task StopLiveWatchAsync_NoToken_WaitsIndefinitelyUntilMatchingAck()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var peer = serverSide;
+        await using var client = MakeMinimalFakeClient(clientSide);
+
+        await client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 100L) }, timeout.Token);
+        var start = await ReadOneFrameAsync(serverSide).WaitAsync(timeout.Token);
+        Assert.AreEqual(1U, start.WatchGeneration);
+
+        // Call StopLiveWatchAsync with default token (CancellationToken.None)
+        var stopTask = client.StopLiveWatchAsync();
+
+        // Yield execution to allow stopTask to begin awaiting demux
+        await Task.Yield();
+        Assert.IsFalse(stopTask.IsCompleted, "StopLiveWatchAsync without token must wait for EndWatchAck.");
+
+        // Now send matching ack
+        var ack = new System.Buffers.ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteEndWatchAck(ack, start.WatchGeneration);
+        await serverSide.WriteAsync(ack.WrittenMemory, timeout.Token);
+        await serverSide.FlushAsync(timeout.Token);
+
+        // Now stopTask completes cleanly
+        await stopTask.WaitAsync(timeout.Token);
+        Assert.IsTrue(stopTask.IsCompletedSuccessfully);
     }
 
     [TestMethod]

@@ -104,12 +104,12 @@ public partial class JournalBrokerClientTests
         await using var client = MakeMinimalFakeClient(transport);
         await client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor>
         { ["D"] = new(9, 100) }, token);
-        await ReadControlRequestAsync(server, token);
+        var startWatch = await ReadControlRequestAsync(server, token);
         var query = client.QueryVolumesAsync(DriveC, token);
         Assert.AreEqual(BrokerFrameKind.QueryVolumes, (await ReadControlRequestAsync(server, token)).Kind);
         if (ending == "ack")
         {
-            await SendControlReplyAsync(server, BrokerProtocol.WriteEndWatchAck, token);
+            await SendControlReplyAsync(server, writer => BrokerProtocol.WriteEndWatchAck(writer, startWatch.WatchGeneration), token);
         }
         else
         {
@@ -144,10 +144,12 @@ public partial class JournalBrokerClientTests
         await using var peer = server;
         await using var client = MakeMinimalFakeClient(transport);
         var cursors = new Dictionary<string, UsnJournalCursor> { ["D"] = new(9, 100) };
+        BrokerFrame? startWatch = null;
         if (stop)
         {
             await client.SendStartWatchAsync(cursors, token);
-            Assert.AreEqual(BrokerFrameKind.StartWatch, (await ReadControlRequestAsync(server, token)).Kind);
+            startWatch = await ReadControlRequestAsync(server, token);
+            Assert.AreEqual(BrokerFrameKind.StartWatch, startWatch.Value.Kind);
         }
         var query = client.QueryVolumesAsync(DriveC, token);
         Assert.AreEqual(BrokerFrameKind.QueryVolumes, (await ReadControlRequestAsync(server, token)).Kind);
@@ -159,7 +161,7 @@ public partial class JournalBrokerClientTests
             (await ReadControlRequestAsync(server, token)).Kind);
         if (stop)
         {
-            await SendControlReplyAsync(server, BrokerProtocol.WriteEndWatchAck, token);
+            await SendControlReplyAsync(server, writer => BrokerProtocol.WriteEndWatchAck(writer, startWatch!.Value.WatchGeneration), token);
         }
         await transition.WaitAsync(token);
         if (stop)

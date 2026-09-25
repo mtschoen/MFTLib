@@ -30,6 +30,7 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     readonly HashSet<char> _drivesAwaitingReader = [];
 
     bool _streamClaimed;
+    CancellationToken _stopCancellationToken;
 
     // The four things a running stream owns, held together so their nullability is one question
     // asked once rather than four the per-drive members would each have to assert away.
@@ -46,6 +47,14 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     ///     yet arm or disarm a drive. Null, and skipped, outside tests.
     /// </summary>
     internal Func<CancellationToken, Task>? BeforeStreamPublishedForTest { get; set; }
+
+    public void RequestStop(CancellationToken cancellationToken)
+    {
+        lock (_streamLock)
+        {
+            _stopCancellationToken = cancellationToken;
+        }
+    }
 
     public IAsyncEnumerable<WatchStreamItem> StartWatching(
         IReadOnlyList<IndexWatchTarget> targets, CancellationToken cancellationToken)
@@ -95,7 +104,8 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
             // half a frame on the pipe. Only this wait for it observes the token. A send the wait
             // gives up on finishes in the background and is torn down by RetireAbandonedStart.
             pendingStart = new PendingStartWatch(client,
-                client.SendStartWatchAsync(BuildCursors(targets), CancellationToken.None));
+                client.SendStartWatchAsync(BuildCursors(targets), CancellationToken.None),
+                cancellationToken);
             await pendingStart.Value.Send.WaitAsync(cancellationToken).ConfigureAwait(false);
             if (BeforeStreamPublishedForTest is { } beforeStreamPublished)
             {
@@ -259,14 +269,21 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     {
         await stream.ReaderCancellation.CancelAsync().ConfigureAwait(false);
         Task[] readers;
+        CancellationToken stopToken;
         lock (_streamLock)
         {
             readers = [.. _readersByDrive.Values];
+            stopToken = _stopCancellationToken;
+            _stopCancellationToken = CancellationToken.None;
         }
 
         try
         {
-            await stream.Client.StopLiveWatchAsync().ConfigureAwait(false);
+            await stream.Client.StopLiveWatchAsync(stopToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stopToken.IsCancellationRequested)
+        {
+            // Expected when the stop wait was abandoned.
         }
         finally
         {
@@ -295,6 +312,7 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         {
             _streamClaimed = false;
             _stream = null;
+            _stopCancellationToken = CancellationToken.None;
             _readersByDrive.Clear();
             _armGenerationsByDrive.Clear();
             _stopRequestedDrives.Clear();

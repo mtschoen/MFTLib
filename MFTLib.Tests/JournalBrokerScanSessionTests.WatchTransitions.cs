@@ -20,7 +20,8 @@ public partial class JournalBrokerScanSessionTests
 
         var brokerTask = Task.Run(async () =>
         {
-            Assert.AreEqual(BrokerFrameKind.StartWatch, (await ReadOneFrameAsync(serverSide)).Kind);
+            var startFrame = await ReadOneFrameAsync(serverSide);
+            Assert.AreEqual(BrokerFrameKind.StartWatch, startFrame.Kind);
 
             var endWatchCount = 0;
             var frame = await ReadOneFrameAsync(serverSide);
@@ -28,7 +29,7 @@ public partial class JournalBrokerScanSessionTests
             {
                 endWatchCount++;
                 var ack = new ArrayBufferWriter<byte>();
-                BrokerProtocol.WriteEndWatchAck(ack);
+                BrokerProtocol.WriteEndWatchAck(ack, startFrame.WatchGeneration);
                 await serverSide.WriteAsync(ack.WrittenMemory);
                 await serverSide.FlushAsync();
                 frame = await ReadOneFrameAsync(serverSide);
@@ -122,8 +123,6 @@ public partial class JournalBrokerScanSessionTests
     [TestMethod]
     public async Task StopWatch_DisposedDuringHandshake_ThrowsObjectDisposed_DoesNotResurrectParked()
     {
-        JournalBrokerClient._endWatchAckTimeout = TimeSpan.FromMilliseconds(50);
-
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         using var gate = new GateFrameWriteStream(clientSide, BrokerFrameKind.EndWatch);
         var client = MakeMinimalFakeClient(gate);
@@ -169,10 +168,11 @@ public partial class JournalBrokerScanSessionTests
         var receivedKinds = new List<BrokerFrameKind>();
         var watchTask = Task.Run(async () =>
         {
-            receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // StartWatch
+            var startFrame = await ReadOneFrameAsync(serverSide);
+            receivedKinds.Add(startFrame.Kind); // StartWatch
             receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // EndWatch
             var ack = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteEndWatchAck(ack);
+            BrokerProtocol.WriteEndWatchAck(ack, startFrame.WatchGeneration);
             await serverSide.WriteAsync(ack.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -256,10 +256,11 @@ public partial class JournalBrokerScanSessionTests
         var receivedKinds = new List<BrokerFrameKind>();
         var stopTask = Task.Run(async () =>
         {
-            receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // StartWatch
+            var startFrame = await ReadOneFrameAsync(serverSide);
+            receivedKinds.Add(startFrame.Kind); // StartWatch
             receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // EndWatch
             var ack = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteEndWatchAck(ack);
+            BrokerProtocol.WriteEndWatchAck(ack, startFrame.WatchGeneration);
             await serverSide.WriteAsync(ack.WrittenMemory);
             await serverSide.FlushAsync();
         });

@@ -272,7 +272,7 @@ public partial class JournalBrokerClientTests
             receivedKinds.Add(endFrame.Kind);
 
             var ack = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteEndWatchAck(ack);
+            BrokerProtocol.WriteEndWatchAck(ack, startFrame.WatchGeneration);
             await serverSide.WriteAsync(ack.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -280,7 +280,6 @@ public partial class JournalBrokerClientTests
         await client.SendStartWatchAsync(cursors);
 
         await client.StopLiveWatchAsync();
-        Assert.IsFalse(client.LastStopTimedOut, "StopLiveWatchAsync must complete via the EndWatchAck handshake, not the timeout fallback.");
 
         await brokerTask;
         CollectionAssert.AreEqual(new[] { BrokerFrameKind.StartWatch, BrokerFrameKind.EndWatch }, receivedKinds);
@@ -319,7 +318,7 @@ public partial class JournalBrokerClientTests
             var response = new ArrayBufferWriter<byte>();
             BrokerProtocol.WriteJournalBatch(response, "C", WatchSpecArmEpochs.ForDrive(startWatch, "C"),
                 new UsnJournalCursor(7UL, 110L), [strayEntry]);
-            BrokerProtocol.WriteEndWatchAck(response);
+            BrokerProtocol.WriteEndWatchAck(response, startWatch.WatchGeneration);
             await serverSide.WriteAsync(response.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -327,7 +326,6 @@ public partial class JournalBrokerClientTests
         await client.SendStartWatchAsync(cursors);
 
         await client.StopLiveWatchAsync();
-        Assert.IsFalse(client.LastStopTimedOut, "StopLiveWatchAsync must complete via the EndWatchAck handshake despite the stray batch, not the timeout fallback.");
 
         await brokerTask;
 

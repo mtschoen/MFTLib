@@ -127,6 +127,7 @@ public sealed partial class FileIndex
         var pumpFinished = false;
         try
         {
+            session.Source.RequestStop(cancellationToken);
             await session.Cancellation.CancelAsync().ConfigureAwait(false);
             await session.Pump.WaitAsync(cancellationToken).ConfigureAwait(false);
             pumpFinished = true;

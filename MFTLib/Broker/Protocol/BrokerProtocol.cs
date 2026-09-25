@@ -89,12 +89,12 @@ public static partial class BrokerProtocol
         return kind switch
         {
             BrokerFrameKind.ArmAndScan => ReadArmAndScanFrame(payload),
-            BrokerFrameKind.StartWatch => BrokerFrame.StartWatch(ReadString(payload, 0, out _)),
+            BrokerFrameKind.StartWatch => ReadStartWatchFrame(payload),
             BrokerFrameKind.DisarmDrive => BrokerFrame.DisarmDrive(ReadString(payload, 0, out _)),
             BrokerFrameKind.Shutdown => BrokerFrame.Shutdown(),
             BrokerFrameKind.Heartbeat => BrokerFrame.Heartbeat(),
             BrokerFrameKind.EndWatch => BrokerFrame.EndWatch(),
-            BrokerFrameKind.EndWatchAck => BrokerFrame.EndWatchAck(),
+            BrokerFrameKind.EndWatchAck => ReadEndWatchAckFrame(payload),
             BrokerFrameKind.ScanReady => ReadScanReadyFrame(payload),
             BrokerFrameKind.Cursor => ReadCursorFrame(payload),
             BrokerFrameKind.JournalBatch => ReadJournalBatchFrame(payload),
@@ -111,6 +111,46 @@ public static partial class BrokerProtocol
     }
 
     // Private read helpers
+
+    static BrokerFrame ReadStartWatchFrame(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 8)
+        {
+            throw new InvalidDataException("Incompatible or malformed StartWatch frame: payload is too short.");
+        }
+
+        var watchGeneration = BinaryPrimitives.ReadUInt32LittleEndian(payload[0..]);
+        if (watchGeneration == 0)
+        {
+            throw new InvalidDataException("Incompatible or malformed StartWatch frame: watch generation cannot be zero.");
+        }
+
+        var stringLength = BinaryPrimitives.ReadInt32LittleEndian(payload[4..]);
+        if (stringLength < 0 || payload.Length != 8 + stringLength)
+        {
+            throw new InvalidDataException("Incompatible or malformed StartWatch frame: payload length does not match string length.");
+        }
+
+        var drivesSpec = Encoding.Unicode.GetString(payload.Slice(8, stringLength));
+        return BrokerFrame.StartWatch(drivesSpec, watchGeneration);
+    }
+
+    static BrokerFrame ReadEndWatchAckFrame(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length != 4)
+        {
+            throw new InvalidDataException(
+                $"Incompatible or malformed EndWatchAck frame: expected 4-byte payload but received {payload.Length} bytes.");
+        }
+
+        var watchGeneration = BinaryPrimitives.ReadUInt32LittleEndian(payload);
+        if (watchGeneration == 0)
+        {
+            throw new InvalidDataException("Incompatible or malformed EndWatchAck frame: watch generation cannot be zero.");
+        }
+
+        return BrokerFrame.EndWatchAck(watchGeneration);
+    }
 
     static string ReadString(ReadOnlySpan<byte> span, int offset, out int end)
     {

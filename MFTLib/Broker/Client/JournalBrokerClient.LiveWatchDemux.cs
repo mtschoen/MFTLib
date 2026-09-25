@@ -15,6 +15,12 @@ public sealed partial class JournalBrokerClient
     // Client-wide and never reset: a stop timeout can leave old frames unread on the pipe.
     uint _lastArmEpoch;
 
+    // Client-wide and never reset: monotonic watch generation counter.
+    uint _lastWatchGeneration;
+
+    // Active generation for the running demux, cleared when the watch generation ends.
+    uint _activeWatchGeneration;
+
     // Guarded by _liveChannelsLock so only the first arm starts the pipe reader.
     bool _liveWatchGenerationStarted;
 
@@ -29,9 +35,9 @@ public sealed partial class JournalBrokerClient
     // exchange owns the foreground reader. The ordering gate fences that handoff.
     // Reads frames and routes each JournalBatch to its drive's channel until the
     // broker dies or is cancelled.
-    async Task DemuxLoopAsync(CancellationToken cancellationToken)
+    async Task DemuxLoopAsync(uint watchGeneration, CancellationToken cancellationToken)
     {
-        BrokerDiagnostics.Log($"DemuxLoopAsync started (t={Environment.CurrentManagedThreadId}).");
+        BrokerDiagnostics.Log($"DemuxLoopAsync started for generation {watchGeneration} (t={Environment.CurrentManagedThreadId}).");
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -53,6 +59,23 @@ public sealed partial class JournalBrokerClient
                 }
                 if (value.Kind == BrokerFrameKind.EndWatchAck)
                 {
+                    if (value.WatchGeneration < watchGeneration)
+                    {
+                        BrokerDiagnostics.Log(
+                            $"Ignored stale EndWatchAck for generation {value.WatchGeneration} (active={watchGeneration}).");
+                        continue;
+                    }
+
+                    if (value.WatchGeneration > watchGeneration)
+                    {
+                        var protocolError = new InvalidDataException(
+                            $"Received EndWatchAck for future watch generation {value.WatchGeneration} while active generation is {watchGeneration}.");
+                        CompleteControlReplies(protocolError);
+                        SignalBrokerDeath(protocolError.Message);
+                        CompleteAllLiveChannels(new InvalidOperationException($"Broker pipe closed: {protocolError.Message}", protocolError));
+                        return;
+                    }
+
                     // EndWatchAck branch, before return: an unexpected ack must not strand a scan.
                     CompleteControlReplies(new InvalidOperationException("Live watch ended during a broker control exchange."));
                     CompleteAllLiveChannels(null);

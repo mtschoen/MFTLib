@@ -38,7 +38,7 @@ public partial class UsnJournalSyntheticTests
             try
             {
                 await WriteCancellationFrameAsync(client,
-                    buffer => BrokerProtocol.WriteStartWatch(buffer, "C:7:200:1"));
+                    buffer => BrokerProtocol.WriteStartWatch(buffer, "C:7:200:1", 1U));
                 Assert.AreEqual(BrokerFrameKind.CaughtUp,
                     (await ReadCancellationFrameAsync(client)).Kind);
                 if (readNumber == 2)
