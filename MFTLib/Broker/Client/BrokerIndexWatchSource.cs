@@ -71,6 +71,12 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     ///         with an <see cref="InvalidOperationException" />, since the acknowledgement could still
     ///         arrive and end a later watch on the same connection.
     ///     </para>
+    ///     <para>
+    ///         A running stream whose stop times out without EndWatchAck also permanently refuses
+    ///         later starts on this source. The stop itself completes normally; a later start throws
+    ///         InvalidOperationException with the timeout as its inner exception. Create a new broker
+    ///         connection and watch source after this failure. An acknowledged stop allows reuse.
+    ///     </para>
     /// </summary>
     public async IAsyncEnumerable<WatchStreamItem> StartWatching(
         IReadOnlyList<IndexWatchTarget> targets, Action reportStreamReady,
@@ -267,6 +273,15 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         try
         {
             await stream.Client.StopLiveWatchAsync().ConfigureAwait(false);
+            if (stream.Client.LastStopTimedOut)
+            {
+                lock (_streamLock)
+                {
+                    _watchTeardownFailure = new TimeoutException(
+                        "The broker did not send EndWatchAck before the stop gave up waiting, so that " +
+                        "acknowledgement could still arrive and end a later watch.");
+                }
+            }
         }
         finally
         {

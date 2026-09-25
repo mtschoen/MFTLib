@@ -377,8 +377,13 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       retirement task never faults, and it fails every later start on that source with an
       `InvalidOperationException` wrapping it: the ack could still arrive and end a later watch on
       the same connection, so the consumer needs a new connection and source. The ordinary
-      `StopWatchingAsync` path (`StopStreamAsync`) does not check `LastStopTimedOut` and still
-      releases the source after a timed-out stop.
+      `StopWatchingAsync` path (`StopStreamAsync`), also used when disposing an index with a running
+      watch, records a timed-out `StopLiveWatchAsync` in the same permanent failure latch before
+      releasing the source. The stop itself still completes normally on timeout, but every later start
+      on that source fails before connecting or sending StartWatch, with an `InvalidOperationException`
+      wrapping a `TimeoutException` naming EndWatchAck. A late acknowledgement does not clear that
+      failure. The consumer must create a new connection and watch source; wrapping the old client in
+      a new source is not recovery. An acknowledged ordinary stop still permits source reuse.
     - **Watch and catch-up lifetime**: `FileIndex.StartWatchingAsync` arms each MFT-backed drive and
       transitions its `DriveStatus.WatchCatchUp` to `WatchCatchUpState.CatchingUp`. Backlog batches up to
       the journal tip captured at arm time are applied to the block before an epoch-tagged `CaughtUp`

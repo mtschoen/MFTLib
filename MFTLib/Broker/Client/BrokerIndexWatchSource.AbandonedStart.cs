@@ -16,9 +16,8 @@ public sealed partial class BrokerIndexWatchSource
     // is claimed; a claim clears it, so a completed one left behind never parks a later start.
     Task? _abandonedStartRetirement;
 
-    // Why the last abandoned start could not be torn down cleanly. Set once, never cleared, and
-    // checked before any claim is granted, whether or not a start was waiting when it was set.
-    Exception? _abandonedStartRetirementFailure;
+    // A teardown failure that makes this source unsafe to reuse. Never cleared.
+    Exception? _watchTeardownFailure;
 
     /// <summary>
     ///     Claims this source's single stream. While an abandoned start is still being torn down the
@@ -39,12 +38,11 @@ public sealed partial class BrokerIndexWatchSource
             Task retirement;
             lock (_streamLock)
             {
-                if (_abandonedStartRetirementFailure is { } failure)
+                if (_watchTeardownFailure is { } failure)
                 {
                     throw new InvalidOperationException(
-                        "This watch source cannot start again: tearing down a start that was cancelled while " +
-                        "its StartWatch frame was being sent failed, so its broker connection is not known to be " +
-                        "safe to watch on. Create a new connection and watch source.", failure);
+                        "This watch source cannot start again: its watch teardown failed, so its broker connection " +
+                        "is not known to be safe to watch on. Create a new connection and watch source.", failure);
                 }
 
                 if (!_streamClaimed)
@@ -92,7 +90,7 @@ public sealed partial class BrokerIndexWatchSource
     ///     reads the broker's EndWatchAck before it returns. That read is what keeps the
     ///     acknowledgement from reaching, and ending, the next watch on the same client. A stop that
     ///     timed out without reading it, or any other teardown failure, is recorded in
-    ///     <see cref="_abandonedStartRetirementFailure" /> rather than thrown, so the task itself
+    ///     <see cref="_watchTeardownFailure" /> rather than thrown, so the task itself
     ///     never faults and nothing depends on a later start to observe it. The stream is released
     ///     last, after the failure is recorded, so no claim can slip in between the two.
     /// </summary>
@@ -118,7 +116,7 @@ public sealed partial class BrokerIndexWatchSource
         {
             lock (_streamLock)
             {
-                _abandonedStartRetirementFailure = teardownFailure;
+                _watchTeardownFailure = teardownFailure;
             }
         }
         finally
