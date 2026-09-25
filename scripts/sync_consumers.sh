@@ -221,6 +221,16 @@ update_pull_request() {
 	jq -r '.html_url // empty' "$patch_response"
 }
 
+pull_request_body() {
+	# pull_request_body <detail>: the description for a pin-bump pull request.
+	# The "## Problem" section is what pr-crew's problem-fit check reads on a
+	# pull request that links no issue; without it the reviewer holds an
+	# otherwise A-graded bump at Grade B (git-wizard#272, file-wizard#520).
+	local detail="$1"
+	printf '## Problem\n\nMFTLib `main` moved to %s and this consumer still pinned the previous commit, so its build and tests ran against a stale library. The pin follows MFTLib `main` so consumer CI exercises the current library.\n\n## Summary\n\nAutomated update of the %s submodule gitlink to %s by sync-consumers.' \
+		"$NEW_SHA" "$detail" "$NEW_SHA"
+}
+
 refresh_existing_pull_request() {
 	# refresh_existing_pull_request <repo> <base_branch> <newline_separated_paths>
 	# An open pull request for BRANCH already exists (the create call returned
@@ -231,7 +241,7 @@ refresh_existing_pull_request() {
 	local detail title body index exit_code url
 	detail="${paths//$'\n'/, }"
 	title="chore: bump MFTLib pin to $SHORT_SHA"
-	body="Automated update of the $detail submodule gitlink to $NEW_SHA by sync-consumers."
+	body="$(pull_request_body "$detail")"
 
 	index="$(find_open_pull_request_index "$repo" "$base_branch" "$BRANCH")"
 	exit_code=$?
@@ -267,7 +277,7 @@ open_pull_request() {
 	detail="${paths//$'\n'/, }"
 	pr_body="$(jq -n --arg title "chore: bump MFTLib pin to $SHORT_SHA" \
 		--arg head "$BRANCH" --arg base "$base_branch" \
-		--arg body "Automated update of the $detail submodule gitlink to $NEW_SHA by sync-consumers." \
+		--arg body "$(pull_request_body "$detail")" \
 		'{title: $title, head: $head, base: $base, body: $body}')"
 	pr_response="$SCRATCH/pr_response.json"
 	pr_status="$(curl -sS -o "$pr_response" -w '%{http_code}' -X POST \
