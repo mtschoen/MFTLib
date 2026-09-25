@@ -328,8 +328,11 @@ assert_equals "0" "$REFRESH_STATUS" "reports success"
 assert_contains "$(cat "$FIND_PR_INDEX_LOG")" "consumer-refresh|main|$BRANCH" \
 	"looks up the existing pull request by repo, base branch and head branch"
 assert_contains "$(cat "$UPDATE_PR_LOG")" \
-	"consumer-refresh|42|chore: bump MFTLib pin to $SHORT_SHA|Automated update of the external/MFTLib submodule gitlink to $NEW_SHA by sync-consumers." \
-	"PATCHes the existing pull request with a title and body naming the new sha"
+	"consumer-refresh|42|chore: bump MFTLib pin to $SHORT_SHA|## Problem" \
+	"PATCHes the existing pull request with a title naming the new sha and a body that opens with a Problem section"
+assert_contains "$(cat "$UPDATE_PR_LOG")" \
+	"Automated update of the external/MFTLib submodule gitlink to $NEW_SHA by sync-consumers." \
+	"the refreshed body names the new sha"
 assert_contains "${SUMMARY[*]}" "updated" "records the refresh as updated"
 assert_contains "${SUMMARY[*]}" "#42" "names the pull request index in the summary"
 
