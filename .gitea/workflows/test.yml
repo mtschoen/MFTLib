@@ -91,12 +91,26 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $stdout = 'MFTLib.Tests/coverage-run.stdout.log'
           $stderr = 'MFTLib.Tests/coverage-run.stderr.log'
+          # Wait for the script's own process only. Start-Process -Wait also waits
+          # for every descendant, and the MSBuild reuse nodes the build spawns stay
+          # alive for their 15-minute idle timeout, which held this step open long
+          # after the tests had passed (PR 251, run 35963). Reading .Handle before
+          # the child exits keeps ExitCode readable after WaitForExit.
           $process = Start-Process -FilePath (Get-Command pwsh).Source `
             -ArgumentList '-NoProfile', '-File', 'scripts/run-coverage.ps1', '-NonInteractive' `
             -RedirectStandardOutput $stdout -RedirectStandardError $stderr `
-            -NoNewWindow -Wait -PassThru
+            -NoNewWindow -PassThru
+          $null = $process.Handle
+          $finished = $process.WaitForExit([TimeSpan]::FromMinutes(8))
+          if (-not $finished) {
+            $process.Kill($true)
+          }
           Get-Content -LiteralPath $stdout
           Get-Content -LiteralPath $stderr
+          if (-not $finished) {
+            Write-Host '::error::run-coverage.ps1 did not exit within 8 minutes and was killed.'
+            exit 1
+          }
           exit $process.ExitCode
 
       - name: Upload coverage artifact
