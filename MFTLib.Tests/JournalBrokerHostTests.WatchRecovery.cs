@@ -85,7 +85,7 @@ public partial class JournalBrokerHostTests
             (_, _, _) => ThrowingWatchMidStream());
 
         var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
+        BrokerProtocol.WriteStartWatch(request, 1, "C:7:100:1");
         await clientSide.WriteAsync(request.WrittenMemory);
         await clientSide.FlushAsync();
 

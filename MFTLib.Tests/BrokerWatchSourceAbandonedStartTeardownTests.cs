@@ -6,55 +6,72 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 /// <summary>
-///     MFTLib issue 250 review findings: the teardown of a start abandoned mid-send must not hand
-///     the connection to another watch when its stop never read the broker's EndWatchAck, and its
-///     failure must reach later starts whether or not one was already waiting. The scripted broker
-///     never acknowledges the stop, so the timeout outcome is fixed by the script, not by time;
-///     the timeout is set to zero only so the stop gives up at once. That timeout is process-wide,
-///     hence <see cref="DoNotParallelizeAttribute" />.
+///     MFTLib issues 250 and 252: the teardown of a start abandoned mid-send stops the watch that
+///     send started under the same generation rule as every other stop. A later start supersedes the
+///     teardown's wait for the broker's EndWatchAck and watches on the same connection, and the late
+///     acknowledgement cannot end it; with no later start the teardown waits for the acknowledgement.
+///     The scripted broker decides when, or whether, it acknowledges, so no outcome depends on time.
 /// </summary>
 [TestClass]
-[DoNotParallelize]
 public sealed class BrokerWatchSourceAbandonedStartTeardownTests
 {
     static readonly IndexWatchTarget TargetC = new('C', 7, 100);
 
     [TestMethod]
-    public async Task StartWaitingForAnAbandonedStart_WhoseStopIsNeverAcknowledged_FailsInsteadOfWatching()
+    public async Task StartWaitingForAnAbandonedStart_SupersedesItsUnacknowledgedStop_AndALateAckCannotEndIt()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var token = harness.CancellationToken;
         var source = new BrokerIndexWatchSource(harness.ConnectAsync);
         await using var blockedSend = await BlockedSend.HoldAsync(harness, token);
-        await using var scope = new ZeroAcknowledgementTimeout();
 
         var abandonedMove = await AbandonAStartMidSendAsync(source, token);
-        var next = source.StartWatching([TargetC], token).GetAsyncEnumerator(token);
+        using var nextCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        await using var next = source.StartWatching([TargetC], nextCancellation.Token)
+            .GetAsyncEnumerator(nextCancellation.Token);
         var nextMove = next.MoveNextAsync().AsTask();
         Assert.IsFalse(nextMove.IsCompleted, "A start went ahead while the abandoned send was still on the pipe.");
 
         blockedSend.Release();
         await abandonedMove.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
+        var abandonedStart = await harness.ReadFrameAsync();
+        Assert.AreEqual(BrokerFrameKind.StartWatch, abandonedStart.Kind);
+        var abandonedEnd = await harness.ReadFrameAsync();
+        Assert.AreEqual(BrokerFrameKind.EndWatch, abandonedEnd.Kind);
+        Assert.AreEqual(abandonedStart.WatchGeneration, abandonedEnd.WatchGeneration);
 
-        await AssertRefusedAsync(next, nextMove, token);
-        Assert.IsTrue(harness.Client.LastStopTimedOut);
+        // The later start did not wait for an acknowledgement the broker never sent.
+        var nextStart = await harness.ReadFrameAsync();
+        Assert.AreEqual(BrokerFrameKind.StartWatch, nextStart.Kind);
+        Assert.IsTrue(nextStart.WatchGeneration > abandonedStart.WatchGeneration);
 
-        // The acknowledgement the stop gave up on arrives late; no watch exists for it to end, and
-        // the source still refuses to start one on this connection.
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-        await AssertStartRefusedAsync(source, token);
+        // The abandoned watch's acknowledgement arrives late, ahead of a batch for the new watch.
+        // Frames are read in order, so the batch arriving proves the acknowledgement ended nothing.
+        var entry = JournalEntryFactory.Create(1, 105, "after-late-ack.txt");
+        await harness.WriteAsync(writer =>
+        {
+            BrokerProtocol.WriteEndWatchAck(writer, abandonedStart.WatchGeneration);
+            BrokerProtocol.WriteJournalBatch(writer, "C", harness.ArmEpochForDrive(nextStart, 'C'),
+                new UsnJournalCursor(7, 110), [entry]);
+        });
+        Assert.IsTrue(await nextMove.WaitAsync(token));
+        Assert.AreEqual("after-late-ack.txt", ((JournalBatch)next.Current).Entries.Single().FileName);
+
+        // Its own acknowledgement still ends it.
+        await nextCancellation.CancelAsync();
+        var finalMove = next.MoveNextAsync().AsTask();
+        var nextEnd = await harness.AcknowledgeEndWatchAsync();
+        Assert.AreEqual(nextStart.WatchGeneration, nextEnd.WatchGeneration);
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => finalMove.WaitAsync(token));
     }
 
     [TestMethod]
-    public async Task AbandonedStart_WhoseStopIsNeverAcknowledged_FailsTheNextStartEvenAfterItsTeardownFinished()
+    public async Task AbandonedStart_WithNoLaterStart_WaitsForItsAckAndThenReleasesTheSource()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var token = harness.CancellationToken;
         var source = new BrokerIndexWatchSource(harness.ConnectAsync);
         await using var blockedSend = await BlockedSend.HoldAsync(harness, token);
-        await using var scope = new ZeroAcknowledgementTimeout();
 
         var abandonedMove = await AbandonAStartMidSendAsync(source, token);
         var retirement = GetPrivateField<Task?>(source, "_abandonedStartRetirement");
@@ -63,14 +80,22 @@ public sealed class BrokerWatchSourceAbandonedStartTeardownTests
         blockedSend.Release();
         await abandonedMove.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await retirement.WaitAsync(token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        var endWatch = await harness.ReadFrameAsync();
+        Assert.AreEqual(BrokerFrameKind.EndWatch, endWatch.Kind);
+        Assert.IsFalse(retirement.IsCompleted, "The teardown finished without the acknowledgement.");
 
-        // The teardown's failure is retained, not carried by the task, so there is no faulted task
-        // left for the finalizer to report as unobserved when no start ever follows.
+        await harness.WriteAsync(writer => BrokerProtocol.WriteEndWatchAck(writer, endWatch.WatchGeneration));
+        await retirement.WaitAsync(token);
         Assert.IsTrue(retirement.IsCompletedSuccessfully, retirement.Exception?.ToString());
-        await AssertStartRefusedAsync(source, token);
-        await AssertStartRefusedAsync(source, token);
+
+        using var nextCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        await using var next = source.StartWatching([TargetC], nextCancellation.Token)
+            .GetAsyncEnumerator(nextCancellation.Token);
+        var nextMove = next.MoveNextAsync().AsTask();
+        Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
+        await nextCancellation.CancelAsync();
+        await harness.AcknowledgeEndWatchAsync();
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => nextMove.WaitAsync(token));
     }
 
     /// <summary>
@@ -99,29 +124,6 @@ public sealed class BrokerWatchSourceAbandonedStartTeardownTests
 
         await abandoned.DisposeAsync();
         return abandonedMove;
-    }
-
-    static Task AssertStartRefusedAsync(BrokerIndexWatchSource source, CancellationToken token)
-    {
-        var start = source.StartWatching([TargetC], token).GetAsyncEnumerator(token);
-        return AssertRefusedAsync(start, start.MoveNextAsync().AsTask(), token);
-    }
-
-    /// <summary>
-    ///     The start must fail naming the unacknowledged stop. A start that went ahead and is
-    ///     watching instead is left undisposed, because disposing an enumerator with a pending move
-    ///     throws and would hide this failure; the harness tears its pipe down either way.
-    /// </summary>
-    static async Task AssertRefusedAsync(IAsyncEnumerator<WatchStreamItem> start, Task<bool> move,
-        CancellationToken token)
-    {
-        await ((Task)move.WaitAsync(token)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        Assert.IsTrue(move.IsFaulted, $"The start was not refused; its first move is {move.Status}.");
-        var refusal = move.Exception!.InnerException;
-        Assert.IsInstanceOfType<InvalidOperationException>(refusal, refusal?.ToString());
-        Assert.IsInstanceOfType<TimeoutException>(refusal.InnerException, refusal.ToString());
-        StringAssert.Contains(refusal.InnerException!.Message, "EndWatchAck");
-        await start.DisposeAsync();
     }
 
     static T GetPrivateField<T>(object instance, string fieldName)
@@ -160,23 +162,6 @@ public sealed class BrokerWatchSourceAbandonedStartTeardownTests
         public ValueTask DisposeAsync()
         {
             Release();
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    /// <summary>Makes a stop give up on the acknowledgement at once, restoring the default afterwards.</summary>
-    sealed class ZeroAcknowledgementTimeout : IAsyncDisposable
-    {
-        readonly TimeSpan _previous = JournalBrokerClient._endWatchAckTimeout;
-
-        public ZeroAcknowledgementTimeout()
-        {
-            JournalBrokerClient._endWatchAckTimeout = TimeSpan.Zero;
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            JournalBrokerClient._endWatchAckTimeout = _previous;
             return ValueTask.CompletedTask;
         }
     }

@@ -116,7 +116,7 @@ public class DefaultElevatedEntryRunnerTests
             // Arm the live watch with a cursor at the journal tip: the host reports CaughtUp
             // over the still-healthy pipe, then parks in the mocked kernel wait above.
             var request = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteStartWatch(request, "C:7:200:1");
+            BrokerProtocol.WriteStartWatch(request, 1, "C:7:200:1");
             await server.WriteAsync(request.WrittenMemory, cts.Token);
             await server.FlushAsync(cts.Token);
 

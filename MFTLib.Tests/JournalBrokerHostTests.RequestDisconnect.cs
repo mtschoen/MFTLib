@@ -129,7 +129,7 @@ public partial class JournalBrokerHostTests
         // generation stops without writing, so the ack is the frame that lands on the dead
         // pipe.
         brokenServer.BreakPipe();
-        await WriteBrokerRequestAsync(clientSide, BrokerProtocol.WriteEndWatch, cts.Token);
+        await WriteBrokerRequestAsync(clientSide, writer => BrokerProtocol.WriteEndWatch(writer, 1), cts.Token);
 
         await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
         await clientSide.DisposeAsync();

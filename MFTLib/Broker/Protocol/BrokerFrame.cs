@@ -26,9 +26,16 @@ public readonly record struct BrokerFrame
 {
     // Scan and volume-query frames belong to no live arm; clients never issue zero.
     public const uint NoArmEpoch = 0;
+
+    // Watch generations start at one; a frame carrying zero is rejected as malformed.
+    public const uint NoWatchGeneration = 0;
     public BrokerFrameKind Kind { get; private init; }
     // Live batches and errors are delivered only while this is the drive's current epoch.
     public uint ArmEpoch { get; private init; }
+
+    // The live watch generation a StartWatch opens or joins, and the one an EndWatch stops and
+    // its EndWatchAck acknowledges. A client demux ignores an acknowledgement for any other one.
+    public uint WatchGeneration { get; private init; }
     public string? Drive { get; private init; }
     public UsnJournalCursor Cursor { get; private init; }
     public UsnJournalEntry[] Entries { get; private init; }
@@ -81,11 +88,12 @@ public readonly record struct BrokerFrame
         };
     }
 
-    public static BrokerFrame StartWatch(string drivesSpec)
+    public static BrokerFrame StartWatch(uint watchGeneration, string drivesSpec)
     {
         return new BrokerFrame
         {
             Kind = BrokerFrameKind.StartWatch,
+            WatchGeneration = watchGeneration,
             Entries = Array.Empty<UsnJournalEntry>(),
             DrivesSpec = drivesSpec,
             KeepFileNames = Array.Empty<string>()
@@ -117,14 +125,14 @@ public readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.Heartbeat);
     }
 
-    public static BrokerFrame EndWatch()
+    public static BrokerFrame EndWatch(uint watchGeneration)
     {
-        return Empty(BrokerFrameKind.EndWatch);
+        return Empty(BrokerFrameKind.EndWatch) with { WatchGeneration = watchGeneration };
     }
 
-    public static BrokerFrame EndWatchAck()
+    public static BrokerFrame EndWatchAck(uint watchGeneration)
     {
-        return Empty(BrokerFrameKind.EndWatchAck);
+        return Empty(BrokerFrameKind.EndWatchAck) with { WatchGeneration = watchGeneration };
     }
 
     public static BrokerFrame ScanReady(string mmfName, long rowCount, long namePoolUsedBytes, long skippedRecordCount)

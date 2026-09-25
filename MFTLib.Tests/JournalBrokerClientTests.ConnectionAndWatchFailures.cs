@@ -175,7 +175,7 @@ public partial class JournalBrokerClientTests
         var previousCts = (CancellationTokenSource)demuxCtsField.GetValue(client)!;
         demuxCtsField.SetValue(client, null);
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(client.StopLiveWatchAsync);
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => client.StopLiveWatchAsync());
 
         await previousCts.CancelAsync();
         previousCts.Dispose();
@@ -235,20 +235,23 @@ public partial class JournalBrokerClientTests
     }
 
     [TestMethod]
-    public async Task StopLiveWatchAsync_NoAckWithinTimeout_ForcesDemuxDown()
+    public async Task StopLiveWatchAsync_NoAck_TokenCancelled_ForcesDemuxDownAndThrows()
     {
-        JournalBrokerClient._endWatchAckTimeout = TimeSpan.FromMilliseconds(50);
-
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         await using var client = MakeMinimalFakeClient(clientSide);
         await client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 100L) });
+        await ReadOneFrameAsync(serverSide); // StartWatch
 
-        // The broker side never sends EndWatchAck (a wedged broker); StopLiveWatchAsync
-        // must not hang - it forces the demux down once the (shrunk) timeout elapses.
-        await client.StopLiveWatchAsync();
-        Assert.IsTrue(client.LastStopTimedOut, "StopLiveWatchAsync must force demux down via timeout when broker sends no ack.");
+        // The broker side never sends EndWatchAck (a wedged broker); only the token ends the stop.
+        using var stopCancellation = new CancellationTokenSource();
+        var stop = client.StopLiveWatchAsync(stopCancellation.Token);
+        Assert.AreEqual(BrokerFrameKind.EndWatch, (await ReadOneFrameAsync(serverSide)).Kind);
+        Assert.IsFalse(stop.IsCompleted, "The stop ended before the broker acknowledged or the token was cancelled.");
 
-        _ = serverSide;
+        await stopCancellation.CancelAsync();
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => stop);
+        Assert.IsNull(typeof(JournalBrokerClient)
+            .GetField("_demuxTask", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(client));
     }
 
     [TestMethod]

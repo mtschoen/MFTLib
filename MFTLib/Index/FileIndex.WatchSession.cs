@@ -15,16 +15,34 @@ public sealed partial class FileIndex
         readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
         bool _streamStarted;
 
-        public WatchSession(CancellationTokenSource cancellation, IIndexWatchSource source,
-            IReadOnlyList<IndexWatchTarget> targets, CancellationToken callerToken)
+        public WatchSession(CancellationTokenSource cancellation, CancellationTokenSource teardown,
+            IIndexWatchSource source, IReadOnlyList<IndexWatchTarget> targets, CancellationToken callerToken)
         {
             Cancellation = cancellation;
+            _teardown = teardown;
             Source = source;
             CallerToken = callerToken;
             _targets = [.. targets];
         }
 
         public CancellationTokenSource Cancellation { get; }
+
+        // Never disposed: it has no timer and links nothing, and a stop's token registration may
+        // cancel it after the session has been released.
+        readonly CancellationTokenSource _teardown;
+
+        /// <summary>
+        ///     Bounds how long the source's cleanup may wait on something outside the process once
+        ///     <see cref="Cancellation" /> has ended the stream. Cancelled only by
+        ///     <see cref="CancelTeardown" />, which a <see cref="FileIndex.StopWatchingAsync" /> runs
+        ///     when its own token is cancelled.
+        /// </summary>
+        public CancellationToken TeardownToken => _teardown.Token;
+
+        public void CancelTeardown()
+        {
+            _teardown.Cancel();
+        }
 
         // The exact source the pump is reading, so a rescan reaches the arm and disarm
         // operations of the stream in flight rather than of some other instance.

@@ -72,12 +72,13 @@ unready session is released, so `StartWatchingAsync` can simply be called again.
 
 Cancellation, `StopWatchingAsync`, and `DisposeAsync` end a start promptly even while the
 StartWatch frame is stuck on the broker pipe. The frame is never abandoned half-written: the
-send finishes in the background and the watch it started is then stopped cleanly, with the
-broker's acknowledgement read, before the source starts another. A `StartWatchingAsync` issued
-in that interval waits for the cleanup, bounded by its own token, and then starts normally. If
-the cleanup fails, for example because the broker never acknowledged the stop, that source
-refuses every later start with an `InvalidOperationException`; reconnect and create a new
-watch source (and index) to watch again.
+send finishes in the background and the watch it started is then stopped, before the source
+starts another. A `StartWatchingAsync` issued in that interval waits for the send to finish,
+bounded by its own token, and then starts normally without waiting for the broker to
+acknowledge the old stop: the old watch's generation keeps its late acknowledgement from
+ending the new one. If the cleanup fails for any other reason, that source refuses every later
+start with an `InvalidOperationException`; reconnect and create a new watch source (and index)
+to watch again.
 
 Each drive's watch resumes from the cursor stamped in its own block header, which is the
 cursor armed before that drive's cold scan, not the cursor advanced past the scan's own
@@ -432,6 +433,26 @@ names. Later calls add or re-arm only their named drives and leave the others ru
 `StopLiveWatchAsync` ends the complete generation. The host handles control frames in
 order and awaits an existing drive task before starting its replacement, so one drive
 never has two host tasks writing frames at once.
+
+Every watch a client starts carries a watch generation number, fresh for each watch on
+that client, in its `StartWatch`, `EndWatch`, and `EndWatchAck` frames. The host stops
+only the generation an `EndWatch` names, always answers with the `EndWatchAck` for that
+generation, and stops every drive of the old generation before it arms a `StartWatch` for
+a new one. The client's demux ends only on the acknowledgement for its own generation.
+
+`StopLiveWatchAsync(cancellationToken)` waits for that acknowledgement, or for the pipe to
+close when the broker has died, with no timer of its own: the token is the only bound on a
+live broker that never answers. Cancelling it throws `OperationCanceledException` once the
+client has stopped reading the old watch, or, when another operation holds the client,
+once that teardown is queued for the next operation. The client stays usable either way.
+The next watch carries a later generation, so the old acknowledgement cannot end it when
+it arrives, and no reconnect or second UAC prompt is needed. The `EndWatch` frame itself
+is always written whole. `FileIndex.StopWatchingAsync` passes its token through to this
+stop for a `BrokerIndexWatchSource`; `FileIndex.DisposeAsync` has no token, so it waits for
+the acknowledgement or the pipe closing. Bound a shutdown against a live but unresponsive
+broker by calling `StopWatchingAsync` with a token before disposing, or by disposing the
+client. A frame without a generation, or with generation 0, is rejected as a mismatch
+between client and broker builds.
 
 Each `SendStartWatchAsync` arms every named drive under a fresh per-drive arm epoch
 carried in its `StartWatch` token (`letter:journalId:nextUsn:armEpoch`). The broker tags

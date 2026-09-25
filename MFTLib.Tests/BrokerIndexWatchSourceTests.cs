@@ -31,8 +31,7 @@ public class BrokerIndexWatchSourceTests
                 new UsnJournalCursor(9, 210), [entryD]);
         });
 
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
 
         var items = await consumption;
         Assert.AreEqual(2, items.Count);
@@ -66,8 +65,7 @@ public class BrokerIndexWatchSourceTests
         Assert.AreEqual(BrokerFrameKind.DisarmDrive, (await harness.ReadFrameAsync()).Kind);
 
         await streamCancellation.CancelAsync();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => first);
     }
 
@@ -88,8 +86,7 @@ public class BrokerIndexWatchSourceTests
             BrokerProtocol.WriteJournalBatch(response, "D", harness.ArmEpochForDrive(start, 'D'),
                 new UsnJournalCursor(9, 210), [JournalEntryFactory.Create(2, 205, "d.txt")]);
         });
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
         await consumption;
 
         // The source's finally leaves the borrowed client usable rather than half torn down.
@@ -99,8 +96,7 @@ public class BrokerIndexWatchSourceTests
         }, harness.CancellationToken);
         Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
         var stop = harness.Client.StopLiveWatchAsync();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
         await stop;
     }
 
@@ -115,8 +111,7 @@ public class BrokerIndexWatchSourceTests
 
         Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
         await cancellation.CancelAsync();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
 
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => consumption);
     }
@@ -132,8 +127,7 @@ public class BrokerIndexWatchSourceTests
 
         Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
         await cancellation.CancelAsync();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => cancelledConsumption);
 
         var restartedConsumption = ReadOneItemAndBreakAsync(source.StartWatching(
@@ -143,8 +137,7 @@ public class BrokerIndexWatchSourceTests
         var entry = JournalEntryFactory.Create(1, 105, "after-restart.txt");
         await harness.WriteAsync(response => BrokerProtocol.WriteJournalBatch(response, "C",
             harness.ArmEpochForDrive(startWatch, 'C'), new UsnJournalCursor(7, 110), [entry]));
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
 
         var batch = (JournalBatch)(await restartedConsumption).Single();
         Assert.AreEqual('C', batch.DriveLetter);
@@ -170,8 +163,7 @@ public class BrokerIndexWatchSourceTests
             BrokerProtocol.WriteJournalBatch(response, "C", harness.ArmEpochForDrive(start, 'C'),
                 new UsnJournalCursor(7, 110), [JournalEntryFactory.Create(1, 105, "c.txt")]);
         });
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
 
         var items = await consumption;
         Assert.AreEqual('D', items.OfType<DriveWatchFailure>().Single().DriveLetter);
@@ -187,8 +179,9 @@ public class BrokerIndexWatchSourceTests
             [new IndexWatchTarget('C', 7, 100), new IndexWatchTarget('D', 9, 200)],
             harness.CancellationToken));
 
-        Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        var start = await harness.ReadFrameAsync();
+        Assert.AreEqual(BrokerFrameKind.StartWatch, start.Kind);
+        await harness.WriteAsync(writer => BrokerProtocol.WriteEndWatchAck(writer, start.WatchGeneration));
         Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
 
         await consumption;
@@ -228,8 +221,7 @@ public class BrokerIndexWatchSourceTests
         var start = await harness.ReadFrameAsync();
         Assert.AreEqual(BrokerFrameKind.StartWatch, start.Kind);
         Assert.AreEqual(string.Empty, start.DrivesSpec);
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
 
         await consumption;
     }
@@ -252,8 +244,7 @@ public class BrokerIndexWatchSourceTests
         StringAssert.Contains(thrown.Message, "already running a stream");
 
         await cancellation.CancelAsync();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => firstConsumption);
     }
 

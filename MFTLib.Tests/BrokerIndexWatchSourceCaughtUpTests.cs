@@ -25,8 +25,7 @@ public class BrokerIndexWatchSourceCaughtUpTests
                 new UsnJournalCursor(7, 110), [entry]);
         });
 
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
 
         var items = await consumption;
         Assert.AreEqual(2, items.Count);
@@ -66,8 +65,7 @@ public class BrokerIndexWatchSourceCaughtUpTests
                 new UsnJournalCursor(7, 510), [JournalEntryFactory.Create(2, 505, "fresh.txt")]);
         });
 
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
 
         var items = await consumption;
         Assert.AreEqual(2, items.Count);

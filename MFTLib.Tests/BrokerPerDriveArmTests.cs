@@ -225,7 +225,7 @@ public partial class BrokerPerDriveArmTests : BrokerBlockTestBase
                     [JournalEntryFactory.Create(1, 101, "stale.txt")]);
                 BrokerProtocol.WriteJournalBatch(response, "D", WatchSpecArmEpochs.ForDrive(startWatch, "D"), new UsnJournalCursor(7UL, 210L),
                     [JournalEntryFactory.Create(2, 201, "d.txt")]);
-                BrokerProtocol.WriteEndWatchAck(response);
+                BrokerProtocol.WriteEndWatchAck(response, startWatch.WatchGeneration);
             }, cancellation.Token);
 
             var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
@@ -269,7 +269,7 @@ public partial class BrokerPerDriveArmTests : BrokerBlockTestBase
 
         var stopTask = client.StopLiveWatchAsync();
         Assert.AreEqual(BrokerFrameKind.EndWatch, (await ReadOneFrameAsync(serverSide, cancellation.Token)).Kind);
-        await WriteAsync(serverSide, BrokerProtocol.WriteEndWatchAck, cancellation.Token);
+        await WriteAsync(serverSide, writer => BrokerProtocol.WriteEndWatchAck(writer, initialStart.WatchGeneration), cancellation.Token);
         await stopTask;
 
         await client.SendStartWatchAsync(WatchCursors("C"), cancellation.Token);
@@ -323,7 +323,7 @@ public partial class BrokerPerDriveArmTests : BrokerBlockTestBase
                     WatchSpecArmEpochs.ForDrive(batch.StartWatch, batch.Drive), batch.Cursor, [batch.Entry]);
             }
 
-            BrokerProtocol.WriteEndWatchAck(response);
+            BrokerProtocol.WriteEndWatchAck(response, batches[0].StartWatch.WatchGeneration);
         }, cancellationToken);
     }
 

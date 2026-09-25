@@ -25,7 +25,7 @@ public partial class JournalBrokerHostTests
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
+        BrokerProtocol.WriteStartWatch(request, 1, "C:7:100:1");
         await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
         await clientSide.FlushAsync(CancellationToken.None);
 
@@ -62,7 +62,7 @@ public partial class JournalBrokerHostTests
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:0:0:1"); // no cached cursor -> sentinel
+        BrokerProtocol.WriteStartWatch(request, 1, "C:0:0:1"); // no cached cursor -> sentinel
         await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
         await clientSide.FlushAsync(CancellationToken.None);
 
@@ -100,7 +100,7 @@ public partial class JournalBrokerHostTests
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var startRequest = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(startRequest, "C:7:100:1");
+        BrokerProtocol.WriteStartWatch(startRequest, 1, "C:7:100:1");
         await clientSide.WriteAsync(startRequest.WrittenMemory, cts.Token);
         await clientSide.FlushAsync(cts.Token);
 
@@ -112,7 +112,7 @@ public partial class JournalBrokerHostTests
         await watchStarted.Task;
 
         var endRequest = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteEndWatch(endRequest);
+        BrokerProtocol.WriteEndWatch(endRequest, 1);
         await clientSide.WriteAsync(endRequest.WrittenMemory, cts.Token);
         await clientSide.FlushAsync(cts.Token);
 
@@ -208,7 +208,7 @@ public partial class JournalBrokerHostTests
         // watchDrive omitted -> null
 
         var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
+        BrokerProtocol.WriteStartWatch(request, 1, "C:7:100:1");
         await clientSide.WriteAsync(request.WrittenMemory);
         await clientSide.FlushAsync();
 
@@ -235,7 +235,7 @@ public partial class JournalBrokerHostTests
             (_, _, _) => FiniteWatch([([SampleEntry()], new UsnJournalCursor(7UL, 110L))]));
 
         var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
+        BrokerProtocol.WriteStartWatch(request, 1, "C:7:100:1");
         await clientSide.WriteAsync(request.WrittenMemory);
         await clientSide.FlushAsync();
 

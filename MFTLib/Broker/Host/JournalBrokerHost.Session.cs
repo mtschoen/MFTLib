@@ -116,8 +116,8 @@ public sealed partial class JournalBrokerHost
                 case BrokerFrameKind.StartWatch:
                     if (frame.Value.DrivesSpec is { } watchSpec)
                     {
-                        await ArmWatchDrivesAsync(stream, writeLock, watch, watchSpec, cancellationToken)
-                            .ConfigureAwait(false);
+                        await ArmWatchDrivesAsync(stream, writeLock, watch, frame.Value.WatchGeneration, watchSpec,
+                            cancellationToken).ConfigureAwait(false);
                     }
 
                     break;
@@ -127,9 +127,8 @@ public sealed partial class JournalBrokerHost
                     break;
 
                 case BrokerFrameKind.EndWatch:
-                    await StopWatchGenerationAsync(watch).ConfigureAwait(false);
-                    await WriteReplyFrameAsync(stream, writeLock, BrokerProtocol.WriteEndWatchAck, cancellationToken)
-                        .ConfigureAwait(false);
+                    await EndWatchGenerationAsync(stream, writeLock, watch, frame.Value.WatchGeneration,
+                        cancellationToken).ConfigureAwait(false);
                     break;
 
                 case BrokerFrameKind.Shutdown:
@@ -142,9 +141,21 @@ public sealed partial class JournalBrokerHost
         Stream stream,
         SemaphoreSlim writeLock,
         WatchGeneration watch,
+        uint watchGeneration,
         string watchSpec,
         CancellationToken cancellationToken)
     {
+        // A StartWatch for a generation other than the live one begins a new watch, so every
+        // drive of the old generation stops first, including drives the new spec does not name.
+        // That is what a client whose stop was cancelled before its EndWatch reached the wire
+        // relies on: the next watch it starts cannot inherit the old one's drives.
+        if (watch.Cancellation != null && watch.Number != watchGeneration)
+        {
+            await StopWatchGenerationAsync(watch).ConfigureAwait(false);
+        }
+
+        watch.Number = watchGeneration;
+
         // Arming a drive that is already armed stops its task and awaits it to a stop
         // before the fresh one starts, so one drive never has two tasks writing frames at
         // once. That is what replaces the old refusal to act on a second StartWatch: the
@@ -178,6 +189,27 @@ public sealed partial class JournalBrokerHost
         driveWatch.Dispose();
     }
 
+    // Stops the live generation only when the EndWatch names it, and acknowledges with the
+    // generation the request named either way. An EndWatch for an older generation, which a
+    // client sends when a stop it gave up on is overtaken by a newer watch, therefore leaves
+    // the newer watch running, and its acknowledgement is one the newer watch's demux ignores.
+    static async Task EndWatchGenerationAsync(
+        Stream stream,
+        SemaphoreSlim writeLock,
+        WatchGeneration watch,
+        uint watchGeneration,
+        CancellationToken cancellationToken)
+    {
+        if (watch.Number == watchGeneration)
+        {
+            await StopWatchGenerationAsync(watch).ConfigureAwait(false);
+        }
+
+        await WriteReplyFrameAsync(stream, writeLock,
+            writer => BrokerProtocol.WriteEndWatchAck(writer, watchGeneration), cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     static async Task StopWatchGenerationAsync(WatchGeneration watch)
     {
         if (watch.Cancellation == null)
@@ -201,6 +233,9 @@ public sealed partial class JournalBrokerHost
     {
         public readonly Dictionary<string, DriveWatch> DriveWatches = new(StringComparer.OrdinalIgnoreCase);
         public CancellationTokenSource? Cancellation;
+
+        // The client-issued generation of the most recent StartWatch; meaningful while Cancellation is set.
+        public uint Number = BrokerFrame.NoWatchGeneration;
     }
 
     sealed class DriveWatch : IDisposable

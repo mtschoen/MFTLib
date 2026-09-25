@@ -12,7 +12,7 @@ public partial class JournalBrokerClientTests : BrokerBlockTestBase
     static readonly string[] KeepFileNamesGit = [".git"];
 
     // ---------------------------------------------------------------------------
-    // Remaining edge cases: truncated frames, no-op stop, write failures, timeout
+    // Remaining edge cases: truncated frames, no-op stop, write failures, token-bounded
     // forcing, duplicate start guard, clean channel completion, broker-death via a
     // real protocol error, and the real SpawnAndConnectAsync/CreateRealDriveBlockSection path.
     // ---------------------------------------------------------------------------

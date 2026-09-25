@@ -8,10 +8,11 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_StartWatchFrame_WithArmEpoch()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteStartWatch(w, "C:7:100:1"),
+        AssertWireBytes(w => BrokerProtocol.WriteStartWatch(w, 5, "C:7:100:1"),
         [
-            0x17, 0x00, 0x00, 0x00, // totalLength = 23
+            0x1B, 0x00, 0x00, 0x00, // totalLength = 27
             0x02, // kind = StartWatch
+            0x05, 0x00, 0x00, 0x00, // watch generation = 5
             0x12, 0x00, 0x00, 0x00, // drivesSpec length = 18
             0x43, 0x00, 0x3A, 0x00, 0x37, 0x00, 0x3A, 0x00, 0x31, 0x00,
             0x30, 0x00, 0x30, 0x00, 0x3A, 0x00, 0x31, 0x00 // "C:7:100:1"

@@ -23,7 +23,6 @@ public sealed partial class JournalBrokerClient
     internal static void ResetToDefaults()
     {
         _connectTimeout = DefaultConnectTimeout;
-        _endWatchAckTimeout = TimeSpan.FromSeconds(5);
     }
 
     /// <summary>

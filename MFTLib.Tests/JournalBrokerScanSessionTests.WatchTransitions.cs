@@ -28,7 +28,7 @@ public partial class JournalBrokerScanSessionTests
             {
                 endWatchCount++;
                 var ack = new ArrayBufferWriter<byte>();
-                BrokerProtocol.WriteEndWatchAck(ack);
+                BrokerProtocol.WriteEndWatchAck(ack, frame.WatchGeneration);
                 await serverSide.WriteAsync(ack.WrittenMemory);
                 await serverSide.FlushAsync();
                 frame = await ReadOneFrameAsync(serverSide);
@@ -122,8 +122,6 @@ public partial class JournalBrokerScanSessionTests
     [TestMethod]
     public async Task StopWatch_DisposedDuringHandshake_ThrowsObjectDisposed_DoesNotResurrectParked()
     {
-        JournalBrokerClient._endWatchAckTimeout = TimeSpan.FromMilliseconds(50);
-
         var (clientSide, serverSide) = DuplexStream.CreatePair();
         using var gate = new GateFrameWriteStream(clientSide, BrokerFrameKind.EndWatch);
         var client = MakeMinimalFakeClient(gate);
@@ -170,9 +168,10 @@ public partial class JournalBrokerScanSessionTests
         var watchTask = Task.Run(async () =>
         {
             receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // StartWatch
-            receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // EndWatch
+            var endWatch = await ReadOneFrameAsync(serverSide);
+            receivedKinds.Add(endWatch.Kind);
             var ack = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteEndWatchAck(ack);
+            BrokerProtocol.WriteEndWatchAck(ack, endWatch.WatchGeneration);
             await serverSide.WriteAsync(ack.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -257,9 +256,10 @@ public partial class JournalBrokerScanSessionTests
         var stopTask = Task.Run(async () =>
         {
             receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // StartWatch
-            receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // EndWatch
+            var endWatch = await ReadOneFrameAsync(serverSide);
+            receivedKinds.Add(endWatch.Kind);
             var ack = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteEndWatchAck(ack);
+            BrokerProtocol.WriteEndWatchAck(ack, endWatch.WatchGeneration);
             await serverSide.WriteAsync(ack.WrittenMemory);
             await serverSide.FlushAsync();
         });

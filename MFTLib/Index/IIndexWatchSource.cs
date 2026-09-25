@@ -9,6 +9,8 @@ namespace MFTLib.Index;
 ///     it passed when starting it, which runs the implementation's own cleanup.
 ///     <para>
 ///         <see cref="FileIndex" /> always starts a stream through
+///         <see cref="StartWatching(IReadOnlyList{IndexWatchTarget}, Action, CancellationToken, CancellationToken)" />,
+///         whose default forwards to
 ///         <see cref="StartWatching(IReadOnlyList{IndexWatchTarget}, Action, CancellationToken)" />,
 ///         and <see cref="FileIndex.StartWatchingAsync" /> completes only once that stream has
 ///         reported it is ready. How strong that guarantee is depends on the source: one that
@@ -79,6 +81,30 @@ public interface IIndexWatchSource
     {
         ArgumentNullException.ThrowIfNull(reportStreamReady);
         return new ReadyOnFirstMoveWatchStream(StartWatching(targets, cancellationToken), reportStreamReady);
+    }
+
+    /// <summary>
+    ///     Starts the same stream as
+    ///     <see cref="StartWatching(IReadOnlyList{IndexWatchTarget}, Action, CancellationToken)" />
+    ///     and bounds its teardown by <paramref name="teardownCancellationToken" />. Once
+    ///     <paramref name="cancellationToken" /> ends the stream, a source whose cleanup waits on
+    ///     something outside the process, as <see cref="BrokerIndexWatchSource" /> waits for the
+    ///     broker to acknowledge the end of its watch, stops that wait when
+    ///     <paramref name="teardownCancellationToken" /> is cancelled, and still leaves itself ready
+    ///     for another stream. <see cref="FileIndex" /> always starts a stream through this member
+    ///     and cancels <paramref name="teardownCancellationToken" /> when the token passed to
+    ///     <see cref="FileIndex.StopWatchingAsync" /> is cancelled; disposal never cancels it.
+    ///     <para>
+    ///         The default implementation ignores <paramref name="teardownCancellationToken" /> and
+    ///         calls <see cref="StartWatching(IReadOnlyList{IndexWatchTarget}, Action, CancellationToken)" />,
+    ///         which suits a source whose cleanup waits on nothing external.
+    ///     </para>
+    /// </summary>
+    IAsyncEnumerable<WatchStreamItem> StartWatching(
+        IReadOnlyList<IndexWatchTarget> targets, Action reportStreamReady,
+        CancellationToken teardownCancellationToken, CancellationToken cancellationToken)
+    {
+        return StartWatching(targets, reportStreamReady, cancellationToken);
     }
 
     /// <summary>

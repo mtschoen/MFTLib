@@ -23,7 +23,8 @@ public sealed partial class FileIndex
         Exception? streamFailure = null;
         try
         {
-            await foreach (var item in source.StartWatching(targets, session.MarkReady, cancellationToken)
+            await foreach (var item in source.StartWatching(targets, session.MarkReady, session.TeardownToken,
+                               cancellationToken)
                                .ConfigureAwait(false))
             {
                 session.MarkStreamStarted();

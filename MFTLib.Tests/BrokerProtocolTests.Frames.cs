@@ -109,13 +109,14 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void StartWatchFrame_RoundTrips_DrivesSpec()
+    public void StartWatchFrame_RoundTrips_WatchGenerationAndDrivesSpec()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(buffer, "C:1:100:1");
+        BrokerProtocol.WriteStartWatch(buffer, 3, "C:1:100:1");
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
 
         Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
+        Assert.AreEqual(3U, frame.WatchGeneration);
         Assert.AreEqual("C:1:100:1", frame.DrivesSpec);
         Assert.AreEqual(buffer.WrittenCount, consumed);
     }
@@ -143,24 +144,26 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void EndWatchFrame_RoundTrips_NoPayload()
+    public void EndWatchFrame_RoundTrips_WatchGeneration()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteEndWatch(buffer);
+        BrokerProtocol.WriteEndWatch(buffer, 4);
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
 
         Assert.AreEqual(BrokerFrameKind.EndWatch, frame.Kind);
+        Assert.AreEqual(4U, frame.WatchGeneration);
         Assert.AreEqual(buffer.WrittenCount, consumed);
     }
 
     [TestMethod]
-    public void EndWatchAckFrame_RoundTrips_NoPayload()
+    public void EndWatchAckFrame_RoundTrips_WatchGeneration()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteEndWatchAck(buffer);
+        BrokerProtocol.WriteEndWatchAck(buffer, uint.MaxValue);
         var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
 
         Assert.AreEqual(BrokerFrameKind.EndWatchAck, frame.Kind);
+        Assert.AreEqual(uint.MaxValue, frame.WatchGeneration);
         Assert.AreEqual(buffer.WrittenCount, consumed);
     }
 
@@ -246,8 +249,15 @@ public partial class BrokerProtocolTests
     {
         AssertWireBytes(BrokerProtocol.WriteShutdown, [0x01, 0x00, 0x00, 0x00, 0x03]);
         AssertWireBytes(BrokerProtocol.WriteHeartbeat, [0x01, 0x00, 0x00, 0x00, 0x08]);
-        AssertWireBytes(BrokerProtocol.WriteEndWatch, [0x01, 0x00, 0x00, 0x00, 0x09]);
-        AssertWireBytes(BrokerProtocol.WriteEndWatchAck, [0x01, 0x00, 0x00, 0x00, 0x0A]);
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_WatchGenerationFrames()
+    {
+        AssertWireBytes(w => BrokerProtocol.WriteEndWatch(w, 0x01020304),
+            [0x05, 0x00, 0x00, 0x00, 0x09, 0x04, 0x03, 0x02, 0x01]);
+        AssertWireBytes(w => BrokerProtocol.WriteEndWatchAck(w, 7),
+            [0x05, 0x00, 0x00, 0x00, 0x0A, 0x07, 0x00, 0x00, 0x00]);
     }
 
     [TestMethod]
@@ -325,8 +335,9 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void Factory_StartWatch_PopulatesDrivesSpec()
     {
-        var frame = BrokerFrame.StartWatch("C:1:100:1");
+        var frame = BrokerFrame.StartWatch(2, "C:1:100:1");
         Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
+        Assert.AreEqual(2U, frame.WatchGeneration);
         Assert.AreEqual("C:1:100:1", frame.DrivesSpec);
         Assert.AreEqual(0, frame.Entries.Length);
     }
@@ -336,10 +347,17 @@ public partial class BrokerProtocolTests
     {
         Assert.AreEqual(BrokerFrameKind.Shutdown, BrokerFrame.Shutdown().Kind);
         Assert.AreEqual(BrokerFrameKind.Heartbeat, BrokerFrame.Heartbeat().Kind);
-        Assert.AreEqual(BrokerFrameKind.EndWatch, BrokerFrame.EndWatch().Kind);
-        Assert.AreEqual(BrokerFrameKind.EndWatchAck, BrokerFrame.EndWatchAck().Kind);
         Assert.AreEqual(0, BrokerFrame.Shutdown().Entries.Length);
-        Assert.AreEqual(0, BrokerFrame.EndWatchAck().Entries.Length);
+    }
+
+    [TestMethod]
+    public void Factory_WatchGenerationKinds_SetKindGenerationAndEmptyEntries()
+    {
+        Assert.AreEqual(BrokerFrameKind.EndWatch, BrokerFrame.EndWatch(6).Kind);
+        Assert.AreEqual(6U, BrokerFrame.EndWatch(6).WatchGeneration);
+        Assert.AreEqual(BrokerFrameKind.EndWatchAck, BrokerFrame.EndWatchAck(8).Kind);
+        Assert.AreEqual(8U, BrokerFrame.EndWatchAck(8).WatchGeneration);
+        Assert.AreEqual(0, BrokerFrame.EndWatchAck(8).Entries.Length);
     }
 
     [TestMethod]

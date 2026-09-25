@@ -106,8 +106,14 @@ public sealed partial class FileIndex
     ///     <see cref="DriveStatus.WatchCatchUp" /> to <see cref="WatchCatchUpState.NotStarted" />.
     ///     <paramref name="cancellationToken" /> bounds the wait: cancelling it abandons the wait
     ///     and throws, and deliberately leaves the session in place so a later stop or
-    ///     <see cref="DisposeAsync" /> can still reclaim it. A source that ignores the token this
-    ///     call cancels is the only thing that can make that wait outlast the caller's patience.
+    ///     <see cref="DisposeAsync" /> can still reclaim it. Cancelling it also cancels the teardown
+    ///     token the session's source was started with (see
+    ///     <see cref="IIndexWatchSource.StartWatching(IReadOnlyList{IndexWatchTarget}, Action, CancellationToken, CancellationToken)" />),
+    ///     so <see cref="BrokerIndexWatchSource" /> stops waiting for the broker to acknowledge the
+    ///     end of its watch and leaves its connection ready for the next watch. Without a cancelled
+    ///     token that wait ends only when the broker acknowledges or its pipe closes, which is also
+    ///     what <see cref="DisposeAsync" /> waits for. A source that ignores the token this call
+    ///     cancels is the only thing that can make that wait outlast the caller's patience.
     /// </summary>
     public async Task StopWatchingAsync(CancellationToken cancellationToken)
     {
@@ -125,6 +131,9 @@ public sealed partial class FileIndex
 
         Exception? outstandingFault = null;
         var pumpFinished = false;
+        // The same token bounds the source's own teardown, so a source waiting on something
+        // outside the process (the broker's acknowledgement) stops waiting when this call does.
+        await using var teardownBound = cancellationToken.Register(session.CancelTeardown).ConfigureAwait(false);
         try
         {
             await session.Cancellation.CancelAsync().ConfigureAwait(false);

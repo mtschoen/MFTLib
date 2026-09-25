@@ -38,7 +38,7 @@ public partial class UsnJournalSyntheticTests
             try
             {
                 await WriteCancellationFrameAsync(client,
-                    buffer => BrokerProtocol.WriteStartWatch(buffer, "C:7:200:1"));
+                    buffer => BrokerProtocol.WriteStartWatch(buffer, 1, "C:7:200:1"));
                 Assert.AreEqual(BrokerFrameKind.CaughtUp,
                     (await ReadCancellationFrameAsync(client)).Kind);
                 if (readNumber == 2)
@@ -52,7 +52,7 @@ public partial class UsnJournalSyntheticTests
                     await IdleUsnPipe.AwaitSignalAsync(pipe.Issued);
                 }
 
-                await WriteCancellationFrameAsync(client, BrokerProtocol.WriteEndWatch);
+                await WriteCancellationFrameAsync(client, writer => BrokerProtocol.WriteEndWatch(writer, 1));
                 var foundRequest = await cancellationAttempted.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 if (cancelBeforeIssue)
                 {

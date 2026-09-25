@@ -93,8 +93,7 @@ public class WatchFailureObservationTests
                 Assert.AreSame(fault.Exception, all);
             }
 
-            Assert.AreEqual(BrokerFrameKind.EndWatch, (await broker.ReadFrameAsync()).Kind);
-            await broker.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+            await broker.AcknowledgeEndWatchAsync();
             var stopped = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
                 () => index.StopWatchingAsync(broker.CancellationToken));
             Assert.AreSame(fault.Exception, stopped);
@@ -129,8 +128,7 @@ public class WatchFailureObservationTests
         Assert.AreEqual('T', failure.DriveLetter);
         Assert.AreEqual(marker, failure.Exception.Message);
         var finished = reader.MoveNextAsync().AsTask();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await broker.ReadFrameAsync()).Kind);
-        await broker.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await broker.AcknowledgeEndWatchAsync();
         Assert.IsFalse(await finished);
         return [new WeakReference(source)];
     }

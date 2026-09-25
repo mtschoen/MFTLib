@@ -58,7 +58,7 @@ public partial class JournalBrokerHostTests
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var request = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteStartWatch(request, "C:7:100:1"); // since (7,100) < tip (7,140): backlog
+            BrokerProtocol.WriteStartWatch(request, 1, "C:7:100:1"); // since (7,100) < tip (7,140): backlog
             await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
             await clientSide.FlushAsync(CancellationToken.None);
 
@@ -109,7 +109,7 @@ public partial class JournalBrokerHostTests
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var request = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
+            BrokerProtocol.WriteStartWatch(request, 1, "C:7:100:1");
             await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
             await clientSide.FlushAsync(CancellationToken.None);
 
@@ -147,7 +147,7 @@ public partial class JournalBrokerHostTests
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
+        BrokerProtocol.WriteStartWatch(request, 1, "C:7:100:1");
         await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
         await clientSide.FlushAsync(CancellationToken.None);
 

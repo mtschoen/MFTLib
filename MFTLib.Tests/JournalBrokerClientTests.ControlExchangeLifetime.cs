@@ -109,7 +109,7 @@ public partial class JournalBrokerClientTests
         Assert.AreEqual(BrokerFrameKind.QueryVolumes, (await ReadControlRequestAsync(server, token)).Kind);
         if (ending == "ack")
         {
-            await SendControlReplyAsync(server, BrokerProtocol.WriteEndWatchAck, token);
+            await SendControlReplyAsync(server, writer => BrokerProtocol.WriteEndWatchAck(writer, 1), token);
         }
         else
         {
@@ -159,7 +159,7 @@ public partial class JournalBrokerClientTests
             (await ReadControlRequestAsync(server, token)).Kind);
         if (stop)
         {
-            await SendControlReplyAsync(server, BrokerProtocol.WriteEndWatchAck, token);
+            await SendControlReplyAsync(server, writer => BrokerProtocol.WriteEndWatchAck(writer, 1), token);
         }
         await transition.WaitAsync(token);
         if (stop)

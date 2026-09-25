@@ -260,15 +260,16 @@ public partial class JournalBrokerScanSessionTests
         var session = await JournalBrokerScanSession.StartAsync(_ => Task.FromResult(client), DriveC, CreateOptions(), cancellationToken: CancellationToken.None);
         await scanTask;
 
-        // The broker side must read the EndWatch the stop sends and reply with an
-        // EndWatchAck so the handshake completes fast rather than via the ack timeout.
+        // The broker side must read the EndWatch the stop sends and reply with the
+        // EndWatchAck for its generation, since nothing but that or EOF ends the stop.
         var receivedKinds = new List<BrokerFrameKind>();
         var watchTask = Task.Run(async () =>
         {
             receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // StartWatch
-            receivedKinds.Add((await ReadOneFrameAsync(serverSide)).Kind); // EndWatch
+            var endWatch = await ReadOneFrameAsync(serverSide);
+            receivedKinds.Add(endWatch.Kind);
             var ack = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteEndWatchAck(ack);
+            BrokerProtocol.WriteEndWatchAck(ack, endWatch.WatchGeneration);
             await serverSide.WriteAsync(ack.WrittenMemory);
             await serverSide.FlushAsync();
         });
@@ -301,13 +302,14 @@ public partial class JournalBrokerScanSessionTests
 
         var startWatchFrameTask = ReadOneFrameAsync(serverSide);
         await session.StartWatchAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, (await startWatchFrameTask).Kind);
+        var startWatchFrame = await startWatchFrameTask;
+        Assert.AreEqual(BrokerFrameKind.StartWatch, startWatchFrame.Kind);
 
         // Complete the client demux before stopping so StopLiveWatchAsync takes only
         // synchronous completion paths. StopWatchAsync must retain the task even when
         // StopWatchCoreAsync clears the shared field before returning to its caller.
         var ack = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteEndWatchAck(ack);
+        BrokerProtocol.WriteEndWatchAck(ack, startWatchFrame.WatchGeneration);
         await serverSide.WriteAsync(ack.WrittenMemory);
         await serverSide.FlushAsync();
         var demuxTaskField = typeof(JournalBrokerClient).GetField(

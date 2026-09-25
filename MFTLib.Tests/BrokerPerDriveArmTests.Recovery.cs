@@ -103,7 +103,7 @@ public partial class BrokerPerDriveArmTests
                 new UsnJournalCursor(7UL, 210L), [JournalEntryFactory.Create(2, 201, "stale.txt")]);
             BrokerProtocol.WriteJournalBatch(response, "C", WatchSpecArmEpochs.ForDrive(start2, "C"),
                 new UsnJournalCursor(7UL, 110L), [JournalEntryFactory.Create(1, 101, "fresh.txt")]);
-            BrokerProtocol.WriteEndWatchAck(response);
+            BrokerProtocol.WriteEndWatchAck(response, start2.WatchGeneration);
         }, cancellation.Token);
 
         await Task.WhenAll(driveCMoveNext, driveDMoveNext);
@@ -120,9 +120,10 @@ public partial class BrokerPerDriveArmTests
         await using var client = MakeMinimalFakeClient(clientSide);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await client.SendStartWatchAsync(WatchCursors("C"), cancellation.Token);
-        await ReadOneFrameAsync(serverSide, cancellation.Token);
+        var start = await ReadOneFrameAsync(serverSide, cancellation.Token);
 
-        await WriteAsync(serverSide, BrokerProtocol.WriteEndWatchAck, cancellation.Token);
+        await WriteAsync(serverSide, writer => BrokerProtocol.WriteEndWatchAck(writer, start.WatchGeneration),
+            cancellation.Token);
         await GetPrivateField<Task>(client, "_demuxTask").WaitAsync(cancellation.Token);
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>

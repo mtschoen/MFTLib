@@ -70,6 +70,22 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
         return BrokerProtocol.ReadFrame(frame, out _);
     }
 
+    /// <summary>
+    ///     Reads the client's <c>EndWatch</c> and answers it with the <c>EndWatchAck</c> for the
+    ///     generation it names, as a live broker does. Returns the <c>EndWatch</c> frame.
+    /// </summary>
+    public async Task<BrokerFrame> AcknowledgeEndWatchAsync()
+    {
+        var endWatch = await ReadFrameAsync();
+        if (endWatch.Kind != BrokerFrameKind.EndWatch)
+        {
+            throw new InvalidOperationException($"Expected EndWatch but the client wrote {endWatch.Kind}.");
+        }
+
+        await WriteAsync(writer => BrokerProtocol.WriteEndWatchAck(writer, endWatch.WatchGeneration));
+        return endWatch;
+    }
+
     public async Task WriteAsync(Action<ArrayBufferWriter<byte>> write)
     {
         var response = new ArrayBufferWriter<byte>();

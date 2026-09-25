@@ -36,7 +36,7 @@ public partial class JournalBrokerHostTests
 
         await WriteStartWatchAsync(clientSide, "D:1:0:2", cancellationSource.Token);
         await WaitForInvocationCountAsync(invocations, 2, cancellationSource.Token);
-        await WriteBrokerRequestAsync(clientSide, BrokerProtocol.WriteEndWatch, cancellationSource.Token);
+        await WriteBrokerRequestAsync(clientSide, writer => BrokerProtocol.WriteEndWatch(writer, 1), cancellationSource.Token);
         var secondBatch = await ReadOneFrameAsync(clientSide).WaitAsync(cancellationSource.Token);
         Assert.AreEqual(BrokerFrameKind.JournalBatch, secondBatch.Kind);
         Assert.AreEqual("D", secondBatch.Drive);
@@ -228,7 +228,7 @@ public partial class JournalBrokerHostTests
 
     static Task WriteStartWatchAsync(Stream stream, string watchSpec, CancellationToken cancellationToken)
     {
-        return WriteBrokerRequestAsync(stream, writer => BrokerProtocol.WriteStartWatch(writer, watchSpec),
+        return WriteBrokerRequestAsync(stream, writer => BrokerProtocol.WriteStartWatch(writer, 1, watchSpec),
             cancellationToken);
     }
 
@@ -241,14 +241,14 @@ public partial class JournalBrokerHostTests
     static async Task<BrokerFrame> EndWatchAndReadAcknowledgementAsync(
         Stream stream, CancellationToken cancellationToken)
     {
-        await WriteBrokerRequestAsync(stream, BrokerProtocol.WriteEndWatch, cancellationToken);
+        await WriteBrokerRequestAsync(stream, writer => BrokerProtocol.WriteEndWatch(writer, 1), cancellationToken);
         return await ReadOneFrameAsync(stream).WaitAsync(cancellationToken);
     }
 
     static async Task<List<BrokerFrame>> EndWatchAndCollectFramesAsync(
         Stream stream, CancellationToken cancellationToken)
     {
-        await WriteBrokerRequestAsync(stream, BrokerProtocol.WriteEndWatch, cancellationToken);
+        await WriteBrokerRequestAsync(stream, writer => BrokerProtocol.WriteEndWatch(writer, 1), cancellationToken);
         var frames = new List<BrokerFrame>();
         do
         {

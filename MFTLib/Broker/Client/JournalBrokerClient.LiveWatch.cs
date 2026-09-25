@@ -9,19 +9,6 @@ namespace MFTLib;
 // racing on the shared pipe.
 public sealed partial class JournalBrokerClient
 {
-    // How long StopLiveWatchAsync waits for the host's EndWatchAck before forcing
-    // the demux down (a wedged or dead broker that never replies). Internal and
-    // mutable (rather than a readonly constant) so tests can shrink the window
-    // instead of sleeping for the real production timeout.
-    internal static TimeSpan _endWatchAckTimeout = TimeSpan.FromSeconds(5);
-
-    /// <summary>
-    ///     Indicates whether the most recent call to <see cref="StopLiveWatchAsync" /> timed out
-    ///     waiting for the host's <c>EndWatchAck</c> response and forced the demux loop down via
-    ///     cancellation, rather than completing via the normal ack handshake.
-    /// </summary>
-    internal bool LastStopTimedOut { get; private set; }
-
     CancellationTokenSource? _demuxCts;
     Task? _demuxTask;
 
@@ -63,14 +50,17 @@ public sealed partial class JournalBrokerClient
         try
         {
             ThrowIfControlUnavailable();
+            await CompleteDeferredLiveWatchStopAsync().ConfigureAwait(false);
             string watchSpec;
+            uint watchGeneration;
             lock (_liveChannelsLock)
             {
                 watchSpec = ArmAndFormatWatchSpecLocked(cursorsByDrive, armEpochsByDrive);
+                watchGeneration = _liveWatchGeneration;
             }
 
             await WriteFrameAsync(
-                writer => BrokerProtocol.WriteStartWatch(writer, watchSpec),
+                writer => BrokerProtocol.WriteStartWatch(writer, watchGeneration, watchSpec),
                 transmissionStarted, operationToken).ConfigureAwait(false);
 
             lock (_liveChannelsLock)
@@ -100,6 +90,13 @@ public sealed partial class JournalBrokerClient
         Dictionary<string, uint> armEpochsByDrive)
     {
         ValidateClaimedGenerationLocked();
+        if (!_liveWatchGenerationStarted)
+        {
+            // A fresh number for every watch this client starts, including one whose StartWatch
+            // write then fails, so no acknowledgement can ever match two generations.
+            _liveWatchGeneration = ++_lastWatchGeneration;
+        }
+
         var normalizedCursors = cursorsByDrive
             .Select(pair => new KeyValuePair<string, UsnJournalCursor>(
                 NormalizeDriveLetter(pair.Key), pair.Value))
@@ -126,8 +123,9 @@ public sealed partial class JournalBrokerClient
         var demuxCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, _controlCancellation.Token);
         var demuxToken = demuxCancellation.Token;
+        var watchGeneration = _liveWatchGeneration;
         _demuxCts = demuxCancellation;
-        _demuxTask = Task.Run(() => DemuxLoopAsync(demuxToken), CancellationToken.None);
+        _demuxTask = Task.Run(() => DemuxLoopAsync(watchGeneration, demuxToken), CancellationToken.None);
         _liveWatchGenerationStarted = true;
     }
 
@@ -190,6 +188,7 @@ public sealed partial class JournalBrokerClient
         try
         {
             ThrowIfControlUnavailable();
+            await CompleteDeferredLiveWatchStopAsync().ConfigureAwait(false);
             lock (_liveChannelsLock)
             {
                 // Complete the subscriber without waiting for a wire round trip.
@@ -207,143 +206,6 @@ public sealed partial class JournalBrokerClient
         finally
         {
             _armOrderingGate.Release();
-        }
-    }
-
-    /// <summary>
-    ///     Stop the live-watch demux and reset live-watch state so the same client can watch
-    ///     again (keeping the broker process - and its elevation - alive).
-    ///     When a live demux is running it owns the pipe and routes scan/query replies
-    ///     to the active serialized control exchange. With no live demux, the control
-    ///     exchange owns the foreground reader. The ordering gate fences that handoff.
-    ///     No-op if no watch is running. Does NOT signal broker death: a clean stop leaves the client
-    ///     healthy for restart.
-    /// </summary>
-    public async Task StopLiveWatchAsync()
-    {
-        await _armOrderingGate.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            if (Volatile.Read(ref _disposeStarted) != 0)
-            {
-                return;
-            }
-            if (Volatile.Read(ref _controlFailure) != null)
-            {
-                Task? demux;
-                lock (_liveChannelsLock)
-                {
-                    demux = _demuxTask;
-                }
-                if (demux != null)
-                {
-                    await demux.ConfigureAwait(false);
-                }
-                // The normal core joins and disposes the ended demux's cancellation source.
-                await StopLiveWatchCoreAsync().ConfigureAwait(false);
-                return;
-            }
-            await StopLiveWatchCoreAsync().ConfigureAwait(false);
-        }
-        finally
-        {
-            _armOrderingGate.Release();
-        }
-    }
-
-    async Task StopLiveWatchCoreAsync()
-    {
-        CancellationTokenSource? demuxCancellation;
-        Task? task;
-        lock (_liveChannelsLock)
-        {
-            task = _demuxTask;
-            demuxCancellation = _demuxCts;
-        }
-
-        if (task == null)
-        {
-            ResetLiveWatchState();
-            return;
-        }
-
-        // The reader and cancellation source are published and captured together.
-        if (demuxCancellation == null)
-        {
-            throw new InvalidOperationException(
-                "Live-watch state is inconsistent: _demuxTask is set but _demuxCts is not.");
-        }
-
-        // Ask the host to end the watch; the demux exits when it reads EndWatchAck
-        // (draining any stray live batches in between) or on EOF if the broker is
-        // already dead.
-        if (Volatile.Read(ref _controlFailure) == null)
-        {
-            try
-            {
-                await WriteFrameAsync(BrokerProtocol.WriteEndWatch, _controlCancellation.Token)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (Volatile.Read(ref _disposeStarted) != 0)
-            {
-                // Disposal has already cancelled the demux; the join below releases reader ownership.
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                // Swallowed intentionally: the pipe may already be gone, in which case
-                // the demux ends via EOF. Fall through to await it either way.
-                _ = exception;
-            }
-        }
-
-        using (var timeout = new CancellationTokenSource(_endWatchAckTimeout))
-        {
-            // Task.Delay faults with TaskCanceledException when the timeout fires, but
-            // Task.WhenAny never throws, so reading the winner is safe.
-            var finished = await Task.WhenAny(task, Task.Delay(Timeout.Infinite, timeout.Token))
-                .ConfigureAwait(false);
-            if (finished != task)
-            // No ack within the window (broker wedged): force the demux down.
-            {
-                LastStopTimedOut = true;
-                await demuxCancellation.CancelAsync().ConfigureAwait(false);
-            }
-            else
-            {
-                LastStopTimedOut = false;
-            }
-        }
-
-        // DemuxLoopAsync catches everything internally and never lets an exception
-        // escape, so awaiting it here cannot fault.
-        await task.ConfigureAwait(false);
-
-        lock (_liveChannelsLock)
-        {
-            _demuxCts = null;
-            _demuxTask = null;
-        }
-        demuxCancellation.Dispose();
-
-        ResetLiveWatchState();
-    }
-
-    void ResetLiveWatchState()
-    {
-        lock (_liveChannelsLock)
-        {
-            foreach (var channel in _liveChannels.Values)
-            {
-                channel.Writer.TryComplete();
-            }
-
-            _liveChannels.Clear();
-            _armedEpochsByDrive.Clear();
-            // Keep _lastArmEpoch: a timed-out stop can leave old frames on the pipe.
-            _liveEnded = false;
-            _liveEndError = null;
-            // Release the generation so a rescan can begin a fresh watch on this client.
-            _liveWatchGenerationStarted = false;
         }
     }
 

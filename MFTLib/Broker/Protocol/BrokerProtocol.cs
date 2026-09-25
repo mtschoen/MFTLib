@@ -89,12 +89,12 @@ public static partial class BrokerProtocol
         return kind switch
         {
             BrokerFrameKind.ArmAndScan => ReadArmAndScanFrame(payload),
-            BrokerFrameKind.StartWatch => BrokerFrame.StartWatch(ReadString(payload, 0, out _)),
+            BrokerFrameKind.StartWatch => ReadStartWatchFrame(payload),
             BrokerFrameKind.DisarmDrive => BrokerFrame.DisarmDrive(ReadString(payload, 0, out _)),
             BrokerFrameKind.Shutdown => BrokerFrame.Shutdown(),
             BrokerFrameKind.Heartbeat => BrokerFrame.Heartbeat(),
-            BrokerFrameKind.EndWatch => BrokerFrame.EndWatch(),
-            BrokerFrameKind.EndWatchAck => BrokerFrame.EndWatchAck(),
+            BrokerFrameKind.EndWatch => BrokerFrame.EndWatch(ReadWatchGenerationFrame(kind, payload)),
+            BrokerFrameKind.EndWatchAck => BrokerFrame.EndWatchAck(ReadWatchGenerationFrame(kind, payload)),
             BrokerFrameKind.ScanReady => ReadScanReadyFrame(payload),
             BrokerFrameKind.Cursor => ReadCursorFrame(payload),
             BrokerFrameKind.JournalBatch => ReadJournalBatchFrame(payload),
@@ -120,6 +120,46 @@ public static partial class BrokerProtocol
         offset += length;
         end = offset;
         return value;
+    }
+
+    static BrokerFrame ReadStartWatchFrame(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 8)
+        {
+            throw WatchGenerationLayoutMismatch(BrokerFrameKind.StartWatch, payload.Length,
+                "at least 8 bytes (a 4-byte watch generation, then the length-prefixed drives spec)");
+        }
+
+        var watchGeneration = RequireIssuedWatchGeneration(BrokerFrameKind.StartWatch,
+            BinaryPrimitives.ReadUInt32LittleEndian(payload));
+        return BrokerFrame.StartWatch(watchGeneration, ReadString(payload, 4, out _));
+    }
+
+    // The generation fence is what keeps a late EndWatchAck from ending the next watch, so a
+    // frame without one is refused outright rather than read as some default generation.
+    static uint ReadWatchGenerationFrame(BrokerFrameKind kind, ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length != 4)
+        {
+            throw WatchGenerationLayoutMismatch(kind, payload.Length, "exactly 4 bytes (the watch generation)");
+        }
+
+        return RequireIssuedWatchGeneration(kind, BinaryPrimitives.ReadUInt32LittleEndian(payload));
+    }
+
+    static uint RequireIssuedWatchGeneration(BrokerFrameKind kind, uint watchGeneration)
+    {
+        return watchGeneration != BrokerFrame.NoWatchGeneration
+            ? watchGeneration
+            : throw new InvalidDataException(
+                $"{kind} frame carries watch generation {BrokerFrame.NoWatchGeneration}, which no client issues.");
+    }
+
+    static InvalidDataException WatchGenerationLayoutMismatch(BrokerFrameKind kind, int payloadLength, string expected)
+    {
+        return new InvalidDataException(
+            $"{kind} frame payload is {payloadLength} bytes, but this broker protocol requires {expected}. " +
+            "The client and the broker come from different MFTLib builds; launch the broker from the same build.");
     }
 
     static BrokerFrame ReadArmAndScanFrame(ReadOnlySpan<byte> payload)

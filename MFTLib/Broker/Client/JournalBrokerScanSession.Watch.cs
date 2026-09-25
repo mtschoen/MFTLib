@@ -195,9 +195,10 @@ public sealed partial class JournalBrokerScanSession
     ///     Stop live watching and return the session to
     ///     <see cref="JournalBrokerSessionState.Parked" />, keeping the elevated process
     ///     alive for a subsequent rescan or <see cref="StartWatchAsync" />.
-    ///     No-op if already parked. Takes no cancellation token, mirroring
-    ///     <see cref="JournalBrokerClient.StopLiveWatchAsync" />, which bounds itself with
-    ///     its own ack timeout.
+    ///     No-op if already parked. Takes no cancellation token: concurrent callers share one
+    ///     stop, which waits for the broker to acknowledge the end of the watch or for its pipe
+    ///     to close. Disposing the session ends a stop that a live but unresponsive broker never
+    ///     acknowledges.
     /// </summary>
     public async Task StopWatchAsync()
     {

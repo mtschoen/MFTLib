@@ -61,7 +61,8 @@ public sealed partial class FileIndex
             }
 
             session = new WatchSession(
-                CancellationTokenSource.CreateLinkedTokenSource(sessionToken), source, targets, sessionToken);
+                CancellationTokenSource.CreateLinkedTokenSource(sessionToken), new CancellationTokenSource(),
+                source, targets, sessionToken);
             session.Cancellation.Token.Register(() =>
             {
                 lock (_stateLock)

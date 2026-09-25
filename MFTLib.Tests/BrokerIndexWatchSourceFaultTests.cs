@@ -31,8 +31,7 @@ public class BrokerIndexWatchSourceFaultTests
                 new UsnJournalCursor(7, 110), [entryC]);
         });
 
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
 
         // Two reader tasks write into one channel, so assert by item type and drive, never by index.
         var items = await consumption;
@@ -60,8 +59,7 @@ public class BrokerIndexWatchSourceFaultTests
             BrokerProtocol.WriteError(response, "C", harness.ArmEpochForDrive(start, 'C'), "C wrapped");
             BrokerProtocol.WriteError(response, "D", harness.ArmEpochForDrive(start, 'D'), "D wrapped");
         });
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
 
         var items = await consumption;
         Assert.AreEqual(2, items.Count);
@@ -132,8 +130,7 @@ public class BrokerIndexWatchSourceFaultTests
             BrokerProtocol.WriteError(response, "C", harness.ArmEpochForDrive(start, 'C'), "C wrapped");
             BrokerProtocol.WriteError(response, "D", harness.ArmEpochForDrive(start, 'D'), "D wrapped");
         });
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await harness.AcknowledgeEndWatchAsync();
 
         var items = await consumption.WaitAsync(TimeSpan.FromSeconds(10));
         CollectionAssert.AreEquivalent(new[] { 'C', 'D' },

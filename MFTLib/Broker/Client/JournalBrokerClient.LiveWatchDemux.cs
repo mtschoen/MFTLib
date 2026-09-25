@@ -12,7 +12,7 @@ public sealed partial class JournalBrokerClient
     // Deliver live batches and errors only when their epoch matches the drive's current arm.
     readonly Dictionary<string, uint> _armedEpochsByDrive = new(StringComparer.OrdinalIgnoreCase);
 
-    // Client-wide and never reset: a stop timeout can leave old frames unread on the pipe.
+    // Client-wide and never reset: a cancelled stop can leave old frames unread on the pipe.
     uint _lastArmEpoch;
 
     // Guarded by _liveChannelsLock so only the first arm starts the pipe reader.
@@ -28,8 +28,9 @@ public sealed partial class JournalBrokerClient
     // to the active serialized control exchange. With no live demux, the control
     // exchange owns the foreground reader. The ordering gate fences that handoff.
     // Reads frames and routes each JournalBatch to its drive's channel until the
-    // broker dies or is cancelled.
-    async Task DemuxLoopAsync(CancellationToken cancellationToken)
+    // broker dies, acknowledges the end of this demux's own watch generation, or the
+    // demux is cancelled.
+    async Task DemuxLoopAsync(uint watchGeneration, CancellationToken cancellationToken)
     {
         BrokerDiagnostics.Log($"DemuxLoopAsync started (t={Environment.CurrentManagedThreadId}).");
         try
@@ -49,6 +50,14 @@ public sealed partial class JournalBrokerClient
                 var value = frame.Value;
                 if (TryRouteControlFrame(value))
                 {
+                    continue;
+                }
+                if (value.Kind == BrokerFrameKind.EndWatchAck && value.WatchGeneration != watchGeneration)
+                {
+                    // The acknowledgement of an earlier generation whose stop stopped waiting
+                    // for it. It ends nothing here: this watch belongs to a later generation.
+                    BrokerDiagnostics.Log(FormattableString.Invariant(
+                        $"Ignored an EndWatchAck for watch generation {value.WatchGeneration} in generation {watchGeneration}."));
                     continue;
                 }
                 if (value.Kind == BrokerFrameKind.EndWatchAck)

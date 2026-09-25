@@ -124,7 +124,7 @@ public partial class JournalBrokerScanSessionTests
         var entry = JournalEntryFactory.Create(1, 210, "warm.txt");
         var response = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteJournalBatch(response, "C", WatchSpecArmEpochs.ForDrive(watchFrame, "C"), liveCursor, [entry]);
-        BrokerProtocol.WriteEndWatchAck(response);
+        BrokerProtocol.WriteEndWatchAck(response, watchFrame.WatchGeneration);
         await serverSide.WriteAsync(response.WrittenMemory);
         await serverSide.FlushAsync();
 

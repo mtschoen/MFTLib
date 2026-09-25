@@ -50,7 +50,13 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     public IAsyncEnumerable<WatchStreamItem> StartWatching(
         IReadOnlyList<IndexWatchTarget> targets, CancellationToken cancellationToken)
     {
-        return StartWatching(targets, static () => { }, cancellationToken);
+        return StartWatching(targets, static () => { }, CancellationToken.None, cancellationToken);
+    }
+
+    public IAsyncEnumerable<WatchStreamItem> StartWatching(
+        IReadOnlyList<IndexWatchTarget> targets, Action reportStreamReady, CancellationToken cancellationToken)
+    {
+        return StartWatching(targets, reportStreamReady, CancellationToken.None, cancellationToken);
     }
 
     /// <summary>
@@ -60,20 +66,29 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     ///     running stream. A connection or send failure, or cancellation before that point, throws
     ///     from the stream instead.
     ///     <para>
+    ///         Once <paramref name="cancellationToken" /> ends a running stream, the stream stops the
+    ///         broker watch through <see cref="JournalBrokerClient.StopLiveWatchAsync" /> and waits
+    ///         for the broker's acknowledgement or the pipe closing, bounded only by
+    ///         <paramref name="teardownCancellationToken" />. Cancelling that token stops the wait
+    ///         without failing the stream: the connection stays usable, because the next watch on it
+    ///         carries a later generation that the old acknowledgement cannot end.
+    ///     </para>
+    ///     <para>
     ///         Cancellation is observed promptly at every step, including while the StartWatch send
     ///         is blocked on the client's arm-ordering gate or on the pipe write. The send itself is
     ///         not cancelled: it finishes in the background, and the live watch it started is then
-    ///         stopped through <see cref="JournalBrokerClient.StopLiveWatchAsync" />, which reads the
-    ///         broker's acknowledgement so it cannot end a later watch. Until that teardown is done
-    ///         the stream stays claimed, and a new start on this source waits for it, bounded by its
-    ///         own token, rather than being rejected. A teardown that fails, including a stop that times
-    ///         out without the acknowledgement, fails that start and every later one on this source
-    ///         with an <see cref="InvalidOperationException" />, since the acknowledgement could still
-    ///         arrive and end a later watch on the same connection.
+    ///         stopped through <see cref="JournalBrokerClient.StopLiveWatchAsync" />. Until that
+    ///         teardown is done the stream stays claimed, and a new start on this source waits for
+    ///         it, bounded by its own token, rather than being rejected. The new start supersedes the
+    ///         teardown's wait for the acknowledgement, under the same generation rule as any other
+    ///         stop, so it waits only for the send to finish. A teardown that fails for any other
+    ///         reason fails that start and every later one on this source with an
+    ///         <see cref="InvalidOperationException" />.
     ///     </para>
     /// </summary>
     public async IAsyncEnumerable<WatchStreamItem> StartWatching(
         IReadOnlyList<IndexWatchTarget> targets, Action reportStreamReady,
+        CancellationToken teardownCancellationToken,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(reportStreamReady);
@@ -89,11 +104,9 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
             var client = await _connectAsync(cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
 
-            // The send itself is never cancelled, so the demux it starts stays alive until
-            // StopLiveWatchAsync reads EndWatchAck: cancelling it with the consumer token can leave
-            // that acknowledgement to terminate the next watch, and cancelling the write can leave
-            // half a frame on the pipe. Only this wait for it observes the token. A send the wait
-            // gives up on finishes in the background and is torn down by RetireAbandonedStart.
+            // The send itself is never cancelled, because cancelling the write can leave half a
+            // frame on the pipe. Only this wait for it observes the token. A send the wait gives up
+            // on finishes in the background and is torn down by RetireAbandonedStart.
             pendingStart = new PendingStartWatch(client,
                 client.SendStartWatchAsync(BuildCursors(targets), CancellationToken.None));
             await pendingStart.Value.Send.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -150,7 +163,7 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         }
         finally
         {
-            await StopStreamAsync(stream).ConfigureAwait(false);
+            await StopStreamAsync(stream, teardownCancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -255,7 +268,7 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         }
     }
 
-    async Task StopStreamAsync(LiveStream stream)
+    async Task StopStreamAsync(LiveStream stream, CancellationToken teardownCancellationToken)
     {
         await stream.ReaderCancellation.CancelAsync().ConfigureAwait(false);
         Task[] readers;
@@ -266,7 +279,14 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
 
         try
         {
-            await stream.Client.StopLiveWatchAsync().ConfigureAwait(false);
+            await stream.Client.StopLiveWatchAsync(teardownCancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException exception) when (teardownCancellationToken.IsCancellationRequested)
+        {
+            // The caller bounded the wait for the acknowledgement and that bound ran out. The
+            // client has stopped reading this watch either way, and its next watch carries a later
+            // generation, so releasing this source for reuse is safe and this is not a failure.
+            _ = exception;
         }
         finally
         {
