@@ -375,9 +375,9 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       of being rejected, so the next StartWatch frame is never sent ahead of the old watch's
       EndWatch. That new start cancels the teardown's wait for the EndWatchAck (a
       `CancellationTokenSource` only a later claim cancels), so it waits only for the send, the
-      EndWatch write, and the client-side teardown. A teardown that fails for any other reason is
-      recorded rather than thrown and fails every later start on that source with an
-      `InvalidOperationException` wrapping it.
+      EndWatch write, and the client-side teardown. The teardown task never faults: nothing else in
+      it is expected to throw, and anything that does is written to `BrokerDiagnostics` rather
+      than thrown to a caller that has already gone.
       Every stop follows one generation rule (MFTLib issue 252). Each watch a `JournalBrokerClient`
       starts takes a fresh, client-wide, monotonic nonzero `uint` `BrokerFrame.WatchGeneration`,
       carried on its StartWatch; the host echoes the live generation on its EndWatchAck, and a demux

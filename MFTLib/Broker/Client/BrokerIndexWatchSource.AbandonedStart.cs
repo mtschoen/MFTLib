@@ -8,8 +8,7 @@ namespace MFTLib;
 ///     next start on this source cannot put its own StartWatch on the wire ahead of the teardown's
 ///     EndWatch. The teardown's stop follows the same generation rule as every other stop: a later
 ///     start cancels its wait for the broker's EndWatchAck, which is safe because that
-///     acknowledgement names the abandoned watch's generation and cannot end the later one. A
-///     teardown that fails for any other reason leaves this source failed for good.
+///     acknowledgement names the abandoned watch's generation and cannot end the later one.
 /// </summary>
 public sealed partial class BrokerIndexWatchSource
 {
@@ -22,10 +21,6 @@ public sealed partial class BrokerIndexWatchSource
     // teardown has finished.
     CancellationTokenSource? _abandonedStartRetirementCancellation;
 
-    // Why the last abandoned start could not be torn down cleanly. Set once, never cleared, and
-    // checked before any claim is granted, whether or not a start was waiting when it was set.
-    Exception? _abandonedStartRetirementFailure;
-
     /// <summary>
     ///     Claims this source's single stream. While an abandoned start is still being torn down the
     ///     claim is held for it, and this waits for that teardown, bounded by
@@ -34,10 +29,6 @@ public sealed partial class BrokerIndexWatchSource
     ///     wait first cancels the teardown's wait for the broker's acknowledgement, so what remains
     ///     is the send finishing, the EndWatch write, and the client-side teardown. A claim held by
     ///     a running stream is rejected at once.
-    ///     A teardown that failed fails this start and every later one with an
-    ///     <see cref="InvalidOperationException" /> whose inner exception is that failure: its
-    ///     connection is not known to be safe to watch on again, so the consumer needs a new
-    ///     connection and a new source.
     /// </summary>
     async Task ClaimStreamAsync(CancellationToken cancellationToken)
     {
@@ -47,14 +38,6 @@ public sealed partial class BrokerIndexWatchSource
             CancellationTokenSource? retirementCancellation;
             lock (_streamLock)
             {
-                if (_abandonedStartRetirementFailure is { } failure)
-                {
-                    throw new InvalidOperationException(
-                        "This watch source cannot start again: tearing down a start that was cancelled while " +
-                        "its StartWatch frame was being sent failed, so its broker connection is not known to be " +
-                        "safe to watch on. Create a new connection and watch source.", failure);
-                }
-
                 if (!_streamClaimed)
                 {
                     _streamClaimed = true;
@@ -107,11 +90,10 @@ public sealed partial class BrokerIndexWatchSource
     ///     with the wait for the acknowledgement bounded by <paramref name="retirementCancellation" />,
     ///     which only a later claim cancels. The EndWatch is sent either way. A stop that a later
     ///     claim cut short is not a failure: the acknowledgement it stopped waiting for names the
-    ///     abandoned watch's generation, which the later watch's demux ignores. Any other teardown
-    ///     failure is recorded in <see cref="_abandonedStartRetirementFailure" /> rather than thrown,
-    ///     so the task itself never faults and nothing depends on a later start to observe it. The
-    ///     stream is released last, after the failure is recorded, so no claim can slip in between
-    ///     the two.
+    ///     abandoned watch's generation, which the later watch's demux ignores. No other failure is
+    ///     expected here; one that happens anyway is written to <see cref="BrokerDiagnostics" />
+    ///     rather than thrown, so the task never faults with nobody left to observe it. The stream
+    ///     is released last either way.
     /// </summary>
     async Task RetireAbandonedStartAsync(PendingStartWatch abandoned, CancellationTokenSource retirementCancellation)
     {
@@ -136,10 +118,9 @@ public sealed partial class BrokerIndexWatchSource
         }
         catch (Exception teardownFailure)
         {
-            lock (_streamLock)
-            {
-                _abandonedStartRetirementFailure = teardownFailure;
-            }
+            // Deliberate broad catch: the caller that started this watch has gone, so a fault here
+            // would reach nobody. The diagnostics log is where an unexpected one is reported.
+            BrokerDiagnostics.Log($"Tearing down an abandoned watch start failed: {teardownFailure}");
         }
         finally
         {

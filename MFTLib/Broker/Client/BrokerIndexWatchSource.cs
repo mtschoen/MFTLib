@@ -81,9 +81,7 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     ///         Until that teardown is done the stream stays claimed, and a new start on this source
     ///         waits for it, bounded by its own token, rather than being rejected. The new start
     ///         supersedes the teardown's wait for the acknowledgement, under the same generation rule
-    ///         as any other stop, so it waits only for the send and the EndWatch write to finish. A
-    ///         teardown that fails for any other reason fails that start and every later one on this
-    ///         source with an <see cref="InvalidOperationException" />.
+    ///         as any other stop, so it waits only for the send and the EndWatch write to finish.
     ///     </para>
     /// </summary>
     public async IAsyncEnumerable<WatchStreamItem> StartWatching(

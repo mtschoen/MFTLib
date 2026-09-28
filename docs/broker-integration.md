@@ -79,9 +79,7 @@ broker's acknowledgement of the old watch. That is safe because every watch is
 generation-fenced: `BrokerFrame.StartWatch` and `BrokerFrame.EndWatchAck` carry a nonzero
 generation number, and a watch ignores an acknowledgement for an earlier generation. The same
 rule lets `StopWatchingAsync(cancellationToken)` give up on the acknowledgement when its token is
-cancelled and still leave the connection usable for the next watch. A cleanup that fails for any
-other reason refuses every later start on that source with an `InvalidOperationException`;
-reconnect and create a new watch source (and index) to watch again.
+cancelled and still leave the connection usable for the next watch.
 
 Each drive's watch resumes from the cursor stamped in its own block header, which is the
 cursor armed before that drive's cold scan, not the cursor advanced past the scan's own
