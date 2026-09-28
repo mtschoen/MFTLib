@@ -127,14 +127,28 @@ Unlike the cache guard this one does **not** throw. Warm-starting is a
 legitimate thing for a test to do and most such tests have no interest in the
 journal, so the guard returns "cannot say", which is exactly what a volume with
 no readable journal already answers; the outcome becomes deterministic instead
-of becoming an error. `DriveStatus.CheckpointLoss` is therefore always null
-under the guard unless a test installs `JournalCheckpointCheck`'s journal
-override. A test whose subject really is a real volume overrides with
+of becoming an error. Without a synthetic override, a new index opened under the guard reports no
+CheckpointLoss from journal observations. Consumer tests can call
+MFTLibTestExtensions.JournalIsolation.OverrideJournalWindow with a
+Func<char, SyntheticJournalWindow?> to drive real open-time and watch-fault
+checks. SyntheticJournalWindow carries JournalId, FirstUsn, NextUsn,
+AllocationDelta, and MaximumSize; null means "cannot say" and never falls back
+to a live read. The callback is evaluated for each query and may run on the
+watch-pump thread, so mutable per-drive observations need synchronization.
+
+The returned IDisposable owns a process-global override. Nested and overlapping
+public scopes throw InvalidOperationException. Disposal restores the previous
+behavior exactly once without resetting the one-way guard, including when a
+using block exits through an exception; it does not clear reports already
+recorded on an index or drain callbacks already in flight. Mark the entire
+consumer fixture nonparallel (class-level [DoNotParallelize] in MSTest), keep
+the scope alive through all awaited work, and stop/dispose indexes and watches
+before disposing it. Do not combine independently installed internal overrides
+with an active public scope. The immutable guard flag itself still needs no
+per-test synchronization and is not part of the native delegate seam family.
+A test whose subject really is a real volume overrides with
 `JournalCheckpointCheck.ReadLiveJournal`, which bypasses the guard; three tests
-in `UsnJournalVolumeInteropTests` do. The flag is written once at module
-initialization and only read afterwards, so it is safe under parallel test
-execution and is not part of the native delegate seam family; the journal
-override beside it is not, which is why its users carry `[DoNotParallelize]`.
+in `UsnJournalVolumeInteropTests` do.
 
 ## Cleaning the working tree
 
