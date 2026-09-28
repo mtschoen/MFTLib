@@ -185,6 +185,10 @@ public sealed partial class JournalBrokerHost
 
     // Stops the live generation and acknowledges with its number, so the client demux that asked
     // ends and the demux of any later watch on the connection ignores this acknowledgement.
+    // An EndWatch that finds no live generation is stray: there is nothing to stop, and it is
+    // answered with the generation most recently ended, which only a stop of that generation
+    // accepts, since every later watch carries a higher number. Before any watch has ended there
+    // is no generation to name and no stop that could be waiting, so it is not answered at all.
     static async Task EndWatchGenerationAsync(
         Stream stream,
         SemaphoreSlim writeLock,
@@ -194,10 +198,18 @@ public sealed partial class JournalBrokerHost
         var endingGeneration = watch.Generation;
         if (endingGeneration == 0)
         {
-            throw new InvalidOperationException("No watch generation is currently active to end.");
+            endingGeneration = watch.LastEndedGeneration;
+            if (endingGeneration == 0)
+            {
+                return;
+            }
+        }
+        else
+        {
+            await StopWatchGenerationAsync(watch).ConfigureAwait(false);
+            watch.LastEndedGeneration = endingGeneration;
         }
 
-        await StopWatchGenerationAsync(watch).ConfigureAwait(false);
         await WriteReplyFrameAsync(stream, writeLock,
             writer => BrokerProtocol.WriteEndWatchAck(writer, endingGeneration), cancellationToken)
             .ConfigureAwait(false);
@@ -228,6 +240,9 @@ public sealed partial class JournalBrokerHost
         public readonly Dictionary<string, DriveWatch> DriveWatches = new(StringComparer.OrdinalIgnoreCase);
         public CancellationTokenSource? Cancellation;
         public uint Generation;
+
+        // The generation the most recent EndWatch stopped, zero until one has; answers a stray EndWatch.
+        public uint LastEndedGeneration;
     }
 
     sealed class DriveWatch : IDisposable

@@ -380,7 +380,12 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       starts takes a fresh, client-wide, monotonic nonzero `uint` `BrokerFrame.WatchGeneration`,
       carried on its StartWatch; the host echoes the live generation on its EndWatchAck, and a demux
       ends only on its own generation's ack, ignoring an older one and treating a newer one as a
-      protocol violation. `StopLiveWatchAsync(cancellationToken)` has no timer: it waits for the
+      protocol violation. The host keeps serving through a stray EndWatch, one that finds no live
+      generation (a generation stays live until an EndWatch ends it, even after every drive reader
+      has ended or faulted, so the client's own stops never send one): it answers with the most
+      recently ended generation, or not at all before any has ended. A StartWatch naming a
+      generation other than the live one still ends the session, since only a client bug sends it.
+      `StopLiveWatchAsync(cancellationToken)` has no timer: it waits for the
       demux to end on the ack or on EOF, bounded only by its token (and by client disposal). A
       cancelled wait cancels and joins the demux and resets the client's live-watch state, so the
       late ack cannot end the next watch and the connection stays usable without a reconnect. The

@@ -442,7 +442,10 @@ running.
 `BrokerFrame.StartWatch` and `BrokerFrame.EndWatchAck` carry a nonzero `uint` `WatchGeneration`.
 The broker host echoes this generation in its acknowledgement, and the client demux ignores stale
 acknowledgements from earlier generations while treating any future generation as a fatal protocol
-violation. The host handles control frames in order and awaits an existing drive task before starting
+violation. An `EndWatch` that reaches the host with no live watch is answered with the most recently
+ended generation (or not at all before any watch has ended) and the host keeps serving; a
+`StartWatch` whose generation differs from the live one ends the session. The host handles control
+frames in order and awaits an existing drive task before starting
 its replacement, so one drive never has two host tasks writing frames at once.
 
 Each `SendStartWatchAsync` arms every named drive under a fresh per-drive arm epoch
