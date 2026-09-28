@@ -25,17 +25,41 @@ public static class JournalIsolation
     ///         It does not throw. Warm-starting and watching are legitimate things for a test
     ///         to do and have no reason to care about the journal, so the guard makes the
     ///         outcome deterministic rather than making the call an error.
-    ///         <see cref="DriveStatus.CheckpointLoss" />
-    ///         is therefore always null on any index a consumer test opens under this guard.
-    ///         The journal override that MFTLib's own tests use to produce one is internal and
-    ///         is not available to consumer test assemblies: a consumer test that needs a
-    ///         checkpoint loss constructs the public <see cref="JournalCheckpointLoss" /> record
-    ///         itself and feeds it to the code under test.
+    ///         Without a synthetic override, a new index opened under this guard reports no
+    ///         <see cref="DriveStatus.CheckpointLoss" /> from journal observations.
+    ///         Consumer tests can use <see cref="OverrideJournalWindow" /> to supply retained,
+    ///         trimmed, or recreated windows and exercise real open-time and watch-fault
+    ///         transitions. The scope restores the previous behavior on disposal; the guard
+    ///         remains enabled. Existing reports on an already-open index are not cleared
+    ///         by disposing a scope.
     ///     </para>
     ///     Activation is in-process and is not inherited by child processes.
     /// </remarks>
     public static void ForbidLiveJournalReads()
     {
         JournalCheckpointCheck.ForbidLiveJournalReads();
+    }
+
+    /// <summary>Supplies synthetic journal observations until the returned scope is disposed.</summary>
+    /// <param name="journal">
+    ///     Called for each open-time or watch-fault checkpoint query with its drive letter.
+    ///     Return null when the journal cannot say whether the checkpoint is retained.
+    /// </param>
+    /// <returns>A process-global scope that restores the previous observation behavior.</returns>
+    /// <exception cref="ArgumentNullException">The callback is null.</exception>
+    /// <exception cref="InvalidOperationException">Another public override scope is active.</exception>
+    /// <remarks>
+    ///     This does not change the one-way live-read isolation flag. Synthetic observations
+    ///     take precedence over that flag, and null never falls back to a live read.
+    ///     Use a nonparallel fixture for the entire scope lifetime, including awaited work.
+    ///     Finish index operations and stop/dispose watches before disposing the scope.
+    ///     Callbacks may run on background threads; synchronize mutable observation state.
+    ///     Nested and overlapping scopes are rejected. Repeated disposal is harmless.
+    ///     Callback exceptions propagate through the calling index operation's existing policy.
+    ///     Disposal does not drain callbacks already in progress.
+    /// </remarks>
+    public static IDisposable OverrideJournalWindow(Func<char, SyntheticJournalWindow?> journal)
+    {
+        return JournalWindowOverride.Create(journal);
     }
 }
