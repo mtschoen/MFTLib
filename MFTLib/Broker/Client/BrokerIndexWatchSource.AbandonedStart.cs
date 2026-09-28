@@ -66,7 +66,8 @@ public sealed partial class BrokerIndexWatchSource
     /// <summary>
     ///     True when the send has not failed: it is still in flight, or it has put the StartWatch
     ///     frame on the wire and started the client's live watch, which something now has to stop.
-    ///     A send that failed disarmed its own drives and started nothing.
+    ///     A send that failed disarmed its own drives and started nothing, and so did one cancelled
+    ///     while it waited for a reader a cancelled stop retired: that wait precedes any arm or write.
     /// </summary>
     static bool IsStillInFlightOrSent(Task startWatchSend)
     {

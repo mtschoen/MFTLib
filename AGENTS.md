@@ -423,10 +423,14 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       for that frame, since a broker that stalls mid-frame may never finish it: it returns its
       cancellation and leaves the demux as a retired reader (`JournalBrokerClient.RetiredReader.cs`).
       The next pipe reader (a StartWatch that begins a demux, a control exchange) waits for the
-      retired reader within its own token before reading, and disposal joins it after cancelling
-      the control token. A reader whose token runs out first fails the connection through
-      `AbortControlExchange` (broker death, every later call throws `InvalidOperationException`),
-      because nothing may read on from the middle of that frame. There is no broker protocol version or handshake: the host runs from the
+      retired reader within its own token before it arms or writes anything, and disposal joins it
+      after cancelling the control token. `BrokerIndexWatchSource.StartWatching` passes its start
+      token for that wait alone, through an internal `SendStartWatchAsync` overload, while its
+      send's arm-ordering gate wait and frame write stay uncancellable (the MFTLib issue 250
+      ruling). A reader whose token runs out first fails the connection through
+      `AbortControlExchange` (broker death; later operations that need a usable broker control
+      connection throw `InvalidOperationException`), because nothing may read on from the middle
+      of that frame. The watch source's start then has sent nothing and releases the source. There is no broker protocol version or handshake: the host runs from the
       consumer's own build, so the client and host frame shapes always match, and a malformed
       generation-bearing frame fails the read with `InvalidDataException`.
     - **Watch and catch-up lifetime**: `FileIndex.StartWatchingAsync` arms each MFT-backed drive and

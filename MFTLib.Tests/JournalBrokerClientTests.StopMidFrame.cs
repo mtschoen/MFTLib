@@ -128,6 +128,40 @@ public partial class JournalBrokerClientTests
             new Dictionary<string, UsnJournalCursor> { ["D"] = new(8UL, 200L) }, token));
     }
 
+    /// <summary>
+    ///     A control exchange is the other pipe reader that can follow a cancelled stop, and it has its
+    ///     own exception handling around the exchange. Its bound running out while the retired reader
+    ///     is still inside a stalled frame fails the connection the same way a start's does.
+    /// </summary>
+    [TestMethod]
+    public async Task QueryVolumes_AfterAStopLeftAStalledFrame_FailsTheConnectionWhenItsTokenRunsOut()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var peer = serverSide;
+        await using var observed = new ReadObservingStream(clientSide);
+        await using var client = MakeMinimalFakeClient(observed);
+        string? deathReason = null;
+        client.BrokerDied += reason => deathReason = reason;
+        using var hangGuard = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var token = hangGuard.Token;
+
+        await StallInsideAFrameAsync(client, serverSide, observed, token);
+        using var stopCancellation = new CancellationTokenSource();
+        var stop = client.StopLiveWatchAsync(stopCancellation.Token);
+        Assert.AreEqual(BrokerFrameKind.EndWatch, (await ReadOneFrameAsync(serverSide).WaitAsync(token)).Kind);
+        await stopCancellation.CancelAsync();
+        await AssertFinishesAsync(stop, "The cancelled stop waited for a frame the broker never finished.", token);
+
+        using var queryCancellation = new CancellationTokenSource();
+        var query = client.QueryVolumesAsync(["C"], queryCancellation.Token);
+        await queryCancellation.CancelAsync();
+        await AssertFinishesAsync(query, "The query waited past its own cancellation.", token);
+        Assert.IsTrue(query.IsCanceled, "The query whose bound ran out must report its cancellation.");
+        Assert.IsNotNull(deathReason, "Giving up on the stalled frame must fail the connection.");
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => client.QueryVolumesAsync(["C"], token));
+    }
+
     // Starts a watch and has the broker send only the length prefix of a CaughtUp frame, leaving the
     // demux waiting for the body. Returns the body the broker has not sent.
     static async Task<ReadOnlyMemory<byte>> StallInsideAFrameAsync(

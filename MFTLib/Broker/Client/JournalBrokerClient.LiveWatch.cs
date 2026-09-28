@@ -25,7 +25,7 @@ public sealed partial class JournalBrokerClient
         IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
         CancellationToken cancellationToken = default)
     {
-        return SendStartWatchCoreAsync(cursorsByDrive, null, cancellationToken);
+        return SendStartWatchCoreAsync(cursorsByDrive, null, cancellationToken, cancellationToken);
     }
 
     internal Task SendStartWatchAsync(
@@ -33,12 +33,30 @@ public sealed partial class JournalBrokerClient
         Action transmissionStarted,
         CancellationToken cancellationToken)
     {
-        return SendStartWatchCoreAsync(cursorsByDrive, transmissionStarted, cancellationToken);
+        return SendStartWatchCoreAsync(cursorsByDrive, transmissionStarted, cancellationToken, cancellationToken);
+    }
+
+    /// <summary>
+    ///     <see cref="SendStartWatchAsync(IReadOnlyDictionary{string,UsnJournalCursor},CancellationToken)" />
+    ///     with the wait for a reader a cancelled stop retired bounded apart:
+    ///     <paramref name="retiredReaderCancellationToken" /> bounds only that wait, which comes
+    ///     before anything is armed or written, and <paramref name="cancellationToken" /> bounds
+    ///     everything else. A send whose retired-reader wait runs out has written nothing and fails
+    ///     the connection, because that reader's frame never finished. The watch source uses this
+    ///     so a start it gives up on cannot leave an uncancellable send waiting for a stalled frame.
+    /// </summary>
+    internal Task SendStartWatchAsync(
+        IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
+        CancellationToken retiredReaderCancellationToken,
+        CancellationToken cancellationToken)
+    {
+        return SendStartWatchCoreAsync(cursorsByDrive, null, retiredReaderCancellationToken, cancellationToken);
     }
 
     async Task SendStartWatchCoreAsync(
         IReadOnlyDictionary<string, UsnJournalCursor> cursorsByDrive,
         Action? transmissionStarted,
+        CancellationToken retiredReaderCancellationToken,
         CancellationToken cancellationToken)
     {
         ThrowIfControlUnavailable();
@@ -49,7 +67,11 @@ public sealed partial class JournalBrokerClient
         var armEpochsByDrive = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            await AwaitRetiredReaderAsync(operationToken).ConfigureAwait(false);
+            using (var retiredReaderCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                       retiredReaderCancellationToken, operationToken))
+            {
+                await AwaitRetiredReaderAsync(retiredReaderCancellation.Token).ConfigureAwait(false);
+            }
             ThrowIfControlUnavailable();
             string watchSpec;
             uint generation;

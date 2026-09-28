@@ -82,6 +82,9 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     ///         waits for it, bounded by its own token, rather than being rejected. The new start
     ///         supersedes the teardown's wait for the acknowledgement, under the same generation rule
     ///         as any other stop, so it waits only for the send and the EndWatch write to finish.
+    ///         The one part of the send the token does cancel is its wait, before anything is
+    ///         written, for a client reader that a cancelled stop left inside a frame; running out
+    ///         there fails the connection, and the source is released.
     ///     </para>
     /// </summary>
     public async IAsyncEnumerable<WatchStreamItem> StartWatching(
@@ -103,10 +106,12 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
             cancellationToken.ThrowIfCancellationRequested();
 
             // The send itself is never cancelled, because cancelling the write can leave half a
-            // frame on the pipe. Only this wait for it observes the token. A send the wait gives up
-            // on finishes in the background and is torn down by RetireAbandonedStart.
+            // frame on the pipe. Only this wait for it observes the token, and so does the send's
+            // wait for a reader a cancelled stop retired, which precedes any write and fails the
+            // connection when it runs out rather than wait forever on a stalled frame. A send the
+            // wait gives up on finishes in the background and is torn down by RetireAbandonedStart.
             pendingStart = new PendingStartWatch(client,
-                client.SendStartWatchAsync(BuildCursors(targets), CancellationToken.None));
+                client.SendStartWatchAsync(BuildCursors(targets), cancellationToken, CancellationToken.None));
             await pendingStart.Value.Send.WaitAsync(cancellationToken).ConfigureAwait(false);
             if (BeforeStreamPublishedForTest is { } beforeStreamPublished)
             {
@@ -286,8 +291,10 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         catch (OperationCanceledException exception) when (teardownCancellationToken.IsCancellationRequested)
         {
             // The caller bounded the wait for the acknowledgement and that bound ran out. The
-            // client has stopped reading this watch either way, and its next watch carries a later
-            // generation, so releasing this source for reuse is safe and this is not a failure.
+            // client's reader may still be inside a frame of this watch, but the client makes its
+            // next reader wait for that frame within the next caller's bound, and its next watch
+            // carries a later generation, so releasing this source for reuse is safe and this is
+            // not a failure.
             _ = exception;
         }
         finally
