@@ -64,6 +64,7 @@ public sealed partial class JournalBrokerClient
         {
             await demuxTask.ConfigureAwait(false);
         }
+        await JoinRetiredReaderAsync().ConfigureAwait(false);
 
         lock (_liveChannelsLock)
         {
@@ -103,7 +104,7 @@ public sealed partial class JournalBrokerClient
     // cancellationToken bounds only the wait for a frame to begin. Once its first byte is read the
     // frame is read whole, interrupted only by disposal or a control failure, so a cancelled reader
     // (a stop that gave up on its EndWatchAck cancels the demux) never leaves the pipe mid-frame
-    // for the next one.
+    // for the next one. The stop does not wait for that frame; see JournalBrokerClient.RetiredReader.
     async Task<BrokerFrame?> ReadFrameAsync(CancellationToken cancellationToken)
     {
         var frameCancellationToken = _controlCancellation.Token;

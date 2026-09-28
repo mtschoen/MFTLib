@@ -49,6 +49,7 @@ public sealed partial class JournalBrokerClient
         var armEpochsByDrive = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
         try
         {
+            await AwaitRetiredReaderAsync(operationToken).ConfigureAwait(false);
             ThrowIfControlUnavailable();
             string watchSpec;
             uint generation;
@@ -313,6 +314,7 @@ public sealed partial class JournalBrokerClient
             }
         }
 
+        var retired = false;
         try
         {
             await task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -320,7 +322,10 @@ public sealed partial class JournalBrokerClient
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             await demuxCancellation.CancelAsync().ConfigureAwait(false);
-            await task.ConfigureAwait(false);
+            // A demux inside a frame keeps reading it, and a stalled broker may never finish it,
+            // so the stop hands the demux to the next pipe reader instead of waiting here.
+            RetireReader(task, demuxCancellation);
+            retired = true;
             cancellationToken.ThrowIfCancellationRequested();
             throw;
         }
@@ -331,7 +336,10 @@ public sealed partial class JournalBrokerClient
                 _demuxCts = null;
                 _demuxTask = null;
             }
-            demuxCancellation.Dispose();
+            if (!retired)
+            {
+                demuxCancellation.Dispose();
+            }
 
             ResetLiveWatchState();
         }

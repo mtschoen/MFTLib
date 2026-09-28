@@ -389,8 +389,8 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       generation other than the live one still ends the session, since only a client bug sends it.
       `StopLiveWatchAsync(cancellationToken)` has no timer: it waits for the
       demux to end on the ack or on EOF, bounded only by its token (and by client disposal). A
-      cancelled wait cancels and joins the demux and resets the client's live-watch state, so the
-      late ack cannot end the next watch and the connection stays usable without a reconnect. The
+      cancelled wait cancels the demux and resets the client's live-watch state, so the late ack
+      cannot end the next watch and the connection stays usable without a reconnect. The
       source's stream teardown, the abandoned-start teardown, and `JournalBrokerScanSession.StopWatchAsync`
       use an internal overload whose token bounds only the ack wait: the EndWatch is always sent
       and the client's watch always torn down, even under an already-cancelled token.
@@ -405,7 +405,14 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       need not deliver EOF. Because a cancelled stop cancels the demux while the broker may be
       mid-write, the client's frame reader observes a caller's token only until a frame's first
       byte arrives and then reads that frame whole (only disposal or a control failure interrupts
-      it), so the next reader always starts at a frame boundary. There is no broker protocol version or handshake: the host runs from the
+      it), so the next reader always starts at a frame boundary. The cancelled stop does not wait
+      for that frame, since a broker that stalls mid-frame may never finish it: it returns its
+      cancellation and leaves the demux as a retired reader (`JournalBrokerClient.RetiredReader.cs`).
+      The next pipe reader (a StartWatch that begins a demux, a control exchange) waits for the
+      retired reader within its own token before reading, and disposal joins it after cancelling
+      the control token. A reader whose token runs out first fails the connection through
+      `AbortControlExchange` (broker death, every later call throws `InvalidOperationException`),
+      because nothing may read on from the middle of that frame. There is no broker protocol version or handshake: the host runs from the
       consumer's own build, so the client and host frame shapes always match, and a malformed
       generation-bearing frame fails the read with `InvalidDataException`.
     - **Watch and catch-up lifetime**: `FileIndex.StartWatchingAsync` arms each MFT-backed drive and

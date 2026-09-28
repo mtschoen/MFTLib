@@ -55,6 +55,7 @@ public sealed partial class JournalBrokerClient
         ControlExchange? exchange = null;
         try
         {
+            await AwaitRetiredReaderAsync(linked.Token).ConfigureAwait(false);
             ThrowIfControlUnavailable();
             lock (_liveChannelsLock)
             {
