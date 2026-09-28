@@ -340,8 +340,10 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
     - **Watch start readiness**: `FileIndex.StartWatchingAsync` completes only once the session's
       source reports that its stream accepts per-drive arm and disarm, so a `RescanAsync` issued any
       time after it returns finds a running stream (MFTLib issue 247). The index always starts a
-      source through `IIndexWatchSource.StartWatching(targets, reportStreamReady, cancellationToken)`;
-      readiness belongs to one `WatchSession` (`WatchSession.Ready`), so no other session's source
+      source through
+      `IIndexWatchSource.StartWatching(targets, reportStreamReady, teardownCancellationToken, cancellationToken)`,
+      whose default interface member ignores the teardown token and forwards to the three-parameter
+      `StartWatching(targets, reportStreamReady, cancellationToken)`; readiness belongs to one `WatchSession` (`WatchSession.Ready`), so no other session's source
       can satisfy it, and the pump settles it before it finishes, so no waiter is stranded. A first
       item also counts as ready. Readiness is not catch-up: `WaitForCatchUpAsync` stays the separate
       backlog wait. `BrokerIndexWatchSource` reports readiness once connected, the StartWatch frame is
@@ -392,9 +394,13 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       source's stream teardown, the abandoned-start teardown, and `JournalBrokerScanSession.StopWatchAsync`
       use an internal overload whose token bounds only the ack wait: the EndWatch is always sent
       and the client's watch always torn down, even under an already-cancelled token.
-      `FileIndex.StopWatchingAsync` hands its token to the source through
-      `IIndexWatchSource.RequestStop` (a default no-op member) before cancelling the session, so it
-      bounds that ack wait; `DisposeAsync` passes none and waits for the ack or EOF. An EndWatch
+      Each `WatchSession` owns a teardown `CancellationTokenSource` whose token the pump passes as
+      the `teardownCancellationToken` of the four-parameter `StartWatching`, and a
+      `FileIndex.StopWatchingAsync` whose own token ends its wait cancels it, so that token bounds
+      the source's ack wait; `DisposeAsync` never cancels it and waits for the ack or EOF. The stop
+      cancels it in its cancellation handler rather than from a registration on the token: the
+      wait ends on that same cancellation, and leaving the method would dispose a registration
+      whose callback had not run yet. An EndWatch
       whose write fails ends the demux at once, since no ack can answer it and a broken transport
       need not deliver EOF. Because a cancelled stop cancels the demux while the broker may be
       mid-write, the client's frame reader observes a caller's token only until a frame's first

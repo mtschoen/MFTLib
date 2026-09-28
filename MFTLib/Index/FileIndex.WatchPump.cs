@@ -23,7 +23,8 @@ public sealed partial class FileIndex
         Exception? streamFailure = null;
         try
         {
-            await foreach (var item in source.StartWatching(targets, session.MarkReady, cancellationToken)
+            await foreach (var item in source.StartWatching(targets, session.MarkReady, session.TeardownToken,
+                               cancellationToken)
                                .ConfigureAwait(false))
             {
                 session.MarkStreamStarted();
@@ -167,7 +168,7 @@ public sealed partial class FileIndex
 
         // Disposed here because this is the last thing that holds the session: a stop racing this
         // release finds the field already cleared and returns without touching the source.
-        session.Cancellation.Dispose();
+        session.Dispose();
         RaiseWatchFaulted(new WatchFault(WatchFaultKind.Source, null, sourceEnded));
     }
 

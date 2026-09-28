@@ -134,7 +134,7 @@ public sealed partial class FileIndex
 
         if (released)
         {
-            session.Cancellation.Dispose();
+            session.Dispose();
         }
     }
 }

@@ -382,7 +382,7 @@ public sealed partial class FileIndex
             }
         }
 
-        session.Cancellation.Dispose();
+        session.Dispose();
         return true;
     }
 

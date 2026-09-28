@@ -8,7 +8,7 @@ public sealed partial class FileIndex
     ///     <see cref="FileIndex._watchSession" /> field is claimed, read, and cleared under
     ///     <see cref="FileIndex._stateLock" />.
     /// </summary>
-    sealed class WatchSession
+    sealed class WatchSession : IDisposable
     {
         readonly List<IndexWatchTarget> _targets;
         readonly Lock _targetsLock = new();
@@ -25,6 +25,43 @@ public sealed partial class FileIndex
         }
 
         public CancellationTokenSource Cancellation { get; }
+
+        readonly CancellationTokenSource _teardown = new();
+
+        // Guards _teardown against a stop cancelling it while the pump releases the session.
+        readonly Lock _teardownLock = new();
+        bool _released;
+
+        /// <summary>
+        ///     Bounds how long the source's cleanup may wait on something outside the process once
+        ///     <see cref="Cancellation" /> has ended the stream. Cancelled only by
+        ///     <see cref="CancelTeardown" />, which a <see cref="FileIndex.StopWatchingAsync" /> runs
+        ///     when its own token is cancelled.
+        /// </summary>
+        public CancellationToken TeardownToken => _teardown.Token;
+
+        /// <summary>Cancels <see cref="TeardownToken" />; a session already released has no teardown left to bound.</summary>
+        public void CancelTeardown()
+        {
+            lock (_teardownLock)
+            {
+                if (!_released)
+                {
+                    _teardown.Cancel();
+                }
+            }
+        }
+
+        /// <summary>Disposes both cancellation sources, once, by whichever path released the session.</summary>
+        public void Dispose()
+        {
+            Cancellation.Dispose();
+            lock (_teardownLock)
+            {
+                _released = true;
+                _teardown.Dispose();
+            }
+        }
 
         // The exact source the pump is reading, so a rescan reaches the arm and disarm
         // operations of the stream in flight rather than of some other instance.

@@ -22,16 +22,17 @@ public sealed class BrokerIndexWatchSourceGenerationFenceTests
         var token = harness.CancellationToken;
         var source = new BrokerIndexWatchSource(harness.ConnectAsync);
 
+        // The stop FileIndex.StopWatchingAsync makes: its token bounds the acknowledgement wait
+        // through the teardown token the stream was started with.
         using var firstStreamCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
-        var first = source.StartWatching([TargetC], firstStreamCancellation.Token)
+        using var stopCancellation = new CancellationTokenSource();
+        var first = source.StartWatching([TargetC], static () => { }, stopCancellation.Token,
+                firstStreamCancellation.Token)
             .GetAsyncEnumerator(firstStreamCancellation.Token);
         var firstMove = first.MoveNextAsync().AsTask();
         var firstStart = await harness.ReadFrameAsync();
         Assert.AreEqual(BrokerFrameKind.StartWatch, firstStart.Kind);
 
-        // The stop FileIndex.StopWatchingAsync makes: its token bounds the acknowledgement wait.
-        using var stopCancellation = new CancellationTokenSource();
-        source.RequestStop(stopCancellation.Token);
         await firstStreamCancellation.CancelAsync();
         Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
         await stopCancellation.CancelAsync();

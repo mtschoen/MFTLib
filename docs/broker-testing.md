@@ -81,3 +81,11 @@ test inside the start, implements the three-argument
 incomplete until it does. Throwing from the stream before that fails the start with the thrown
 exception. A fake whose stream needs its test to read a frame or release a gate before it can
 become ready must be started without awaiting, the gate driven, and the start awaited after.
+
+`FileIndex` itself always calls the four-argument
+`StartWatching(targets, reportStreamReady, teardownCancellationToken, cancellationToken)`
+overload, whose default ignores the teardown token and forwards to the three-argument one. A
+fake whose cleanup, after its stream is cancelled, waits on something outside the test (as the
+broker source waits for the broker's acknowledgement) implements it and bounds that wait by
+`teardownCancellationToken`, which the index cancels when the token passed to
+`StopWatchingAsync` is cancelled and never cancels on disposal.

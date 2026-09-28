@@ -30,7 +30,6 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     readonly HashSet<char> _drivesAwaitingReader = [];
 
     bool _streamClaimed;
-    CancellationToken _stopCancellationToken;
 
     // The four things a running stream owns, held together so their nullability is one question
     // asked once rather than four the per-drive members would each have to assert away.
@@ -48,24 +47,16 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     /// </summary>
     internal Func<CancellationToken, Task>? BeforeStreamPublishedForTest { get; set; }
 
-    /// <summary>
-    ///     Bounds the running stream's wait for the broker's EndWatchAck, once the stream ends, by
-    ///     <paramref name="cancellationToken" />. A stop that token cuts short still releases this
-    ///     source for another stream: that acknowledgement names the ended watch's generation, which
-    ///     the next watch's demux ignores.
-    /// </summary>
-    public void RequestStop(CancellationToken cancellationToken)
-    {
-        lock (_streamLock)
-        {
-            _stopCancellationToken = cancellationToken;
-        }
-    }
-
     public IAsyncEnumerable<WatchStreamItem> StartWatching(
         IReadOnlyList<IndexWatchTarget> targets, CancellationToken cancellationToken)
     {
-        return StartWatching(targets, static () => { }, cancellationToken);
+        return StartWatching(targets, static () => { }, CancellationToken.None, cancellationToken);
+    }
+
+    public IAsyncEnumerable<WatchStreamItem> StartWatching(
+        IReadOnlyList<IndexWatchTarget> targets, Action reportStreamReady, CancellationToken cancellationToken)
+    {
+        return StartWatching(targets, reportStreamReady, CancellationToken.None, cancellationToken);
     }
 
     /// <summary>
@@ -74,6 +65,14 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     ///     from then on <see cref="ArmDriveAsync" /> and <see cref="DisarmDriveAsync" /> find a
     ///     running stream. A connection or send failure, or cancellation before that point, throws
     ///     from the stream instead.
+    ///     <para>
+    ///         Once <paramref name="cancellationToken" /> ends a running stream, the stream sends the
+    ///         broker's EndWatch through <see cref="JournalBrokerClient" /> and waits for the
+    ///         acknowledgement or the pipe closing, bounded only by
+    ///         <paramref name="teardownCancellationToken" />. Cancelling that token stops the wait
+    ///         without failing the stream: the connection stays usable, because the next watch on it
+    ///         carries a later generation that the old acknowledgement cannot end.
+    ///     </para>
     ///     <para>
     ///         Cancellation is observed promptly at every step, including while the StartWatch send
     ///         is blocked on the client's arm-ordering gate or on the pipe write. The send itself is
@@ -89,6 +88,7 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     /// </summary>
     public async IAsyncEnumerable<WatchStreamItem> StartWatching(
         IReadOnlyList<IndexWatchTarget> targets, Action reportStreamReady,
+        CancellationToken teardownCancellationToken,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(reportStreamReady);
@@ -163,7 +163,7 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         }
         finally
         {
-            await StopStreamAsync(stream).ConfigureAwait(false);
+            await StopStreamAsync(stream, teardownCancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -268,26 +268,24 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         }
     }
 
-    async Task StopStreamAsync(LiveStream stream)
+    async Task StopStreamAsync(LiveStream stream, CancellationToken teardownCancellationToken)
     {
         await stream.ReaderCancellation.CancelAsync().ConfigureAwait(false);
         Task[] readers;
-        CancellationToken stopToken;
         lock (_streamLock)
         {
             readers = [.. _readersByDrive.Values];
-            stopToken = _stopCancellationToken;
-            _stopCancellationToken = CancellationToken.None;
         }
 
         try
         {
-            // Only the wait for the acknowledgement observes the stop token: the EndWatch must be
-            // sent and the client's watch torn down even when that token is already cancelled, or
-            // the next stream on this source would join the old watch instead of starting its own.
-            await stream.Client.StopLiveWatchAsync(CancellationToken.None, stopToken).ConfigureAwait(false);
+            // Only the wait for the acknowledgement observes the teardown token: the EndWatch must
+            // be sent and the client's watch torn down even when that token is already cancelled,
+            // or the next stream on this source would join the old watch instead of starting its own.
+            await stream.Client.StopLiveWatchAsync(CancellationToken.None, teardownCancellationToken)
+                .ConfigureAwait(false);
         }
-        catch (OperationCanceledException exception) when (stopToken.IsCancellationRequested)
+        catch (OperationCanceledException exception) when (teardownCancellationToken.IsCancellationRequested)
         {
             // The caller bounded the wait for the acknowledgement and that bound ran out. The
             // client has stopped reading this watch either way, and its next watch carries a later
@@ -321,7 +319,6 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
         {
             _streamClaimed = false;
             _stream = null;
-            _stopCancellationToken = CancellationToken.None;
             _readersByDrive.Clear();
             _armGenerationsByDrive.Clear();
             _stopRequestedDrives.Clear();
