@@ -261,7 +261,7 @@ public partial class JournalBrokerScanSessionTests
         await scanTask;
 
         // The broker side must read the EndWatch the stop sends and reply with an
-        // EndWatchAck so the handshake completes fast rather than via the ack timeout.
+        // EndWatchAck so the handshake completes; a stop with no token waits for it.
         var receivedKinds = new List<BrokerFrameKind>();
         var watchTask = Task.Run(async () =>
         {

@@ -206,6 +206,26 @@ public partial class JournalBrokerClientTests
     }
 
     [TestMethod]
+    public async Task StopLiveWatchAsync_TransportBrokenUnderAPendingDemuxRead_EndsWithoutAnAcknowledgement()
+    {
+        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var observed = new ReadObservingStream(clientSide);
+        await using var client = MakeMinimalFakeClient(observed);
+        using var hangGuard = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 100L) },
+            hangGuard.Token);
+        await observed.ReadsIssued(1).WaitAsync(hangGuard.Token);
+
+        // Breaking an in-memory pipe under a read already issued does not answer that read, so the
+        // demux gets neither EOF nor an acknowledgement; the EndWatch write that fails on the
+        // broken pipe is all that can end the stop. The hang guard turns a regression into a
+        // failure instead of a stalled run.
+        await clientSide.DisposeAsync();
+        await client.StopLiveWatchAsync().WaitAsync(hangGuard.Token);
+        _ = serverSide;
+    }
+
+    [TestMethod]
     public void TryNormalizeDriveLetter_Null_ThrowsArgumentNullException()
     {
         Assert.ThrowsException<ArgumentNullException>(() =>
@@ -254,25 +274,38 @@ public partial class JournalBrokerClientTests
         stopCts.Cancel();
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => stopTask);
 
-        // A stale ack arrives from the broker for generation 1 after caller cancelled stop
-        var staleAck = new System.Buffers.ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteEndWatchAck(staleAck, 1U);
-        await serverSide.WriteAsync(staleAck.WrittenMemory);
-        await serverSide.FlushAsync();
-
         // Start a second watch session: client must be reusable and allocate generation 2
         await client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor> { ["D"] = new(8UL, 200L) });
         var secondStart = await ReadOneFrameAsync(serverSide);
         Assert.AreEqual(2U, secondStart.WatchGeneration);
 
-        // Complete the second watch with a matching generation 2 ack
+        // The first generation's acknowledgement arrives late, read by the second watch's demux,
+        // followed by a batch for the second watch. The batch must still be delivered: the stale
+        // acknowledgement did not end the second watch.
+        using var hangGuard = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var batches = client.CreateBatchSource()("D", new UsnJournalCursor(8UL, 200L), hangGuard.Token)
+            .GetAsyncEnumerator(hangGuard.Token);
+        var staleAck = new System.Buffers.ArrayBufferWriter<byte>();
+        BrokerProtocol.WriteEndWatchAck(staleAck, 1U);
+        BrokerProtocol.WriteJournalBatch(staleAck, "D", WatchSpecArmEpochs.ForDrive(secondStart, "D"),
+            new UsnJournalCursor(8UL, 210L), [JournalEntryFactory.Create(1, 205, "after-stale-ack.txt")]);
+        await serverSide.WriteAsync(staleAck.WrittenMemory);
+        await serverSide.FlushAsync();
+
+        Assert.IsTrue(await batches.MoveNextAsync(), "The stale acknowledgement ended the second watch.");
+        Assert.AreEqual("after-stale-ack.txt", batches.Current.Entries[0].FileName);
+
+        // The second generation's own acknowledgement still ends it.
+        var stopSecond = client.StopLiveWatchAsync(hangGuard.Token);
+        Assert.AreEqual(BrokerFrameKind.EndWatch, (await ReadOneFrameAsync(serverSide)).Kind);
         var matchingAck = new System.Buffers.ArrayBufferWriter<byte>();
         BrokerProtocol.WriteEndWatchAck(matchingAck, 2U);
         await serverSide.WriteAsync(matchingAck.WrittenMemory);
         await serverSide.FlushAsync();
 
-        // Stop live watch for generation 2 completes cleanly
-        await client.StopLiveWatchAsync();
+        await stopSecond;
+        Assert.IsFalse(await batches.MoveNextAsync(), "The second generation's acknowledgement did not end its watch.");
+        await batches.DisposeAsync();
     }
 
     [TestMethod]

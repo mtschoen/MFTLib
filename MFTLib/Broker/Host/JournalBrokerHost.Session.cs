@@ -127,15 +127,7 @@ public sealed partial class JournalBrokerHost
                     break;
 
                 case BrokerFrameKind.EndWatch:
-                    var endingGeneration = watch.Generation;
-                    if (endingGeneration == 0)
-                    {
-                        throw new InvalidOperationException("No watch generation is currently active to end.");
-                    }
-                    await StopWatchGenerationAsync(watch).ConfigureAwait(false);
-                    await WriteReplyFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteEndWatchAck(writer, endingGeneration), cancellationToken)
-                        .ConfigureAwait(false);
+                    await EndWatchGenerationAsync(stream, writeLock, watch, cancellationToken).ConfigureAwait(false);
                     break;
 
                 case BrokerFrameKind.Shutdown:
@@ -189,6 +181,26 @@ public sealed partial class JournalBrokerHost
         await driveWatch.Cancellation.CancelAsync().ConfigureAwait(false);
         await driveWatch.Task.ConfigureAwait(false);
         driveWatch.Dispose();
+    }
+
+    // Stops the live generation and acknowledges with its number, so the client demux that asked
+    // ends and the demux of any later watch on the connection ignores this acknowledgement.
+    static async Task EndWatchGenerationAsync(
+        Stream stream,
+        SemaphoreSlim writeLock,
+        WatchGeneration watch,
+        CancellationToken cancellationToken)
+    {
+        var endingGeneration = watch.Generation;
+        if (endingGeneration == 0)
+        {
+            throw new InvalidOperationException("No watch generation is currently active to end.");
+        }
+
+        await StopWatchGenerationAsync(watch).ConfigureAwait(false);
+        await WriteReplyFrameAsync(stream, writeLock,
+            writer => BrokerProtocol.WriteEndWatchAck(writer, endingGeneration), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     static async Task StopWatchGenerationAsync(WatchGeneration watch)

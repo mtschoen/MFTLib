@@ -53,7 +53,26 @@ internal sealed class InProcessBlockBrokerHarness : IAsyncDisposable
                 ? throw new IOException("batch failed")
                 : [[new MftRecord(5, 5, new MftRecordFields(3), ".", null),
                     new MftRecord(20, 5, new MftRecordFields(1), "file.txt", null)]]));
-        _serving = host.ServeAsync(server, _writer, false, _timeout.Token);
+        _serving = ServeThenCloseAsync(host, server, _writer, _timeout.Token);
+    }
+
+    /// <summary>
+    ///     Closes the host's end of the pipe once the host stops serving, for any reason, the way a
+    ///     broker process that exits closes its pipe. The client then reads EOF instead of waiting
+    ///     for an acknowledgement nothing will send, so a test that fails or times out tears down
+    ///     instead of hanging in a stop.
+    /// </summary>
+    static async Task ServeThenCloseAsync(JournalBrokerHost host, Stream server, RecordingBlockSectionWriter writer,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await host.ServeAsync(server, writer, false, cancellationToken);
+        }
+        finally
+        {
+            await server.DisposeAsync();
+        }
     }
 
     public InProcessBlockBrokerHarness(Action<BlockFile>? changeHeader = null, bool sourceFails = false,

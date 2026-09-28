@@ -219,9 +219,22 @@ public sealed partial class JournalBrokerClient
     ///     No-op if no watch is running. Does NOT signal broker death: a clean stop leaves the client
     ///     healthy for restart.
     /// </summary>
-    public async Task StopLiveWatchAsync(CancellationToken cancellationToken = default)
+    public Task StopLiveWatchAsync(CancellationToken cancellationToken = default)
     {
-        await _armOrderingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return StopLiveWatchAsync(cancellationToken, cancellationToken);
+    }
+
+    /// <summary>
+    ///     <see cref="StopLiveWatchAsync(CancellationToken)" /> with its two waits bounded apart:
+    ///     <paramref name="gateCancellationToken" /> bounds the wait for the arm-ordering gate, before
+    ///     anything is sent, and <paramref name="cancellationToken" /> bounds only the wait for the
+    ///     broker's EndWatchAck. A token that is already cancelled for the acknowledgement still sends
+    ///     EndWatch and tears the watch down; it just does not wait for the reply, which the
+    ///     generation fence makes safe to leave on the pipe.
+    /// </summary>
+    internal async Task StopLiveWatchAsync(CancellationToken gateCancellationToken, CancellationToken cancellationToken)
+    {
+        await _armOrderingGate.WaitAsync(gateCancellationToken).ConfigureAwait(false);
         try
         {
             if (Volatile.Read(ref _disposeStarted) != 0)
@@ -290,9 +303,13 @@ public sealed partial class JournalBrokerClient
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                // Swallowed intentionally: the pipe may already be gone, in which case
-                // the demux ends via EOF. Fall through to await it either way.
+                // Swallowed intentionally: the pipe is gone or broken. An EndWatch that never
+                // reached the broker has no acknowledgement coming, and a broken transport need
+                // not surface EOF to the reader, so end the demux here rather than wait for either.
+                // Should the frame have reached the broker after all, its acknowledgement names
+                // this generation, which no later watch's demux accepts.
                 _ = exception;
+                await demuxCancellation.CancelAsync().ConfigureAwait(false);
             }
         }
 

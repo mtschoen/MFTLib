@@ -367,17 +367,36 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       StartWatch send is blocked on the client's arm-ordering gate or the pipe write (MFTLib issue
       250): `BrokerIndexWatchSource` never cancels that send (cancelling it could leave half a
       frame on the pipe), it only stops waiting for it with `WaitAsync(token)`. A send abandoned
-      that way finishes in the background, and `RetireAbandonedStartAsync` then runs
-      `StopLiveWatchAsync(startupToken)`, whose demux reads the EndWatchAck or unwinds on cancellation,
-      before releasing the stream. The source's stream stays claimed until then, and a new
+      that way finishes in the background, and `RetireAbandonedStartAsync` then stops the watch it
+      started before releasing the stream. The source's stream stays claimed until then, and a new
       `StartWatching` on the same source waits for that teardown (bounded by its own token) instead
       of being rejected, so the next StartWatch frame is never sent ahead of the old watch's
-      EndWatch. `BrokerFrame.StartWatch` and `BrokerFrame.EndWatchAck` carry a monotonic nonzero
-      `uint` `WatchGeneration`, so stale acknowledgements for earlier watch generations are ignored
-      by the client demux rather than terminating a subsequent watch. An abandoned start teardown
-      whose stop was cancelled therefore leaves the connection clean and reusable for subsequent
-      generations. Genuine transport or write failures during teardown remain recorded and fail
-      subsequent starts on that source with an `InvalidOperationException` wrapping the failure.
+      EndWatch. That new start cancels the teardown's wait for the EndWatchAck (a
+      `CancellationTokenSource` only a later claim cancels), so it waits only for the send, the
+      EndWatch write, and the client-side teardown. A teardown that fails for any other reason is
+      recorded rather than thrown and fails every later start on that source with an
+      `InvalidOperationException` wrapping it.
+      Every stop follows one generation rule (MFTLib issue 252). Each watch a `JournalBrokerClient`
+      starts takes a fresh, client-wide, monotonic nonzero `uint` `BrokerFrame.WatchGeneration`,
+      carried on its StartWatch; the host echoes the live generation on its EndWatchAck, and a demux
+      ends only on its own generation's ack, ignoring an older one and treating a newer one as a
+      protocol violation. `StopLiveWatchAsync(cancellationToken)` has no timer: it waits for the
+      demux to end on the ack or on EOF, bounded only by its token (and by client disposal). A
+      cancelled wait cancels and joins the demux and resets the client's live-watch state, so the
+      late ack cannot end the next watch and the connection stays usable without a reconnect. The
+      source's stream teardown, the abandoned-start teardown, and `JournalBrokerScanSession.StopWatchAsync`
+      use an internal overload whose token bounds only the ack wait: the EndWatch is always sent
+      and the client's watch always torn down, even under an already-cancelled token.
+      `FileIndex.StopWatchingAsync` hands its token to the source through
+      `IIndexWatchSource.RequestStop` (a default no-op member) before cancelling the session, so it
+      bounds that ack wait; `DisposeAsync` passes none and waits for the ack or EOF. An EndWatch
+      whose write fails ends the demux at once, since no ack can answer it and a broken transport
+      need not deliver EOF. Because a cancelled stop cancels the demux while the broker may be
+      mid-write, the client's frame reader observes a caller's token only until a frame's first
+      byte arrives and then reads that frame whole (only disposal or a control failure interrupts
+      it), so the next reader always starts at a frame boundary. There is no broker protocol version or handshake: the host runs from the
+      consumer's own build, so the client and host frame shapes always match, and a malformed
+      generation-bearing frame fails the read with `InvalidDataException`.
     - **Watch and catch-up lifetime**: `FileIndex.StartWatchingAsync` arms each MFT-backed drive and
       transitions its `DriveStatus.WatchCatchUp` to `WatchCatchUpState.CatchingUp`. Backlog batches up to
       the journal tip captured at arm time are applied to the block before an epoch-tagged `CaughtUp`

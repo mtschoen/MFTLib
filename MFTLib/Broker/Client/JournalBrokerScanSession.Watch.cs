@@ -239,7 +239,9 @@ public sealed partial class JournalBrokerScanSession
         Exception? error = null;
         try
         {
-            await _client.StopLiveWatchAsync(cancellationToken).ConfigureAwait(false);
+            // The token bounds only the wait for the acknowledgement, so a cancelled stop still
+            // ends the client's watch and the Parked state below is true of the client as well.
+            await _client.StopLiveWatchAsync(CancellationToken.None, cancellationToken).ConfigureAwait(false);
 
             // See StartWatchAsync: recheck under the lock so a Dispose or fault that
             // landed during the await above is never resurrected back to Parked. The
@@ -279,16 +281,9 @@ public sealed partial class JournalBrokerScanSession
         {
             completion.SetResult();
         }
-        else if (error is OperationCanceledException oce)
+        else if (error is OperationCanceledException cancellation)
         {
-            if (oce.CancellationToken.CanBeCanceled)
-            {
-                completion.SetCanceled(oce.CancellationToken);
-            }
-            else
-            {
-                completion.SetCanceled(CancellationToken.None);
-            }
+            completion.SetCanceled(cancellation.CancellationToken);
         }
         else
         {

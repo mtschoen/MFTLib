@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -135,16 +134,13 @@ public sealed class BrokerWatchStartSendCancellationTests
 
     /// <summary>
     ///     Two drives on one in-process broker whose client pipe gates the first StartWatch frame
-    ///     mid-write. Journal batches are fed per drive through channels, and every applied change
-    ///     is announced by name.
+    ///     mid-write. Journal batches are appended per drive to a <see cref="ScriptedJournal" />, and
+    ///     every applied change is announced by name.
     /// </summary>
     sealed class BlockedStartWatchScenario : IAsyncDisposable
     {
-        readonly Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> _batchesC =
-            Channel.CreateUnbounded<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
-
-        readonly Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> _batchesD =
-            Channel.CreateUnbounded<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
+        readonly ScriptedJournal _journalC = new();
+        readonly ScriptedJournal _journalD = new();
 
         readonly Dictionary<string, TaskCompletionSource> _appliedByName = new();
         readonly Lock _appliedLock = new();
@@ -206,16 +202,16 @@ public sealed class BrokerWatchStartSendCancellationTests
 
         /// <summary>
         ///     Proves the watch running now is whole: the abandoned StartWatch reached the broker and
-        ///     was ended before this watch's StartWatch was sent, so its EndWatchAck was read by the
-        ///     teardown and not by this watch. Both drives deliver, a rescan of one re-arms it, and it
-        ///     delivers again, with no watch fault recorded anywhere.
+        ///     was ended before this watch's StartWatch was sent, and its EndWatchAck, which names the
+        ///     abandoned generation, did not end this watch. Both drives deliver, a rescan of one
+        ///     re-arms it, and it delivers again, with no watch fault recorded anywhere.
         /// </summary>
         public async Task WatchAndRescanAsync(FileIndex index, CancellationToken token)
         {
             var faults = new List<WatchFault>();
             index.WatchFaulted += faults.Add;
-            await DeliverAsync(_batchesC, 12600, "watched-c.txt", token);
-            await DeliverAsync(_batchesD, 12600, "watched-d.txt", token);
+            await DeliverAsync(_journalC, 12600, "watched-c.txt", token);
+            await DeliverAsync(_journalD, 12600, "watched-d.txt", token);
 
             var watchFrames = StartWatchGate.ForwardedFrameKinds
                 .Where(kind => kind is BrokerFrameKind.StartWatch or BrokerFrameKind.EndWatch)
@@ -225,17 +221,16 @@ public sealed class BrokerWatchStartSendCancellationTests
                 watchFrames, string.Join(", ", watchFrames));
 
             await index.RescanAsync('C', token);
-            await DeliverAsync(_batchesC, 12700, "rescanned-c.txt", token);
+            await DeliverAsync(_journalC, 12700, "rescanned-c.txt", token);
 
             Assert.AreEqual(0, faults.Count, string.Join("; ", faults.Select(fault => fault.Exception.Message)));
             Assert.IsTrue(index.Drives.All(drive => drive.WatchFailureMessage == null));
             await index.StopWatchingAsync(token);
         }
 
-        Task DeliverAsync(Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> batches, long usn,
-            string name, CancellationToken token)
+        Task DeliverAsync(ScriptedJournal journal, long usn, string name, CancellationToken token)
         {
-            batches.Writer.TryWrite(([JournalEntryFactory.Create((ulong)(usn / 100), usn, name, UsnReason.FileCreate)],
+            journal.Append(([JournalEntryFactory.Create((ulong)(usn / 100), usn, name, UsnReason.FileCreate)],
                 new UsnJournalCursor(71, usn + 1)));
             return Applied(name).Task.WaitAsync(token);
         }
@@ -254,14 +249,10 @@ public sealed class BrokerWatchStartSendCancellationTests
             }
         }
 
-        async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> Watch(
-            string drive, UsnJournalCursor cursor, [EnumeratorCancellation] CancellationToken token)
+        IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> Watch(
+            string drive, UsnJournalCursor cursor, CancellationToken token)
         {
-            var channel = drive == "C" ? _batchesC : _batchesD;
-            await foreach (var batch in channel.Reader.ReadAllAsync(token))
-            {
-                yield return batch;
-            }
+            return (drive == "C" ? _journalC : _journalD).ReadFromAsync(cursor, token);
         }
 
         static IEnumerable<IReadOnlyList<MftRecord>> Scan(CancellationToken token)
@@ -269,6 +260,56 @@ public sealed class BrokerWatchStartSendCancellationTests
             token.ThrowIfCancellationRequested();
             yield return [new MftRecord(5, 5, new MftRecordFields(3), ".", null),
                 new MftRecord(20, 5, new MftRecordFields(1), "scanned.txt", null)];
+        }
+    }
+
+    /// <summary>
+    ///     One drive's journal: batches are appended and never consumed, and every watch reads the
+    ///     ones past its own start cursor, as watches over a real USN journal do. A watch the broker
+    ///     is still stopping when the next generation arms therefore cannot take a batch away from
+    ///     the watch that replaced it.
+    /// </summary>
+    sealed class ScriptedJournal
+    {
+        readonly Lock _lock = new();
+        readonly List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> _batches = [];
+        TaskCompletionSource _appended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Append((UsnJournalEntry[] Entries, UsnJournalCursor Cursor) batch)
+        {
+            TaskCompletionSource appended;
+            lock (_lock)
+            {
+                _batches.Add(batch);
+                appended = _appended;
+                _appended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+
+            appended.TrySetResult();
+        }
+
+        public async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> ReadFromAsync(
+            UsnJournalCursor cursor, [EnumeratorCancellation] CancellationToken token)
+        {
+            var read = 0;
+            while (!token.IsCancellationRequested)
+            {
+                (UsnJournalEntry[] Entries, UsnJournalCursor Cursor)[] unread;
+                Task appended;
+                lock (_lock)
+                {
+                    unread = _batches.Skip(read).ToArray();
+                    read = _batches.Count;
+                    appended = _appended.Task;
+                }
+
+                foreach (var batch in unread.Where(batch => batch.Cursor.NextUsn > cursor.NextUsn))
+                {
+                    yield return batch;
+                }
+
+                await appended.WaitAsync(token);
+            }
         }
     }
 }

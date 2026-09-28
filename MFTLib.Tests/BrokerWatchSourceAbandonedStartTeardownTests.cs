@@ -6,11 +6,11 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 /// <summary>
-///     MFTLib issue 250 review findings: the teardown of a start abandoned mid-send must not hand
-///     the connection to another watch without clean teardown. With generation fencing, an abandoned
-///     start's stop cleans up the demux, and any late EndWatchAck for its generation is ignored by
-///     the subsequent watch, so the connection remains safe to reuse. Genuine transport or cleanup
-///     failures continue to fail subsequent starts.
+///     MFTLib issues 250 and 252: the teardown of a start abandoned mid-send must end the watch it
+///     started before the next start sends its own StartWatch. The next start cuts short the
+///     teardown's wait for the EndWatchAck, and the acknowledgement, whenever it arrives, names the
+///     abandoned watch's generation, which the next watch ignores. The scripted broker never
+///     acknowledges on its own, so whether the acknowledgement is late is fixed by the script.
 /// </summary>
 [TestClass]
 public sealed class BrokerWatchSourceAbandonedStartTeardownTests
@@ -62,8 +62,14 @@ public sealed class BrokerWatchSourceAbandonedStartTeardownTests
         await disposeTask.WaitAsync(token);
     }
 
+    /// <summary>
+    ///     A transport that breaks under the teardown leaves nothing to wait for: whether the break
+    ///     lands before the EndWatch write or during the wait for its acknowledgement, the teardown
+    ///     finishes without faulting, and the next start reports the broken connection itself rather
+    ///     than hanging or blaming the teardown.
+    /// </summary>
     [TestMethod]
-    public async Task AbandonedStart_WithTransportFailureDuringTeardown_FailsTheNextStart()
+    public async Task AbandonedStart_WhoseTransportBreaksDuringTeardown_LetsTheNextStartReportTheBrokenConnection()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var token = harness.CancellationToken;
@@ -76,19 +82,14 @@ public sealed class BrokerWatchSourceAbandonedStartTeardownTests
 
         blockedSend.Release();
         await abandonedMove.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        var startFrame = await harness.ReadFrameAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, startFrame.Kind);
-
-        // Break transport after StartWatch so the subsequent EndWatch write or stop fails.
+        Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
         await harness.BreakTransportAsync();
 
-        await retirement.WaitAsync(token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        Assert.IsTrue(retirement.IsCompletedSuccessfully);
-
         var next = source.StartWatching([TargetC], token).GetAsyncEnumerator(token);
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        var failure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => next.MoveNextAsync().AsTask().WaitAsync(token));
-        StringAssert.Contains(exception.Message, "tearing down a start that was cancelled");
+        Assert.IsTrue(retirement.IsCompletedSuccessfully, retirement.Exception?.ToString());
+        Assert.IsFalse(failure.Message.Contains("cannot start again", StringComparison.Ordinal), failure.ToString());
         await next.DisposeAsync();
     }
 

@@ -12,7 +12,7 @@ public sealed partial class JournalBrokerClient
     // Deliver live batches and errors only when their epoch matches the drive's current arm.
     readonly Dictionary<string, uint> _armedEpochsByDrive = new(StringComparer.OrdinalIgnoreCase);
 
-    // Client-wide and never reset: a stop timeout can leave old frames unread on the pipe.
+    // Client-wide and never reset: a cancelled stop can leave old frames unread on the pipe.
     uint _lastArmEpoch;
 
     // Client-wide and never reset: monotonic watch generation counter.

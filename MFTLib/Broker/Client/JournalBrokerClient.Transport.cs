@@ -100,10 +100,15 @@ public sealed partial class JournalBrokerClient
     }
 
     // Shared frame-reading helper. Returns null on clean EOF.
+    // cancellationToken bounds only the wait for a frame to begin. Once its first byte is read the
+    // frame is read whole, interrupted only by disposal or a control failure, so a cancelled reader
+    // (a stop that gave up on its EndWatchAck cancels the demux) never leaves the pipe mid-frame
+    // for the next one.
     async Task<BrokerFrame?> ReadFrameAsync(CancellationToken cancellationToken)
     {
+        var frameCancellationToken = _controlCancellation.Token;
         var header = new byte[4];
-        if (!await ReadExactAsync(pipe, header, cancellationToken).ConfigureAwait(false))
+        if (!await ReadExactAsync(pipe, header, cancellationToken, frameCancellationToken).ConfigureAwait(false))
         {
             SignalBrokerDeath("Pipe EOF");
             return null;
@@ -112,7 +117,8 @@ public sealed partial class JournalBrokerClient
         var totalLength = BinaryPrimitives.ReadInt32LittleEndian(header);
         var frameBytes = new byte[4 + totalLength];
         header.CopyTo(frameBytes.AsMemory());
-        if (!await ReadExactAsync(pipe, frameBytes.AsMemory(4, totalLength), cancellationToken).ConfigureAwait(false))
+        if (!await ReadExactAsync(pipe, frameBytes.AsMemory(4, totalLength), frameCancellationToken,
+                frameCancellationToken).ConfigureAwait(false))
         {
             throw new EndOfStreamException("Truncated broker frame on pipe");
         }
@@ -189,12 +195,16 @@ public sealed partial class JournalBrokerClient
         return true;
     }
     // Fill buffer fully. Returns false on clean EOF before any byte; throws on truncated data.
-    static async Task<bool> ReadExactAsync(Stream stream, Memory<byte> buffer, CancellationToken cancellationToken)
+    // firstReadCancellationToken bounds the read that has no byte yet, continuationCancellationToken
+    // every read after one has arrived.
+    static async Task<bool> ReadExactAsync(Stream stream, Memory<byte> buffer,
+        CancellationToken firstReadCancellationToken, CancellationToken continuationCancellationToken)
     {
         var read = 0;
         while (read < buffer.Length)
         {
-            var count = await stream.ReadAsync(buffer[read..], cancellationToken).ConfigureAwait(false);
+            var count = await stream.ReadAsync(buffer[read..],
+                read == 0 ? firstReadCancellationToken : continuationCancellationToken).ConfigureAwait(false);
             if (count == 0)
             {
                 if (read == 0)

@@ -48,6 +48,12 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     /// </summary>
     internal Func<CancellationToken, Task>? BeforeStreamPublishedForTest { get; set; }
 
+    /// <summary>
+    ///     Bounds the running stream's wait for the broker's EndWatchAck, once the stream ends, by
+    ///     <paramref name="cancellationToken" />. A stop that token cuts short still releases this
+    ///     source for another stream: that acknowledgement names the ended watch's generation, which
+    ///     the next watch's demux ignores.
+    /// </summary>
     public void RequestStop(CancellationToken cancellationToken)
     {
         lock (_streamLock)
@@ -72,13 +78,13 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
     ///         Cancellation is observed promptly at every step, including while the StartWatch send
     ///         is blocked on the client's arm-ordering gate or on the pipe write. The send itself is
     ///         not cancelled: it finishes in the background, and the live watch it started is then
-    ///         stopped through <see cref="JournalBrokerClient.StopLiveWatchAsync" />, which reads the
-    ///         broker's acknowledgement so it cannot end a later watch. Until that teardown is done
-    ///         the stream stays claimed, and a new start on this source waits for it, bounded by its
-    ///         own token, rather than being rejected. A teardown that fails, including a stop that times
-    ///         out without the acknowledgement, fails that start and every later one on this source
-    ///         with an <see cref="InvalidOperationException" />, since the acknowledgement could still
-    ///         arrive and end a later watch on the same connection.
+    ///         stopped through <see cref="JournalBrokerClient.StopLiveWatchAsync(CancellationToken)" />.
+    ///         Until that teardown is done the stream stays claimed, and a new start on this source
+    ///         waits for it, bounded by its own token, rather than being rejected. The new start
+    ///         supersedes the teardown's wait for the acknowledgement, under the same generation rule
+    ///         as any other stop, so it waits only for the send and the EndWatch write to finish. A
+    ///         teardown that fails for any other reason fails that start and every later one on this
+    ///         source with an <see cref="InvalidOperationException" />.
     ///     </para>
     /// </summary>
     public async IAsyncEnumerable<WatchStreamItem> StartWatching(
@@ -98,14 +104,11 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
             var client = await _connectAsync(cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
 
-            // The send itself is never cancelled, so the demux it starts stays alive until
-            // StopLiveWatchAsync reads EndWatchAck: cancelling it with the consumer token can leave
-            // that acknowledgement to terminate the next watch, and cancelling the write can leave
-            // half a frame on the pipe. Only this wait for it observes the token. A send the wait
-            // gives up on finishes in the background and is torn down by RetireAbandonedStart.
+            // The send itself is never cancelled, because cancelling the write can leave half a
+            // frame on the pipe. Only this wait for it observes the token. A send the wait gives up
+            // on finishes in the background and is torn down by RetireAbandonedStart.
             pendingStart = new PendingStartWatch(client,
-                client.SendStartWatchAsync(BuildCursors(targets), CancellationToken.None),
-                cancellationToken);
+                client.SendStartWatchAsync(BuildCursors(targets), CancellationToken.None));
             await pendingStart.Value.Send.WaitAsync(cancellationToken).ConfigureAwait(false);
             if (BeforeStreamPublishedForTest is { } beforeStreamPublished)
             {
@@ -279,11 +282,17 @@ public sealed partial class BrokerIndexWatchSource : IIndexWatchSource
 
         try
         {
-            await stream.Client.StopLiveWatchAsync(stopToken).ConfigureAwait(false);
+            // Only the wait for the acknowledgement observes the stop token: the EndWatch must be
+            // sent and the client's watch torn down even when that token is already cancelled, or
+            // the next stream on this source would join the old watch instead of starting its own.
+            await stream.Client.StopLiveWatchAsync(CancellationToken.None, stopToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (stopToken.IsCancellationRequested)
+        catch (OperationCanceledException exception) when (stopToken.IsCancellationRequested)
         {
-            // Expected when the stop wait was abandoned.
+            // The caller bounded the wait for the acknowledgement and that bound ran out. The
+            // client has stopped reading this watch either way, and its next watch carries a later
+            // generation, so releasing this source for reuse is safe and this is not a failure.
+            _ = exception;
         }
         finally
         {

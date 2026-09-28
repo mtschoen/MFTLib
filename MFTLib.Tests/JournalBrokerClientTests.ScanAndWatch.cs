@@ -260,8 +260,8 @@ public partial class JournalBrokerClientTests
         var cursors = new Dictionary<string, UsnJournalCursor> { ["C"] = new(7UL, 100L) };
 
         // The broker side must read the EndWatch the stop sends and reply with an
-        // EndWatchAck so the handshake completes; without it the stop would block on
-        // its ack timeout. Read StartWatch, then EndWatch, then ack.
+        // EndWatchAck so the handshake completes; without it a stop with no token would
+        // wait for it indefinitely. Read StartWatch, then EndWatch, then ack.
         var receivedKinds = new List<BrokerFrameKind>();
         var brokerTask = Task.Run(async () =>
         {

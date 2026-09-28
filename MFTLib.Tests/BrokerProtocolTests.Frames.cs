@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Collections;
-using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;

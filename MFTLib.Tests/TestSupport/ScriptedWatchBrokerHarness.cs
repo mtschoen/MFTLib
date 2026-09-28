@@ -16,6 +16,9 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
     readonly JournalBrokerClient _client;
     readonly CancellationTokenSource _hangGuard = new(TimeSpan.FromSeconds(10));
 
+    // The generation named by the last StartWatch frame read; the first watch on a client is 1.
+    uint _lastStartWatchGeneration = 1;
+
     public ScriptedWatchBrokerHarness()
     {
         var (client, server) = DuplexStream.CreatePair();
@@ -67,7 +70,13 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
         var frame = new byte[4 + BinaryPrimitives.ReadInt32LittleEndian(header)];
         header.CopyTo(frame, 0);
         await _server.ReadExactlyAsync(frame.AsMemory(4), _hangGuard.Token);
-        return BrokerProtocol.ReadFrame(frame, out _);
+        var parsed = BrokerProtocol.ReadFrame(frame, out _);
+        if (parsed.Kind == BrokerFrameKind.StartWatch)
+        {
+            _lastStartWatchGeneration = parsed.WatchGeneration;
+        }
+
+        return parsed;
     }
 
     public async Task WriteAsync(Action<ArrayBufferWriter<byte>> write)
@@ -83,7 +92,16 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
         return WriteAcknowledgementAsync(startWatch.WatchGeneration);
     }
 
-    public Task WriteAcknowledgementAsync(uint watchGeneration = 1)
+    /// <summary>
+    ///     Acknowledges the watch the most recent StartWatch read by this harness began, the way the
+    ///     broker answers an EndWatch for the live generation.
+    /// </summary>
+    public Task WriteAcknowledgementAsync()
+    {
+        return WriteAcknowledgementAsync(_lastStartWatchGeneration);
+    }
+
+    public Task WriteAcknowledgementAsync(uint watchGeneration)
     {
         return WriteAsync(writer => BrokerProtocol.WriteEndWatchAck(writer, watchGeneration));
     }
