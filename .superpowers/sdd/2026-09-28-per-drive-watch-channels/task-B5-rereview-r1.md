@@ -1,0 +1,25 @@
+### Finding Verdicts
+
+1. ADDRESSED. `AddDriveAsync` now sends a cold open through `ScanOpenedDriveAsync` (`MFTLib/Index/FileIndex.Scanning.cs:68`). That loop immediately produces another attempt after a lost catch-up and stops only when an attempt holds or `RecordLostCatchUp` reports the limit (`MFTLib/Index/FileIndex.CatchUp.cs:95`, `MFTLib/Index/FileIndex.CatchUp.cs:127`). Each successful attempt updates the same ordinal (`MFTLib/Index/FileIndex.Scanning.cs:85`, `MFTLib/Index/FileIndex.Scanning.cs:93`), while publication counts the loss, records its `ScanCatchUp` report, and marks the block unresumable (`MFTLib/Index/FileIndex.Publication.cs:77`, `MFTLib/Index/FileIndex.Publication.cs:81`). At count 3, `RecordLostCatchUp` records the refusal and failure message without throwing from the open loop (`MFTLib/Index/FileIndex.CatchUp.cs:172`, `MFTLib/Index/FileIndex.CatchUp.cs:178`, `MFTLib/Index/FileIndex.CatchUp.cs:183`). A superseded open-time block is removed from `_driveBlocks`, its mapping is closed with `Block.Dispose`, and its renamed file is deleted (`MFTLib/Index/FileIndex.Scanning.cs:93`, `MFTLib/Index/FileIndex.CatchUp.cs:124`, `MFTLib/Index/FileIndex.CatchUp.cs:155`, `MFTLib/Index/FileIndex.CatchUp.cs:158`). The two open regressions pin the retry and limit outcomes (`MFTLib.Tests/Index/FileIndexCatchUpLossTests.Open.cs:16`, `MFTLib.Tests/Index/FileIndexCatchUpLossTests.Open.cs:36`).
+
+2. ADDRESSED. Both the exception path and the no-block path now call `ResumeAfterFailedScanAsync` after all attempts (`MFTLib/Index/FileIndex.RescanRestart.cs:21`, `MFTLib/Index/FileIndex.RescanRestart.cs:34`). That helper re-reads the currently published block's unresumable state before considering a restart (`MFTLib/Index/FileIndex.RescanRestart.cs:49`, `MFTLib/Index/FileIndex.RescanRestart.cs:72`). If the earlier lost attempt made the block unresumable, it records the watch refusal and returns without trying a restart (`MFTLib/Index/FileIndex.RescanRestart.cs:76`, `MFTLib/Index/FileIndex.RescanRestart.cs:82`). The caller then throws the B4-Q1 `InvalidOperationException` whose inner exception is the producer failure (`MFTLib/Index/FileIndex.RescanRestart.cs:34`, `MFTLib/Index/FileIndex.RescanRestart.cs:37`). The regression checks the exception type and exact inner exception, and confirms no second watch start (`MFTLib.Tests/Index/FileIndexCatchUpLossTests.cs:314`, `MFTLib.Tests/Index/FileIndexCatchUpLossTests.cs:321`, `MFTLib.Tests/Index/FileIndexCatchUpLossTests.cs:325`).
+
+3. NOT ADDRESSED. `BatchOnT_DoesNotWaitForUCommit` now has an exact scratch-mutation command and concrete failing output (`.superpowers/sdd/2026-09-28-per-drive-watch-channels/task-B5-report.md:262`, `.superpowers/sdd/2026-09-28-per-drive-watch-channels/task-B5-report.md:264`, `.superpowers/sdd/2026-09-28-per-drive-watch-channels/task-B5-report.md:265`). `StartDuringRescanOfUnresumableDrive_JudgesTheFreshBlock` does not: its command is recorded as `dotnet test ...` and its output also uses an ellipsis, so neither is exact as W40-R1 requires (`.superpowers/sdd/2026-09-28-per-drive-watch-channels/task-B5-report.md:266`, `.superpowers/sdd/2026-09-28-per-drive-watch-channels/task-B5-report.md:269`, `.superpowers/sdd/2026-09-28-per-drive-watch-channels/task-B5-report.md:270`). The three tests newly added in this fix round also lack an exact command: the report says only that a filter named four tests, then lists abbreviated failure excerpts (`.superpowers/sdd/2026-09-28-per-drive-watch-channels/task-B5-report.md:271`, `.superpowers/sdd/2026-09-28-per-drive-watch-channels/task-B5-report.md:272`, `.superpowers/sdd/2026-09-28-per-drive-watch-channels/task-B5-report.md:274`). Those new tests are `Open_CatchUpLostOnce_RetriesAndSettlesReady` (`MFTLib.Tests/Index/FileIndexCatchUpLossTests.Open.cs:16`), `OpenAsync_ThreeLostCatchUps_SettlesReadyAndRefusesTheWatch` (`MFTLib.Tests/Index/FileIndexCatchUpLossTests.Open.cs:36`), and `Rescan_WatchedDrive_LostThenNoBlock_ThrowsProducerFailureAndRefusesTheWatch` (`MFTLib.Tests/Index/FileIndexCatchUpLossTests.cs:314`).
+
+4. ADDRESSED. The disposal-order test now installs a seam signal, starts disposal, and awaits that signal with `WaitAsync(HangGuard)` before checking ordering (`MFTLib.Tests/Index/FileIndexDisposalOrderTests.cs:78`, `MFTLib.Tests/Index/FileIndexDisposalOrderTests.cs:81`, `MFTLib.Tests/Index/FileIndexDisposalOrderTests.cs:82`). There is no delay or polling loop. Production invokes the seam after all lifecycle gates are acquired and before any write gate is awaited (`MFTLib/Index/FileIndex.Disposal.cs:64`, `MFTLib/Index/FileIndex.Disposal.cs:70`, `MFTLib/Index/FileIndex.Disposal.cs:71`).
+
+### New Breakage in the Fix Diff
+
+- Critical: None.
+- Important: None.
+- Minor: None.
+
+### Out-of-Scope Observations
+
+- None.
+
+### Verdict
+
+Findings remain open
+
+- Finding 3: W40-R1 RED evidence is still incomplete. `StartDuringRescanOfUnresumableDrive_JudgesTheFreshBlock` and all three tests newly added in fix round 1 lack an exact recorded command with real failing output.

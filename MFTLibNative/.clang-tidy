@@ -1,9 +1,0 @@
-Checks: >
-  clang-diagnostic-*,
-  clang-analyzer-*,
-  bugprone-*,
-  modernize-*,
-  readability-*,
-  -modernize-use-trailing-return-type,
-  -readability-magic-numbers
-WarningsAsErrors: "*"

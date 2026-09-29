@@ -163,3 +163,105 @@ Task C2: fix round 2 committed by the lane as cfb30e6 on 3541d3e (worktree clean
 - Worktrees left: impl-265 (integration), 265-C2 (task/265-C2 at cfb30e6). Removed: 265-C3b, 265-mutation.
 - lane-common.md now carries: aislop baseline, no ending a turn to wait, absolute paths in edit scripts, report the primary checkout's status.
 WRAP: memory corpus commit 7ea25775 pushed (handoff note project_mftlib_trio_handoff_2026_09_29 plus four notes). C2 lane wrote its Fix round 2 report section (task-C2-report.md line 309). All session agents shut down at wrap.
+
+## SESSION 3 resumed 2026-09-29 (fresh orchestrator; all agents new)
+RULING W4-3 SETTLED: new task W40 (brief task-W40-brief.md) carves the ranged flush and the BlockWriter.Complete signature sweep out of C5; runs before wave 4. C5 and B5 dispatches carry the W4-3 row.
+Task C2: scoped re-review of fix round 2 (3541d3e..cfb30e6) dispatched on codex gpt-5.6-sol high (read-only lane in worktree 265-C2; output task-C2-rereview-r2.md in that worktree's workspace; log lanes/rereview-C2-r2.log)
+Task W40: dispatched (sonnet, agent impl-W40), BASE 29b8a6a, worktree 265-W40, branch task/265-W40
+Task C2: fix round 2/5 (1 addressed, 1 open + 1 new open - (a) _closing regression test has no signal that the post-Cursor read is pending before disposal, BrokerProcessTests.Disposal.cs:105-109; (b) unrequested post-terminal catch in BrokerProcess.Scan.cs:127-134 swallows every BrokerChannelLostException incl. truncated or malformed extra frames; commits 3541d3e..cfb30e6). Re-review task-C2-rereview-r2.md (codex gpt-5.6-sol).
+Task C2: fix round 3/5 dispatched (fresh opus implementer, agent fix-C2-r3), FIX_BASE cfb30e6
+Task W40: implementer DONE_WITH_CONCERNS, commit d5d6d0c (BASE 29b8a6a). Libc declared in namespace MFTLib.Index (boundary test), FlushViewOfFile private extern in BlockFile, Kernel32.cs untouched; claims old Flush never called FlushFileBuffers; runtime retry loop not carried; native-failure branches uncovered; no separate RED; suite 1582/1576/0 failed before a late test refactor. Review dispatched (codex gpt-5.6-sol high, output 265-W40 workspace task-W40-review.md)
+Task C2: fix round 3 implemented, commit cbef456 on cfb30e6 (suite 1369/1363/6 skipped/0 failed; aislop 99 with 6 warnings incl. DriveStatus.CompactionNeeded that predates the C2 base and is cleared on the integration head by the index ports). Re-review dispatched (codex gpt-5.6-sol high, output 265-C2 workspace task-C2-rereview-r3.md)
+Task C2: fix round 3/5 (1 addressed, 1 open - B: own-close filter also tolerates a disposal that cancels a read which already consumed part of an illegal post-terminal frame, BrokerDriveChannel.cs:74-81, BrokerFrameStream.cs:59-75; commits cfb30e6..cbef456). Re-review task-C2-rereview-r3.md (codex gpt-5.6-sol)
+Task C2: fix round 4/5 dispatched (resume agent fix-C2-r3, which was the fresh opus implementer of round 3), FIX_BASE cbef456
+Task W40: review (codex gpt-5.6-sol, task-W40-review.md): 0 Critical, 3 Important, 0 Minor. Needs fixes. Important: (1) Windows range flush dropped the runtime's ERROR_LOCK_VIOLATION retry, BlockFile.cs:287-291; (2) MS_SYNC = 4 is the Linux value but is used for every non-Windows platform (Darwin is 0x10), Libc.cs:9; (3) no RED run of the new tests. Durability claim CONFIRMED by reviewer against dotnet/runtime release/10.0 (old Flush never called FlushFileBuffers). Placement deviation accepted (namespace boundary).
+Task W40: minor (deferred): new Linux msync omits MS_INVALIDATE that the runtime's Unix flush passed
+Task W40: fix round 1/5 dispatched (resume impl-W40), FIX_BASE d5d6d0c
+Task C2: fix round 4 implemented, commit edddf16 on cbef456 (suite 1370/1364/6 skipped/0 failed). Re-review dispatched (codex gpt-5.6-sol high, output task-C2-rereview-r4.md)
+Task C2: fix round 4/5 (1 addressed, 0 open; commits cbef456..edddf16). Re-review task-C2-rereview-r4.md (codex gpt-5.6-sol)
+Task C2: minor (deferred): 8 items in task-C2-review.md; rereview-r1 Minors 2-6 (linked CTS per read, two host-fault tests dispose unbounded, in-memory pipes accept a write after peer close, ClosesPipe assertion satisfied by host teardown, TimerSignalingClock occurrence coupling); Ended handler can throw into disposal
+Task C2: complete (commits cb13c86..edddf16, review clean after round 4). Cherry-picked onto impl as bb0d6ca 05117e4 1ec8d5a 0ad7a29 e44243c
+WAVE 3 MERGED: impl head e44243c. Suite + aislop running: .superpowers/scratch/coverage-c2-merged.log, aislop-c2-merged.log
+Wave 4 (part): worktrees 265-C4, 265-C7 at e44243c. B5 and C5 wait on W40.
+Wave 4 (part) dispatched, BASE e44243c: C4 (codex gpt-5.6-terra high, headless lane in worktree 265-C4, NO-COMMIT rule: controller commits from lanes/../task-C4-commit-message.txt; report in 265-C4 workspace task-C4-report.md; log lanes/C4.log; carries C2-Q1 and the rejection-test strengthening item), C7 (sonnet, agent impl-C7, carries W4-1, C2-Q1, the C2 two-limits note and the own-close filter note)
+Task W40: fix round 1 implemented, commit 380c073 on d5d6d0c (flush code moved to new partial BlockFile.Flush.cs for the 400-line limit; suite 1586/1580/0 failed). Re-review dispatched (codex gpt-5.6-sol high)
+Head e44243c (wave 3 complete) suite: Total tests: 1642; Passed: 1636; Line coverage: 97.4%;exit 0; aislop 99/100, 5 warnings (baseline 4 + ruled ctor). Per namespace: MFTLib(other) 2459/2531 = 97.16%; MFTLib.Index 2905/2953 = 98.37%
+
+## HANDOVER 2026-09-29 ~05:45 local: an opus controller subagent (agent sdd-controller) takes over from here per controller-brief.md. The Fable session stays as relay for lane replies only.
+- Integration head e44243c, pushed, suite green (line above).
+- W40: fix round 1 committed as 380c073 (FIX_BASE d5d6d0c). Scoped re-review RUNNING on codex (started by the previous controller): output will appear at C:\Users\mtsch\MFTLib-worktrees\265-W40\.superpowers\sdd\2026-09-28-per-drive-watch-channels\task-W40-rereview-r1.md, log lanes\rereview-W40-r1.log (last line EXIT <code>). Controller: poll for that file, copy it to WS, continue the W40 loop (implementer agent impl-W40), then cherry-pick W40 (d5d6d0c, 380c073 and any later fix commits) onto impl.
+- AFTER W40 MERGES: dispatch B5 (opus; rows B4-Q1, N-4, W4-3; ScanCatchUp already exists; B4 minor: start issued during a rescan of an unresumable drive is uncovered) and C5 (opus; rows W2-1, N-1, W4-2, W4-3, C2-Q1; stepName; maximumBufferReads and CatchUpBufferReadsPerCall are C5's; bounded journal read note in the ledger; BrokerLiveness.cs exists, C5 adds to it and does not redefine it; A2 minor on a bounded shutdown flush is NOT C5's).
+- C4 and C7 are running (see the wave 4 dispatch line above). C7 and W40 agent replies are forwarded by message.
+- OPEN ITEM to assign: unknown-kind and unknown-cause rejection tests assert only the exception type (given to C4 if the files are in its list; otherwise assign to C6 or the final review).
+## CONTROLLER sdd-controller took over 2026-09-29 05:27 local
+Task W40: fix round 1/5 (0 addressed, 3 open - retry spins before rethrowing a changed error, BlockFile.Flush.cs:97-103; non-Linux non-Windows platforms mapped to macOS flag, BlockFile.Flush.cs:65; RED evidence lacks commands; commits d5d6d0c..380c073). Re-review task-W40-rereview-r1.md (codex gpt-5.6-sol)
+RULING W40-R1 (owner may overrule): tests-first RED cannot be recovered retroactively; per-test mutation evidence with exact command and failing output satisfies the RED requirement.
+Task W40: fix round 2/5 dispatched (resume impl-W40), FIX_BASE 380c073
+Task W40: fix round 2 implemented, commit 5ab7b20 on 380c073 (suite 1588/1582/0 failed per lane; aislop baseline+ctor per lane). Re-review dispatched (codex gpt-5.6-sol high, output 265-W40 workspace task-W40-rereview-r2.md)
+Task C4: codex lane EXIT 0, DONE_WITH_CONCERNS (native build blocked in codex sandbox by FileTracker; whole suite and aislop not run; 16 base methods dropped, several with reason 'coverage not recreated'). Controller running init + run-coverage -NonInteractive in 265-C4 (log 265-C4/.superpowers/c4-coverage.log) before committing.
+Task W40: fix round 2/5 (2 addressed, 1 open - round-1 RED commands use a <TestName> placeholder; commits 380c073..5ab7b20). Re-review task-W40-rereview-r2.md (codex gpt-5.6-sol)
+Task W40: fix round 3/5 dispatched (resume impl-W40, report-only: exact per-test RED commands), FIX_BASE 5ab7b20
+Task C4: controller verified on 265-C4 working tree: run-coverage -NonInteractive exit 0, 1675 tests, 1669 passed, 6 skipped, 0 failed; line 97.6%; MFTLib(other) 2467/2531 = 97.47%. Committed as 1dd2425 on task/265-C4 (codex trailer). aislop running (265-C4/.superpowers/c4-aislop.log). Review dispatched (codex gpt-5.6-sol high, output 265-C4 workspace task-C4-review.md)
+Task W40: fix round 3 implemented (report-only section 'Fix round 3', exact per-test RED commands for the ten round-1 tests). Re-review r3 dispatched (codex gpt-5.6-sol)
+INCIDENT (controller): a 'taskkill //IM codex.exe //T' meant for one mis-launched re-review killed ALL codex.exe processes on the machine: the C4 review and 3 codex process trees in total, one possibly belonging to another session. C4 review and W40 r3 re-review relaunched. LESSON: kill codex lanes by PID of the lane's own process tree, never by image name.
+Task W40: fix round 3/5 (0 addressed, 1 open - fix-round-3 RED evidence not credible: cited script targets BlockFile.cs where the mutated statements no longer live, one quoted failure impossible under its stated mutation; commit unchanged 5ab7b20). Re-review task-W40-rereview-r3.md (codex). NOTE: sonnet lane impl-W40 reported evidence that could not have come from the script it named.
+Task W40: fix round 4/5 (fresh opus implementer, agent a3dad3bc361f20f3b; report-only, all 12 tests re-mutated with exact commands, 12/12 failed, class 12/12 green at HEAD). Re-review task-W40-rereview-r4.md (codex): all findings addressed.
+Task W40: minor (deferred): Flush_NullCallback_Flushes stays green when the flush call is deleted (name overclaims 'Flushes'); Flush_CallbackThrows_PropagatesAndLeavesTheBlockUsable pins only the propagation half; msync omits MS_INVALIDATE (earlier minor)
+Task W40: complete (commits 29b8a6a..5ab7b20, review clean after round 4). Cherry-picked onto impl as 37d5c39 985254e 566718b. Suite on 566718b running: scratch/coverage-w40-merged.log
+Task C4: review (codex gpt-5.6-sol, task-C4-review.md): 0 Critical, 6 Important, 0 Minor. Needs fixes: dropped live producer contracts; inaccurate port ledger; section-lifetime/progress cases prove nothing named; session-dependent end-to-end scenario not re-covered; weakened assertions; LF working-tree endings (index stores LF by text=auto; working tree CRLF). Plus aislop: 23 findings beyond the gate.
+Task C4: fix round 1/5 dispatched (fresh sonnet implementer, agent a1b34663d9606c1cb, codex lane not resumable), FIX_BASE 1dd2425
+Task C4: fix round 1 implemented, commit e2399f6
+Task C4: fix round 1 (commit e2399f6): lane reports 3 ported tests red on a suspected production defect (BrokerProcess.Scan.cs disposes the section lifetime twice after ScanReady); suite 1689/1680/3 failed; aislop = gate. Re-review r1 dispatched (codex gpt-5.6-sol), also asked to judge the defect.
+Wave 4: worktrees 265-B5, 265-C5 at 566718b (integration head with W40)
+Head 566718b (wave 3 + W40) suite: 1654 total, 1648 passed, 6 skipped, 0 failed, line 97.3%, exit 0. Pushed impl, task/265-W40, task/265-C4.
+Task B5: dispatched (opus implementer, BASE 566718b, worktree 265-B5, dispatch lanes-B5-dispatch.md; rows B4-Q1, N-4, C1-Q1, W4-3, W40-R1; B4 unresumable-rescan coverage gap)
+Task C5: dispatched (opus implementer, BASE 566718b, worktree 265-C5, dispatch lanes-C5-dispatch.md; rows W2-1, W4-1, W4-2, W4-3, N-1, C2-Q1, W40-R1)
+Task C4: fix round 1/5 (6 addressed, 0 open; commits 1dd2425..e2399f6). Re-review task-C4-rereview-r1.md (codex): suspected production defect CONFIRMED (double dispose of section lifetime after ScanReady, BrokerProcess.Scan.cs:55-73); suite red 3 until fixed.
+RULING C4-Q1: C4 lane fixes that defect (see orchestrator-rulings.md).
+Task C4: fix round 2/5 dispatched (resume a1b34663d9606c1cb), FIX_BASE e2399f6
+Task B5: implementer DONE_WITH_CONCERNS, commit 5d459cd (BASE 566718b; agent a87c573640a14f7eb). Suite 1678/1672/0 failed; aislop gate; RED weak for 2 tests (classifier denied a mutation). Open-decision list in report. Review dispatched (codex gpt-5.6-sol high, 265-B5 workspace task-B5-review.md)
+Task C5: implementer DONE_WITH_CONCERNS, commit f25e999 (BASE 566718b; agent a980a30dfb6b3511b). Suite 1664/1658/0 failed; aislop gate. Concern: Processing that republishes without frames is killed by the client stall limit -> RULING C5-Q1 (heartbeat Processing within the limit), C5-Q2 (brief S2 skip governs). Review dispatched (codex gpt-5.6-sol high)
+Task C7: implementer DONE_WITH_CONCERNS, commit b7e1144 (BASE e44243c; agent impl-C7). Suite 1651/1645/0 failed; aislop gate. Concerns: pre-existing flake Dispose_DuringScanTheHostAbandons_... (InvalidOperationException from PipeReaderStream not mapped); TimeoutException surfaces raw; stall after terminal frame fails a complete scan. Review dispatched (codex gpt-5.6-sol high)
+Task C5: review (codex gpt-5.6-sol, task-C5-review.md): 0 Critical, 2 Important, 0 Minor. Needs fixes: stale visit snapshot can write a false Stalled after concurrent progress (HostPipeWriter.cs:132-193); RED evidence not exact per test.
+Task C5: fix round 1/5 dispatched (resume a980a30dfb6b3511b) with both findings plus RULING C5-Q1 (heartbeat a progressing Processing pipe), FIX_BASE f25e999
+Task C7: review (codex gpt-5.6-sol, task-C7-review.md): 0 Critical, 3 Important, 1 Minor. Needs fixes: frame-vs-stall race can disable stall detection; reader disposal does not drain the timer callback; unbounded awaits in new tests. Concern 1 flake confirmed pre-existing; fix placed in test adapter DuplexStream (assigned to C7 round 1). Concern 3 judged intended.
+Task C7: fix round 1/5 dispatched (resume impl-C7) incl. the Minor doc and the DuplexStream flake fix, FIX_BASE b7e1144
+Task B5: review (codex gpt-5.6-sol, task-B5-review.md): 0 Critical, 4 Important, 0 Minor. Needs fixes: open does not retry a lost catch-up; stale requiresReplacement turns lost-then-no-block into AggregateException (violates B4-Q1); two tests lack valid RED; disposal-order test polls with Task.Delay.
+RULING B5-Q1 recorded. Task B5: fix round 1/5 dispatched (resume a87c573640a14f7eb), FIX_BASE 5d459cd
+NOTE FOR B9 DISPATCH: B5 wires the sequential open through the lost-catch-up loop (ruling B5-Q1); B9 keeps its named Open_CatchUpLost* tests.
+Task C4: fix round 2 implemented, commit 0ad1add (release-once helper; new test ScanDrive_LifetimeDisposeThrowingAfterScanReady_...; suite 1690/1684/0 failed; aislop gate). Re-review r2 dispatched (codex gpt-5.6-sol)
+Task C4: fix round 2/5 (1 addressed, 1 open - no RED evidence for the new throwing-Dispose test; commits e2399f6..0ad1add). Re-review task-C4-rereview-r2.md (codex)
+Task C4: fix round 3/5 dispatched (resume a1b34663d9606c1cb, evidence only), FIX_BASE 0ad1add
+Task B5: fix round 1 implemented, commit 192ba67 (suite 1681/1675/0 failed; aislop gate). Re-review r1 dispatched (codex gpt-5.6-sol)
+Task C7: fix round 1 implemented, commit 9c4178d (flake fixed in MFTLibTestExtensions/InMemoryDuplexStream.cs, 90/90 stress runs; suite 1653/1647/0 failed; aislop gate). Re-review r1 dispatched (codex gpt-5.6-sol)
+Task C4: fix round 3/5 (1 addressed, 0 open; report-only, head 0ad1add). Re-review task-C4-rereview-r3.md (codex)
+Task C4: complete (commits e44243c..0ad1add, review clean after round 3). Not yet merged (wave 4 merges in order C4, C7, C5, B5).
+Task C5: fix round 1 implemented, commit 299b75d (visit takes the write lock with Wait(0) and decides under _gate; C5-Q1 heartbeats; per-test RED rerun). Re-review r1 dispatched (codex gpt-5.6-sol)
+C4 cherry-picked onto impl: e9e1005 f608588 df30adc
+Task C7: fix round 1/5 (2 addressed, 3 open - RED command abbreviated; control reader ends the process before its timer drains and the drain test gates the wrong step; unbounded helper awaits remain; commits b7e1144..9c4178d). Re-review task-C7-rereview-r1.md (codex). Flake fix in InMemoryDuplexStream judged narrow and correct.
+Task C7: fix round 2/5 dispatched (resume impl-C7), FIX_BASE 9c4178d
+Task B5: fix round 1/5 (3 addressed, 1 open - exact RED commands missing for 4 tests; commits 5d459cd..192ba67). Re-review task-B5-rereview-r1.md (codex)
+Task B5: fix round 2/5 dispatched (resume a87c573640a14f7eb, evidence only), FIX_BASE 192ba67
+Task C5: fix round 1/5 (3 addressed, 0 open; commits f25e999..299b75d). Re-review task-C5-rereview-r1.md (codex)
+Task C5: complete (commits 566718b..299b75d, review clean after round 1)
+Task C5: minor (deferred): HostPipeWriter uncovered paths (failed heartbeat write cancels the owner; late sender write after Close) - V1 coverage item
+C5 cherry-picked onto impl: 1ed645f 25c45fa 
+MERGE FIX by controller: 23709f6 (C4 ports adopt C5's UsnJournalCatchUpSource third parameter and BlockWriteReporting; 7 lines, unreviewed, final review covers it)
+Suite on 23709f6 (C4+C5 merged): 1715 total, 1708 passed, 1 FAILED: BrokerMftBlockProducerTests.Produce_AdoptsClientBlockAndReleasesOnlySectionLifetime (section lifetime DisposeCount 2 after BrokerProcess.DisposeAsync; was 1 on 265-C4 alone) - C4 x C5 integration defect. Worktree 265-W4fix at 23709f6 for the fix lane.
+Task W4fix: dispatched (resume a980a30dfb6b3511b, opus, worktree 265-W4fix at 23709f6): cause and fix of the C4 x C5 double lifetime dispose at process disposal
+Task B5: fix round 2 implemented (evidence only, head 192ba67). Re-review r2 dispatched (codex)
+Task C7: fix round 2 implemented, commit 0fed951 (suite 1654/1648/0 failed; aislop gate). Re-review r2 dispatched (codex)
+Task B5: fix round 2/5 (1 addressed, 0 open; evidence only). Re-review task-B5-rereview-r2.md (codex)
+Task B5: complete (commits 566718b..192ba67, review clean after round 2)
+Task B5: minor (deferred): WaitForCatchUpAsync(X) while Recovering throws 'not being watched' (spec 2.6.4 says fault with X's fault) - passed to B6; RetireCurrentSnapshotLocked ?? throw ObjectDisposedException unreachable and uncovered (V1 coverage); AGENTS.md still names _cacheOnlyUnresumableCheckpointOrdinals and _swapGate (D1)
+B5 cherry-picked onto impl: 95abf8d de72583 
+Task C7: fix round 2/5 (2 addressed, 1 open - CallbackDrainingTimer.DisposeAsync awaits inner disposal unbounded; commits 9c4178d..aacdaa9 (lane amended 0fed951, same tree)). Re-review task-C7-rereview-r2.md (codex)
+Task C7: fix round 3/5 dispatched (resume impl-C7), FIX_BASE aacdaa9
+Task W4fix: DONE, commit 1705380 on 23709f6. Cause: C4's ported fake catch-up source returned the same entry and cursor on every call; C5's bounded catch-up loop appended the second (tip) chunk, duplicating the entry. Fix: host throws into the failed-catch-up path when a bounded read returns entries without advancing; fakes use CatchUpSources.ToTip; regression test added. Suite 1716/1710/0 failed; aislop gate. Review dispatched (codex gpt-5.6-sol)
+Task C7: fix round 3 implemented, commit 9bfe4e6 (test-only). Re-review r3 dispatched (codex)
+Task W4fix: review (codex gpt-5.6-sol, task-W4fix-review.md): 0/0/0, Approved.
+Task W4fix: complete (commits 23709f6..1705380, review clean). Cherry-picked onto impl as 64458de
+Task C7: fix round 3/5 (1 addressed, 0 open; commits aacdaa9..9bfe4e6). Re-review task-C7-rereview-r3.md (codex)
+Task C7: complete (commits e44243c..9bfe4e6, review clean after round 3). Cherry-picked onto impl: 9ace375 4fe5d65 c31350e a094ad4
+WAVE 4 MERGED (W40, C4, C5, merge fix 23709f6, B5, W4fix, C7): impl head a094ad4. Suite + aislop running: scratch/coverage-wave4.log, aislop-wave4.log
+MERGE FIX by controller: 9725d0b renames C4's static ScriptedScan (TestSupport) to ScriptedScanSteps; collided with B5's WatchHarness ScriptedScan record (CS0101). Wave-4 suite rerun.

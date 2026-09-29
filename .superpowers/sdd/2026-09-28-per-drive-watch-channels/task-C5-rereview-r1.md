@@ -1,0 +1,19 @@
+### Finding Verdicts
+
+1. ADDRESSED - False Stalled race. `HostPipeWriter.Visit` invokes the ordering hook before trying the pipe lock, takes `_writeLock` with the non-blocking `Wait(0)`, and skips an in-flight write (`MFTLib/Broker/Host/HostPipeWriter.cs:141`, `MFTLib/Broker/Host/HostPipeWriter.cs:142`). Once it owns the pipe, it reads and clears the current wrote-since-visit flag, reads the current operation state and `Since`, chooses the liveness frame, and marks `_stalled` while holding `_gate` (`MFTLib/Broker/Host/HostPipeWriter.cs:155`, `MFTLib/Broker/Host/HostPipeWriter.cs:157`, `MFTLib/Broker/Host/HostPipeWriter.cs:158`, `MFTLib/Broker/Host/HostPipeWriter.cs:171`, `MFTLib/Broker/Host/HostPipeWriter.cs:178`, `MFTLib/Broker/Host/HostPipeWriter.cs:184`). An ordinary frame cannot complete while the visit owns `_writeLock`, and a publication cannot land while it owns `_gate`, so the decision is linearized against both forms of progress. The ordered republish and completed-frame tests perform their action after the visit starts but before it tries the write lock, then assert no Stalled frame and no cancellation (`MFTLib.Tests/JournalBrokerHostLivenessTests.Revalidation.cs:12`, `MFTLib.Tests/JournalBrokerHostLivenessTests.Revalidation.cs:21`, `MFTLib.Tests/JournalBrokerHostLivenessTests.Revalidation.cs:27`, `MFTLib.Tests/JournalBrokerHostLivenessTests.Revalidation.cs:33`, `MFTLib.Tests/JournalBrokerHostLivenessTests.Revalidation.cs:42`, `MFTLib.Tests/JournalBrokerHostLivenessTests.Revalidation.cs:45`, `MFTLib.Tests/JournalBrokerHostLivenessTests.Revalidation.cs:123`).
+
+2. ADDRESSED - W40-R1 RED evidence. The report now gives literal `dotnet test ... --filter` commands and actual failing output for every one of the 14 task tests. The evidence covers processing republish (`task-C5-report.md:279`), blocked and in-flight writes (`task-C5-report.md:284`), the dedicated sender thread (`task-C5-report.md:291`), both bounded catch-up cases (`task-C5-report.md:296`, `task-C5-report.md:303`), ranged-flush progress (`task-C5-report.md:308`), both ordered race regressions (`task-C5-report.md:313`), idle, queued, control and blocked-pipe heartbeats (`task-C5-report.md:325`), wedged processing (`task-C5-report.md:359`), and the progressing catch-up case required by C5-Q1 (`task-C5-report.md:366`). Each command is followed by a named failing result and its observed failure text. No new test lacks the required RED evidence.
+
+3. ADDRESSED - C5-Q1, C5-Q2 and non-blocking sender behavior. A Processing pipe with no completed ordinary write returns Heartbeat while `now - Since` is below `ProcessingLimit`, and returns Stalled at the limit as the existing watchdog test expects (`MFTLib/Broker/Host/HostPipeWriter.cs:184`, `MFTLib/Broker/Host/HostPipeWriter.cs:190`, `MFTLib/Broker/Host/HostPipeWriter.cs:193`). The progressing catch-up regression advances a fake clock through six gated bounded reads over 60 seconds, requires a heartbeat on all 12 visits, rejects Stalled and verifies the final six-entry batch (`MFTLib.Tests/JournalBrokerHostLivenessTests.Revalidation.cs:51`, `MFTLib.Tests/JournalBrokerHostLivenessTests.Revalidation.cs:95`, `MFTLib.Tests/JournalBrokerHostLivenessTests.Revalidation.cs:99`, `MFTLib.Tests/JournalBrokerHostLivenessTests.Revalidation.cs:115`). The sender still uses only `_writeLock.Wait(0)` and returns immediately when a write is in flight (`MFTLib/Broker/Host/HostPipeWriter.cs:142`, `MFTLib/Broker/Host/HostPipeWriter.cs:150`); the existing held-write test verifies that three visits start only one write (`MFTLib.Tests/JournalBrokerHostLivenessTests.Progress.cs:35`, `MFTLib.Tests/JournalBrokerHostLivenessTests.Progress.cs:43`, `MFTLib.Tests/JournalBrokerHostLivenessTests.Progress.cs:48`).
+
+### New Breakage in the Fix Diff
+
+None.
+
+### Out-of-Scope Observations
+
+None.
+
+### Verdict
+
+All findings addressed, no new Critical/Important breakage

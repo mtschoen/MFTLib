@@ -382,3 +382,165 @@ Reverted: `git diff HEAD -- MFTLib/Broker/Client/BrokerDriveChannel.cs` was empt
 - `MFTLib.Tests/BrokerProcessTests.Disposal.cs` (two new tests, and the corrected comment on the kept test)
 - `MFTLib.Tests/TestSupport/BrokerTestStreams.cs` (`ReadCounter`)
 - `MFTLib.Tests/TestSupport/ScriptedBroker.cs` (the optional drive-pipe wrapper)
+
+## Fix round 3
+
+Status: DONE. Commit `cbef456` ("A scan tolerates only its own channel close after the terminal frame")
+on task/265-C2, a new commit on top of `cfb30e6` (nothing amended).
+
+### Finding A: the `_closing` regression test now proves the read is pending
+- `ReadCounter` (`MFTLib.Tests/TestSupport/BrokerTestStreams.cs`, test project only) gained
+  `WhenReadPendingAfter(long bytes)`. Its wrapped `ReadAsync` calls the inner stream first and, when the
+  returned `ValueTask` is not complete, records "a read is pending after N bytes"; the signal completes
+  once such a read exists with N at least the requested count. The flag is cleared when that read
+  returns bytes.
+- `Dispose_DuringScanWithHostEndHeldOpen_EndsPendingReadWithChannelLost` wraps the client's drive pipe
+  with the counter, writes the Cursor frame, and disposes the process only after
+  `WhenReadPendingAfter(cursorFrameLength)`. Every await is bounded by `HangGuard`.
+- Why it cannot pass without the fix on any schedule: the signal fires only after the whole Cursor frame
+  was consumed and the in-memory pipe (`InMemoryDuplexStream` over `PipeReader.AsStream`) accepted the
+  next read and returned it incomplete; that read already passed the stream's closed check. From then on
+  only three things can end it: bytes (the scripted host writes none and keeps its end open), the
+  host closing its end (the test holds it open until after the assertions), or the read's cancellation
+  token. Closing the client's stream does not complete a read the pipe holds (the mutated runs below
+  show it hanging). The token is the caller's `None` linked with `_closing`, so with
+  `_closing.Cancel()` removed nothing completes the read, the scan never ends, and the assertion's
+  `WaitAsync(HangGuard)` throws `TimeoutException` instead of `BrokerChannelLostException`. The
+  schedule in which disposal precedes the read (the one the review found) is excluded by the signal.
+- RED (scratch mutation: `_closing.Cancel();` deleted from `BrokerDriveChannel.DisposeAsync`, not
+  committed), three runs, log `.superpowers/fix3-red-a-mutated.log`:
+  `dotnet test MFTLib.Tests\MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build --filter "FullyQualifiedName~Dispose_DuringScanWithHostEndHeldOpen"`
+  each run: `Assert.ThrowsException failed. Threw exception TimeoutException, but exception BrokerChannelLostException was expected.`
+  (`Failed: 1, Passed: 0`).
+- Restored: `git diff` of `BrokerDriveChannel.cs` afterwards shows only the intended `IsOwnClose`
+  addition; GREEN in the targeted runs below.
+
+### Finding B: only the channel's own close is tolerated after the terminal frame
+- Discriminator: `BrokerDriveChannel.IsOwnClose(BrokerChannelLostException)` is true only when
+  `_closing` is cancelled AND the lost read's inner exception is `OperationCanceledException` or
+  `ObjectDisposedException`. `ScanFrames.ReadTerminalAsync` catches with
+  `when (channel.IsOwnClose(exception))`; every other `BrokerChannelLostException` propagates.
+- Why this is the narrowest correct test: `BrokerFrameReader` wraps four sources into the one exception.
+  A truncated frame is `EndOfStreamException` (an `IOException`), an invalid length or payload is
+  `InvalidDataException`, a broken pipe is `IOException`: none of these is ever cancellation or
+  disposal, so they fail the scan even if our disposal happens to run at the same moment.
+  `OperationCanceledException` only becomes a `BrokerChannelLostException` in `BrokerDriveChannel.ReadAsync`
+  when `_closing` was cancelled and the caller's token was not (caller cancellation propagates as
+  `OperationCanceledException` and is not caught here). `ObjectDisposedException` arises only from the
+  client's own stream being closed, which only the channel's `DisposeAsync` does (the host cannot dispose
+  our end; the host closing its end is EOF, which returns null and completes the scan normally). Checking
+  `_closing` alone would still let a peer's truncated frame through if disposal overlapped it; checking
+  the inner type alone would not tie it to our close.
+- Tests (in `BrokerProcessTests.Scan.cs`, through `ScanScriptedAsync`, which also asserts the section
+  is released):
+  - `ScanDrive_TruncatedFrameAfterTerminal_IsChannelLost`: Cursor, ScanReady, JournalBatch, then a
+    prefix of length 10 plus one byte, then the host closes. Expects `BrokerChannelLostException('C')`
+    whose message contains "Truncated".
+  - `ScanDrive_InvalidFrameLengthAfterTerminal_IsChannelLost`: the same, then a zero length prefix.
+    Expects `BrokerChannelLostException('C')` whose message contains "too short".
+- RED on `cfb30e6` production code (log `.superpowers/fix3-red-b.log`), filter
+  `FullyQualifiedName~AfterTerminal|FullyQualifiedName~Dispose_DuringScanWithHostEndHeldOpen`:
+  both new tests `Assert.ThrowsException failed. No exception thrown. BrokerChannelLostException exception was expected.`
+  (the old catch turned the failure into success); `Dispose_AfterTerminalFrameRead_ScanReturnsItsResult`
+  and the rewritten A test passed (`Failed: 2, Passed: 2, Total: 4`).
+- GREEN: both pass; `Dispose_AfterTerminalFrameRead_ScanReturnsItsResult` still passes.
+- An I/O failure the peer causes is the same `IOException` path the truncated-frame test exercises
+  (`EndOfStreamException` is an `IOException`), so no separate test was added for it.
+
+### Verification
+- Targeted, three runs after restoring the mutation (log `.superpowers/fix3-green.log`):
+  `dotnet test ... --filter "FullyQualifiedName~BrokerProcessTests|FullyQualifiedName~BrokerProcessLaunchTests|FullyQualifiedName~BrokerFrameLengthTests|FullyQualifiedName~JournalBrokerHostChannelTests"`
+  each: `Passed! - Failed: 0, Passed: 102, Skipped: 0, Total: 102`.
+- `run-coverage.ps1 -NonInteractive` (log `.superpowers/coverage-fix3.log`): `Total tests: 1369`,
+  `Passed: 1363`, `Skipped: 6`, 0 failed; line coverage 96%; script exit 0.
+- `aislop scan .` (log `.superpowers/aislop-fix3.log`): `99 / 100`, 0 errors, 6 warnings, the same six
+  as fix rounds 1 and 2: the four baseline warnings (`NativeSeamIsolationFixtures.cs:73`, `:79`;
+  `CachedBlockDeletionOutcome.cs:8`, `:10`), the ruled 8-parameter `JournalBrokerHost` constructor
+  (`JournalBrokerHost.cs:43`), and `DriveStatus.cs:42` `CompactionNeeded.get` never used, which rounds
+  1 and 2 recorded as present on base `cb13c86`; this commit does not touch `DriveStatus.cs`.
+- Edited files keep CRLF throughout; the diff has no em-dashes or en-dashes.
+
+### Files
+- `MFTLib/Broker/Client/BrokerDriveChannel.cs` (`IsOwnClose`)
+- `MFTLib/Broker/Client/BrokerProcess.Scan.cs` (the filtered catch and its comment)
+- `MFTLib.Tests/BrokerProcessTests.Disposal.cs` (the A test waits on the pending-read signal)
+- `MFTLib.Tests/BrokerProcessTests.Scan.cs` (two new tests, `WriteRawAsync` helper)
+- `MFTLib.Tests/TestSupport/BrokerTestStreams.cs` (`ReadCounter.WhenReadPendingAfter`, test project only)
+
+### Primary checkout
+`git -C C:\Users\mtsch\MFTLib status --short`: empty.
+
+### Concerns
+None new. The two disposal escapes named in fix round 2 (a throwing `Ended` handler, a throwing
+channel close in the sweep) remain for the final review's Minor list, unchanged by this round.
+
+## Fix round 4
+
+Status: DONE. Commit `edddf16` ("A scan keeps its result after its own close only between frames") on
+task/265-C2, a new commit on top of `cbef456` (nothing amended).
+
+### Finding B: own close is tolerated only between frames
+- `BrokerFrameStream.ReadFrameAsync` takes an optional `Action? frameStarted`, which `ReadExactAsync`
+  runs once, when the header read gets its first byte. The host's callers pass nothing.
+- `BrokerFrameReader` (now an explicit constructor, so the callback delegate is cached once rather than
+  allocated per read) exposes `FrameStarted`. Each `ReadAsync` clears it, and the callback sets it. It
+  stays set when the read then fails or is cancelled.
+- `BrokerDriveChannel.IsOwnClose` now requires `_closing` cancelled, `!_reader.FrameStarted`, and an
+  inner `OperationCanceledException` or `ObjectDisposedException`. So after the terminal frame:
+  - our disposal ending a wait for a next frame's first byte keeps the result;
+  - our disposal ending a read that had consumed part of an extra frame (a pending read for the rest, or
+    a follow-up read begun on the closed pipe, which is `ObjectDisposedException` with `FrameStarted`
+    set) fails the scan;
+  - truncation, invalid length and I/O failure fail it as in round 3.
+- The flag is written in the read's own async flow and read in the catch filter of the awaiting flow,
+  after the read's task completed, so no extra synchronization is needed.
+
+### Test
+`Dispose_WhileFrameAfterTerminalIsPartlyRead_FailsScanWithChannelLost` (`BrokerProcessTests.Disposal.cs`):
+- The scripted host writes Cursor, ScanReady and JournalBatch, then the first 2 bytes of a length prefix,
+  all in one write, and keeps its end open.
+- The test waits for `ReadCounter.WhenReadPendingAfter(allBytesWritten)`. That signal means the client has
+  consumed the 2 extra bytes and its read for the other 2 prefix bytes is held pending by the pipe.
+- It then disposes the process, and expects `BrokerChannelLostException('C')` and a released section.
+  Every await is bounded by `HangGuard`.
+- The signal excludes any other schedule: once it fires the extra frame has started and the read is
+  pending, and the host writes nothing more.
+
+RED on `cbef456` production code, three runs (log `.superpowers/fix4-red.log`):
+`dotnet test ... --no-build --filter "FullyQualifiedName~Dispose_WhileFrameAfterTerminalIsPartlyRead"`
+each run: `Assert.ThrowsException failed. No exception thrown. BrokerChannelLostException exception was expected.`
+In other words, the corrupted channel was reported as scan success, the interleaving the re-review
+described.
+
+### Verification
+- Targeted, three runs (log `.superpowers/fix4-green.log`):
+  - Command: `dotnet test ... --filter "FullyQualifiedName~BrokerProcessTests|FullyQualifiedName~BrokerProcessLaunchTests|FullyQualifiedName~BrokerFrameLengthTests|FullyQualifiedName~JournalBrokerHostChannelTests"`
+  - Each run: `Passed! - Failed: 0, Passed: 103, Total: 103`.
+  - That includes `Dispose_AfterTerminalFrameRead_ScanReturnsItsResult` (own disposal with nothing further
+    still succeeds), `ScanDrive_TruncatedFrameAfterTerminal_IsChannelLost`,
+    `ScanDrive_InvalidFrameLengthAfterTerminal_IsChannelLost` and
+    `Dispose_DuringScanWithHostEndHeldOpen_EndsPendingReadWithChannelLost`.
+- `run-coverage.ps1 -NonInteractive` (log `.superpowers/coverage-fix4.log`): `Total tests: 1370`,
+  `Passed: 1364`, `Skipped: 6`, 0 failed; line coverage 96%; exit 0.
+- `aislop scan .`:
+  - First scan (`.superpowers/aislop-fix4.log`): one extra warning, "C# file is not formatted correctly"
+    on `BrokerProcessTests.Disposal.cs`. My `sed -i` that added `using System.Buffers;` had rewritten the
+    file with LF endings.
+  - I restored CRLF. That is a line-ending-only change, so the suite result above still applies.
+  - Rescan (`.superpowers/aislop-fix4b.log`): `99 / 100`, 0 errors, 6 warnings, the same six as rounds 1
+    to 3. Those are the four baseline warnings, the ruled 8-parameter `JournalBrokerHost` constructor, and
+    `DriveStatus.cs:42`, which is present on base `cb13c86`.
+- No em-dashes or en-dashes in the diff.
+
+### Files
+- `MFTLib/Broker/Protocol/BrokerFrameStream.cs` (the `frameStarted` callback)
+- `MFTLib/Broker/Client/BrokerFrameReader.cs` (`FrameStarted`)
+- `MFTLib/Broker/Client/BrokerDriveChannel.cs` (`IsOwnClose` requires no started frame)
+- `MFTLib.Tests/BrokerProcessTests.Disposal.cs` (the new test; `using System.Buffers` replaces two
+  fully qualified `ArrayBufferWriter` names)
+
+### Primary checkout
+`git -C C:\Users\mtsch\MFTLib status --short`: empty.
+
+### Concerns
+None new. The two disposal escapes from fix round 2 are unchanged.
