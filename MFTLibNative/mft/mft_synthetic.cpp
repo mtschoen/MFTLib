@@ -311,7 +311,7 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
         return false;
     }
 
-    unsigned numThreads = EffectiveThreadCount();
+    unsigned numThreads = EffectiveThreadCount(nullptr);
     const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * recordSize;
     std::array<uint8_t*, 2> buf = {};
     buf[0] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));

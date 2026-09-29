@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using MFTLib.Interop;
 using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib;
@@ -58,17 +60,25 @@ public sealed partial class MftVolume : IDisposable
 
     public MftRecord[] ReadAllRecords(bool resolvePaths, out MftParseTimings timings)
     {
-        using var result = StreamRecords(null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None);
+        using var result = StreamRecords(
+            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None, null, null, CancellationToken.None);
         return MaterializeWithTimings(result, out timings);
     }
 
-    public IEnumerable<MftRecord[]> ReadRecordBatches(
-        bool resolvePaths = false, int batchSize = 4096, IProgress<MftScanProgress>? progress = null)
+    /// <summary>
+    ///     Parses every record, then yields them in batches of at most <paramref name="batchSize" />.
+    ///     <paramref name="parseThreads" /> and <paramref name="cancellationToken" /> apply as in
+    ///     <see cref="StreamRecords" />; the token is also checked before each batch is yielded.
+    /// </summary>
+    public IEnumerable<MftRecord[]> ReadRecordBatches(bool resolvePaths, int batchSize,
+        IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads, CancellationToken cancellationToken)
     {
         using var result = StreamRecords(
-            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None, progress);
+            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None, progress, parseThreads,
+            cancellationToken);
         foreach (var batch in result.MaterializeBatches(batchSize))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             yield return batch;
         }
     }
@@ -80,7 +90,7 @@ public sealed partial class MftVolume : IDisposable
 
     public MftRecord[] FindByName(string name, MatchFlags matchFlags, out MftParseTimings timings)
     {
-        using var result = StreamRecords(name, matchFlags);
+        using var result = StreamRecords(name, matchFlags, null, null, CancellationToken.None);
         return MaterializeWithTimings(result, out timings);
     }
 
@@ -99,15 +109,69 @@ public sealed partial class MftVolume : IDisposable
     ///     swallowed here to preserve the never-throw-across-the-unmanaged-boundary
     ///     guarantee, and that sample is simply dropped.
     /// </param>
-    public MftResult StreamRecords(
-        string? filter = null,
-        MatchFlags matchFlags = MatchFlags.None,
-        IProgress<MftScanProgress>? progress = null)
+    /// <param name="parseThreads">
+    ///     The thread count the parse reads at every chunk and before path resolution; null uses
+    ///     every processor.
+    /// </param>
+    /// <param name="cancellationToken">
+    ///     Stops the native parse between chunks, between 4096-record sub-slices, and between
+    ///     path-resolution slices; a stopped parse throws <see cref="OperationCanceledException" />.
+    /// </param>
+    public MftResult StreamRecords(string? filter, MatchFlags matchFlags, IProgress<MftScanProgress>? progress,
+        ParseThreadAllowance? parseThreads, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         MFTLibNative.EnsureCompatibleNativeAbi();
 
-        MFTLibNative.NativeMftProgressCallback? nativeCallback = progress != null
+        var nativeCallback = CreateNativeProgressCallback(progress);
+        var resultPtr = ParseWithControl(filter, matchFlags, nativeCallback, parseThreads, cancellationToken);
+        GC.KeepAlive(nativeCallback);
+
+        if (resultPtr == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("ParseMFTRecords returned null");
+        }
+
+        return new MftResult(resultPtr, _driveLetter, 0, cancellationToken);
+    }
+
+    // Runs the native parse against a control block that stays at one address for the whole call:
+    // the allowance writes through to it and the token registration sets its cancellation flag,
+    // and both are released before it is freed.
+    unsafe IntPtr ParseWithControl(string? filter, MatchFlags matchFlags,
+        MFTLibNative.NativeMftProgressCallback? nativeCallback, ParseThreadAllowance? parseThreads,
+        CancellationToken cancellationToken)
+    {
+        var control = (MftParseControl*)NativeMemory.AllocZeroed((nuint)sizeof(MftParseControl));
+        try
+        {
+            parseThreads?.Attach(&control->ParseThreadAllowance);
+            try
+            {
+                var controlAddress = (IntPtr)control;
+                using var registration = cancellationToken.Register(() => RequestCancel(controlAddress));
+                return MFTLibNative._parseMftRecordsWithProgress(
+                    _volumeHandle, filter, matchFlags, _bufferSizeRecords, (IntPtr)control, nativeCallback);
+            }
+            finally
+            {
+                parseThreads?.Detach();
+            }
+        }
+        finally
+        {
+            NativeMemory.Free(control);
+        }
+    }
+
+    static unsafe void RequestCancel(IntPtr control)
+    {
+        Volatile.Write(ref ((MftParseControl*)control)->CancelRequested, 1);
+    }
+
+    static MFTLibNative.NativeMftProgressCallback? CreateNativeProgressCallback(IProgress<MftScanProgress>? progress)
+    {
+        return progress != null
             ? (phase, recordsScanned, totalRecords, elapsedMs, _) =>
             {
                 try
@@ -125,17 +189,6 @@ public sealed partial class MftVolume : IDisposable
                 }
             }
         : null;
-
-        var resultPtr = MFTLibNative._parseMftRecordsWithProgress(
-            _volumeHandle, filter, matchFlags, _bufferSizeRecords, nativeCallback, IntPtr.Zero);
-        GC.KeepAlive(nativeCallback);
-
-        if (resultPtr == IntPtr.Zero)
-        {
-            throw new InvalidOperationException("ParseMFTRecords returned null");
-        }
-
-        return new MftResult(resultPtr, _driveLetter, 0);
     }
 
 
@@ -151,7 +204,8 @@ public sealed partial class MftVolume : IDisposable
 
     public IEnumerable<string> FindRecords(string name, bool? isDirectory = null)
     {
-        using var result = StreamRecords(name, MatchFlags.ExactMatch | MatchFlags.ResolvePaths);
+        using var result = StreamRecords(
+            name, MatchFlags.ExactMatch | MatchFlags.ResolvePaths, null, null, CancellationToken.None);
 
         foreach (var record in result)
         {

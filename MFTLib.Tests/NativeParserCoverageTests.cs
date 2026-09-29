@@ -2,6 +2,7 @@ using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
 namespace MFTLib.Tests;
 
@@ -14,7 +15,7 @@ namespace MFTLib.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public class NativeParserCoverageTests
+public partial class NativeParserCoverageTests
 {
     [TestCleanup]
     public void Cleanup()
@@ -41,7 +42,7 @@ public class NativeParserCoverageTests
         client.Connect(5000);
 
         var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
-            client.SafePipeHandle, null, MatchFlags.None, 256, null, IntPtr.Zero);
+            client.SafePipeHandle, null, MatchFlags.None, 256, IntPtr.Zero, null);
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
         {
@@ -65,7 +66,7 @@ public class NativeParserCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
             var a1 = 4096 + 0x38;
@@ -301,7 +302,7 @@ public class NativeParserCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
             var a1 = 4096 + 0x38;
@@ -316,7 +317,7 @@ public class NativeParserCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
-                fileStream.SafeFileHandle, null, MatchFlags.None, 64, callback, IntPtr.Zero);
+                fileStream.SafeFileHandle, null, MatchFlags.None, 64, IntPtr.Zero, callback);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -355,7 +356,7 @@ public class NativeParserCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
             var a1 = 4096 + 0x38;
@@ -373,7 +374,7 @@ public class NativeParserCoverageTests
             // first read, so the chunk loop body never executes.
             MFTLibNative.NativeSetReadFailCountdown(3);
             var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
-                fileStream.SafeFileHandle, null, MatchFlags.None, 64, callback, IntPtr.Zero);
+                fileStream.SafeFileHandle, null, MatchFlags.None, 64, IntPtr.Zero, callback);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -577,8 +578,37 @@ public class NativeParserCoverageTests
         }
     }
 
-    // --- Helpers (duplicated from NativeCoverageTests.cs, which keeps them
-    // private; kept minimal and specific to what this file's tests need). ---
+    // A parse on one thread must number each chunk's records from that chunk's base, exactly as
+    // the multi-threaded path does; a parse thread allowance of 1 takes this path in production.
+
+    [TestMethod]
+    public void ParseFromFile_SingleThreadAcrossChunks_NumbersRecordsLikeEveryCore()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.Delete(path);
+            MftVolume.GenerateSyntheticMFT(path, 1000, 256);
+
+            var everyCore = MftVolume.ParseMFTFromFile(path, null, MatchFlags.None, out _, 64)
+                .Select(record => record.RecordNumber).ToArray();
+            MFTLibNative.NativeSetMaxThreads(1);
+            var singleThread = MftVolume.ParseMFTFromFile(path, null, MatchFlags.None, out _, 64)
+                .Select(record => record.RecordNumber).ToArray();
+
+            Assert.IsTrue(everyCore.Length > 64, "The parse must span several 64-record chunks");
+            CollectionAssert.AreEqual(everyCore, singleThread);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    // --- Helpers (the synthetic NTFS image builders live in TestSupport/SyntheticNtfsImage). ---
 
     static bool TrySetParentRecord(byte[] data, int recordNumber, ulong parentRecord, out int nameLength)
     {
@@ -620,75 +650,5 @@ public class NativeParserCoverageTests
         }
 
         return false;
-    }
-
-    static byte[] BuildSyntheticNtfs(int fileSize = 2 * 1024 * 1024)
-    {
-        var data = new byte[fileSize];
-        data[3] = (byte)'N';
-        data[4] = (byte)'T';
-        data[5] = (byte)'F';
-        data[6] = (byte)'S';
-        data[0x0B] = 0x00;
-        data[0x0C] = 0x02; // bytesPerSector = 512
-        data[0x0D] = 0x08; // sectorsPerCluster = 8 (4096 bytes/cluster)
-        data[0x30] = 0x01; // mftStart = cluster 1 (offset 4096)
-        return data;
-    }
-
-    static void WriteFileRecord(byte[] data, int offset, ushort usn = 0x0001, uint recordSize = 1024)
-    {
-        data[offset] = 0x46;
-        data[offset + 1] = 0x49;
-        data[offset + 2] = 0x4C;
-        data[offset + 3] = 0x45;
-        var usaSize = (ushort)(recordSize / 512 + 1);
-        data[offset + 4] = 0x30;
-        data[offset + 5] = 0x00;
-        data[offset + 6] = (byte)(usaSize & 0xFF);
-        data[offset + 7] = (byte)(usaSize >> 8);
-        var firstAttrOffset = (ushort)((48 + usaSize * 2 + 7) & ~7);
-        data[offset + 0x14] = (byte)(firstAttrOffset & 0xFF);
-        data[offset + 0x15] = (byte)(firstAttrOffset >> 8);
-        data[offset + 0x16] = 0x01;
-        BitConverter.GetBytes(recordSize).CopyTo(data, offset + 0x1C);
-        data[offset + 48] = (byte)(usn & 0xFF);
-        data[offset + 49] = (byte)(usn >> 8);
-        var sectorCount = (int)(recordSize / 512);
-        for (var i = 0; i < sectorCount; i++)
-        {
-            data[offset + 50 + i * 2] = 0x00;
-            data[offset + 51 + i * 2] = 0x00;
-            var sectorEnd = (i + 1) * 512 - 2;
-            data[offset + sectorEnd] = (byte)(usn & 0xFF);
-            data[offset + sectorEnd + 1] = (byte)(usn >> 8);
-        }
-    }
-
-    static int WriteNonResidentDataAttribute(byte[] data, int offset, long fileSize, int clusterOffset,
-        int clusterCount)
-    {
-        data[offset] = 0x80; // TypeCode = Data
-        data[offset + 4] = 0x48; // RecordLength = 72
-        data[offset + 8] = 0x01; // FormCode = non-resident
-        data[offset + 0x20] = 0x40; // MappingPairsOffset
-        var sizeBytes = BitConverter.GetBytes(fileSize);
-        Array.Copy(sizeBytes, 0, data, offset + 0x28, 8);
-        Array.Copy(sizeBytes, 0, data, offset + 0x30, 8);
-        Array.Copy(sizeBytes, 0, data, offset + 0x38, 8);
-        data[offset + 0x40] = 0x12;
-        data[offset + 0x41] = (byte)(clusterCount & 0xFF);
-        data[offset + 0x42] = (byte)((clusterCount >> 8) & 0xFF);
-        data[offset + 0x43] = (byte)(clusterOffset & 0xFF);
-        data[offset + 0x44] = 0x00;
-        return 0x48;
-    }
-
-    static void WriteEndMarker(byte[] data, int offset)
-    {
-        data[offset] = 0xFF;
-        data[offset + 1] = 0xFF;
-        data[offset + 2] = 0xFF;
-        data[offset + 3] = 0xFF;
     }
 }

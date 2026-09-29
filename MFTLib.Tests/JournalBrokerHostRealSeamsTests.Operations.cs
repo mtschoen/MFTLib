@@ -69,11 +69,11 @@ public partial class JournalBrokerHostRealSeamsTests
         MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
 
         var parsePtr = BuildThreeNameRecordsResult();
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, flags, _, callback, context) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, flags, _, _, callback) =>
         {
             Assert.AreEqual(MatchFlags.None, flags);
-            callback?.Invoke(MftScanPhase.Parsing, 200, 300, 42.0, context);
-            callback?.Invoke(MftScanPhase.Parsing, 300, 300, 45.0, context);
+            callback?.Invoke(MftScanPhase.Parsing, 200, 300, 42.0, IntPtr.Zero);
+            callback?.Invoke(MftScanPhase.Parsing, 300, 300, 45.0, IntPtr.Zero);
             return parsePtr;
         };
         MFTLibNative._freeMftResult = ptr =>

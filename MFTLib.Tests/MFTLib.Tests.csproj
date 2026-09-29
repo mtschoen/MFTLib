@@ -61,9 +61,9 @@
     <Compile Remove="SystemInfoTests.cs" />
     <Compile Remove="DriveScannerTests.cs" />
     <Compile Remove="MftResultTests.cs" />
-    <Compile Remove="MftVolumeTests.cs" />
+    <Compile Remove="MftVolumeTests*.cs" />
     <Compile Remove="NativeCoverageTests.cs" />
-    <Compile Remove="NativeParserCoverageTests.cs" />
+    <Compile Remove="NativeParserCoverageTests*.cs" />
   </ItemGroup>
 
 </Project>

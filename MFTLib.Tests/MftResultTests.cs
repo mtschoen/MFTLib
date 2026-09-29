@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -21,6 +22,7 @@ public class MftResultTests
     [TestCleanup]
     public void Cleanup()
     {
+        MFTLibNative.NativeResetTestState();
         MFTLibNative.ResetToDefaults();
         if (_tempMftPath != null && File.Exists(_tempMftPath))
         {
@@ -89,10 +91,74 @@ public class MftResultTests
     }
 
     [TestMethod]
-    public void GetMftNativeAbiVersion_ReturnsVersion1()
+    public void GetMftNativeAbiVersion_ReturnsVersion2()
     {
         var version = MFTLibNative._getMftNativeAbiVersion();
-        Assert.AreEqual(1U, version);
+        Assert.AreEqual(2U, version);
+    }
+
+    [TestMethod]
+    public void AbiStride_MatchesCancelledField()
+    {
+        var entryStrideOffset = (int)Marshal.OffsetOf<MftParseResult>(nameof(MftParseResult.EntryStride));
+        var cancelledOffset = (int)Marshal.OffsetOf<MftParseResult>(nameof(MftParseResult.Cancelled));
+        Assert.AreEqual(entryStrideOffset + sizeof(uint), cancelledOffset);
+        Assert.AreEqual(cancelledOffset + sizeof(uint), Marshal.SizeOf<MftParseResult>());
+
+        // A native cancelled result carries the stride and the cancelled flag exactly where the
+        // managed layout reads them.
+        var imagePath = Path.GetTempFileName();
+        try
+        {
+            SyntheticNtfsImage.Write(imagePath, 64);
+            MFTLibNative.NativeSetVolumeRecordSizeOverride(1024);
+            using var control = new ParseControlBlock();
+            control.RequestCancel();
+            using var image = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var resultPtr = MFTLibNative._parseMftRecordsWithProgress(
+                image.SafeFileHandle, null, MatchFlags.None, 64, control.Pointer, null);
+            try
+            {
+                Assert.AreEqual((int)MFTLibNative.NativeCompactEntrySize, Marshal.ReadInt32(resultPtr, entryStrideOffset));
+                Assert.AreEqual(1, Marshal.ReadInt32(resultPtr, cancelledOffset));
+            }
+            finally
+            {
+                MFTLibNative._freeMftResult(resultPtr);
+            }
+        }
+        finally
+        {
+            File.Delete(imagePath);
+        }
+    }
+
+    [TestMethod]
+    public void MftResult_CancelledResult_ThrowsOperationCanceledCarryingTheToken()
+    {
+        var result = new MftParseResult
+        {
+            ErrorMessage = "Parse cancelled",
+            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+            EntryStride = MFTLibNative.NativeCompactEntrySize,
+            Cancelled = 1
+        };
+        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+        Marshal.StructureToPtr(result, resultPtr, false);
+        var freed = IntPtr.Zero;
+        MFTLibNative._freeMftResult = pointer =>
+        {
+            freed = pointer;
+            Marshal.FreeHGlobal(pointer);
+        };
+        using var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
+
+        var exception = Assert.ThrowsException<OperationCanceledException>(() =>
+            new MftResult(resultPtr, "C", 0, token));
+
+        Assert.AreEqual(token, exception.CancellationToken);
+        Assert.AreEqual(resultPtr, freed, "A cancelled result must be freed before the throw");
     }
 
     [TestMethod]

@@ -25,4 +25,5 @@ struct MftParseResult
     public ulong PathStringUnits;
     public uint AbiVersion;
     public uint EntryStride;
+    public uint Cancelled; // 1 when MftParseControl.CancelRequested stopped the parse
 }

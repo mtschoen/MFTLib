@@ -9,7 +9,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 1;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 2;
 
 // Parser-synthesized, not an on-disk NTFS record flag. The flags field carries the
 // raw FILE_RECORD_SEGMENT_HEADER flags, whose defined bits are 0x0001 (in use) and
@@ -63,6 +63,16 @@ struct MftParseResult {
     uint64_t pathStringUnits;
     uint32_t abiVersion;
     uint32_t entryStride;
+    uint32_t cancelled;  // 1 when the parse stopped because MftParseControl::cancelRequested was set
+};
+
+// Caller-owned, kept in place for the whole parse call. The caller may write either field while
+// the parse runs; the parser only reads them, atomically. cancelRequested nonzero asks the parse
+// to stop. parseThreadAllowance is the thread count for each chunk and for path resolution, read
+// at the start of each: 0 means every processor, any other value is clamped to [1, processors].
+struct MftParseControl {
+    int32_t cancelRequested;
+    int32_t parseThreadAllowance;
 };
 
 struct UsnJournalInfo {

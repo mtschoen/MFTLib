@@ -147,9 +147,9 @@ public class MftScanProgressTests
         var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(parseResult, parsePtr, false);
 
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
         {
-            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, context);
+            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, IntPtr.Zero);
             return parsePtr;
         };
         MFTLibNative._freeMftResult = ptr =>
@@ -162,7 +162,7 @@ public class MftScanProgressTests
         var directProgress = new DirectMftProgress(reported.Add);
 
         using var volume = MftVolume.Open("C");
-        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
+        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(1, batches.Count);
         Assert.AreEqual(1, reported.Count);
@@ -200,10 +200,10 @@ public class MftScanProgressTests
         var reported = new List<MftScanProgress>();
         var reportedDuringParse = 0;
 
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
         {
-            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, context);
-            callback?.Invoke(MftScanPhase.ResolvingPaths, 5, 10, 30.0, context);
+            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, IntPtr.Zero);
+            callback?.Invoke(MftScanPhase.ResolvingPaths, 5, 10, 30.0, IntPtr.Zero);
             reportedDuringParse = reported.Count;
             return parsePtr;
         };
@@ -216,7 +216,7 @@ public class MftScanProgressTests
         var directProgress = new DirectMftProgress(reported.Add);
 
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(null, MatchFlags.None, directProgress);
+        using var result = volume.StreamRecords(null, MatchFlags.None, directProgress, null, CancellationToken.None);
 
         Assert.AreEqual(2, reportedDuringParse, "Both progress samples must have arrived before parse returned");
         Assert.AreEqual(2, reported.Count);
@@ -252,9 +252,9 @@ public class MftScanProgressTests
         var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(parseResult, parsePtr, false);
 
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
         {
-            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, context);
+            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, IntPtr.Zero);
             return parsePtr;
         };
         MFTLibNative._freeMftResult = ptr =>
@@ -266,7 +266,7 @@ public class MftScanProgressTests
         var throwingProgress = new DirectMftProgress(_ => throw new InvalidOperationException("Simulated UI progress failure"));
 
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(null, MatchFlags.None, throwingProgress);
+        using var result = volume.StreamRecords(null, MatchFlags.None, throwingProgress, null, CancellationToken.None);
 
         Assert.AreEqual(1, result.ToArray().Length, "Parse must complete normally despite exception in progress handler");
     }

@@ -42,8 +42,9 @@ void remove_fixture() { std::remove(kFixturePath); }
 
 bool test_abi_version() {
     uint32_t abiVersion = GetMftNativeAbiVersion();
-    if (abiVersion != 1) {
-        std::fprintf(stderr, "  FAIL: GetMftNativeAbiVersion() returned %u, expected 1\n", abiVersion);
+    if (abiVersion != MFT_NATIVE_ABI_VERSION) {
+        std::fprintf(stderr, "  FAIL: GetMftNativeAbiVersion() returned %u, expected %u\n", abiVersion,
+                     MFT_NATIVE_ABI_VERSION);
         return false;
     }
     return true;
@@ -55,10 +56,11 @@ bool test_round_trip() {
         return false;
     }
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
-    bool testPassed =
-        (parseResult != nullptr) && parseResult->usedRecords > 0 && parseResult->errorMessage[0] == L'\0' &&
-        parseResult->abiVersion == 1 && parseResult->entryStride == 50 && parseResult->entries != nullptr &&
-        parseResult->entryStrings != nullptr && parseResult->entryStringUnits < parseResult->usedRecords * 260;
+    bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
+                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
+                      parseResult->entryStride == 50 && parseResult->entries != nullptr &&
+                      parseResult->entryStrings != nullptr &&
+                      parseResult->entryStringUnits < parseResult->usedRecords * 260;
     if (testPassed) {
         // The fixture writes SequenceNumber = recordIndex + 1 for every record.
         for (uint64_t index = 0; index < parseResult->usedRecords; ++index) {
@@ -98,7 +100,7 @@ bool test_round_trip_4096() {
     }
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixture4096Path, nullptr, 0, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
-                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == 1 &&
+                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
                       parseResult->entryStride == 50;
     if (testPassed) {
         std::printf("  4096: total=%llu used=%llu ioMs=%.2f parseMs=%.2f totalMs=%.2f\n",
@@ -121,7 +123,8 @@ bool test_parse_missing_file() {
     MftParseResult* parseResult =
         ParseMFTFromFileUtf8("/tmp/does_not_exist_4f8e7c.mft", nullptr, 0, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->errorMessage[0] != L'\0' &&
-                      parseResult->usedRecords == 0 && parseResult->abiVersion == 1 && parseResult->entryStride == 50;
+                      parseResult->usedRecords == 0 && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
+                      parseResult->entryStride == 50;
     if (!testPassed) {
         std::fprintf(stderr, "  FAIL: expected errorMessage set; got result=%p err[0]=%d\n",
                      static_cast<void*>(parseResult),
@@ -142,8 +145,8 @@ bool test_parse_empty_file() {
     std::fclose(fileHandle);
 
     MftParseResult* parseResult = ParseMFTFromFileUtf8(path, nullptr, 0, kDefaultBufferRecords);
-    bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 && parseResult->abiVersion == 1 &&
-                      parseResult->entryStride == 50;
+    bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 &&
+                      parseResult->abiVersion == MFT_NATIVE_ABI_VERSION && parseResult->entryStride == 50;
     if (!testPassed && parseResult != nullptr) {
         std::fprintf(stderr, "  FAIL: empty file got totalRecords=%llu\n",
                      static_cast<unsigned long long>(parseResult->totalRecords));

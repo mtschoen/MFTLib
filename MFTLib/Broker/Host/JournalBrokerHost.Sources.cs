@@ -8,7 +8,7 @@ public sealed partial class JournalBrokerHost
     {
         using var volume = MftVolume.Open(Bare(driveLetter));
         var mftProgress = CreateMftProgressAdapter(progress);
-        foreach (var batch in volume.ReadRecordBatches(resolvePaths: false, 4096, mftProgress))
+        foreach (var batch in volume.ReadRecordBatches(resolvePaths: false, 4096, mftProgress, null, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var records = Array.FindAll(batch, record => record.InUse);

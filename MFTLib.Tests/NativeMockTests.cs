@@ -73,7 +73,7 @@ public class NativeMockTests
 
         using var volume = MftVolume.Open("C");
         // ReSharper disable once AccessToDisposedClosure
-        Assert.ThrowsException<InvalidOperationException>(() => volume.StreamRecords());
+        Assert.ThrowsException<InvalidOperationException>(() => volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None));
     }
 
     [TestMethod]
@@ -90,7 +90,7 @@ public class NativeMockTests
         using var handle = new SafeFileHandle(new IntPtr(-1), false);
 
         var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
-            handle, null, MatchFlags.None, 256, null, IntPtr.Zero);
+            handle, null, MatchFlags.None, 256, IntPtr.Zero, null);
 
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try

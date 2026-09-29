@@ -1,4 +1,5 @@
 // Part of the mft component. Included by mft.cpp; do not compile directly.
+// Over 500 lines: the chunk loop, path resolution and their shared cancellation helpers are one pipeline.
 #ifndef AISLOP_TU_FRAGMENT
     #error "mft.parse_core.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
@@ -94,6 +95,15 @@ bool AllocateParseBuffers(std::array<uint8_t*, 2>& buf, size_t bufSize, PathLook
     return true;
 }
 
+// A parse checks for cancellation between sub-slices of this many records.
+constexpr uint64_t kCancelCheckRecords = 4096;
+
+enum class ParseOutcome : uint8_t { Completed, Failed, Cancelled };
+
+bool IsCancelRequested(const MftParseControl* control) {
+    return control != nullptr && LoadSharedInt32(&control->cancelRequested) != 0;
+}
+
 // Apply USA fixups to every valid record in buffer[range.start, range.end).
 void FixupRange(uint8_t* buffer, SliceRange range, ParseGeometry geometry) {
     for (uint64_t i = range.start; i < range.end; i++) {
@@ -103,6 +113,38 @@ void FixupRange(uint8_t* buffer, SliceRange range, ParseGeometry geometry) {
             ApplyFixup(recPtr, geometry.recordSize);
         }
     }
+}
+
+// Fix up and parse buffer[range) in kCancelCheckRecords-record sub-slices, stopping between
+// sub-slices once cancellation is requested. Returns the milliseconds the fixups took.
+double FixupAndParseSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult& slice,
+                          const ScanContext& scan) {
+    double fixupMs = 0.0;
+    for (uint64_t start = range.start; start < range.end && !IsCancelRequested(scan.control);
+         start += kCancelCheckRecords) {
+        const SliceRange subSlice{start, (std::min)(start + kCancelCheckRecords, range.end)};
+        auto fixupStart = SteadyClock::now();
+        FixupRange(buffer, subSlice, scan.geometry);
+        fixupMs += ElapsedMs(fixupStart, SteadyClock::now());
+        ProcessRecordSlice(buffer, subSlice, recordBase, &slice, scan);
+    }
+    return fixupMs;
+}
+
+// Fix up and parse one chunk on the calling thread, then merge it.
+// Returns false if the merge ran out of memory (error already set).
+bool ParseChunkSerial(uint8_t* buffer, ChunkSpan chunk, const ScanContext& scan, ParseState& state,
+                      MftParseResult* result) {
+    SliceResult batchSlice;
+    batchSlice.entries.reserve((scan.filter.text != nullptr) ? 64 : chunk.chunkSize / 4);
+    batchSlice.strings.reserve(batchSlice.entries.capacity() * 32);
+
+    auto parseStart = SteadyClock::now();
+    double fixupMs = FixupAndParseSlice(buffer, SliceRange{0, chunk.chunkSize}, chunk.recordIndex, batchSlice, scan);
+    state.fixupMs += fixupMs;
+    state.parseMs += ElapsedMs(parseStart, SteadyClock::now()) - fixupMs;
+
+    return AppendSlice(state.output, batchSlice, result->errorMessage);
 }
 
 // Fix up and parse one chunk across numThreads workers, then merge their slices.
@@ -129,10 +171,7 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
         slices[ti].strings.reserve(initCap * 32);
         uint64_t recordIndex = chunk.recordIndex;
         workers.emplace_back([buffer, tStart, tEnd, ti, &slices, &threadFixupMs, scan, recordIndex]() {
-            auto fStart = SteadyClock::now();
-            FixupRange(buffer, SliceRange{tStart, tEnd}, scan.geometry);
-            threadFixupMs[ti] = ElapsedMs(fStart, SteadyClock::now());
-            ProcessRecordSlice(buffer, SliceRange{tStart, tEnd}, recordIndex, &slices[ti], scan);
+            threadFixupMs[ti] = FixupAndParseSlice(buffer, SliceRange{tStart, tEnd}, recordIndex, slices[ti], scan);
         });
     }
     for (auto& worker : workers) {
@@ -162,6 +201,7 @@ struct ProgressHook {
 struct ResolveProgressState {
     MftProgressCallback callback = nullptr;
     void* context = nullptr;
+    const MftParseControl* control = nullptr;
     SteadyClock::time_point wallStart;
     uint64_t totalEntries = 0;
     uint64_t entriesResolved = 0;
@@ -194,6 +234,8 @@ struct ResolveProgressState {
     }
 };
 
+// Resolve the paths of source.entries[range), stopping between kCancelCheckRecords-entry
+// slices once cancellation is requested.
 void PopulatePathSlice(SliceRange range, const CompactOutput& source, const PathLookup& lookup, uint64_t totalRecords,
                        SliceResult& slice, ResolveProgressState* progressState) {
     std::vector<uint16_t> pathBuffer;
@@ -202,6 +244,9 @@ void PopulatePathSlice(SliceRange range, const CompactOutput& source, const Path
     uint64_t localCount = 0;
 
     for (uint64_t i = range.start; i < range.end; i++) {
+        if ((i - range.start) % kCancelCheckRecords == 0 && IsCancelRequested(progressState->control)) {
+            return;
+        }
         const auto& src = source.entries[i];
         ParsedEntry entry{};
         entry.recordNumber = src.recordNumber;
@@ -220,25 +265,24 @@ void PopulatePathSlice(SliceRange range, const CompactOutput& source, const Path
         }
         slice.append(entry);
 
-        if (progressState != nullptr && ++localCount >= kReportInterval) {
+        if (++localCount >= kReportInterval) {
             progressState->reportBatch(localCount);
             localCount = 0;
         }
     }
 
-    if (progressState != nullptr && localCount > 0) {
+    if (localCount > 0) {
         progressState->reportBatch(localCount);
     }
 }
 
-// Resolve a full path for every parsed entry, fanning out across numThreads workers.
-void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned numThreads, ParseState& state,
-                     MftParseResult* result, const ProgressHook& progress) {
+// Resolve a full path for every parsed entry through scan.lookup (non-null), fanning out across
+// numThreads workers. Returns false when cancellation stopped it; nothing is published then.
+bool ResolveAllPaths(const ScanContext& scan, unsigned numThreads, ParseState& state, MftParseResult* result,
+                     const ProgressHook& progress) {
+    const PathLookup& lookup = *scan.lookup;
+    const uint64_t totalRecords = scan.totalRecords;
     uint64_t usedCount = state.output.entryCount;
-    if (usedCount == 0) {
-        return;
-    }
-
     CompactOutput paths;
     paths.entryCapacity = usedCount;
     paths.entries =
@@ -246,7 +290,7 @@ void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned n
             ? nullptr
             : static_cast<MftCompactEntry*>(malloc(static_cast<size_t>(usedCount) * sizeof(MftCompactEntry)));
     if (paths.entries == nullptr) {
-        return;
+        return true;
     }
 
     paths.stringCapacity = std::max<uint64_t>(state.output.stringUnits, 1024);
@@ -255,12 +299,13 @@ void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned n
                         : static_cast<uint16_t*>(malloc(static_cast<size_t>(paths.stringCapacity) * sizeof(uint16_t)));
     if (paths.strings == nullptr) {
         free(paths.entries);
-        return;
+        return true;
     }
 
     ResolveProgressState progressState;
     progressState.callback = progress.callback;
     progressState.context = progress.context;
+    progressState.control = scan.control;
     progressState.wallStart = progress.wallStart;
     progressState.totalEntries = usedCount;
 
@@ -281,6 +326,12 @@ void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned n
         PopulatePathSlice(SliceRange{0, usedCount}, state.output, lookup, totalRecords, pathSlices[0], &progressState);
     }
 
+    if (IsCancelRequested(scan.control)) {
+        free(paths.entries);
+        free(paths.strings);
+        return false;
+    }
+
     std::array<wchar_t, 256> dummyError{};
     bool appendOk = true;
     for (unsigned ti = 0; ti < numThreads; ti++) {
@@ -293,7 +344,7 @@ void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned n
     if (!appendOk) {
         free(paths.entries);
         free(paths.strings);
-        return;
+        return true;
     }
 
     // Atomic publication on success
@@ -309,51 +360,50 @@ void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned n
     state.output.stringUnits = 0;
     state.output.entryCapacity = 0;
     state.output.stringCapacity = 0;
+    return true;
 }
 
-// Drive the double-buffered read/parse loop over every chunk. Returns false if a
-// chunk's merge ran out of memory (result error already set; buffers freed by caller).
-bool ParseAllChunks(ChunkReader& reader, unsigned numThreads, const ScanContext& scan, ParseState& state,
-                    MftParseResult* result, const ProgressHook& progress) {
+// Drive the double-buffered read/parse loop over every chunk. Each chunk reads the thread
+// allowance once at its start and keeps that count until it is merged. Failed means a chunk's
+// merge ran out of memory (result error already set); Cancelled means cancellation was seen
+// before a chunk read or after a chunk's parse. Buffers are freed by the caller either way.
+ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseState& state, MftParseResult* result,
+                            const ProgressHook& progress) {
+    if (IsCancelRequested(scan.control)) {
+        return ParseOutcome::Cancelled;
+    }
     uint64_t recordIndex = 0;
     uint64_t lastReportedRecords = 0;
     uint64_t currentChunkSize = reader.readChunk(reader.readContext, (*reader.buf)[0], state.ioMs);
     int curBuf = 0;
 
     while (currentChunkSize > 0) {
+        if (IsCancelRequested(scan.control)) {
+            return ParseOutcome::Cancelled;
+        }
+        const unsigned numThreads = EffectiveThreadCount(scan.control);
+        RecordChunkThreadCount(numThreads);
+
         uint64_t nextChunkSize = 0;
         double nextIoMs = 0;
         std::thread ioThread(
             [&]() { nextChunkSize = reader.readChunk(reader.readContext, (*reader.buf)[1 - curBuf], nextIoMs); });
 
         uint8_t* buffer = (*reader.buf)[curBuf];
-
-        if (numThreads > 1) {
-            if (!ParseChunkParallel(buffer, ChunkSpan{recordIndex, currentChunkSize}, numThreads, scan, state,
-                                    result)) {
-                ioThread.join();
-                return false;
-            }
-        } else {
-            auto fixupStart = SteadyClock::now();
-            FixupRange(buffer, SliceRange{0, currentChunkSize}, scan.geometry);
-            state.fixupMs += ElapsedMs(fixupStart, SteadyClock::now());
-
-            SliceResult batchSlice;
-            batchSlice.entries.reserve((scan.filter.text != nullptr) ? 64 : currentChunkSize / 4);
-            batchSlice.strings.reserve(batchSlice.entries.capacity() * 32);
-
-            auto parseStart = SteadyClock::now();
-            ProcessRecordBatch(buffer, currentChunkSize, recordIndex, batchSlice, scan);
-            state.parseMs += ElapsedMs(parseStart, SteadyClock::now());
-
-            if (!AppendSlice(state.output, batchSlice, result->errorMessage)) {
-                ioThread.join();
-                return false;
-            }
+        const ChunkSpan chunk{recordIndex, currentChunkSize};
+        const bool mergedOk = numThreads > 1 ? ParseChunkParallel(buffer, chunk, numThreads, scan, state, result)
+                                             : ParseChunkSerial(buffer, chunk, scan, state, result);
+        if (!mergedOk) {
+            ioThread.join();
+            return ParseOutcome::Failed;
         }
 
         recordIndex += currentChunkSize;
+
+        if (IsCancelRequested(scan.control)) {
+            ioThread.join();
+            return ParseOutcome::Cancelled;
+        }
 
         if (progress.callback != nullptr) {
             double elapsedMs = ElapsedMs(progress.wallStart, SteadyClock::now());
@@ -373,15 +423,26 @@ bool ParseAllChunks(ChunkReader& reader, unsigned numThreads, const ScanContext&
         progress.callback(MftScanPhase::Parsing, scan.totalRecords, scan.totalRecords, elapsedMs, progress.context);
     }
 
-    return true;
+    return ParseOutcome::Completed;
+}
+
+// Free the partial output of a cancelled parse and mark its result cancelled.
+MftParseResult* FinishCancelled(ParseState& state, MftParseResult* result) {
+    free(state.output.entries);
+    free(state.output.strings);
+    state.output = CompactOutput{};
+    result->cancelled = 1;
+    SetErrorMessage(result->errorMessage, L"Parse cancelled");
+    return result;
 }
 
 }  // namespace
 
 MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
-                             uint32_t bufferSizeRecords, ParseGeometry geometry, MftProgressCallback callback,
-                             void* progressContext) {
+                             uint32_t bufferSizeRecords, ParseGeometry geometry, const MftParseControl* control,
+                             MftProgressCallback callback, void* progressContext) {
     auto wallStart = SteadyClock::now();
+    ResetRecordedParseThreadCounts();
 
     auto* result = ShouldFailAlloc() ? nullptr : static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
     if (result == nullptr) {
@@ -402,7 +463,6 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
         }
     }
 
-    unsigned numThreads = EffectiveThreadCount();
     const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * geometry.recordSize;
 
     ParseState state = {};
@@ -414,18 +474,21 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
         return result;
     }
 
-    ScanContext scan{filter, resolvePaths ? &lookup : nullptr, totalRecords, geometry};
+    ScanContext scan{filter, resolvePaths ? &lookup : nullptr, totalRecords, geometry, control};
     ChunkReader reader{readChunk, readContext, &buf};
     ProgressHook progress{callback, progressContext, wallStart};
-    bool parsedOk = ParseAllChunks(reader, numThreads, scan, state, result, progress);
+    const ParseOutcome outcome = ParseAllChunks(reader, scan, state, result, progress);
 
     mftlib::platform::big_free(buf[0], bufSize);
     mftlib::platform::big_free(buf[1], bufSize);
 
-    if (!parsedOk) {
-        if (resolvePaths) {
-            lookup.cleanup();
-        }
+    if (outcome != ParseOutcome::Completed && resolvePaths) {
+        lookup.cleanup();
+    }
+    if (outcome == ParseOutcome::Cancelled) {
+        return FinishCancelled(state, result);
+    }
+    if (outcome == ParseOutcome::Failed) {
         result->entries = state.output.entries;
         result->usedRecords = state.output.entryCount;
         result->entryStrings = state.output.strings;
@@ -440,8 +503,13 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
 
     uint64_t parsedCount = state.output.entryCount;
     if (resolvePaths && parsedCount > 0) {
-        ResolveAllPaths(totalRecords, lookup, numThreads, state, result, progress);
+        const unsigned resolveThreads = EffectiveThreadCount(control);
+        RecordResolveThreadCount(resolveThreads);
+        const bool resolved = ResolveAllPaths(scan, resolveThreads, state, result, progress);
         lookup.cleanup();
+        if (!resolved) {
+            return FinishCancelled(state, result);
+        }
     }
 
     result->usedRecords = parsedCount;

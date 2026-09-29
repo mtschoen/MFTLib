@@ -149,7 +149,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(".dll", MatchFlags.Contains | MatchFlags.ResolvePaths);
+        using var result = volume.StreamRecords(".dll", MatchFlags.Contains | MatchFlags.ResolvePaths, null, null, CancellationToken.None);
 
         var count = 0;
         MftRecord? firstWithPath = null;
@@ -181,7 +181,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords("explorer.exe");
+        using var result = volume.StreamRecords("explorer.exe", MatchFlags.None, null, null, CancellationToken.None);
 
         var count = 0;
         foreach (var _ in result)
@@ -221,7 +221,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
+        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
 
         var count = 0;
         foreach (var unused in result)
@@ -241,7 +241,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch);
+        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch, null, null, CancellationToken.None);
 
         var records = new List<MftRecord>();
         foreach (var record in result)
@@ -261,7 +261,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
+        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
         var records = result.ToArray();
 
         Assert.IsTrue(records.Length > 0);
@@ -279,7 +279,7 @@ public class MftVolumeAdminTests
         var volume = MftVolume.Open("C");
         volume.Dispose();
 
-        Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords());
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None));
     }
 
     [TestMethod]
@@ -319,7 +319,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var result = volume.StreamRecords();
+        var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
         result.Dispose();
 
         Assert.ThrowsException<ObjectDisposedException>(() =>
@@ -335,7 +335,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var result = volume.StreamRecords();
+        var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
         result.Dispose();
 
         Assert.ThrowsException<ObjectDisposedException>(result.ToArray);
@@ -346,7 +346,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
+        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
 
         Assert.IsTrue(result.TotalRecords > 0);
         Assert.IsTrue(result.UsedRecords > 0);
@@ -358,7 +358,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords("explorer", MatchFlags.Contains | MatchFlags.ResolvePaths);
+        using var result = volume.StreamRecords("explorer", MatchFlags.Contains | MatchFlags.ResolvePaths, null, null, CancellationToken.None);
 
         foreach (var record in result)
         {
@@ -396,7 +396,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch);
+        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch, null, null, CancellationToken.None);
 
         // Cast to non-generic IEnumerable to hit the explicit interface implementation
         var count = 0;
@@ -415,7 +415,7 @@ public class MftVolumeAdminTests
         RequireElevation();
         using var volume = MftVolume.Open("C");
         var batches = new List<MftRecord[]>();
-        foreach (var batch in volume.ReadRecordBatches(batchSize: 100))
+        foreach (var batch in volume.ReadRecordBatches(false, 100, null, null, CancellationToken.None))
         {
             batches.Add(batch);
             if (batches.Count == 2)
@@ -437,7 +437,7 @@ public class MftVolumeAdminTests
         RequireElevation();
         using var volume = MftVolume.Open("C");
         var batches = new List<MftRecord[]>();
-        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, 100))
+        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, 100, null, null, CancellationToken.None))
         {
             batches.Add(batch);
             if (batches.Count == 2)
