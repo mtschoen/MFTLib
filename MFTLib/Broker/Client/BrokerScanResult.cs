@@ -20,9 +20,7 @@ public sealed class BrokerScanResult(
     /// <summary>
     ///     Per-drive blocks. A result returned straight from
     ///     <see cref="JournalBrokerClient.ArmScanAndCatchUpAsync(IReadOnlyList{string}, BrokerScanOptions, CancellationToken)" />
-    ///     hands these blocks to the caller, who disposes them. A result published on
-    ///     <see cref="JournalBrokerScanSession.LatestScan" /> is owned by that session
-    ///     instead: the next rescan and the session's disposal both dispose these blocks.
+    ///     hands these blocks to the caller, who disposes them.
     /// </summary>
     public IReadOnlyDictionary<string, BlockScanOutcome> BlockOutcomes { get; } =
         blockOutcomes ?? new Dictionary<string, BlockScanOutcome>();

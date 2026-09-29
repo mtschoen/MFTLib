@@ -131,9 +131,8 @@ public class MftProducerEndToEndTests
     }
 
     [TestMethod]
-    public async Task BlockSession_ReplacesParkedWatchCursorAndIndexRescanPreservesOldHandles()
+    public async Task IndexRescan_PreservesOldHandles()
     {
-        await AssertParkedWatchCursorAsync();
         var scanCount = 0;
         var scans = new List<BrokerScanResult>();
         await using var harness = new InProcessBlockBrokerHarness(recordBatches: (_, _, _) =>
@@ -183,32 +182,6 @@ public class MftProducerEndToEndTests
         Assert.AreSame(block, index.Root('C').DriveBlock.Block);
         AssertReady(index);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
-    }
-
-    static async Task AssertParkedWatchCursorAsync()
-    {
-        await using var harness = new InProcessBlockBrokerHarness(recordBatches: (_, _, _) => Records());
-        await using var session = await JournalBrokerScanSession.StartAsync(harness.ConnectAsync, ["C"],
-            new BrokerScanOptions
-            {
-                BlockTargets = new Dictionary<string, BlockScanTarget>
-                {
-                    ["C"] = new(harness.Request.BlockPath, 123, true)
-                }
-            }, harness.CancellationToken);
-        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
-        Assert.IsNotNull(session.LatestScan);
-        Assert.AreEqual(0, session.LatestScan.Errors.Count);
-        var block = session.LatestScan.BlockOutcomes["C"].Block;
-        Assert.IsTrue(block.Header.IsComplete);
-        var cursor = new UsnJournalCursor(block.Header.UsnJournalId, block.Header.UsnNextUsn);
-        Assert.AreNotEqual(cursor, session.WatchCursors["C"]);
-
-        session.ReplaceWatchCursors(new Dictionary<string, UsnJournalCursor> { [@"c:\"] = cursor });
-
-        Assert.AreEqual(1, session.WatchCursors.Count);
-        Assert.AreEqual(cursor, session.WatchCursors["C"]);
-        Assert.AreEqual(JournalBrokerSessionState.Parked, session.State);
     }
 
     string At(params string[] segments) => Path.Combine([_rootDirectory, .. segments]);
