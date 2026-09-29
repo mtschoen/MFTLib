@@ -6,9 +6,7 @@ namespace MFTLib.Tests;
 
 // Shared members of the watch partials. Their catch-up tests install JournalCheckpointCheck's
 // process-wide journal override and the diagnostics tests change BrokerDiagnostics' process-wide
-// state, so the class runs serially.
-[TestClass]
-[DoNotParallelize]
+// state, which is why the class (attributes on the main partial) runs serially.
 public partial class JournalBrokerHostTests
 {
     static readonly NtfsVolumeInformation WatchVolume = new(1024 * 1000, 1024, 512, 4096, 100, 10);
