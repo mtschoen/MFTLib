@@ -119,7 +119,7 @@ public sealed partial class JournalBrokerClient
 
         if (totalLength >= 1)
         {
-            BrokerDiagnostics.LogFrame("read", frameBytes[4], totalLength);
+            BrokerDiagnostics.LogFrame(BrokerDiagnostics.ControlChannel, "read", frameBytes[4], totalLength);
         }
 
         return BrokerProtocol.ReadFrame(frameBytes, out _);
@@ -139,7 +139,7 @@ public sealed partial class JournalBrokerClient
         write(buffer);
         if (buffer.WrittenCount >= 5)
         {
-            BrokerDiagnostics.LogFrame("write", buffer.WrittenSpan[4], buffer.WrittenCount - 4);
+            BrokerDiagnostics.LogFrame(BrokerDiagnostics.ControlChannel, "write", buffer.WrittenSpan[4], buffer.WrittenCount - 4);
         }
 
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);

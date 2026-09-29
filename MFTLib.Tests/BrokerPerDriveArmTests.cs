@@ -239,6 +239,7 @@ public partial class BrokerPerDriveArmTests : BrokerBlockTestBase
             // awaits the demux task's own completion, so no more background writes to
             // broker-diagnostics.log race the read below.
             await client.DisposeAsync();
+            await BrokerDiagnostics.FlushForTestAsync(cancellation.Token);
             var diagnostics = await File.ReadAllTextAsync(
                 Path.Combine(diagnosticsDirectory, "broker-diagnostics.log"), cancellation.Token);
             StringAssert.Contains(diagnostics, "Dropped a JournalBatch for drive C at arm epoch ");

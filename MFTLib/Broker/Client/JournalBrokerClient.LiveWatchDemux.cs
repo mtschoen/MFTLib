@@ -31,7 +31,7 @@ public sealed partial class JournalBrokerClient
     // broker dies or is cancelled.
     async Task DemuxLoopAsync(CancellationToken cancellationToken)
     {
-        BrokerDiagnostics.Log($"DemuxLoopAsync started (t={Environment.CurrentManagedThreadId}).");
+        BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, $"DemuxLoopAsync started (t={Environment.CurrentManagedThreadId}).");
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -96,7 +96,7 @@ public sealed partial class JournalBrokerClient
                     }
                     else
                     {
-                        BrokerDiagnostics.Log($"Dropped a JournalBatch for drive {batchDrive} at arm epoch {value.ArmEpoch}.");
+                        BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, $"Dropped a JournalBatch for drive {batchDrive} at arm epoch {value.ArmEpoch}.");
                     }
                     break;
                 }
@@ -110,7 +110,7 @@ public sealed partial class JournalBrokerClient
                     }
                     else
                     {
-                        BrokerDiagnostics.Log($"Dropped a CaughtUp frame for drive {caughtUpDrive} at arm epoch {value.ArmEpoch}.");
+                        BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, $"Dropped a CaughtUp frame for drive {caughtUpDrive} at arm epoch {value.ArmEpoch}.");
                     }
                     break;
                 }
@@ -120,7 +120,7 @@ public sealed partial class JournalBrokerClient
                     var errorDrive = NormalizeDriveLetter(value.RequireDrive());
                     if (!TryFaultArmedLiveChannel(errorDrive, value.ArmEpoch, new InvalidOperationException(value.RequireMessage())))
                     {
-                        BrokerDiagnostics.Log($"Dropped an Error frame for drive {errorDrive} at arm epoch {value.ArmEpoch}.");
+                        BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, $"Dropped an Error frame for drive {errorDrive} at arm epoch {value.ArmEpoch}.");
                     }
                     break;
                 }

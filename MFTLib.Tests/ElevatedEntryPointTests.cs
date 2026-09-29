@@ -73,7 +73,7 @@ public class ElevatedEntryPointTests
     }
 
     [TestMethod]
-    public void TryHandle_BrokerModeWithDiagFlag_EnablesDiagnostics()
+    public async Task TryHandle_BrokerModeWithDiagFlag_EnablesDiagnostics()
     {
         var runner = new RecordingRunner();
 
@@ -88,7 +88,8 @@ public class ElevatedEntryPointTests
         try
         {
             BrokerDiagnostics.LogDirectory = tempDir;
-            BrokerDiagnostics.Log("diag-enabled-check");
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "diag-enabled-check");
+            await BrokerDiagnostics.FlushForTestAsync(CancellationToken.None);
             Assert.IsTrue(File.Exists(Path.Combine(tempDir, "broker-diagnostics.log")));
         }
         finally
