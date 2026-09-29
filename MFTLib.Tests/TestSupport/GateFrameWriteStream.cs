@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-
 namespace MFTLib.Tests.TestSupport;
 
 // Wraps a stream and blocks the write call for one specific frame kind until
@@ -17,9 +15,6 @@ public sealed class GateFrameWriteStream(Stream inner, BrokerFrameKind gatedKind
 
     // Completes once the gated frame's write call has started (and is blocked).
     public Task Entered => _entered.Task;
-
-    // Every frame kind forwarded to the inner stream, in the order the writes reached it.
-    public ConcurrentQueue<BrokerFrameKind> ForwardedFrameKinds { get; } = new();
 
     public override bool CanRead => inner.CanRead;
     public override bool CanWrite => inner.CanWrite;
@@ -47,11 +42,6 @@ public sealed class GateFrameWriteStream(Stream inner, BrokerFrameKind gatedKind
         {
             _entered.TrySetResult();
             await _gate.Task.ConfigureAwait(false);
-        }
-
-        if (buffer.Length >= 5)
-        {
-            ForwardedFrameKinds.Enqueue((BrokerFrameKind)buffer.Span[4]);
         }
 
         await inner.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);

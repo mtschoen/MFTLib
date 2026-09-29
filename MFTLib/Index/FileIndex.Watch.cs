@@ -38,9 +38,7 @@ public sealed partial class FileIndex
     ///         so a <see cref="RescanAsync" /> issued any time after it completes finds a running
     ///         stream. Readiness is not catch-up: no item need have been delivered and no drive need
     ///         have caught up, which <see cref="WaitForCatchUpAsync(CancellationToken)" /> waits for.
-    ///         The guarantee is as strong as the source's report. <see cref="BrokerIndexWatchSource" />
-    ///         reports readiness once the broker is connected, the watch is requested, and every
-    ///         drive's reader is running. A source that implements only
+    ///         The guarantee is as strong as the source's report. A source that implements only
     ///         <see cref="IIndexWatchSource.StartWatching(IReadOnlyList{IndexWatchTarget}, CancellationToken)" />
     ///         is reported ready once its stream's first <see cref="IAsyncEnumerator{T}.MoveNextAsync" />
     ///         call has returned control with the stream still running (pending, or having produced
@@ -59,11 +57,10 @@ public sealed partial class FileIndex
     ///         <see cref="StopWatchingAsync" />, and this method can be called again. Releasing it
     ///         waits for the source to finish, so a source that ignores its cancellation token
     ///         wedges this call the way it wedges <see cref="StopWatchingAsync" />.
-    ///         <see cref="BrokerIndexWatchSource" /> observes it at every startup step, including
-    ///         while its StartWatch send is blocked on the broker pipe, so with the broker source
-    ///         this call is bounded by <paramref name="cancellationToken" /> and by a stop or
-    ///         disposal. The send is left to finish in the background and the watch it started is
-    ///         torn down before the source will start another, so a later call to this method
+    ///         A source that observes it at every startup step, and hands off any step it must not
+    ///         interrupt rather than wait for it, bounds this call by
+    ///         <paramref name="cancellationToken" /> and by a stop or disposal; such a step is left
+    ///         to finish in the background and torn down before the source will start another, so a later call to this method
     ///         waits for that teardown, bounded by its own token.
     ///     </para>
     ///     Once the stream is ready, cancelling <paramref name="cancellationToken" /> ends the

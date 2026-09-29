@@ -39,8 +39,7 @@ public interface IIndexWatchSource
     ///     The same holds before the stream is ready: a start that is cancelled, stopped, or
     ///     disposed waits for the stream to end before it returns, so a source must observe the
     ///     token at every await during startup too, and hand off any step it must not interrupt
-    ///     rather than wait for it, as <see cref="BrokerIndexWatchSource" /> does with its
-    ///     StartWatch send.
+    ///     rather than wait for it.
     /// </summary>
     IAsyncEnumerable<WatchStreamItem> StartWatching(
         IReadOnlyList<IndexWatchTarget> targets, CancellationToken cancellationToken);
