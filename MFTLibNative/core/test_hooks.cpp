@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <mutex>
 #include <thread>
 
@@ -24,6 +25,11 @@ std::mutex g_parseThreadCountsMutex;
 std::array<unsigned, 1024> g_chunkThreadCounts = {};
 unsigned g_chunkThreadCountLength = 0;
 unsigned g_resolveThreadCount = 0;
+// While armed, each parse cancellation check decrements the countdown, and the check that takes
+// it from 1, and every check after it, reports cancelled. Atomic because parse workers check
+// concurrently; unarmed, a check costs one relaxed load.
+std::atomic<bool> g_cancelCheckCountdownArmed{false};
+std::atomic<int> g_cancelCheckCountdown{0};
 #ifdef _WIN32
 DWORD g_usnIoFailError = 0;
 int g_usnIoFailCountdown = 0;
@@ -79,6 +85,11 @@ bool ShouldFailAlloc() {
         return false;
     }
     return --g_allocFailCountdown == 0;
+}
+
+bool ShouldForceCancel() {
+    return g_cancelCheckCountdownArmed.load(std::memory_order_relaxed) &&
+           g_cancelCheckCountdown.fetch_sub(1, std::memory_order_relaxed) <= 1;
 }
 
 bool ShouldFailRead() {
@@ -176,6 +187,10 @@ EXPORT void SetFailPathConversion(int fail) { g_failPathConversion = fail; }
 EXPORT void SetFailPlatformRead(int countdown) { g_failPlatformReadCountdown = countdown; }
 EXPORT void SetFailPlatformWrite(int fail) { g_failPlatformWrite = fail; }
 EXPORT void SetVolumeRecordSizeOverride(uint32_t recordSize) { g_volumeRecordSizeOverride = recordSize; }
+EXPORT void SetCancelCheckCountdown(int countdown) {
+    g_cancelCheckCountdown = countdown;
+    g_cancelCheckCountdownArmed = countdown > 0;
+}
 
 // Copies the thread count each chunk of the most recent parse used, in order, into counts
 // and returns how many were copied (at most capacity).
@@ -230,6 +245,8 @@ EXPORT void ResetTestState() {
     g_failPlatformWrite = 0;
     g_volumeRecordSizeOverride = 0;
     ResetRecordedParseThreadCounts();
+    g_cancelCheckCountdownArmed = false;
+    g_cancelCheckCountdown = 0;
     g_usnIoFailError = 0;
     g_usnIoFailCountdown = 0;
     g_usnIoHead = 0;
@@ -253,6 +270,8 @@ EXPORT void ResetTestState() {
     g_failPlatformWrite = 0;
     g_volumeRecordSizeOverride = 0;
     ResetRecordedParseThreadCounts();
+    g_cancelCheckCountdownArmed = false;
+    g_cancelCheckCountdown = 0;
 }
 #endif
 }

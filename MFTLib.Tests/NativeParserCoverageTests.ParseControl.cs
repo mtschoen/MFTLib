@@ -154,6 +154,52 @@ public partial class NativeParserCoverageTests
         });
     }
 
+    [TestMethod]
+    public void ParseMFTRecordsWithProgress_CancelledDuringChunkParse_JoinsTheReadAndStopsBeforeReporting()
+    {
+        // One thread and 64-record chunks, so the cancellation checks run in a fixed order: 1 before
+        // the first read, 2 at the top of the first chunk, 3 before its only sub-slice, 4 after its
+        // parse, while the next chunk's read runs. The countdown trips check 4.
+        WithImage(ImageRecordCount, path =>
+        {
+            using var control = new ParseControlBlock(1);
+            var progressCalls = 0;
+            MFTLibNative.NativeSetCancelCheckCountdown(4);
+
+            var result = ParseImage(path, MatchFlags.None, control, (_, _, _, _) => progressCalls++);
+
+            AssertCancelled(result);
+            Assert.AreEqual(0, progressCalls, "The parse must stop before reporting the chunk");
+            CollectionAssert.AreEqual(new[] { 1u }, ParseControlBlock.ChunkThreadCounts());
+        });
+    }
+
+    [TestMethod]
+    public void ParseMFTRecordsWithProgress_CancelledBetweenWorkerSubSlices_StopsTheChunk()
+    {
+        if (Processors < 2)
+        {
+            Assert.Inconclusive("Needs two parse workers");
+        }
+
+        // One 16384-record chunk on two workers, each checking before each of its two 4096-record
+        // sub-slices: checks 1 and 2 precede the chunk, 3 to 6 are the workers', 7 follows the
+        // parse. Each worker's second check follows its first, so the sixth check is always a
+        // check between two sub-slices of one worker; it is the only one that trips.
+        WithImage(16384, path =>
+        {
+            using var control = new ParseControlBlock(2);
+            var progressCalls = 0;
+            MFTLibNative.NativeSetCancelCheckCountdown(6);
+
+            var result = ParseImage(path, MatchFlags.None, control, (_, _, _, _) => progressCalls++, 16384);
+
+            AssertCancelled(result);
+            Assert.AreEqual(0, progressCalls);
+            CollectionAssert.AreEqual(new[] { 2u }, ParseControlBlock.ChunkThreadCounts());
+        });
+    }
+
     static void AssertAllowanceGivesEveryChunk(int allowance, uint expected)
     {
         WithImage(ImageRecordCount, path =>

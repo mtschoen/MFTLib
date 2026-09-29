@@ -69,6 +69,9 @@ void RecordResolveThreadCount(unsigned threadCount);
 // Test hook declarations (defined in core/test_hooks.cpp)
 bool ShouldFailAlloc();
 bool ShouldFailRead();
+// The Nth parse cancellation check after SetCancelCheckCountdown(N), and every check after it,
+// reports cancelled, so a test can cancel inside a chunk's workers.
+bool ShouldForceCancel();
 uint64_t NamePoolCapacityOverride();
 bool ShouldFailFileSize();
 bool ShouldFailPathConversion();

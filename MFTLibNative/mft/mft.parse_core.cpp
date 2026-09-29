@@ -101,7 +101,7 @@ constexpr uint64_t kCancelCheckRecords = 4096;
 enum class ParseOutcome : uint8_t { Completed, Failed, Cancelled };
 
 bool IsCancelRequested(const MftParseControl* control) {
-    return control != nullptr && LoadSharedInt32(&control->cancelRequested) != 0;
+    return ShouldForceCancel() || (control != nullptr && LoadSharedInt32(&control->cancelRequested) != 0);
 }
 
 // Apply USA fixups to every valid record in buffer[range.start, range.end).

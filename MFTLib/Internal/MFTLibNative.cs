@@ -129,6 +129,9 @@ static class MFTLibNative
     internal static extern void NativeSetUsnWatchPipe(SafeHandle handle, SafeHandle beforeIssue,
         SafeHandle continueIssue, SafeHandle issued, int gateReadNumber);
 
+    [DllImport(LibraryName, EntryPoint = "SetCancelCheckCountdown", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetCancelCheckCountdown(int countdown);
+
     [DllImport(LibraryName, EntryPoint = "GetChunkThreadCounts", CallingConvention = CallingConvention.Cdecl)]
     internal static extern unsafe uint NativeGetChunkThreadCounts(uint* counts, uint capacity);
 
