@@ -268,4 +268,71 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(10L, finalProgress.Value.TotalRecords,
             "The final total is clamped up to the clamped count, not left at the stale reported total.");
     }
+
+    [TestMethod]
+    public async Task ScanProgress_FinalFrameImmediatelyPrecedesScanReadyAndCatchUp()
+    {
+        using var blockWriter = new RecordingBlockSectionWriter();
+        var host = ScanHost(
+            queryCursor: _ => new UsnJournalCursor(7UL, 0L),
+            scanDrive: (_, _, _, _, _) =>
+            [
+                [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt", null)],
+                [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt", null)]
+            ]);
+        await using var harness = new HostChannelHarness(host, blockWriter);
+
+        var frames = await ScanFramesAsync(harness, 'C', "mftlib-progress-C");
+
+        Assert.IsTrue(frames.Count >= 3, "Expected at least Cursor, ScanProgress, and ScanReady frames.");
+        Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
+        var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
+        Assert.IsTrue(scanReadyIndex > 0, "ScanReady frame must be present.");
+        var finalProgressIndex = scanReadyIndex - 1;
+        Assert.AreEqual(BrokerFrameKind.ScanProgress, frames[finalProgressIndex].Kind,
+            "The final progress frame immediately precedes ScanReady.");
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[scanReadyIndex + 1].Kind);
+        var progress = frames[finalProgressIndex].Progress;
+        Assert.IsNotNull(progress);
+        Assert.AreEqual(string.Empty, progress.Value.DriveLetter, "The drive belongs to the channel, not the frame.");
+        Assert.AreEqual(3L, progress.Value.RecordsProcessed);
+        Assert.AreEqual(3L, progress.Value.TotalRecords);
+        Assert.IsTrue(progress.Value.BytesProcessed > 0);
+        Assert.AreEqual(progress.Value.BytesProcessed, progress.Value.TotalBytes);
+    }
+
+    [TestMethod]
+    public Task ScanProgress_ThrottlesNonFinalFrames()
+    {
+        return WithScanProgressThrottleAsync(TimeSpan.FromMinutes(10), async () =>
+        {
+            using var blockWriter = new RecordingBlockSectionWriter();
+            var host = ScanHost(
+                queryCursor: _ => new UsnJournalCursor(7UL, 0L),
+                scanDrive: (_, _, _, progress, _) =>
+                {
+                    var batches = new List<IReadOnlyList<MftRecord>>();
+                    for (var i = 0; i < 20; i++)
+                    {
+                        progress?.Report(new BlockWriteProgress(i, i * 100, 20, 2000));
+                        batches.Add([new MftRecord((ulong)i, 0, new MftRecordFields(1, FileAttributes.Archive, 100), $"r{i}.txt", null)]);
+                    }
+
+                    return batches;
+                });
+            await using var harness = new HostChannelHarness(host, blockWriter);
+
+            var frames = await ScanFramesAsync(harness, 'C', "mftlib-throttle-C");
+
+            var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
+            // With a 10-minute interval the burst of 20 reports emits at most one initial frame,
+            // one flush of the newest throttled report, and the final frame before ScanReady.
+            Assert.IsTrue(progressFrames.Count >= 1, "At least one progress frame must be emitted.");
+            Assert.IsTrue(progressFrames.Count <= 3,
+                $"Expected at most 3 progress frames due to throttling, but got {progressFrames.Count}");
+            var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
+            var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
+            Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "The final progress frame immediately precedes ScanReady.");
+        });
+    }
 }
