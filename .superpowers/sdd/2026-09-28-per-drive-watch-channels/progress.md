@@ -374,3 +374,44 @@ Task B8: complete (commits ca649bb..1534032, review clean after round 3).
 Task FX2: review (codex, task-FX2-review.md): 0/0/0 Approved. complete (commits 2a8b517..a45d467).
 B8 and FX2 cherry-picked onto impl: 2889deb 4752850 6944e86 b828a93 d558d68 
 WAVE 7 MERGED (B8, CB, FX, FX2): impl head 2889deb. Suite + aislop running: scratch/coverage-wave7.log
+Wave 7 merged head 2889deb: suite 1928 total, 1922 passed, 6 skipped, 0 failed; line 98.5%; aislop = gate. MFTLib(other) 2763/2779 = 99.42% (TRANCHE B target met); MFTLib.Index 3352/3401 = 98.56%.
+Pushed impl and task branches; workspace snapshot pushed.
+Wave 8: worktrees 265-D1, 265-D2, 265-D3 (codex gpt-5.6-sol docs lanes, no-commit; common context docs-common.md) and 265-CI (Claude sonnet, MFTLib.Index coverage lane for V1) at 2889deb.
+Task CI: implementer DONE, commit 729863f (agent ae403c0b8ace2cea5; MFTLib.Index 98.56% -> 98.79%, 8 lines covered, 22 class b, 19 class c; suite 1933/1927/0 failed; aislop gate). Review dispatched (codex)
+Task D3: codex gpt-5.6-sol lane EXIT 0; controller committed 571170f (README 268 lines changed, index-format 57). Review dispatched (codex)
+Task CI: review (codex, task-CI-review.md): 0 Critical, 2 Important: guard-blocked lines labeled (b) without the right reason (RULING CI-Q1: class (b)-guard); three race-reachable blocks labeled dead.
+Task CI: fix round 1/5 dispatched (resume ae403c0b8ace2cea5): reclassify, tests where a seam exists, FIX_BASE 729863f
+Task D2: codex lane EXIT 0; controller committed b64d625 (4 docs files). Review dispatched (codex)
+Task D3: review (codex, task-D3-review.md): 0 Critical, 4 Important: restart after rescanning an unresumable drive; fault disposition; catch-up non-advancement rule; harness fault surface (ruled: belongs in D2's broker-testing.md unless README names the harness).
+Task D3: fix round 1/5 dispatched (fresh codex gpt-5.6-sol lane, no-commit), FIX_BASE 571170f
+Task D1: codex lane EXIT 0; controller committed 0a8cae1 (AGENTS.md, CHANGELOG.md). Review dispatched (codex)
+Task D3: fix round 1 committed by controller as 7bb9bb7 (codex lane). Re-review r1 dispatched (codex)
+Task CI: fix round 1 report-only (CI-Q1 applied; 3 race blocks reclassified b-race; counts a 8, b 33, c 8).
+Task CI: re-review r1 dispatched (codex)
+Task D2: review (codex, task-D2-review.md): 0 Critical, 2 Important, 1 Minor: open-time loss already Faulted; owner-gap behaviors undocumented; 'no longer' wording.
+Task D2: fix round 1/5 dispatched (fresh codex gpt-5.6-sol lane, no-commit), FIX_BASE b64d625
+Task D3: fix round 1/5 (4 addressed incl. ruling on item 4, 0 open; commits 571170f..7bb9bb7). Re-review task-D3-rereview-r1.md
+Task D3: complete (commits 2889deb..7bb9bb7). Cherry-picked onto impl: 4019e8c bbdc525 
+Task CI: fix round 1/5 (1 addressed, 1 open - Rescan.cs:218 reachable via a null exception message; FileIndex.cs:371-372 reachable by mutating the caller's Drives list after open -> RULING CI-Q2: copy Drives at open; commits none, report-only). Re-review task-CI-rereview-r1.md
+Task CI: fix round 2/5 dispatched (resume ae403c0b8ace2cea5), FIX_BASE 729863f
+Task D2: fix round 1 committed by controller as 9c3962d (codex lane). Re-review r1 dispatched (codex)
+Task D1: review (codex, task-D1-review.md): 0 Critical, 4 Important: CHANGELOG overstates StartWatchingAsync readiness; wrong block format version/header size; stale ReadRecordBatches signature; 'no longer' history note.
+Task D1: fix round 1/5 dispatched (fresh codex gpt-5.6-sol lane, no-commit), FIX_BASE 0a8cae1
+Task D2: fix round 1/5 (2 addressed + Minor, 0 open; commits b64d625..9c3962d). Re-review task-D2-rereview-r1.md
+Task D2: complete (commits 2889deb..9c3962d). Cherry-picked onto impl: 1091478 7f0ca66 
+Task CI: fix round 2 implemented, commit df8ee99 (FileIndex copies Drives at open; MFTLib.Index 98.82%; 40 lines left: 33 b, 7 c; suite 1935/1929/0 failed). Re-review r2 dispatched (codex)
+Task CI: fix round 2/5 (1 of 2 parts addressed; open: constructor re-enumerates the caller list for runtimes; new: unbounded await-using disposal; RED item for a coverage test ruled out by CB-Q1; commits 729863f..df8ee99). Re-review task-CI-rereview-r2.md
+Task CI: fix round 3/5 dispatched (resume ae403c0b8ace2cea5), FIX_BASE df8ee99
+Task D1: fix round 1 committed by controller as dce0b4d (codex lane). Re-review r1 dispatched (codex)
+Task CI: fix round 3 implemented, commit dd4024f. Re-review r3 dispatched (codex)
+Task D1: fix round 1/5 (4 addressed, 0 open; commits 0a8cae1..dce0b4d). Re-review task-D1-rereview-r1.md
+Task D1: complete (commits 2889deb..dce0b4d). Cherry-picked onto impl: 3c41c61 f2af7f4 
+Task CI: fix round 3/5 (2 addressed, 1 new open - no regression test for the constructor fix; commits df8ee99..dd4024f). Re-review task-CI-rereview-r3.md
+Task CI: fix round 4/5 (fresh opus implementer ab89eb90b222424a0), commit 50882db (regression test, RED by mutation). Re-review r4 dispatched (codex)
+Task CI: fix round 4/5 (1 addressed, 0 open; commits dd4024f..50882db). Re-review task-CI-rereview-r4.md
+Task CI: complete (commits 2889deb..50882db). Cherry-picked onto impl: 38fbca3 b1ecbfa c21e7d4 ae15cb5 
+WAVE 8 MERGED (D1, D2, D3, CI): impl head 38fbca3, pushed. Suite + aislop running: scratch/coverage-wave8.log
+Wave 8 merged head 38fbca3: suite 1936 total, 1930 passed, 6 skipped, 0 failed; line 98.6%, branch 96.4%; aislop 99/100 = gate; test-coverage-status.ps1 regression checks passed. MFTLib(other) 2763/2779 = 99.42%; MFTLib.Index 3360/3401 = 98.79%.
+Linux run on 38fbca3 (llamabox, lane af9f11150fc7b2200): GREEN. native 20/20; managed 1669 total, 1585 passed, 0 failed, 84 skipped; line 94.71%. All 12 new plan classes ran and passed (1 Windows-only skip). Report linux-v1-report.md
+Deleted-identifier grep (excluding docs/superpowers and CHANGELOG): hits remain in .editorconfig:168,172 (stale sections for deleted JournalBrokerScanSession files), MFTLib.Tests/BenchmarkRunnerTests.cs:1131 comment, test method names QueryVolumesAsync_* (VolumeQueryClientTests) and ArmScanAndCatchUpAsync_* (BrokerProcessTests.BlockSections) - for the final review fix.
+FINAL WHOLE-BRANCH REVIEW dispatched (codex gpt-5.6-sol high, read-only in impl-265; package review-e65902c..38fbca3.diff 83 commits 3.2 MB; deferred-minors.md 44 lines to triage; output final-review.md)
