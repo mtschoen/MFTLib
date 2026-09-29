@@ -52,12 +52,11 @@ public sealed unsafe partial class BlockFile : IDisposable
     /// </summary>
     internal Action? _disposeStartedForTest;
 
-    BlockFile(string path, long length, bool deleteOnClose, MemoryMappedFile mappedFile,
+    BlockFile(string path, long length, MemoryMappedFile mappedFile,
         MemoryMappedViewAccessor view)
     {
         Path = path;
         Length = length;
-        DeleteOnClose = deleteOnClose;
         _mappedFile = mappedFile;
         _view = view;
         byte* pointer = null;
@@ -68,12 +67,6 @@ public sealed unsafe partial class BlockFile : IDisposable
     public string Path { get; }
 
     public long Length { get; }
-
-    /// <summary>
-    ///     True when this block was created in a no-cache path and therefore owns deletion via
-    ///     <see cref="FileOptions.DeleteOnClose" />, so the process is not required to delete it.
-    /// </summary>
-    public bool DeleteOnClose { get; }
 
     /// <summary>
     ///     Takes one writer access, or reports that disposal has begun and the view is on its way
@@ -183,7 +176,7 @@ public sealed unsafe partial class BlockFile : IDisposable
         BlockFile? block = null;
         try
         {
-            block = new BlockFile(options.Path, length, options.DeleteOnClose, mappedFile, view);
+            block = new BlockFile(options.Path, length, mappedFile, view);
             block.InitializeHeader(options);
             return block;
         }
@@ -211,7 +204,7 @@ public sealed unsafe partial class BlockFile : IDisposable
     ///     by another process.
     /// </summary>
     internal BlockFile(MemoryMappedFile mappedFile, MemoryMappedViewAccessor view, long length)
-        : this(string.Empty, length, deleteOnClose: false, mappedFile, view)
+        : this(string.Empty, length, mappedFile, view)
     {
     }
 
@@ -316,7 +309,7 @@ public sealed unsafe partial class BlockFile : IDisposable
         {
             var (mappedFile, view) = OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: length,
                 fileOptions: FileOptions.None);
-            block = new BlockFile(path, length, deleteOnClose: false, mappedFile, view);
+            block = new BlockFile(path, length, mappedFile, view);
             validation = BlockHeader.Validate(in block.Header, expectedVolumeSerial, length);
             if (validation == BlockValidationResult.Valid)
             {

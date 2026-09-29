@@ -67,7 +67,9 @@ public sealed partial class JournalBrokerHost
             DisposeLateConnection(connection);
             throw;
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        // Anything else, including a connector's own cancellation while the session is alive,
+        // is this connection's failure.
+        catch (Exception exception)
         {
             await WriteControlErrorAsync(session, requestId,
                     $"Drive {drive} channel pipe '{pipeName}' could not be connected: {exception.Message}")

@@ -194,6 +194,63 @@ public partial class JournalBrokerHostChannelTests
         StringAssert.Contains(frames[0].Message, "CaughtUp");
     }
 
+    [DataTestMethod]
+    [DataRow("truncated section name")]
+    [DataRow("negative name count")]
+    [DataRow("name count beyond the payload")]
+    public async Task DriveChannel_MalformedRequestPayload_WritesErrorAndOtherRequestsContinue(string malformation)
+    {
+        var payload = new List<byte>();
+        payload.AddRange(BitConverter.GetBytes(malformation == "truncated section name" ? 100 : 0));
+        if (malformation != "truncated section name")
+        {
+            payload.AddRange(BitConverter.GetBytes((int)BrokerScanProfile.Full));
+            payload.AddRange(BitConverter.GetBytes(malformation == "negative name count" ? -1 : int.MaxValue));
+        }
+        else
+        {
+            payload.AddRange(new byte[] { 0x43, 0x00 });
+        }
+
+        var host = CreateHost(queryVolumeInfo: _ => Volume);
+        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
+        var pipe = await harness.OpenChannelAsync('C');
+
+        await HostChannelHarness.WriteFrameAsync(pipe, writer =>
+        {
+            var frame = writer.GetSpan(5 + payload.Count);
+            BitConverter.TryWriteBytes(frame, 1 + payload.Count);
+            frame[4] = (byte)BrokerFrameKind.ArmAndScan;
+            payload.ToArray().CopyTo(frame[5..]);
+            writer.Advance(5 + payload.Count);
+        });
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
+
+        Assert.AreEqual(1, frames.Count);
+        Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
+        StringAssert.Contains(frames[0].Message, "malformed");
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 8, "C"));
+        Assert.AreEqual(BrokerFrameKind.VolumeInfo, (await harness.ReadControlAsync()).Kind,
+            "The session keeps serving after one channel's malformed request.");
+    }
+
+    [TestMethod]
+    public async Task OpenChannel_ConnectorThrowsOperationCanceled_RepliesErrorWithRequestId()
+    {
+        var host = CreateHost(queryVolumeInfo: _ => Volume);
+        await using var harness = new HostChannelHarness(host,
+            connectChannel: (_, _) => Task.FromCanceled<Stream>(new CancellationToken(true)));
+
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 21, "C", "cancelled"));
+        var reply = await harness.ReadControlAsync();
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 22, "C"));
+        var next = await harness.ReadControlAsync();
+
+        Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
+        Assert.AreEqual(21u, reply.RequestId);
+        Assert.AreEqual(22u, next.RequestId);
+    }
+
     static JournalBrokerHost CreateHost(
         UsnJournalCursorQuery? queryCursor = null,
         MftRecordBatchSource? scanDrive = null,

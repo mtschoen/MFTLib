@@ -130,7 +130,7 @@ public static partial class BrokerProtocol
             throw new InvalidDataException($"Unknown broker scan profile: {(int)profile}");
         }
 
-        var nameCount = payload.Int32();
+        var nameCount = payload.Count(minimumItemBytes: 4);
         var keepFileNames = new List<string>(nameCount);
         while (keepFileNames.Count < nameCount)
         {
@@ -143,7 +143,7 @@ public static partial class BrokerProtocol
     static BrokerFrame ReadJournalBatchFrame(ref PayloadReader payload)
     {
         var cursor = ReadCursor(ref payload);
-        var entryCount = payload.Int32();
+        var entryCount = payload.EntryCount();
         var entries = new List<UsnJournalEntry>(entryCount);
         while (entries.Count < entryCount)
         {

@@ -10,8 +10,11 @@ namespace MFTLib;
 /// </summary>
 public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
 {
-    // How long an exiting broker waits for its queued diagnostics lines to reach the log.
-    static readonly TimeSpan DiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
+    static readonly TimeSpan DefaultDiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
+
+    // How long an exiting broker waits for its queued diagnostics lines to reach the log. A test
+    // lifts the bound to prove the wait happens.
+    internal static TimeSpan _diagnosticsFlushTimeout = DefaultDiagnosticsFlushTimeout;
 
     // Exiting the process cannot be exercised from an in-process unit test (it would
     // kill the test host), so tests inject a fake. Production always uses Environment.Exit.
@@ -43,12 +46,20 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
         // ServeAsync down to the native journal wait uses ConfigureAwait(false), so
         // the first incomplete await already leaves the caller's context and no
         // continuation is ever posted back to this thread for GetResult() to block on.
-        JournalBrokerHost.CreateDefault()
-            .ServeAsync(control, ConnectDrivePipeAsync, new RealBlockSectionWriter(), CancellationToken.None)
-            // aislop-ignore-next-line csharp-sync-over-async -- every await in the ServeAsync chain uses ConfigureAwait(false), so no continuation needs the calling thread's SynchronizationContext and GetResult() cannot deadlock even when the entry thread has one
-            .GetAwaiter().GetResult();
+        // A session that fails still leaves through the flush, so its last diagnostics lines, the
+        // ones that explain the failure, reach the log before the exception ends the process.
+        try
+        {
+            JournalBrokerHost.CreateDefault()
+                .ServeAsync(control, ConnectDrivePipeAsync, new RealBlockSectionWriter(), CancellationToken.None)
+                // aislop-ignore-next-line csharp-sync-over-async -- every await in the ServeAsync chain uses ConfigureAwait(false), so no continuation needs the calling thread's SynchronizationContext and GetResult() cannot deadlock even when the entry thread has one
+                .GetAwaiter().GetResult();
+        }
+        finally
+        {
+            FlushDiagnostics();
+        }
 
-        FlushDiagnostics();
         _exitProcess(0);
     }
 
@@ -74,11 +85,12 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
     static void FlushDiagnostics()
     {
         // aislop-ignore-next-line csharp-sync-over-async -- the flush awaits only the diagnostics writer's own drain task, which never posts to the calling thread's SynchronizationContext
-        _ = BrokerDiagnostics.FlushAsync(CancellationToken.None).Wait(DiagnosticsFlushTimeout);
+        _ = BrokerDiagnostics.FlushAsync(CancellationToken.None).Wait(_diagnosticsFlushTimeout);
     }
 
     internal static void ResetToDefaults()
     {
         _exitProcess = Environment.Exit;
+        _diagnosticsFlushTimeout = DefaultDiagnosticsFlushTimeout;
     }
 }

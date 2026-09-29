@@ -58,6 +58,24 @@ public sealed partial class JournalBrokerHost
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         try
         {
+            await AnswerControlRequestAsync(session, request).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (session.Token.IsCancellationRequested)
+        {
+            // The session is ending; its drain accounts for this request.
+        }
+        catch (ClientDisconnectedException)
+        {
+            // A reply that cannot reach the client ends the whole session: there is nobody left to
+            // serve, so every channel is cancelled and the control read loop returns.
+            await session.EndAsync().ConfigureAwait(false);
+        }
+    }
+
+    async Task AnswerControlRequestAsync(ControlSession session, BrokerFrame request)
+    {
+        try
+        {
             switch (request.Kind)
             {
                 case BrokerFrameKind.OpenChannel:
@@ -78,15 +96,11 @@ public sealed partial class JournalBrokerHost
                     break;
             }
         }
-        catch (OperationCanceledException) when (session.Token.IsCancellationRequested)
+        catch (OperationCanceledException exception) when (!session.Token.IsCancellationRequested)
         {
-            // The session is ending; its drain accounts for this request.
-        }
-        catch (ClientDisconnectedException)
-        {
-            // A reply that cannot reach the client ends the whole session: there is nobody left to
-            // serve, so every channel is cancelled and the control read loop returns.
-            await session.EndAsync().ConfigureAwait(false);
+            // A source cancelled on its own while the session is alive: the request failed, and
+            // it still gets its one reply.
+            await WriteControlErrorAsync(session, request.RequestId, exception.Message).ConfigureAwait(false);
         }
     }
 
