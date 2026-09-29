@@ -1,5 +1,7 @@
 using System.IO.Pipes;
 using System.Runtime.Versioning;
+using MFTLib.Tests.TestSupport;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -62,35 +64,61 @@ public class DefaultElevatedEntryRunnerTests
         var pipeName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
         int? exitCode = null;
         DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
-        DefaultElevatedEntryRunner._diagnosticsFlushTimeout = Timeout.InfiniteTimeSpan;
 
-        // The first diagnostics line parks the log writer, so a line is still queued when the
-        // session fails; the runner may leave only once its flush has seen that line through.
-        var appendEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseAppend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The first diagnostics line parks the log writer on a gate, so lines are still queued when
+        // the session fails. The clock is never advanced, so the flush's bound cannot end the wait.
+        var sink = new TestGate();
+        var appended = new List<string>();
         BrokerDiagnostics.Enable("broker");
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(_ =>
+        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
         {
-            appendEntered.TrySetResult();
-            releaseAppend.Task.Wait(TimeSpan.FromSeconds(10));
+            sink.MarkEntered();
+            sink.WaitForReleaseAsync(CancellationToken.None).WaitAsync(HangGuard, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            lock (appended)
+            {
+                appended.Add(line);
+            }
         }));
+        var clock = new FlushBoundSignalingClock();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cts = new CancellationTokenSource(HangGuard);
         await using var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(pipeName));
+        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(clock).RunBroker(pipeName));
         await server.WaitForConnectionAsync(cts.Token);
 
         // A frame of no known kind ends the session with InvalidDataException.
         await server.WriteAsync(new byte[] { 1, 0, 0, 0, 200 }, cts.Token);
         await server.FlushAsync(cts.Token);
-        await appendEntered.Task.WaitAsync(cts.Token);
+        await sink.Entered.WaitAsync(cts.Token);
+        await clock.FlushBoundStarted.WaitAsync(cts.Token);
 
-        var finished = await Task.WhenAny(runTask, Task.Delay(TimeSpan.FromMilliseconds(500), cts.Token));
-        Assert.AreNotSame(runTask, finished, "The runner left while a diagnostics line was still queued.");
-
-        releaseAppend.TrySetResult();
+        Assert.IsFalse(runTask.IsCompleted, "The runner must wait for the queued lines while the sink is held.");
+        sink.Release();
         await Assert.ThrowsExceptionAsync<InvalidDataException>(() => runTask.WaitAsync(cts.Token));
         Assert.IsNull(exitCode);
+        lock (appended)
+        {
+            Assert.IsTrue(appended.Any(line => line.Contains("frame read kind=200", StringComparison.Ordinal)),
+                "The line logged as the session failed must reach the log before the runner leaves.");
+        }
+    }
+
+    static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(10);
+
+    // A clock that is never advanced and signals when the runner starts its exit flush's bound,
+    // the only timer the runner creates on it.
+    sealed class FlushBoundSignalingClock : FakeTimeProvider
+    {
+        readonly TaskCompletionSource _flushBoundStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task FlushBoundStarted => _flushBoundStarted.Task;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            _flushBoundStarted.TrySetResult();
+            return base.CreateTimer(callback, state, dueTime, period);
+        }
     }
 }

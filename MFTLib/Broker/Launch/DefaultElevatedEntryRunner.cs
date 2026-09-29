@@ -10,11 +10,22 @@ namespace MFTLib;
 /// </summary>
 public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
 {
-    static readonly TimeSpan DefaultDiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
+    // How long an exiting broker waits for its queued diagnostics lines to reach the log.
+    static readonly TimeSpan DiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
 
-    // How long an exiting broker waits for its queued diagnostics lines to reach the log. A test
-    // lifts the bound to prove the wait happens.
-    internal static TimeSpan _diagnosticsFlushTimeout = DefaultDiagnosticsFlushTimeout;
+    readonly TimeProvider _timeProvider;
+
+    public DefaultElevatedEntryRunner()
+        : this(TimeProvider.System)
+    {
+    }
+
+    /// <summary>A runner whose exit flush is bounded on <paramref name="timeProvider" />, so a test can hold the bound.</summary>
+    /// <param name="timeProvider">The clock of the diagnostics flush's bound at exit.</param>
+    internal DefaultElevatedEntryRunner(TimeProvider timeProvider)
+    {
+        _timeProvider = timeProvider;
+    }
 
     // Exiting the process cannot be exercised from an in-process unit test (it would
     // kill the test host), so tests inject a fake. Production always uses Environment.Exit.
@@ -80,17 +91,21 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
     }
 
     // The session is over and the process is about to exit, so the diagnostics lines still
-    // queued get a bounded wait to reach the log. Lines the wait does not cover are lost with the
-    // process; there is nowhere left to report that, so the wait's outcome is not inspected.
-    static void FlushDiagnostics()
+    // queued get a bounded wait, on the runner's clock, to reach the log. Lines the wait does not
+    // cover are lost with the process; there is nowhere left to report that, so whichever of the
+    // flush and the bound finishes first ends the wait.
+    void FlushDiagnostics()
     {
-        // aislop-ignore-next-line csharp-sync-over-async -- the flush awaits only the diagnostics writer's own drain task, which never posts to the calling thread's SynchronizationContext
-        _ = BrokerDiagnostics.FlushAsync(CancellationToken.None).Wait(_diagnosticsFlushTimeout);
+        using var stopBound = new CancellationTokenSource();
+        var flush = BrokerDiagnostics.FlushAsync(CancellationToken.None);
+        var bound = Task.Delay(DiagnosticsFlushTimeout, _timeProvider, stopBound.Token);
+        // aislop-ignore-next-line csharp-sync-over-async -- the wait covers only the diagnostics writer's drain and a timer, neither of which posts to the calling thread's SynchronizationContext
+        Task.WhenAny(flush, bound).GetAwaiter().GetResult();
+        stopBound.Cancel();
     }
 
     internal static void ResetToDefaults()
     {
         _exitProcess = Environment.Exit;
-        _diagnosticsFlushTimeout = DefaultDiagnosticsFlushTimeout;
     }
 }
