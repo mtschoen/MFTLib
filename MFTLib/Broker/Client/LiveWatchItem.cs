@@ -21,8 +21,7 @@ internal abstract record LiveWatchItem
 
 /// <summary>
 ///     The item-level counterpart to <see cref="JournalBatchSource" />: yields a drive's batches
-///     and its catch-up markers. Internal because the only consumer is
-///     <see cref="BrokerIndexWatchSource" />; the public batch-only surface stays
+///     and its catch-up markers. Internal; the public batch-only surface stays
 ///     <see cref="JournalBatchSource" />.
 /// </summary>
 internal delegate IAsyncEnumerable<LiveWatchItem> LiveWatchItemSource(

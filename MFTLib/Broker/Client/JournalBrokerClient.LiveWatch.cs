@@ -375,8 +375,7 @@ public sealed partial class JournalBrokerClient
 
     /// <summary>
     ///     Returns the item-level counterpart to <see cref="CreateBatchSource" />, carrying the
-    ///     drive's catch-up markers alongside its batches. Internal: the only consumer is
-    ///     <see cref="BrokerIndexWatchSource" />.
+    ///     drive's catch-up markers alongside its batches. Internal to the assembly.
     /// </summary>
     internal LiveWatchItemSource CreateLiveWatchItemSource()
     {

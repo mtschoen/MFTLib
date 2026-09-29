@@ -38,16 +38,6 @@ public sealed class BrokerMftBlockProducer
 
     public MftBlockProducer CreateProducer() => ProduceAsync;
 
-    /// <summary>
-    ///     The live-watch half of this producer. The index starts one stream on it over every
-    ///     drive it wants watched, and arms and disarms single drives on that stream through the
-    ///     same object; the broker connection is the same borrowed one the producer used.
-    /// </summary>
-    public IIndexWatchSource CreateWatchSource()
-    {
-        return new BrokerIndexWatchSource(_connectAsync);
-    }
-
     async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
         var drive = JournalBrokerClient.NormalizeDriveLetter(request.DriveLetter.ToString());
