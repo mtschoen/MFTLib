@@ -98,7 +98,7 @@ public partial class JournalBrokerHostRealSeamsTests : BrokerBlockTestBase
 
     static async Task<List<BrokerFrame>> ServeDefaultScanAsync(RecordingBlockSectionWriter writer)
     {
-        MFTLibNative._readUsnJournal = (_, nextUsn, journalId) => BuildEmptyWatchResult(journalId, nextUsn + 100);
+        MFTLibNative._readUsnJournal = (_, nextUsn, journalId, _) => BuildEmptyWatchResult(journalId, nextUsn + 100);
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
         var (client, server) = DuplexStream.CreatePair();
         await using var clientLifetime = client;

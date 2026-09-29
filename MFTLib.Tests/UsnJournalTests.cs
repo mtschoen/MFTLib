@@ -153,7 +153,7 @@ public class UsnJournalTests
         Marshal.StructureToPtr(nativeResult, resultPtr, false);
 
         FileUtilities._getVolumeHandle = _ => FakeHandle();
-        MFTLibNative._readUsnJournal = (_, _, _) => resultPtr;
+        MFTLibNative._readUsnJournal = (_, _, _, _) => resultPtr;
         MFTLibNative._freeUsnJournalResult = _ =>
         {
             Marshal.FreeHGlobal(entriesPtr);
@@ -190,7 +190,7 @@ public class UsnJournalTests
         Marshal.StructureToPtr(nativeResult, resultPtr, false);
 
         FileUtilities._getVolumeHandle = _ => FakeHandle();
-        MFTLibNative._readUsnJournal = (_, _, _) => resultPtr;
+        MFTLibNative._readUsnJournal = (_, _, _, _) => resultPtr;
         MFTLibNative._freeUsnJournalResult = _ => Marshal.FreeHGlobal(resultPtr);
 
         using var volume = MftVolume.Open("C");
@@ -212,7 +212,7 @@ public class UsnJournalTests
         Marshal.StructureToPtr(nativeResult, resultPtr, false);
 
         FileUtilities._getVolumeHandle = _ => FakeHandle();
-        MFTLibNative._readUsnJournal = (_, _, _) => resultPtr;
+        MFTLibNative._readUsnJournal = (_, _, _, _) => resultPtr;
         MFTLibNative._freeUsnJournalResult = _ => Marshal.FreeHGlobal(resultPtr);
 
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
@@ -227,7 +227,7 @@ public class UsnJournalTests
     public void ReadUsnJournal_NullPointer_Throws()
     {
         FileUtilities._getVolumeHandle = _ => FakeHandle();
-        MFTLibNative._readUsnJournal = (_, _, _) => IntPtr.Zero;
+        MFTLibNative._readUsnJournal = (_, _, _, _) => IntPtr.Zero;
 
         Assert.ThrowsException<InvalidOperationException>(() =>
         {

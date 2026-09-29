@@ -72,8 +72,20 @@ public sealed partial class MftVolume
     /// </summary>
     public (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor) ReadUsnJournal(UsnJournalCursor since)
     {
+        return ReadUsnJournalBounded(since, 0);
+    }
+
+    /// <summary>
+    ///     Reads at most <paramref name="maximumBufferReads" /> journal buffers (64 KB each) since the
+    ///     given cursor; 0 reads to the journal tip. The updated cursor resumes where the read stopped.
+    /// </summary>
+    internal (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor) ReadUsnJournalBounded(
+        UsnJournalCursor since, int maximumBufferReads)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumBufferReads);
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var resultPtr = MFTLibNative._readUsnJournal(_volumeHandle, since.NextUsn, since.JournalId);
+        var resultPtr = MFTLibNative._readUsnJournal(_volumeHandle, since.NextUsn, since.JournalId,
+            (uint)maximumBufferReads);
         if (resultPtr == IntPtr.Zero)
         {
             throw new InvalidOperationException("ReadUsnJournal returned null");

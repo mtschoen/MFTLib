@@ -217,7 +217,8 @@ EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
 EXPORT void FreeUsnJournalInfo(const UsnJournalInfo* info) { std::unique_ptr<const UsnJournalInfo> owned(info); }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
-EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId) {
+EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId,
+                                        uint32_t maximumBufferReads) {
     auto* result = new UsnJournalResult{};
     result->journalId = journalId;
 
@@ -255,7 +256,8 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
 
     int64_t nextUsn = startUsn;
 
-    for (;;) {
+    // maximumBufferReads == 0 reads to the journal tip; otherwise at most that many 64 KB buffers.
+    for (uint32_t reads = 0; maximumBufferReads == 0 || reads < maximumBufferReads; reads++) {
         readData.StartUsn = nextUsn;
 
         DWORD bytesReturned = 0;

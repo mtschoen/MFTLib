@@ -29,7 +29,7 @@ static class MFTLibNative
     internal static Func<string, string?, MatchFlags, uint, IntPtr> _parseMftFromFile = NativeParseMFTFromFile;
     internal static Func<SafeHandle, IntPtr> _queryUsnJournal = NativeQueryUsnJournal;
     internal static Action<IntPtr> _freeUsnJournalInfo = NativeFreeUsnJournalInfo;
-    internal static Func<SafeHandle, long, ulong, IntPtr> _readUsnJournal = NativeReadUsnJournal;
+    internal static Func<SafeHandle, long, ulong, uint, IntPtr> _readUsnJournal = NativeReadUsnJournal;
     internal static Action<IntPtr> _freeUsnJournalResult = NativeFreeUsnJournalResult;
     internal static Func<SafeHandle, long, ulong, IntPtr> _watchUsnJournalBatch = NativeWatchUsnJournalBatch;
     internal static Func<SafeHandle, long, ulong, SafeHandle, IntPtr> _watchUsnJournalBatchCancelable =
@@ -154,7 +154,8 @@ static class MFTLibNative
     static extern void NativeFreeUsnJournalInfo(IntPtr info);
 
     [DllImport(LibraryName, EntryPoint = "ReadUsnJournal", CallingConvention = CallingConvention.Cdecl)]
-    static extern IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalId);
+    static extern IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalId,
+        uint maximumBufferReads);
 
     [DllImport(LibraryName, EntryPoint = "FreeUsnJournalResult", CallingConvention = CallingConvention.Cdecl)]
     static extern void NativeFreeUsnJournalResult(IntPtr result);
