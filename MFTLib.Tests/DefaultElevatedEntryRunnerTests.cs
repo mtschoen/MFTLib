@@ -237,22 +237,31 @@ public class DefaultElevatedEntryRunnerTests
         await using var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         var runTask = Task.Run(() => new DefaultElevatedEntryRunner(clock).RunBroker(pipeName));
-        await server.WaitForConnectionAsync(cts.Token);
-
-        // A frame of no known kind ends the session with InvalidDataException.
-        await server.WriteAsync(new byte[] { 1, 0, 0, 0, 200 }, cts.Token);
-        await server.FlushAsync(cts.Token);
-        await sink.Entered.WaitAsync(cts.Token);
-        await clock.FlushBoundStarted.WaitAsync(cts.Token);
-
-        Assert.IsFalse(runTask.IsCompleted, "The runner must wait for the queued lines while the sink is held.");
-        sink.Release();
-        await Assert.ThrowsExceptionAsync<InvalidDataException>(() => runTask.WaitAsync(cts.Token));
-        Assert.IsNull(exitCode);
-        lock (appended)
+        try
         {
-            Assert.IsTrue(appended.Any(line => line.Contains("frame read kind=200", StringComparison.Ordinal)),
-                "The line logged as the session failed must reach the log before the runner leaves.");
+            await server.WaitForConnectionAsync(cts.Token);
+
+            // A frame of no known kind ends the session with InvalidDataException.
+            await server.WriteAsync(new byte[] { 1, 0, 0, 0, 200 }, cts.Token);
+            await server.FlushAsync(cts.Token);
+            await sink.Entered.WaitAsync(cts.Token);
+            await clock.FlushBoundStarted.WaitAsync(cts.Token);
+
+            Assert.IsFalse(runTask.IsCompleted, "The runner must wait for the queued lines while the sink is held.");
+            sink.Release();
+            await Assert.ThrowsExceptionAsync<InvalidDataException>(() => runTask.WaitAsync(cts.Token));
+            Assert.IsNull(exitCode);
+            lock (appended)
+            {
+                Assert.IsTrue(appended.Any(line => line.Contains("frame read kind=200", StringComparison.Ordinal)),
+                    "The line logged as the session failed must reach the log before the runner leaves.");
+            }
+        }
+        finally
+        {
+            // On every exit the sink is released, so a runner blocked in the flush can finish.
+            sink.Release();
+            await EnsureRunnerLeavesAsync(runTask, server);
         }
     }
 
@@ -299,9 +308,11 @@ public class DefaultElevatedEntryRunnerTests
             await pipe.DisposeAsync();
         }
 
+        // A runner that faulted has left; only its failure to leave is a problem here.
+        var left = runTask.ContinueWith(static _ => { }, TaskScheduler.Default);
         try
         {
-            await runTask.WaitAsync(HangGuard);
+            await left.WaitAsync(HangGuard);
         }
         catch (TimeoutException)
         {
