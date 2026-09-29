@@ -2,6 +2,16 @@
 
 This file is the cross-tool source of truth for coding agents working in this repository. Tool-specific instruction files (`CLAUDE.md`, etc.) import it via `@AGENTS.md`.
 
+## No backward compatibility
+
+MFTLib has never shipped to an external consumer. file-wizard and git-wizard are its only consumers; they are dogfooding projects and are migrated in their pin-bump pull requests. Breaking changes are the purpose of 0.3.0.
+
+- A breaking change is never a cost, a risk, or a trade-off. Do not list it as one in a plan, a specification, a review, or a pull request, and do not weigh it when choosing between designs.
+- Delete in place. Do not keep old overloads, `[Obsolete]` members, flags or enum members that preserve previous behavior, transitional wire fields, dual read paths, or a parameter "in case a caller needs it".
+- A constant or format that changes does not need version-bump ceremony for its own sake. A cache block in an old format is discarded and the drive cold-scans.
+- Describe what each consumer must change as plain migration work, listed by file.
+- Do not ask the owner whether to preserve compatibility. The answer is no.
+
 ## Build Commands
 
 **Use MSBuild with `-p:Platform=x64` for the native C++ DLL**, and `dotnet build` for managed projects:
