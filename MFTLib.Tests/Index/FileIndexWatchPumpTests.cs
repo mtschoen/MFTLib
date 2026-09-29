@@ -1,0 +1,288 @@
+using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace MFTLib.Tests.Index;
+
+[TestClass]
+public class FileIndexWatchPumpTests
+{
+    public TestContext TestContext { get; set; } = null!;
+
+    CancellationToken Token => TestContext.CancellationTokenSource.Token;
+
+    [TestMethod]
+    public async Task StartWatchingAsync_PumpsBatchesIntoTheIndexAndRaisesChanged()
+    {
+        using var harness = new WatchHarness();
+        var changes = new List<FileChange>();
+        harness.Index.Changed += change => changes.Add(change);
+
+        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(recordNumber: 9, "new.txt"));
+        await harness.Index.StopWatchingAsync('T', Token);
+
+        Assert.AreEqual(1, changes.Count);
+        Assert.AreEqual(FileChangeKind.Created, changes[0].Kind);
+        Assert.AreEqual("new.txt", changes[0].Entry.Name);
+    }
+
+    [TestMethod]
+    public async Task StartWatchingAsync_ResumesEachDriveFromItsHeaderCursor()
+    {
+        using var harness = new WatchHarness();
+        harness.SetNextProducedCursor('T', journalId: 11, nextUsn: 4242);
+        await harness.Index.RescanAsync('T', Token);
+        await harness.Index.StartWatchingAsync('T', Token);
+
+        var target = harness.Source.Starts.Single();
+        Assert.AreEqual('T', target.DriveLetter);
+        Assert.AreEqual(11ul, target.JournalId);
+        Assert.AreEqual(4242L, target.NextUsn);
+
+        await harness.Index.StopWatchingAsync('T', Token);
+    }
+
+    [TestMethod]
+    public async Task StartWatchingAsync_EachDriveStartsFromItsOwnHeaderCursor()
+    {
+        using var harness = new WatchHarness('T', 'U');
+        harness.SetNextProducedCursor('T', journalId: 11, nextUsn: 4242);
+        harness.SetNextProducedCursor('U', journalId: 22, nextUsn: 8484);
+        await harness.Index.RescanAsync('T', Token);
+        await harness.Index.RescanAsync('U', Token);
+
+        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync('U', Token);
+
+        CollectionAssert.AreEqual(new[] { new IndexWatchTarget('T', 11, 4242) },
+            harness.Source.StartsFor('T').ToArray());
+        CollectionAssert.AreEqual(new[] { new IndexWatchTarget('U', 22, 8484) },
+            harness.Source.StartsFor('U').ToArray());
+    }
+
+    [TestMethod]
+    public async Task StopWatchingAsync_SurfacesASubscriberFaultAndKeepsPumpingUntilThen()
+    {
+        using var harness = new WatchHarness();
+        harness.Index.Changed += _ => throw new InvalidOperationException("subscriber failed");
+        var delivered = 0;
+        harness.Index.Changed += _ => delivered++;
+
+        await harness.Index.StartWatchingAsync('T', Token);
+        var handle = harness.Source.HandleFor('T');
+        await handle.Publish(WatchHarness.Batch(recordNumber: 9, "one.txt"));
+        await handle.Publish(WatchHarness.Batch(recordNumber: 10, "two.txt"));
+
+        var fault = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
+        Assert.AreEqual("subscriber failed", fault.Message);
+        Assert.AreEqual(2, delivered);
+    }
+
+    [TestMethod]
+    public async Task WatchFaulted_AnnouncesTheFirstSubscriberFaultImmediatelyAndOnlyOnce()
+    {
+        using var harness = new WatchHarness();
+        harness.Index.Changed += _ => throw new InvalidOperationException("subscriber failed");
+
+        await harness.Index.StartWatchingAsync('T', Token);
+        var handle = harness.Source.HandleFor('T');
+        await handle.Publish(WatchHarness.Batch(recordNumber: 9, "one.txt"));
+
+        var faults = harness.Faults;
+        Assert.AreEqual(1, faults.Count);
+        Assert.AreEqual(WatchFaultKind.Subscriber, faults[0].Kind);
+        Assert.AreEqual('T', faults[0].DriveLetter);
+        Assert.AreEqual("subscriber failed", faults[0].Exception.Message);
+
+        await handle.Publish(WatchHarness.Batch(recordNumber: 10, "two.txt"));
+        Assert.AreEqual(1, harness.Faults.Count);
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
+    }
+
+    [TestMethod]
+    public async Task WatchFaulted_AnnouncesAChannelFaultNamingTheDrive()
+    {
+        using var harness = new WatchHarness();
+        await harness.Index.StartWatchingAsync('T', Token);
+
+        harness.Source.HandleFor('T').LoseChannel(new IOException("the broker died"));
+        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
+
+        var thrown = await Assert.ThrowsExceptionAsync<IOException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
+        Assert.AreEqual("the broker died", thrown.Message);
+        Assert.AreSame(fault.Exception, thrown);
+        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.AreEqual('T', fault.DriveLetter);
+    }
+
+    [TestMethod]
+    public async Task StartWatchingAsync_ReportsAnIndependentSourceOperationCanceledExceptionThroughTheStart()
+    {
+        using var harness = new WatchHarness();
+        var sourceFault = new OperationCanceledException("source aborted");
+        harness.Source.FailStart(sourceFault);
+
+        // The source throws before it returns a handle, so the start itself reports the failure,
+        // as the source's own exception rather than as a cancellation of this call.
+        var thrown = await Assert.ThrowsExceptionAsync<OperationCanceledException>(
+            () => harness.Index.StartWatchingAsync('T', Token));
+
+        Assert.AreSame(sourceFault, thrown);
+        Assert.AreEqual(0, harness.Faults.Count, "reported once, through the start");
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual("source aborted", harness.DriveFor('T').WatchFailureMessage);
+
+        // The failed start leaves the watch requested with no instance, so a stop has nothing to
+        // rethrow and clears the faulted state.
+        await harness.Index.StopWatchingAsync('T', Token);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
+    }
+
+    [TestMethod]
+    public async Task WatchFaulted_DoesNotFireForAnOrdinaryStop()
+    {
+        using var harness = new WatchHarness();
+
+        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(recordNumber: 9, "one.txt"));
+        await harness.Index.StopWatchingAsync('T', Token);
+
+        Assert.AreEqual(0, harness.Faults.Count);
+    }
+
+    [TestMethod]
+    public async Task WatchFaulted_SwallowsAThrowingFaultHandlerAndStillRethrowsTheOriginal()
+    {
+        using var harness = new WatchHarness();
+        harness.Index.WatchFaulted += _ => throw new NotSupportedException("fault handler failed");
+        harness.Index.Changed += _ => throw new InvalidOperationException("subscriber failed");
+
+        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(recordNumber: 9, "one.txt"));
+
+        var fault = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
+        Assert.AreEqual("subscriber failed", fault.Message);
+    }
+
+    [TestMethod]
+    public async Task SubscriberOperationCanceledException_IsReportedAndRethrownAfterPumpingContinues()
+    {
+        using var harness = new WatchHarness();
+        var subscriberFault = new OperationCanceledException("subscriber cancelled");
+        harness.Index.Changed += _ => throw subscriberFault;
+        var delivered = 0;
+        harness.Index.Changed += _ => delivered++;
+
+        await harness.Index.StartWatchingAsync('T', Token);
+        var handle = harness.Source.HandleFor('T');
+        await handle.Publish(WatchHarness.Batch(recordNumber: 9, "one.txt"));
+        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.AreEqual(WatchFaultKind.Subscriber, harness.Faults[0].Kind);
+
+        await handle.Publish(WatchHarness.Batch(recordNumber: 10, "two.txt"));
+        var fault = await Assert.ThrowsExceptionAsync<OperationCanceledException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
+
+        Assert.AreSame(subscriberFault, fault);
+        Assert.AreEqual(2, delivered);
+        Assert.AreEqual(1, harness.Faults.Count);
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_StopsTheWatchBeforeReleasingBlocks()
+    {
+        using var harness = new WatchHarness();
+        var applying = harness.TrackGate();
+        harness.Index.Changed += _ =>
+        {
+            applying.MarkEntered();
+            applying.WaitForRelease();
+        };
+        await harness.Index.StartWatchingAsync('T', Token);
+        var handle = harness.Source.HandleFor('T');
+        _ = handle.Queue(WatchHarness.Batch(recordNumber: 9, "one.txt"));
+        await applying.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+        var producedBlock = harness.BlockFor('T');
+
+        var dispose = harness.Index.DisposeAsync().AsTask();
+
+        Assert.IsFalse(dispose.IsCompleted, "disposal waits for the pump that is still applying");
+        Assert.AreEqual(WatchHarness.NextUsn + 100, producedBlock.Header.UsnNextUsn,
+            "the block is still mapped while the watch drains");
+        applying.Release();
+        await dispose.WaitAsync(FakeIndexWatchSource.HangGuard);
+
+        Assert.AreEqual(1, handle.DisposeCount);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);
+    }
+
+    [TestMethod]
+    public async Task HandleEndingWithoutAStop_FaultsTheDriveAndAFreshStartRecovers()
+    {
+        using var harness = new WatchHarness();
+        await harness.Index.StartWatchingAsync('T', Token);
+        var ended = harness.Source.HandleFor('T');
+
+        ended.End();
+        await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
+
+        // The watch is over, so its handle is released and the drive reads as faulted with a
+        // reason; a consumer recovers by starting the drive afresh.
+        await ended.Disposed.WaitAsync(FakeIndexWatchSource.HangGuard);
+        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
+
+        await harness.Index.StartWatchingAsync('T', Token);
+        Assert.AreEqual(2, harness.Source.StartsFor('T').Count);
+        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
+        await harness.Index.StopWatchingAsync('T', Token);
+    }
+
+    [TestMethod]
+    public async Task StartWatchingAsync_AfterStop_RecordsFaultsForTheNewWatch()
+    {
+        using var harness = new WatchHarness();
+        void FirstThrowingSubscriber(FileChange _) => throw new InvalidOperationException("first failure");
+        harness.Index.Changed += FirstThrowingSubscriber;
+
+        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(recordNumber: 9, "one.txt"));
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
+
+        harness.Index.Changed -= FirstThrowingSubscriber;
+        harness.Index.Changed += _ => throw new InvalidOperationException("second failure");
+        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(recordNumber: 10, "two.txt"));
+        var secondFault = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
+
+        Assert.AreEqual("second failure", secondFault.Message);
+        Assert.AreEqual(2, harness.Faults.Count);
+        Assert.AreEqual("second failure", harness.Faults[1].Exception.Message);
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_ReleasesBlocksAfterASubscriberFault()
+    {
+        using var harness = new WatchHarness();
+        harness.Index.Changed += _ => throw new InvalidOperationException("subscriber failed");
+        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(recordNumber: 9, "one.txt"));
+        var producedBlock = harness.BlockFor('T');
+
+        await harness.Index.DisposeAsync();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        Assert.AreEqual(1, harness.Source.HandleFor('T').DisposeCount);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);
+    }
+}
