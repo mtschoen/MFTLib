@@ -1,0 +1,20 @@
+### Finding Verdicts
+
+1. NOT ADDRESSED (Important). The normal terminal paths now use the required linearization point. `AdoptOpenedDrive` assigns the ordinal, records the pending result, and claims the count in one `_stateLock` section (`MFTLib/Index/FileIndex.Scanning.cs:152-169`); offline and blockless failed drives claim in the lock section that adds their final status (`MFTLib/Index/FileIndex.ScanCleanup.cs:30-47`, `:54-79`); and a lost-catch-up retry that produces no block claims through `RecordRescanProducerFailure(..., endsOpenSettle: true)` (`MFTLib/Index/FileIndex.CatchUp.cs:117-145`; `MFTLib/Index/FileIndex.Rescan.cs:198-218`). The callback is invoked after `_stateLock` is released (`MFTLib/Index/FileIndex.Scanning.cs:55-71`), so callbacks can overlap, and the new tests cover ordinal/count agreement and cross-callback liveness (`MFTLib.Tests/Index/FileIndexConcurrentOpenTests.cs:100-153`). The public docs accurately describe those normal paths (`MFTLib/Index/FileIndexOptions.cs:63-72`; `MFTLib/Index/IndexDriveOpened.cs:3-24`; `README.md:504-517`).
+
+   Cancellation still has no settle-count or progress path. `SettleDriveAsync` throws before `AddDriveAsync` at entry or propagates cancellation from it, then never reaches the count lookup or callback (`MFTLib/Index/FileIndex.Scanning.cs:46-64`). Producer cancellation is deliberately excluded from the conversion to a failed `PendingDriveResult` (`MFTLib/Index/FileIndex.Scanning.cs:217-232`) and is rethrown by `ScanOpenedDriveAsync` (`MFTLib/Index/FileIndex.CatchUp.cs:99-109`). This also affects cancellation after an earlier lost-catch-up attempt adopted a nonterminal block: that drive has an ordinal but never claims a count. The cancellation regression demonstrates the omission by expecting only the already warm-started V report while T and U are cancelled (`MFTLib.Tests/Index/FileIndexConcurrentOpenTests.cs:425-449`). Therefore not every settle outcome claims exactly one count and reports once, contrary to the explicit cancellation requirement and the documented one-report-per-configured-drive contract.
+
+4. NOT ADDRESSED (Important). The specific cleanup helper defect is fixed: both its open and `DisposeAsync` awaits are bounded by `HangGuard` (`MFTLib.Tests/Index/FileIndexConcurrentOpenTests.cs:353-363`). The full-file sweep still finds an externally progressing implicit disposal without a bound. `Open_CatchUpLostTwiceThenHolds_DriveReadyAndReportedOnce` declares the index with `await using` (`MFTLib.Tests/Index/FileIndexConcurrentOpenTests.cs:181`) and then starts a live watch (`MFTLib.Tests/Index/FileIndexConcurrentOpenTests.cs:194`); the compiler-generated `DisposeAsync` await at method exit has no `WaitAsync(HangGuard)`. Disposal waits for every retired watch instance's externally completed `Drained` task (`MFTLib/Index/FileIndex.Disposal.cs:8-42`; `MFTLib/Index/FileIndex.cs:271-276`), so a watch teardown regression can still hang this test. The helper fix alone does not satisfy the requirement that every externally progressing await in this test class and its helpers be bounded.
+
+### New Breakage in the Fix Diff
+
+- No additional Critical, Important, or Minor breakage beyond the incomplete cancellation handling counted under Finding 1 and the remaining unbounded disposal counted under Finding 4.
+- RED evidence satisfies W40-R1 for both round-2 tests. The report gives the exact combined command `dotnet test MFTLib.Tests\MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build --filter "FullyQualifiedName~Open_SettledCountFollowsAdoption_WhenALaterDrivesCallbackRunsFirst|FullyQualifiedName~Open_CallbackBlockedUntilTheOtherDrivesCallbackRuns_DoesNotDeadlock"` and real pre-fix output for each: `Failed [10 s]`, `System.TimeoutException: The operation has timed out.`, with `Failed: 2, Passed: 0, Total: 2` (`task-B9-report.md:164-166`). No new or rewritten round-2 test lacks RED evidence.
+
+### Out-of-Scope Observations
+
+- None.
+
+### Verdict
+
+Findings remain open: 1 and 4.

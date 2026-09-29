@@ -265,3 +265,41 @@ Task C7: fix round 3/5 (1 addressed, 0 open; commits aacdaa9..9bfe4e6). Re-revie
 Task C7: complete (commits e44243c..9bfe4e6, review clean after round 3). Cherry-picked onto impl: 9ace375 4fe5d65 c31350e a094ad4
 WAVE 4 MERGED (W40, C4, C5, merge fix 23709f6, B5, W4fix, C7): impl head a094ad4. Suite + aislop running: scratch/coverage-wave4.log, aislop-wave4.log
 MERGE FIX by controller: 9725d0b renames C4's static ScriptedScan (TestSupport) to ScriptedScanSteps; collided with B5's WatchHarness ScriptedScan record (CS0101). Wave-4 suite rerun.
+Wave 4 merged head 9725d0b: suite 1755 total, 1749 passed, 6 skipped, 0 failed; line 97.7%, branch 95.2%; aislop 99/100 with exactly the gate's 5 warnings. Per namespace: MFTLib(other) 2691/2751 = 97.82%; MFTLib.Index 3025/3075 = 98.37%; MFTLibTestExtensions 80.37%. Pushed impl and task branches; workspace snapshot sdd/265-workspace 7ed4d59 pushed.
+Wave 5: worktrees 265-B6, 265-B9, 265-C6 at 9725d0b. Dispatched together: B6 (opus, lanes-B6-dispatch.md), B9 (sonnet, lanes-B9-dispatch.md), C6 (sonnet, lanes-C6-dispatch.md), and the owed post-wave-4 Linux run (sonnet, lanes-linux-w4-dispatch.md)
+Linux run on 9725d0b (llamabox, sonnet lane a80a8123148869606): GREEN. init.sh --build 0, coverage-linux.sh 0; native 20/20; managed 1488 total, 1405 passed, 0 failed, 83 skipped; line 93.45%. BlockFileRangedFlushTests ran on Linux (msync path) 12/12 passed. Report linux-w4-report.md
+Task B6: implementer DONE_WITH_CONCERNS, commit 220fbca (BASE 9725d0b; agent a1642b4df1285dd7a). Suite 1778/1772/0 failed; aislop gate. Concern: changed expectations in 8 test files beyond the brief's two (HoldEveryRecovery). Review dispatched (codex gpt-5.6-sol)
+Task B9: implementer DONE_WITH_CONCERNS, commit d20d214 (BASE 9725d0b; agent a463c0902e7a70f11). Suite 1765/1759/0 failed; aislop gate; also edited README.md and docs/broker-integration.md. Review dispatched (codex gpt-5.6-sol)
+Task C6: implementer committed 49f5f23 (agent abdd948d5300d276f) but wrote no report; asked to write it
+Task C6: report written (63 base methods: 27 ported, 36 dropped; suite 1793/1787/0 failed; aislop gate). Review dispatched (codex gpt-5.6-sol)
+Task B9: review (codex gpt-5.6-sol, task-B9-review.md): 0 Critical, 4 Important, 2 Minor. Needs fixes: settle order not linearized with SettledCount/callback; cancellation masked by another settle fault; two tests lack exact RED command; unbounded awaits.
+Task B9: minor (deferred): enumeration-limit test cleanup never disposes a successful late open (FileIndexConcurrentOpenTests.cs:203-205); README.md:516 joined sentences
+Task B9: fix round 1/5 dispatched (resume a463c0902e7a70f11), FIX_BASE d20d214
+Task C6: review (codex gpt-5.6-sol, task-C6-review.md): 0 Critical, 4 Important, 0 Minor. Needs fixes: RED command template; issue-252 regression does not prove the stop timed out; polling Task.Delay in WatchFailureObservationTests; no whole-suite run after last edits.
+Task C6: fix round 1/5 dispatched (resume abdd948d5300d276f), FIX_BASE 49f5f23
+Task B6: review (codex gpt-5.6-sol, task-B6-review.md): 0 Critical, 2 Important, 0 Minor. Needs fixes: a stop landing between the recovery's restart decision and registration is overwritten (RegisterStartingInstance re-sets WatchRequested); two tests lack exact RED command.
+Task B6: fix round 1/5 dispatched (resume a1642b4df1285dd7a), FIX_BASE 220fbca
+Task C6: fix round 1 implemented, commit 069def5. Re-review r1 dispatched (codex)
+Task B9: fix round 1 implemented, commit 6e0781b (suite 1767/1761/0 failed; aislop gate). Re-review r1 dispatched (codex)
+Task C6: fix round 1/5 (4 addressed, 0 open; commits 49f5f23..069def5). Re-review task-C6-rereview-r1.md (codex)
+Task C6: complete (commits 9725d0b..069def5, review clean after round 1). Cherry-picked onto impl: 966b0c1 a022623 
+Task B6: fix round 1 implemented, commit f8b39a0. Re-review r1 dispatched (codex)
+Task B9: fix round 1/5 (2 addressed, 2 open - SettledCount claimed after adoption and callbacks serialized under a new lock (liveness hazard); cleanup helper awaits DisposeAsync unbounded; commits d20d214..6e0781b). Re-review task-B9-rereview-r1.md (codex)
+RULING B9-Q1 recorded. Task B9: fix round 2/5 dispatched (resume a463c0902e7a70f11), FIX_BASE 6e0781b
+Task B6: fix round 1/5 (1 addressed, 1 open - a stop winning the recovery registration window loses the faulted instance's outstanding fault; new Minor unbounded gate await; commits 220fbca..f8b39a0). Re-review task-B6-rereview-r1.md (codex)
+Task B6: fix round 2/5 dispatched (resume a1642b4df1285dd7a): a winning stop takes and rethrows the faulted instance's fault (spec stop row 438-447); only a registered replacement supersedes it. FIX_BASE f8b39a0
+Tranche audit dispatched (codex gpt-5.6-sol, read-only in impl-265 at 966b0c1; output tranche-B-audit.md): every base [TestMethod] missing at HEAD classified as ported/renamed/dropped-with-reason/unaccounted.
+Task B6: fix round 2 implemented, commit d0c1b37 (faulted instance stays Current until the replacement registers). Re-review r2 dispatched (codex)
+Task B9: fix round 2 implemented, commit 90ee41b (suite 1768/1762/0 failed; aislop gate). Re-review r2 dispatched (codex)
+Task B6: fix round 2/5 (1 addressed, 0 open; commits f8b39a0..d0c1b37). Re-review task-B6-rereview-r2.md (codex)
+Task B6: minor (deferred): a faulted rescan or recovery awaits the same completed Drained twice (RescanRestart.cs:107-138, WatchDrive.cs:145-150), harmless; CatchUpLostCount_SurvivesOperations comment still says recovery arrives with B6
+Task B6: complete (commits 9725d0b..d0c1b37, review clean after round 2). Cherry-picked onto impl: 5060ed6 3d6a983 9062537 
+Task B9: fix round 2/5 (1 addressed, 2 open - cancelled drives claim no count while docs promise one report per configured drive; await-using disposal unbounded after a live watch; commits 6e0781b..90ee41b). Re-review task-B9-rereview-r2.md (codex)
+RULING B9-Q2 recorded (cancelled drive settles nothing; docs change). Task B9: fix round 3/5 dispatched (resume a463c0902e7a70f11), FIX_BASE 90ee41b
+TRANCHE AUDIT (tranche-B-audit.md, codex, at 5060ed6): Tranche B 420 base methods in affected files: 106 same name, 34 renamed, 85 dropped with reason, 195 NOT ACCOUNTED (about 155 behavior gone, about 40 still exists in some form). Tranche I 150: 69/23/14, 44 not accounted (incl. AllDrives cases owed to B7). TRANCHE B AUDIT FAILS until accounted. New task TB (test accounting lane, dispatch lanes-TB-dispatch.md) to run in wave 6 beside B7 and C8.
+Task B9: fix round 3 implemented, commit 8f536bc (suite 1769/1763/0 failed). Re-review r3 dispatched (codex)
+Task B9: fix round 3/5 (1 addressed, 1 open - one unbounded file-write await; commits 90ee41b..8f536bc). Re-review task-B9-rereview-r3.md (codex)
+Task B9: fix round 4/5 (fresh opus implementer a0463a49af4db246c), commit faa5245 (test-only). Re-review r4 dispatched (codex)
+Task B9: fix round 4/5 (1 addressed, 0 open; commits 8f536bc..faa5245). Re-review task-B9-rereview-r4.md (codex)
+Task B9: complete (commits 9725d0b..faa5245, review clean after round 4). Cherry-picked onto impl: d1a20a9 834f0b8 bc12eff 9250cc8 ff20d5e 
+WAVE 5 MERGED (C6, B6, B9): impl head d1a20a9. Suite + aislop running: scratch/coverage-wave5.log, aislop-wave5.log

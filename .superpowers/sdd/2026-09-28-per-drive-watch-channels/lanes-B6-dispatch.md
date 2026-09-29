@@ -4,7 +4,7 @@ trunk; B1 to B5 (per-drive watch state machine, ported index tests, per-drive ga
 under the state lock, the lost-catch-up loop) are merged on your base.
 
 YOUR WORKTREE: `C:\Users\mtsch\MFTLib-worktrees\265-B6` (branch `task/265-B6`).
-Expected HEAD: `__HEAD__`. FIRST ACTION: `git -C C:\Users\mtsch\MFTLib-worktrees\265-B6 rev-parse HEAD`
+Expected HEAD: `9725d0b8a246cd56b9a4cefa3e17fd1e5c024d65`. FIRST ACTION: `git -C C:\Users\mtsch\MFTLib-worktrees\265-B6 rev-parse HEAD`
 must equal that SHA; on mismatch STOP and report; never merge, rebase or reset to self-correct.
 
 WORKSPACE = `C:\Users\mtsch\MFTLib-worktrees\impl-265\.superpowers\sdd\2026-09-28-per-drive-watch-channels`
