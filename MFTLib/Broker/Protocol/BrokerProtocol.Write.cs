@@ -1,361 +1,148 @@
 using System.Buffers;
-using System.Buffers.Binary;
-using System.Text;
+using MFTLib.Index;
 
 namespace MFTLib;
 
-// Control-frame write methods for BrokerProtocol. See BrokerProtocol.cs for the entry
-// codec, ReadFrame dispatch, and the private read helpers.
+// Frame write methods for BrokerProtocol, in BrokerFrameKind order. See BrokerProtocol.cs for
+// the entry codec and ReadFrame dispatch, and BrokerProtocol.Payload.cs for the primitives.
 public static partial class BrokerProtocol
 {
-    public static void WriteArmAndScan(IBufferWriter<byte> writer, string drivesSpec,
-        IReadOnlyCollection<string>? keepFileNames = null)
+    // Control pipe
+
+    // payload: [requestId u32][drive string][pipeName string]
+    public static void WriteOpenChannel(IBufferWriter<byte> writer, uint requestId, string drive, string pipeName)
     {
-        var specBytes = Encoding.Unicode.GetBytes(drivesSpec);
-        var nameBytes = (keepFileNames ?? Array.Empty<string>())
-            .Select(Encoding.Unicode.GetBytes).ToArray();
-        var namesLength = nameBytes.Sum(bytes => 4 + bytes.Length);
-
-        // payload: [specLen int32][specBytes][nameCount int32][per name: nameLen int32][nameBytes]
-        var payloadLength = 4 + specBytes.Length + 4 + namesLength;
-        var totalLength = 1 + payloadLength;
-        var span = writer.GetSpan(4 + totalLength);
-        var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
-        offset += 4;
-        span[offset] = (byte)BrokerFrameKind.ArmAndScan;
-        offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], specBytes.Length);
-        offset += 4;
-        specBytes.CopyTo(span[offset..]);
-        offset += specBytes.Length;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], nameBytes.Length);
-        offset += 4;
-        foreach (var bytes in nameBytes)
-        {
-            BinaryPrimitives.WriteInt32LittleEndian(span[offset..], bytes.Length);
-            offset += 4;
-            bytes.CopyTo(span[offset..]);
-            offset += bytes.Length;
-        }
-
-        writer.Advance(offset);
+        new PayloadWriter().UInt32(requestId).String(drive).String(pipeName)
+            .WriteTo(writer, BrokerFrameKind.OpenChannel);
     }
 
-    public static void WriteStartWatch(IBufferWriter<byte> writer, string drivesSpec)
+    // payload: [requestId u32]
+    public static void WriteChannelOpened(IBufferWriter<byte> writer, uint requestId)
     {
-        WriteFrameWithString(writer, BrokerFrameKind.StartWatch, drivesSpec);
+        new PayloadWriter().UInt32(requestId).WriteTo(writer, BrokerFrameKind.ChannelOpened);
     }
 
-    public static void WriteDisarmDrive(IBufferWriter<byte> writer, string drive)
+    // payload: [requestId u32][drive string]
+    public static void WriteQueryVolume(IBufferWriter<byte> writer, uint requestId, string drive)
     {
-        WriteFrameWithString(writer, BrokerFrameKind.DisarmDrive, drive);
+        new PayloadWriter().UInt32(requestId).String(drive).WriteTo(writer, BrokerFrameKind.QueryVolume);
     }
 
-    public static void WriteShutdown(IBufferWriter<byte> writer)
+    // payload: [requestId u32][mftRecordCount i64][bytesPerFileRecordSegment u32][mftValidDataLength i64]
+    public static void WriteVolumeInfo(IBufferWriter<byte> writer, uint requestId, long mftRecordCount,
+        uint bytesPerFileRecordSegment, long mftValidDataLength)
     {
-        WriteFrameNoPayload(writer, BrokerFrameKind.Shutdown);
+        new PayloadWriter().UInt32(requestId).Int64(mftRecordCount).UInt32(bytesPerFileRecordSegment)
+            .Int64(mftValidDataLength).WriteTo(writer, BrokerFrameKind.VolumeInfo);
+    }
+
+    // payload: [requestId u32][drive string][maximumSize i64][allocationDelta i64]
+    public static void WriteGrowUsnJournal(IBufferWriter<byte> writer, uint requestId, string drive,
+        long maximumSize, long allocationDelta)
+    {
+        new PayloadWriter().UInt32(requestId).String(drive).Int64(maximumSize).Int64(allocationDelta)
+            .WriteTo(writer, BrokerFrameKind.GrowUsnJournal);
+    }
+
+    // payload: [requestId u32][maximumSize i64][allocationDelta i64]
+    public static void WriteUsnJournalSettings(IBufferWriter<byte> writer, uint requestId,
+        long maximumSize, long allocationDelta)
+    {
+        new PayloadWriter().UInt32(requestId).Int64(maximumSize).Int64(allocationDelta)
+            .WriteTo(writer, BrokerFrameKind.UsnJournalSettings);
+    }
+
+    // Any pipe
+
+    // payload: [requestId u32 (0 on a drive pipe)][message string]
+    public static void WriteError(IBufferWriter<byte> writer, uint requestId, string message)
+    {
+        new PayloadWriter().UInt32(requestId).String(message).WriteTo(writer, BrokerFrameKind.Error);
     }
 
     public static void WriteHeartbeat(IBufferWriter<byte> writer)
     {
-        WriteFrameNoPayload(writer, BrokerFrameKind.Heartbeat);
+        new PayloadWriter().WriteTo(writer, BrokerFrameKind.Heartbeat);
     }
 
-    public static void WriteEndWatch(IBufferWriter<byte> writer)
+    // payload: [message string]
+    public static void WriteStalled(IBufferWriter<byte> writer, string message)
     {
-        WriteFrameNoPayload(writer, BrokerFrameKind.EndWatch);
+        new PayloadWriter().String(message).WriteTo(writer, BrokerFrameKind.Stalled);
     }
 
-    public static void WriteEndWatchAck(IBufferWriter<byte> writer)
-    {
-        WriteFrameNoPayload(writer, BrokerFrameKind.EndWatchAck);
-    }
+    // Drive pipe
 
-    public static void WriteScanReady(IBufferWriter<byte> writer, string mmfName, long rowCount, long namePoolUsedBytes, long skippedRecordCount)
+    // payload: [sectionName string][profile i32][nameCount i32][per name: name string]
+    public static void WriteArmAndScan(IBufferWriter<byte> writer, string sectionName, BrokerScanProfile profile,
+        IReadOnlyCollection<string>? keepFileNames = null)
     {
-        var nameBytes = Encoding.Unicode.GetBytes(mmfName);
-        // payload: [nameLen int32][nameBytes][rowCount int64][namePoolUsedBytes int64][skippedRecordCount int64]
-        var payloadLength = 4 + nameBytes.Length + 8 + 8 + 8;
-        var totalLength = 1 + payloadLength; // kind byte + payload
-        var span = writer.GetSpan(4 + totalLength);
-        var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
-        offset += 4;
-        span[offset] = (byte)BrokerFrameKind.ScanReady;
-        offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], nameBytes.Length);
-        offset += 4;
-        nameBytes.CopyTo(span[offset..]);
-        offset += nameBytes.Length;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], rowCount);
-        offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], namePoolUsedBytes);
-        offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], skippedRecordCount);
-        offset += 8;
-        writer.Advance(offset);
-    }
-
-    public static void WriteCursor(IBufferWriter<byte> writer, string drive, UsnJournalCursor cursor)
-    {
-        var driveBytes = Encoding.Unicode.GetBytes(drive);
-        // payload: [driveLen int32][driveBytes][journalId ulong][nextUsn long]
-        var payloadLength = 4 + driveBytes.Length + 8 + 8;
-        var totalLength = 1 + payloadLength;
-        var span = writer.GetSpan(4 + totalLength);
-        var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
-        offset += 4;
-        span[offset] = (byte)BrokerFrameKind.Cursor;
-        offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
-        offset += 4;
-        driveBytes.CopyTo(span[offset..]);
-        offset += driveBytes.Length;
-        BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], cursor.JournalId);
-        offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], cursor.NextUsn);
-        offset += 8;
-        writer.Advance(offset);
-    }
-
-    public static void WriteJournalBatch(IBufferWriter<byte> writer, string drive, uint armEpoch, UsnJournalCursor cursor,
-        UsnJournalEntry[] entries)
-    {
-        // We cannot compute the total size ahead of time without serializing entries first,
-        // so serialize to a temp buffer then write the length prefix.
-        var driveBytes = Encoding.Unicode.GetBytes(drive);
-        var entryBuffer = new ArrayBufferWriter<byte>();
-        foreach (var entry in entries)
+        var payload = new PayloadWriter().String(sectionName).Int32((int)profile);
+        var names = keepFileNames ?? Array.Empty<string>();
+        payload.Int32(names.Count);
+        foreach (var name in names)
         {
-            WriteEntry(entryBuffer, entry);
+            payload.String(name);
         }
 
-        // payload: [driveLen int32][driveBytes][armEpoch uint32][journalId ulong][nextUsn long][entryCount int32][entryBytes]
-        var payloadLength = 4 + driveBytes.Length + 4 + 8 + 8 + 4 + entryBuffer.WrittenCount;
-        var totalLength = 1 + payloadLength;
-        var span = writer.GetSpan(4 + totalLength);
-        var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
-        offset += 4;
-        span[offset] = (byte)BrokerFrameKind.JournalBatch;
-        offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
-        offset += 4;
-        driveBytes.CopyTo(span[offset..]);
-        offset += driveBytes.Length;
-        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], armEpoch);
-        offset += 4;
-        BinaryPrimitives.WriteUInt64LittleEndian(span[offset..], cursor.JournalId);
-        offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], cursor.NextUsn);
-        offset += 8;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], entries.Length);
-        offset += 4;
-        entryBuffer.WrittenSpan.CopyTo(span[offset..]);
-        offset += entryBuffer.WrittenCount;
-        writer.Advance(offset);
+        payload.WriteTo(writer, BrokerFrameKind.ArmAndScan);
     }
 
-    public static void WriteError(IBufferWriter<byte> writer, string drive, uint armEpoch, string message)
+    // payload: [journalId u64][nextUsn i64]
+    public static void WriteCursor(IBufferWriter<byte> writer, UsnJournalCursor cursor)
     {
-        var driveBytes = Encoding.Unicode.GetBytes(drive);
-        var messageBytes = Encoding.Unicode.GetBytes(message);
-        // payload: [driveLen int32][driveBytes][armEpoch uint32][messageLen int32][messageBytes]
-        var payloadLength = 4 + driveBytes.Length + 4 + 4 + messageBytes.Length;
-        var totalLength = 1 + payloadLength;
-        var span = writer.GetSpan(4 + totalLength);
-        var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
-        offset += 4;
-        span[offset] = (byte)BrokerFrameKind.Error;
-        offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
-        offset += 4;
-        driveBytes.CopyTo(span[offset..]);
-        offset += driveBytes.Length;
-        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], armEpoch);
-        offset += 4;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], messageBytes.Length);
-        offset += 4;
-        messageBytes.CopyTo(span[offset..]);
-        offset += messageBytes.Length;
-        writer.Advance(offset);
+        new PayloadWriter().Cursor(cursor).WriteTo(writer, BrokerFrameKind.Cursor);
     }
 
-    public static void WriteCaughtUp(IBufferWriter<byte> writer, string drive, uint armEpoch)
-    {
-        var driveBytes = Encoding.Unicode.GetBytes(drive);
-        // payload: [driveLen int32][driveBytes][armEpoch uint32]
-        var payloadLength = 4 + driveBytes.Length + 4;
-        var totalLength = 1 + payloadLength;
-        var span = writer.GetSpan(4 + totalLength);
-        var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
-        offset += 4;
-        span[offset] = (byte)BrokerFrameKind.CaughtUp;
-        offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
-        offset += 4;
-        driveBytes.CopyTo(span[offset..]);
-        offset += driveBytes.Length;
-        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], armEpoch);
-        offset += 4;
-        writer.Advance(offset);
-    }
-
-    public static void WriteWarning(IBufferWriter<byte> writer, string drive, string message)
-    {
-        var driveBytes = Encoding.Unicode.GetBytes(drive);
-        var messageBytes = Encoding.Unicode.GetBytes(message);
-        // payload: [driveLen int32][driveBytes][messageLen int32][messageBytes]
-        var payloadLength = 4 + driveBytes.Length + 4 + messageBytes.Length;
-        var totalLength = 1 + payloadLength;
-        var span = writer.GetSpan(4 + totalLength);
-        var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
-        offset += 4;
-        span[offset] = (byte)BrokerFrameKind.Warning;
-        offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
-        offset += 4;
-        driveBytes.CopyTo(span[offset..]);
-        offset += driveBytes.Length;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], messageBytes.Length);
-        offset += 4;
-        messageBytes.CopyTo(span[offset..]);
-        offset += messageBytes.Length;
-        writer.Advance(offset);
-    }
-
+    // payload: [phase i32][recordsProcessed i64][bytesProcessed i64][totalRecordsOrMinusOne i64]
+    //          [totalBytesOrMinusOne i64][elapsedTicks i64]
+    // The drive is the channel's, so the progress sample's drive letter is not written.
     public static void WriteScanProgress(IBufferWriter<byte> writer, BrokerScanProgress progress)
     {
-        ArgumentException.ThrowIfNullOrEmpty(progress.DriveLetter, nameof(progress.DriveLetter));
-        var driveBytes = Encoding.Unicode.GetBytes(progress.DriveLetter);
-        // payload: [driveLen int32][driveBytes][phase int32][recordsProcessed i64][bytesProcessed i64][totalRecordsOrMinusOne i64][totalBytesOrMinusOne i64][elapsedTicks i64]
-        var payloadLength = 4 + driveBytes.Length + 4 + 8 + 8 + 8 + 8 + 8;
-        var totalLength = 1 + payloadLength;
-        var span = writer.GetSpan(4 + totalLength);
-        var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
-        offset += 4;
-        span[offset] = (byte)BrokerFrameKind.ScanProgress;
-        offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
-        offset += 4;
-        driveBytes.CopyTo(span[offset..]);
-        offset += driveBytes.Length;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], (int)progress.Phase);
-        offset += 4;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.RecordsProcessed);
-        offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.BytesProcessed);
-        offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.TotalRecords ?? -1L);
-        offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.TotalBytes ?? -1L);
-        offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], progress.Elapsed.Ticks);
-        offset += 8;
-        writer.Advance(offset);
+        new PayloadWriter().Int32((int)progress.Phase).Int64(progress.RecordsProcessed)
+            .Int64(progress.BytesProcessed).Int64(progress.TotalRecords ?? -1L).Int64(progress.TotalBytes ?? -1L)
+            .Int64(progress.Elapsed.Ticks).WriteTo(writer, BrokerFrameKind.ScanProgress);
     }
 
-    public static void WriteQueryVolumes(IBufferWriter<byte> writer, string drivesSpec)
+    // payload: [cause i32][checkpointUsn i64][firstUsn i64][nextUsn i64][allocationDelta i64]
+    //          [maximumSize i64][bytesBehind nullable i64][sizeThatWouldHaveRetained nullable i64][message string]
+    internal static void WriteCatchUpLost(IBufferWriter<byte> writer, JournalCheckpointLoss loss, string message)
     {
-        WriteFrameWithString(writer, BrokerFrameKind.QueryVolumes, drivesSpec);
+        new PayloadWriter().Int32((int)loss.Cause).Int64(loss.CheckpointUsn).Int64(loss.FirstUsn)
+            .Int64(loss.NextUsn).Int64(loss.AllocationDelta).Int64(loss.MaximumSize)
+            .NullableInt64(loss.BytesBehind).NullableInt64(loss.SizeThatWouldHaveRetained).String(message)
+            .WriteTo(writer, BrokerFrameKind.CatchUpLost);
     }
 
-    public static void WriteVolumeInfo(
-        IBufferWriter<byte> writer, string drive, long mftRecordCount, uint bytesPerFileRecordSegment,
-        long mftValidDataLength)
+    // payload: [rowCount i64][namePoolUsedBytes i64][skippedRecordCount i64]
+    public static void WriteScanReady(IBufferWriter<byte> writer, long rowCount, long namePoolUsedBytes,
+        long skippedRecordCount)
     {
-        var driveBytes = Encoding.Unicode.GetBytes(drive);
-        // payload: [driveLen int32][driveBytes][mftRecordCount i64][bytesPerFileRecordSegment u32][mftValidDataLength i64]
-        var payloadLength = 4 + driveBytes.Length + 8 + 4 + 8;
-        var totalLength = 1 + payloadLength;
-        var span = writer.GetSpan(4 + totalLength);
-        var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
-        offset += 4;
-        span[offset] = (byte)BrokerFrameKind.VolumeInfo;
-        offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
-        offset += 4;
-        driveBytes.CopyTo(span[offset..]);
-        offset += driveBytes.Length;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], mftRecordCount);
-        offset += 8;
-        BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], bytesPerFileRecordSegment);
-        offset += 4;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], mftValidDataLength);
-        offset += 8;
-        writer.Advance(offset);
+        new PayloadWriter().Int64(rowCount).Int64(namePoolUsedBytes).Int64(skippedRecordCount)
+            .WriteTo(writer, BrokerFrameKind.ScanReady);
     }
 
-    public static void WriteGrowUsnJournal(IBufferWriter<byte> writer, string drive,
-        long maximumSize, long allocationDelta)
+    // payload: [journalId u64][nextUsn i64][entryCount i32][entries]
+    public static void WriteJournalBatch(IBufferWriter<byte> writer, UsnJournalCursor cursor,
+        UsnJournalEntry[] entries)
     {
-        WriteDriveAndJournalSizes(writer, BrokerFrameKind.GrowUsnJournal, drive, maximumSize, allocationDelta);
+        var payload = new PayloadWriter().Cursor(cursor).Int32(entries.Length);
+        foreach (var entry in entries)
+        {
+            payload.Entry(entry);
+        }
+
+        payload.WriteTo(writer, BrokerFrameKind.JournalBatch);
     }
 
-    public static void WriteUsnJournalSettings(IBufferWriter<byte> writer, string drive,
-        long maximumSize, long allocationDelta)
+    // payload: [journalId u64][nextUsn i64]
+    public static void WriteStartWatch(IBufferWriter<byte> writer, UsnJournalCursor since)
     {
-        WriteDriveAndJournalSizes(writer, BrokerFrameKind.UsnJournalSettings, drive, maximumSize, allocationDelta);
+        new PayloadWriter().Cursor(since).WriteTo(writer, BrokerFrameKind.StartWatch);
     }
 
-    // Private write helpers
-
-    // payload: [driveLen int32][driveBytes][maximumSize i64][allocationDelta i64]
-    static void WriteDriveAndJournalSizes(IBufferWriter<byte> writer, BrokerFrameKind kind,
-        string drive, long maximumSize, long allocationDelta)
+    public static void WriteCaughtUp(IBufferWriter<byte> writer)
     {
-        var driveBytes = Encoding.Unicode.GetBytes(drive);
-        var payloadLength = 4 + driveBytes.Length + 8 + 8;
-        var totalLength = 1 + payloadLength;
-        var span = writer.GetSpan(4 + totalLength);
-        var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
-        offset += 4;
-        span[offset] = (byte)kind;
-        offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], driveBytes.Length);
-        offset += 4;
-        driveBytes.CopyTo(span[offset..]);
-        offset += driveBytes.Length;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], maximumSize);
-        offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], allocationDelta);
-        offset += 8;
-        writer.Advance(offset);
-    }
-
-    static void WriteFrameNoPayload(IBufferWriter<byte> writer, BrokerFrameKind kind)
-    {
-        // totalLength = 1 (just the kind byte, no payload)
-        var span = writer.GetSpan(5);
-        BinaryPrimitives.WriteInt32LittleEndian(span, 1);
-        span[4] = (byte)kind;
-        writer.Advance(5);
-    }
-
-    static void WriteFrameWithString(IBufferWriter<byte> writer, BrokerFrameKind kind, string value)
-    {
-        var valueBytes = Encoding.Unicode.GetBytes(value);
-        // payload: [valueLen int32][valueBytes]
-        var payloadLength = 4 + valueBytes.Length;
-        var totalLength = 1 + payloadLength;
-        var span = writer.GetSpan(4 + totalLength);
-        var offset = 0;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], totalLength);
-        offset += 4;
-        span[offset] = (byte)kind;
-        offset += 1;
-        BinaryPrimitives.WriteInt32LittleEndian(span[offset..], valueBytes.Length);
-        offset += 4;
-        valueBytes.CopyTo(span[offset..]);
-        offset += valueBytes.Length;
-        writer.Advance(offset);
+        new PayloadWriter().WriteTo(writer, BrokerFrameKind.CaughtUp);
     }
 }

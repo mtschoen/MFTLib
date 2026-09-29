@@ -1,43 +1,35 @@
+using MFTLib.Index;
+
 namespace MFTLib;
 
+/// <summary>Grows one drive's USN journal in place.</summary>
 public sealed partial class JournalBrokerHost
 {
-    // Mirrors HandleQueryVolumesAsync's contract: exactly one reply per request, tagged
-    // NoArmEpoch - a UsnJournalSettings frame on success, an Error frame carrying the
-    // refusal (grow-only) or OS failure message otherwise. Cancellation is not a
-    // per-drive error and propagates to end the session, and neither is a client
-    // disconnect: a reply that cannot reach the client ends the session.
-    async Task HandleGrowUsnJournalAsync(
-        Stream stream, string drive, long maximumSize, long allocationDelta,
-        SemaphoreSlim writeLock, CancellationToken cancellationToken)
+    // Exactly one reply per request, carrying its id: UsnJournalSettings on success, Error
+    // carrying the refusal (grow only) or OS failure otherwise.
+    async Task HandleGrowUsnJournalAsync(ControlSession session, BrokerFrame request)
     {
+        var requestId = request.RequestId;
         if (_growUsnJournal == null)
         {
-            await WriteReplyFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteError(writer, drive, BrokerFrame.NoArmEpoch,
-                        "Broker has no journal grow source"),
-                    cancellationToken)
+            await WriteControlErrorAsync(session, requestId, "Broker has no journal grow source")
                 .ConfigureAwait(false);
             return;
         }
 
+        UsnJournalSettings settings;
         try
         {
-            var settings = _growUsnJournal(drive, maximumSize, allocationDelta);
-            await WriteReplyFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteUsnJournalSettings(
-                        writer, drive, settings.MaximumSize, settings.AllocationDelta),
-                    cancellationToken)
-                .ConfigureAwait(false);
+            settings = _growUsnJournal(BrokerDriveLetter.Normalize(request.RequireDrive()),
+                request.JournalMaximumSize, request.JournalAllocationDelta);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException
-                                          and not ClientDisconnectedException)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            await WriteReplyFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteError(writer, drive, BrokerFrame.NoArmEpoch,
-                        exception.Message),
-                    cancellationToken)
-                .ConfigureAwait(false);
+            await WriteControlErrorAsync(session, requestId, exception.Message).ConfigureAwait(false);
+            return;
         }
+
+        await WriteControlFrameAsync(session, writer => BrokerProtocol.WriteUsnJournalSettings(writer, requestId,
+            settings.MaximumSize, settings.AllocationDelta)).ConfigureAwait(false);
     }
 }

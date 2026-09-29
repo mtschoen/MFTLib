@@ -1,47 +1,33 @@
 namespace MFTLib;
 
-/// <summary>Answers volume sizing queries without arming a scan or opening a block section.</summary>
+/// <summary>Answers one volume sizing query without arming a scan or opening a block section.</summary>
 public sealed partial class JournalBrokerHost
 {
-    async Task HandleQueryVolumesAsync(
-        Stream stream, string drivesSpec, SemaphoreSlim writeLock, CancellationToken cancellationToken)
+    // Exactly one reply per request, carrying its id: VolumeInfo on success, Error carrying the
+    // failure (access denied, volume closed) otherwise. A reply that cannot reach the client
+    // throws ClientDisconnectedException, which ends the session.
+    async Task HandleQueryVolumeAsync(ControlSession session, BrokerFrame request)
     {
-        foreach (var request in ParseScanSpec(drivesSpec)) // volume-query tokens omit the section and profile
+        var requestId = request.RequestId;
+        if (_queryVolumeInfo == null)
         {
-            if (_queryVolumeInfo == null)
-            {
-                await WriteReplyFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteError(writer, request.Letter, BrokerFrame.NoArmEpoch,
-                            "Broker has no volume information source"),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                continue;
-            }
-
-            try
-            {
-                var info = _queryVolumeInfo(request.Letter);
-                await WriteReplyFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteVolumeInfo(
-                            writer, request.Letter, info.MftRecordCount, info.BytesPerFileRecordSegment,
-                            info.MftValidDataLength),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            // Deliberate per-drive boundary, matching HandleArmAndScanAsync: one drive's
-            // query failure (access denied, volume closed) becomes an Error frame for
-            // that drive, and the remaining drives are still queried. Cancellation is not
-            // a per-drive error and propagates to end the session, and neither is a
-            // client disconnect: a reply that cannot reach the client ends the session
-            // rather than becoming one more drive's Error frame.
-            catch (Exception exception) when (exception is not OperationCanceledException
-                                              and not ClientDisconnectedException)
-            {
-                await WriteReplyFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteError(writer, request.Letter, BrokerFrame.NoArmEpoch, exception.Message),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            await WriteControlErrorAsync(session, requestId, "Broker has no volume information source")
+                .ConfigureAwait(false);
+            return;
         }
+
+        NtfsVolumeInformation info;
+        try
+        {
+            info = _queryVolumeInfo(BrokerDriveLetter.Normalize(request.RequireDrive()));
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            await WriteControlErrorAsync(session, requestId, exception.Message).ConfigureAwait(false);
+            return;
+        }
+
+        await WriteControlFrameAsync(session, writer => BrokerProtocol.WriteVolumeInfo(writer, requestId,
+            info.MftRecordCount, info.BytesPerFileRecordSegment, info.MftValidDataLength)).ConfigureAwait(false);
     }
 }

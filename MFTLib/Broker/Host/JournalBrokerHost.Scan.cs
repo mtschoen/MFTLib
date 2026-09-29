@@ -1,54 +1,52 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Threading.Channels;
+using MFTLib.Index;
 
 namespace MFTLib;
 
-/// <summary>Serves per-drive block scans and journal catch-up while isolating drive failures.</summary>
+/// <summary>Serves one drive's block scan and its journal catch-up on that drive's channel.</summary>
 public sealed partial class JournalBrokerHost
 {
-    async Task HandleArmAndScanAsync(
-        Stream stream,
-        IBlockSectionWriter? blockSectionWriter,
-        string drivesSpec,
-        IReadOnlyList<string> keepFileNames,
-        SemaphoreSlim writeLock,
+    // Frames, in order: Cursor, ScanProgress*, ScanReady, then one terminal frame - JournalBatch
+    // when catch-up held, or CatchUpLost when it failed and the live journal proves the armed
+    // cursor lost - or Error at any point. A cancelled scan (its pipe closed, or the session
+    // ended) writes nothing more.
+    async Task RunScanAsync(DriveChannel channel, BrokerFrame request, IBlockSectionWriter? blockSectionWriter,
         CancellationToken cancellationToken)
     {
-        foreach (var request in ParseScanSpec(drivesSpec))
+        if (blockSectionWriter == null)
         {
-            try
+            await WriteChannelErrorAsync(channel, "Block scans require the blockSectionWriter session parameter.",
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        // A closed pipe cancels the wait and takes the scan out of the queue; its source never runs.
+        channel.Operation.Queued();
+        var registration = await _parseThreads.AdmitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ScanOutput output;
+            // The scan's share of the budget is returned only once the pipeline below has
+            // returned, and the pipeline returns only after the native parse has: the volume and
+            // the section are released inside it, then the registration here.
+            using (registration)
             {
-                await ProcessDriveScanAsync(stream, blockSectionWriter, request, keepFileNames, writeLock, cancellationToken)
-                    .ConfigureAwait(false);
+                output = await ProduceBlockAsync(channel, request, blockSectionWriter, registration.Allowance,
+                    cancellationToken).ConfigureAwait(false);
             }
-            // Deliberate per-drive boundary: any failure on one drive (journal
-            // wrapped, volume open denied, scan IO error) is reported as an Error
-            // frame and the remaining drives still proceed - matching the existing
-            // non-fatal per-drive journal contract. A throw here would abort the
-            // whole session, losing the other drives' scans. Cancellation is not a
-            // per-drive error: let it propagate to end the session cleanly. Neither
-            // is a client disconnect - there is nobody left to report the drive to,
-            // and no point scanning the drives after it, so it ends the session too.
-            catch (Exception exception) when (exception is not OperationCanceledException
-                                              and not ClientDisconnectedException)
-            {
-                var message = exception.Message;
-                await WriteReplyFrameAsync(stream, writeLock,
-                        writer => BrokerProtocol.WriteError(writer, request.Letter, BrokerFrame.NoArmEpoch, message),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
+
+            await EmitScanCompletionFramesAsync(channel, output, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException
+                                          and not ClientDisconnectedException)
+        {
+            await WriteChannelErrorAsync(channel, exception.Message, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    async Task ProcessDriveScanAsync(
-        Stream stream,
-        IBlockSectionWriter? blockSectionWriter,
-        ScanDriveRequest request,
-        IReadOnlyList<string> keepFileNames,
-        SemaphoreSlim writeLock,
-        CancellationToken cancellationToken)
+    async Task<ScanOutput> ProduceBlockAsync(DriveChannel channel, BrokerFrame request,
+        IBlockSectionWriter blockSectionWriter, ParseThreadAllowance parseThreads, CancellationToken cancellationToken)
     {
         var progressChannel = Channel.CreateBounded<BrokerScanProgress>(
             new BoundedChannelOptions(1)
@@ -59,35 +57,55 @@ public sealed partial class JournalBrokerHost
             });
 
         var pumpTask = Task.Run(
-            () => RunProgressPumpAsync(stream, progressChannel.Reader, writeLock, cancellationToken),
+            () => RunProgressPumpAsync(channel, progressChannel.Reader, cancellationToken),
             CancellationToken.None);
 
-        (UsnJournalCursor cursor, BlockWriteResult writeResult, TimeSpan scanElapsed, long maximumRecordsProcessed, long?
-            totalRecords) scanOutput;
         try
         {
-            scanOutput = await Task.Run(
-                () => ExecuteDriveScanAsync(stream, blockSectionWriter, new ScanDriveInput(request, keepFileNames), progressChannel.Writer,
-                    writeLock, cancellationToken),
+            return await Task.Run(
+                () => WriteBlockAsync(channel, request, blockSectionWriter, parseThreads, progressChannel.Writer,
+                    cancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
-        // The pump is awaited before the completion frames are written. A client that
-        // disappeared mid-scan is usually noticed by one of the pump's progress writes, and
-        // the ClientDisconnectedException that write throws surfaces through this await, so
-        // the session ends here instead of writing completion frames nobody can receive.
+        // The pump is awaited before the completion frames are written. A client that disappeared
+        // mid-scan is usually noticed by one of the pump's progress writes, and the
+        // ClientDisconnectedException that write throws surfaces through this await, so the
+        // channel ends here instead of writing completion frames nobody can receive.
         finally
         {
             await pumpTask.ConfigureAwait(false);
         }
-
-        await EmitScanCompletionFramesAsync(stream, request, scanOutput, writeLock, cancellationToken)
-            .ConfigureAwait(false);
     }
 
-    internal static async Task RunProgressPumpAsync(
-        Stream stream,
-        ChannelReader<BrokerScanProgress> reader,
-        SemaphoreSlim writeLock,
+    async Task<ScanOutput> WriteBlockAsync(DriveChannel channel, BrokerFrame request,
+        IBlockSectionWriter blockSectionWriter, ParseThreadAllowance parseThreads,
+        ChannelWriter<BrokerScanProgress> progressWriter, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var progressState = new ScanProgressState();
+            var progressReporter = new DirectProgress<BlockWriteProgress>(value =>
+                progressState.Report(channel.Drive, value, progressWriter));
+
+            // Armed before the scan starts, so every change the scan misses is replayed by catch-up.
+            var cursor = _queryCursor(channel.Drive);
+            await WriteChannelFrameAsync(channel, writer => BrokerProtocol.WriteCursor(writer, cursor),
+                cancellationToken).ConfigureAwait(false);
+
+            var batches = _scanDrive(channel.Drive, parseThreads, channel.Operation, progressReporter,
+                cancellationToken);
+            var filter = new MftBlockRowFilter(request.Profile, request.KeepFileNames);
+            var result = blockSectionWriter.Write(request.RequireSectionName(), cursor, batches, filter,
+                progressReporter, cancellationToken);
+            return progressState.Complete(cursor, result);
+        }
+        finally
+        {
+            progressWriter.TryComplete();
+        }
+    }
+
+    static async Task RunProgressPumpAsync(DriveChannel channel, ChannelReader<BrokerScanProgress> reader,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -108,7 +126,7 @@ public sealed partial class JournalBrokerHost
                         lastEmit = now;
                         throttled = null;
                         var progressToEmit = progress;
-                        await WriteReplyFrameAsync(stream, writeLock,
+                        await WriteChannelFrameAsync(channel,
                             writer => BrokerProtocol.WriteScanProgress(writer, progressToEmit),
                             cancellationToken).ConfigureAwait(false);
                     }
@@ -119,13 +137,13 @@ public sealed partial class JournalBrokerHost
                 }
             }
 
-            // The channel completed normally: flush the newest report the throttle window
-            // held back (typically the parse phase's records == total report), so the last
-            // pre-completion value reaches the client instead of being dropped. Cancellation
-            // must not reach this flush - a cancelled scan emits no partial final frame.
+            // The channel completed normally: flush the newest report the throttle window held
+            // back (typically the parse phase's records == total report), so the last
+            // pre-completion value reaches the client instead of being dropped. Cancellation must
+            // not reach this flush - a cancelled scan emits no partial final frame.
             if (throttled is { } pending)
             {
-                await WriteReplyFrameAsync(stream, writeLock,
+                await WriteChannelFrameAsync(channel,
                     writer => BrokerProtocol.WriteScanProgress(writer, pending),
                     cancellationToken).ConfigureAwait(false);
             }
@@ -136,193 +154,85 @@ public sealed partial class JournalBrokerHost
         }
     }
 
-    async Task<(UsnJournalCursor cursor, BlockWriteResult writeResult, TimeSpan scanElapsed, long maximumRecordsProcessed,
-        long? totalRecords)> ExecuteDriveScanAsync(
-        Stream stream,
-        IBlockSectionWriter? blockSectionWriter,
-        ScanDriveInput input,
-        ChannelWriter<BrokerScanProgress> progressWriter,
-        SemaphoreSlim writeLock,
+    async Task EmitScanCompletionFramesAsync(DriveChannel channel, ScanOutput output,
         CancellationToken cancellationToken)
     {
-        try
+        var finalRecords = output.TotalRecords ?? output.WriteResult.RowCount;
+        if (finalRecords < output.MaximumRecordsProcessed)
         {
-            var progressState = new ScanProgressState();
-            var progressReporter = new DirectProgress<BlockWriteProgress>(value =>
-                progressState.Report(input.Request.Letter, value, progressWriter));
-
-            Task EmitCursorAsync(UsnJournalCursor armedCursor)
-            {
-                return WriteReplyFrameAsync(stream, writeLock,
-                    writer => BrokerProtocol.WriteCursor(writer, input.Request.Letter, armedCursor), cancellationToken);
-            }
-
-            var (cursor, writeResult) = await ExecuteBlockScanAsync(input, blockSectionWriter, progressReporter,
-                EmitCursorAsync, cancellationToken).ConfigureAwait(false);
-
-            return progressState.Complete(cursor, writeResult);
-        }
-        finally
-        {
-            progressWriter.TryComplete();
-        }
-    }
-
-    readonly record struct ScanDriveInput(ScanDriveRequest Request, IReadOnlyList<string> KeepFileNames);
-
-    async Task EmitScanCompletionFramesAsync(
-        Stream stream,
-        ScanDriveRequest request,
-        (UsnJournalCursor cursor, BlockWriteResult writeResult, TimeSpan scanElapsed, long maximumRecordsProcessed, long?
-            totalRecords) scanOutput,
-        SemaphoreSlim writeLock,
-        CancellationToken cancellationToken)
-    {
-        var finalRecords = scanOutput.totalRecords ?? scanOutput.writeResult.RowCount;
-        if (finalRecords < scanOutput.maximumRecordsProcessed)
-        {
-            finalRecords = scanOutput.maximumRecordsProcessed;
+            finalRecords = output.MaximumRecordsProcessed;
         }
 
-        long? finalTotalRecords = scanOutput.totalRecords ?? scanOutput.writeResult.RowCount;
-        if (finalTotalRecords.HasValue && finalTotalRecords.Value < finalRecords)
+        long? finalTotalRecords = output.TotalRecords ?? output.WriteResult.RowCount;
+        if (finalTotalRecords.Value < finalRecords)
         {
             finalTotalRecords = finalRecords;
         }
 
         var finalProgress = new BrokerScanProgress
         {
-            DriveLetter = request.Letter,
+            DriveLetter = channel.Drive,
             Phase = BrokerScanPhase.Transferring,
             RecordsProcessed = finalRecords,
-            BytesProcessed = scanOutput.writeResult.NamePoolUsedBytes,
+            BytesProcessed = output.WriteResult.NamePoolUsedBytes,
             TotalRecords = finalTotalRecords,
-            TotalBytes = scanOutput.writeResult.NamePoolUsedBytes,
-            Elapsed = scanOutput.scanElapsed
+            TotalBytes = output.WriteResult.NamePoolUsedBytes,
+            Elapsed = output.Elapsed
         };
 
-        await WriteReplyFrameAsync(stream, writeLock,
+        await WriteChannelFrameAsync(channel,
             writer => BrokerProtocol.WriteScanProgress(writer, finalProgress),
             cancellationToken).ConfigureAwait(false);
 
-        await WriteReplyFrameAsync(stream, writeLock,
-            writer => BrokerProtocol.WriteScanReady(writer, request.MmfName, scanOutput.writeResult.RowCount,
-                scanOutput.writeResult.NamePoolUsedBytes, scanOutput.writeResult.SkippedRecordCount),
+        await WriteChannelFrameAsync(channel,
+            writer => BrokerProtocol.WriteScanReady(writer, output.WriteResult.RowCount,
+                output.WriteResult.NamePoolUsedBytes, output.WriteResult.SkippedRecordCount),
             cancellationToken).ConfigureAwait(false);
 
         UsnJournalEntry[] entries;
         UsnJournalCursor updated;
         try
         {
-            (entries, updated) = CatchUp(request.Letter, scanOutput.cursor);
+            (entries, updated) = CatchUp(channel.Drive, output.Cursor);
         }
-        // The armed cursor can fall outside the journal's live window by the time
-        // catch-up runs (a busy system volume's 32 MB journal wrapping past it
-        // during a long multi-drive scan). Degrade the same way a (0,0) warm-start
-        // cursor does in StreamWatchAsync: watch from the current journal position
-        // and tell the caller the gap was lost, instead of failing the whole drive
-        // with an Error frame even though the scan itself succeeded. Re-querying
-        // the cursor is not wrapped here - if it also throws, that propagates to
-        // HandleArmAndScanAsync's per-drive catch, which emits the existing Error
-        // frame.
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            var freshCursor = _queryCursor(request.Letter);
-            await WriteReplyFrameAsync(stream, writeLock,
-                writer => BrokerProtocol.WriteWarning(writer, request.Letter,
-                    $"Catch-up after scan failed: {exception.Message}; watching from the current journal " +
-                    "position, changes made during the scan were not replayed"),
-                cancellationToken).ConfigureAwait(false);
-            entries = Array.Empty<UsnJournalEntry>();
-            updated = freshCursor;
+            await ReportFailedCatchUpAsync(channel, output.Cursor, exception, cancellationToken)
+                .ConfigureAwait(false);
+            return;
         }
 
-        // The terminal catch-up batch always ships - the client's scan collector waits on
-        // it to complete the drive - but the diagnostics logs' own entries are still
-        // filtered out, so a scan that raced a busy diagnostics log does not replay them.
+        // The terminal catch-up batch always ships - the client's scan collector waits on it to
+        // complete the drive - but the diagnostics logs' own entries are still filtered out, so a
+        // scan that raced a busy diagnostics log does not replay them.
         var logFilter = BrokerDiagnostics.CreateLogFilter();
         if (logFilter != null)
         {
-            entries = logFilter.Filter(request.Letter, entries);
+            entries = logFilter.Filter(channel.Drive, entries);
         }
 
-        await WriteReplyFrameAsync(stream, writeLock,
-            writer => BrokerProtocol.WriteJournalBatch(writer, request.Letter, BrokerFrame.NoArmEpoch, updated, entries),
+        await WriteChannelFrameAsync(channel,
+            writer => BrokerProtocol.WriteJournalBatch(writer, updated, entries),
             cancellationToken).ConfigureAwait(false);
     }
 
-    internal static ScanDriveRequest[] ParseScanSpecForTest(string spec) => ParseScanSpec(spec).ToArray();
-
-    internal static WatchDriveRequest[] ParseWatchSpecForTest(string spec) => ParseWatchSpec(spec).ToArray();
-
-    // Scan tokens are comma-joined "letter:journalId:nextUsn:sectionName:profile".
-    // Absent section and profile default to empty and Full.
-    static IEnumerable<ScanDriveRequest> ParseScanSpec(string spec)
+    // The failure is never classified from the exception: the journal read throws the same
+    // exception for a trimmed journal, a vanished drive and a failed read. The live journal is the
+    // classifier. A proven loss of the armed cursor is CatchUpLost; a cursor still retained, or a
+    // journal that cannot answer, is an ordinary drive error on this scan.
+    static async Task ReportFailedCatchUpAsync(DriveChannel channel, UsnJournalCursor armed, Exception exception,
+        CancellationToken cancellationToken)
     {
-        foreach (var token in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        var loss = JournalCheckpointCheck.Check(channel.Drive[0], armed.JournalId, armed.NextUsn,
+            JournalCheckpointLossDetection.ScanCatchUp);
+        if (loss is null)
         {
-            var parts = token.Split(':');
-            yield return new ScanDriveRequest(
-                parts[0],
-                ulong.Parse(parts[1], CultureInfo.InvariantCulture),
-                long.Parse(parts[2], CultureInfo.InvariantCulture),
-                parts.Length > 3 ? parts[3] : string.Empty,
-                parts.Length > 4 ? ParseScanProfile(parts[4]) : BrokerScanProfile.Full);
-        }
-    }
-
-    static BrokerScanProfile ParseScanProfile(string value)
-    {
-        var profile = (BrokerScanProfile)int.Parse(value, CultureInfo.InvariantCulture);
-        if (!Enum.IsDefined(profile))
-        {
-            throw new InvalidDataException($"Unknown broker scan profile: {value}");
+            await WriteChannelErrorAsync(channel, exception.Message, cancellationToken).ConfigureAwait(false);
+            return;
         }
 
-        return profile;
+        await WriteChannelFrameAsync(channel,
+            writer => BrokerProtocol.WriteCatchUpLost(writer, loss, exception.Message),
+            cancellationToken).ConfigureAwait(false);
     }
-
-    // A per-drive arm-and-scan request: bare drive letter, the resume cursor
-    // (unused for arm-and-scan, which queries fresh), the caller-created map name,
-    // and optional cold-scan record profile.
-    internal readonly record struct ScanDriveRequest(
-        string Letter,
-        ulong JournalId,
-        long NextUsn,
-        string MmfName,
-        BrokerScanProfile Profile);
-
-    // A per-drive live watch request: bare drive letter, the resume cursor, and the
-    // client-issued arm epoch that identifies this generation of the drive's watch stream.
-    internal readonly record struct WatchDriveRequest(
-        string Letter,
-        ulong JournalId,
-        long NextUsn,
-        uint ArmEpoch);
-
-    static IEnumerable<WatchDriveRequest> ParseWatchSpec(string spec)
-    {
-        foreach (var token in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var parts = token.Split(':');
-            if (parts.Length != 4)
-            {
-                throw new InvalidDataException(
-                    $"Watch spec token '{token}' must be letter:journalId:nextUsn:armEpoch.");
-            }
-
-            yield return new WatchDriveRequest(
-                NormalizeWatchDrive(parts[0]),
-                ulong.Parse(parts[1], CultureInfo.InvariantCulture),
-                long.Parse(parts[2], CultureInfo.InvariantCulture),
-                uint.Parse(parts[3], CultureInfo.InvariantCulture));
-        }
-    }
-
-    // The host normalizes a disarm the same way it normalizes an arm, falling back to
-    // the raw string when it is not a drive letter. A string that cannot be normalized
-    // can never have been armed either, so it keys itself and the lookup simply misses
-    // (the same 'not armed is not an error' rule the disarm already has).
-    static string NormalizeWatchDrive(string drive) =>
-        JournalBrokerClient.TryNormalizeDriveLetter(drive, out var normalized) ? normalized : drive;
 }

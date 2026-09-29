@@ -10,25 +10,28 @@ namespace MFTLib;
 /// </summary>
 public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
 {
+    // How long an exiting broker waits for its queued diagnostics lines to reach the log.
+    static readonly TimeSpan DiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
+
     // Exiting the process cannot be exercised from an in-process unit test (it would
     // kill the test host), so tests inject a fake. Production always uses Environment.Exit.
     internal static Action<int> _exitProcess = Environment.Exit;
 
     [SupportedOSPlatform("windows")]
-    public void RunBroker(string? pipeName, bool oneShot)
+    public void RunBroker(string? controlPipeName)
     {
-        if (pipeName == null)
+        if (controlPipeName == null)
         {
             _exitProcess(1);
             return;
         }
 
-        // The non-elevated caller created the named-pipe server; the elevated broker is
-        // the client end (high integrity connecting to medium integrity - the only
-        // safe cross-integrity direction). It also opens the caller-created MMFs.
-        using var stream = new NamedPipeClientStream(
-            ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        stream.Connect();
+        // The non-elevated caller created every pipe server; the elevated broker is the client
+        // end of each (high integrity connecting to medium integrity - the only safe
+        // cross-integrity direction). It also opens the caller-created block sections.
+        using var control = new NamedPipeClientStream(
+            ".", controlPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        control.Connect();
 
         // Block the elevated child's entry thread for the whole broker session: this
         // process exists solely to serve the broker, so there is no other work to
@@ -41,11 +44,37 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
         // the first incomplete await already leaves the caller's context and no
         // continuation is ever posted back to this thread for GetResult() to block on.
         JournalBrokerHost.CreateDefault()
-            .ServeAsync(stream, new RealBlockSectionWriter(), oneShot, CancellationToken.None)
+            .ServeAsync(control, ConnectDrivePipeAsync, new RealBlockSectionWriter(), CancellationToken.None)
             // aislop-ignore-next-line csharp-sync-over-async -- every await in the ServeAsync chain uses ConfigureAwait(false), so no continuation needs the calling thread's SynchronizationContext and GetResult() cannot deadlock even when the entry thread has one
             .GetAwaiter().GetResult();
 
+        FlushDiagnostics();
         _exitProcess(0);
+    }
+
+    /// <summary>The production <see cref="BrokerChannelConnector" />: the client end of the named drive pipe.</summary>
+    internal static async Task<Stream> ConnectDrivePipeAsync(string pipeName, CancellationToken cancellationToken)
+    {
+        var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        try
+        {
+            await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            return pipe;
+        }
+        catch
+        {
+            await pipe.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    // The session is over and the process is about to exit, so the diagnostics lines still
+    // queued get a bounded wait to reach the log. Lines the wait does not cover are lost with the
+    // process; there is nowhere left to report that, so the wait's outcome is not inspected.
+    static void FlushDiagnostics()
+    {
+        // aislop-ignore-next-line csharp-sync-over-async -- the flush awaits only the diagnostics writer's own drain task, which never posts to the calling thread's SynchronizationContext
+        _ = BrokerDiagnostics.FlushAsync(CancellationToken.None).Wait(DiagnosticsFlushTimeout);
     }
 
     internal static void ResetToDefaults()

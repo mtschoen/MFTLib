@@ -44,7 +44,7 @@ public class BrokerDiagnosticsTests
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "cold-scan-broker-ok");
-        await BrokerDiagnostics.FlushForTestAsync(CancellationToken.None);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None);
 
         var path = Path.Combine(_temporaryRoot, "broker-diagnostics.log");
         Assert.IsTrue(File.Exists(path));
@@ -67,7 +67,7 @@ public class BrokerDiagnosticsTests
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
         BrokerDiagnostics.Enable("broker");
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "forced-on");
-        await BrokerDiagnostics.FlushForTestAsync(CancellationToken.None);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None);
 
         var path = Path.Combine(_temporaryRoot, "broker-diagnostics.log");
         Assert.IsTrue(File.Exists(path));
@@ -83,7 +83,7 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.LogDirectory = Path.Combine(_temporaryRoot, "missing-subdir");
 
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "should-not-throw");
-        await BrokerDiagnostics.FlushForTestAsync(CancellationToken.None);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None);
     }
 
     [TestMethod]
@@ -91,7 +91,7 @@ public class BrokerDiagnosticsTests
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
         BrokerDiagnostics.LogFrame(BrokerDiagnostics.DriveChannel('C', 3), "read", 6, 42);
-        await BrokerDiagnostics.FlushForTestAsync(CancellationToken.None);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None);
 
         var path = Path.Combine(_temporaryRoot, "broker-diagnostics.log");
         Assert.IsTrue(File.Exists(path));
@@ -110,7 +110,7 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Add, () => "broker"));
 
         BrokerDiagnostics.Log(BrokerDiagnostics.DriveChannel('D', 12), "hello");
-        await BrokerDiagnostics.FlushForTestAsync(CancellationToken.None).WaitAsync(TestTimeout);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
 
         Assert.AreEqual(1, lines.Count);
         StringAssert.Matches(lines[0], new System.Text.RegularExpressions.Regex(
@@ -136,7 +136,7 @@ public class BrokerDiagnosticsTests
         })).ToArray();
         start.Release();
         await Task.WhenAll(writers).WaitAsync(TestTimeout);
-        await BrokerDiagnostics.FlushForTestAsync(CancellationToken.None).WaitAsync(TestTimeout);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
 
         Assert.AreEqual(1600, lines.Count);
         for (var channelIndex = 0; channelIndex < 8; channelIndex++)
@@ -172,7 +172,7 @@ public class BrokerDiagnosticsTests
         await callerTask.WaitAsync(TestTimeout);
 
         gate.Release();
-        await BrokerDiagnostics.FlushForTestAsync(CancellationToken.None).WaitAsync(TestTimeout);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
         Assert.AreEqual(101, lines.Count);
     }
 
@@ -197,7 +197,7 @@ public class BrokerDiagnosticsTests
         }
 
         gate.Release();
-        await BrokerDiagnostics.FlushForTestAsync(CancellationToken.None).WaitAsync(TestTimeout);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
 
         Assert.AreEqual(1, lines.Count(line => line.Contains("5 records dropped: buffer full", StringComparison.Ordinal)));
         Assert.AreEqual(1 + BrokerDiagnosticsWriter.Capacity + 1, lines.Count);
@@ -222,7 +222,7 @@ public class BrokerDiagnosticsTests
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "first");
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "second");
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "third");
-        await BrokerDiagnostics.FlushForTestAsync(CancellationToken.None).WaitAsync(TestTimeout);
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TestTimeout);
 
         Assert.AreEqual(2, lines.Count);
         StringAssert.Contains(lines[0], "2 records dropped: buffer full");

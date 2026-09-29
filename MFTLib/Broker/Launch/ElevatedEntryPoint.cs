@@ -23,8 +23,8 @@ public static class ElevatedEntryPoint
             switch (arg)
             {
                 case "--broker":
-                    // The broker is reactive: drives, cursors, and map names arrive in
-                    // ArmAndScan frames over the pipe, so it needs only the pipe name.
+                    // The broker is reactive: drives, pipe names, cursors and section names
+                    // arrive over the control pipe, so it needs only that pipe's name.
                     // --diag turns on frame tracing in the elevated child too (a runas
                     // launch does not reliably inherit the MFTLIB_BROKER_DIAG env var).
                     // --diag-log carries the client process's log path and
@@ -38,7 +38,7 @@ public static class ElevatedEntryPoint
                         BrokerDiagnostics.IncludeSelfEntries = HasFlag(args, "--diag-include-self");
                     }
 
-                    runner.RunBroker(FindOption(args, "--pipe"), HasFlag(args, "--once"));
+                    runner.RunBroker(FindOption(args, "--pipe"));
                     return true;
             }
         }

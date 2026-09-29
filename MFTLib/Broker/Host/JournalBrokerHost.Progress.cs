@@ -6,6 +6,10 @@ namespace MFTLib;
 /// <summary>Tracks parsing and transfer counts for the elevated broker's per-drive progress reports.</summary>
 public sealed partial class JournalBrokerHost
 {
+    // What a finished block scan hands to its completion frames.
+    readonly record struct ScanOutput(UsnJournalCursor Cursor, BlockWriteResult WriteResult, TimeSpan Elapsed,
+        long MaximumRecordsProcessed, long? TotalRecords);
+
     sealed class ScanProgressState
     {
         readonly Stopwatch _stopwatch = Stopwatch.StartNew();
@@ -32,13 +36,13 @@ public sealed partial class JournalBrokerHost
             }
         }
 
-        public (UsnJournalCursor cursor, BlockWriteResult writeResult, TimeSpan scanElapsed,
-            long maximumRecordsProcessed, long? totalRecords) Complete(UsnJournalCursor cursor, BlockWriteResult writeResult)
+        public ScanOutput Complete(UsnJournalCursor cursor, BlockWriteResult writeResult)
         {
             lock (_progressLock)
             {
                 _stopwatch.Stop();
-                return (cursor, writeResult, _stopwatch.Elapsed, _maximumParsingRecordsProcessed, _totalRecordsKnown);
+                return new ScanOutput(cursor, writeResult, _stopwatch.Elapsed, _maximumParsingRecordsProcessed,
+                    _totalRecordsKnown);
             }
         }
 

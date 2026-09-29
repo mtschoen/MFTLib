@@ -1,224 +1,213 @@
+using System.Buffers;
+
 namespace MFTLib;
 
+/// <summary>The control pipe: reads requests, runs each on its own task, and ends the session.</summary>
 public sealed partial class JournalBrokerHost
 {
     /// <summary>
-    ///     Serve a broker session over <paramref name="stream" /> (the pipe). Reads
-    ///     request frames in a loop. On <see cref="BrokerFrameKind.ArmAndScan" />, for
-    ///     each drive: arm the cursor, emit a <c>Cursor</c> frame, write packed index rows via
-    ///     <paramref name="blockSectionWriter" /> into the caller-created map, emit
-    ///     <c>ScanReady</c>, run catch-up, emit a <c>JournalBatch</c>. Per-drive
-    ///     failures emit an <c>Error</c> frame and continue (non-fatal contract). On
-    ///     <see cref="BrokerFrameKind.QueryVolumes" />, answers one <c>VolumeInfo</c> (or
-    ///     <c>Error</c>) frame per drive without arming a scan, then keeps serving - the
-    ///     caller can follow it with <c>ArmAndScan</c> on the same connection.
-    ///     <c>StartWatch</c> arms or re-arms each drive it names, and
-    ///     <c>DisarmDrive</c> retires one drive while the others keep streaming. A
-    ///     per-drive watch failure ends that drive's stream with an <c>Error</c> frame.
-    ///     Each <c>StartWatch</c> token carries its drive's client-issued arm epoch.
-    ///     Every live <c>JournalBatch</c> and <c>Error</c> echoes that epoch so the client
-    ///     can distinguish the current arm's frames from frames an earlier arm produced.
-    ///     Returns on <c>Shutdown</c>, on EOF, or after one arm-and-scan when
-    ///     <paramref name="oneShot" /> is set (a single-UAC CLI-style path). A client
-    ///     that closes the pipe while drives are watched ends the session the same way
-    ///     EOF does: a watch whose frame write fails on the broken pipe stops quietly
-    ///     (no <c>Error</c> frame can reach a gone client), so the watch tasks complete
-    ///     rather than fault and this method returns normally instead of crashing the
-    ///     elevated child. A client that closes the pipe while a request is being
-    ///     answered ends the session the same way: the reply write that finds the pipe
-    ///     gone ends the session rather than throwing its <see cref="IOException" /> out
-    ///     of the elevated child, and any watch generation still live is stopped on the
-    ///     way out.
+    ///     Serve a broker session. Reads request frames from <paramref name="control" /> and runs
+    ///     each on its own task, so a slow request never delays another's reply; control writes
+    ///     are serialized by a control-only lock. <c>OpenChannel</c> connects the named drive pipe
+    ///     through <paramref name="connectChannel" /> and serves one scan or one watch on it, on
+    ///     its own task. <c>QueryVolume</c> and <c>GrowUsnJournal</c> answer with one reply or one
+    ///     <c>Error</c> carrying the request id.
+    ///     The session ends when the control pipe reaches EOF, when a control reply finds the
+    ///     pipe gone, or when <paramref name="cancellationToken" /> is cancelled. Ending cancels
+    ///     every channel and waits for their tasks up to <see cref="ControlClosedGracePeriod" />
+    ///     on the host's clock, then returns even if an operation ignores its cancellation.
     /// </summary>
-    /// <param name="stream">The connected pipe to serve.</param>
+    /// <param name="control">The connected control pipe.</param>
+    /// <param name="connectChannel">Connects a drive pipe the client created and named.</param>
     /// <param name="blockSectionWriter">
-    ///     Writes packed rows into the client-created section. Null serves a watch-only
-    ///     session; an <c>ArmAndScan</c> on such a session then fails with one <c>Error</c>
-    ///     frame per requested drive rather than one argument failure up front.
+    ///     Writes packed rows into the client-created section. Null serves a watch-only session;
+    ///     a scan channel on such a session ends with one <c>Error</c> frame.
     /// </param>
-    /// <param name="oneShot">Return after a single arm-and-scan instead of serving on.</param>
-    /// <param name="cancellationToken">Stops serving.</param>
-    public async Task ServeAsync(Stream stream, IBlockSectionWriter? blockSectionWriter, bool oneShot,
-        CancellationToken cancellationToken)
+    /// <param name="cancellationToken">Ends the session.</param>
+    public async Task ServeAsync(Stream control, BrokerChannelConnector connectChannel,
+        IBlockSectionWriter? blockSectionWriter, CancellationToken cancellationToken)
     {
-        // The pipe is shared by concurrent watch tasks; guard writes so frames
-        // never interleave on the wire.
-        using var writeLock = new SemaphoreSlim(1, 1);
-        var watch = new WatchGeneration();
+        ArgumentNullException.ThrowIfNull(control);
+        ArgumentNullException.ThrowIfNull(connectChannel);
+
+        using var session = new ControlSession(control, connectChannel, blockSectionWriter, cancellationToken);
         try
         {
-            await ServeFramesAsync(stream, blockSectionWriter, oneShot, writeLock, watch, cancellationToken)
-                .ConfigureAwait(false);
+            while (await ReadFrameAsync(control, BrokerDiagnostics.ControlChannel, session.Token)
+                       .ConfigureAwait(false) is { } request)
+            {
+                session.Tasks.Track(HandleControlRequestAsync(session, request));
+            }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (session.Token.IsCancellationRequested)
         {
-            // Cancellation is the normal shutdown signal for a live watch session.
-        }
-        catch (ClientDisconnectedException)
-        {
-            // A reply found the client's end of the pipe gone, so the session is over: there
-            // is nobody left to serve, and no further frame can be delivered. The finally
-            // below stops any watch generation that was still live.
+            // The session was ended by the caller or by a control reply that found the pipe gone;
+            // either way the drain below is what remains to do.
         }
         finally
         {
-            await StopWatchGenerationAsync(watch).ConfigureAwait(false);
+            await session.EndAsync().ConfigureAwait(false);
+            await DrainAsync(session.Tasks).ConfigureAwait(false);
         }
     }
 
-    async Task ServeFramesAsync(
-        Stream stream,
-        IBlockSectionWriter? blockSectionWriter,
-        bool oneShot,
-        SemaphoreSlim writeLock,
-        WatchGeneration watch,
-        CancellationToken cancellationToken)
+    async Task HandleControlRequestAsync(ControlSession session, BrokerFrame request)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        // Off the read loop at once, so a request that blocks in its source never delays the next
+        // request's read or reply.
+        await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+        try
         {
-            var frame = await ReadFrameAsync(stream, cancellationToken).ConfigureAwait(false);
-            if (frame == null)
+            switch (request.Kind)
             {
-                return;
-            }
-
-            switch (frame.Value.Kind)
-            {
-                case BrokerFrameKind.ArmAndScan:
-                    if (frame.Value.DrivesSpec is { } drivesSpec)
-                    {
-                        await HandleArmAndScanAsync(stream, blockSectionWriter, drivesSpec, frame.Value.KeepFileNames,
-                            writeLock, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    if (oneShot)
-                    {
-                        return;
-                    }
-
+                case BrokerFrameKind.OpenChannel:
+                    await OpenChannelAsync(session, request).ConfigureAwait(false);
                     break;
 
-                case BrokerFrameKind.QueryVolumes:
-                    if (frame.Value.DrivesSpec is { } queryVolumesSpec)
-                    {
-                        await HandleQueryVolumesAsync(stream, queryVolumesSpec, writeLock, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-
+                case BrokerFrameKind.QueryVolume:
+                    await HandleQueryVolumeAsync(session, request).ConfigureAwait(false);
                     break;
 
                 case BrokerFrameKind.GrowUsnJournal:
-                    await HandleGrowUsnJournalAsync(stream, frame.Value.RequireDrive(),
-                        frame.Value.JournalMaximumSize, frame.Value.JournalAllocationDelta,
-                        writeLock, cancellationToken).ConfigureAwait(false);
+                    await HandleGrowUsnJournalAsync(session, request).ConfigureAwait(false);
                     break;
 
-                case BrokerFrameKind.StartWatch:
-                    if (frame.Value.DrivesSpec is { } watchSpec)
-                    {
-                        await ArmWatchDrivesAsync(stream, writeLock, watch, watchSpec, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-
+                default:
+                    await WriteControlErrorAsync(session, request.RequestId,
+                        $"{request.Kind} is not a control request").ConfigureAwait(false);
                     break;
-
-                case BrokerFrameKind.DisarmDrive:
-                    await DisarmWatchDriveAsync(watch, NormalizeWatchDrive(frame.Value.RequireDrive())).ConfigureAwait(false);
-                    break;
-
-                case BrokerFrameKind.EndWatch:
-                    await StopWatchGenerationAsync(watch).ConfigureAwait(false);
-                    await WriteReplyFrameAsync(stream, writeLock, BrokerProtocol.WriteEndWatchAck, cancellationToken)
-                        .ConfigureAwait(false);
-                    break;
-
-                case BrokerFrameKind.Shutdown:
-                    return;
             }
         }
-    }
-
-    async Task ArmWatchDrivesAsync(
-        Stream stream,
-        SemaphoreSlim writeLock,
-        WatchGeneration watch,
-        string watchSpec,
-        CancellationToken cancellationToken)
-    {
-        // Arming a drive that is already armed stops its task and awaits it to a stop
-        // before the fresh one starts, so one drive never has two tasks writing frames at
-        // once. That is what replaces the old refusal to act on a second StartWatch: the
-        // refusal existed only because the frame loop had no way to retire a running
-        // generation safely, and awaiting one drive to a stop is that way. Drives this
-        // spec does not name are not touched.
-        watch.Cancellation ??= CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        foreach (var request in ParseWatchSpec(watchSpec))
+        catch (OperationCanceledException) when (session.Token.IsCancellationRequested)
         {
-            await DisarmWatchDriveAsync(watch, request.Letter).ConfigureAwait(false);
-            watch.DriveWatches[request.Letter] = new DriveWatch(
-                driveCancellationToken => StreamWatchAsync(stream, request, writeLock, driveCancellationToken),
-                watch.Cancellation.Token);
+            // The session is ending; its drain accounts for this request.
+        }
+        catch (ClientDisconnectedException)
+        {
+            // A reply that cannot reach the client ends the whole session: there is nobody left to
+            // serve, so every channel is cancelled and the control read loop returns.
+            await session.EndAsync().ConfigureAwait(false);
         }
     }
 
-    // Cancel one drive's task, await its quiescence, and forget it. StreamWatchAsync
-    // catches OperationCanceledException internally and returns quietly on a frame write
-    // that found the client's pipe gone, so it always returns normally and this await
-    // cannot fault. A drive that is not armed is not an error: a client may disarm a drive
-    // whose stream the host already ended with its Error frame.
-    static async Task DisarmWatchDriveAsync(WatchGeneration watch, string drive)
+    static Task WriteControlFrameAsync(ControlSession session, Action<ArrayBufferWriter<byte>> write)
     {
-        if (!watch.DriveWatches.Remove(drive, out var driveWatch))
-        {
-            return;
-        }
-
-        await driveWatch.Cancellation.CancelAsync().ConfigureAwait(false);
-        await driveWatch.Task.ConfigureAwait(false);
-        driveWatch.Dispose();
+        // An ended session writes nothing more; checking first also keeps a request the grace
+        // period abandoned off the session's lock once the session is disposed.
+        session.Token.ThrowIfCancellationRequested();
+        return WriteFrameAsync(session.Control, session.WriteLock, BrokerDiagnostics.ControlChannel, write,
+            session.Token);
     }
 
-    static async Task StopWatchGenerationAsync(WatchGeneration watch)
+    static Task WriteControlErrorAsync(ControlSession session, uint requestId, string message)
     {
-        if (watch.Cancellation == null)
-        {
-            return;
-        }
-
-        await watch.Cancellation.CancelAsync().ConfigureAwait(false);
-        await Task.WhenAll(watch.DriveWatches.Values.Select(driveWatch => driveWatch.Task)).ConfigureAwait(false);
-        foreach (var driveWatch in watch.DriveWatches.Values)
-        {
-            driveWatch.Dispose();
-        }
-
-        watch.DriveWatches.Clear();
-        watch.Cancellation.Dispose();
-        watch.Cancellation = null;
+        return WriteControlFrameAsync(session, writer => BrokerProtocol.WriteError(writer, requestId, message));
     }
 
-    sealed class WatchGeneration
+    // Waits for every tracked task, including tasks tracked while waiting, until all have ended
+    // or the grace period has passed on the host's clock. A task still running then is abandoned:
+    // the session is ending and the process exits after ServeAsync returns. A task that faulted
+    // rethrows here, because nothing else observes it.
+    async Task DrainAsync(SessionTasks tasks)
     {
-        public readonly Dictionary<string, DriveWatch> DriveWatches = new(StringComparer.OrdinalIgnoreCase);
-        public CancellationTokenSource? Cancellation;
+        using var stopDeadline = new CancellationTokenSource();
+        var deadline = Task.Delay(ControlClosedGracePeriod, _timeProvider, stopDeadline.Token);
+        try
+        {
+            while (true)
+            {
+                var snapshot = tasks.Snapshot();
+                var all = Task.WhenAll(snapshot);
+                if (await Task.WhenAny(all, deadline).ConfigureAwait(false) != all)
+                {
+                    return;
+                }
+
+                await all.ConfigureAwait(false);
+                if (tasks.Snapshot().All(task => task.IsCompleted))
+                {
+                    return;
+                }
+            }
+        }
+        finally
+        {
+            await stopDeadline.CancelAsync().ConfigureAwait(false);
+        }
     }
 
-    sealed class DriveWatch : IDisposable
+    // Disposed when ServeAsync returns, possibly while a task the grace period abandoned still
+    // holds it. Such a task sees Token cancelled (a token stays readable after its source is
+    // disposed), so it reaches neither EndAsync's cancel nor the write lock.
+    sealed class ControlSession : IDisposable
     {
-        public DriveWatch(Func<CancellationToken, Task> startWatch,
-            CancellationToken generationCancellationToken)
+        readonly CancellationTokenSource _cancellation;
+        readonly Dictionary<char, int> _channelSequences = [];
+
+        public ControlSession(Stream control, BrokerChannelConnector connectChannel,
+            IBlockSectionWriter? blockSectionWriter, CancellationToken cancellationToken)
         {
-            Cancellation = CancellationTokenSource.CreateLinkedTokenSource(generationCancellationToken);
-            Task = startWatch(Cancellation.Token);
+            _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            Token = _cancellation.Token;
+            Control = control;
+            ConnectChannel = connectChannel;
+            BlockSectionWriter = blockSectionWriter;
         }
 
-        public CancellationTokenSource Cancellation { get; }
+        public Stream Control { get; }
+        public BrokerChannelConnector ConnectChannel { get; }
+        public IBlockSectionWriter? BlockSectionWriter { get; }
+        public SemaphoreSlim WriteLock { get; } = new(1, 1);
+        public SessionTasks Tasks { get; } = new();
 
-        public Task Task { get; }
+        /// <summary>Cancelled when the session ends; every request and channel is linked to it.</summary>
+        public CancellationToken Token { get; }
+
+        // The drive's next channel number, for the diagnostics tag of its pipe.
+        public int NextChannelSequence(char driveLetter)
+        {
+            lock (_channelSequences)
+            {
+                var sequence = _channelSequences.GetValueOrDefault(driveLetter) + 1;
+                _channelSequences[driveLetter] = sequence;
+                return sequence;
+            }
+        }
+
+        public Task EndAsync()
+        {
+            return Token.IsCancellationRequested ? Task.CompletedTask : _cancellation.CancelAsync();
+        }
 
         public void Dispose()
         {
-            Cancellation.Dispose();
+            _cancellation.Dispose();
+            WriteLock.Dispose();
+        }
+    }
+
+    // The session's request and channel tasks. A task that completed successfully is forgotten
+    // at the next Track; a faulted one is kept so the drain rethrows it.
+    sealed class SessionTasks
+    {
+        readonly Lock _gate = new();
+        readonly List<Task> _tasks = [];
+
+        public void Track(Task task)
+        {
+            lock (_gate)
+            {
+                _tasks.RemoveAll(tracked => tracked.IsCompletedSuccessfully);
+                _tasks.Add(task);
+            }
+        }
+
+        public Task[] Snapshot()
+        {
+            lock (_gate)
+            {
+                return _tasks.ToArray();
+            }
         }
     }
 }
