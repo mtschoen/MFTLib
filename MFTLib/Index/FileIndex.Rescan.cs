@@ -14,68 +14,39 @@ public sealed partial class FileIndex
     ///     straight back to restore the on-disk cache.
     /// </summary>
     /// <remarks>
-    ///     A rescan while watching disarms only this drive, swaps its block, resets catch-up to
-    ///     <see cref="WatchCatchUpState.CatchingUp" />, and re-arms it from the fresh cursor.
-    ///     A blockless drive is scanned and adopted rather than swapped; failed scans rewrite status
-    ///     to <see cref="DriveFailureKind.ProducerFailed" />. Offline drives are refused.
-    ///     Watch faults are tracked per drive: a successful re-arm clears this drive's outstanding
-    ///     watch fault, so <see cref="StopWatchingAsync" /> no longer rethrows it, and leaves every
-    ///     other drive's fault, subscriber faults, and source faults in place. If the re-arm fails,
-    ///     the drive's earlier fault is restored unless a newer fault for it was recorded meanwhile.
+    ///     The rescan holds the drive's lifecycle gate from entry to exit, so a
+    ///     <see cref="StartWatchingAsync" /> of the same drive waits for it, and the canonical
+    ///     file's rename-aside, the scan into the canonical path, and the restore on failure are
+    ///     serialized per drive. A blockless drive is scanned and adopted rather than swapped;
+    ///     failed scans rewrite status to <see cref="DriveFailureKind.ProducerFailed" />. Offline
+    ///     drives are refused.
     ///     <para>
-    ///         A drive whose watch was already faulted when this rescan began is recovered only
-    ///         after a replacement block is committed. If production returns no block, throws,
-    ///         or is cancelled before replacement, its previous block, watch failure, faulted
-    ///         catch-up, outstanding watch fault, and checkpoint-loss report remain in place.
-    ///         The drive is neither re-armed from its old cursor nor used to restart an ended
-    ///         watch session. Non-cancellation producer failures are available through
+    ///         A drive that is watching has its watch stopped, and its teardown awaited, before the
+    ///         scan runs, so nothing the old watch reads can reach the new block. After a committed
+    ///         replacement the drive's watch is started again from the new block's cursor if it is
+    ///         still requested, which a <see cref="StopWatchingAsync" /> during the rescan clears.
+    ///         That restart replaces a faulted watch, clearing its
+    ///         <see cref="DriveStatus.WatchFailureMessage" /> and faulted
+    ///         <see cref="DriveStatus.WatchCatchUp" />. A replacement also clears a refused start's
+    ///         failure, including the refusal of a block a cache-only open adopted despite a lost
+    ///         journal checkpoint. Other drives are never touched.
+    ///     </para>
+    ///     <para>
+    ///         If the scan produces no replacement, a drive whose watch was healthy restarts its
+    ///         watch from its old cursor (when still requested). A drive whose watch had faulted,
+    ///         whose start was refused, or that has no block stays exactly as it was: its previous
+    ///         block, watch failure, faulted catch-up, outstanding watch fault, and checkpoint-loss
+    ///         report remain, and it is not restarted from a cursor that failure condemns.
+    ///         Non-cancellation producer failures are available through
     ///         <see cref="DriveStatus.MftProducerFailureMessage" /> even when this task completes
-    ///         normally. A previously healthy drive may instead resume its old watch after a
-    ///         failed rescan. Other drives continue watching independently.
+    ///         normally.
     ///     </para>
     ///     <para>
-    ///         A drive a cache-only open adopted despite a lost journal checkpoint (see
-    ///         <see cref="FileIndexOptions.InitialOpenCacheOnly" />) is never disarmed here, since
-    ///         it was never armed. If the scan replaces its block, the fresh cursor is armed onto
-    ///         whatever watch session is running by the time the scan finishes, even one that
-    ///         started after this call began: the session captured at the start is a snapshot, not
-    ///         a lock, so a session can appear while the scan is still in flight. If the scan
-    ///         fails without producing a new block, the old, still-unresumable block is left in
-    ///         place and the drive's watch refusal is left exactly as it was, rather than being
-    ///         armed from a cursor the journal still cannot resume.
-    ///     </para>
-    ///     <para>
-    ///         If the watch session ends while the rescan is in flight, because every watched
-    ///         drive failed and the pump stopped reading, the drive is not armed onto that
-    ///         session's released stream. After an eligible recovery, the rescan reclaims the ended session and starts a fresh
-    ///         one in its place, unless the session ended through cancellation, and it never stops
-    ///         a session that is still running to do so. That restart recovers only this drive: it
-    ///         clears this drive's <see cref="DriveStatus.WatchFailureMessage" /> and faulted
-    ///         <see cref="DriveStatus.WatchCatchUp" />, keeps every other drive's recorded failure,
-    ///         faulted catch-up, and <see cref="DriveStatus.CheckpointLoss" />, and leaves every
-    ///         drive with a recorded failure out of the new session. A drive whose live watch lost
-    ///         its journal checkpoint is therefore never armed from a cursor the journal no longer
-    ///         holds; each such drive needs its own rescan, which arms it onto the running session.
-    ///         The ended session's outstanding faults, other drives', subscriber, and source faults
-    ///         alike, are retained on the index until the next <see cref="StopWatchingAsync" />,
-    ///         which rethrows the earliest of them even if the fresh session has since ended on its
-    ///         own. A disarm or arm the source rejects with
-    ///         <see cref="WatchStreamNotRunningException" /> after the session's stream started
-    ///         means the stream was released while the pump was still finishing, so the rescan
-    ///         waits for the pump, bounded by <paramref name="cancellationToken" />, and treats the
-    ///         session as ended. <see cref="StartWatchingAsync" /> still clears every armed drive's
-    ///         failure.
-    ///     </para>
-    ///     <para>
-    ///         A rescan issued any time after <see cref="StartWatchingAsync" /> completes finds the
-    ///         session's stream ready for its disarm and re-arm, because that start completes only
-    ///         once the source reports readiness. A session found still starting, whether because
-    ///         the start has not been awaited or because it began while this rescan's scan ran, is
-    ///         waited for before its source is asked to disarm or arm, bounded by
-    ///         <paramref name="cancellationToken" />; a rescan cancelled during that wait has touched
-    ///         nothing and records no failure against the drive. If that start fails or is cancelled instead, it
-    ///         is the start that reports the failure and releases the session: this rescan neither
-    ///         disarms nor arms anything on it and starts no session in its place.
+    ///         A restart after the scan is not bounded by <paramref name="cancellationToken" />:
+    ///         the token cancels the rescan, not the drive's watch, which a stop or disposal ends
+    ///         instead. Cancelling the token while the old watch's teardown is awaited throws before
+    ///         the scan starts and leaves the watch stopped but still requested, so the next start
+    ///         or rescan of the drive starts it again.
     ///     </para>
     /// </remarks>
     public async Task RescanAsync(char driveLetter, CancellationToken cancellationToken)
@@ -86,53 +57,24 @@ public sealed partial class FileIndex
             throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
         }
 
-        await _rescanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var runtime = GetDriveRuntime(driveLetter);
+        await runtime.LifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            await WaitForCurrentWatchSessionToStartAsync(cancellationToken).ConfigureAwait(false);
-            var requiresReplacement = RequiresReplacementForWatchRecovery(driveLetter);
-
-            // Disarming before the gate, never under it: the pump takes _swapGate synchronously
-            // inside ApplyJournalEntriesCore, so touching the watch while this method holds the gate
-            // would deadlock the rescan against its own pump.
-            SuspendedWatch suspended;
+            await _rescanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                suspended = await SuspendDriveForRescanAsync(driveLetter, cancellationToken).ConfigureAwait(false);
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                await RescanWithGatesHeldAsync(runtime, drive, cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception suspendFailure)
+            finally
             {
-                RecordWatchFailure(driveLetter, suspendFailure);
-                throw;
-            }
-
-            BlockReplacementOutcome replacement;
-            try
-            {
-                replacement = await SwapDriveBlockAsync(drive, driveLetter, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception swapFailure)
-            {
-                await ResumeAfterFailedSwapAsync(driveLetter, suspended, requiresReplacement,
-                    swapFailure, cancellationToken).ConfigureAwait(false);
-                throw;
-            }
-
-            try
-            {
-                await ResumeDriveAfterRescanAsync(driveLetter, suspended, replacement,
-                    requiresReplacement, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception resumeFailure)
-            {
-                RecordWatchFailure(driveLetter, resumeFailure);
-                throw;
+                _rescanGate.Release();
             }
         }
         finally
         {
-            _rescanGate.Release();
+            runtime.LifecycleGate.Release();
         }
     }
 

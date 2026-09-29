@@ -35,9 +35,9 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     Ordinals of drives a cache-only open adopted despite a lost journal checkpoint (see
     ///     <see cref="RejectUnresumableCheckpoint" />): <see cref="FileIndexOptions.InitialOpenCacheOnly" />
     ///     never watches, and the block is still a correct snapshot as of its age, so the open
-    ///     keeps it rather than failing the drive. <see cref="BuildWatchTargets" /> reads this to
-    ///     keep such a drive off a later <see cref="StartWatchingAsync" />, since arming a watch
-    ///     from that block's cursor would resume from a position the journal no longer holds.
+    ///     keeps it rather than failing the drive. <see cref="StartWatchingAsync" /> reads this to
+    ///     refuse such a drive's watch, since starting it from that block's cursor would resume
+    ///     from a position the journal no longer holds.
     ///     A successful <see cref="RescanAsync" /> writes a fresh cursor and clears the ordinal
     ///     from here along with <see cref="_checkpointLossesByOrdinal" />.
     /// </summary>
@@ -85,7 +85,6 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly Lock _stateLock = new();
 
     Snapshot? _snapshot;
-    WatchSession? _watchSession;
     bool _disposed;
 
     FileIndex(FileIndexOptions options, string cacheDirectoryPath)
@@ -93,6 +92,11 @@ public sealed partial class FileIndex : IAsyncDisposable
         _options = options;
         CacheDirectoryPath = cacheDirectoryPath;
         _snapshot = Snapshot.Create([]);
+        foreach (var drive in options.Drives)
+        {
+            var driveLetter = char.ToUpperInvariant(drive.DriveLetter);
+            _driveRuntimes.TryAdd(driveLetter, new DriveRuntime(driveLetter));
+        }
     }
 
     public string CacheDirectoryPath { get; }
@@ -204,9 +208,11 @@ public sealed partial class FileIndex : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Stops the live watch, prevents new index operations, waits for mutation and rescan
-    ///     ownership of <see cref="_swapGate" />, and releases every snapshot it holds, current
-    ///     and retired.
+    ///     Prevents new index operations, stops every drive's live watch and waits for each
+    ///     drive's teardown, waits for mutation and rescan ownership of <see cref="_swapGate" />,
+    ///     and releases every snapshot it holds, current and retired. A fault a drive's watch
+    ///     ended with is never thrown from here: it was announced through
+    ///     <see cref="WatchFaulted" /> when it happened.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -242,30 +248,20 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
+        lock (_stateLock)
         {
-            return;
-        }
+            if (_disposed)
+            {
+                return;
+            }
 
-        try
-        {
-            // No token of its own, and none may abandon a pump whose blocks this is about to unmap.
-            await StopWatchingAsync(CancellationToken.None).ConfigureAwait(false);
+            _disposed = true;
         }
-        catch (Exception exception)
-        {
-            // Disposal still owns the block mappings after a reported pump fault. The fault was
-            // announced when observed and StopWatchingAsync remains the explicit rethrow surface.
-            // Discarded through the variable rather than an empty body, which is this repository's
-            // idiom for a deliberate swallow and what keeps RCS1075 honest here.
-            _ = exception;
-        }
-
-        _disposed = true;
 
         // Before the gate, not after: a query already inside the index holds a borrow that every
         // release below waits for, so it has to be told to stop before anything starts waiting on
-        // it. A query that has not started yet is turned away by the disposed flag instead.
+        // it. A query that has not started yet is turned away by the disposed flag instead. The
+        // same token cancels every drive's watch start that is still in progress.
         ExceptionDispatchInfo? cancellationFailure = null;
         try
         {
@@ -280,6 +276,9 @@ public sealed partial class FileIndex : IAsyncDisposable
             // own failure if the release fails too.
             cancellationFailure = ExceptionDispatchInfo.Capture(exception);
         }
+
+        // No token of its own, and none may abandon a pump whose blocks this is about to unmap.
+        await StopEveryWatchForDisposalAsync().ConfigureAwait(false);
 
         try
         {
@@ -355,7 +354,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            GetWatchCatchUpState(driveBlock.DriveOrdinal),
+            GetWatchCatchUpStateLocked(driveBlock.DriveLetter),
             _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal));
         return DescribeDrive(driveBlock, in annotations);
     }

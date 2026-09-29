@@ -1,0 +1,256 @@
+using System.Runtime.ExceptionServices;
+
+namespace MFTLib.Index;
+
+public sealed partial class FileIndex
+{
+    /// <summary>
+    ///     Starts the live watch of one MFT-backed drive from the journal cursor persisted in its
+    ///     current block header. The drive's <see cref="DriveStatus.WatchFailureMessage" /> is
+    ///     cleared and its <see cref="DriveStatus.WatchCatchUp" /> begins at
+    ///     <see cref="WatchCatchUpState.CatchingUp" />. Every other drive is untouched. A drive that
+    ///     is already watching is left as it is and the call completes. A drive whose previous
+    ///     watch faulted is started afresh.
+    ///     <para>
+    ///         The returned task completes once the source has returned the drive's handle and the
+    ///         drive's pump is reading it. A <see cref="StopWatchingAsync" /> or
+    ///         <see cref="DisposeAsync" /> during the start cancels the source's start and fails
+    ///         this task with <see cref="OperationCanceledException" />. A source whose start throws
+    ///         fails this task with that exception, sets the drive's
+    ///         <see cref="DriveStatus.WatchFailureMessage" />, and leaves its
+    ///         <see cref="DriveStatus.WatchCatchUp" /> at <see cref="WatchCatchUpState.Faulted" />.
+    ///     </para>
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The drive has no MFT-backed block, <see cref="FileIndexOptions.WatchSource" /> is not set,
+    ///     or a cache-only open adopted the drive's block despite a lost journal checkpoint, so its
+    ///     cursor cannot be resumed: <see cref="RescanAsync" /> the drive first.
+    /// </exception>
+    public Task StartWatchingAsync(char driveLetter, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return StartWatchingCoreAsync(GetDriveRuntime(driveLetter), gateHeld: false, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Stops one drive's watch and waits for its teardown, then rethrows, once, the fault that
+    ///     ended the watch or the first subscriber fault it announced, if either is outstanding.
+    ///     Takes no lifecycle gate, so it never waits for a rescan: a stop during a rescan of the
+    ///     same drive completes while the scan runs, and the rescan then leaves the watch stopped.
+    ///     The drive's <see cref="DriveStatus.WatchCatchUp" /> reads
+    ///     <see cref="WatchCatchUpState.NotStarted" /> afterwards and any pending catch-up wait is
+    ///     cancelled. Calling this for a drive that is not watching completes without effect.
+    ///     <paramref name="cancellationToken" /> bounds only the wait for the teardown: cancelling
+    ///     it throws while the teardown continues, and a later start waits for that teardown.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
+    public async Task StopWatchingAsync(char driveLetter, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var runtime = GetDriveRuntime(driveLetter);
+        WatchInstance? retired;
+        Task? previousDrain;
+        Exception? outstandingFault = null;
+        lock (_stateLock)
+        {
+            runtime.WatchRequested = false;
+            runtime.RefusedStartFault = null;
+            retired = RetireCurrentLocked(runtime);
+            if (retired is not null)
+            {
+                outstandingFault = retired.OutstandingFault;
+                retired.OutstandingFault = null;
+            }
+
+            previousDrain = runtime.Retiring?.Drained;
+        }
+
+        retired?.RequestStop();
+        var drain = retired?.Drained ?? previousDrain;
+        if (drain is not null)
+        {
+            await AwaitQueuedAsync(drain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        if (outstandingFault is not null)
+        {
+            ExceptionDispatchInfo.Capture(outstandingFault).Throw();
+        }
+    }
+
+    /// <summary>
+    ///     The start behind <see cref="StartWatchingAsync" />, and the restart a rescan runs while
+    ///     it already holds the drive's lifecycle gate (<paramref name="gateHeld" />), which this
+    ///     then never reacquires.
+    /// </summary>
+    async Task StartWatchingCoreAsync(DriveRuntime runtime, bool gateHeld, CancellationToken cancellationToken)
+    {
+        if (!gateHeld)
+        {
+            await runtime.LifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        try
+        {
+            await StartWatchingWithGateHeldAsync(runtime, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (!gateHeld)
+            {
+                runtime.LifecycleGate.Release();
+            }
+        }
+    }
+
+    async Task StartWatchingWithGateHeldAsync(DriveRuntime runtime, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var driveLetter = runtime.DriveLetter;
+        var source = _options.WatchSource ?? throw new InvalidOperationException(
+            $"Drive {driveLetter} supports a live watch but " +
+            $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.WatchSource)} is not set.");
+
+        DriveBlock armedBlock;
+        WatchInstance? superseded = null;
+        Task? previousDrain;
+        lock (_stateLock)
+        {
+            armedBlock = FindWatchableDriveBlockLocked(driveLetter) ?? throw new InvalidOperationException(
+                $"Drive {driveLetter} has no MFT-backed block, so there is no journal cursor to watch from.");
+            if (_cacheOnlyUnresumableCheckpointOrdinals.Contains(armedBlock.DriveOrdinal))
+            {
+                throw RecordUnresumableCheckpointWatchFailureLocked(runtime, armedBlock);
+            }
+
+            if (runtime.Current is { State: WatchInstanceState.Running })
+            {
+                return;
+            }
+
+            if (runtime.Current is { State: WatchInstanceState.Faulted })
+            {
+                superseded = RetireCurrentLocked(runtime);
+            }
+
+            previousDrain = runtime.Retiring?.Drained;
+        }
+
+        superseded?.RequestStop();
+        if (previousDrain is not null)
+        {
+            // The lifecycle gate keeps any other start or rescan out while this waits, and nothing
+            // is registered yet, so a retiring pump's last batch can never reach this start's watch.
+            await AwaitQueuedAsync(previousDrain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        var (instance, target) = RegisterStartingInstance(runtime, armedBlock);
+        IIndexDriveWatch handle;
+        try
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                instance.StartCancellation.Token, cancellationToken);
+            handle = await source.StartAsync(target, linked.Token).ConfigureAwait(false) ??
+                     throw new InvalidOperationException(
+                         $"The watch source returned no handle for drive {driveLetter}.");
+        }
+        catch (Exception exception)
+        {
+            AbandonFailedStart(runtime, instance, exception, cancellationToken);
+            throw;
+        }
+
+        if (TryPublishHandle(runtime, instance, handle))
+        {
+            return;
+        }
+
+        // A stop or disposal retired the instance while the source ran. The handle was never
+        // published, so no pump owns it and this path is its only disposer.
+        try
+        {
+            await handle.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            CompleteInstanceDrain(runtime, instance);
+        }
+
+        throw new OperationCanceledException(
+            $"The watch for drive {instance.DriveLetter} (start {instance.Generation}) was stopped while it was starting.");
+    }
+
+    /// <summary>
+    ///     Registers the drive's new instance in <see cref="WatchInstanceState.Starting" /> before
+    ///     the source is invoked, so a stop or disposal that arrives while the source runs can
+    ///     find the instance and cancel its start.
+    /// </summary>
+    (WatchInstance Instance, IndexWatchTarget Target) RegisterStartingInstance(DriveRuntime runtime,
+        DriveBlock armedBlock)
+    {
+        lock (_stateLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var instance = new WatchInstance(runtime.DriveLetter, runtime.NextGeneration++, armedBlock, DisposalToken);
+            runtime.Current = instance;
+            runtime.WatchRequested = true;
+            runtime.RefusedStartFault = null;
+            _watchFailureMessagesByOrdinal.Remove(armedBlock.DriveOrdinal);
+            return (instance, BuildWatchTarget(armedBlock));
+        }
+    }
+
+    /// <summary>
+    ///     Settles a start whose source threw. A start that is no longer current was stopped or
+    ///     disposed, which already retired it; a start its own caller cancelled leaves the drive
+    ///     not watching; any other failure is recorded against the drive.
+    /// </summary>
+    void AbandonFailedStart(DriveRuntime runtime, WatchInstance instance, Exception exception,
+        CancellationToken cancellationToken)
+    {
+        lock (_stateLock)
+        {
+            if (ReferenceEquals(runtime.Current, instance))
+            {
+                runtime.Current = null;
+                if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
+                {
+                    runtime.WatchRequested = false;
+                    instance.CatchUp.Cancel();
+                }
+                else
+                {
+                    runtime.RefusedStartFault = exception;
+                    instance.CatchUp.Fault(exception);
+                    _watchFailureMessagesByOrdinal[instance.ArmedBlock.DriveOrdinal] = exception.Message;
+                }
+            }
+        }
+
+        CompleteInstanceDrain(runtime, instance);
+    }
+
+    /// <summary>
+    ///     The start's linearization point: publishes the handle and starts the pump only while
+    ///     the instance is still current and starting.
+    /// </summary>
+    bool TryPublishHandle(DriveRuntime runtime, WatchInstance instance, IIndexDriveWatch handle)
+    {
+        lock (_stateLock)
+        {
+            if (!ReferenceEquals(runtime.Current, instance) || instance.State != WatchInstanceState.Starting)
+            {
+                return false;
+            }
+
+            instance.State = WatchInstanceState.Running;
+
+            // Queued rather than run inline, so no source code runs while this lock is held. The
+            // pump's own exit path completes the instance's drain, which is what every waiter
+            // observes, so the task itself is not kept.
+            _ = Task.Run(() => PumpAsync(runtime, instance, handle));
+            return true;
+        }
+    }
+}

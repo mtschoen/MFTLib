@@ -51,11 +51,10 @@ public sealed record FileIndexOptions
     public MftBlockProducer? MftProducer { get; init; }
 
     /// <summary>
-    ///     Supplies the merged watch stream used by <see cref="FileIndex.StartWatchingAsync" />.
-    ///     That stream carries a per-drive failure as a <see cref="DriveWatchFailure" /> item and
-    ///     faults only for a failure that names no drive. This is also the object a rescan asks to
-    ///     disarm and re-arm the one drive it rebuilds. Required when any opened drive has an MFT
-    ///     block and ignored when none does.
+    ///     Starts each drive's own watch for <see cref="FileIndex.StartWatchingAsync" />, one
+    ///     <see cref="IIndexDriveWatch" /> handle per drive. A rescan of a watched drive stops that
+    ///     drive's handle and starts a fresh one from the new block's cursor through the same
+    ///     source. Required to watch an MFT-backed drive and ignored otherwise.
     /// </summary>
     public IIndexWatchSource? WatchSource { get; init; }
 

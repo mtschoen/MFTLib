@@ -4,6 +4,44 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
+    /// <summary>
+    ///     Clears every drive's watch request, retires every current instance, and waits for every
+    ///     retiring instance's teardown, each pump disposing its own handle. Never throws a watch
+    ///     fault: each was announced through <see cref="WatchFaulted" /> when it happened, and
+    ///     <see cref="WatchInstance.Drained" /> never faults. Runs after the disposal token is
+    ///     cancelled, so a start still in progress has already been told to stop.
+    /// </summary>
+    Task StopEveryWatchForDisposalAsync()
+    {
+        var retired = new List<WatchInstance>();
+        var drains = new List<Task>();
+        lock (_stateLock)
+        {
+            foreach (var runtime in _driveRuntimes.Values)
+            {
+                runtime.WatchRequested = false;
+                runtime.RefusedStartFault = null;
+                if (runtime.Retiring is { } alreadyRetiring)
+                {
+                    drains.Add(alreadyRetiring.Drained);
+                }
+
+                if (RetireCurrentLocked(runtime) is { } instance)
+                {
+                    retired.Add(instance);
+                    drains.Add(instance.Drained);
+                }
+            }
+        }
+
+        foreach (var instance in retired)
+        {
+            instance.RequestStop();
+        }
+
+        return Task.WhenAll(drains);
+    }
+
     async Task ReleaseSnapshotsForDisposalAsync(ExceptionDispatchInfo? cancellationFailure)
     {
         await _rescanGate.WaitAsync().ConfigureAwait(false);

@@ -2,315 +2,202 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
-    async Task PumpAsync(WatchSession session, IReadOnlyList<IndexWatchTarget> targets)
+    /// <summary>
+    ///     A test seam: when set, the pump calls it as <c>wrapper(settleFault)</c> around exactly
+    ///     the step that records a drive's fault and faults that drive's catch-up slot, before
+    ///     <see cref="WatchFaulted" /> is raised, so a test can observe what runs on the settling
+    ///     stack.
+    /// </summary>
+    internal Action<Action>? PumpFaultSettlementWrapperForTest { get; set; }
+
+    /// <summary>
+    ///     One drive's pump: reads the drive's handle until it is stopped or faults, applies each
+    ///     batch, and records a fault only while its instance is still the drive's current one. On
+    ///     every exit it is the handle's only disposer, and it completes the instance's
+    ///     <see cref="WatchInstance.Drained" /> last.
+    /// </summary>
+    async Task PumpAsync(DriveRuntime runtime, WatchInstance instance, IIndexDriveWatch handle)
     {
-        // Read before the yield, which is to say inside StartWatchingCoreAsync's lock and while
-        // the session is provably still this index's own, so nothing here reads a token source a
-        // stop has already disposed.
-        var source = session.Source;
-        var cancellationToken = session.Cancellation.Token;
-
-        // Returning to StartWatchingAsync before any source code runs is what makes it safe to
-        // launch this pump inside _stateLock: the lock is released before the source connects.
-        await Task.Yield();
-
-        // The one drop the ordinal dictionary cannot record. A letter TryGetDriveOrdinal does not
-        // resolve has no key, so without this a second failure item for it would be announced
-        // twice. Session-local on purpose: a fresh session starts with nothing dropped, which is
-        // the same rule arming follows for every drive that does have an ordinal.
-        var droppedDriveLettersWithoutOrdinal = new HashSet<char>();
-
-        Exception? streamFailure = null;
         try
         {
-            await foreach (var item in source.StartWatching(targets, session.MarkReady, cancellationToken)
-                               .ConfigureAwait(false))
+            if (await ReadWatchAsync(runtime, instance, handle).ConfigureAwait(false) is { } fault)
             {
-                session.MarkStreamStarted();
-                if (ApplyWatchItem(item, session, droppedDriveLettersWithoutOrdinal, cancellationToken) &&
-                    EndSessionIfNoWatchedDriveRemains(session, droppedDriveLettersWithoutOrdinal))
+                RecordPumpFault(runtime, instance, fault);
+            }
+        }
+        finally
+        {
+            try
+            {
+                await handle.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                // The drive's watch is over either way, and a stop or disposal waiting on this
+                // teardown has no one to hand the failure to. Discarded through the variable
+                // rather than an empty body, which is this repository's idiom for a deliberate
+                // swallow and what keeps RCS1075 honest here.
+                _ = exception;
+            }
+            finally
+            {
+                CompleteInstanceDrain(runtime, instance);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Reads the handle to its end and classifies that end: null for a stop, otherwise the
+    ///     fault that ended the watch.
+    /// </summary>
+    async Task<WatchFault?> ReadWatchAsync(DriveRuntime runtime, WatchInstance instance, IIndexDriveWatch handle)
+    {
+        var driveLetter = runtime.DriveLetter;
+        var stopToken = instance.PumpStop.Token;
+        try
+        {
+            await foreach (var item in handle.ReadAsync(stopToken).ConfigureAwait(false))
+            {
+                if (item is JournalBatch batch)
                 {
-                    // Every watched drive has failed. Breaking disposes the enumerator, which ends
-                    // the watch at the source; the session stays so StopWatchingAsync still rethrows.
-                    break;
+                    if (ApplyWatchBatch(runtime, instance, batch) is { } applyFailure)
+                    {
+                        return new WatchFault(WatchFaultKind.Apply, driveLetter, applyFailure);
+                    }
+                }
+                else if (item is DriveCaughtUp)
+                {
+                    CompleteWatchCatchUp(runtime, instance);
                 }
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (stopToken.IsCancellationRequested)
         {
-            CancelPendingWatchCatchUpLocked();
-            session.SettleReadinessForEndedStream(null, cancellationToken);
-            lock (_stateLock)
-            {
-                if (!session.Faults.HasFaults)
-                {
-                    throw;
-                }
-            }
+            return null;
+        }
+        catch (DriveWatchFaultException exception)
+        {
+            return new WatchFault(WatchFaultKind.Drive, driveLetter, exception);
         }
         catch (Exception exception)
         {
-            streamFailure = exception;
-            RecordStreamFailure(session, exception);
+            return new WatchFault(WatchFaultKind.Channel, driveLetter, exception);
         }
 
-        // Before the end-of-stream bookkeeping, which can release the session: whoever is waiting
-        // for this session to become ready learns why it never will before anything else moves.
-        session.SettleReadinessForEndedStream(streamFailure, cancellationToken);
-        if (!EndSessionAndCheckForOutstandingFaults(session) && !cancellationToken.IsCancellationRequested)
-        {
-            var remainingTargets = session.Targets;
-            if (AnyWatchedDriveRemains(remainingTargets, droppedDriveLettersWithoutOrdinal))
-            {
-                ReportSourceEndedWithoutStop(session, remainingTargets, droppedDriveLettersWithoutOrdinal);
-            }
-        }
+        return stopToken.IsCancellationRequested
+            ? null
+            : new WatchFault(WatchFaultKind.Channel, driveLetter,
+                new InvalidOperationException($"The watch for drive {driveLetter} ended without being stopped."));
     }
 
     /// <summary>
-    ///     Applies one stream item and reports whether it dropped a drive, which is the only case
-    ///     in which the pump asks whether any watched drive remains.
+    ///     Applies one batch, then raises <see cref="Changed" /> with no gate or lock held. Returns
+    ///     the apply failure, which ends the drive's watch; a subscriber failure does not.
     /// </summary>
-    bool ApplyWatchItem(WatchStreamItem item, WatchSession session,
-        HashSet<char> droppedDriveLettersWithoutOrdinal, CancellationToken cancellationToken)
-    {
-        if (item is DriveWatchFailure failure)
-        {
-            return DropDrive(failure.DriveLetter, failure.Exception, WatchFaultKind.Source,
-                droppedDriveLettersWithoutOrdinal, session);
-        }
-
-        if (item is JournalBatch batch &&
-            !IsDriveWatchFaulted(batch.DriveLetter, droppedDriveLettersWithoutOrdinal))
-        {
-            return !TryApplyBatch(batch, droppedDriveLettersWithoutOrdinal, session, cancellationToken);
-        }
-
-        if (item is DriveCaughtUp caughtUp &&
-            !IsDriveWatchFaulted(caughtUp.DriveLetter, droppedDriveLettersWithoutOrdinal))
-        {
-            CompleteWatchCatchUp(caughtUp.DriveLetter);
-        }
-
-        return false;
-    }
-
-    /// <summary>A failure of the whole stream, recorded against the session and announced once.</summary>
-    void RecordStreamFailure(WatchSession session, Exception exception)
-    {
-        lock (_stateLock)
-        {
-            session.Faults.RecordSource(exception);
-        }
-
-        FaultPendingWatchCatchUpLocked(session.Targets, exception);
-        RaiseWatchFaulted(new WatchFault(WatchFaultKind.Source, null, exception));
-    }
-
-    /// <summary>
-    ///     Marks the session <see cref="WatchSession.Ended" /> once its stream is over, however it
-    ///     ended, and reports whether any fault is still outstanding on it.
-    /// </summary>
-    bool EndSessionAndCheckForOutstandingFaults(WatchSession session)
-    {
-        lock (_stateLock)
-        {
-            session.Ended = true;
-            return session.Faults.HasFaults;
-        }
-    }
-
-    /// <summary>
-    ///     Answers a stream that ended while drives were still being watched, which no stop asked
-    ///     for. Nothing is watching afterwards, so every drive still on the watch is marked with
-    ///     the reason and the end is announced once, with no drive letter, because it belongs to
-    ///     the session rather than to any one drive. The session claim goes with it, so a consumer
-    ///     recovers by starting a fresh session rather than by stopping one that is already over.
-    ///     A stream that ends after every watched drive has already faulted is a different case
-    ///     and is left alone: those drives carry their own messages, their faults were announced
-    ///     when they were recorded, and the session stays claimed so
-    ///     <see cref="StopWatchingAsync" /> still rethrows the first of them.
-    /// </summary>
-    void ReportSourceEndedWithoutStop(WatchSession session, IReadOnlyList<IndexWatchTarget> targets,
-        HashSet<char> droppedDriveLettersWithoutOrdinal)
-    {
-        var sourceEnded = new InvalidOperationException(
-            "The watch source ended its stream without being stopped, so no drive is being watched.");
-
-        // Before the lock, because each of these reads the live journal. Every drive here is
-        // losing its watch, so each is asked the same question a single drive's drop asks.
-        foreach (var target in targets)
-        {
-            RecordCheckpointLossForFaultedDrive(target.DriveLetter);
-        }
-
-        lock (_stateLock)
-        {
-            foreach (var target in targets)
-            {
-                if (TryGetDriveOrdinalLocked(target.DriveLetter, out var driveOrdinal))
-                {
-                    _watchFailureMessagesByOrdinal.TryAdd(driveOrdinal, sourceEnded.Message);
-                    FaultWatchCatchUpLocked(driveOrdinal, sourceEnded);
-                }
-                else
-                {
-                    droppedDriveLettersWithoutOrdinal.Add(char.ToUpperInvariant(target.DriveLetter));
-                }
-            }
-
-            if (ReferenceEquals(_watchSession, session))
-            {
-                _watchSession = null;
-            }
-        }
-
-        // Disposed here because this is the last thing that holds the session: a stop racing this
-        // release finds the field already cleared and returns without touching the source.
-        session.Cancellation.Dispose();
-        RaiseWatchFaulted(new WatchFault(WatchFaultKind.Source, null, sourceEnded));
-    }
-
-    /// <summary>
-    ///     Applies one batch and raises <see cref="Changed" /> under separate catches, which is
-    ///     what makes an apply failure distinguishable from a subscriber failure. Returns false
-    ///     only when the apply failed and the drive was therefore dropped. Both catches carry the
-    ///     filter that keeps this session's own cancellation out of them: such a cancellation
-    ///     escapes to <see cref="PumpAsync" />'s handler, where an ordinary stop is not a fault
-    ///     and drops no drive.
-    /// </summary>
-    bool TryApplyBatch(JournalBatch batch, HashSet<char> droppedDriveLettersWithoutOrdinal,
-        WatchSession session, CancellationToken cancellationToken)
+    Exception? ApplyWatchBatch(DriveRuntime runtime, WatchInstance instance, JournalBatch batch)
     {
         IReadOnlyList<FileChange> changes;
         try
         {
-            changes = ApplyJournalEntriesCore(batch.DriveLetter, batch.Entries, batch.JournalId, batch.NextUsn);
+            changes = ApplyJournalEntriesCore(runtime.DriveLetter, instance, batch.Entries, batch.JournalId,
+                batch.NextUsn);
         }
-        catch (Exception exception) when (
-            exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        catch (Exception exception)
         {
-            DropDrive(batch.DriveLetter, exception, WatchFaultKind.Apply,
-                droppedDriveLettersWithoutOrdinal, session);
-            return false;
+            return exception;
         }
 
         try
         {
             RaiseChanged(changes);
         }
-        catch (Exception exception) when (
-            exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        catch (Exception exception)
         {
-            bool firstSubscriberFault;
+            AnnounceSubscriberFault(runtime, instance, exception);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    ///     Announces a subscriber fault once per instance and keeps the first as the instance's
+    ///     outstanding fault, unless one is already held. The drive keeps watching.
+    /// </summary>
+    void AnnounceSubscriberFault(DriveRuntime runtime, WatchInstance instance, Exception exception)
+    {
+        bool first;
+        lock (_stateLock)
+        {
+            first = ReferenceEquals(runtime.Current, instance) && !instance.SubscriberFaultAnnounced;
+            if (first)
+            {
+                instance.SubscriberFaultAnnounced = true;
+                instance.OutstandingFault ??= exception;
+            }
+        }
+
+        if (first)
+        {
+            RaiseWatchFaulted(new WatchFault(WatchFaultKind.Subscriber, runtime.DriveLetter, exception));
+        }
+    }
+
+    void CompleteWatchCatchUp(DriveRuntime runtime, WatchInstance instance)
+    {
+        lock (_stateLock)
+        {
+            if (ReferenceEquals(runtime.Current, instance) && instance.State == WatchInstanceState.Running)
+            {
+                instance.CatchUp.Complete();
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Records the fault that ended a watch, only while its instance is still the drive's
+    ///     current one and the index is not being disposed: the failure message, the outstanding
+    ///     fault, the faulted slot, and the faulted state. Then the checkpoint-loss check, then
+    ///     <see cref="WatchFaulted" />, so a handler that reads <see cref="Drives" /> already sees
+    ///     why the drive stopped.
+    /// </summary>
+    void RecordPumpFault(DriveRuntime runtime, WatchInstance instance, WatchFault fault)
+    {
+        var recorded = false;
+
+        void Settle()
+        {
             lock (_stateLock)
             {
-                firstSubscriberFault = session.Faults.RecordSubscriber(exception);
-            }
-            if (firstSubscriberFault)
-            {
-                RaiseWatchFaulted(new WatchFault(WatchFaultKind.Subscriber, batch.DriveLetter, exception));
+                if (_disposed || !ReferenceEquals(runtime.Current, instance) ||
+                    instance.State != WatchInstanceState.Running)
+                {
+                    return;
+                }
+
+                instance.State = WatchInstanceState.Faulted;
+                instance.OutstandingFault ??= fault.Exception;
+                _watchFailureMessagesByOrdinal[instance.ArmedBlock.DriveOrdinal] = fault.Exception.Message;
+                instance.CatchUp.Fault(fault.Exception);
+                recorded = true;
             }
         }
 
-        return true;
-    }
-
-    /// <summary>
-    ///     Records one drive's watch failure and announces it, returning false when that drive was
-    ///     already dropped so a second failure for it changes nothing.
-    /// </summary>
-    bool DropDrive(char driveLetter, Exception exception, WatchFaultKind kind,
-        HashSet<char> droppedDriveLettersWithoutOrdinal, WatchSession? session = null)
-    {
-        bool firstDrop;
-        lock (_stateLock)
+        if (PumpFaultSettlementWrapperForTest is { } wrapper)
         {
-            var hasOrdinal = TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal);
-            firstDrop = hasOrdinal
-                ? _watchFailureMessagesByOrdinal.TryAdd(driveOrdinal, exception.Message)
-                : droppedDriveLettersWithoutOrdinal.Add(char.ToUpperInvariant(driveLetter));
-            if (firstDrop)
-            {
-                session?.Faults.RecordDrive(driveLetter, exception);
-            }
-            if (firstDrop && hasOrdinal)
-            {
-                FaultWatchCatchUpLocked(driveOrdinal, exception);
-            }
+            wrapper(Settle);
         }
-
-        if (!firstDrop)
+        else
         {
-            return false;
+            Settle();
         }
 
-        // Before the announcement, so a handler that reads Drives from inside it already sees
-        // the reason this drive stopped rather than only the message that it did.
-        RecordCheckpointLossForFaultedDrive(driveLetter);
-        RaiseWatchFaulted(new WatchFault(kind, driveLetter, exception));
-        return true;
-    }
-
-    bool IsDriveWatchFaulted(char driveLetter, HashSet<char> droppedDriveLettersWithoutOrdinal)
-    {
-        lock (_stateLock)
+        if (!recorded)
         {
-            return TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal)
-                ? _watchFailureMessagesByOrdinal.ContainsKey(driveOrdinal)
-                : droppedDriveLettersWithoutOrdinal.Contains(char.ToUpperInvariant(driveLetter));
-        }
-    }
-
-    /// <summary>
-    ///     Records and announces one drive's watch failure from outside the pump, for a rescan that
-    ///     could not put the drive back on its watch. A drive with no ordinal has nowhere to record
-    ///     the message, so the announcement is the whole signal, which is why the throwaway set is
-    ///     all this needs where the pump keeps a session-local one.
-    /// </summary>
-    void RecordWatchFailure(char driveLetter, Exception exception)
-    {
-        DropDrive(driveLetter, exception, WatchFaultKind.Source, []);
-    }
-
-    /// <summary>
-    ///     Decides whether the pump stops after a drop, and marks the session
-    ///     <see cref="WatchSession.Ended" /> when it does. The whole decision runs under
-    ///     <see cref="_stateLock" />, the lock a rescan holds while it clears its drive's failure
-    ///     and registers the drive again, so a concurrent re-arm either counts as a watched drive
-    ///     here or finds the session already marked ended.
-    /// </summary>
-    bool EndSessionIfNoWatchedDriveRemains(WatchSession session, HashSet<char> droppedDriveLettersWithoutOrdinal)
-    {
-        lock (_stateLock)
-        {
-            if (AnyWatchedDriveRemains(session.Targets, droppedDriveLettersWithoutOrdinal))
-            {
-                return false;
-            }
-
-            session.Ended = true;
-            return true;
-        }
-    }
-
-    /// <summary>
-    ///     Recomputed from the failure records each time rather than counted down, so a drive a
-    ///     rescan re-armed and cleared counts as live again with no second structure to keep in
-    ///     step.
-    /// </summary>
-    bool AnyWatchedDriveRemains(IReadOnlyList<IndexWatchTarget> targets,
-        HashSet<char> droppedDriveLettersWithoutOrdinal)
-    {
-        foreach (var target in targets)
-        {
-            if (!IsDriveWatchFaulted(target.DriveLetter, droppedDriveLettersWithoutOrdinal))
-            {
-                return true;
-            }
+            return;
         }
 
-        return false;
+        RecordCheckpointLossForFaultedDrive(runtime, instance);
+        RaiseWatchFaulted(fault);
     }
 
     void RaiseWatchFaulted(WatchFault fault)

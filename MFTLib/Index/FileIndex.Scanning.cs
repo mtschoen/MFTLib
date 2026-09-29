@@ -272,7 +272,7 @@ public sealed partial class FileIndex
     ///         cache-only open never watches, and the block is still a correct snapshot as of
     ///         its age, so it is adopted anyway rather than failing the drive. The ordinal is
     ///         recorded in <see cref="_cacheOnlyUnresumableCheckpointOrdinals" /> so a later
-    ///         <see cref="StartWatchingAsync" /> does not silently arm a watch from a cursor the
+    ///         <see cref="StartWatchingAsync" /> refuses to start a watch from a cursor the
     ///         journal no longer holds.
     ///     </para>
     /// </summary>

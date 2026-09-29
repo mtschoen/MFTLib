@@ -20,211 +20,26 @@ public sealed partial class FileIndex
     public event Action<FileChange>? Changed;
 
     /// <summary>
-    ///     Raised immediately when the watch first sees a subscriber fault in a session, and every
-    ///     time it drops a drive for an apply or source failure. Exceptions thrown by fault
-    ///     handlers are discarded.
+    ///     Raised when a drive's watch first sees a subscriber fault, and every time a drive's
+    ///     watch ends with a drive, apply, or channel fault. Every fault names its drive. Raised
+    ///     from that drive's pump, so faults of different drives may be raised concurrently while
+    ///     one drive's faults never overlap. Exceptions thrown by fault handlers are discarded.
     /// </summary>
     public event Action<WatchFault>? WatchFaulted;
 
     /// <summary>
-    ///     Starts one pump over every MFT-backed drive. Each drive resumes from the journal cursor
-    ///     persisted in its current block header, every armed drive's
-    ///     <see cref="DriveStatus.WatchFailureMessage" /> is cleared, and its
-    ///     <see cref="DriveStatus.WatchCatchUp" /> begins at <see cref="WatchCatchUpState.CatchingUp" />.
-    ///     <para>
-    ///         The returned task completes once the session's source reports that its stream is
-    ///         ready for per-drive arm and disarm (see
-    ///         <see cref="IIndexWatchSource.StartWatching(IReadOnlyList{IndexWatchTarget}, Action, CancellationToken)" />),
-    ///         so a <see cref="RescanAsync" /> issued any time after it completes finds a running
-    ///         stream. Readiness is not catch-up: no item need have been delivered and no drive need
-    ///         have caught up, which <see cref="WaitForCatchUpAsync(CancellationToken)" /> waits for.
-    ///         The guarantee is as strong as the source's report. A source that implements only
-    ///         <see cref="IIndexWatchSource.StartWatching(IReadOnlyList{IndexWatchTarget}, CancellationToken)" />
-    ///         is reported ready once its stream's first <see cref="IAsyncEnumerator{T}.MoveNextAsync" />
-    ///         call has returned control with the stream still running (pending, or having produced
-    ///         an item), which covers a source that makes itself live before its first incomplete
-    ///         await but not one that awaits a connection first. Such a source failing or ending
-    ///         after that await faults the running session rather than this start.
-    ///     </para>
-    ///     <para>
-    ///         A stream that throws, or ends, before it is ready fails this task with that exception
-    ///         (an ended stream with an <see cref="InvalidOperationException" />), after the
-    ///         <see cref="WatchFaulted" /> announcement a source fault always gets. Cancelling
-    ///         <paramref name="cancellationToken" /> before the stream is ready cancels this task,
-    ///         and so does a <see cref="StopWatchingAsync" /> or <see cref="DisposeAsync" /> that
-    ///         ends the session first. In each case the unready session is cancelled and released
-    ///         once its pump has finished, so the fault is reported here rather than by a later
-    ///         <see cref="StopWatchingAsync" />, and this method can be called again. Releasing it
-    ///         waits for the source to finish, so a source that ignores its cancellation token
-    ///         wedges this call the way it wedges <see cref="StopWatchingAsync" />.
-    ///         A source that observes it at every startup step, and hands off any step it must not
-    ///         interrupt rather than wait for it, bounds this call by
-    ///         <paramref name="cancellationToken" /> and by a stop or disposal; such a step is left
-    ///         to finish in the background and torn down before the source will start another, so a later call to this method
-    ///         waits for that teardown, bounded by its own token.
-    ///     </para>
-    ///     Once the stream is ready, cancelling <paramref name="cancellationToken" /> ends the
-    ///     session and raises no fault; the session is reclaimed by <see cref="StopWatchingAsync" />
-    ///     or <see cref="DisposeAsync" />. An index with no watchable drives has nothing to start and
-    ///     completes immediately without invoking the source. A source whose stream ends while
-    ///     drives are still watched,
-    ///     without a stop and without cancellation, raises a <see cref="WatchFaultKind.Source" />
-    ///     fault carrying no drive letter, marks every watched drive's
-    ///     <see cref="DriveStatus.WatchFailureMessage" />, and releases the session, so this
-    ///     method can be called again to start a fresh one.
-    ///     <para>
-    ///         An MFT-backed drive a cache-only open adopted despite a lost journal checkpoint is
-    ///         left out of the pump rather than armed from a cursor the journal no longer holds:
-    ///         its <see cref="DriveStatus.WatchFailureMessage" /> explains the refusal and its
-    ///         <see cref="DriveStatus.WatchCatchUp" /> reads <see cref="WatchCatchUpState.Faulted" />,
-    ///         even if it is the only drive and this call therefore starts no session at all. Only
-    ///         <see cref="RescanAsync" /> clears it, by writing a fresh cursor and arming the drive
-    ///         onto a session already running, or leaving it ready for the next call to this method.
-    ///     </para>
+    ///     A test seam: invoked with the drive letter on entry to a watch pump's apply, before the
+    ///     gate is taken, so a test can hold a pump in the middle of applying a batch it has
+    ///     already read.
     /// </summary>
-    public Task StartWatchingAsync(CancellationToken cancellationToken)
-    {
-        return StartWatchingCoreAsync(cancellationToken, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Cancels the current watch, waits for its pump to finish, and rethrows the earliest fault
-    ///     still outstanding at teardown. The session tracks faults per drive, plus one slot for
-    ///     subscriber faults and one for a failure of the whole source: a drive whose watch
-    ///     faulted and was then recovered by a successful <see cref="RescanAsync" /> re-arm no
-    ///     longer has an outstanding fault, so this call does not rethrow it, while a later fault
-    ///     on that drive, or any fault on another drive, is still rethrown. When nothing is
-    ///     outstanding the call completes normally. Faults a <see cref="RescanAsync" /> retained from
-    ///     a session it reclaimed and restarted are older than anything the current session raised,
-    ///     so the earliest of them is rethrown first, even when the current session has since ended
-    ///     on its own and no session is left; they are cleared once reported. Calling this when no
-    ///     watch is active and no such fault is held has no effect.
-    ///     Reclaiming the session resets every watched drive's
-    ///     <see cref="DriveStatus.WatchCatchUp" /> to <see cref="WatchCatchUpState.NotStarted" />.
-    ///     <paramref name="cancellationToken" /> bounds the wait: cancelling it abandons the wait
-    ///     and throws, and deliberately leaves the session in place so a later stop or
-    ///     <see cref="DisposeAsync" /> can still reclaim it. A source that ignores the token this
-    ///     call cancels is the only thing that can make that wait outlast the caller's patience.
-    /// </summary>
-    public async Task StopWatchingAsync(CancellationToken cancellationToken)
-    {
-        WatchSession? session;
-        lock (_stateLock)
-        {
-            session = _watchSession;
-        }
-
-        if (session is null)
-        {
-            RethrowIfAny(TakeUnreportedWatchFault());
-            return;
-        }
-
-        Exception? outstandingFault = null;
-        var pumpFinished = false;
-        try
-        {
-            await session.Cancellation.CancelAsync().ConfigureAwait(false);
-            await session.Pump.WaitAsync(cancellationToken).ConfigureAwait(false);
-            pumpFinished = true;
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            // Cancellation is how a stop terminates a source waiting for its next batch. The
-            // filter separates that from this call's own token being cancelled, which is an
-            // abandoned wait over a pump that is still running.
-            pumpFinished = true;
-        }
-        catch (ObjectDisposedException) when (!IsCurrentWatchSession(session))
-        {
-            // The pump released this session, and disposed its cancellation with it, between the
-            // read above and the cancel: the source ended without being stopped. There is nothing
-            // left to stop, and that end was announced through WatchFaulted when it was observed.
-        }
-        finally
-        {
-            if (pumpFinished)
-            {
-                lock (_stateLock)
-                {
-                    outstandingFault = session.Faults.FirstOutstanding;
-                    if (ReferenceEquals(_watchSession, session))
-                    {
-                        _watchSession = null;
-                        ResetWatchCatchUpLocked();
-                    }
-                }
-
-                session.Cancellation.Dispose();
-            }
-        }
-
-        RethrowIfAny(TakeUnreportedWatchFault() ?? outstandingFault);
-    }
-
-    /// <summary>
-    ///     The earliest fault in <see cref="_unreportedWatchFaults" />, clearing the ledger, since a
-    ///     stop reports it once.
-    /// </summary>
-    Exception? TakeUnreportedWatchFault()
-    {
-        lock (_stateLock)
-        {
-            var fault = _unreportedWatchFaults.FirstOutstanding;
-            _unreportedWatchFaults.Clear();
-            return fault;
-        }
-    }
-
-    static void RethrowIfAny(Exception? fault)
-    {
-        if (fault is not null)
-        {
-            ExceptionDispatchInfo.Capture(fault).Throw();
-        }
-    }
-
-    bool IsCurrentWatchSession(WatchSession session)
-    {
-        lock (_stateLock)
-        {
-            return ReferenceEquals(_watchSession, session);
-        }
-    }
-
-    /// <summary>
-    ///     Arming a drive clears its watch failure entry: a message about a failure on a stream
-    ///     that is being restarted is no longer true. The caller holds <see cref="_stateLock" />.
-    /// </summary>
-    void ClearWatchFailures(IReadOnlyList<IndexWatchTarget> targets)
-    {
-        foreach (var target in targets)
-        {
-            ClearWatchFailureLocked(target.DriveLetter);
-        }
-    }
-
-    /// <summary>
-    ///     Resolves the ordinal from <see cref="_driveBlocks" /> directly rather than through
-    ///     <see cref="TryGetDriveOrdinal" />, which throws once this index is disposed: a rescan
-    ///     clearing an entry on an index that is going away has nothing to clear, not a different
-    ///     exception to raise over the disposal the caller is already handling. The caller holds
-    ///     <see cref="_stateLock" />.
-    /// </summary>
-    void ClearWatchFailureLocked(char driveLetter)
-    {
-        if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
-        {
-            _watchFailureMessagesByOrdinal.Remove(driveOrdinal);
-        }
-    }
+    internal Action<char>? ApplyJournalEntriesEnteredForTest { get; set; }
 
     /// <summary>
     ///     Applies one journal batch to a drive's block in place and raises
     ///     <see cref="Changed" /> for each applied change. This is the seam the watch pipeline
-    ///     drives; it returns the batch so a caller can act on it without subscribing. The watch
-    ///     pump calls <see cref="ApplyJournalEntriesCore" /> and raises <see cref="Changed" />
-    ///     itself, so it can tell an apply failure from a subscriber failure.
+    ///     drives; it returns the batch so a caller can act on it without subscribing. A drive's
+    ///     watch pump applies through the same path and raises <see cref="Changed" /> itself, so
+    ///     it can tell an apply failure from a subscriber failure.
     /// </summary>
     /// <remarks>
     ///     The mutation runs under <see cref="_swapGate" />, the same gate
@@ -233,25 +48,27 @@ public sealed partial class FileIndex
     ///     entirely new block file and only touches <see cref="_driveBlocks" /> under the gate,
     ///     and a journal batch takes its snapshot and its <see cref="BlockWriter" /> under the
     ///     same gate, so it always mutates the block that is current once it is its turn, never a
-    ///     block a concurrent rescan is about to supersede. The gate is index-wide rather than
-    ///     per-drive, so a batch on one drive also blocks a rescan or another batch on a different
-    ///     drive; accepted for v1, since every mutation is already a fast in-place row write, not
-    ///     an I/O-bound scan. The gate is released before <see cref="Changed" /> is raised, so a
-    ///     subscriber's handler never runs while a rescan is blocked waiting on this call.
+    ///     block a concurrent rescan is about to supersede. The gate is released before
+    ///     <see cref="Changed" /> is raised, so a subscriber's handler never runs while a rescan
+    ///     is blocked waiting on this call.
     /// </remarks>
     public IReadOnlyList<FileChange> ApplyJournalEntries(char driveLetter,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalId, long nextUsn)
     {
-        var changes = ApplyJournalEntriesCore(driveLetter, entries, journalId, nextUsn);
+        var changes = ApplyJournalEntriesCore(driveLetter, instance: null, entries, journalId, nextUsn);
         RaiseChanged(changes);
         return changes;
     }
 
     /// <summary>
     ///     Everything <see cref="ApplyJournalEntries" /> does up to and including releasing
-    ///     <see cref="_swapGate" />, without raising <see cref="Changed" />.
+    ///     <see cref="_swapGate" />, without raising <see cref="Changed" />. A pump passes its
+    ///     <paramref name="instance" />: once the gate is held, the batch is applied only while
+    ///     that instance is still the drive's current, running watch and the block it was armed
+    ///     from is still published, and is otherwise dropped, returning no changes. A retiring pump's
+    ///     last batch therefore never reaches a successor's block.
     /// </summary>
-    internal IReadOnlyList<FileChange> ApplyJournalEntriesCore(char driveLetter,
+    IReadOnlyList<FileChange> ApplyJournalEntriesCore(char driveLetter, WatchInstance? instance,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalId, long nextUsn)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -268,6 +85,11 @@ public sealed partial class FileIndex
                 $"Drive {driveLetter} is offline and has no block to apply journal entries to.");
         }
 
+        if (instance is not null)
+        {
+            ApplyJournalEntriesEnteredForTest?.Invoke(upperDriveLetter);
+        }
+
         // ApplyJournalEntries is a synchronous seam by design (the brief's public signature
         // returns IReadOnlyList<FileChange> directly, not a Task), so this blocks on the
         // SemaphoreSlim itself, not on a Task: it is the synchronous counterpart to
@@ -276,6 +98,11 @@ public sealed partial class FileIndex
         _swapGate.Wait();
         try
         {
+            if (instance is not null && !IsRunningWatchOverItsBlock(upperDriveLetter, instance))
+            {
+                return [];
+            }
+
             // Same reasoning as RescanAsync: the check at the top of this method is an early out,
             // and a batch admitted after DisposeAsync set the flag would mutate a released block.
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -294,6 +121,15 @@ public sealed partial class FileIndex
         finally
         {
             _swapGate.Release();
+        }
+    }
+
+    bool IsRunningWatchOverItsBlock(char driveLetter, WatchInstance instance)
+    {
+        lock (_stateLock)
+        {
+            return instance.State == WatchInstanceState.Running &&
+                   IsCurrentWatchOverItsBlockLocked(_driveRuntimes[driveLetter], instance);
         }
     }
 

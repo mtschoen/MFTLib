@@ -81,37 +81,37 @@ public sealed record DriveStatus
     /// <summary>
     ///     Set when this drive's live watch failed, from the message of the exception that ended
     ///     it. The drive stays <see cref="DriveState.Ready" />: its block is valid and every query
-    ///     still answers from it, but nothing after the failing batch has been applied. Cleared
-    ///     when the drive is armed again by <see cref="FileIndex.StartWatchingAsync" /> or by a
-    ///     rescan. Null while the watch is healthy or not running.
+    ///     still answers from it, but nothing after the failing batch has been applied. Also set
+    ///     when the source failed to start the drive's watch. Cleared when the drive's watch is
+    ///     started again by <see cref="FileIndex.StartWatchingAsync" /> or by a rescan. Null while
+    ///     the watch is healthy or has never failed.
     ///     <para>
     ///         Also set, without the watch ever having started, for a drive a cache-only open
-    ///         adopted despite a lost journal checkpoint: arming it would resume from a cursor the
-    ///         journal no longer holds, so <see cref="FileIndex.StartWatchingAsync" /> leaves it
-    ///         out of the watch and explains why here instead. Only <see cref="FileIndex.RescanAsync" />
-    ///         clears this one, since a plain <see cref="FileIndex.StartWatchingAsync" /> leaves the
-    ///         same drive out again with the same message.
+    ///         adopted despite a lost journal checkpoint: starting it would resume from a cursor
+    ///         the journal no longer holds, so <see cref="FileIndex.StartWatchingAsync" /> refuses
+    ///         it and explains why here. Only <see cref="FileIndex.RescanAsync" /> clears this one,
+    ///         since a plain <see cref="FileIndex.StartWatchingAsync" /> refuses the same drive
+    ///         again with the same message.
     ///     </para>
     /// </summary>
     public string? WatchFailureMessage { get; init; }
 
     /// <summary>
     ///     Where this drive's live watch stands in draining the journal backlog that was present
-    ///     when its current arm started. Session-scoped: <see cref="WatchCatchUpState.NotStarted" />
-    ///     whenever no session is draining the drive (before the first
-    ///     <see cref="FileIndex.StartWatchingAsync" /> and again after
-    ///     <see cref="FileIndex.StopWatchingAsync" />), <see cref="WatchCatchUpState.CatchingUp" />
-    ///     while an arm applies its backlog, <see cref="WatchCatchUpState.CaughtUp" /> once that
-    ///     backlog has been applied and the drive is on live entries, and
-    ///     <see cref="WatchCatchUpState.Faulted" /> when the drive's watch fails, with detail in
-    ///     <see cref="WatchFailureMessage" />. <see cref="FileIndex.RescanAsync" /> resets the one
-    ///     drive it re-arms to <see cref="WatchCatchUpState.CatchingUp" />. Always
+    ///     when its current watch started. <see cref="WatchCatchUpState.NotStarted" /> whenever the
+    ///     drive has no current watch (before its first <see cref="FileIndex.StartWatchingAsync" />
+    ///     and again after <see cref="FileIndex.StopWatchingAsync" />),
+    ///     <see cref="WatchCatchUpState.CatchingUp" /> while the watch applies its backlog,
+    ///     <see cref="WatchCatchUpState.CaughtUp" /> once that backlog has been applied and the
+    ///     drive is on live entries, and <see cref="WatchCatchUpState.Faulted" /> when the drive's
+    ///     watch fails or its start is refused, with detail in <see cref="WatchFailureMessage" />.
+    ///     A <see cref="FileIndex.RescanAsync" /> that restarts the drive's watch resets it to
+    ///     <see cref="WatchCatchUpState.CatchingUp" />. Always
     ///     <see cref="WatchCatchUpState.NotStarted" /> for a drive that cannot be watched at all
     ///     (an enumeration-backed block). A drive a cache-only open adopted despite a lost journal
-    ///     checkpoint reads <see cref="WatchCatchUpState.Faulted" /> instead, the moment
-    ///     <see cref="FileIndex.StartWatchingAsync" /> is first called and leaves it out: it could
-    ///     be watched if its cursor were resumable, so this says the watch was refused rather than
-    ///     never attempted.
+    ///     checkpoint reads <see cref="WatchCatchUpState.Faulted" /> instead once
+    ///     <see cref="FileIndex.StartWatchingAsync" /> has refused it: it could be watched if its
+    ///     cursor were resumable, so this says the watch was refused rather than never attempted.
     /// </summary>
     public WatchCatchUpState WatchCatchUp { get; init; }
 
@@ -126,7 +126,7 @@ public sealed record DriveStatus
     ///         cold-scanned, unless <see cref="FileIndexOptions.InitialOpenCacheOnly" /> is set,
     ///         in which case the open never scans and adopts the block anyway (it never watches,
     ///         and the block is still a correct snapshot as of its age), leaving this to explain
-    ///         the checkpoint alone. Mid-session, a live watch that faults is asked the same
+    ///         the checkpoint alone. Later, a drive's live watch that faults is asked the same
     ///         question about the position it had reached, which is why a watch that dies because
     ///         the journal moved past it reports more than <see cref="WatchFailureMessage" />. In
     ///         that case the drive keeps its block and its rows: nothing after the position has

@@ -9,8 +9,7 @@ namespace MFTLib.Tests.Index;
 ///     The rescan failure paths around the swap gate and the renamed-aside cache file: a
 ///     commit cancelled at the swap gate restores the canonical file, a restore that cannot
 ///     delete a locked replacement stays best-effort, a blockless drive's cancelled adoption
-///     leaves it blockless, and reclaiming a session whose pump recorded a subscriber fault
-///     swallows that fault so the rescan can start a fresh session.
+///     leaves it blockless.
 /// </summary>
 [TestClass]
 public class FileIndexRescanCleanupTests
@@ -231,91 +230,6 @@ public class FileIndexRescanCleanupTests
             producerMayReturn.TrySetResult();
             swapGate.Release();
         }
-    }
-
-    [TestMethod]
-    public async Task RescanAsync_WhenTheEndedSessionRecordedASubscriberFault_CarriesItIntoAFreshSession()
-    {
-        using var harness = new WatchHarness();
-        var subscriberFault = new InvalidOperationException("the subscriber blew up");
-        harness.Index.Changed += _ => throw subscriberFault;
-        await harness.Index.StartWatchingAsync(Token);
-        await harness.SourceStartedAsync();
-
-        // The subscriber fault is recorded and the pump keeps going; when the source then
-        // ends, the pump completes with the fault latched for the next stop.
-        await harness.PublishAsync(WatchHarness.Batch('T', 9, "fresh.txt"));
-        await harness.CompleteSourceAsync();
-        await harness.SourceEndedAsync();
-        await harness.WaitForPumpToCompleteAsync();
-
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
-
-        // The reclaimed session's pump launches via Task.Yield() (FileIndex.WatchPump.PumpAsync),
-        // deliberately releasing the state lock before the fresh source connects, so RescanAsync
-        // returning does not itself guarantee the second StartWatching call has run yet. Wait for
-        // that fresh session to actually start before reading the invocation count it bumps.
-        await harness.SourceStartedAsync();
-
-        Assert.AreEqual(2, harness.SourceInvocationCount,
-            "the rescan reclaimed the ended session and started a fresh one");
-        Assert.AreEqual(DriveState.Ready, harness.Index.Drives.Single().State);
-
-        // The rescan recovers its drive, not the subscriber, so the stop still reports it.
-        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => harness.Index.StopWatchingAsync(Token));
-        Assert.AreSame(subscriberFault, thrown);
-    }
-
-    /// <summary>
-    ///     The reclaim path's stop has nothing to rethrow when the pump ended with no fault:
-    ///     the watch's caller token was cancelled, ending the watch quietly while leaving the
-    ///     session claimed, and the rescan's stop of it returns normally.
-    /// </summary>
-    [TestMethod]
-    public async Task RescanAsync_WhenTheWatchsCallerTokenEndedTheSession_ReclaimsItWithoutAFault()
-    {
-        using var harness = new WatchHarness();
-        using var watchCancellation = new CancellationTokenSource();
-        await harness.Index.StartWatchingAsync(watchCancellation.Token);
-        await harness.SourceStartedAsync();
-
-        await watchCancellation.CancelAsync();
-        await harness.SourceEndedAsync();
-        await harness.WaitForPumpToCompleteAsync();
-
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
-
-        Assert.AreEqual(DriveState.Ready, harness.Index.Drives.Single().State);
-        Assert.IsNull(harness.Index.Drives.Single().WatchFailureMessage);
-    }
-
-    [TestMethod]
-    public async Task RescanAsync_AfterTheSourceEndedWithoutAStop_ClearsTheStaleFaultedCatchUp()
-    {
-        using var harness = new WatchHarness();
-        var announced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        harness.Index.WatchFaulted += _ => announced.TrySetResult();
-        await harness.Index.StartWatchingAsync(Token);
-        await harness.SourceStartedAsync();
-
-        // The source ending without a stop faults every watched drive's catch-up and
-        // releases the session, leaving the faulted slot behind.
-        await harness.CompleteSourceAsync();
-        await announced.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.Index.Drives.Single().WatchCatchUp);
-        Assert.IsNotNull(harness.Index.Drives.Single().WatchFailureMessage);
-
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
-
-        var drive = harness.Index.Drives.Single();
-        Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUp,
-            "the rescan removes the stale faulted slot with no session to arm onto");
-        Assert.IsNull(drive.WatchFailureMessage);
     }
 
     static SemaphoreSlim SwapGateOf(FileIndex index)
