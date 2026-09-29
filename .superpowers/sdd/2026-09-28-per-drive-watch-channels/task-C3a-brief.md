@@ -1,0 +1,8 @@
+### Task C3a: Port host tests: watch operation
+
+**Files:** Create `MFTLib.Tests/JournalBrokerHostTests.Watch.cs`, `.WatchCatchUp.cs`, `.WatchRecovery.cs`, `.WatchFailureClassification.cs`, `.WatchDiagnosticsFilter.cs` from their base-commit versions, onto `HostChannelHarness` with one watch channel per drive. Cases about arm epochs, re-arm on one pipe, `DisarmDrive` and `EndWatch` are dropped (listed in the commit). `WatchFailureClassification` keeps `DescribeWatchFailure`'s rescan wording. These base-commit cases of `JournalBrokerHostTests.Watch.cs` must survive, rewritten for one watch channel each: `StartWatch_WatchSourceCompletesNaturally_EndsWithoutError` (`:228`, becomes `WatchChannel_SourceCompletesNaturally_ClosesWithoutError`: natural completion is not a fault and sends no `Error` frame), `ServeAsync_WatchBatchWriteHitsBrokenPipe_SessionEndsNormally` (`:256`), `ServeAsync_WatchFaultsWithBrokenPipe_ErrorFrameUnsendable_SessionEndsNormally` (`:299`) and `ServeAsync_LeadingCaughtUpWriteHitsBrokenPipe_SessionEndsNormally` (`:332`), which become `WatchChannel_BatchWriteHitsBrokenPipe_EndsQuietly`, `WatchChannel_FaultWithBrokenPipe_ErrorFrameUnsendable_EndsQuietly` and `WatchChannel_LeadingCaughtUpWriteHitsBrokenPipe_EndsQuietly`, each also asserting that a second channel and the control session keep running; and `StartWatch_ZeroCursor_QueriesCurrentCursorBeforeWatching` and `StartWatch_NoWatchSourceConfigured_EmitsErrorFrame`. The four `ServeAsync_*` control-loop cases in that file (`:134-199`) belong to C3b.
+
+- [ ] Port; commit "Port host watch tests to one channel per watch".
+
+**Gate:** green. **Depends on:** C1.
+
