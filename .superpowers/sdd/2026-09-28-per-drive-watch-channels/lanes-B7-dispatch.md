@@ -5,7 +5,7 @@ state machine (B1), gates and publication (B5), recovery (B6), concurrent open (
 broker watch channels (C6).
 
 YOUR WORKTREE: `C:\Users\mtsch\MFTLib-worktrees\265-B7` (branch `task/265-B7`).
-Expected HEAD: `__HEAD__`. FIRST ACTION: `git -C C:\Users\mtsch\MFTLib-worktrees\265-B7 rev-parse HEAD`
+Expected HEAD: `d1a20a999a45ad67557ea9536e759d8a1da73e98`. FIRST ACTION: `git -C C:\Users\mtsch\MFTLib-worktrees\265-B7 rev-parse HEAD`
 must equal that SHA; on mismatch STOP and report; never merge, rebase or reset to self-correct.
 
 WORKSPACE = `C:\Users\mtsch\MFTLib-worktrees\impl-265\.superpowers\sdd\2026-09-28-per-drive-watch-channels`

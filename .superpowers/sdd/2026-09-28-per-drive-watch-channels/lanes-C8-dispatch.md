@@ -5,7 +5,7 @@ exercise is merged on your base: host liveness (C5), client stall limit and repl
 broker watch channels (C6), automatic recovery (B6), the lost-catch-up loop (B5).
 
 YOUR WORKTREE: `C:\Users\mtsch\MFTLib-worktrees\265-C8` (branch `task/265-C8`).
-Expected HEAD: `__HEAD__`. FIRST ACTION: `git -C C:\Users\mtsch\MFTLib-worktrees\265-C8 rev-parse HEAD`
+Expected HEAD: `d1a20a999a45ad67557ea9536e759d8a1da73e98`. FIRST ACTION: `git -C C:\Users\mtsch\MFTLib-worktrees\265-C8 rev-parse HEAD`
 must equal that SHA; on mismatch STOP and report; never merge, rebase or reset to self-correct.
 
 WORKSPACE = `C:\Users\mtsch\MFTLib-worktrees\impl-265\.superpowers\sdd\2026-09-28-per-drive-watch-channels`

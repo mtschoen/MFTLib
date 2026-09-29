@@ -303,3 +303,74 @@ Task B9: fix round 4/5 (fresh opus implementer a0463a49af4db246c), commit faa524
 Task B9: fix round 4/5 (1 addressed, 0 open; commits 8f536bc..faa5245). Re-review task-B9-rereview-r4.md (codex)
 Task B9: complete (commits 9725d0b..faa5245, review clean after round 4). Cherry-picked onto impl: d1a20a9 834f0b8 bc12eff 9250cc8 ff20d5e 
 WAVE 5 MERGED (C6, B6, B9): impl head d1a20a9. Suite + aislop running: scratch/coverage-wave5.log, aislop-wave5.log
+Wave 5 merged head d1a20a9: suite 1833 total, 1827 passed, 6 skipped, 0 failed; line 97.8%, branch 95.5%; aislop 99/100 = gate. Per namespace: MFTLib(other) 2722/2779 = 97.95% (TRANCHE B TARGET 99.32% NOT MET; 57 uncovered: BrokerProcess.Control 11, JournalBrokerHost.Channel 11, Session 5, BrokerDiagnostics 4, BrokerProcess.Channels 4, BrokerProtocol.Payload 4, DefaultElevatedEntryRunner 3, others 1-2); MFTLib.Index 3183/3233 = 98.45%.
+Pushed impl, task/265-B6/B9/C6; workspace snapshot pushed.
+Wave 6: worktrees 265-B7, 265-C8, 265-TB at d1a20a9. Dispatched together: B7 (sonnet), C8 (sonnet), TB (sonnet, tranche accounting). A tranche-B coverage lane follows TB.
+Task B7: implementer DONE, commit 28f98ed (agent aa22875a8a350ca28; suite 1859/1853/0 failed; aislop gate). Review dispatched (codex)
+Task C8: implementer DONE, commit 6edaa56 (agent ad0ded4521534405e; no defect found; suite 1841/1835/0 failed; aislop gate). Review dispatched (codex)
+Task TB: implementer DONE, commit a732d47 (agent a938e7e81b17b2158; 245 rows: 10 ported, 122 covered by, 101 dropped, 12 left to B7; suite 1844/1838/0 failed; aislop gate). Review dispatched (codex)
+Task C8: review (codex, task-C8-review.md): 0 Critical, 2 Important. Needs fixes: N-2/W40-R1 evidence uses a command template; CrossDriveScenario cleanup awaits unbounded.
+Task C8: fix round 1/5 dispatched (resume ad0ded4521534405e), FIX_BASE 6edaa56
+Task B7: review (codex, task-B7-review.md): 0 Critical, 4 Important, 2 Minor. Needs fixes: batched wait lacks its own RunContinuationsAsynchronously source (spec 649); cancellation narrower than spec 950; unbounded awaits and gates not released in finally; continuation RED command incomplete. Minors (shared predicate; 604-line test file) folded into the round if cheap.
+Task B7: fix round 1/5 dispatched (resume aa22875a8a350ca28), FIX_BASE 28f98ed
+Task TB: review (codex, task-TB-review.md): 0 Critical, 3 Important. Needs fixes: two reversed contracts counted as covered; four covered-by mappings miss lifecycle assertions; one unbounded await in a port.
+Task TB: fix round 1/5 dispatched (resume a938e7e81b17b2158), FIX_BASE a732d47
+Task C8: fix round 1 implemented, commit c18bf01. Re-review r1 dispatched (codex)
+Task TB: fix round 1 implemented, commit 514f960 (ported 14, covered 116, dropped 103, B7 12; suite 1848/1842/0 failed). Re-review r1 dispatched (codex)
+Task C8: fix round 1/5 (1 addressed, 1 open - outer WaitAsync around the whole cleanup on the open-failure path; commits 6edaa56..c18bf01). Re-review task-C8-rereview-r1.md
+Task C8: fix round 2/5 dispatched (resume ad0ded4521534405e), FIX_BASE c18bf01
+Task C8: fix round 2 implemented, commit 1946ef7. Re-review r2 dispatched (codex)
+Task TB: fix round 1/5 (2 addressed, 1 open + 1 new - disposal row pins a queue that no longer exists; unbounded ThrowsExceptionAsync await; reviewer's RED demand for ports ruled out by the dispatch's port exemption; commits a732d47..514f960). Re-review task-TB-rereview-r1.md
+Task TB: fix round 2/5 dispatched (resume a938e7e81b17b2158), FIX_BASE 514f960
+Task C8: fix round 2/5 (1 addressed, 0 open; commits c18bf01..1946ef7). Re-review task-C8-rereview-r2.md
+Task C8: complete (commits d1a20a9..1946ef7, review clean after round 2). Cherry-picked onto impl: 3b21d6b df99a39 2718fbe 
+Task B7: fix round 1 implemented, commit c3ca84a (suite 1861/1855/0 failed; one flaky failure seen in FileIndexResilienceTests.OpenAsync_SecondDriveCancelledMidScan_UnwindsTheFirstDrivesAlreadyAddedBlock, FileNotFoundException on the cache block, 1 in 6 solo runs - OPEN, assign after merge). Re-review r1 dispatched (codex)
+Task TB: fix round 2 implemented, commit f49d3d9 (ported 13, covered 116, dropped 104, B7 12). Re-review r2 dispatched (codex)
+Task FX: dispatched (resume a463c0902e7a70f11, worktree 265-FX at 3b21d6b): flaky FileIndexResilienceTests.OpenAsync_SecondDriveCancelledMidScan_UnwindsTheFirstDrivesAlreadyAddedBlock
+Task TB: fix round 2/5 (2 addressed, 0 open; commits 514f960..f49d3d9). Re-review task-TB-rereview-r2.md
+Task TB: complete (commits d1a20a9..f49d3d9, review clean after round 2). Tranche accounting: 245 rows = 13 ported, 116 covered by, 104 dropped, 12 left to B7. Cherry-picked onto impl: bf14f02 4d4da2a 298f615 
+Task B7: fix round 1/5 (2 addressed + 2 minors, 2 open - disposal does not cancel a pending batched catch-up wait; unbounded cancellation and await-using disposals remain; commits 28f98ed..c3ca84a). Re-review task-B7-rereview-r1.md
+Task B7: fix round 2/5 dispatched (resume aa22875a8a350ca28), FIX_BASE c3ca84a
+Task B7: fix round 2 implemented, commit 2fcce36 (suite 1862/1856/0 failed). Re-review r2 dispatched (codex)
+Task B7: fix round 2/5 (2 addressed, 0 open; commits c3ca84a..2fcce36). Re-review task-B7-rereview-r2.md
+Task B7: complete (commits d1a20a9..2fcce36, review clean after round 2). Cherry-picked onto impl: ca649bb 4e37d20 0d49112 
+Task FX: DONE, commit 25ec99f (test-only: the test assumed a sequential open; now warm-starts T and cancels from T's settle report; loop 10/10 fail under a forcing mutation of the old test, 0/40 after). Review dispatched (codex)
+Wave 6 merged head ca649bb (B7, C8, TB): suite 1885 total, 1879 passed, 6 skipped, 0 failed; line 97.8%; aislop = gate. MFTLib(other) 2723/2779 = 97.98%; MFTLib.Index 3289/3339 = 98.5%.
+Task FX: review (codex, task-FX-review.md): 0 Critical, 2 Important: ordering still not deterministic (T can settle before U parks); U's partial canonical cache file remains after cancellation (pre-existing or new? lane to establish).
+Task FX: fix round 1/5 dispatched (resume a463c0902e7a70f11), FIX_BASE 25ec99f
+Pushed impl ca649bb and task/265-B7/C8/TB. Wave 7: worktrees 265-B8, 265-CB at ca649bb. Dispatched together: B8 (sonnet), CB (sonnet, tranche-B coverage).
+Task B8: implementer DONE, commit 782fc06 (agent a9121715f689bc547; suite 1901/1895/0 failed; aislop gate). Review dispatched (codex)
+Task CB: implementer DONE, commit f4cdf46 (agent a4c9bd2fff5347f95; MFTLib(other) 97.98% -> 99.32% = main; 19 lines left, classified b/c; suite 1905/1899/0 failed). Review dispatched (codex)
+Task FX: fix round 1 implemented, commit 74e7752 (deterministic ordering; partial canonical file pre-existing on main, next open rejects it as Incomplete). Re-review r1 dispatched (codex)
+Task FX: fix round 1/5 (2 addressed, 1 new open - unbounded CancelAsync at FileIndexResilienceTests.cs:161; commits 25ec99f..74e7752). Partial canonical file after a cancelled cold open: pre-existing on main, next open rejects it as Incomplete (recorded as known behavior). Re-review task-FX-rereview-r1.md
+Task FX: fix round 2/5 dispatched (resume a463c0902e7a70f11), FIX_BASE 74e7752
+Task B8: review (codex, task-B8-review.md): 0 Critical, 5 Important, 1 Minor. Needs fixes: one marker spans a multicast delegate; nested delivery on another index hides the outer marker; no-list batched overloads throw ObjectDisposed before the guard; unbounded awaits; RED commands are templates.
+Task B8: fix round 1/5 dispatched (resume a9121715f689bc547), FIX_BASE 782fc06
+Task CB: review (codex, task-CB-review.md): 0 Critical, 3 Important. Needs fixes: sixth aislop warning; race-reachable lines misclassified as unreachable; a helper polls with real 20 ms Task.Delay and a fake-time loop is unbounded.
+Task CB: fix round 1/5 dispatched (resume a4c9bd2fff5347f95), FIX_BASE f4cdf46
+Task FX: fix round 2 implemented, commit 548305c. Re-review r2 dispatched (codex)
+Task FX: fix round 2/5 (1 addressed, 1 open - other unbounded awaits in the same test and helpers; commits 74e7752..548305c). Re-review task-FX-rereview-r2.md
+Task FX: fix round 3/5 dispatched (resume a463c0902e7a70f11), FIX_BASE 548305c
+RULING W40-R1a recorded (fixed literal prefix plus per-test literal name counts as a literal command).
+Task B8: fix round 1 implemented, commit 4eae134 (suite 1904/1898/0 failed; aislop gate). Re-review r1 dispatched (codex)
+Task FX: fix round 3 implemented, commit 294be4f. Re-review r3 dispatched (codex)
+Task FX: fix round 3/5 (1 addressed, 0 open; commits 548305c..294be4f). Re-review task-FX-rereview-r3.md
+Task FX: complete (commits 3b21d6b..294be4f, review clean after round 3). Cherry-picked onto impl: 2a8b517 dcd12e8 b9dfe6a 588d88a 
+KNOWN PRE-EXISTING (recorded for owner): a cold scan cancelled during OpenAsync leaves its partial canonical cache file (DeleteOnClose false); the next open rejects it as Incomplete, deletes it and cold-scans. Same at main 3597586.
+Task B8: fix round 1/5 (5 addressed incl. Minor, 1 open - no-list WaitForCatchUpAsync throws ObjectDisposed before the guard; commits 782fc06..4eae134). Re-review task-B8-rereview-r1.md
+Task B8: fix round 2/5 dispatched (resume a9121715f689bc547), FIX_BASE 4eae134
+Task CB: fix round 1 implemented, commit 81c78c2 (MFTLib(other) 99.42%, 16 lines left: 9 Linux-only, 2 race without seam, 5 claimed dead; suite 1907/1901/0 failed). One run saw FileIndexWatchRecoveryTests.DisposeDuringRecovery_CancelsIt fail once (B6 area; flake FX2 to assign). Re-review r1 dispatched (codex)
+Task FX2: dispatched (resume a1642b4df1285dd7a, worktree 265-FX2 at 2a8b517): flaky FileIndexWatchRecoveryTests.DisposeDuringRecovery_CancelsIt
+Task B8: fix round 2 implemented, commit db7fe08 (suite 1905/1899/0 failed). Re-review r2 dispatched (codex)
+Task B8: fix round 2/5 (0 addressed fully, 1 open - check-to-use window between the disposed check and drive-list resolution; commits 4eae134..db7fe08). Re-review task-B8-rereview-r2.md
+Task B8: fix round 3/5 dispatched (resume a9121715f689bc547), FIX_BASE db7fe08
+Task CB: fix round 1/5 (3 addressed, 0 open; new item: RED for two coverage tests -> RULING CB-Q1: exempt per dispatch; commits f4cdf46..81c78c2). Re-review task-CB-rereview-r1.md
+Task CB: minor (deferred): StalledPipe.cs:78-79 comment says the Stalled write starts on the fourth interval (six visits per the constants)
+Task CB: complete (commits ca649bb..81c78c2, review clean after round 1 with ruling CB-Q1). MFTLib(other) 99.42% on its branch (main 99.32%): TRANCHE B COVERAGE TARGET MET. Cherry-picked onto impl: 9bb0a6a 6773512 
+Task FX2: DONE_WITH_CONCERNS, commit a45d467 (test-only; not reproduced 0/200 under load; cause by analysis: test asserted on a derived WaitAsync task). Review dispatched (codex)
+Task B8: fix round 3 implemented, commit 1534032 (suite 1906/1900/0 failed). Re-review r3 dispatched (codex)
+Task B8: fix round 3/5 (1 addressed, 0 open; commits db7fe08..1534032). Re-review task-B8-rereview-r3.md
+Task B8: complete (commits ca649bb..1534032, review clean after round 3).
+Task FX2: review (codex, task-FX2-review.md): 0/0/0 Approved. complete (commits 2a8b517..a45d467).
+B8 and FX2 cherry-picked onto impl: 2889deb 4752850 6944e86 b828a93 d558d68 
+WAVE 7 MERGED (B8, CB, FX, FX2): impl head 2889deb. Suite + aislop running: scratch/coverage-wave7.log
