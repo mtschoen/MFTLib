@@ -90,6 +90,7 @@ public class FileIndexWatchRecoveryFaultTests
         Assert.AreSame(newFailure, recoveredThrown);
         Assert.AreEqual(1, harness.Source.StartsFor('D').Count);
         Assert.AreEqual(1, harness.Source.StartsFor('E').Count);
+        await harness.Index.StopWatchingAsync('E', Token);
     }
 
     [TestMethod]

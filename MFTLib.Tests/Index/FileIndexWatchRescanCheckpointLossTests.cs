@@ -62,5 +62,6 @@ public class FileIndexWatchRescanCheckpointLossTests
         var thrown = await FileIndexWatchRescanTests.ThrowsAsync<DriveWatchFaultException>(
             () => harness.Index.StopWatchingAsync('U', Token));
         Assert.AreSame(uFault.Exception, thrown);
+        await harness.Index.StopWatchingAsync('T', Token);
     }
 }

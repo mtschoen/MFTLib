@@ -75,6 +75,8 @@ public class FileIndexWatchRescanTests
         await harness.Source.HandleFor('T').Publish(
             new JournalBatch([WatchHarness.Create(9, "after.txt")], 13, 9500));
         Assert.AreEqual(9500L, harness.BlockFor('T').Header.UsnNextUsn);
+        await harness.Index.StopWatchingAsync('T', Token);
+        await harness.Index.StopWatchingAsync('U', Token);
     }
 
     [TestMethod]
@@ -97,6 +99,8 @@ public class FileIndexWatchRescanTests
         Assert.AreEqual(250L, harness.BlockFor('U').Header.UsnNextUsn);
         CollectionAssert.AreEqual(new[] { "before.txt", "after.txt" },
             harness.Changes.Select(change => change.Entry.Name).ToArray());
+        await harness.Index.StopWatchingAsync('T', Token);
+        await harness.Index.StopWatchingAsync('U', Token);
     }
 
     [TestMethod]
@@ -118,6 +122,8 @@ public class FileIndexWatchRescanTests
         Assert.AreEqual(0, otherHandle.DisposeCount);
         producing.Release();
         await rescan.WaitAsync(HangGuard);
+        await harness.Index.StopWatchingAsync('T', Token);
+        await harness.Index.StopWatchingAsync('U', Token);
     }
 
     [TestMethod]
@@ -141,6 +147,7 @@ public class FileIndexWatchRescanTests
         Assert.AreEqual(0, harness.Changes.Count);
         Assert.AreEqual(13ul, harness.BlockFor('T').Header.UsnJournalId);
         Assert.AreEqual(9000L, harness.BlockFor('T').Header.UsnNextUsn);
+        await harness.Index.StopWatchingAsync('T', Token);
     }
 
     [TestMethod]
@@ -210,6 +217,8 @@ public class FileIndexWatchRescanTests
 
         await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 5000));
         Assert.AreEqual(5000L, harness.BlockFor('T').Header.UsnNextUsn);
+        await harness.Index.StopWatchingAsync('T', Token);
+        await harness.Index.StopWatchingAsync('U', Token);
     }
 
     [TestMethod]
@@ -237,6 +246,10 @@ public class FileIndexWatchRescanTests
         await harness.Source.HandleFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 900));
         Assert.AreEqual(900L, harness.BlockFor('U').Header.UsnNextUsn);
         Assert.IsNull(harness.DriveFor('U').WatchFailureMessage);
+
+        // The rescan already threw both failures to its own caller, so U's stop has nothing to
+        // rethrow. T's stop after a failed restart is left unpinned: the contract does not say.
+        await harness.Index.StopWatchingAsync('U', Token);
     }
 
     [TestMethod]
@@ -259,6 +272,7 @@ public class FileIndexWatchRescanTests
         Assert.AreEqual("the source could not resume this drive", drive.WatchFailureMessage);
         Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUp);
         Assert.AreEqual(1, harness.Source.StartsFor('U').Count);
+        await harness.Index.StopWatchingAsync('U', Token);
     }
 
     [TestMethod]
@@ -354,6 +368,8 @@ public class FileIndexWatchRescanTests
         await caughtUp.WaitAsync(HangGuard);
         Assert.AreEqual(WatchCatchUpState.CaughtUp,
             index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUp);
+        await index.StopWatchingAsync('T', Token);
+        await index.StopWatchingAsync('U', Token);
     }
 
     [TestMethod]
@@ -375,6 +391,8 @@ public class FileIndexWatchRescanTests
         Assert.AreEqual(0, source.HandleFor('U').DisposeCount);
         await source.HandleFor('U').Publish(new JournalBatch([WatchHarness.Create(9, "u.txt")], 22, 8500));
         Assert.AreEqual(8500L, index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
+        await index.StopWatchingAsync('U', Token);
+        await ThrowsAsync<InvalidOperationException>(() => index.StopWatchingAsync('T', Token));
     }
 
     [TestMethod]
@@ -395,6 +413,8 @@ public class FileIndexWatchRescanTests
         Assert.AreEqual(1, firstHandle.DisposeCount);
         await source.HandleFor('T').Publish(new JournalBatch([WatchHarness.Create(10, "second.txt")], 7, 6000));
         Assert.AreEqual(6000L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+        await index.StopWatchingAsync('T', Token);
+        await index.StopWatchingAsync('U', Token);
     }
 
     [TestMethod]
@@ -417,6 +437,7 @@ public class FileIndexWatchRescanTests
 
         var thrown = await ThrowsAsync<DriveWatchFaultException>(() => index.StopWatchingAsync('U', Token));
         Assert.AreSame(fault.Exception, thrown);
+        await index.StopWatchingAsync('T', Token);
     }
 
     [TestMethod]

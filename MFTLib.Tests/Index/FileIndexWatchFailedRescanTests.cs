@@ -84,6 +84,7 @@ public class FileIndexWatchFailedRescanTests
         var stopFailure = await ThrowsAsync<DriveWatchFaultException>(
             () => harness.Index.StopWatchingAsync('T', Token));
         Assert.AreSame(watchFault.Exception, stopFailure);
+        await harness.Index.StopWatchingAsync('U', Token);
     }
 
     [TestMethod]
@@ -144,6 +145,8 @@ public class FileIndexWatchFailedRescanTests
         Assert.AreEqual(1, harness.Source.StartsFor('U').Count);
         await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(9, "still-watching.txt", nextUsn: 4500));
         Assert.AreEqual(4500L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
+        await harness.Index.StopWatchingAsync('T', Token);
+        await harness.Index.StopWatchingAsync('U', Token);
     }
 
     [TestMethod]
@@ -179,5 +182,6 @@ public class FileIndexWatchFailedRescanTests
         await caughtUp.WaitAsync(FakeIndexWatchSource.HangGuard);
         Assert.AreEqual(9500L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUp);
+        await harness.Index.StopWatchingAsync('T', Token);
     }
 }
