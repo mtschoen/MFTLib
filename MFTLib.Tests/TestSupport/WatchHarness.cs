@@ -56,6 +56,9 @@ internal sealed class WatchHarness : IDisposable
 
     public FileIndex Index { get; }
 
+    /// <summary>The owned temporary directory this harness gives the index as its cache directory.</summary>
+    public string CacheDirectory => _cacheDirectory;
+
     public FakeIndexWatchSource Source { get; } = new();
 
     public IReadOnlyCollection<FileChange> Changes => _changes;
