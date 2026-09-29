@@ -44,9 +44,9 @@ public sealed partial class FileIndex
     ///     <para>
     ///         A restart after the scan is not bounded by <paramref name="cancellationToken" />:
     ///         the token cancels the rescan, not the drive's watch, which a stop or disposal ends
-    ///         instead. Cancelling the token while the old watch's teardown is awaited throws before
-    ///         the scan starts and leaves the watch stopped but still requested, so the next start
-    ///         or rescan of the drive starts it again.
+    ///         instead. The wait for the old watch's teardown does not observe the token either; a
+    ///         cancellation is observed by the scan, and a cancelled scan follows the failed-scan
+    ///         rule above, so a healthy watch restarts from its old cursor.
     ///     </para>
     /// </remarks>
     public async Task RescanAsync(char driveLetter, CancellationToken cancellationToken)

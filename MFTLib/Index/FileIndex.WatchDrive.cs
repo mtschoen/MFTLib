@@ -40,11 +40,14 @@ public sealed partial class FileIndex
     ///     same drive completes while the scan runs, and the rescan then leaves the watch stopped.
     ///     The drive's <see cref="DriveStatus.WatchCatchUp" /> reads
     ///     <see cref="WatchCatchUpState.NotStarted" /> afterwards and any pending catch-up wait is
-    ///     cancelled. Calling this for a drive that is not watching completes without effect.
+    ///     cancelled. A drive counts as watching while its watch is requested or it has a watch
+    ///     instance, current or still retiring; a start that failed at its source leaves the watch
+    ///     requested, so stopping that drive clears the request and its faulted state.
     ///     <paramref name="cancellationToken" /> bounds only the wait for the teardown: cancelling
     ///     it throws while the teardown continues, and a later start waits for that teardown.
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
+    /// <exception cref="InvalidOperationException">The drive is not watching.</exception>
     public async Task StopWatchingAsync(char driveLetter, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -54,6 +57,12 @@ public sealed partial class FileIndex
         Exception? outstandingFault = null;
         lock (_stateLock)
         {
+            if (!runtime.WatchRequested && runtime.Current is null && runtime.Retiring is null)
+            {
+                throw new InvalidOperationException(
+                    $"Drive {runtime.DriveLetter} is not watching, so there is no watch to stop.");
+            }
+
             runtime.WatchRequested = false;
             runtime.RefusedStartFault = null;
             retired = RetireCurrentLocked(runtime);

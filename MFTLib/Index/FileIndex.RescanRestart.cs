@@ -11,7 +11,7 @@ public sealed partial class FileIndex
     {
         var driveLetter = runtime.DriveLetter;
         var requiresReplacement = RequiresReplacementForWatchRecovery(driveLetter);
-        await RetireWatchForRescanAsync(runtime, cancellationToken).ConfigureAwait(false);
+        await RetireWatchForRescanAsync(runtime).ConfigureAwait(false);
 
         BlockReplacementOutcome replacement;
         try
@@ -52,7 +52,7 @@ public sealed partial class FileIndex
     ///     its pump has already ended: a rescan that produces no replacement leaves the drive
     ///     faulted exactly as it was, and a restart after a replacement supersedes it.
     /// </summary>
-    async Task RetireWatchForRescanAsync(DriveRuntime runtime, CancellationToken cancellationToken)
+    async Task RetireWatchForRescanAsync(DriveRuntime runtime)
     {
         WatchInstance? retired = null;
         var drains = new List<Task>(2);
@@ -75,9 +75,14 @@ public sealed partial class FileIndex
         }
 
         retired?.RequestStop();
+
+        // Not bounded by the rescan's token: the stop request already ends the pump's read, so the
+        // drain is prompt, and a rescan that gave up here would leave a healthy watch stopped with
+        // nothing to restart it. A cancellation is observed by the scan instead, whose failure
+        // restarts a healthy watch from its old cursor.
         foreach (var drain in drains)
         {
-            await AwaitQueuedAsync(drain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
+            await drain.ConfigureAwait(false);
         }
     }
 

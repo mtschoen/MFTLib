@@ -256,9 +256,21 @@ public partial class FileIndexPerDriveWatchTests
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
 
         var thrown = await ThrowsAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync('T', Token));
-        await harness.Index.StopWatchingAsync('T', Token);
 
         Assert.AreSame(fault.Exception, thrown);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => harness.Index.StopWatchingAsync('T', Token),
+            "the first stop cleared the request and retired the instance, so the drive is not watching");
+    }
+
+    [TestMethod]
+    public async Task Stop_DriveNeverStarted_ThrowsInvalidOperation()
+    {
+        using var harness = new WatchHarness();
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => harness.Index.StopWatchingAsync('T', Token));
+
         Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
     }
 

@@ -94,6 +94,91 @@ public partial class FileIndexPerDriveWatchTests
     }
 
     [TestMethod]
+    public async Task Rescan_CancelledWhileTheOldWatchDrains_RestartsTheHealthyWatch()
+    {
+        using var harness = new WatchHarness();
+        await harness.Index.StartWatchingAsync('T', Token);
+        var applying = HoldFirstApply(harness, 'T');
+        _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
+        await applying.Entered.WaitAsync(HangGuard);
+        using var rescanCancellation = new CancellationTokenSource();
+        var rescan = harness.Index.RescanAsync('T', rescanCancellation.Token);
+
+        await rescanCancellation.CancelAsync();
+        applying.Release();
+
+        await ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
+        var starts = harness.Source.StartsFor('T');
+        Assert.AreEqual(2, starts.Count, "a healthy watch resumes after a failed scan, cancellation included");
+        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn), starts[1]);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+    }
+
+    [TestMethod]
+    public async Task TokenCancelledInsideAHandler_NeverRunsTheWaitersContinuationInline()
+    {
+        using var harness = new WatchHarness();
+        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync('U', Token);
+        await harness.Index.StartWatchingAsync('V', Token);
+        var draining = HoldFirstApply(harness, 'U');
+        _ = harness.Source.HandleFor('U').Queue(WatchHarness.Batch(10, "u.txt"));
+        await draining.Entered.WaitAsync(HangGuard);
+        using var waitCancellation = new CancellationTokenSource();
+        using var stopCancellation = new CancellationTokenSource();
+        bool? waitObserved = null;
+        bool? stopObserved = null;
+        var waiter = ObserveAsync(harness.Index.WaitForCatchUpAsync('V', waitCancellation.Token),
+            observed => waitObserved = observed);
+        var stopper = ObserveAsync(harness.Index.StopWatchingAsync('U', stopCancellation.Token),
+            observed => stopObserved = observed);
+        harness.Index.Changed += CancelWhileFlagged("t.txt", waitCancellation, stopCancellation);
+
+        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(9, "t.txt"));
+
+        await Task.WhenAll(waiter, stopper).WaitAsync(HangGuard);
+        Assert.IsFalse(waitObserved, "the catch-up wait's continuation ran on the cancelling handler's stack");
+        Assert.IsFalse(stopObserved, "the stop's continuation ran on the cancelling handler's stack");
+        draining.Release();
+        return;
+
+        static async Task ObserveAsync(Task operation, Action<bool> record)
+        {
+            await ThrowsAsync<OperationCanceledException>(() => operation);
+            record(_settlingPumpFault);
+        }
+    }
+
+    /// <summary>
+    ///     A <see cref="FileIndex.Changed" /> handler that, for the change named
+    ///     <paramref name="fileName" />, cancels every source with the thread-static flag set, so an
+    ///     awaiter whose continuation runs inline on that stack records it.
+    /// </summary>
+    static Action<FileChange> CancelWhileFlagged(string fileName, params CancellationTokenSource[] sources)
+    {
+        return change =>
+        {
+            if (change.Entry.Name != fileName)
+            {
+                return;
+            }
+
+            _settlingPumpFault = true;
+            try
+            {
+                foreach (var source in sources)
+                {
+                    source.Cancel();
+                }
+            }
+            finally
+            {
+                _settlingPumpFault = false;
+            }
+        };
+    }
+
+    [TestMethod]
     public async Task Rescan_HoldsLifecycleGateThroughProduction()
     {
         using var harness = new WatchHarness();

@@ -232,6 +232,32 @@ public class FileIndexRescanCleanupTests
         }
     }
 
+    /// <summary>
+    ///     A drive whose watch ended without a stop reads faulted; a rescan replaces its block and,
+    ///     since the watch is still requested, restarts it from the fresh cursor, which clears the
+    ///     faulted catch-up and the failure message.
+    /// </summary>
+    [TestMethod]
+    public async Task RescanAsync_AfterTheSourceEndedWithoutAStop_ClearsTheStaleFaultedCatchUp()
+    {
+        using var harness = new WatchHarness();
+        await harness.Index.StartWatchingAsync('T', Token);
+        harness.Source.HandleFor('T').End();
+        await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
+        Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
+
+        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        await harness.Index.RescanAsync('T', Token);
+
+        var drive = harness.DriveFor('T');
+        Assert.AreEqual(DriveState.Ready, drive.State);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.WatchCatchUp,
+            "the rescan replaced the faulted watch with one started from the fresh cursor");
+        Assert.IsNull(drive.WatchFailureMessage);
+        Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.StartsFor('T')[^1]);
+    }
+
     static SemaphoreSlim SwapGateOf(FileIndex index)
     {
         var swapGateField = typeof(FileIndex).GetField("_swapGate",
