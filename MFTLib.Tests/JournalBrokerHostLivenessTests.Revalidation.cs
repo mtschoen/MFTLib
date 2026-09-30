@@ -118,6 +118,47 @@ public partial class JournalBrokerHostLivenessTests
         Assert.AreEqual(6, rest[^1].Entries.Length);
     }
 
+    [DataTestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    public void Visit_ProcessingWithoutFrames_HeartbeatsUntilProgressLimit(
+        int extraIntervalsAfterLimit)
+    {
+        var clock = new FakeTimeProvider();
+        using var owner = new CancellationTokenSource();
+        using var stream = new MemoryStream();
+        var pipe = new HostPipeWriter(stream, "pipe", clock, heartbeatsWhenIdle: false, owner, null);
+        try
+        {
+            pipe.Processing("catch-up");
+            clock.Advance(BrokerLiveness.ProcessingLimit - BrokerLiveness.HeartbeatInterval);
+            Assert.AreEqual(0L, stream.Length, "Publishing progress writes no operation frame.");
+            pipe.Visit(clock.GetUtcNow());
+            CollectionAssert.AreEqual(new[] { BrokerFrameKind.Heartbeat }, FrameKinds(stream));
+            Assert.IsFalse(owner.IsCancellationRequested);
+
+            pipe.Processing("catch-up");
+            clock.Advance(2 * BrokerLiveness.HeartbeatInterval);
+            pipe.Visit(clock.GetUtcNow());
+            CollectionAssert.AreEqual(
+                new[] { BrokerFrameKind.Heartbeat, BrokerFrameKind.Heartbeat }, FrameKinds(stream),
+                "Republished progress keeps a no-frame operation alive beyond its original deadline.");
+            Assert.IsFalse(owner.IsCancellationRequested);
+
+            clock.Advance(BrokerLiveness.ProcessingLimit - 2 * BrokerLiveness.HeartbeatInterval
+                + extraIntervalsAfterLimit * BrokerLiveness.HeartbeatInterval);
+            pipe.Visit(clock.GetUtcNow());
+            CollectionAssert.AreEqual(
+                new[] { BrokerFrameKind.Heartbeat, BrokerFrameKind.Heartbeat, BrokerFrameKind.Stalled },
+                FrameKinds(stream), "Heartbeats do not reset the processing progress clock.");
+            Assert.IsTrue(owner.IsCancellationRequested);
+        }
+        finally
+        {
+            pipe.Close();
+        }
+    }
+
     // Runs one visit on another thread and performs the window action after the visit began but
     // before it takes the pipe's write lock.
     static async Task VisitWithWindowAsync(HostPipeWriter pipe, FakeTimeProvider clock, Func<Task> window)

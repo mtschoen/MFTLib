@@ -222,26 +222,60 @@ public class FileIndexWatchPumpTests
         Assert.ThrowsException<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);
     }
 
-    [TestMethod]
-    public async Task HandleEndingWithoutAStop_FaultsTheDriveAndAFreshStartRecovers()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task HandleEndingWithoutAStop_FaultIsRethrownUnlessFreshStartSupersedesIt(
+        bool restartBeforeStop)
     {
-        using var harness = new WatchHarness();
+        using var harness = new WatchHarness('T');
         await harness.Index.StartWatchingAsync('T', Token);
         var ended = harness.Source.HandleFor('T');
 
         ended.End();
-        await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
-
-        // The watch is over, so its handle is released and the drive reads as faulted with a
-        // reason; a consumer recovers by starting the drive afresh.
+        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
         await ended.Disposed.WaitAsync(FakeIndexWatchSource.HangGuard);
-        Assert.AreEqual(1, harness.Faults.Count);
-        Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
 
-        await harness.Index.StartWatchingAsync('T', Token);
-        Assert.AreEqual(2, harness.Source.StartsFor('T').Count);
-        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
-        await harness.Index.StopWatchingAsync('T', Token);
+        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.IsInstanceOfType<InvalidOperationException>(fault.Exception);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
+        Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.AreEqual(1, ended.DisposeCount);
+
+        if (restartBeforeStop)
+        {
+            await harness.Index.StartWatchingAsync('T', Token)
+                .WaitAsync(FakeIndexWatchSource.HangGuard);
+            Assert.AreEqual(2, harness.Source.StartsFor('T').Count);
+            Assert.AreNotSame(ended, harness.Source.HandleFor('T'));
+            Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+            Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
+            await harness.Index.StopWatchingAsync('T', Token)
+                .WaitAsync(FakeIndexWatchSource.HangGuard);
+        }
+        else
+        {
+            var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+                () => harness.Index.StopWatchingAsync('T', Token)
+                    .WaitAsync(FakeIndexWatchSource.HangGuard));
+            Assert.AreSame(fault.Exception, thrown);
+        }
+
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
+        var alreadyStopped = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
+        Assert.AreNotSame(fault.Exception, alreadyStopped);
+        StringAssert.Contains(alreadyStopped.Message, "not watching");
+
+        await harness.Index.StartWatchingAsync('T', Token)
+            .WaitAsync(FakeIndexWatchSource.HangGuard);
+        await harness.Index.StopWatchingAsync('T', Token)
+            .WaitAsync(FakeIndexWatchSource.HangGuard);
+        Assert.AreEqual(1, harness.Faults.Count);
+        foreach (var handle in harness.Source.Handles)
+        {
+            Assert.AreEqual(1, handle.DisposeCount);
+        }
     }
 
     [TestMethod]

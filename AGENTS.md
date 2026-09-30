@@ -399,10 +399,14 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       any unproven failure ends it with `Error`.
       One dedicated background thread visits every pipe every five seconds. An idle control pipe,
       a watch waiting on its volume, a queued scan, and a processing operation that has reported
-      progress within 30 seconds receive `Heartbeat`; a processing operation with no progress for
-      30 seconds receives `Stalled` and its channel is cancelled. A pipe with a frame write in
-      flight is skipped, so it cannot delay other pipes; the client's 30-second no-frame limit
-      then closes that pipe. Any frame resets the client limit. `BrokerMftBlockProducer` validates
+      progress less than 30 seconds ago receive `Heartbeat`. This includes a `Processing` step
+      that reports progress without writing an operation frame, such as bounded catch-up after
+      `ScanReady` or block flush. Heartbeats do not reset the processing progress clock: at or
+      beyond `ProcessingLimit` (30 seconds) without progress, the pipe writes `Stalled` and its
+      channel is cancelled. A pipe that wrote an operation frame since the previous visit skips
+      that visit. A pipe with a frame write in flight is also skipped, so it cannot delay other
+      pipes; the client's 30-second no-frame limit then closes that pipe. Any frame resets the
+      client limit. `BrokerMftBlockProducer` validates
       completed blocks and transfers them to the index, while `BrokerIndexWatchSource` opens one
       channel per drive watch. `ElevatedEntryPoint` and `BrokerLauncher` dispatch `--broker` mode.
       `BrokerDiagnostics` writes through a bounded background queue and filters the two diagnostic
