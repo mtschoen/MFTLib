@@ -7,11 +7,12 @@ namespace MFTLib.Tests;
 public partial class BrokerProcessTests
 {
     [DataTestMethod]
-    [DataRow("dispose", "The broker process was disposed.")]
-    [DataRow("eof", "The broker closed its control pipe.")]
-    [DataRow("unroutable", "The broker sent CaughtUp on the control pipe.")]
+    [DataRow("dispose", "The broker process was disposed.", false)]
+    [DataRow("eof", "The broker closed its control pipe.", false)]
+    [DataRow("unroutable", "The broker sent CaughtUp on the control pipe.", false)]
+    [DataRow("dispose", "The broker process was disposed.", true)]
     public async Task Ended_ThrowingSubscriber_DoesNotBreakTeardownOrLaterDelivery(
-        string ending, string expectedReason)
+        string ending, string expectedReason, bool faultFormatter = false)
     {
         await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
         BrokerDiagnostics.ResetToDefaults();
@@ -35,6 +36,11 @@ public partial class BrokerProcessTests
                 endedAtNotification = process.HasEnded;
                 pendingAtNotification = process.PendingRequestCountForTest;
                 firstEntered.TrySetResult(reason);
+                if (faultFormatter)
+                {
+                    throw new ThrowingFormattedException();
+                }
+
                 throw new InvalidOperationException("ended subscriber regression");
             };
             process.Ended += _ =>
@@ -89,13 +95,23 @@ public partial class BrokerProcessTests
             await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
             var failures = lines.Where(line => line.Contains("Ended handler notification failed:",
                 StringComparison.Ordinal)).ToArray();
-            Assert.AreEqual(2, failures.Length);
-            StringAssert.Contains(failures[0], ":control]");
-            StringAssert.Contains(failures[0], "System.InvalidOperationException");
-            StringAssert.Contains(failures[0], "ended subscriber regression");
-            StringAssert.Contains(failures[1], ":control]");
-            StringAssert.Contains(failures[1], "System.InvalidOperationException");
-            StringAssert.Contains(failures[1], "second ended subscriber regression");
+            if (faultFormatter)
+            {
+                Assert.AreEqual(1, failures.Length);
+                StringAssert.Contains(failures[0], ":control]");
+                StringAssert.Contains(failures[0], "System.InvalidOperationException");
+                StringAssert.Contains(failures[0], "second ended subscriber regression");
+            }
+            else
+            {
+                Assert.AreEqual(2, failures.Length);
+                StringAssert.Contains(failures[0], ":control]");
+                StringAssert.Contains(failures[0], "System.InvalidOperationException");
+                StringAssert.Contains(failures[0], "ended subscriber regression");
+                StringAssert.Contains(failures[1], ":control]");
+                StringAssert.Contains(failures[1], "System.InvalidOperationException");
+                StringAssert.Contains(failures[1], "second ended subscriber regression");
+            }
         }
         finally
         {
@@ -108,5 +124,22 @@ public partial class BrokerProcessTests
                 BrokerDiagnostics.ResetToDefaults();
             }
         }
+    }
+
+    sealed class ThrowingFormattedException : Exception
+    {
+        public ThrowingFormattedException()
+        {
+        }
+
+        public ThrowingFormattedException(string? message) : base(message)
+        {
+        }
+
+        public ThrowingFormattedException(string? message, Exception? innerException) : base(message, innerException)
+        {
+        }
+
+        public override string ToString() => throw new InvalidOperationException("exception formatter failed");
     }
 }

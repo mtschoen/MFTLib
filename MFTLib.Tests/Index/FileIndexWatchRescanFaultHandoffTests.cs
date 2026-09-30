@@ -12,15 +12,17 @@ public class FileIndexWatchRescanFaultHandoffTests
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     [DataTestMethod]
-    [DataRow("production", false, false)]
-    [DataRow("drain", false, false)]
-    [DataRow("restart decision", false, false)]
-    [DataRow("registration", false, false)]
-    [DataRow("registration", false, true)]
-    [DataRow("starting", false, false)]
-    [DataRow("starting", true, false)]
+    [DataRow("production", false, false, false)]
+    [DataRow("drain", false, false, false)]
+    [DataRow("restart decision", false, false, false)]
+    [DataRow("registration", false, false, false)]
+    [DataRow("registration", false, true, false)]
+    [DataRow("starting", false, false, false)]
+    [DataRow("starting", true, false, false)]
+    [DataRow("none", false, true, true)]
+    [DataRow("production", false, true, true)]
     public async Task StopDuringHandoff_RethrowsSubscriberFaultOnce(string stage, bool faultDuringProduction,
-        bool faultAfterRetirement = false)
+        bool faultAfterRetirement = false, bool delayedOverlappingStop = false)
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
@@ -39,8 +41,23 @@ public class FileIndexWatchRescanFaultHandoffTests
         var held = stage == "production" ? harness.HoldNextProduction('T') : harness.TrackGate();
         var production = faultDuringProduction ? harness.HoldNextProduction('T') : null;
         var delivery = faultAfterRetirement ? harness.TrackGate() : null;
-        Task rescan;
-        if (stage == "drain")
+        var faultAnnounced = delayedOverlappingStop ? harness.TrackGate() : null;
+        Task rescan = Task.CompletedTask;
+        if (delayedOverlappingStop)
+        {
+            index.BeforeWatchChangedForTest = _ => HoldSynchronously(delivery!);
+            index.Changed += FailSubscriber;
+            index.WatchFaulted += _ => HoldSynchronously(faultAnnounced!);
+            _ = handle.Queue(WatchHarness.Batch(10, "during.txt"));
+            await delivery!.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+            if (stage == "production")
+            {
+                harness.SetNextProducedCursor('T', 13, 9000);
+                rescan = Task.Run(() => index.RescanAsync('T', Token), Token);
+                await held.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+            }
+        }
+        else if (stage == "drain")
         {
             index.BeforeWatchChangedForTest = _ => HoldSynchronously(held);
             var delivering = handle.Queue(WatchHarness.Batch(10, "during.txt"));
@@ -107,12 +124,36 @@ public class FileIndexWatchRescanFaultHandoffTests
             await held.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
         }
 
-        var stopping = index.StopWatchingAsync('T', Token);
-        var overlappingStop = stage == "drain" ? index.StopWatchingAsync('T', Token) : Task.CompletedTask;
-        held.Release();
-        var thrown = await FileIndexWatchRescanTests.ThrowsAsync<IOException>(() => stopping);
-        Assert.AreSame(failure, thrown);
-        await overlappingStop.WaitAsync(FakeIndexWatchSource.HangGuard);
+        Task stopping;
+        Task overlappingStop;
+        if (delayedOverlappingStop)
+        {
+            stopping = index.StopWatchingAsync('T', Token);
+            delivery!.Release();
+            await faultAnnounced!.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+            overlappingStop = index.StopWatchingAsync('T', Token);
+            faultAnnounced!.Release();
+            if (stage == "production")
+            {
+                held.Release();
+            }
+
+            var stoppingFault = await CaptureExceptionAsync(stopping);
+            var overlappingFault = await CaptureExceptionAsync(overlappingStop);
+            var failures = new[] { stoppingFault, overlappingFault }.Where(item => item is not null).ToArray();
+            Assert.AreEqual(1, failures.Length, "delayed fault must be consumed exactly once across overlapping stops");
+            Assert.AreSame(failure, failures[0]);
+        }
+        else
+        {
+            stopping = index.StopWatchingAsync('T', Token);
+            overlappingStop = stage == "drain" ? index.StopWatchingAsync('T', Token) : Task.CompletedTask;
+            held.Release();
+            var thrown = await FileIndexWatchRescanTests.ThrowsAsync<IOException>(() => stopping);
+            Assert.AreSame(failure, thrown);
+            await overlappingStop.WaitAsync(FakeIndexWatchSource.HangGuard);
+        }
+
         if (stage == "starting")
         {
             await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => rescan);
@@ -210,5 +251,18 @@ public class FileIndexWatchRescanFaultHandoffTests
     {
         gate.MarkEntered();
         gate.WaitForRelease();
+    }
+
+    static async Task<Exception?> CaptureExceptionAsync(Task task)
+    {
+        try
+        {
+            await task.WaitAsync(FakeIndexWatchSource.HangGuard);
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
     }
 }

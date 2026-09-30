@@ -340,8 +340,18 @@ public sealed partial class BrokerProcess
             }
             catch (Exception exception)
             {
-                BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel,
-                    $"Ended handler notification failed: {exception}");
+                try
+                {
+                    if (BrokerDiagnostics.Enabled)
+                    {
+                        BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel,
+                            $"Ended handler notification failed: {exception}");
+                    }
+                }
+                catch
+                {
+                    // Best-effort reporting: formatting or diagnostic emission failure must not escape containment.
+                }
             }
         }
     }

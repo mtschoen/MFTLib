@@ -82,12 +82,7 @@ public sealed partial class FileIndex
             ClearRecoveryLocked(runtime);
             previousDrain = runtime.Retiring?.Drained;
             retired = RetireCurrentLocked(runtime);
-            outstandingFault = retired?.OutstandingFault ?? runtime.RescanHandoffFault;
-            runtime.RescanHandoffFault = null;
-            if (retired is not null)
-            {
-                retired.OutstandingFault = null;
-            }
+            outstandingFault = TakeOutstandingFaultLocked(runtime, retired);
         }
 
         retired?.RequestStop();
@@ -101,12 +96,7 @@ public sealed partial class FileIndex
 
         lock (_stateLock)
         {
-            outstandingFault ??= retired?.OutstandingFault ?? runtime.RescanHandoffFault;
-            runtime.RescanHandoffFault = null;
-            if (retired is not null)
-            {
-                retired.OutstandingFault = null;
-            }
+            outstandingFault ??= TakeOutstandingFaultLocked(runtime, retired);
         }
 
         if (outstandingFault is not null)
@@ -310,6 +300,7 @@ public sealed partial class FileIndex
                 if (restart && recovery is null)
                 {
                     runtime.RescanHandoffFault ??= faulted.OutstandingFault;
+                    faulted.OutstandingFault = null;
                 }
 
                 _ = RetireCurrentLocked(runtime);
@@ -383,6 +374,10 @@ public sealed partial class FileIndex
 
             instance.State = WatchInstanceState.Running;
             runtime.RescanHandoffFault = null;
+            if (runtime.Retiring is not null)
+            {
+                runtime.Retiring.OutstandingFault = null;
+            }
 
             // Queued rather than run inline, so no source code runs while this lock is held. The
             // pump's own exit path completes the instance's drain, which is what every waiter
@@ -390,5 +385,31 @@ public sealed partial class FileIndex
             _ = Task.Run(() => PumpAsync(runtime, instance, handle));
             return true;
         }
+    }
+
+    /// <summary>
+    ///     Consumes any pending subscriber or handoff fault atomically across the instance being
+    ///     stopped, any concurrent retiring predecessor, and the runtime handoff slot.
+    /// </summary>
+    static Exception? TakeOutstandingFaultLocked(DriveRuntime runtime, WatchInstance? retired)
+    {
+        var fault = retired?.OutstandingFault ?? runtime.Retiring?.OutstandingFault ?? runtime.RescanHandoffFault;
+        if (fault is null)
+        {
+            return null;
+        }
+
+        if (retired is not null)
+        {
+            retired.OutstandingFault = null;
+        }
+
+        if (runtime.Retiring is not null)
+        {
+            runtime.Retiring.OutstandingFault = null;
+        }
+
+        runtime.RescanHandoffFault = null;
+        return fault;
     }
 }
