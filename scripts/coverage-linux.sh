@@ -83,6 +83,9 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
 
     echo
     echo "==> [managed] dotnet test with coverlet"
+    # vstest kills a testhost 100 ms after the run ends, which can cut coverlet's exit-time hit-file
+    # flush short and drop modules from the report; extend the grace period.
+    export VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=120000
     dotnet test "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" \
         --filter "$FILTER" \
         --logger "console;verbosity=minimal" \

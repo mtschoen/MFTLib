@@ -31,6 +31,70 @@ function Get-MainCoverageBaseline {
     throw 'No successful main coverage baseline found within search limit'
 }
 
+function Assert-ExtensionLineBranchEvidence {
+    param($Line, [string]$Location)
+    $branchMarker = $Line.GetAttribute('branch')
+    if ($branchMarker -notin @('', 'true', 'false')) {
+        throw "Invalid MFTLibTestExtensions branch marker: $Location"
+    }
+    if ($branchMarker -ne 'true' -and $Line.HasAttribute('condition-coverage')) {
+        throw "Inconsistent MFTLibTestExtensions branch evidence: $Location"
+    }
+    if ($branchMarker -eq 'true') {
+        $condition = $Line.GetAttribute('condition-coverage')
+        if ($condition -notmatch '^100% \((\d+)/(\d+)\)$') {
+            throw "Incomplete MFTLibTestExtensions branch coverage: $Location"
+        }
+        if ([long]$Matches[1] -eq 0 -or [long]$Matches[1] -ne [long]$Matches[2]) {
+            throw "Incomplete MFTLibTestExtensions branch counts: $Location"
+        }
+    }
+}
+
+function Assert-TestExtensionsCoverage {
+    param([xml]$Report)
+    $packages = @($Report.SelectNodes('/coverage/packages/package[@name="MFTLibTestExtensions"]'))
+    if ($packages.Count -ne 1) { throw 'Missing or duplicate MFTLibTestExtensions coverage package' }
+    $classes = @($packages[0].SelectNodes('classes/class'))
+    $executableLines = 0
+    $executableMethods = 0
+    foreach ($class in $classes) {
+        $lines = @($class.SelectNodes('lines/line'))
+        foreach ($line in $lines) {
+            $executableLines++
+            $hits = $line.GetAttribute('hits')
+            if ($hits -notmatch '^\d+$' -or [long]$hits -eq 0) {
+                throw "Incomplete MFTLibTestExtensions line coverage: $($class.filename):$($line.number)"
+            }
+            Assert-ExtensionLineBranchEvidence $line "$($class.filename):$($line.number)"
+        }
+        $classMethods = 0
+        foreach ($method in $class.SelectNodes('methods/method')) {
+            $methodLines = @($method.SelectNodes('lines/line'))
+            if ($methodLines.Count -eq 0) { continue }
+            $classMethods++
+            $executableMethods++
+            $covered = $true
+            foreach ($line in $methodLines) {
+                $hits = $line.GetAttribute('hits')
+                if ($hits -notmatch '^\d+$') { throw 'Invalid MFTLibTestExtensions method hit count' }
+                if ([long]$hits -eq 0) { $covered = $false }
+                Assert-ExtensionLineBranchEvidence $line "$($class.filename):$($line.number)"
+            }
+            if (-not $covered) { throw "Uncovered MFTLibTestExtensions method: $($class.name)::$($method.name)" }
+        }
+        if ($lines.Count -gt 0 -and $classMethods -eq 0) {
+            throw "Missing MFTLibTestExtensions method evidence: $($class.name)"
+        }
+        if ($classMethods -gt 0 -and $lines.Count -eq 0) {
+            throw "Missing MFTLibTestExtensions line evidence: $($class.name)"
+        }
+    }
+    if ($executableLines -eq 0 -or $executableMethods -eq 0) {
+        throw 'Missing executable MFTLibTestExtensions coverage evidence'
+    }
+}
+
 function Test-CoverageMeasurement {
     param([string]$SummaryPath, [string]$CoveragePath, [decimal]$Baseline)
     $summaryText = Get-Content -LiteralPath $SummaryPath -Raw -ErrorAction Stop
@@ -56,7 +120,7 @@ function Test-CoverageMeasurement {
         }
     }
     # These namespaces have non-admin Windows tests; interop-only declarations do not.
-    foreach ($namespace in @('MFTLib', 'MFTLib.Index', 'TestProgram', 'Benchmark')) {
+    foreach ($namespace in @('MFTLib', 'MFTLib.Index', 'TestProgram', 'Benchmark', 'MFTLibTestExtensions')) {
         if (-not $totals.ContainsKey($namespace) -or $totals[$namespace].Lines -eq 0) {
             throw "No executable coverage lines for tested namespace $namespace"
         }
@@ -64,6 +128,7 @@ function Test-CoverageMeasurement {
             throw "No covered lines for tested namespace $namespace"
         }
     }
+    Assert-TestExtensionsCoverage $report
     if ($Baseline - $percentage -gt 10) {
         throw "Implausible coverage drop: baseline=$Baseline current=$percentage"
     }

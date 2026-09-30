@@ -12,6 +12,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# vstest kills a testhost that has not exited 100 ms after the run ends. Coverlet writes each
+# module's hit file from a ProcessExit handler, so a kill mid-flush leaves later modules partly
+# or wholly unrecorded (Benchmark 33.45 percent, TestProgram 0 percent) although every test
+# passed. Give the exit-time flush a generous grace period; a healthy host still exits at once.
+$env:VSTEST_TESTHOST_SHUTDOWN_TIMEOUT = "120000"
+
 # Under act_runner (Gitea CI) host mode, $PSScriptRoot for inline run: blocks
 # resolves to the act\workflow temp directory, not the checkout root. Use
 # $env:GITHUB_WORKSPACE when set (which is the checkout root), and fall back
@@ -128,6 +134,7 @@ if ($NonInteractive) {
     # Write the admin script with literal paths (no nested quoting issues)
     $template = @'
 $ErrorActionPreference = "Stop"
+$env:VSTEST_TESTHOST_SHUTDOWN_TIMEOUT = "120000"
 Set-Location "REPO_ROOT"
 try {
     dotnet test "TEST_PROJECT" --no-build -c CONFIGURATION -p:Platform=x64 `

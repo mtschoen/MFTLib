@@ -16,8 +16,13 @@ missing/malformed reports, and unavailable baseline lookup also fail closed.
 The baseline follows main's first-parent history (up to 100 commits), using
 the latest successful coverage status on the nearest measured commit; it is
 not a hard-coded percentage. The tested namespace checks cover MFTLib,
-MFTLib.Index, TestProgram, and Benchmark; extend that list and its regression
-fixtures when adding another tested executable namespace.
+MFTLib.Index, TestProgram, Benchmark, and MFTLibTestExtensions; extend that list
+and its regression fixtures when adding another tested executable namespace.
+
+MFTLibTestExtensions is additionally required to have complete line, branch, and
+executable-method coverage. The publisher checks the assembly's raw Cobertura
+line hits, branch counts, and method records; partial coverage, absent evidence,
+and malformed evidence fail closed even when aggregate coverage would pass.
 
 Run `pwsh -NoProfile -File scripts/test-coverage-status.ps1` for the offline
 publisher regression checks. On a rejected run, inspect the `windows-coverage`
@@ -26,8 +31,14 @@ artifact: `MFTLib.Tests/coverage.xml`, `MFTLib.Tests/coverage-report/`, and
 output is captured raw and printed after the child exits. Preserve the artifact
 and rerun CI to distinguish a transient measurement failure from a reproducible
 drop. An error is not a trusted low-coverage reading and still blocks the gate.
-The collector-exit race is an unverified hypothesis; this guard does not repair
-hit collection or change the admin coverage merge path.
+The publisher guard does not repair hit collection or change the admin coverage
+merge path. The known cause of a passing run with missing hits is vstest killing
+the test host 100 ms after the run ends: coverlet writes each module's hit file
+from a ProcessExit handler, so a kill mid-flush leaves later modules partly or
+wholly unrecorded (Benchmark 33.45%, TestProgram 0%, every test green).
+`run-coverage.ps1` and `coverage-linux.sh` therefore set
+`VSTEST_TESTHOST_SHUTDOWN_TIMEOUT`, and `test-coverage-status.ps1` fails if either
+drops it. Setting that variable to `1` reproduces the signature locally.
 
 **Native (C++):** Microsoft.CodeCoverage.Console via `scripts/native-coverage.ps1`:
 ```powershell

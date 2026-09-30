@@ -752,6 +752,8 @@ Run non-interactive managed coverage with:
 .\scripts\run-coverage.ps1 -NonInteractive
 ```
 
+MFTLibTestExtensions is additionally required to have complete line, branch, and executable-method coverage. The publisher checks the assembly's raw Cobertura line hits, branch counts, and method records; partial coverage, absent evidence, and malformed evidence fail closed even when aggregate coverage would pass. The existing aggregate baseline rule remains in force for the whole report. Run `pwsh -NoProfile -File scripts/test-coverage-status.ps1` for the offline publisher regression checks.
+
 The source is organized by responsibility:
 
 - `MFTLib/Index` - the substrate-neutral packed index: block format, `FileIndex`, snapshots, queries, mutation, and the enumeration producer. It is not MFT-specific and depends on nothing else in the library beyond a few journal value types, a boundary an architecture test enforces.

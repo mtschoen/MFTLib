@@ -41,7 +41,7 @@
     <ProjectReference Include="..\Benchmark\Benchmark.csproj" />
   </ItemGroup>
 
-  <!-- Coverlet include filter: restrict coverage to our three assemblies.
+  <!-- Coverlet include filter: restrict coverage to our four assemblies.
        Conditioned on CollectCoverage=true so it only applies during coverage runs.
        This sidesteps the PS7 + dotnet CLI + MSBuild comma-splitting issue that
        prevented passing -p:Include on the command line. -->
