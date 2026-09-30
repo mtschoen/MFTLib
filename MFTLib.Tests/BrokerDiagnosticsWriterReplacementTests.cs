@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -46,5 +48,62 @@ public class BrokerDiagnosticsWriterReplacementTests
         Assert.AreEqual(1, second.Count);
         StringAssert.Contains(second[0], ":control]  after");
         Assert.AreEqual(0, first.Count, "The replaced writer was completed and receives nothing more.");
+    }
+
+    [DataTestMethod]
+    [DataRow(1)]
+    [DataRow(2)]
+    public async Task Log_AcquiredWriterIsReplaced_DeliversOnceToCurrentWriter(int replacementCount)
+    {
+        BrokerDiagnostics.ResetToDefaults();
+        var gate = new TestGate();
+        var originalLines = new ConcurrentQueue<string>();
+        var replacementLines = new ConcurrentQueue<string>();
+        var original = new BrokerDiagnosticsWriter(originalLines.Enqueue);
+        BrokerDiagnostics.ReplaceWriterForTest(original);
+        BrokerDiagnostics.Enable("broker");
+        BrokerDiagnostics.AfterWriterAcquiredForTest = () =>
+        {
+            gate.MarkEntered();
+            gate.WaitForRelease();
+        };
+
+        var logging = Task.Run(() =>
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "acquired-before-replacement"));
+        try
+        {
+            await gate.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+            for (var index = 0; index < replacementCount; index++)
+            {
+                BrokerDiagnostics.ReplaceWriterForTest(
+                    new BrokerDiagnosticsWriter(replacementLines.Enqueue));
+            }
+
+            gate.Release();
+            await logging.WaitAsync(FakeIndexWatchSource.HangGuard);
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None)
+                .WaitAsync(FakeIndexWatchSource.HangGuard);
+            await original.FlushAsync(CancellationToken.None)
+                .WaitAsync(FakeIndexWatchSource.HangGuard);
+
+            var delivered = replacementLines.ToArray();
+            Assert.AreEqual(1, delivered.Length,
+                "A line acquired before replacement must reach the current writer exactly once.");
+            StringAssert.Contains(delivered[0], ":control]  acquired-before-replacement");
+            Assert.AreEqual(0, originalLines.Count,
+                "The completed original writer must not receive the delayed line.");
+        }
+        finally
+        {
+            gate.Release();
+            try
+            {
+                await logging.WaitAsync(FakeIndexWatchSource.HangGuard);
+            }
+            finally
+            {
+                BrokerDiagnostics.ResetToDefaults();
+            }
+        }
     }
 }

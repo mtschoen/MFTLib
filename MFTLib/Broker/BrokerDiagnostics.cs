@@ -120,7 +120,11 @@ public static class BrokerDiagnostics
         _role = "client";
         ClientLogPath = null;
         _includeSelfEntries = false;
-        Interlocked.Exchange(ref _writer, null)?.Complete();
+        AfterWriterAcquiredForTest = null;
+        lock (WriterLock)
+        {
+            Interlocked.Exchange(ref _writer, null)?.Complete();
+        }
     }
 
     /// <summary>The channel tag of the control pipe's lines.</summary>
@@ -132,6 +136,9 @@ public static class BrokerDiagnostics
         return FormattableString.Invariant($"{driveLetter}#{sequence}");
     }
 
+    // Held only for writer handoff and queue admission, never for sink I/O.
+    static readonly Lock WriterLock = new();
+
     static BrokerDiagnosticsWriter? _writer;
 
     static BrokerDiagnosticsWriter Writer =>
@@ -139,10 +146,16 @@ public static class BrokerDiagnostics
             line => File.AppendAllText(LogPath, line + Environment.NewLine),
             () => _role));
 
+    // Runs after acquisition and outside writer synchronization so tests can replace the writer.
+    internal static Action? AfterWriterAcquiredForTest { get; set; }
+
     // Test seam: route this process's diagnostics into a writer with a controllable sink.
     internal static void ReplaceWriterForTest(BrokerDiagnosticsWriter writer)
     {
-        Interlocked.Exchange(ref _writer, writer)?.Complete();
+        lock (WriterLock)
+        {
+            Interlocked.Exchange(ref _writer, writer)?.Complete();
+        }
     }
 
     /// <summary>Completes once every line logged before this call has been appended or dropped.</summary>
@@ -162,8 +175,19 @@ public static class BrokerDiagnostics
             return;
         }
 
-        Writer.TryEnqueue(
-            $"{DateTime.UtcNow:O}  [{_role}:{Environment.ProcessId}:{channel}]  {message}");
+        var line = $"{DateTime.UtcNow:O}  [{_role}:{Environment.ProcessId}:{channel}]  {message}";
+        var writer = Writer;
+        AfterWriterAcquiredForTest?.Invoke();
+        lock (WriterLock)
+        {
+            // Replacement can complete the instance acquired before this lock was taken.
+            if (!ReferenceEquals(writer, _writer))
+            {
+                writer = Writer;
+            }
+
+            writer.TryEnqueue(line);
+        }
     }
 
     /// <summary>
