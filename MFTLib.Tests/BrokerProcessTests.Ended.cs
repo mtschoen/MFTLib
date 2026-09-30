@@ -126,7 +126,7 @@ public partial class BrokerProcessTests
         }
     }
 
-    sealed class ThrowingFormattedException : Exception
+    internal sealed class ThrowingFormattedException : Exception
     {
         public ThrowingFormattedException()
         {

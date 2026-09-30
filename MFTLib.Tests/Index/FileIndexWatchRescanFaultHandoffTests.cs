@@ -132,7 +132,7 @@ public class FileIndexWatchRescanFaultHandoffTests
             delivery!.Release();
             await faultAnnounced!.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
             overlappingStop = index.StopWatchingAsync('T', Token);
-            faultAnnounced!.Release();
+            faultAnnounced.Release();
             if (stage == "production")
             {
                 held.Release();

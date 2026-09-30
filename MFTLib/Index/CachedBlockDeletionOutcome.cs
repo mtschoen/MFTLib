@@ -3,10 +3,10 @@ namespace MFTLib.Index;
 /// <summary>The outcome of one canonical cached-block deletion attempt.</summary>
 public enum CachedBlockDeletionOutcome
 {
-    /// <summary>Deletion completed, including an already-absent inventory entry.</summary>
+    /// <summary>The block file is gone: this call removed it under its ownership lock, or it was already absent.</summary>
     Deleted,
-    /// <summary>The ownership lock was held or could not be opened.</summary>
+    /// <summary>Another live index or process owns the block, so its lock was held or could not be opened and the file was left in place.</summary>
     InUse,
-    /// <summary>The file could not be deleted after its ownership lock was acquired.</summary>
+    /// <summary>The lock was acquired but the filesystem refused the delete; the reason is reported alongside.</summary>
     Failed
 }
