@@ -179,6 +179,15 @@ consumer tracking overall progress keeps the report with the largest count. A
 drive whose settle is cancelled reports nothing; a cancelled or failed open may
 therefore have reported only part of the configured drive set.
 
+`FileIndexOptions.Progress` samples a scan while a producer runs and ends each
+drive scan with one `IndexScanPhase.Finished` sample from `FileIndex`, after the
+producer's last sample, for MFT-backed and enumeration-backed drives, in open and
+in rescans. `IndexScanProgress.Outcome` is `Succeeded`, `Failed` or `Cancelled`
+(non-null only on that sample). A rescan or lost-catch-up retry reports its own
+`Finished`, so track finished drives as a set. A handler that throws on the
+`Finished` sample is contained and logged to `FileIndexOptions.Diagnostics`; it
+never replaces the scan's own exception or result.
+
 ## 4. Start and stop per-drive watches
 
 The all-drive forms fan out concurrently and return one `DriveOperationResult`

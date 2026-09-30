@@ -58,6 +58,16 @@ public sealed record FileIndexOptions
     /// </summary>
     public IIndexWatchSource? WatchSource { get; init; }
 
+    /// <summary>
+    ///     Samples from whichever producer is building a drive's block. Each drive scan, in
+    ///     <see cref="FileIndex.OpenAsync" /> and in a rescan alike, ends with exactly one
+    ///     <see cref="IndexScanPhase.Finished" /> sample whose <see cref="IndexScanProgress.Outcome" />
+    ///     says whether it succeeded, failed or was cancelled. Drives scan concurrently, so
+    ///     samples of different drives interleave. A handler that throws on the Finished sample is
+    ///     contained and reported to <see cref="Diagnostics" />, so it never replaces the scan's own
+    ///     exception or result; a throw on any other sample fails that scan like any producer fault. Marshalling belongs to the
+    ///     <see cref="IProgress{T}" /> implementation.
+    /// </summary>
     public IProgress<IndexScanProgress>? Progress { get; init; }
 
     /// <summary>

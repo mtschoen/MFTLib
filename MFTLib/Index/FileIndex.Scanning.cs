@@ -192,8 +192,8 @@ public sealed partial class FileIndex
     ///     returned so the caller can mark only that drive failed. Cancellation always propagates.
     ///     The caller builds the <see cref="DriveBlock" /> when it publishes.
     /// </summary>
-    async Task<PendingDriveResult> ProduceDriveBlockAsync(IndexedDrive drive, string blockPath, bool deleteOnClose,
-        CancellationToken cancellationToken)
+    async Task<PendingDriveResult> ProduceDriveBlockCoreAsync(IndexedDrive drive, string blockPath,
+        bool deleteOnClose, CancellationToken cancellationToken)
     {
         if (_options.ProducerPolicy == ProducerPolicy.Enumeration)
         {
