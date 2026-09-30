@@ -4,13 +4,28 @@
        their own test assemblies to isolate the cache directory and the live USN journal
        without MFTLib friend-listing their test assembly by name.
 
-       IsPackable is false for now: at NuGet-publish time this ships as a separate
-       MFTLib.TestExtensions package, never folded into the MFTLib package. -->
+       This ships as the separate MFTLib.TestExtensions package and is never folded
+       into the MFTLib package. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
+    <AssemblyName>MFTLibTestExtensions</AssemblyName>
+    <IsPackable>true</IsPackable>
+    <PackageId>MFTLib.TestExtensions</PackageId>
+    <Authors>Matt Schoen</Authors>
+    <Description>Test isolation and synthetic journal helpers for MFTLib consumer test assemblies.</Description>
+    <PackageProjectUrl>https://github.com/mtschoen/MFTLib</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mtschoen/MFTLib</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>ntfs;mft;testing;test-harness;usn-journal</PackageTags>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <Platforms>x64;x86</Platforms>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
@@ -18,6 +33,21 @@
   <ItemGroup>
     <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\LICENSE.txt" Pack="true" PackagePath="" />
+    <None Include="..\README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <!-- MFTLib internals are exposed to this assembly, so package consumers must load
+       the exact matching MFTLib package version. -->
+  <Target Name="UseExactMftLibPackageDependency" AfterTargets="_GetProjectReferenceVersions">
+    <ItemGroup>
+      <_ProjectReferencesWithVersions Update="@(_ProjectReferencesWithVersions)">
+        <ProjectVersion>[$(Version)]</ProjectVersion>
+      </_ProjectReferencesWithVersions>
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <InternalsVisibleTo Include="MFTLib.Tests" />

@@ -1,5 +1,9 @@
 <Project>
 
+  <PropertyGroup>
+    <Version>0.3.0</Version>
+  </PropertyGroup>
+
   <!-- Analyzer / code-style gate. Conditioned on .csproj so the MFTLibNative
        vcxproj (which also imports this file) doesn't pick up a C#-only Roslyn
        analyzer PackageReference. -->

@@ -30,12 +30,14 @@ dotnet build TestProgram\TestProgram.csproj -c Release -p:Platform=x64
 ### NuGet packaging
 
 ```bash
-# Build Release and pack the NuGet package
+# Build Release and pack the NuGet packages
 MSBuild.exe MFTLibNative\MFTLibNative.vcxproj -p:Configuration=Release -p:Platform=x64
 dotnet pack MFTLib\MFTLib.csproj -c Release -p:Platform=x64
+dotnet pack MFTLibTestExtensions\MFTLibTestExtensions.csproj -c Release -p:Platform=x64
 
-# Publish to nuget.org
+# Publish to nuget.org, with MFTLib before its exact-version test dependency
 dotnet nuget push "MFTLib\bin\x64\Release\MFTLib.*.nupkg" --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json
+dotnet nuget push "MFTLibTestExtensions\bin\x64\Release\MFTLib.TestExtensions.*.nupkg" --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json
 ```
 
 ### Running the test program

@@ -50,6 +50,9 @@ volume size, filtering, path resolution, and hardware.
 
 The NuGet package includes `MFTLibNative.dll` under `runtimes/win-x64/native` and a
 transitive build target that copies it to the consumer's output directory.
+`MFTLib.TestExtensions` is a separate package for consumer test assemblies. It depends
+on the matching `MFTLib` version and contains `MFTLibTestExtensions.dll`; it is not part
+of the `MFTLib` package.
 
 ## Install
 
@@ -63,6 +66,13 @@ Or add a package reference:
 
 ```xml
 <PackageReference Include="MFTLib" Version="0.3.0" />
+```
+
+For test isolation and synthetic journal helpers in a consumer test assembly, reference
+the matching test extensions package:
+
+```xml
+<PackageReference Include="MFTLib.TestExtensions" Version="0.3.0" />
 ```
 
 ## Pre-release consumption (Gitea submodule & CI recipe)

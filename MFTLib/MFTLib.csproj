@@ -11,7 +11,6 @@
 
     <!-- NuGet package metadata -->
     <PackageId>MFTLib</PackageId>
-    <Version>0.3.0</Version>
     <Authors>Matt Schoen</Authors>
     <Description>Fast NTFS file indexing and change tracking for .NET 10 on Windows x64. Reads the Master File Table (MFT) through a native C++ core, resolves paths, filters filenames, follows the USN journal, and can isolate elevated volume access in one reusable broker process.</Description>
     <PackageProjectUrl>https://github.com/mtschoen/MFTLib</PackageProjectUrl>

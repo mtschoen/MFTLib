@@ -1,5 +1,5 @@
 # Release script for MFTLib.
-# Runs coverage, packs the NuGet package, tags the release, and publishes.
+# Runs coverage, packs the NuGet packages, tags the release, and publishes.
 #
 # Usage:
 #   .\scripts\release.ps1          # dry run (build + test + pack only)
@@ -12,20 +12,23 @@ param(
 $nuGetKeyFile = "C:\Users\mtsch\nugetkey"
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\Test-ReleasePackages.ps1"
 $repoRoot = Resolve-Path "$PSScriptRoot\.."
 Set-Location $repoRoot
 
-# Read version from MFTLib.csproj
-[xml]$csproj = Get-Content "$repoRoot\MFTLib\MFTLib.csproj"
-$version = $csproj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+# Read the shared package version.
+[xml]$versionProperties = Get-Content "$repoRoot\Directory.Build.props"
+$version = $versionProperties.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
 if (-not $version) {
-    Write-Host "Could not read version from MFTLib.csproj." -ForegroundColor Red
+    Write-Host "Could not read version from Directory.Build.props." -ForegroundColor Red
     exit 1
 }
 
 $tag = "v$version"
-$nupkg = "$repoRoot\MFTLib\bin\x64\Release\MFTLib.$version.nupkg"
-$snupkg = "$repoRoot\MFTLib\bin\x64\Release\MFTLib.$version.snupkg"
+$mftLibNupkg = "$repoRoot\MFTLib\bin\x64\Release\MFTLib.$version.nupkg"
+$mftLibSnupkg = "$repoRoot\MFTLib\bin\x64\Release\MFTLib.$version.snupkg"
+$testExtensionsNupkg = "$repoRoot\MFTLibTestExtensions\bin\x64\Release\MFTLib.TestExtensions.$version.nupkg"
+$testExtensionsSnupkg = "$repoRoot\MFTLibTestExtensions\bin\x64\Release\MFTLib.TestExtensions.$version.snupkg"
 
 Write-Host "Releasing MFTLib $tag" -ForegroundColor Cyan
 Write-Host ""
@@ -158,19 +161,44 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 
 # --- Pack NuGet ---
-Write-Host "Packing NuGet package..." -ForegroundColor Cyan
+Write-Host "Packing NuGet packages..." -ForegroundColor Cyan
 & $msbuild "$repoRoot\MFTLib\MFTLib.csproj" -t:Pack -p:Configuration=Release -p:Platform=x64 -p:ContinuousIntegrationBuild=true -v:q -nologo
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Pack failed." -ForegroundColor Red
+    Write-Host "MFTLib pack failed." -ForegroundColor Red
     exit 1
 }
 
-if (!(Test-Path $nupkg)) {
-    Write-Host "Expected package not found: $nupkg" -ForegroundColor Red
+if (!(Test-Path $mftLibNupkg)) {
+    Write-Host "Expected package not found: $mftLibNupkg" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "Package created: $nupkg" -ForegroundColor Green
+Write-Host "Package created: $mftLibNupkg" -ForegroundColor Green
+
+& $msbuild "$repoRoot\MFTLibTestExtensions\MFTLibTestExtensions.csproj" -t:Pack -p:Configuration=Release -p:Platform=x64 -p:ContinuousIntegrationBuild=true -v:q -nologo
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "MFTLib.TestExtensions pack failed." -ForegroundColor Red
+    exit 1
+}
+
+if (!(Test-Path $testExtensionsNupkg)) {
+    Write-Host "Expected package not found: $testExtensionsNupkg" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Package created: $testExtensionsNupkg" -ForegroundColor Green
+
+# --- Validate both packages before the dry run returns or anything publishes ---
+Write-Host "Validating package identity, version, and dependency..." -ForegroundColor Cyan
+try {
+    Assert-ReleasePackages -MftLibPackagePath $mftLibNupkg -TestExtensionsPackagePath $testExtensionsNupkg -ExpectedVersion $version
+}
+catch {
+    Write-Host "Package validation failed: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Package validation passed." -ForegroundColor Green
 
 # --- Dry run stops here ---
 if (-not $Publish) {
@@ -195,13 +223,21 @@ if (-not $NuGetApiKey) {
 # --- Publish to NuGet ---
 Write-Host ""
 Write-Host "Publishing to NuGet..." -ForegroundColor Cyan
-dotnet nuget push $nupkg --api-key $NuGetApiKey --source https://api.nuget.org/v3/index.json
+dotnet nuget push $mftLibNupkg --api-key $NuGetApiKey --source https://api.nuget.org/v3/index.json
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "NuGet push failed." -ForegroundColor Red
+    Write-Host "MFTLib NuGet push failed." -ForegroundColor Red
     exit 1
 }
 
 Write-Host "Published MFTLib $version to NuGet." -ForegroundColor Green
+
+dotnet nuget push $testExtensionsNupkg --api-key $NuGetApiKey --source https://api.nuget.org/v3/index.json
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "MFTLib.TestExtensions NuGet push failed." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Published MFTLib.TestExtensions $version to NuGet." -ForegroundColor Green
 
 # --- Tag and push ---
 # Gitea is the canonical forge, so the tag goes there first and a failed push
@@ -230,7 +266,7 @@ if ($LASTEXITCODE -ne 0) {
 # --- Create GitHub release ---
 Write-Host ""
 Write-Host "Creating GitHub release..." -ForegroundColor Cyan
-gh release create $tag $nupkg $snupkg --title $tag --notes-file "$repoRoot\CHANGELOG.md"
+gh release create $tag $mftLibNupkg $mftLibSnupkg $testExtensionsNupkg $testExtensionsSnupkg --title $tag --notes-file "$repoRoot\CHANGELOG.md"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "GitHub release creation failed." -ForegroundColor Red
     exit 1
