@@ -278,7 +278,10 @@ that repeats the cycle's reasons plus `USN_REASON_CLOSE`, and the watch reads wi
 `ReturnOnlyOnClose = 0`, so every intermediate record arrives. `JournalMutator` tracks,
 per drive block, the reasons each row's open cycle already reported; a close record that
 adds no new reason restamps the row's `ModifiedTicks` and attributes without emitting a
-second change, so one real transition raises one change. A repeated reason bit is suppressed
+second change, so one real transition raises one change. Writes inside the create cycle (records
+whose reasons still include `USN_REASON_FILE_CREATE` before the cycle's close) are part of the
+creation and raise no extra changes, so a create-write-close cycle emits only `Created`.
+A repeated reason bit is suppressed
 only as the echo of what the cycle already applied: a second `USN_REASON_RENAME_NEW_NAME`
 inside one open cycle carries a new name or parent and classifies again, because NTFS writes
 one old-name/new-name record pair per rename and does not require a close between renames.

@@ -9,6 +9,9 @@ namespace MFTLib.Index;
 ///     coalesces that close record against the reasons the cycle already reported (tracked per
 ///     drive block in <see cref="ReportedReasonCycles" />), so one real transition raises one
 ///     change while the row still takes the close record's timestamp and attributes.
+///     A data write that happens inside the create cycle (a record whose reasons still include
+///     <see cref="UsnReason.FileCreate" /> before the cycle's close) is part of the creation
+///     and raises nothing extra.
 ///     Suppression is keyed on what the cycle applied, not on the reason bit alone: a second
 ///     rename inside one open cycle (NTFS writes one record pair per rename and requires no
 ///     close between renames) carries a new name or parent and classifies again; only the
@@ -70,8 +73,10 @@ public sealed class JournalMutator
         // record that repeats every reason already delivered for that open cycle plus
         // USN_REASON_CLOSE. Every record in the cycle (intermediate or close) is therefore
         // classified only by the reasons this cycle has not reported yet; bits already reported
-        // must not classify a subsequent record a second time. RenameOldName never classifies:
-        // it is the paired frame whose RenameNewName sibling carries the rename.
+        // must not classify a subsequent record a second time. A data write inside the create
+        // cycle is part of the creation and raises nothing extra, so a cycle that reported
+        // FileCreate treats all modification reasons as reported. RenameOldName never
+        // classifies: it is the paired frame whose RenameNewName sibling carries the rename.
         var cycles = snapshot.GetDriveBlock(driveOrdinal).ReportedCycles;
         var reported = cycles.GetReportedReasons(rowIndex, entry.SequenceNumber);
         var meaningful = entry.Reason & ~(UsnReason.Close | UsnReason.RenameOldName);

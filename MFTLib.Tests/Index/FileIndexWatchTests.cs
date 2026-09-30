@@ -331,11 +331,13 @@ public class FileIndexWatchTests
     [TestMethod]
     public void ApplyJournalEntries_CloseCarryingAnUnreportedReason_StillRaisesOneChange()
     {
+        var target = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
+        var recordNumber = target.Id.RecordNumber;
         _index.ApplyJournalEntries('T',
-            [Entry(20, 0, "injected.txt", UsnReason.FileCreate)], journalId: 5, nextUsn: 100);
+            [Entry(recordNumber, 1, "readme.md", UsnReason.DataExtend)], journalId: 5, nextUsn: 100);
 
         var second = _index.ApplyJournalEntries('T',
-            [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.DataExtend | UsnReason.Close)],
+            [Entry(recordNumber, 1, "readme.md", UsnReason.DataExtend | UsnReason.DataTruncation | UsnReason.Close)],
             journalId: 5, nextUsn: 101);
 
         Assert.AreEqual(1, second.Count);

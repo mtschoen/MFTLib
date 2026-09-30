@@ -77,19 +77,19 @@ public class JournalMutatorCloseCoalescingTests
     public async Task CloseCarryingAnUnreportedReason_StillReportsOneChange()
     {
         await using var fixture = new MutatorFixture();
-        fixture.Apply([Entry(9, 6, "fresh.txt", UsnReason.FileCreate,
-            fixture.Timestamp, sequenceNumber: 3)]);
+        fixture.Apply([Entry(7, 6, "notes.txt", UsnReason.DataExtend,
+            fixture.Timestamp, sequenceNumber: 1)]);
 
-        var second = fixture.Apply([Entry(9, 6, "fresh.txt",
-            UsnReason.FileCreate | UsnReason.DataExtend | UsnReason.Close,
-            fixture.Timestamp.AddMinutes(1), sequenceNumber: 3)]);
+        var second = fixture.Apply([Entry(7, 6, "notes.txt",
+            UsnReason.DataExtend | UsnReason.DataTruncation | UsnReason.Close,
+            fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)]);
 
         Assert.AreEqual(1, second.Count);
         Assert.AreEqual(FileChangeKind.Modified, second[0].Kind);
     }
 
     [TestMethod]
-    public async Task CreateWriteCloseCycle_InOneBatch_ReportsOneCreatedAndOneModified()
+    public async Task CreateWriteCloseCycle_InOneBatch_ReportsOneCreated()
     {
         await using var fixture = new MutatorFixture();
         var closeMoment = fixture.Timestamp.AddMinutes(1);
@@ -102,13 +102,13 @@ public class JournalMutatorCloseCoalescingTests
                 closeMoment, sequenceNumber: 3)
         ]);
 
-        CollectionAssert.AreEqual(new[] { FileChangeKind.Created, FileChangeKind.Modified },
+        CollectionAssert.AreEqual(new[] { FileChangeKind.Created },
             changes.Select(change => change.Kind).ToArray());
         Assert.AreEqual(closeMoment.Ticks, fixture.Block.Rows[9].ModifiedTicks);
     }
 
     [TestMethod]
-    public async Task CumulativeReasons_AcrossBatches_ReportsOneCreatedOneModifiedAndAdvancesGeneration()
+    public async Task CumulativeReasons_AcrossBatches_ReportsOneCreatedAndAdvancesGeneration()
     {
         await using var fixture = new MutatorFixture();
         var initialGeneration = fixture.Block.Header.Generation;
@@ -124,14 +124,11 @@ public class JournalMutatorCloseCoalescingTests
         var generationAfterCreate = fixture.Block.Header.Generation;
         Assert.IsTrue(generationAfterCreate > initialGeneration);
 
-        // Batch 2: FileCreate | DataExtend (intermediate record with accumulated NTFS reason)
+        // Batch 2: FileCreate | DataExtend (data write inside create cycle is part of creation)
         var second = fixture.Apply([Entry(9, 6, "fresh.txt",
             UsnReason.FileCreate | UsnReason.DataExtend, extendMoment, sequenceNumber: 3)]);
-        Assert.AreEqual(1, second.Count);
-        Assert.AreEqual(FileChangeKind.Modified, second[0].Kind,
-            "Intermediate cumulative record must be classified as Modified, not a duplicate Created.");
-        var generationAfterExtend = fixture.Block.Header.Generation;
-        Assert.IsTrue(generationAfterExtend > generationAfterCreate);
+        Assert.AreEqual(0, second.Count,
+            "Intermediate write inside create cycle must raise nothing extra.");
 
         // Batch 3: FileCreate | DataExtend | Close (close record repeating all accumulated reasons)
         var third = fixture.Apply([Entry(9, 6, "fresh.txt",
@@ -142,7 +139,7 @@ public class JournalMutatorCloseCoalescingTests
         Assert.AreEqual((uint)(FileAttributes.Archive | FileAttributes.ReadOnly),
             fixture.Block.Rows[9].Attributes);
         var generationAfterClose = fixture.Block.Header.Generation;
-        Assert.IsTrue(generationAfterClose > generationAfterExtend,
+        Assert.IsTrue(generationAfterClose > generationAfterCreate,
             "Close-only batch mutating metadata must advance Generation.");
 
         // Batch 4: Redundant close or batch with identical metadata produces no generation bump

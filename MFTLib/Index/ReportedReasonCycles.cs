@@ -6,19 +6,42 @@ namespace MFTLib.Index;
 ///     open cycle with a close record that repeats the cycle's reasons plus
 ///     <see cref="UsnReason.Close" />; this state is what lets <see cref="JournalMutator" />
 ///     report the first record of a cycle and coalesce the close record instead of emitting
-///     the same change twice. A repeated reason bit is suppressed only as the echo of what
-///     the cycle already applied: a rename is keyed on its name and parent, because NTFS
-///     writes one record pair per rename and does not require a close between renames, so a
-///     second rename inside one open cycle is a new transition, not an echo. Only rows with
-///     an open cycle occupy an entry, and a close record removes its row, so the dictionary
-///     stays small no matter how large the block is. Runtime-only state: it is not persisted
-///     in the block and dies with the <see cref="DriveBlock" /> that owns it, which is the
-///     lifecycle reset a rescan (block replacement) provides. Not thread-safe: every
-///     journal mutation of a drive's block is already serialized by that drive's write gate
+///     the same change twice. A data write that happens inside the create cycle (a record
+///     whose reasons still include <see cref="UsnReason.FileCreate" /> before the cycle's
+///     close) is part of the creation and raises nothing extra, so a cycle that reported
+///     create treats the whole modification family as reported. A repeated reason bit is
+///     suppressed only as the echo of what the cycle already applied: a rename is keyed on
+///     its name and parent, because NTFS writes one record pair per rename and does not
+///     require a close between renames, so a second rename inside one open cycle is a new
+///     transition, not an echo. Only rows with an open cycle occupy an entry, and a close
+///     record removes its row, so the dictionary stays small no matter how large the block
+///     is. Runtime-only state: it is not persisted in the block and dies with the
+///     <see cref="DriveBlock" /> that owns it, which is the lifecycle reset a rescan (block
+///     replacement) provides. Not thread-safe: every journal mutation
+///     of a drive's block is already serialized by that drive's write gate
 ///     (<see cref="FileIndex.ApplyJournalEntries" />), and tests drive it single-threaded.
 /// </summary>
 internal sealed class ReportedReasonCycles
 {
+    internal const UsnReason ModificationReasons = UsnReason.DataOverwrite
+        | UsnReason.DataExtend
+        | UsnReason.DataTruncation
+        | UsnReason.NamedDataOverwrite
+        | UsnReason.NamedDataExtend
+        | UsnReason.NamedDataTruncation
+        | UsnReason.EaChange
+        | UsnReason.SecurityChange
+        | UsnReason.IndexableChange
+        | UsnReason.BasicInfoChange
+        | UsnReason.HardLinkChange
+        | UsnReason.CompressionChange
+        | UsnReason.EncryptionChange
+        | UsnReason.ObjectIdChange
+        | UsnReason.ReparsePointChange
+        | UsnReason.StreamChange
+        | UsnReason.TransactedChange
+        | UsnReason.IntegrityChange;
+
     readonly Dictionary<uint, OpenCycle> _openCycles = new();
 
     struct OpenCycle
@@ -53,14 +76,22 @@ internal sealed class ReportedReasonCycles
 
     /// <summary>
     ///     Records reasons just reported for a row's open cycle. When the record carried
-    ///     <see cref="UsnReason.RenameNewName" />, its file name and parent replace the
-    ///     cycle's rename payload, so a later record is compared against the latest applied
-    ///     rename.
+    ///     <see cref="UsnReason.FileCreate" />, the entire modification reason family is
+    ///     treated as reported for that cycle, because a data write that happens inside
+    ///     the create cycle is part of the creation and raises nothing extra. When the
+    ///     record carried <see cref="UsnReason.RenameNewName" />, its file name and parent
+    ///     replace the cycle's rename payload, so a later record is compared against the
+    ///     latest applied rename.
     /// </summary>
     public void MarkReported(uint rowIndex, ushort sequenceNumber, UsnReason reasons,
         string renameName, ulong renameParent)
     {
         var carriesRename = (reasons & UsnReason.RenameNewName) != 0;
+        if ((reasons & UsnReason.FileCreate) != 0)
+        {
+            reasons |= ModificationReasons;
+        }
+
         if (_openCycles.TryGetValue(rowIndex, out var cycle) && cycle.SequenceNumber == sequenceNumber)
         {
             cycle.ReportedReasons |= reasons;
