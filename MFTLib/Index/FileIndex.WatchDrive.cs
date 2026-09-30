@@ -45,6 +45,8 @@ public sealed partial class FileIndex
     ///     Takes no lifecycle gate, so it never waits for a rescan: a stop during a rescan of the
     ///     same drive completes while the scan runs, and the rescan then leaves the watch stopped.
     ///     The same holds for an automatic recovery, and a queued one ends without scanning.
+    ///     A manual rescan retains the retired watch's fault through its drain and replacement
+    ///     start, so a stop before the replacement handle is published still takes that fault.
     ///     The drive's <see cref="DriveStatus.WatchCatchUp" /> reads
     ///     <see cref="WatchCatchUpState.NotStarted" /> afterwards and any pending catch-up wait is
     ///     cancelled. A drive counts as watching while its watch is requested or it has a watch
@@ -66,7 +68,7 @@ public sealed partial class FileIndex
         var runtime = GetDriveRuntime(driveLetter);
         WatchInstance? retired;
         Task? previousDrain;
-        Exception? outstandingFault = null;
+        Exception? outstandingFault;
         lock (_stateLock)
         {
             if (!IsWatchingLocked(runtime))
@@ -79,9 +81,10 @@ public sealed partial class FileIndex
             runtime.RefusedStartFault = null;
             ClearRecoveryLocked(runtime);
             retired = RetireCurrentLocked(runtime);
+            outstandingFault = retired?.OutstandingFault ?? runtime.RescanHandoffFault;
+            runtime.RescanHandoffFault = null;
             if (retired is not null)
             {
-                outstandingFault = retired.OutstandingFault;
                 retired.OutstandingFault = null;
             }
 
@@ -171,7 +174,8 @@ public sealed partial class FileIndex
         }
 
         var (instance, target) = registered;
-        await RunRegisteredStartAsync(runtime, source, instance, target, cancellationToken).ConfigureAwait(false);
+        await RunRegisteredStartAsync(runtime, source, instance, target, rescanRestart: restart && recovery is null,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -223,7 +227,7 @@ public sealed partial class FileIndex
     ///     while the source ran.
     /// </summary>
     async Task RunRegisteredStartAsync(DriveRuntime runtime, IIndexWatchSource source, WatchInstance instance,
-        IndexWatchTarget target, CancellationToken cancellationToken)
+        IndexWatchTarget target, bool rescanRestart, CancellationToken cancellationToken)
     {
         var driveLetter = runtime.DriveLetter;
         IIndexDriveWatch handle;
@@ -237,6 +241,11 @@ public sealed partial class FileIndex
         }
         catch (Exception exception)
         {
+            if (rescanRestart && RecordRescanRestartFailure(runtime, instance, exception))
+            {
+                return;
+            }
+
             AbandonFailedStart(runtime, instance, exception, cancellationToken);
             throw;
         }
@@ -283,10 +292,15 @@ public sealed partial class FileIndex
                 return null;
             }
 
-            // A faulted instance is superseded only here, by the instance that replaces it. Its
-            // pump has ended and its teardown was awaited, so it goes straight to drained.
-            if (runtime.Current is { State: WatchInstanceState.Faulted })
+            // Its pump has ended and its teardown was awaited, so a faulted instance goes
+            // straight to drained. A manual rescan keeps its fault until the start settles.
+            if (runtime.Current is { State: WatchInstanceState.Faulted } faulted)
             {
+                if (restart && recovery is null)
+                {
+                    runtime.RescanHandoffFault ??= faulted.OutstandingFault;
+                }
+
                 _ = RetireCurrentLocked(runtime);
             }
 
@@ -357,6 +371,7 @@ public sealed partial class FileIndex
             }
 
             instance.State = WatchInstanceState.Running;
+            runtime.RescanHandoffFault = null;
 
             // Queued rather than run inline, so no source code runs while this lock is held. The
             // pump's own exit path completes the instance's drain, which is what every waiter

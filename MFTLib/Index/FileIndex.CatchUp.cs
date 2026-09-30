@@ -38,7 +38,8 @@ public sealed partial class FileIndex
     ///     <see cref="WatchFaultKind.CatchUpLost" /> and scan again at once while the drive's count
     ///     is below <see cref="LostCatchUpRecoveryLimit" />. The fault is raised with no write gate
     ///     and no <see cref="_stateLock" /> held, while this operation still holds the lifecycle
-    ///     gate; the drive has no running pump meanwhile, so its delivery stays serialized. Only
+    ///     gate; the first publication has retired and drained the old pump, so delivery between
+    ///     retries stays serialized. Production before that publication keeps a healthy pump running. Only
     ///     the first attempt's publish of a manual rescan clears the drive's checkpoint-loss report,
     ///     so a retry keeps the report the loss produced, and a recovery (<paramref name="recovery" />)
     ///     keeps the report that explains why it rescanned. A recovery also re-checks that the watch
@@ -55,7 +56,8 @@ public sealed partial class FileIndex
             while (true)
             {
                 var attempt = await ScanAndPublishAsync(runtime, drive,
-                    clearsCheckpointLoss: firstAttempt && recovery is null, cancellationToken).ConfigureAwait(false);
+                    clearsCheckpointLoss: firstAttempt && recovery is null, recovery, cancellationToken)
+                    .ConfigureAwait(false);
                 firstAttempt = false;
                 if (attempt.CatchUpLoss is not { } catchUpLoss)
                 {

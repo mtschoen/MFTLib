@@ -6,7 +6,7 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     A rescan whose scan produces no replacement leaves a drive as its watch left it: a healthy
-///     drive resumes from its old cursor, a faulted drive stays faulted with its fault, block and
+///     drive keeps its running watch, a faulted drive stays faulted with its fault, block and
 ///     checkpoint-loss report intact. The journal read is swapped out through
 ///     <c>JournalCheckpointCheck.OverrideJournalForTest</c>, a process-wide seam, hence
 ///     <see cref="DoNotParallelizeAttribute" />.
@@ -127,7 +127,7 @@ public class FileIndexWatchFailedRescanTests
     }
 
     [TestMethod]
-    public async Task HealthyDrive_ProducerFailure_RestoresOldWatch()
+    public async Task HealthyDrive_ProducerFailure_KeepsOldWatch()
     {
         using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync('T', Token);
@@ -143,10 +143,10 @@ public class FileIndexWatchFailedRescanTests
         Assert.AreSame(original, harness.Index.Root('T').DriveBlock);
         Assert.AreEqual("rescan producer failed", harness.DriveFor('T').MftProducerFailureMessage);
         Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
-        Assert.AreEqual(1, firstHandle.DisposeCount, "the old watch was retired before the scan");
+        Assert.AreEqual(0, firstHandle.DisposeCount, "the original watch is still running");
         var starts = harness.Source.StartsFor('T');
-        Assert.AreEqual(2, starts.Count);
-        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn), starts[1]);
+        Assert.AreEqual(1, starts.Count);
+        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn), starts[0]);
         Assert.AreEqual(1, harness.Source.StartsFor('U').Count);
         await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(9, "still-watching.txt", nextUsn: 4500));
         Assert.AreEqual(4500L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);

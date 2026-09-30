@@ -308,8 +308,10 @@ the same handle.
 `FileIndex.WaitForCatchUpAsync(char, CancellationToken)` follows that drive's current
 handle. It completes immediately when the drive is already caught up, faults with the
 drive's exception when the watch failed or its last start was refused, and throws
-`InvalidOperationException` when the drive has no current watch. Stop, rescan, and index
-disposal cancel a pending wait because they retire that handle. Cancelling the wait's own
+`InvalidOperationException` when the drive has no current watch. Stop and index disposal
+cancel a pending wait when they retire that handle. A rescan keeps it attached during
+production and cancels it only when the replacement commits and retires the old handle.
+Failed or cancelled production leaves the watch and its waits untouched. Cancelling the wait's own
 token cancels only the wait, not the drive's watch.
 
 A `Drive` or `Apply` fault moves the drive to `WatchCatchUpState.Recovering` and starts an
@@ -318,7 +320,12 @@ ended the prior watch. After recovery starts the replacement handle and the driv
 `CatchingUp`, call the wait again to follow that handle. If recovery fails, or the
 replacement handle faults before reaching `CaughtUp`, the index raises a `Recovery` fault
 and leaves the drive `Faulted` until a consumer starts or rescans it. A `Channel` fault does
-not recover automatically.
+not recover automatically. A successful manual rescan whose replacement watch cannot start
+raises `RescanRestart` and leaves the drive `Faulted` without automatic recovery; the scan
+returns normally. The fault and `WatchFailureMessage` name the rescan, and the start failure
+is the inner exception. Stop rethrows the fault once. Across a successful swap, old `Changed`
+events can arrive after publication and repeat during the new watch's catch-up; queries can
+lag until it reports `CaughtUp`.
 
 The batched overload accepts an `IReadOnlyList<char>` and returns one
 `DriveOperationResult` per requested drive in request order after every drive has settled.

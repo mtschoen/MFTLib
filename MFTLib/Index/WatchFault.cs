@@ -47,11 +47,19 @@ public enum WatchFaultKind
     ///     no further automatic recovery, until <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> or
     ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> is called for it.
     /// </summary>
-    Recovery
+    Recovery,
+
+    /// <summary>
+    ///     A rescan replaced the block but could not start its watch. The exception describes the
+    ///     rescan and carries the start failure as its inner exception. The drive stays faulted
+    ///     until a consumer starts or rescans it; no automatic recovery is queued. Stop rethrows
+    ///     this fault once.
+    /// </summary>
+    RescanRestart
 }
 
 /// <summary>
-///     A fault observed by one drive's watch pump, or by a scan of the drive that lost its
-///     catch-up. Every fault names its drive.
+///     A fault observed by one drive's watch pump, or by a scan that lost its catch-up or could
+///     not start its replacement watch. Every fault names its drive.
 /// </summary>
 public sealed record WatchFault(WatchFaultKind Kind, char DriveLetter, Exception Exception);

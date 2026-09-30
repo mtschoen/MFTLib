@@ -86,7 +86,7 @@ public sealed partial class FileIndex
     {
         lock (_stateLock)
         {
-            if (_disposed || !runtime.WatchRequested || !ReferenceEquals(runtime.Current, instance) ||
+            if (_disposed || !runtime.WatchRequested || !IsCurrentWatchOverItsBlockLocked(runtime, instance) ||
                 instance.State != WatchInstanceState.Faulted)
             {
                 return null;

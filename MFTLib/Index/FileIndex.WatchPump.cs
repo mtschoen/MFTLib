@@ -10,6 +10,9 @@ public sealed partial class FileIndex
     /// </summary>
     internal Action<Action>? PumpFaultSettlementWrapperForTest { get; set; }
 
+    /// <summary>A test seam: invoked after apply releases the write gate, before Changed is raised.</summary>
+    internal Action<char>? BeforeWatchChangedForTest { get; set; }
+
     /// <summary>
     ///     One drive's pump: reads the drive's handle until it is stopped or faults, applies each
     ///     batch, and records a fault only while its instance is still the drive's current one. On
@@ -109,6 +112,7 @@ public sealed partial class FileIndex
 
         try
         {
+            BeforeWatchChangedForTest?.Invoke(runtime.DriveLetter);
             RaiseChanged(changes);
         }
         catch (Exception exception)

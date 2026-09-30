@@ -6,12 +6,12 @@ namespace MFTLib.Tests.Index;
 public partial class FileIndexPerDriveWatchTests
 {
     /// <summary>
-    ///     A rescan that begins while a stopped watch is still tearing down waits for that teardown
-    ///     before it scans, so the retiring pump's last batch can never land on the block the rescan
+    ///     A rescan that begins while a stopped watch is still tearing down publishes its block
+    ///     before awaiting that teardown, so the retiring pump's last batch can never land on the block the rescan
     ///     replaces it with.
     /// </summary>
     [TestMethod]
-    public async Task Rescan_WhileAStoppedWatchIsStillRetiring_ScansOnlyAfterItDrains()
+    public async Task Rescan_WhileAStoppedWatchIsStillRetiring_PublishesBeforeItDrains()
     {
         using var harness = new WatchHarness();
         var index = harness.Index;
@@ -30,7 +30,7 @@ public partial class FileIndexPerDriveWatchTests
         var rescan = index.RescanAsync('T', Token);
 
         Assert.IsFalse(rescan.IsCompleted, "the rescan waits for the retiring instance");
-        Assert.AreEqual(producedBefore, harness.ProductionCount('T'), "nothing is scanned before the drain");
+        Assert.AreEqual(producedBefore + 1, harness.ProductionCount('T'), "production precedes the drain");
         applying.Release();
         await rescan.WaitAsync(HangGuard);
         Assert.AreEqual(producedBefore + 1, harness.ProductionCount('T'));

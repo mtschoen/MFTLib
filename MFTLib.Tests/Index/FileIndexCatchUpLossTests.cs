@@ -59,21 +59,33 @@ public partial class FileIndexCatchUpLossTests
     {
         using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync('T', Token);
+        var oldHandle = harness.Source.HandleFor('T');
+        var production = harness.HoldNextProduction('T');
+        var pendingCatchUp = harness.Index.WaitForCatchUpAsync('T', Token);
         harness.ScriptScans('T', Lost('T'), Held);
         harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9500);
         var index = harness.Index;
         WatchCatchUpState? stateSeenByHandler = null;
+        var retiredAtFirstLoss = false;
         index.WatchFaulted += fault =>
         {
             if (fault.Kind == WatchFaultKind.CatchUpLost)
             {
+                retiredAtFirstLoss = oldHandle.DisposeCount == 1;
                 stateSeenByHandler = index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUp;
             }
         };
         var producedBefore = harness.ProductionCount('T');
 
-        await harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard);
+        var rescan = harness.Index.RescanAsync('T', Token);
+        await production.Entered.WaitAsync(HangGuard);
+        Assert.AreEqual(0, oldHandle.DisposeCount, "a lost catch-up still keeps the watch during production");
+        Assert.IsFalse(pendingCatchUp.IsCompleted);
+        production.Release();
+        await rescan.WaitAsync(HangGuard);
+        await ThrowsAsync<OperationCanceledException>(() => pendingCatchUp);
 
+        Assert.IsTrue(retiredAtFirstLoss, "the first publication drained the old watch before reporting the loss");
         Assert.AreEqual(2, harness.ProductionCount('T') - producedBefore);
         var lost = CatchUpLosses(harness, 'T').Single();
         Assert.AreEqual('T', lost.DriveLetter);

@@ -22,16 +22,19 @@ public sealed partial class FileIndex
     ///     scanned and adopted rather than swapped; a failed scan of one rewrites its status to
     ///     <see cref="DriveFailureKind.ProducerFailed" />. Offline drives are refused.
     ///     <para>
-    ///         A drive that is watching has its watch stopped, and its teardown awaited, before the
-    ///         scan runs, so nothing the old watch reads can reach the new block. After a committed
-    ///         replacement the drive's watch is started again from the new block's cursor if it is
-    ///         still requested, which a <see cref="StopWatchingAsync(char, CancellationToken)" /> during the rescan clears.
-    ///         That restart replaces a faulted watch, clearing its
-    ///         <see cref="DriveStatus.WatchFailureMessage" /> and faulted
-    ///         <see cref="DriveStatus.WatchCatchUp" />. A replacement also clears a refused start's
-    ///         failure, including the refusal of a block whose checkpoint could not be resumed.
-    ///         Other drives are never touched. A rescan supersedes the drive's queued automatic
-    ///         recovery, which then ends without scanning.
+    ///         A healthy watch keeps running throughout production. Publication creates the new
+    ///         snapshot, then retires the old watch and commits the replacement together under the
+    ///         drive's write gate and state lock. Pending catch-up waits are cancelled at that
+    ///         retirement. The old pump and any predecessor are drained after releasing both locks,
+    ///         with only the lifecycle gate held. A faulted current watch stays until restart
+    ///         registration supersedes it. The replacement watch starts from the new block's cursor
+    ///         when still requested; a stop during the rescan clears that request.
+    ///         An outstanding subscriber fault survives retirement and teardown for that stop to
+    ///         rethrow once, until the replacement handle is published or its start fails with
+    ///         <see cref="WatchFaultKind.RescanRestart" />, which supersedes the old fault.
+    ///         Other drives are untouched. A committed manual rescan supersedes recovery queued
+    ///         for the replaced block and clears its recovery state in the publication lock;
+    ///         a watch fault during failed production can still recover.
     ///     </para>
     ///     <para>
     ///         A scan whose journal catch-up was lost publishes its block, raises
@@ -44,23 +47,37 @@ public sealed partial class FileIndex
     ///         attempt.
     ///     </para>
     ///     <para>
-    ///         If the scan produces no replacement, a drive whose watch was healthy restarts its
-    ///         watch from its old cursor (when still requested). A drive whose watch had faulted,
-    ///         whose start was refused, or that has no block stays exactly as it was: its previous
-    ///         block, watch failure, faulted catch-up, outstanding watch fault, and checkpoint-loss
-    ///         report remain, and it is not restarted from a cursor that failure condemns. A
-    ///         producer that returned no block fails this task with
-    ///         <see cref="InvalidOperationException" /> carrying the producer's failure, which
-    ///         <see cref="DriveStatus.MftProducerFailureMessage" /> also reports.
+    ///         If the scan produces no replacement, its failure or cancellation leaves the watch
+    ///         instance and its catch-up waits untouched. Journal changes applied during production
+    ///         remain on the old block, including when its renamed file is restored. A producer
+    ///         returning no block fails this task with <see cref="InvalidOperationException" />
+    ///         carrying its failure, also reported by <see cref="DriveStatus.MftProducerFailureMessage" />.
+    ///         A failed retry after publishing a lost catch-up keeps that unresumable block and
+    ///         refuses its watch.
+    ///     </para>
+    ///     <para>
+    ///         A successful scan returns normally if its watch source fails to start the replacement
+    ///         watch. <see cref="WatchFaultKind.RescanRestart" /> is raised once, with the start
+    ///         failure as the inner exception and a message explaining that the rescan replaced the
+    ///         block but could not start its watch. <see cref="DriveStatus.WatchFailureMessage" />
+    ///         carries that message; the drive stays <see cref="WatchCatchUpState.Faulted" /> until
+    ///         a consumer starts or rescans it. No automatic recovery is queued. Stop rethrows that
+    ///         outstanding fault once. An automatic recovery's failed restart reports
+    ///         <see cref="WatchFaultKind.Recovery" />.
+    ///     </para>
+    ///     <para>
+    ///         A change applied before publication can be delivered afterwards, and the replacement
+    ///         watch can replay it during catch-up. Consumers must tolerate repeated
+    ///         <see cref="Changed" /> events across a successful swap. Queries may lag the old
+    ///         watch's last updates until the new watch reports <see cref="WatchCatchUpState.CaughtUp" />.
     ///     </para>
     ///     <para>
     ///         <paramref name="cancellationToken" /> is linked to the index's disposal, so
     ///         disposing the index cancels a rescan in flight, including one that has published
     ///         its block and has not yet restarted the watch. A restart after the scan is not
     ///         bounded by that token: the token cancels the rescan, not the drive's watch, which a
-    ///         stop or disposal ends instead. The wait for the old watch's teardown does not observe
-    ///         the token either; a cancellation is observed by the scan, and a cancelled scan
-    ///         follows the failed-scan rule above, so a healthy watch restarts from its old cursor.
+    ///         stop or disposal ends instead. The commit-time teardown also ignores that token:
+    ///         after publication the replacement is owned by the index and its handoff finishes.
     ///     </para>
     /// </remarks>
     public async Task RescanAsync(char driveLetter, CancellationToken cancellationToken)
@@ -105,21 +122,6 @@ public sealed partial class FileIndex
         JournalCheckpointLoss? CatchUpLoss = null,
         int ConsecutiveLostCatchUps = 0);
 
-    bool RequiresReplacementForWatchRecovery(char driveLetter)
-    {
-        lock (_stateLock)
-        {
-            return RequiresReplacementForWatchRecoveryLocked(driveLetter);
-        }
-    }
-
-    bool RequiresReplacementForWatchRecoveryLocked(char driveLetter)
-    {
-        return !TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal) ||
-               _watchFailureMessagesByOrdinal.ContainsKey(driveOrdinal) ||
-               _unresumableCheckpointsByOrdinal.ContainsKey(driveOrdinal);
-    }
-
     /// <summary>
     ///     One attempt of a scan operation: produces a block for the drive and publishes it, or,
     ///     when the producer returns none, records the producer's failure against the drive and
@@ -127,7 +129,7 @@ public sealed partial class FileIndex
     ///     restored whenever nothing replaces it.
     /// </summary>
     async Task<ScanAttempt> ScanAndPublishAsync(DriveRuntime runtime, IndexedDrive drive, bool clearsCheckpointLoss,
-        CancellationToken cancellationToken)
+        RecoveryTicket? recovery, CancellationToken cancellationToken)
     {
         ThrowIfCancelledByDisposal(cancellationToken);
         var superseded = FindBlockForRescan(runtime.DriveLetter);
@@ -158,13 +160,12 @@ public sealed partial class FileIndex
             return new ScanAttempt(Published: false, produced.ProducerFailure, produced.ProducerFailureMessage);
         }
 
+        (int ConsecutiveLostCatchUps, WatchHandoff Handoff) publication;
         try
         {
-            var consecutiveLostCatchUps = await PublishRescannedBlockAsync(runtime, drive, block,
+            publication = await PublishRescannedBlockAsync(runtime, block,
                 produced with { CacheSlot = DescribeCacheSlot(target.OwnsCanonicalSlot) }, clearsCheckpointLoss,
-                cancellationToken).ConfigureAwait(false);
-            return new ScanAttempt(Published: true, CatchUpLoss: produced.CatchUpLoss,
-                ConsecutiveLostCatchUps: consecutiveLostCatchUps);
+                recovery, cancellationToken).ConfigureAwait(false);
         }
         catch
         {
@@ -173,6 +174,11 @@ public sealed partial class FileIndex
             RestoreRetiredFile(retired);
             throw;
         }
+
+        // Ownership has passed to the snapshot. Teardown cannot enter the unpublished-block cleanup.
+        await publication.Handoff.DrainAsync().ConfigureAwait(false);
+        return new ScanAttempt(Published: true, CatchUpLoss: produced.CatchUpLoss,
+            ConsecutiveLostCatchUps: publication.ConsecutiveLostCatchUps);
     }
 
     /// <summary>

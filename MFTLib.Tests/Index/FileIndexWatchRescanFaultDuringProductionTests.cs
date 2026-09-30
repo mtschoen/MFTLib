@@ -5,12 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
 
-/// <summary>
-///     A drive that was healthy when its rescan began and whose retiring pump then fails while
-///     applying a batch it had already accepted. The retired pump's fault belongs to no current
-///     watch, so it is not recorded against the drive, and the failed production still restarts
-///     the healthy watch from its old cursor.
-/// </summary>
+/// <summary>A current watch's apply fault during production remains a real fault of the drive.</summary>
 [TestClass]
 [DoNotParallelize]
 public class FileIndexWatchRescanFaultDuringProductionTests
@@ -25,47 +20,56 @@ public class FileIndexWatchRescanFaultDuringProductionTests
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024)
             : null);
 
-    [TestMethod]
-    public async Task ApplyFailureOfTheRetiringPump_DuringRescan_IsNotRecordedAndTheWatchRestartsFromTheOldCursor()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ApplyFailureDuringProduction_RecoversOnlyAfterAFailedScan(bool scanFails)
     {
         using var harness = new WatchHarness('T', 'U');
         using var journal = LostCheckpointForT();
         await harness.Index.StartWatchingAsync('T', Token);
         await harness.Index.StartWatchingAsync('U', Token);
+        var production = harness.HoldNextProduction('T');
+        if (scanFails)
+        {
+            harness.FailNextProduction('T', new IOException("rescan producer failed"));
+        }
 
-        // The pump accepts a batch and parks inside its apply. The rescan retires the watch and
-        // waits for that pump, so the apply fails only once the rescan is under way.
-        var applyFailure = new IOException("T's in-flight batch could not be applied");
-        var applyGate = new TestGate();
-        var consumed = harness.Source.HandleFor('T').Queue(new JournalBatch(
-            new GatedFailingEntries(applyGate, applyFailure), WatchHarness.JournalId, WatchHarness.NextUsn + 300));
-        await applyGate.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
-
-        var original = harness.Index.Root('T').DriveBlock;
-        harness.FailNextProduction('T', new IOException("rescan producer failed"));
         var rescan = harness.Index.RescanAsync('T', Token);
-        Assert.IsFalse(rescan.IsCompleted, "the rescan waits for the retiring pump to drain");
-
+        await production.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+        var handle = harness.Source.HandleFor('T');
+        Assert.AreEqual(0, handle.DisposeCount);
+        var applyFailure = new IOException("T's in-flight batch could not be applied");
+        var applyGate = harness.TrackGate();
+        var consumed = handle.Queue(new JournalBatch(new GatedFailingEntries(applyGate, applyFailure),
+            WatchHarness.JournalId, WatchHarness.NextUsn + 300));
+        await applyGate.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
         applyGate.Release();
-        await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
-            () => rescan.WaitAsync(FakeIndexWatchSource.HangGuard));
+        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
+        Assert.AreSame(applyFailure, fault.Exception);
+        Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, harness.DriveFor('T').CheckpointLoss!.DetectedDuring);
+        production.Release();
+        if (scanFails)
+        {
+            await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(() => rescan);
+        }
+        else
+        {
+            await rescan;
+        }
+
         await consumed.WaitAsync(FakeIndexWatchSource.HangGuard);
-
-        Assert.AreEqual(0, harness.Faults.Count(fault => fault.DriveLetter == 'T'),
-            "the retired pump's failure belongs to no current watch");
-        var after = harness.DriveFor('T');
-        Assert.AreSame(original, harness.Index.Root('T').DriveBlock);
-        Assert.AreEqual("rescan producer failed", after.MftProducerFailureMessage);
-        Assert.IsNull(after.WatchFailureMessage);
-        Assert.IsNull(after.CheckpointLoss, "the retired pump's fault ran no checkpoint check");
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, after.WatchCatchUp);
-        var starts = harness.Source.StartsFor('T');
-        Assert.AreEqual(2, starts.Count);
-        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn), starts[1]);
-
+        await harness.WaitForRecoveryAsync('T');
+        Assert.AreEqual(scanFails ? 3 : 2, harness.ProductionCount('T'));
+        Assert.AreEqual(1, harness.Faults.Count(item => item.Kind == WatchFaultKind.Apply));
+        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(2, harness.Source.StartsFor('T').Count);
         await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 4500));
         Assert.AreEqual(4500L, harness.BlockFor('T').Header.UsnNextUsn);
+        await harness.Source.HandleFor('U').Publish(WatchHarness.Batch(9, "sibling.txt"));
         await harness.Index.StopWatchingAsync('T', Token);
+        await harness.Index.StopWatchingAsync('U', Token);
     }
 
     /// <summary>

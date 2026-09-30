@@ -1,0 +1,91 @@
+using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace MFTLib.Tests.Index;
+
+[TestClass]
+public class FileIndexWatchRescanCacheTests
+{
+    public TestContext TestContext { get; set; } = null!;
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task FailedProduction_RestoresTheRenamedFileWithLiveJournalUpdates(bool cancel)
+    {
+        var directory = Directory.CreateTempSubdirectory("mftlib-rescan-restore-");
+        var production = new TestGate();
+        var rescanRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var token = TestContext.CancellationTokenSource.Token;
+        try
+        {
+            var source = new FakeIndexWatchSource();
+            await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+            {
+                Drives = [new IndexedDrive('T', directory.FullName, 1)],
+                CacheDirectory = directory.FullName,
+                ProducerPolicy = ProducerPolicy.Mft,
+                WatchSource = source,
+                MftProducer = async (request, cancellationToken) =>
+                {
+                    if (rescanRequested.Task.IsCompleted)
+                    {
+                        production.MarkEntered();
+                        await production.WaitForReleaseAsync(cancellationToken);
+                        throw new IOException("production failed after rename");
+                    }
+
+                    FileIndexWatchRescanTests.WriteMftShapedBlock(request.BlockPath, 1, WatchHarness.JournalId, 100);
+                    return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, 1, out _)!,
+                        WatchHarness.JournalId, 100, 0, false);
+                }
+            }, token);
+            try
+            {
+                await index.StartWatchingAsync('T', token);
+                var original = index.Root('T').DriveBlock;
+                var handle = source.HandleFor('T');
+                var catchUp = index.WaitForCatchUpAsync('T', token);
+                using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+                rescanRequested.SetResult();
+                var rescan = index.RescanAsync('T', cancellation.Token);
+                await production.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+                Assert.AreEqual(0, handle.DisposeCount);
+                Assert.AreEqual(1, Directory.GetFiles(directory.FullName, "*.retired-*").Length);
+                await handle.Publish(WatchHarness.Batch(9, "during.txt", 700));
+                if (cancel)
+                {
+                    await cancellation.CancelAsync();
+                    await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => rescan);
+                }
+                else
+                {
+                    production.Release();
+                    await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(() => rescan);
+                }
+
+                Assert.AreSame(original, index.Root('T').DriveBlock);
+                Assert.AreSame(handle, source.HandleFor('T'));
+                Assert.AreEqual(1, source.StartsFor('T').Count);
+                Assert.IsFalse(catchUp.IsCompleted);
+                Assert.AreEqual(1, index.FindByName("during.txt", token).Count);
+                Assert.AreEqual(0, Directory.GetFiles(directory.FullName, "*.retired-*").Length);
+                using var restored = BlockFile.Open(original.Block.Path, 1, out var validation);
+                Assert.IsNotNull(restored, validation.ToString());
+                Assert.AreEqual(700L, restored.Header.UsnNextUsn);
+                await handle.Publish(new DriveCaughtUp());
+                await catchUp.WaitAsync(FakeIndexWatchSource.HangGuard);
+                await index.StopWatchingAsync('T', token);
+            }
+            finally
+            {
+                production.Release();
+            }
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+}

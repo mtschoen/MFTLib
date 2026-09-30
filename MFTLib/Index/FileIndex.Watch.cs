@@ -12,10 +12,12 @@ public sealed partial class FileIndex
     ///     write gate before raising this event at all, so a throwing handler never undoes anything
     ///     and never stops another handler from seeing the rest of the batch. A close record that
     ///     repeats only reasons its open cycle already reported applies its metadata to the
-    ///     block without raising this event, so one real transition raises one change even
+    ///     block without raising this event, so within one block a transition raises one change even
     ///     though NTFS writes at least two journal records for it. See
     ///     <see cref="ApplyJournalEntries" /> for how a handler exception is surfaced to the
-    ///     caller. A handler must not block on a lifecycle call of this index: see
+    ///     caller. A rescan can publish before an old change is delivered, and its new watch can
+    ///     repeat that change during catch-up. Queries can lag until that watch is CaughtUp.
+    ///     A handler must not block on a lifecycle call of this index: see
     ///     <see cref="WatchFaulted" />.
     /// </summary>
     public event Action<FileChange>? Changed;
@@ -23,9 +25,10 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Raised when a drive's watch first sees a subscriber fault, every time a drive's watch
     ///     ends with a drive, apply, or channel fault, and after every scan of a drive whose
-    ///     journal catch-up was lost. Every fault names its drive. Raised from that drive's pump,
-    ///     or for <see cref="WatchFaultKind.CatchUpLost" /> from the scan operation, which runs
-    ///     only while the drive has no running pump, so faults of different drives may be raised
+    ///     journal catch-up was lost or whose replacement watch could not start. Every fault names
+    ///     its drive. Raised from that drive's pump, or for <see cref="WatchFaultKind.CatchUpLost" />
+    ///     and <see cref="WatchFaultKind.RescanRestart" /> from the scan after publication drained
+    ///     the old pump, so faults of different drives may be raised
     ///     concurrently while one drive's faults never overlap. The scan operation raises its
     ///     fault while it still holds the drive's lifecycle gate, so a handler must queue, not
     ///     wait for, a rescan or start of that drive. Exceptions thrown by fault handlers are

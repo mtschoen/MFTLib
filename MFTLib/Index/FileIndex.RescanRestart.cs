@@ -4,8 +4,8 @@ public sealed partial class FileIndex
 {
     /// <summary>
     ///     The body of <see cref="RescanAsync(char, CancellationToken)" /> once it holds the drive's lifecycle gate, and of
-    ///     a recovery (<paramref name="recovery" />): retire the drive's watch, run the scan
-    ///     operation, then restart the watch when it is still requested. A manual rescan first
+    ///     a recovery (<paramref name="recovery" />): run the scan operation, retiring the watch
+    ///     at publication, then restart it when it is still requested. A manual rescan first
     ///     clears the drive's recovery ticket, which it supersedes.
     /// </summary>
     async Task RescanWithGateHeldAsync(DriveRuntime runtime, IndexedDrive drive, RecoveryTicket? recovery,
@@ -20,59 +20,27 @@ public sealed partial class FileIndex
             }
         }
 
-        var requiresReplacement = RequiresReplacementForWatchRecovery(driveLetter);
-        await RetireWatchForRescanAsync(runtime).ConfigureAwait(false);
-
         ScanAttempt outcome;
         try
         {
             outcome = await RunScanOperationAsync(runtime, drive, recovery, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception scanFailure) when (scanFailure is not JournalCatchUpLostException)
+        catch (Exception failure) when (failure is not JournalCatchUpLostException)
         {
-            await ResumeAfterFailedScanAsync(runtime, requiresReplacement, scanFailure).ConfigureAwait(false);
+            _ = RefuseWatchOverUnresumableBlock(runtime);
             throw;
         }
 
         if (outcome.Published)
         {
             ClearRefusedStartAfterReplacement(runtime);
-            await RestartRequestedWatchAsync(runtime, recovery, scanPublished: true).ConfigureAwait(false);
+            await RestartRequestedWatchAsync(runtime, recovery).ConfigureAwait(false);
             return;
         }
 
-        var noBlock = new InvalidOperationException(
+        _ = RefuseWatchOverUnresumableBlock(runtime);
+        throw new InvalidOperationException(
             $"Drive {driveLetter} was not rescanned: {outcome.ProducerFailureMessage}", outcome.ProducerFailure);
-        await ResumeAfterFailedScanAsync(runtime, requiresReplacement, noBlock).ConfigureAwait(false);
-        throw noBlock;
-    }
-
-    /// <summary>
-    ///     Restarts a drive whose watch was healthy before a rescan whose last attempt replaced
-    ///     nothing, from the cursor of the block now published, when the watch is still requested.
-    ///     Judged after the attempts, not before them: when an earlier attempt of the same operation
-    ///     published a block whose catch-up was lost, the old cursor is gone and the block in place
-    ///     cannot be resumed, so the watch is refused the way a start would refuse it and nothing is
-    ///     restarted. A drive that already required a replacement stays as it was. A restart that
-    ///     fails is reported together with the scan's failure.
-    /// </summary>
-    async Task ResumeAfterFailedScanAsync(DriveRuntime runtime, bool requiredReplacement, Exception scanFailure)
-    {
-        if (requiredReplacement || RefuseWatchOverUnresumableBlock(runtime))
-        {
-            return;
-        }
-
-        try
-        {
-            await RestartRequestedWatchAsync(runtime, recovery: null, scanPublished: false).ConfigureAwait(false);
-        }
-        catch (Exception restartFailure)
-        {
-            throw new AggregateException(
-                $"Drive {runtime.DriveLetter} could not restart its watch after its rescan failed, so its watch is stopped.",
-                scanFailure, restartFailure);
-        }
     }
 
     /// <summary>
@@ -99,48 +67,40 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Retires the drive's starting or running watch and waits for its teardown, and for any
-    ///     earlier instance still retiring, before the scan. A faulted watch stays current, since
-    ///     its pump has already ended: a rescan that produces no replacement leaves the drive
-    ///     faulted exactly as it was, and a restart after a replacement supersedes it.
+    ///     Captures the old pump and any predecessor's teardown while retiring a healthy current
+    ///     watch in the publication's state-lock section. A faulted current watch stays until
+    ///     restart registration supersedes it. A retired watch's subscriber fault stays on the
+    ///     runtime for stop to take even after the pump drains. The returned drains never fault.
     /// </summary>
-    async Task RetireWatchForRescanAsync(DriveRuntime runtime)
+    static WatchHandoff RetireWatchAtCommitLocked(DriveRuntime runtime)
     {
-        WatchInstance? retired = null;
-        var drains = new List<Task>(2);
-        lock (_stateLock)
+        var predecessorDrain = runtime.Retiring?.Drained ?? Task.CompletedTask;
+        var currentDrain = runtime.Current?.Drained ?? Task.CompletedTask;
+        var retired = runtime.Current is { State: WatchInstanceState.Starting or WatchInstanceState.Running }
+            ? RetireCurrentLocked(runtime)
+            : null;
+        if (retired is not null)
         {
-            if (runtime.Retiring is { } alreadyRetiring)
-            {
-                drains.Add(alreadyRetiring.Drained);
-            }
-
-            if (runtime.Current is { State: WatchInstanceState.Starting or WatchInstanceState.Running })
-            {
-                retired = RetireCurrentLocked(runtime);
-            }
-
-            if ((retired ?? runtime.Current) is { } instance)
-            {
-                drains.Add(instance.Drained);
-            }
+            runtime.RescanHandoffFault ??= retired.OutstandingFault;
+            retired.OutstandingFault = null;
         }
 
-        retired?.RequestStop();
+        return new WatchHandoff(retired, Task.WhenAll(predecessorDrain, currentDrain));
+    }
 
-        // Not bounded by the rescan's token: the stop request already ends the pump's read, so the
-        // drain is prompt, and a rescan that gave up here would leave a healthy watch stopped with
-        // nothing to restart it. A cancellation is observed by the scan instead, whose failure
-        // restarts a healthy watch from its old cursor.
-        foreach (var drain in drains)
+    readonly record struct WatchHandoff(WatchInstance? Retired, Task Drained)
+    {
+        /// <summary>Called after publication, with only the drive's lifecycle gate held.</summary>
+        public Task DrainAsync()
         {
-            await drain.ConfigureAwait(false);
+            Retired?.RequestStop();
+            return Drained;
         }
     }
 
     /// <summary>
     ///     A replacement block has a fresh cursor, so a start refused or failed over the old block
-    ///     no longer describes the drive. A faulted current watch is left for the restart that
+    ///     describes the replaced block. A faulted current watch is left for the restart that
     ///     follows, which supersedes it.
     /// </summary>
     void ClearRefusedStartAfterReplacement(DriveRuntime runtime)
@@ -164,22 +124,16 @@ public sealed partial class FileIndex
     ///     Starts the drive's watch again, with the lifecycle gate the rescan holds, when it is
     ///     still requested and the index is not being disposed. Not bounded by the rescan's token;
     ///     see <see cref="RescanAsync(char, CancellationToken)" />. A recovery's restart names its ticket, which marks the
-    ///     restarted watch as awaiting its first catch-up. After a scan that published its block
-    ///     (<paramref name="scanPublished" />), a disposal that has begun cancels the operation, as
-    ///     it does at every earlier checkpoint, whether or not the watch is still requested; a
-    ///     recovery drops that cancellation quietly. After a failed scan the operation already ends
-    ///     with the scan's failure, so a disposal only skips the restart.
+    ///     restarted watch as awaiting its first catch-up. Disposal cancels the operation at
+    ///     this checkpoint even when the watch is not requested; a recovery drops it quietly.
     /// </summary>
-    Task RestartRequestedWatchAsync(DriveRuntime runtime, RecoveryTicket? recovery, bool scanPublished)
+    Task RestartRequestedWatchAsync(DriveRuntime runtime, RecoveryTicket? recovery)
     {
         BeforeRestartDecisionForTest?.Invoke(runtime.DriveLetter);
         bool requested;
         lock (_stateLock)
         {
-            if (scanPublished)
-            {
-                ThrowIfCancelledByDisposal(CancellationToken.None);
-            }
+            ThrowIfCancelledByDisposal(CancellationToken.None);
 
             requested = runtime.WatchRequested && !_disposed;
         }
@@ -205,4 +159,33 @@ public sealed partial class FileIndex
     ///     watch is still requested.
     /// </summary>
     internal Action<char>? BeforeRestartDecisionForTest { get; set; }
+
+    /// <summary>
+    ///     Retains a failed rescan restart as a faulted instance, so stop takes its outstanding
+    ///     fault once. A stop or disposal that already retired it wins and records no new fault.
+    ///     The scan has committed; this failure belongs only to the watch.
+    /// </summary>
+    bool RecordRescanRestartFailure(DriveRuntime runtime, WatchInstance instance, Exception startFailure)
+    {
+        var failure = new InvalidOperationException(
+            $"A rescan replaced drive {runtime.DriveLetter}'s block and the watch could not be started on it.",
+            startFailure);
+        lock (_stateLock)
+        {
+            if (_disposed || !ReferenceEquals(runtime.Current, instance))
+            {
+                return false;
+            }
+
+            instance.State = WatchInstanceState.Faulted;
+            runtime.RescanHandoffFault = null;
+            instance.OutstandingFault = failure;
+            instance.CatchUp.Fault(failure);
+            _watchFailureMessagesByOrdinal[instance.ArmedBlock.DriveOrdinal] = failure.Message;
+        }
+
+        CompleteInstanceDrain(runtime, instance);
+        RaiseWatchFaulted(new WatchFault(WatchFaultKind.RescanRestart, runtime.DriveLetter, failure));
+        return true;
+    }
 }

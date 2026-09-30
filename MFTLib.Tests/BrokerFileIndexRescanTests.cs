@@ -35,16 +35,25 @@ public sealed class BrokerFileIndexRescanTests
         var rescan = index.RescanAsync('T', token);
         await scanning.Entered.WaitAsync(HangGuard);
 
-        // T is off the watch while its scan runs: its channel is closed, U's is not, and U keeps delivering.
-        await firstT.Cancelled.WaitAsync(HangGuard);
-        var appliedOnU = ChangeSignal.WhenApplied(index, "during.txt");
-        firstU.Push(40, "during.txt", 200);
-        await appliedOnU;
-        Assert.IsFalse(firstU.Cancelled.IsCompleted, "U's channel stays open through T's rescan");
-        Assert.IsFalse(rescan.IsCompleted, "the rescan is held inside T's scan");
-
-        scanning.Release();
+        try
+        {
+            Assert.IsFalse(firstT.Cancelled.IsCompleted, "T's scan and watch channels coexist during production");
+            var appliedDuringScan = ChangeSignal.WhenApplied(index, "t-during.txt");
+            firstT.Push(42, "t-during.txt", 200);
+            await appliedDuringScan;
+            Assert.AreEqual(1, index.FindByName("t-during.txt", token).Count);
+            var appliedOnU = ChangeSignal.WhenApplied(index, "during.txt");
+            firstU.Push(40, "during.txt", 200);
+            await appliedOnU;
+            Assert.IsFalse(firstU.Cancelled.IsCompleted, "U's channel stays open through T's rescan");
+            Assert.IsFalse(rescan.IsCompleted, "the rescan is held inside T's scan");
+        }
+        finally
+        {
+            scanning.Release();
+        }
         await rescan.WaitAsync(HangGuard);
+        await firstT.Cancelled.WaitAsync(HangGuard);
 
         var secondT = await harness.Watch('T').RunAsync(2);
         Assert.AreEqual(2, harness.Watch('T').StartedCount);

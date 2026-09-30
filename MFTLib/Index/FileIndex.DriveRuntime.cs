@@ -63,8 +63,8 @@ public sealed partial class FileIndex
     ///     <see cref="FileIndex.WatchFaulted" /> are raised with no write gate and no state lock
     ///     held; a pump holds no gate at all when it raises, a recovery raises
     ///     <see cref="WatchFaultKind.Recovery" /> after releasing the drive's lifecycle gate, and
-    ///     the one raiser that holds a gate is a scan operation raising
-    ///     <see cref="WatchFaultKind.CatchUpLost" /> between attempts, which holds the drive's
+    ///     a scan operation raising <see cref="WatchFaultKind.CatchUpLost" /> between attempts or
+    ///     <see cref="WatchFaultKind.RescanRestart" /> after a failed restart holds the drive's
     ///     lifecycle gate.
     /// </remarks>
     sealed class DriveRuntime
@@ -111,6 +111,12 @@ public sealed partial class FileIndex
 
         /// <summary>The previous instance until its <see cref="WatchInstance.Drained" /> completes.</summary>
         public WatchInstance? Retiring;
+
+        /// <summary>
+        ///     An outstanding fault from the watch a manual rescan retired. Kept through teardown
+        ///     and restart until stop takes it or the replacement start supersedes it.
+        /// </summary>
+        public Exception? RescanHandoffFault;
 
         /// <summary>
         ///     Set by a start and cleared by a stop or by disposal. A rescan restarts the drive's

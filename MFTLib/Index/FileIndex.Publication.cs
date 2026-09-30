@@ -108,11 +108,15 @@ public sealed partial class FileIndex
     ///     <paramref name="block" />, commits it with every field of <paramref name="produced" />, and
     ///     publishes the snapshot. The new snapshot is created before anything is committed, so a
     ///     failure leaves every record as it was and the caller closes the block. A batch on the
-    ///     drive therefore lands on the old block before this or is dropped after it. Returns the
-    ///     drive's count of lost catch-ups in a row after this commit.
+    ///     drive therefore lands on the old block before this or is dropped after it. Retirement
+    ///     and publication share the state-lock section. Returns the count of lost catch-ups and
+    ///     the handoff to drain after releasing the write gate, outside unpublished-block cleanup.
+    ///     A manual rescan clears any recovery queued during production in that same section;
+    ///     an automatic <paramref name="recovery" /> keeps its own ticket and state.
     /// </summary>
-    async Task<int> PublishRescannedBlockAsync(DriveRuntime runtime, IndexedDrive drive, BlockFile block,
-        PendingDriveResult produced, bool clearsCheckpointLoss, CancellationToken cancellationToken)
+    async Task<(int ConsecutiveLostCatchUps, WatchHandoff Handoff)> PublishRescannedBlockAsync(
+        DriveRuntime runtime, BlockFile block, PendingDriveResult produced,
+        bool clearsCheckpointLoss, RecoveryTicket? recovery, CancellationToken cancellationToken)
     {
         await runtime.WriteGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -127,7 +131,7 @@ public sealed partial class FileIndex
                     driveOrdinal = (ushort)_driveBlocks.Count;
                 }
 
-                var driveBlock = BuildDriveBlock(drive, driveOrdinal, block);
+                var driveBlock = BuildDriveBlock(_driveConfigurations[runtime.DriveLetter], driveOrdinal, block);
                 var blocks = new List<DriveBlock>(_driveBlocks);
                 if (replacesBlock)
                 {
@@ -139,6 +143,12 @@ public sealed partial class FileIndex
                 }
 
                 var snapshot = Snapshot.Create(blocks);
+                var handoff = RetireWatchAtCommitLocked(runtime);
+                if (recovery is null)
+                {
+                    ClearRecoveryLocked(runtime);
+                }
+
                 if (replacesBlock)
                 {
                     _driveBlocks[driveOrdinal] = driveBlock;
@@ -152,7 +162,7 @@ public sealed partial class FileIndex
 
                 RecordPendingResultLocked(runtime, driveOrdinal, produced, clearsCheckpointLoss);
                 RetireCurrentSnapshotLocked(snapshot);
-                return runtime.ConsecutiveLostCatchUps;
+                return (runtime.ConsecutiveLostCatchUps, handoff);
             }
         }
         finally

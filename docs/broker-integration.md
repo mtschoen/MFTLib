@@ -209,14 +209,19 @@ form rethrows that watch instance's outstanding fault once. The batched form
 places it in the affected drive's failed result. `DisposeAsync` does not rethrow
 watch faults.
 
-If the watch source fails during a start, the failed start leaves a watch
+If the watch source fails during a consumer start, the failed start leaves a watch
 request and a refused-start fault. Stopping that drive clears both without
 rethrowing the source-start failure. A fresh start after a faulted watch
 instance supersedes that instance and discards its outstanding fault.
 
-A rescan stops the selected drive's current handle, builds and publishes a new
-block, and starts a fresh handle from the new cursor when watching is still
-requested. Other drives continue independently. If a start was refused because
+A rescan keeps the selected drive's healthy handle reading while its scan channel builds
+another block. Failed or cancelled production leaves that handle and its catch-up waits
+attached. At commit the new block is published and the old handle is retired together;
+pending catch-up waits are cancelled then. After draining it outside the write gate and
+state lock, the rescan starts a fresh handle from the new cursor when watching is still
+requested. Other drives continue independently. `Changed` events can arrive from the old
+block after publication and repeat during replacement catch-up; queries can lag until
+the new watch reports `CaughtUp`. If a start was refused because
 the block was unresumable, the refusal leaves no watch request: after a
 successful `RescanAsync`, call `StartWatchingAsync` for that drive again.
 
@@ -244,6 +249,7 @@ concurrently. The status has already been updated when the event runs.
 | `BrokerChannelLostException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. `DriveLetter` names a drive pipe; null names the control pipe. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
 | `DriveWatchFaultException` | The host reported an `Error` on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
 | `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan and start the drive again. |
+| `WatchFaultKind.RescanRestart` | A rescan replaced the block but could not start its watch. The scan returns success. The exception and `WatchFailureMessage` identify the rescan; the inner exception is the start failure. No automatic recovery starts. A consumer start or rescan retries it, and stop rethrows the fault once. |
 | `WatchCatchUpState.Recovering` | A drive or apply fault is being recovered, or a lost catch-up is being retried. Queries still use the current complete block, which may be behind the volume. |
 | `WatchCatchUpState.Faulted` | Recovery did not restore the watch, a channel was lost, a start was refused, or the catch-up loss limit was reached. Inspect `WatchFailureMessage` and the fault exception. Call `RescanAsync` or `StartWatchingAsync` after the triggering condition is fixed. An unresumable block must be rescanned first. |
 

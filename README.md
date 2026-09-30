@@ -655,7 +655,11 @@ with the native error message. Common causes include:
   consecutive count is below `FileIndex.LostCatchUpRecoveryLimit`.
 - `Channel`: the drive pipe was lost or ended without a stop. This fault does not recover
   automatically.
-- `Recovery`: an automatic recovery scan failed, or its restarted watch failed before
+- `RescanRestart`: a rescan replaced the block but its watch could not start. The scan
+  succeeds; the exception and `WatchFailureMessage` identify the rescan and the exception's
+  inner exception is the start failure. The drive stays `Faulted` without automatic recovery
+  until a consumer starts or rescans it. Stop rethrows this fault once.
+- `Recovery`: an automatic recovery scan or restart failed, or its restarted watch failed before
   reaching `WatchCatchUpState.CaughtUp`. The drive stays `Faulted` until the consumer calls
   `RescanAsync` or `StartWatchingAsync` for that drive.
 
@@ -685,6 +689,7 @@ index.WatchFaulted += fault =>
 
         case WatchFaultKind.Channel:
         case WatchFaultKind.Recovery:
+        case WatchFaultKind.RescanRestart:
             Console.Error.WriteLine(fault.Exception.Message);
             break;
 
@@ -695,6 +700,12 @@ index.WatchFaulted += fault =>
 };
 ```
 
+A rescan keeps its healthy watch running during production. Failed or cancelled production
+leaves that watch and its catch-up waits attached. A successful commit retires the old watch
+and cancels its pending waits, drains it, then starts from the replacement cursor when still
+requested. An old `Changed` event can arrive after the swap and can repeat during replacement
+catch-up. Queries can lag until the new watch reports `CaughtUp`.
+
 During automatic recovery, a catch-up wait faults immediately with the fault that started
 the recovery. Wait again after `DriveStatus.WatchCatchUp` returns to `CatchingUp` if the
 consumer needs to observe the replacement watch reaching `CaughtUp`. When a lost catch-up
@@ -703,7 +714,7 @@ keeps its last queryable block, and its watch is refused until a manual rescan s
 
 The single-drive `StopWatchingAsync` rethrows the watch's outstanding fault once. A
 batched stop returns that exception in the affected drive's `DriveOperationResult`.
-The following edge dispositions describe current behavior: a source start failure leaves
+The following edge dispositions describe current behavior: a consumer source start failure leaves
 a refused-start fault that a later stop clears without rethrowing; a fresh start supersedes
 a faulted watch instance and discards its outstanding fault; and a stop that arrives while
 a recovery or rescan is restarting the watch wins, leaves the drive stopped, and rethrows

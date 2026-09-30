@@ -94,7 +94,7 @@ public partial class FileIndexPerDriveWatchTests
     }
 
     [TestMethod]
-    public async Task Rescan_CancelledWhileTheOldWatchDrains_RestartsTheHealthyWatch()
+    public async Task Rescan_TokenCancelledAfterCommit_DrainsAndStartsTheReplacement()
     {
         using var harness = new WatchHarness();
         await harness.Index.StartWatchingAsync('T', Token);
@@ -107,9 +107,9 @@ public partial class FileIndexPerDriveWatchTests
         await rescanCancellation.CancelAsync();
         applying.Release();
 
-        await ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
+        await rescan.WaitAsync(HangGuard);
         var starts = harness.Source.StartsFor('T');
-        Assert.AreEqual(2, starts.Count, "a healthy watch resumes after a failed scan, cancellation included");
+        Assert.AreEqual(2, starts.Count, "cancellation after commit does not abandon the replacement watch");
         Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn), starts[1]);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
     }
