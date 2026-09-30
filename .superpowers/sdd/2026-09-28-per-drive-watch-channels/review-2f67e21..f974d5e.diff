@@ -1,0 +1,194 @@
+# Review package: 2f67e21..task/265-C1
+
+## Commits
+f974d5e Diagnostics flush test proves ordering by signal and reads the injected clock
+
+## Files changed
+ MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs    | 58 ++++++++++++++++------
+ MFTLib/Broker/Launch/DefaultElevatedEntryRunner.cs | 35 +++++++++----
+ 2 files changed, 68 insertions(+), 25 deletions(-)
+
+## Diff
+diff --git a/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs b/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs
+index ca4ab99..8aa4f32 100644
+--- a/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs
++++ b/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs
+@@ -1,12 +1,14 @@
+ using System.IO.Pipes;
+ using System.Runtime.Versioning;
++using MFTLib.Tests.TestSupport;
++using Microsoft.Extensions.Time.Testing;
+ using Microsoft.VisualStudio.TestTools.UnitTesting;
+ 
+ namespace MFTLib.Tests;
+ 
+ [TestClass]
+ [DoNotParallelize] // replaces the process-wide DefaultElevatedEntryRunner._exitProcess seam
+ public class DefaultElevatedEntryRunnerTests
+ {
+     [TestCleanup]
+     public void Cleanup()
+@@ -55,42 +57,68 @@ public class DefaultElevatedEntryRunnerTests
+         Assert.AreEqual(0, exitCode);
+     }
+ 
+     [TestMethod]
+     [SupportedOSPlatform("windows")]
+     public async Task RunBroker_SessionFails_FlushesDiagnosticsBeforeLeaving()
+     {
+         var pipeName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
+         int? exitCode = null;
+         DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
+-        DefaultElevatedEntryRunner._diagnosticsFlushTimeout = Timeout.InfiniteTimeSpan;
+ 
+-        // The first diagnostics line parks the log writer, so a line is still queued when the
+-        // session fails; the runner may leave only once its flush has seen that line through.
+-        var appendEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+-        var releaseAppend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        // The first diagnostics line parks the log writer on a gate, so lines are still queued when
++        // the session fails. The clock is never advanced, so the flush's bound cannot end the wait.
++        var sink = new TestGate();
++        var appended = new List<string>();
+         BrokerDiagnostics.Enable("broker");
+-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(_ =>
++        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
+         {
+-            appendEntered.TrySetResult();
+-            releaseAppend.Task.Wait(TimeSpan.FromSeconds(10));
++            sink.MarkEntered();
++            sink.WaitForReleaseAsync(CancellationToken.None).WaitAsync(HangGuard, CancellationToken.None)
++                .GetAwaiter().GetResult();
++            lock (appended)
++            {
++                appended.Add(line);
++            }
+         }));
++        var clock = new FlushBoundSignalingClock();
+ 
+-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
++        using var cts = new CancellationTokenSource(HangGuard);
+         await using var server = new NamedPipeServerStream(
+             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+-        var runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(pipeName));
++        var runTask = Task.Run(() => new DefaultElevatedEntryRunner(clock).RunBroker(pipeName));
+         await server.WaitForConnectionAsync(cts.Token);
+ 
+         // A frame of no known kind ends the session with InvalidDataException.
+         await server.WriteAsync(new byte[] { 1, 0, 0, 0, 200 }, cts.Token);
+         await server.FlushAsync(cts.Token);
+-        await appendEntered.Task.WaitAsync(cts.Token);
+-
+-        var finished = await Task.WhenAny(runTask, Task.Delay(TimeSpan.FromMilliseconds(500), cts.Token));
+-        Assert.AreNotSame(runTask, finished, "The runner left while a diagnostics line was still queued.");
++        await sink.Entered.WaitAsync(cts.Token);
++        await clock.FlushBoundStarted.WaitAsync(cts.Token);
+ 
+-        releaseAppend.TrySetResult();
++        Assert.IsFalse(runTask.IsCompleted, "The runner must wait for the queued lines while the sink is held.");
++        sink.Release();
+         await Assert.ThrowsExceptionAsync<InvalidDataException>(() => runTask.WaitAsync(cts.Token));
+         Assert.IsNull(exitCode);
++        lock (appended)
++        {
++            Assert.IsTrue(appended.Any(line => line.Contains("frame read kind=200", StringComparison.Ordinal)),
++                "The line logged as the session failed must reach the log before the runner leaves.");
++        }
++    }
++
++    static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(10);
++
++    // A clock that is never advanced and signals when the runner starts its exit flush's bound,
++    // the only timer the runner creates on it.
++    sealed class FlushBoundSignalingClock : FakeTimeProvider
++    {
++        readonly TaskCompletionSource _flushBoundStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
++
++        public Task FlushBoundStarted => _flushBoundStarted.Task;
++
++        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
++        {
++            _flushBoundStarted.TrySetResult();
++            return base.CreateTimer(callback, state, dueTime, period);
++        }
+     }
+ }
+diff --git a/MFTLib/Broker/Launch/DefaultElevatedEntryRunner.cs b/MFTLib/Broker/Launch/DefaultElevatedEntryRunner.cs
+index 7d2ac3f..b19b838 100644
+--- a/MFTLib/Broker/Launch/DefaultElevatedEntryRunner.cs
++++ b/MFTLib/Broker/Launch/DefaultElevatedEntryRunner.cs
+@@ -3,25 +3,36 @@ using System.Runtime.Versioning;
+ 
+ namespace MFTLib;
+ 
+ /// <summary>
+ ///     Production <see cref="IElevatedEntryRunner" />. The broker mode does its work and
+ ///     then terminates the elevated child via <see cref="System.Environment.Exit" />,
+ ///     since an elevated child exists only to perform one mode.
+ /// </summary>
+ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
+ {
+-    static readonly TimeSpan DefaultDiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
++    // How long an exiting broker waits for its queued diagnostics lines to reach the log.
++    static readonly TimeSpan DiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
+ 
+-    // How long an exiting broker waits for its queued diagnostics lines to reach the log. A test
+-    // lifts the bound to prove the wait happens.
+-    internal static TimeSpan _diagnosticsFlushTimeout = DefaultDiagnosticsFlushTimeout;
++    readonly TimeProvider _timeProvider;
++
++    public DefaultElevatedEntryRunner()
++        : this(TimeProvider.System)
++    {
++    }
++
++    /// <summary>A runner whose exit flush is bounded on <paramref name="timeProvider" />, so a test can hold the bound.</summary>
++    /// <param name="timeProvider">The clock of the diagnostics flush's bound at exit.</param>
++    internal DefaultElevatedEntryRunner(TimeProvider timeProvider)
++    {
++        _timeProvider = timeProvider;
++    }
+ 
+     // Exiting the process cannot be exercised from an in-process unit test (it would
+     // kill the test host), so tests inject a fake. Production always uses Environment.Exit.
+     internal static Action<int> _exitProcess = Environment.Exit;
+ 
+     [SupportedOSPlatform("windows")]
+     public void RunBroker(string? controlPipeName)
+     {
+         if (controlPipeName == null)
+         {
+@@ -73,24 +84,28 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
+             return pipe;
+         }
+         catch
+         {
+             await pipe.DisposeAsync().ConfigureAwait(false);
+             throw;
+         }
+     }
+ 
+     // The session is over and the process is about to exit, so the diagnostics lines still
+-    // queued get a bounded wait to reach the log. Lines the wait does not cover are lost with the
+-    // process; there is nowhere left to report that, so the wait's outcome is not inspected.
+-    static void FlushDiagnostics()
++    // queued get a bounded wait, on the runner's clock, to reach the log. Lines the wait does not
++    // cover are lost with the process; there is nowhere left to report that, so whichever of the
++    // flush and the bound finishes first ends the wait.
++    void FlushDiagnostics()
+     {
+-        // aislop-ignore-next-line csharp-sync-over-async -- the flush awaits only the diagnostics writer's own drain task, which never posts to the calling thread's SynchronizationContext
+-        _ = BrokerDiagnostics.FlushAsync(CancellationToken.None).Wait(_diagnosticsFlushTimeout);
++        using var stopBound = new CancellationTokenSource();
++        var flush = BrokerDiagnostics.FlushAsync(CancellationToken.None);
++        var bound = Task.Delay(DiagnosticsFlushTimeout, _timeProvider, stopBound.Token);
++        // aislop-ignore-next-line csharp-sync-over-async -- the wait covers only the diagnostics writer's drain and a timer, neither of which posts to the calling thread's SynchronizationContext
++        Task.WhenAny(flush, bound).GetAwaiter().GetResult();
++        stopBound.Cancel();
+     }
+ 
+     internal static void ResetToDefaults()
+     {
+         _exitProcess = Environment.Exit;
+-        _diagnosticsFlushTimeout = DefaultDiagnosticsFlushTimeout;
+     }
+ }

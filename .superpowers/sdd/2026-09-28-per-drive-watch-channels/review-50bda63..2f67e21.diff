@@ -1,0 +1,725 @@
+# Review package: 50bda63..task/265-C1
+
+## Commits
+2f67e21 Host answers malformed and cancelled requests with Error frames and carries no unread members
+
+## Files changed
+ MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs    | 40 ++++++++++
+ MFTLib.Tests/JournalBrokerHostChannelTests.cs      | 57 ++++++++++++++
+ MFTLib/Broker/Client/BlockScanOutcome.cs           |  6 --
+ MFTLib/Broker/Client/BlockScanTarget.cs            | 13 ----
+ MFTLib/Broker/Client/BrokerScanOptions.cs          |  4 +-
+ MFTLib/Broker/Host/JournalBrokerHost.Channel.cs    |  4 +-
+ MFTLib/Broker/Host/JournalBrokerHost.Session.cs    | 30 ++++++--
+ MFTLib/Broker/Launch/DefaultElevatedEntryRunner.cs | 28 +++++--
+ MFTLib/Broker/Protocol/BrokerProtocol.Payload.cs   | 86 +++++++++++++++++-----
+ MFTLib/Broker/Protocol/BrokerProtocol.cs           |  4 +-
+ MFTLib/Index/BlockFile.cs                          | 15 +---
+ 11 files changed, 217 insertions(+), 70 deletions(-)
+
+## Diff
+diff --git a/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs b/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs
+index fe44f76..ca4ab99 100644
+--- a/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs
++++ b/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs
+@@ -5,20 +5,21 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
+ namespace MFTLib.Tests;
+ 
+ [TestClass]
+ [DoNotParallelize] // replaces the process-wide DefaultElevatedEntryRunner._exitProcess seam
+ public class DefaultElevatedEntryRunnerTests
+ {
+     [TestCleanup]
+     public void Cleanup()
+     {
+         DefaultElevatedEntryRunner.ResetToDefaults();
++        BrokerDiagnostics.ResetToDefaults();
+     }
+ 
+     [TestMethod]
+     [SupportedOSPlatform("windows")]
+     public void RunBroker_NullPipeName_ExitsWithCode1_WithoutConnecting()
+     {
+         int? exitCode = null;
+         DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
+ 
+         new DefaultElevatedEntryRunner().RunBroker(null);
+@@ -46,11 +47,50 @@ public class DefaultElevatedEntryRunnerTests
+                          pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous))
+         {
+             runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(pipeName));
+             await server.WaitForConnectionAsync(cts.Token);
+         }
+ 
+         await runTask.WaitAsync(cts.Token);
+ 
+         Assert.AreEqual(0, exitCode);
+     }
++
++    [TestMethod]
++    [SupportedOSPlatform("windows")]
++    public async Task RunBroker_SessionFails_FlushesDiagnosticsBeforeLeaving()
++    {
++        var pipeName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
++        int? exitCode = null;
++        DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
++        DefaultElevatedEntryRunner._diagnosticsFlushTimeout = Timeout.InfiniteTimeSpan;
++
++        // The first diagnostics line parks the log writer, so a line is still queued when the
++        // session fails; the runner may leave only once its flush has seen that line through.
++        var appendEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var releaseAppend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        BrokerDiagnostics.Enable("broker");
++        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(_ =>
++        {
++            appendEntered.TrySetResult();
++            releaseAppend.Task.Wait(TimeSpan.FromSeconds(10));
++        }));
++
++        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
++        await using var server = new NamedPipeServerStream(
++            pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
++        var runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(pipeName));
++        await server.WaitForConnectionAsync(cts.Token);
++
++        // A frame of no known kind ends the session with InvalidDataException.
++        await server.WriteAsync(new byte[] { 1, 0, 0, 0, 200 }, cts.Token);
++        await server.FlushAsync(cts.Token);
++        await appendEntered.Task.WaitAsync(cts.Token);
++
++        var finished = await Task.WhenAny(runTask, Task.Delay(TimeSpan.FromMilliseconds(500), cts.Token));
++        Assert.AreNotSame(runTask, finished, "The runner left while a diagnostics line was still queued.");
++
++        releaseAppend.TrySetResult();
++        await Assert.ThrowsExceptionAsync<InvalidDataException>(() => runTask.WaitAsync(cts.Token));
++        Assert.IsNull(exitCode);
++    }
+ }
+diff --git a/MFTLib.Tests/JournalBrokerHostChannelTests.cs b/MFTLib.Tests/JournalBrokerHostChannelTests.cs
+index 99cc772..5db02fa 100644
+--- a/MFTLib.Tests/JournalBrokerHostChannelTests.cs
++++ b/MFTLib.Tests/JournalBrokerHostChannelTests.cs
+@@ -187,20 +187,77 @@ public partial class JournalBrokerHostChannelTests
+         var pipe = await harness.OpenChannelAsync('C');
+ 
+         await HostChannelHarness.WriteFrameAsync(pipe, BrokerProtocol.WriteCaughtUp);
+         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
+ 
+         Assert.AreEqual(1, frames.Count);
+         Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
+         StringAssert.Contains(frames[0].Message, "CaughtUp");
+     }
+ 
++    [DataTestMethod]
++    [DataRow("truncated section name")]
++    [DataRow("negative name count")]
++    [DataRow("name count beyond the payload")]
++    public async Task DriveChannel_MalformedRequestPayload_WritesErrorAndOtherRequestsContinue(string malformation)
++    {
++        var payload = new List<byte>();
++        payload.AddRange(BitConverter.GetBytes(malformation == "truncated section name" ? 100 : 0));
++        if (malformation != "truncated section name")
++        {
++            payload.AddRange(BitConverter.GetBytes((int)BrokerScanProfile.Full));
++            payload.AddRange(BitConverter.GetBytes(malformation == "negative name count" ? -1 : int.MaxValue));
++        }
++        else
++        {
++            payload.AddRange(new byte[] { 0x43, 0x00 });
++        }
++
++        var host = CreateHost(queryVolumeInfo: _ => Volume);
++        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
++        var pipe = await harness.OpenChannelAsync('C');
++
++        await HostChannelHarness.WriteFrameAsync(pipe, writer =>
++        {
++            var frame = writer.GetSpan(5 + payload.Count);
++            BitConverter.TryWriteBytes(frame, 1 + payload.Count);
++            frame[4] = (byte)BrokerFrameKind.ArmAndScan;
++            payload.ToArray().CopyTo(frame[5..]);
++            writer.Advance(5 + payload.Count);
++        });
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.AreEqual(1, frames.Count);
++        Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
++        StringAssert.Contains(frames[0].Message, "malformed");
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 8, "C"));
++        Assert.AreEqual(BrokerFrameKind.VolumeInfo, (await harness.ReadControlAsync()).Kind,
++            "The session keeps serving after one channel's malformed request.");
++    }
++
++    [TestMethod]
++    public async Task OpenChannel_ConnectorThrowsOperationCanceled_RepliesErrorWithRequestId()
++    {
++        var host = CreateHost(queryVolumeInfo: _ => Volume);
++        await using var harness = new HostChannelHarness(host,
++            connectChannel: (_, _) => Task.FromCanceled<Stream>(new CancellationToken(true)));
++
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteOpenChannel(writer, 21, "C", "cancelled"));
++        var reply = await harness.ReadControlAsync();
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 22, "C"));
++        var next = await harness.ReadControlAsync();
++
++        Assert.AreEqual(BrokerFrameKind.Error, reply.Kind);
++        Assert.AreEqual(21u, reply.RequestId);
++        Assert.AreEqual(22u, next.RequestId);
++    }
++
+     static JournalBrokerHost CreateHost(
+         UsnJournalCursorQuery? queryCursor = null,
+         MftRecordBatchSource? scanDrive = null,
+         UsnJournalCatchUpSource? readJournal = null,
+         JournalBatchSource? watchDrive = null,
+         NtfsVolumeInformationQuery? queryVolumeInfo = null,
+         GrowUsnJournalQuery? growUsnJournal = null,
+         int processorCount = 4,
+         TimeProvider? timeProvider = null)
+     {
+diff --git a/MFTLib/Broker/Client/BlockScanOutcome.cs b/MFTLib/Broker/Client/BlockScanOutcome.cs
+deleted file mode 100644
+index 848c97b..0000000
+--- a/MFTLib/Broker/Client/BlockScanOutcome.cs
++++ /dev/null
+@@ -1,6 +0,0 @@
+-using MFTLib.Index;
+-
+-namespace MFTLib;
+-
+-/// <summary>The caller owns Block after the scan returns; disposing the client does not release it.</summary>
+-public sealed record BlockScanOutcome(string SectionName, BlockFile Block, long RowCount, long NamePoolUsedBytes, long SkippedRecordCount);
+diff --git a/MFTLib/Broker/Client/BlockScanTarget.cs b/MFTLib/Broker/Client/BlockScanTarget.cs
+deleted file mode 100644
+index a9ed965..0000000
+--- a/MFTLib/Broker/Client/BlockScanTarget.cs
++++ /dev/null
+@@ -1,13 +0,0 @@
+-using MFTLib.Index;
+-
+-namespace MFTLib;
+-
+-/// <summary>The destination of one drive's client-created packed block.</summary>
+-public sealed record BlockScanTarget(string Path, uint VolumeSerial, bool DeleteOnClose)
+-{
+-    /// <summary>
+-    ///     The consumer identity that a later warm-start attempt must match; the broker writes
+-    ///     it into the header before marking this block complete.
+-    /// </summary>
+-    public CacheTag CacheTag { get; init; }
+-}
+diff --git a/MFTLib/Broker/Client/BrokerScanOptions.cs b/MFTLib/Broker/Client/BrokerScanOptions.cs
+index c932ce1..66a4bcd 100644
+--- a/MFTLib/Broker/Client/BrokerScanOptions.cs
++++ b/MFTLib/Broker/Client/BrokerScanOptions.cs
+@@ -1,11 +1,9 @@
+ namespace MFTLib;
+ 
+-/// <summary>Configures per-drive block destinations, row filtering, and progress for a cold scan.</summary>
++/// <summary>Configures row filtering and progress for a cold scan.</summary>
+ public sealed record BrokerScanOptions
+ {
+     public BrokerScanProfile Profile { get; init; } = BrokerScanProfile.Full;
+-    /// <summary>Required per-drive block destinations. Keys accept drive paths.</summary>
+-    public IReadOnlyDictionary<string, BlockScanTarget>? BlockTargets { get; init; }
+     public IReadOnlyCollection<string>? KeepFileNames { get; init; }
+     public IProgress<BrokerScanProgress>? Progress { get; init; }
+ }
+diff --git a/MFTLib/Broker/Host/JournalBrokerHost.Channel.cs b/MFTLib/Broker/Host/JournalBrokerHost.Channel.cs
+index 72ddecc..916bd6f 100644
+--- a/MFTLib/Broker/Host/JournalBrokerHost.Channel.cs
++++ b/MFTLib/Broker/Host/JournalBrokerHost.Channel.cs
+@@ -60,21 +60,23 @@ public sealed partial class JournalBrokerHost
+             var seconds = ChannelConnectTimeout.TotalSeconds.ToString(CultureInfo.InvariantCulture);
+             await WriteControlErrorAsync(session, requestId,
+                     $"Drive {drive} channel pipe '{pipeName}' did not connect within {seconds} seconds.")
+                 .ConfigureAwait(false);
+         }
+         catch (OperationCanceledException) when (session.Token.IsCancellationRequested)
+         {
+             DisposeLateConnection(connection);
+             throw;
+         }
+-        catch (Exception exception) when (exception is not OperationCanceledException)
++        // Anything else, including a connector's own cancellation while the session is alive,
++        // is this connection's failure.
++        catch (Exception exception)
+         {
+             await WriteControlErrorAsync(session, requestId,
+                     $"Drive {drive} channel pipe '{pipeName}' could not be connected: {exception.Message}")
+                 .ConfigureAwait(false);
+         }
+ 
+         return null;
+     }
+ 
+     static void DisposeLateConnection(Task<Stream> connection)
+diff --git a/MFTLib/Broker/Host/JournalBrokerHost.Session.cs b/MFTLib/Broker/Host/JournalBrokerHost.Session.cs
+index 936a406..82f2aef 100644
+--- a/MFTLib/Broker/Host/JournalBrokerHost.Session.cs
++++ b/MFTLib/Broker/Host/JournalBrokerHost.Session.cs
+@@ -49,20 +49,38 @@ public sealed partial class JournalBrokerHost
+             await session.EndAsync().ConfigureAwait(false);
+             await DrainAsync(session.Tasks).ConfigureAwait(false);
+         }
+     }
+ 
+     async Task HandleControlRequestAsync(ControlSession session, BrokerFrame request)
+     {
+         // Off the read loop at once, so a request that blocks in its source never delays the next
+         // request's read or reply.
+         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
++        try
++        {
++            await AnswerControlRequestAsync(session, request).ConfigureAwait(false);
++        }
++        catch (OperationCanceledException) when (session.Token.IsCancellationRequested)
++        {
++            // The session is ending; its drain accounts for this request.
++        }
++        catch (ClientDisconnectedException)
++        {
++            // A reply that cannot reach the client ends the whole session: there is nobody left to
++            // serve, so every channel is cancelled and the control read loop returns.
++            await session.EndAsync().ConfigureAwait(false);
++        }
++    }
++
++    async Task AnswerControlRequestAsync(ControlSession session, BrokerFrame request)
++    {
+         try
+         {
+             switch (request.Kind)
+             {
+                 case BrokerFrameKind.OpenChannel:
+                     await OpenChannelAsync(session, request).ConfigureAwait(false);
+                     break;
+ 
+                 case BrokerFrameKind.QueryVolume:
+                     await HandleQueryVolumeAsync(session, request).ConfigureAwait(false);
+@@ -71,29 +89,25 @@ public sealed partial class JournalBrokerHost
+                 case BrokerFrameKind.GrowUsnJournal:
+                     await HandleGrowUsnJournalAsync(session, request).ConfigureAwait(false);
+                     break;
+ 
+                 default:
+                     await WriteControlErrorAsync(session, request.RequestId,
+                         $"{request.Kind} is not a control request").ConfigureAwait(false);
+                     break;
+             }
+         }
+-        catch (OperationCanceledException) when (session.Token.IsCancellationRequested)
+-        {
+-            // The session is ending; its drain accounts for this request.
+-        }
+-        catch (ClientDisconnectedException)
++        catch (OperationCanceledException exception) when (!session.Token.IsCancellationRequested)
+         {
+-            // A reply that cannot reach the client ends the whole session: there is nobody left to
+-            // serve, so every channel is cancelled and the control read loop returns.
+-            await session.EndAsync().ConfigureAwait(false);
++            // A source cancelled on its own while the session is alive: the request failed, and
++            // it still gets its one reply.
++            await WriteControlErrorAsync(session, request.RequestId, exception.Message).ConfigureAwait(false);
+         }
+     }
+ 
+     static Task WriteControlFrameAsync(ControlSession session, Action<ArrayBufferWriter<byte>> write)
+     {
+         // An ended session writes nothing more; checking first also keeps a request the grace
+         // period abandoned off the session's lock once the session is disposed.
+         session.Token.ThrowIfCancellationRequested();
+         return WriteFrameAsync(session.Control, session.WriteLock, BrokerDiagnostics.ControlChannel, write,
+             session.Token);
+diff --git a/MFTLib/Broker/Launch/DefaultElevatedEntryRunner.cs b/MFTLib/Broker/Launch/DefaultElevatedEntryRunner.cs
+index 1a46c4c..7d2ac3f 100644
+--- a/MFTLib/Broker/Launch/DefaultElevatedEntryRunner.cs
++++ b/MFTLib/Broker/Launch/DefaultElevatedEntryRunner.cs
+@@ -3,22 +3,25 @@ using System.Runtime.Versioning;
+ 
+ namespace MFTLib;
+ 
+ /// <summary>
+ ///     Production <see cref="IElevatedEntryRunner" />. The broker mode does its work and
+ ///     then terminates the elevated child via <see cref="System.Environment.Exit" />,
+ ///     since an elevated child exists only to perform one mode.
+ /// </summary>
+ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
+ {
+-    // How long an exiting broker waits for its queued diagnostics lines to reach the log.
+-    static readonly TimeSpan DiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
++    static readonly TimeSpan DefaultDiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);
++
++    // How long an exiting broker waits for its queued diagnostics lines to reach the log. A test
++    // lifts the bound to prove the wait happens.
++    internal static TimeSpan _diagnosticsFlushTimeout = DefaultDiagnosticsFlushTimeout;
+ 
+     // Exiting the process cannot be exercised from an in-process unit test (it would
+     // kill the test host), so tests inject a fake. Production always uses Environment.Exit.
+     internal static Action<int> _exitProcess = Environment.Exit;
+ 
+     [SupportedOSPlatform("windows")]
+     public void RunBroker(string? controlPipeName)
+     {
+         if (controlPipeName == null)
+         {
+@@ -36,26 +39,34 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
+         // Block the elevated child's entry thread for the whole broker session: this
+         // process exists solely to serve the broker, so there is no other work to
+         // yield to. What makes the blocking wait safe is the awaited chain, not the
+         // shape of the entry point - a consumer's elevated child can enter here on a
+         // thread that does carry a SynchronizationContext (file-wizard dispatches
+         // ElevatedEntryPoint.TryHandle from its WinUI App constructor, on the UI
+         // thread's DispatcherQueueSynchronizationContext). Every await from
+         // ServeAsync down to the native journal wait uses ConfigureAwait(false), so
+         // the first incomplete await already leaves the caller's context and no
+         // continuation is ever posted back to this thread for GetResult() to block on.
+-        JournalBrokerHost.CreateDefault()
+-            .ServeAsync(control, ConnectDrivePipeAsync, new RealBlockSectionWriter(), CancellationToken.None)
+-            // aislop-ignore-next-line csharp-sync-over-async -- every await in the ServeAsync chain uses ConfigureAwait(false), so no continuation needs the calling thread's SynchronizationContext and GetResult() cannot deadlock even when the entry thread has one
+-            .GetAwaiter().GetResult();
++        // A session that fails still leaves through the flush, so its last diagnostics lines, the
++        // ones that explain the failure, reach the log before the exception ends the process.
++        try
++        {
++            JournalBrokerHost.CreateDefault()
++                .ServeAsync(control, ConnectDrivePipeAsync, new RealBlockSectionWriter(), CancellationToken.None)
++                // aislop-ignore-next-line csharp-sync-over-async -- every await in the ServeAsync chain uses ConfigureAwait(false), so no continuation needs the calling thread's SynchronizationContext and GetResult() cannot deadlock even when the entry thread has one
++                .GetAwaiter().GetResult();
++        }
++        finally
++        {
++            FlushDiagnostics();
++        }
+ 
+-        FlushDiagnostics();
+         _exitProcess(0);
+     }
+ 
+     /// <summary>The production <see cref="BrokerChannelConnector" />: the client end of the named drive pipe.</summary>
+     internal static async Task<Stream> ConnectDrivePipeAsync(string pipeName, CancellationToken cancellationToken)
+     {
+         var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+         try
+         {
+             await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
+@@ -67,18 +78,19 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
+             throw;
+         }
+     }
+ 
+     // The session is over and the process is about to exit, so the diagnostics lines still
+     // queued get a bounded wait to reach the log. Lines the wait does not cover are lost with the
+     // process; there is nowhere left to report that, so the wait's outcome is not inspected.
+     static void FlushDiagnostics()
+     {
+         // aislop-ignore-next-line csharp-sync-over-async -- the flush awaits only the diagnostics writer's own drain task, which never posts to the calling thread's SynchronizationContext
+-        _ = BrokerDiagnostics.FlushAsync(CancellationToken.None).Wait(DiagnosticsFlushTimeout);
++        _ = BrokerDiagnostics.FlushAsync(CancellationToken.None).Wait(_diagnosticsFlushTimeout);
+     }
+ 
+     internal static void ResetToDefaults()
+     {
+         _exitProcess = Environment.Exit;
++        _diagnosticsFlushTimeout = DefaultDiagnosticsFlushTimeout;
+     }
+ }
+diff --git a/MFTLib/Broker/Protocol/BrokerProtocol.Payload.cs b/MFTLib/Broker/Protocol/BrokerProtocol.Payload.cs
+index 50af02a..fc20518 100644
+--- a/MFTLib/Broker/Protocol/BrokerProtocol.Payload.cs
++++ b/MFTLib/Broker/Protocol/BrokerProtocol.Payload.cs
+@@ -71,67 +71,117 @@ public static partial class BrokerProtocol
+         {
+             var totalLength = 1 + _payload.WrittenCount;
+             var span = writer.GetSpan(4 + totalLength);
+             BinaryPrimitives.WriteInt32LittleEndian(span, totalLength);
+             span[4] = (byte)kind;
+             _payload.WrittenSpan.CopyTo(span[5..]);
+             writer.Advance(4 + totalLength);
+         }
+     }
+ 
++    // Every read checks the bytes it needs against what the frame holds, so a short or garbled
++    // payload fails as InvalidDataException, the one failure a frame reader reports.
+     ref struct PayloadReader(ReadOnlySpan<byte> payload)
+     {
++        // RecordNumber, ParentRecordNumber, SequenceNumber, Usn, Timestamp, Reason, FileAttributes
++        // and the name length: the fixed part of one journal entry.
++        const int EntryFixedBytes = 8 + 8 + 2 + 8 + 8 + 4 + 4 + 4;
++
+         readonly ReadOnlySpan<byte> _payload = payload;
+         int _offset;
+ 
+         public uint UInt32()
+         {
+-            var value = BinaryPrimitives.ReadUInt32LittleEndian(_payload[_offset..]);
+-            _offset += 4;
+-            return value;
++            return BinaryPrimitives.ReadUInt32LittleEndian(Take(4));
+         }
+ 
+         public int Int32()
+         {
+-            var value = BinaryPrimitives.ReadInt32LittleEndian(_payload[_offset..]);
+-            _offset += 4;
+-            return value;
++            return BinaryPrimitives.ReadInt32LittleEndian(Take(4));
+         }
+ 
+         public ulong UInt64()
+         {
+-            var value = BinaryPrimitives.ReadUInt64LittleEndian(_payload[_offset..]);
+-            _offset += 8;
+-            return value;
++            return BinaryPrimitives.ReadUInt64LittleEndian(Take(8));
+         }
+ 
+         public long Int64()
+         {
+-            var value = BinaryPrimitives.ReadInt64LittleEndian(_payload[_offset..]);
+-            _offset += 8;
+-            return value;
++            return BinaryPrimitives.ReadInt64LittleEndian(Take(8));
+         }
+ 
+         public long? NullableInt64()
+         {
+-            var present = _payload[_offset] != 0;
+-            _offset += 1;
++            var present = Take(1)[0] != 0;
+             var value = Int64();
+             return present ? value : null;
+         }
+ 
+         public string String()
+         {
+-            var length = Int32();
+-            var value = Encoding.Unicode.GetString(_payload.Slice(_offset, length));
+-            _offset += length;
+-            return value;
++            return Encoding.Unicode.GetString(Take(Length()));
++        }
++
++        // A count of items that each take at least minimumItemBytes; a count the remaining bytes
++        // cannot hold is malformed, so a garbled count never sizes an allocation.
++        public int Count(int minimumItemBytes)
++        {
++            var count = Int32();
++            if (count < 0 || count > Remaining / minimumItemBytes)
++            {
++                throw new InvalidDataException($"Broker frame declares {count} items in {Remaining} bytes");
++            }
++
++            return count;
+         }
+ 
++        public int EntryCount() => Count(EntryFixedBytes);
++
+         public UsnJournalEntry Entry()
+         {
++            if (Remaining < EntryFixedBytes)
++            {
++                throw Truncated(EntryFixedBytes);
++            }
++
++            var nameLength = BinaryPrimitives.ReadInt32LittleEndian(_payload[(_offset + EntryFixedBytes - 4)..]);
++            if (nameLength < 0 || nameLength > Remaining - EntryFixedBytes)
++            {
++                throw new InvalidDataException($"Broker journal entry declares a {nameLength}-byte name");
++            }
++
+             var entry = ReadEntry(_payload[_offset..], out var consumed);
+             _offset += consumed;
+             return entry;
+         }
++
++        readonly int Remaining => _payload.Length - _offset;
++
++        int Length()
++        {
++            var length = Int32();
++            if (length < 0 || length > Remaining)
++            {
++                throw new InvalidDataException($"Broker frame declares a {length}-byte field in {Remaining} bytes");
++            }
++
++            return length;
++        }
++
++        ReadOnlySpan<byte> Take(int bytes)
++        {
++            if (bytes > Remaining)
++            {
++                throw Truncated(bytes);
++            }
++
++            var taken = _payload.Slice(_offset, bytes);
++            _offset += bytes;
++            return taken;
++        }
++
++        readonly InvalidDataException Truncated(int bytes)
++        {
++            return new InvalidDataException($"Broker frame payload is truncated: {bytes} bytes needed, {Remaining} left");
++        }
+     }
+ }
+diff --git a/MFTLib/Broker/Protocol/BrokerProtocol.cs b/MFTLib/Broker/Protocol/BrokerProtocol.cs
+index 8e13c8a..a9928b2 100644
+--- a/MFTLib/Broker/Protocol/BrokerProtocol.cs
++++ b/MFTLib/Broker/Protocol/BrokerProtocol.cs
+@@ -123,34 +123,34 @@ public static partial class BrokerProtocol
+ 
+     static BrokerFrame ReadArmAndScanFrame(ref PayloadReader payload)
+     {
+         var sectionName = payload.String();
+         var profile = (BrokerScanProfile)payload.Int32();
+         if (!Enum.IsDefined(profile))
+         {
+             throw new InvalidDataException($"Unknown broker scan profile: {(int)profile}");
+         }
+ 
+-        var nameCount = payload.Int32();
++        var nameCount = payload.Count(minimumItemBytes: 4);
+         var keepFileNames = new List<string>(nameCount);
+         while (keepFileNames.Count < nameCount)
+         {
+             keepFileNames.Add(payload.String());
+         }
+ 
+         return BrokerFrame.ArmAndScan(sectionName, profile, keepFileNames);
+     }
+ 
+     static BrokerFrame ReadJournalBatchFrame(ref PayloadReader payload)
+     {
+         var cursor = ReadCursor(ref payload);
+-        var entryCount = payload.Int32();
++        var entryCount = payload.EntryCount();
+         var entries = new List<UsnJournalEntry>(entryCount);
+         while (entries.Count < entryCount)
+         {
+             entries.Add(payload.Entry());
+         }
+ 
+         return BrokerFrame.JournalBatch(cursor, entries.ToArray());
+     }
+ 
+     static BrokerFrame ReadCatchUpLostFrame(ref PayloadReader payload)
+diff --git a/MFTLib/Index/BlockFile.cs b/MFTLib/Index/BlockFile.cs
+index 26e85c7..3a0350f 100644
+--- a/MFTLib/Index/BlockFile.cs
++++ b/MFTLib/Index/BlockFile.cs
+@@ -45,43 +45,36 @@ public sealed unsafe partial class BlockFile : IDisposable
+     volatile byte* _base;
+     volatile bool _disposed;
+ 
+     /// <summary>
+     ///     A test seam, held per instance rather than statically so two blocks never share it.
+     ///     Invoked once disposal has begun and before the view is unmapped, which is the window a
+     ///     racing writer has to observe.
+     /// </summary>
+     internal Action? _disposeStartedForTest;
+ 
+-    BlockFile(string path, long length, bool deleteOnClose, MemoryMappedFile mappedFile,
++    BlockFile(string path, long length, MemoryMappedFile mappedFile,
+         MemoryMappedViewAccessor view)
+     {
+         Path = path;
+         Length = length;
+-        DeleteOnClose = deleteOnClose;
+         _mappedFile = mappedFile;
+         _view = view;
+         byte* pointer = null;
+         _view.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
+         _base = pointer;
+     }
+ 
+     public string Path { get; }
+ 
+     public long Length { get; }
+ 
+-    /// <summary>
+-    ///     True when this block was created in a no-cache path and therefore owns deletion via
+-    ///     <see cref="FileOptions.DeleteOnClose" />, so the process is not required to delete it.
+-    /// </summary>
+-    public bool DeleteOnClose { get; }
+-
+     /// <summary>
+     ///     Takes one writer access, or reports that disposal has begun and the view is on its way
+     ///     out. Taken under the access gate rather than through an interlocked increment so an
+     ///     access can never be admitted after the disposal flag is read but before the count moves.
+     /// </summary>
+     internal bool TryTakeAccess()
+     {
+         lock (_accessGate)
+         {
+             if (_disposeStarted)
+@@ -176,21 +169,21 @@ public sealed unsafe partial class BlockFile : IDisposable
+     ///     it would sit at the canonical path and cost every later open a needless rejection.
+     ///     Internal rather than private so a regression test can provoke the failure directly and
+     ///     verify that neither a handle nor a file survives it.
+     /// </summary>
+     internal static BlockFile BuildAndInitialize(BlockFileCreateOptions options, long length,
+         MemoryMappedFile mappedFile, MemoryMappedViewAccessor view)
+     {
+         BlockFile? block = null;
+         try
+         {
+-            block = new BlockFile(options.Path, length, options.DeleteOnClose, mappedFile, view);
++            block = new BlockFile(options.Path, length, mappedFile, view);
+             block.InitializeHeader(options);
+             return block;
+         }
+         catch
+         {
+             if (block is null)
+             {
+                 // The constructor never returned, so nothing else owns these two yet.
+                 view.Dispose();
+                 mappedFile.Dispose();
+@@ -204,21 +197,21 @@ public sealed unsafe partial class BlockFile : IDisposable
+             throw;
+         }
+     }
+ 
+     /// <summary>
+     ///     Builds a block over an already-built mapping and view without touching the header,
+     ///     used by an opener (such as an elevated broker) that writes rows into a section created
+     ///     by another process.
+     /// </summary>
+     internal BlockFile(MemoryMappedFile mappedFile, MemoryMappedViewAccessor view, long length)
+-        : this(string.Empty, length, deleteOnClose: false, mappedFile, view)
++        : this(string.Empty, length, mappedFile, view)
+     {
+     }
+ 
+     /// <summary>
+     ///     Maps an existing block and validates it. A rejected block returns null with the reason
+     ///     in <paramref name="validation" />, and the caller discards the file and rescans. A
+     ///     missing or unreadable file reports <see cref="BlockValidationResult.WrongMagic" />
+     ///     rather than throwing: "no usable block here" is one outcome with one response. Only the
+     ///     slot owner, or a caller that confirmed the file is quiescent, may call this: opening a block
+     ///     another index is writing is undefined and racy (see <see cref="CacheDirectory.InspectCached(string, System.Collections.Generic.IReadOnlySet{char})" />).
+@@ -309,21 +302,21 @@ public sealed unsafe partial class BlockFile : IDisposable
+     }
+ 
+     static BlockFile? OpenMapped(string path, uint expectedVolumeSerial, long length,
+         out BlockValidationResult validation)
+     {
+         BlockFile? block = null;
+         try
+         {
+             var (mappedFile, view) = OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: length,
+                 fileOptions: FileOptions.None);
+-            block = new BlockFile(path, length, deleteOnClose: false, mappedFile, view);
++            block = new BlockFile(path, length, mappedFile, view);
+             validation = BlockHeader.Validate(in block.Header, expectedVolumeSerial, length);
+             if (validation == BlockValidationResult.Valid)
+             {
+                 validation = block.ValidateNameDescriptors();
+             }
+ 
+             if (validation == BlockValidationResult.Valid)
+             {
+                 return block;
+             }

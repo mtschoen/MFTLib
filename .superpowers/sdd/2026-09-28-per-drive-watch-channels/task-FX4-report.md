@@ -189,3 +189,130 @@ then restored with `git checkout -- MFTLib/Index`:
   coverage run. They need their own task: the 10 s and 20 s durations suggest a wall-clock bound.
 
 `git -C C:\Users\mtsch\MFTLib status --short`: (empty).
+
+## Fix round 1
+
+Base 80d8475 (verified). Answers `task-FX4-review.md`.
+
+### A. The restart decision (Important): verified, fixed
+
+Verified. `RestartRequestedWatchAsync` (`MFTLib/Index/FileIndex.RescanRestart.cs`, the `requested = runtime.WatchRequested && !_disposed` read) runs after the final publish of a
+successful scan. A disposal that set its flag before that read made `requested` false and the method returned
+`Task.CompletedTask`, so `RescanAsync` completed successfully. The contract says otherwise: the `RescanAsync` remarks
+("disposing the index cancels a rescan in flight"), the spec's Disposal step 1 (every rescan "stop[s] at their next
+checkpoint"), and the other side of the same read, where `RescanAsync_DisposalBeginsAfterTheRestartDecision_IsCancelled`
+pins `OperationCanceledException`. Which outcome a rescan got depended on which side of one lock read disposal landed.
+
+Change:
+
+- `RestartRequestedWatchAsync` takes `bool scanPublished`. After a published scan it calls
+  `ThrowIfCancelledByDisposal(CancellationToken.None)` under `_stateLock` before reading the request, so a disposal that
+  has begun cancels the rescan whether or not the watch is still requested (disposal's own
+  `StopEveryWatchForDisposalAsync` clears `WatchRequested` without the lifecycle gate, so checking the flag first keeps
+  the outcome independent of that race). `CancellationToken.None`: the restart is deliberately not bounded by the
+  caller's token.
+- The failed-scan caller (`ResumeAfterFailedScanAsync`) passes `false`: that rescan already ends with the scan's
+  failure, so disposal only skips the restart, as before (throwing there would wrap an OCE into the
+  AggregateException that path builds).
+- Recovery caller: `RecoverWithGateHeldAsync` passes its ticket through the same success path; the new OCE is caught by
+  its existing filter `when (ticket.Cancellation.IsCancellationRequested || _disposed)` and returns null, so recovery
+  still ends quietly with no `WatchFaultKind.Recovery` fault and no restart. Pinned by a new test (below).
+- New instance seam `FileIndex.BeforeRestartDecisionForTest` (internal `Action<char>?`), invoked at the top of
+  `RestartRequestedWatchAsync`, before the flag read.
+- `RescanAsync` remarks now say the cancellation covers a rescan that has published its block and not yet restarted.
+
+### B. Disposal comment (Minor): fixed
+
+`ReleaseSnapshotsForDisposalAsync` summary (`FileIndex.Disposal.cs`) now says: an operation admitted before the flag
+may still wait for a gate, and its checkpoint then ends it with `OperationCanceledException`
+(`ThrowIfCancelledByDisposal`); a disposed gate would throw from its wait or release and hide the cancellation; a call
+made after the flag never reaches a gate because its public entry throws `ObjectDisposedException`.
+
+### Tests
+
+In `FileIndexAdmittedOperationDisposalTests`, ordered by `BeforeRestartDecisionForTest` and `DisposedFlagSetForTest`
+signals (TaskCompletionSource), every wait bounded by `HangGuard`:
+
+- `RescanAsync_DisposalBeginsBeforeTheRestartDecision_IsCancelled`: the rescan blocks at the seam until disposal sets
+  its flag; asserts OCE and that the source was started only once.
+- `Recovery_DisposalBeginsBeforeTheRestartDecision_EndsWithoutAFault`: a drive fault queues a recovery, which blocks at
+  the same seam until the flag is set; asserts the recovery completes, scanned once, restarted nothing, and the only
+  fault is the original `Drive` one. This is a guard that the recovery behavior does not change, so it passes before
+  and after the fix.
+
+RED (seam present, fix absent). Command:
+`dotnet test MFTLib.Tests\MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build --filter "FullyQualifiedName~FileIndexAdmittedOperationDisposalTests.RescanAsync_DisposalBeginsBeforeTheRestartDecision_IsCancelled|FullyQualifiedName~FileIndexAdmittedOperationDisposalTests.Recovery_DisposalBeginsBeforeTheRestartDecision_EndsWithoutAFault"`
+
+      Failed RescanAsync_DisposalBeginsBeforeTheRestartDecision_IsCancelled [89 ms]
+      Error Message:
+       Expected OperationCanceledException to be thrown.
+      Stack Trace:
+         at MFTLib.Tests.Index.FileIndexWatchRescanTests.ThrowsAsync[TException](Func`1 action) in ...\FileIndexWatchRescanTests.cs:line 581
+       at MFTLib.Tests.Index.FileIndexAdmittedOperationDisposalTests.RescanAsync_DisposalBeginsBeforeTheRestartDecision_IsCancelled() in ...\FileIndexAdmittedOperationDisposalTests.cs:line 130
+    Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 138 ms
+
+Expected: the rescan returned normally because the decision read `_disposed` as a reason not to restart.
+(A first draft awaited the rescan before the disposal; its failure surfaced as the harness's cache-directory delete
+hitting a still-held `.lock` because disposal had not finished. The test awaits disposal first, so the RED shows the
+real assertion.)
+
+GREEN, the two disposal classes three times:
+`dotnet test MFTLib.Tests\MFTLib.Tests.csproj -c Release -p:Platform=x64 --no-build --filter "FullyQualifiedName~FileIndexDisposalRaceTests|FullyQualifiedName~FileIndexAdmittedOperationDisposalTests"`
+
+    Passed!  - Failed:     0, Passed:    10, Skipped:     0, Total:    10, Duration: 199 ms
+    Passed!  - Failed:     0, Passed:    10, Skipped:     0, Total:    10, Duration: 195 ms
+    Passed!  - Failed:     0, Passed:    10, Skipped:     0, Total:    10, Duration: 204 ms
+
+Also `--filter "FullyQualifiedName~FileIndexWatch|FullyQualifiedName~FileIndexRescan|FullyQualifiedName~Disposal"`:
+`Passed!  - Failed: 0, Passed: 160`.
+
+### Whole suite
+
+`.\scripts\run-coverage.ps1 -NonInteractive` (log `.superpowers/fx4r1-coverage.log`): exit 0, Total tests 1972,
+Passed 1966, Skipped 6, Failed 0. Line coverage 99.3%. MFTLib.Index uncovered: `BlockFile.Flush.cs [71, 72, 93, 94]`,
+`CacheDirectory.cs [335, 337, 340, 342, 345]`, exactly the nine non-Windows lines.
+
+### `_disposed` decision sweep (MFTLib/Index)
+
+Every read of `FileIndex._disposed` that is not a throw:
+
+- `FileIndex.RescanRestart.cs` restart decision: the finding; now throws after a published scan. The remaining
+  `&& !_disposed` there serves only the failed-scan path, where the rescan already ends with the scan's failure, and the
+  recovery path is filtered to a quiet drop. Correct.
+- `FileIndex.Recovery.cs:89` `QueueRecovery`: runs on the pump after a fault, before any recovery exists; no admitted
+  caller operation is waiting on it. Dropping is the designed "disposal never reports a watch fault". Correct.
+- `FileIndex.Recovery.cs:161` `RevalidateRecovery`: recovery is internal and has no caller to cancel; disposal is a
+  quiet drop by design (spec R3). Correct.
+- `FileIndex.Recovery.cs:187` catch filter: turns any failure under disposal into a quiet recovery end, which is what
+  keeps the new restart-decision OCE quiet. Correct.
+- `FileIndex.WatchPump.cs:182` `RecordPumpFault`: pump fault after disposal began is dropped; no caller operation.
+  Correct.
+- `FileIndex.cs:258` `DisposeAsync` idempotence check. Correct.
+
+`BlockFile._disposed` (BlockFile.cs, BlockFile.Flush.cs) is a separate object's mapping lifetime, only in throws. No
+other boolean decision on `FileIndex._disposed` exists in MFTLib/Index.
+
+### aislop
+
+`aislop scan .` (log `.superpowers/fx4r1-aislop.log`): `99 / 100 Healthy 0 errors · 5 warnings`: the four baseline
+warnings (NativeSeamIsolationFixtures.cs:73, :79; CachedBlockDeletionOutcome.cs:8, :10) and the ruled
+JournalBrokerHost 8-parameter constructor. Nothing else.
+
+### Commits (pushed to gitea `task/265-FX4`)
+
+- 4da66e5 A rescan whose disposal begins after its publish, before its restart decision, is cancelled
+- c913c3f Disposal gate comment describes admitted operations as cancelled at their checkpoint
+
+Files: `MFTLib/Index/FileIndex.RescanRestart.cs`, `MFTLib/Index/FileIndex.Rescan.cs`,
+`MFTLib/Index/FileIndex.Disposal.cs`, `MFTLib.Tests/Index/FileIndexAdmittedOperationDisposalTests.cs`.
+
+### Concerns
+
+- Behavior note: a rescan with no watch requested whose disposal begins after its publish now also ends with
+  `OperationCanceledException` (its block is published but the index is being torn down). This follows the admitted
+  operation contract; no existing test expected success there.
+- Pre-existing, not changed: on the failed-scan path, a disposal that begins after the restart decision (checkpoints
+  C4/C5) makes `ResumeAfterFailedScanAsync` wrap the scan failure and the OCE in an AggregateException.
+- Linux verification of this round left to the controller as instructed.
+
+`git -C C:\Users\mtsch\MFTLib status --short`: (empty).

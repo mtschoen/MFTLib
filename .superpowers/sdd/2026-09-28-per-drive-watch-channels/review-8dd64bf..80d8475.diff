@@ -1,0 +1,449 @@
+# Review package: 8dd64bf..HEAD
+
+## Commits
+80d8475 Disposal checkpoint tests close over no variable their using scope disposes
+facdae2 An operation admitted before disposal is cancelled by it, never refused
+
+## Files changed
+ .../FileIndexAdmittedOperationDisposalTests.cs     | 142 +++++++++++++++++++++
+ MFTLib.Tests/Index/FileIndexDisposalRaceTests.cs   |  53 ++++++++
+ MFTLib/Index/FileIndex.Disposal.cs                 |  27 ++++
+ MFTLib/Index/FileIndex.Publication.cs              |   2 +-
+ MFTLib/Index/FileIndex.Rescan.cs                   |   4 +-
+ MFTLib/Index/FileIndex.WatchDrive.cs               |   4 +-
+ MFTLib/Index/FileIndex.cs                          |   2 +
+ 7 files changed, 229 insertions(+), 5 deletions(-)
+
+## Diff
+diff --git a/MFTLib.Tests/Index/FileIndexAdmittedOperationDisposalTests.cs b/MFTLib.Tests/Index/FileIndexAdmittedOperationDisposalTests.cs
+new file mode 100644
+index 0000000..8048d39
+--- /dev/null
++++ b/MFTLib.Tests/Index/FileIndexAdmittedOperationDisposalTests.cs
+@@ -0,0 +1,142 @@
++using MFTLib.Index;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests.Index;
++
++/// <summary>
++///     A start, a rescan's retry after a lost catch-up, or a rescan's restart of a watch, that was
++///     admitted before <see cref="FileIndex.DisposeAsync" /> began and reaches its next checkpoint
++///     after disposal set its flag is cancelled by the disposal: it ends with
++///     <see cref="OperationCanceledException" />, never with the <see cref="ObjectDisposedException" />
++///     a call made after disposal gets. Each test lets the operation reach its checkpoint while the
++///     flag is set and before the disposal token is cancelled, which is the window a linked token
++///     cannot yet report.
++/// </summary>
++[TestClass]
++public class FileIndexAdmittedOperationDisposalTests
++{
++    static readonly TimeSpan HangGuard = FakeIndexWatchSource.HangGuard;
++
++    public TestContext TestContext { get; set; } = null!;
++
++    CancellationToken Token => TestContext.CancellationTokenSource.Token;
++
++    [TestMethod]
++    public async Task StartWatchingAsync_QueuedOnTheGateWhenDisposalSetsItsFlag_IsCancelled()
++    {
++        using var harness = new WatchHarness('T');
++        var index = harness.Index;
++        var production = harness.HoldNextProduction('T');
++        var gateHolder = index.RescanAsync('T', Token);
++        await production.Entered.WaitAsync(HangGuard);
++        var start = index.StartWatchingAsync('T', Token);
++        var settledInTheWindow = false;
++        index.DisposedFlagSetForTest = () =>
++        {
++            production.Release();
++            try
++            {
++                settledInTheWindow = Task.WaitAll([gateHolder, start], HangGuard);
++            }
++            catch (AggregateException)
++            {
++                // Both are expected to fault; their exceptions are asserted below.
++                settledInTheWindow = true;
++            }
++        };
++
++        var disposal = index.DisposeAsync().AsTask();
++
++        Assert.IsTrue(settledInTheWindow, "the rescan and the start settled before disposal cancelled its token");
++        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => gateHolder).WaitAsync(HangGuard);
++        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => start).WaitAsync(HangGuard);
++        await disposal.WaitAsync(HangGuard);
++        Assert.AreEqual(0, harness.Source.StartsFor('T').Count, "the cancelled start never invoked the source");
++    }
++
++    /// <summary>
++    ///     Disposal sets its flag while the rescan raises the lost catch-up of its first scan; the
++    ///     retry that follows is cancelled at its first checkpoint instead of scanning again.
++    /// </summary>
++    [TestMethod]
++    public async Task RescanAsync_DisposalBeginsBeforeTheRetryAfterALostCatchUp_IsCancelled()
++    {
++        using var harness = new WatchHarness('T');
++        var index = harness.Index;
++        await index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
++        harness.ScriptScans('T', new ScriptedScan(new JournalCheckpointLoss
++        {
++            DriveLetter = 'T',
++            DetectedDuring = JournalCheckpointLossDetection.ScanCatchUp,
++            Cause = JournalCheckpointLossCause.CheckpointTrimmed,
++            CheckpointUsn = 1000,
++            FirstUsn = 5000,
++            NextUsn = 9000,
++            AllocationDelta = 4096,
++            MaximumSize = 32768,
++            BytesBehind = 4000,
++            SizeThatWouldHaveRetained = 12288
++        }), new ScriptedScan());
++        var lostRaised = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var flagSet = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        index.DisposedFlagSetForTest = () => flagSet.TrySetResult();
++        index.WatchFaulted += fault =>
++        {
++            if (fault.Kind == WatchFaultKind.CatchUpLost)
++            {
++                // Holds the rescan between its lost catch-up and its retry until disposal has set
++                // its flag; the retry's first checkpoint then runs after the flag is set.
++                lostRaised.TrySetResult();
++                flagSet.Task.Wait(HangGuard);
++            }
++        };
++        var producedBefore = harness.ProductionCount('T');
++        var rescan = Task.Run(() => index.RescanAsync('T', Token));
++        await lostRaised.Task.WaitAsync(HangGuard);
++
++        var disposal = index.DisposeAsync().AsTask();
++
++        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard);
++        await disposal.WaitAsync(HangGuard);
++        Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the retry never scanned");
++    }
++
++    [TestMethod]
++    public async Task RescanAsync_DisposalBeginsAfterTheRestartDecision_IsCancelled()
++    {
++        using var harness = new WatchHarness('T');
++        var index = harness.Index;
++        await index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
++        Task? disposal = null;
++        index.RestartRequestedForTest = _ => disposal ??= index.DisposeAsync().AsTask();
++
++        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(
++            () => index.RescanAsync('T', Token)).WaitAsync(HangGuard);
++
++        Assert.IsNotNull(disposal, "the restart decided to start the watch again");
++        await disposal.WaitAsync(HangGuard);
++        Assert.AreEqual(1, harness.Source.StartsFor('T').Count, "the restart never invoked the source");
++    }
++
++    [TestMethod]
++    public async Task RescanAsync_DisposalBeginsBeforeTheRestartRegisters_IsCancelled()
++    {
++        using var harness = new WatchHarness('T');
++        var index = harness.Index;
++        await index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
++        Task? disposal = null;
++        index.RestartBeforeRegistrationForTest = _ =>
++        {
++            disposal ??= index.DisposeAsync().AsTask();
++            return Task.CompletedTask;
++        };
++
++        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(
++            () => index.RescanAsync('T', Token)).WaitAsync(HangGuard);
++
++        Assert.IsNotNull(disposal, "the restart reached its registration");
++        await disposal.WaitAsync(HangGuard);
++        Assert.AreEqual(1, harness.Source.StartsFor('T').Count, "the restart never invoked the source");
++    }
++}
+diff --git a/MFTLib.Tests/Index/FileIndexDisposalRaceTests.cs b/MFTLib.Tests/Index/FileIndexDisposalRaceTests.cs
+index d9b4b3b..7e3162d 100644
+--- a/MFTLib.Tests/Index/FileIndexDisposalRaceTests.cs
++++ b/MFTLib.Tests/Index/FileIndexDisposalRaceTests.cs
+@@ -128,20 +128,73 @@ public class FileIndexDisposalRaceTests
+             await disposal;
+             Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");
+         }
+         finally
+         {
+             progress.Release();
+             await index.DisposeAsync();
+         }
+     }
+ 
++    /// <summary>
++    ///     The same two rescans, reaching their next checkpoints in the window where disposal has
++    ///     set its flag but not yet cancelled the disposal token: the scan in flight reaches its
++    ///     publish, and the queued rescan takes the gate the first one released. Both were admitted
++    ///     before disposal began, so both are cancelled by it, never refused as if they had been
++    ///     called after it.
++    /// </summary>
++    [TestMethod]
++    public async Task RescanAsync_AdmittedBeforeDisposal_ReachingACheckpointBeforeTheTokenIsCancelled_IsCancelled()
++    {
++        using var progress = new BlockOnFirstReport();
++        var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None).WaitAsync(HandoffTimeout);
++        try
++        {
++            progress.Armed = true;
++            var original = index.Root('T').DriveBlock;
++            var gateHolder = index.RescanAsync('T', CancellationToken.None);
++            Assert.IsTrue(progress.WaitUntilParked(),
++                "the first rescan never reached its progress callback, so it never took the gate");
++            var queuedRescan = index.RescanAsync('T', CancellationToken.None);
++            var settledInTheWindow = false;
++            Action releaseTheScan = progress.Release;
++            index.DisposedFlagSetForTest = () =>
++            {
++                releaseTheScan();
++                try
++                {
++                    settledInTheWindow = Task.WaitAll([gateHolder, queuedRescan], HandoffTimeout);
++                }
++                catch (AggregateException)
++                {
++                    // Both are expected to fault; their exceptions are asserted below.
++                    settledInTheWindow = true;
++                }
++            };
++
++            var disposal = index.DisposeAsync().AsTask();
++
++            Assert.IsTrue(settledInTheWindow, "both rescans settled before disposal cancelled its token");
++            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => gateHolder)
++                .WaitAsync(HandoffTimeout);
++            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => queuedRescan)
++                .WaitAsync(HandoffTimeout);
++            await disposal.WaitAsync(HandoffTimeout);
++            Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");
++        }
++        finally
++        {
++            progress.Release();
++            await index.DisposeAsync().AsTask().WaitAsync(HandoffTimeout);
++        }
++    }
++
+     [TestMethod]
+     public async Task RescanAsync_StartedAfterDisposeAsync_ThrowsInsteadOfPublishing()
+     {
+         using var progress = new BlockOnFirstReport();
+         var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None);
+         await index.DisposeAsync();
+ 
+         await Assert.ThrowsExceptionAsync<ObjectDisposedException>(
+             () => index.RescanAsync('T', CancellationToken.None));
+     }
+diff --git a/MFTLib/Index/FileIndex.Disposal.cs b/MFTLib/Index/FileIndex.Disposal.cs
+index 014ab44..ce6bc93 100644
+--- a/MFTLib/Index/FileIndex.Disposal.cs
++++ b/MFTLib/Index/FileIndex.Disposal.cs
+@@ -46,20 +46,47 @@ public sealed partial class FileIndex
+ 
+         return Task.WhenAll(drains);
+     }
+ 
+     /// <summary>
+     ///     A test seam: invoked once disposal holds every drive's lifecycle gate, before it waits for
+     ///     any write gate.
+     /// </summary>
+     internal Action? LifecycleGatesTakenForDisposalForTest { get; set; }
+ 
++    /// <summary>
++    ///     A test seam: invoked once disposal has set the disposed flag, before it cancels the
++    ///     disposal token.
++    /// </summary>
++    internal Action? DisposedFlagSetForTest { get; set; }
++
++    /// <summary>
++    ///     The checkpoint of an operation that was admitted before disposal began (a rescan, a
++    ///     recovery's scan, a start or a restart): once disposal has begun, the operation is
++    ///     cancelled by it and ends with <see cref="OperationCanceledException" />, the outcome
++    ///     <see cref="RescanAsync(char, CancellationToken)" /> and
++    ///     <see cref="StartWatchingAsync(char, CancellationToken)" /> document for a disposal during
++    ///     the call. The operation's own token is not enough to tell: disposal sets the flag before
++    ///     it cancels the disposal token, and a token linked to the disposal token is cancelled by a
++    ///     callback that <see cref="CancellationTokenSource.CancelAsync" /> runs later still.
++    ///     <see cref="ObjectDisposedException" /> stays the answer for a call made after disposal
++    ///     began, which each public entry point checks before it is admitted.
++    /// </summary>
++    void ThrowIfCancelledByDisposal(CancellationToken cancellationToken)
++    {
++        cancellationToken.ThrowIfCancellationRequested();
++        if (_disposed)
++        {
++            throw new OperationCanceledException("The index is being disposed.", DisposalToken);
++        }
++    }
++
+     /// <summary>
+     ///     Takes every drive's lifecycle gate, then every drive's write gate, each in ascending
+     ///     drive-letter order, so no rescan, start, commit, or batch is still running, then releases
+     ///     every snapshot, retired and current, and finally gives the gates back. The gates are
+     ///     released but never disposed: a caller admitted a moment after the disposed flag was set
+     ///     waits for a gate, then throws <see cref="ObjectDisposedException" /> from its own
+     ///     re-check, which is a caller's error to handle, while a disposed gate would throw from
+     ///     that caller's release instead and hide the first exception. None of these gates ever
+     ///     had its <see cref="SemaphoreSlim.AvailableWaitHandle" /> taken, so none holds anything
+     ///     that needs a deterministic release.
+diff --git a/MFTLib/Index/FileIndex.Publication.cs b/MFTLib/Index/FileIndex.Publication.cs
+index 56c7a36..9bc4942 100644
+--- a/MFTLib/Index/FileIndex.Publication.cs
++++ b/MFTLib/Index/FileIndex.Publication.cs
+@@ -113,21 +113,21 @@ public sealed partial class FileIndex
+     /// </summary>
+     async Task<int> PublishRescannedBlockAsync(DriveRuntime runtime, IndexedDrive drive, BlockFile block,
+         PendingDriveResult produced, bool clearsCheckpointLoss, CancellationToken cancellationToken)
+     {
+         await runtime.WriteGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+         try
+         {
+             PublishInsideWriteGateForTest?.Invoke(runtime.DriveLetter);
+             lock (_stateLock)
+             {
+-                ObjectDisposedException.ThrowIf(_disposed, this);
++                ThrowIfCancelledByDisposal(cancellationToken);
+                 var replacesBlock = TryGetDriveOrdinalLocked(runtime.DriveLetter, out var driveOrdinal);
+                 if (!replacesBlock)
+                 {
+                     driveOrdinal = (ushort)_driveBlocks.Count;
+                 }
+ 
+                 var driveBlock = BuildDriveBlock(drive, driveOrdinal, block);
+                 var blocks = new List<DriveBlock>(_driveBlocks);
+                 if (replacesBlock)
+                 {
+diff --git a/MFTLib/Index/FileIndex.Rescan.cs b/MFTLib/Index/FileIndex.Rescan.cs
+index 3ed9121..9c57f16 100644
+--- a/MFTLib/Index/FileIndex.Rescan.cs
++++ b/MFTLib/Index/FileIndex.Rescan.cs
+@@ -74,21 +74,21 @@ public sealed partial class FileIndex
+         {
+             throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
+         }
+ 
+         var runtime = GetDriveRuntime(driveLetter);
+         using var rescanCancellation =
+             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, DisposalToken);
+         await runtime.LifecycleGate.WaitAsync(rescanCancellation.Token).ConfigureAwait(false);
+         try
+         {
+-            ObjectDisposedException.ThrowIf(_disposed, this);
++            ThrowIfCancelledByDisposal(rescanCancellation.Token);
+             await RescanWithGateHeldAsync(runtime, drive, recovery: null, rescanCancellation.Token)
+                 .ConfigureAwait(false);
+         }
+         finally
+         {
+             runtime.LifecycleGate.Release();
+         }
+     }
+ 
+     /// <summary>What one attempt of a scan operation did.</summary>
+@@ -121,21 +121,21 @@ public sealed partial class FileIndex
+ 
+     /// <summary>
+     ///     One attempt of a scan operation: produces a block for the drive and publishes it, or,
+     ///     when the producer returns none, records the producer's failure against the drive and
+     ///     publishes nothing. A drive with a block has its canonical file renamed aside first and
+     ///     restored whenever nothing replaces it.
+     /// </summary>
+     async Task<ScanAttempt> ScanAndPublishAsync(DriveRuntime runtime, IndexedDrive drive, bool clearsCheckpointLoss,
+         CancellationToken cancellationToken)
+     {
+-        ObjectDisposedException.ThrowIf(_disposed, this);
++        ThrowIfCancelledByDisposal(cancellationToken);
+         var superseded = FindBlockForRescan(runtime.DriveLetter);
+ 
+         // The rename-aside is licensed by the owner lock: an index that does not hold it (its
+         // block came from a private scan while another index owned the slot) rescans privately
+         // again and never touches the canonical file.
+         var ownsCanonicalSlot = !_options.NoCache && EnsureCanonicalOwnership(drive);
+         var target = ComputeScanTarget(drive, ownsCanonicalSlot);
+         var retired = RenameAsideForRescan(target, superseded);
+ 
+         PendingDriveResult produced;
+diff --git a/MFTLib/Index/FileIndex.WatchDrive.cs b/MFTLib/Index/FileIndex.WatchDrive.cs
+index cf2f617..fc4ed44 100644
+--- a/MFTLib/Index/FileIndex.WatchDrive.cs
++++ b/MFTLib/Index/FileIndex.WatchDrive.cs
+@@ -134,21 +134,21 @@ public sealed partial class FileIndex
+     /// </summary>
+     internal Func<char, Task>? RestartBeforeRegistrationForTest { get; set; }
+ 
+     /// <summary>
+     ///     A consumer's start (no <paramref name="recovery" />) clears the drive's recovery ticket,
+     ///     which it supersedes; a recovery's restart keeps its own.
+     /// </summary>
+     async Task StartWatchingWithGateHeldAsync(DriveRuntime runtime, bool restart, RecoveryTicket? recovery,
+         CancellationToken cancellationToken)
+     {
+-        ObjectDisposedException.ThrowIf(_disposed, this);
++        ThrowIfCancelledByDisposal(cancellationToken);
+         var driveLetter = runtime.DriveLetter;
+         var source = _options.WatchSource ?? throw new InvalidOperationException(
+             $"Drive {driveLetter} supports a live watch but " +
+             $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.WatchSource)} is not set.");
+ 
+         if (PrepareStart(runtime, restart, recovery) is not { } prepared)
+         {
+             return;
+         }
+ 
+@@ -270,21 +270,21 @@ public sealed partial class FileIndex
+     ///     sets the watch request; a rescan's or recovery's restart (<paramref name="restart" />)
+     ///     only follows it: when a stop has cleared the request, or has cleared the recovery's
+     ///     ticket, since the restart read it, this registers nothing and returns null, so a stop
+     ///     that returned in that interval wins.
+     /// </summary>
+     (WatchInstance Instance, IndexWatchTarget Target)? RegisterStartingInstance(DriveRuntime runtime,
+         DriveBlock armedBlock, bool restart, RecoveryTicket? recovery)
+     {
+         lock (_stateLock)
+         {
+-            ObjectDisposedException.ThrowIf(_disposed, this);
++            ThrowIfCancelledByDisposal(CancellationToken.None);
+             if (restart && !IsRestartStillRequestedLocked(runtime, recovery))
+             {
+                 return null;
+             }
+ 
+             // A faulted instance is superseded only here, by the instance that replaces it. Its
+             // pump has ended and its teardown was awaited, so it goes straight to drained.
+             if (runtime.Current is { State: WatchInstanceState.Faulted })
+             {
+                 _ = RetireCurrentLocked(runtime);
+diff --git a/MFTLib/Index/FileIndex.cs b/MFTLib/Index/FileIndex.cs
+index c9930da..567f885 100644
+--- a/MFTLib/Index/FileIndex.cs
++++ b/MFTLib/Index/FileIndex.cs
+@@ -256,20 +256,22 @@ public sealed partial class FileIndex : IAsyncDisposable
+         lock (_stateLock)
+         {
+             if (_disposed)
+             {
+                 return;
+             }
+ 
+             _disposed = true;
+         }
+ 
++        DisposedFlagSetForTest?.Invoke();
++
+         // Before the gates, not after: a query already inside the index holds a borrow that every
+         // release below waits for, so it has to be told to stop before anything starts waiting on
+         // it. A query that has not started yet is turned away by the disposed flag instead. The
+         // same token cancels every drive's watch start and every rescan still in progress.
+         ExceptionDispatchInfo? cancellationFailure = null;
+         try
+         {
+             await _disposalCancellation.CancelAsync().ConfigureAwait(false);
+         }
+         catch (AggregateException exception)

@@ -1,0 +1,3883 @@
+# Review package: e65902c..task/265-A1
+
+## Commits
+8af0d3d Native parse rebalances its thread count at every chunk and stops promptly when cancelled
+
+## Files changed
+ AGENTS.md                                          |   2 +-
+ .../JournalBrokerHostRealSeamsTests.Operations.cs  |   6 +-
+ MFTLib.Tests/MFTLib.Tests.csproj                   |   4 +-
+ MFTLib.Tests/MftRecordSizeAndTimeTests.cs          |   8 +-
+ MFTLib.Tests/MftResultTests.cs                     |  70 +++++-
+ MFTLib.Tests/MftScanProgressTests.cs               |  20 +-
+ MFTLib.Tests/MftVolumeAdminTests.cs                |  26 +--
+ MFTLib.Tests/MftVolumeTests.ParseControl.cs        |  84 +++++++
+ MFTLib.Tests/MftVolumeTests.cs                     |  27 +--
+ MFTLib.Tests/MockVolumeTests.cs                    |  40 ++--
+ MFTLib.Tests/NativeMockTests.cs                    |   4 +-
+ .../NativeParserCoverageTests.ParseControl.cs      | 254 +++++++++++++++++++++
+ MFTLib.Tests/NativeParserCoverageTests.cs          | 118 ++++------
+ MFTLib.Tests/ParseThreadAllowanceTests.cs          | 148 ++++++++++++
+ MFTLib.Tests/TestSupport/ParseControlBlock.cs      |  48 ++++
+ MFTLib.Tests/TestSupport/SyntheticNtfsImage.cs     | 112 +++++++++
+ MFTLib/Broker/Host/JournalBrokerHost.Sources.cs    |   2 +-
+ MFTLib/Internal/MFTLibNative.cs                    |  22 +-
+ MFTLib/Interop/MftParseControl.cs                  |  12 +
+ MFTLib/Interop/MftParseResult.cs                   |   1 +
+ MFTLib/Mft/MftResult.cs                            |  12 +-
+ MFTLib/Mft/MftVolume.cs                            |  98 ++++++--
+ MFTLib/Mft/ParseThreadAllowance.cs                 |  76 ++++++
+ MFTLibNative/core/test_hooks.cpp                   |  55 ++++-
+ MFTLibNative/internal.h                            |  27 ++-
+ MFTLibNative/mft/mft.internal.h                    |  13 +-
+ MFTLibNative/mft/mft.parse.cpp                     |  15 +-
+ MFTLibNative/mft/mft.parse_core.cpp                | 178 ++++++++++-----
+ MFTLibNative/mft/mft.records.cpp                   |  11 -
+ MFTLibNative/mft/mft_synthetic.cpp                 |   2 +-
+ MFTLibNative/mft_api.h                             |  12 +-
+ MFTLibNative/test/linux_smoke_test.cpp             |  23 +-
+ 32 files changed, 1257 insertions(+), 273 deletions(-)
+
+## Diff
+diff --git a/AGENTS.md b/AGENTS.md
+index 7f9c38b..f7e592b 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -216,21 +216,21 @@ They are separate scripts rather than one cross-platform script because the work
+ Prerequisites checked but not installed - Windows: .NET SDK, Visual Studio with the MSVC C++ workload, aislop, reportgenerator (HTML coverage only). Linux: .NET SDK, cmake, ninja, g++, aislop, gcovr (native coverage only).
+ 
+ ## CI
+ 
+ Gitea Actions workflow at `.gitea/workflows/test.yml` runs `windows` + `linux` jobs on every PR and on push to `main`. Both run their respective coverage scripts (`scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`). Branch protection on `main` requires both `(pull_request)` checks to pass before merge.
+ 
+ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .NET version mismatch, PS7 + dotnet test comma-splitting, etc.), read `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md` before modifying the workflow. Runner-account environment needs (pwsh on PATH, `DOTNET_INSTALL_DIR`) are fixed at the runner service level - do not add per-workflow bootstrap steps for them.
+ 
+ ## Architecture
+ 
+-- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant. MFT record geometry (1024 or 4096-byte records) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through compact ABI version 1 (`MFT_NATIVE_ABI_VERSION`): 50-byte `MftCompactEntry` rows with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, and uint16 sequence number at offset 48, plus separate UTF-16 string pools. Flags bit `0x8000` marks an unknown size. The broker's block path parses without path resolution.
++- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant. MFT record geometry (1024 or 4096-byte records) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through compact ABI version 2 (`MFT_NATIVE_ABI_VERSION`): 50-byte `MftCompactEntry` rows with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, and uint16 sequence number at offset 48, plus separate UTF-16 string pools. Flags bit `0x8000` marks an unknown size. The broker's block path parses without path resolution.
+ - **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop. The `MFTLib.Index` namespace provides a substrate-neutral columnar block format and query engine; see `docs/index-format.md`.
+     - **Index namespace boundary**: `MFTLib.Index` depends on nothing in the flat `MFTLib` namespace or in `MFTLib.Interop` beyond an allowlist of journal value types (`UsnJournalEntry`, `UsnJournalEntryOptions`, `UsnReason`). Enforced by `MFTLib.Tests/Index/NamespaceBoundaryTests.cs`, an IL-level ArchUnitNET test over the built assembly, with a mandatory negative-control fixture. Not an aislop rule: the forbidden folders share the flat `MFTLib` namespace, so there is no `using` for an import rule to match. Growing the allowlist is a review decision.
+     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
+       four-ASCII-character code plus a `uint` version; default is all zeros and
+       compares exactly, not as a wildcard. Block format 3 stores the two values
+       at offsets 104 and 108 in a 112-byte declared header. Old-format blocks
+       cold-scan once. Consumers bump their own version when their profile or
+       keep-list changes. Mismatches report `WrongCacheTag` and cold-scan; a
+       cache-only open fails with `DriveFailureKind.CacheTagMismatch`. Both emit
+       stored/requested tag diagnostics. `InspectCached` reports tags on available
+diff --git a/MFTLib.Tests/JournalBrokerHostRealSeamsTests.Operations.cs b/MFTLib.Tests/JournalBrokerHostRealSeamsTests.Operations.cs
+index 5e1036e..4e7459d 100644
+--- a/MFTLib.Tests/JournalBrokerHostRealSeamsTests.Operations.cs
++++ b/MFTLib.Tests/JournalBrokerHostRealSeamsTests.Operations.cs
+@@ -62,25 +62,25 @@ public partial class JournalBrokerHostRealSeamsTests
+     {
+         FileUtilities._getVolumeHandle = _ => FakeHandle();
+ 
+         var queryInfo = new UsnJournalInfoNative { JournalId = 7UL, NextUsn = 100 };
+         var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
+         Marshal.StructureToPtr(queryInfo, queryPtr, false);
+         MFTLibNative._queryUsnJournal = _ => queryPtr;
+         MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
+ 
+         var parsePtr = BuildThreeNameRecordsResult();
+-        MFTLibNative._parseMftRecordsWithProgress = (_, _, flags, _, callback, context) =>
++        MFTLibNative._parseMftRecordsWithProgress = (_, _, flags, _, _, callback) =>
+         {
+             Assert.AreEqual(MatchFlags.None, flags);
+-            callback?.Invoke(MftScanPhase.Parsing, 200, 300, 42.0, context);
+-            callback?.Invoke(MftScanPhase.Parsing, 300, 300, 45.0, context);
++            callback?.Invoke(MftScanPhase.Parsing, 200, 300, 42.0, IntPtr.Zero);
++            callback?.Invoke(MftScanPhase.Parsing, 300, 300, 45.0, IntPtr.Zero);
+             return parsePtr;
+         };
+         MFTLibNative._freeMftResult = ptr =>
+         {
+             var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
+             if (parsed.Entries != IntPtr.Zero)
+             {
+                 Marshal.FreeHGlobal(parsed.Entries);
+             }
+ 
+diff --git a/MFTLib.Tests/MFTLib.Tests.csproj b/MFTLib.Tests/MFTLib.Tests.csproj
+index 10b78fb..46f8063 100644
+--- a/MFTLib.Tests/MFTLib.Tests.csproj
++++ b/MFTLib.Tests/MFTLib.Tests.csproj
+@@ -54,16 +54,16 @@
+   </ItemGroup>
+ 
+   <!-- Linux: exclude tests that depend on Benchmark / TestProgram (Windows-side tooling)
+        or that exercise raw NTFS volume access (Windows-only).
+        Compile-time exclusions because they reference unavailable namespaces. -->
+   <ItemGroup Condition="'$(OS)' != 'Windows_NT'">
+     <Compile Remove="BenchmarkRunnerTests.cs" />
+     <Compile Remove="SystemInfoTests.cs" />
+     <Compile Remove="DriveScannerTests.cs" />
+     <Compile Remove="MftResultTests.cs" />
+-    <Compile Remove="MftVolumeTests.cs" />
++    <Compile Remove="MftVolumeTests*.cs" />
+     <Compile Remove="NativeCoverageTests.cs" />
+-    <Compile Remove="NativeParserCoverageTests.cs" />
++    <Compile Remove="NativeParserCoverageTests*.cs" />
+   </ItemGroup>
+ 
+ </Project>
+diff --git a/MFTLib.Tests/MftRecordSizeAndTimeTests.cs b/MFTLib.Tests/MftRecordSizeAndTimeTests.cs
+index 0a89db4..2e11b90 100644
+--- a/MFTLib.Tests/MftRecordSizeAndTimeTests.cs
++++ b/MFTLib.Tests/MftRecordSizeAndTimeTests.cs
+@@ -1,39 +1,39 @@
+ using Microsoft.VisualStudio.TestTools.UnitTesting;
+ 
+ namespace MFTLib.Tests;
+ 
+ [TestClass]
+ [DoNotParallelize]
+ public class MftRecordSizeAndTimeTests
+ {
+     [TestMethod]
+-    public void ExpectedAbiVersion_IsOne()
++    public void ExpectedAbiVersion_IsTwo()
+     {
+-        Assert.AreEqual(1u, MFTLibNative.ExpectedMftNativeAbiVersion);
++        Assert.AreEqual(2u, MFTLibNative.ExpectedMftNativeAbiVersion);
+     }
+ 
+     [TestMethod]
+     public void NativeCompactEntrySize_IsFifty()
+     {
+         Assert.AreEqual(50u, MFTLibNative.NativeCompactEntrySize);
+     }
+ 
+     [TestMethod]
+-    public void NativeLibrary_ReportsAbiVersionOne()
++    public void NativeLibrary_ReportsAbiVersionTwo()
+     {
+         if (MftFixtureTests.SkipOnNonWindows())
+         {
+             return;
+         }
+ 
+-        Assert.AreEqual(1u, MFTLibNative._getMftNativeAbiVersion());
++        Assert.AreEqual(2u, MFTLibNative._getMftNativeAbiVersion());
+     }
+ 
+     [TestMethod]
+     public void ModifiedUtc_OutOfRangeFileTime_ReadsAsMinValue()
+     {
+         var record = MftRecord.CreateForTest(new MftRecordTestValues
+         {
+             RecordNumber = 1,
+             ParentRecordNumber = 5,
+             Flags = 1,
+diff --git a/MFTLib.Tests/MftResultTests.cs b/MFTLib.Tests/MftResultTests.cs
+index 4af7479..d261837 100644
+--- a/MFTLib.Tests/MftResultTests.cs
++++ b/MFTLib.Tests/MftResultTests.cs
+@@ -1,33 +1,35 @@
+ using System.Runtime.CompilerServices;
+ using System.Runtime.InteropServices;
+ using MFTLib.Interop;
++using MFTLib.Tests.TestSupport;
+ using Microsoft.VisualStudio.TestTools.UnitTesting;
+ 
+ namespace MFTLib.Tests;
+ 
+ [TestClass]
+ [DoNotParallelize]
+ public class MftResultTests
+ {
+     string? _tempMftPath;
+ 
+     [TestInitialize]
+     public void Setup()
+     {
+         _tempMftPath = Path.GetTempFileName();
+         MftVolume.GenerateSyntheticMFT(_tempMftPath, 500, 256);
+     }
+ 
+     [TestCleanup]
+     public void Cleanup()
+     {
++        MFTLibNative.NativeResetTestState();
+         MFTLibNative.ResetToDefaults();
+         if (_tempMftPath != null && File.Exists(_tempMftPath))
+         {
+             File.Delete(_tempMftPath);
+         }
+     }
+ 
+     [TestMethod]
+     public void TotalRecords_ReturnsExpectedCount()
+     {
+@@ -82,24 +84,88 @@ public class MftResultTests
+ 
+             var pathFileName = record.FullPath!.Contains('\\')
+                 ? record.FullPath[(record.FullPath.LastIndexOf('\\') + 1)..]
+                 : record.FullPath;
+             Assert.AreEqual(pathFileName, record.FileName,
+                 $"FileName '{record.FileName}' doesn't match end of FullPath '{record.FullPath}'");
+         }
+     }
+ 
+     [TestMethod]
+-    public void GetMftNativeAbiVersion_ReturnsVersion1()
++    public void GetMftNativeAbiVersion_ReturnsVersion2()
+     {
+         var version = MFTLibNative._getMftNativeAbiVersion();
+-        Assert.AreEqual(1U, version);
++        Assert.AreEqual(2U, version);
++    }
++
++    [TestMethod]
++    public void AbiStride_MatchesCancelledField()
++    {
++        var entryStrideOffset = (int)Marshal.OffsetOf<MftParseResult>(nameof(MftParseResult.EntryStride));
++        var cancelledOffset = (int)Marshal.OffsetOf<MftParseResult>(nameof(MftParseResult.Cancelled));
++        Assert.AreEqual(entryStrideOffset + sizeof(uint), cancelledOffset);
++        Assert.AreEqual(cancelledOffset + sizeof(uint), Marshal.SizeOf<MftParseResult>());
++
++        // A native cancelled result carries the stride and the cancelled flag exactly where the
++        // managed layout reads them.
++        var imagePath = Path.GetTempFileName();
++        try
++        {
++            SyntheticNtfsImage.Write(imagePath, 64);
++            MFTLibNative.NativeSetVolumeRecordSizeOverride(1024);
++            using var control = new ParseControlBlock();
++            control.RequestCancel();
++            using var image = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
++            var resultPtr = MFTLibNative._parseMftRecordsWithProgress(
++                image.SafeFileHandle, null, MatchFlags.None, 64, control.Pointer, null);
++            try
++            {
++                Assert.AreEqual((int)MFTLibNative.NativeCompactEntrySize, Marshal.ReadInt32(resultPtr, entryStrideOffset));
++                Assert.AreEqual(1, Marshal.ReadInt32(resultPtr, cancelledOffset));
++            }
++            finally
++            {
++                MFTLibNative._freeMftResult(resultPtr);
++            }
++        }
++        finally
++        {
++            File.Delete(imagePath);
++        }
++    }
++
++    [TestMethod]
++    public void MftResult_CancelledResult_ThrowsOperationCanceledCarryingTheToken()
++    {
++        var result = new MftParseResult
++        {
++            ErrorMessage = "Parse cancelled",
++            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
++            EntryStride = MFTLibNative.NativeCompactEntrySize,
++            Cancelled = 1
++        };
++        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
++        Marshal.StructureToPtr(result, resultPtr, false);
++        var freed = IntPtr.Zero;
++        MFTLibNative._freeMftResult = pointer =>
++        {
++            freed = pointer;
++            Marshal.FreeHGlobal(pointer);
++        };
++        using var cancellation = new CancellationTokenSource();
++        var token = cancellation.Token;
++
++        var exception = Assert.ThrowsException<OperationCanceledException>(() =>
++            new MftResult(resultPtr, "C", 0, token));
++
++        Assert.AreEqual(token, exception.CancellationToken);
++        Assert.AreEqual(resultPtr, freed, "A cancelled result must be freed before the throw");
+     }
+ 
+     [TestMethod]
+     public void MftResult_AbiVersionMismatch_ThrowsInvalidOperation()
+     {
+         var result = new MftParseResult
+         {
+             TotalRecords = 1,
+             UsedRecords = 1,
+             AbiVersion = 999,
+diff --git a/MFTLib.Tests/MftScanProgressTests.cs b/MFTLib.Tests/MftScanProgressTests.cs
+index fbe09da..9fbb06a 100644
+--- a/MFTLib.Tests/MftScanProgressTests.cs
++++ b/MFTLib.Tests/MftScanProgressTests.cs
+@@ -140,36 +140,36 @@ public class MftScanProgressTests
+             UsedRecords = 1,
+             Entries = entryBuf,
+             EntryStrings = IntPtr.Zero,
+             EntryStringUnits = 0,
+             AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+             EntryStride = MFTLibNative.NativeCompactEntrySize
+         };
+         var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+         Marshal.StructureToPtr(parseResult, parsePtr, false);
+ 
+-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
++        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
+         {
+-            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, context);
++            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, IntPtr.Zero);
+             return parsePtr;
+         };
+         MFTLibNative._freeMftResult = ptr =>
+         {
+             Marshal.FreeHGlobal(entryBuf);
+             Marshal.FreeHGlobal(ptr);
+         };
+ 
+         var reported = new List<MftScanProgress>();
+         var directProgress = new DirectMftProgress(reported.Add);
+ 
+         using var volume = MftVolume.Open("C");
+-        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
++        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress, null, CancellationToken.None).ToList();
+ 
+         Assert.AreEqual(1, batches.Count);
+         Assert.AreEqual(1, reported.Count);
+         Assert.AreEqual(MftScanPhase.Parsing, reported[0].Phase);
+         Assert.AreEqual(1L, reported[0].RecordsScanned);
+         Assert.AreEqual(10L, reported[0].TotalRecords);
+     }
+ 
+     [TestMethod]
+     public unsafe void StreamRecords_WithProgress_DeliversSamplesDuringParseExecution()
+@@ -193,37 +193,37 @@ public class MftScanProgressTests
+             EntryStringUnits = 0,
+             AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+             EntryStride = MFTLibNative.NativeCompactEntrySize
+         };
+         var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+         Marshal.StructureToPtr(parseResult, parsePtr, false);
+ 
+         var reported = new List<MftScanProgress>();
+         var reportedDuringParse = 0;
+ 
+-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
++        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
+         {
+-            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, context);
+-            callback?.Invoke(MftScanPhase.ResolvingPaths, 5, 10, 30.0, context);
++            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, IntPtr.Zero);
++            callback?.Invoke(MftScanPhase.ResolvingPaths, 5, 10, 30.0, IntPtr.Zero);
+             reportedDuringParse = reported.Count;
+             return parsePtr;
+         };
+         MFTLibNative._freeMftResult = ptr =>
+         {
+             Marshal.FreeHGlobal(entryBuf);
+             Marshal.FreeHGlobal(ptr);
+         };
+ 
+         var directProgress = new DirectMftProgress(reported.Add);
+ 
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords(null, MatchFlags.None, directProgress);
++        using var result = volume.StreamRecords(null, MatchFlags.None, directProgress, null, CancellationToken.None);
+ 
+         Assert.AreEqual(2, reportedDuringParse, "Both progress samples must have arrived before parse returned");
+         Assert.AreEqual(2, reported.Count);
+         Assert.AreEqual(MftScanPhase.Parsing, reported[0].Phase);
+         Assert.AreEqual(1L, reported[0].RecordsScanned);
+         Assert.AreEqual(MftScanPhase.ResolvingPaths, reported[1].Phase);
+         Assert.AreEqual(5L, reported[1].RecordsScanned);
+     }
+ 
+     [TestMethod]
+@@ -245,35 +245,35 @@ public class MftScanProgressTests
+             UsedRecords = 1,
+             Entries = entryBuf,
+             EntryStrings = IntPtr.Zero,
+             EntryStringUnits = 0,
+             AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+             EntryStride = MFTLibNative.NativeCompactEntrySize
+         };
+         var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+         Marshal.StructureToPtr(parseResult, parsePtr, false);
+ 
+-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
++        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
+         {
+-            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, context);
++            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, IntPtr.Zero);
+             return parsePtr;
+         };
+         MFTLibNative._freeMftResult = ptr =>
+         {
+             Marshal.FreeHGlobal(entryBuf);
+             Marshal.FreeHGlobal(ptr);
+         };
+ 
+         var throwingProgress = new DirectMftProgress(_ => throw new InvalidOperationException("Simulated UI progress failure"));
+ 
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords(null, MatchFlags.None, throwingProgress);
++        using var result = volume.StreamRecords(null, MatchFlags.None, throwingProgress, null, CancellationToken.None);
+ 
+         Assert.AreEqual(1, result.ToArray().Length, "Parse must complete normally despite exception in progress handler");
+     }
+ 
+     sealed class DirectMftProgress(Action<MftScanProgress> handler) : IProgress<MftScanProgress>
+     {
+         public void Report(MftScanProgress value)
+         {
+             handler(value);
+         }
+diff --git a/MFTLib.Tests/MftVolumeAdminTests.cs b/MFTLib.Tests/MftVolumeAdminTests.cs
+index 3326cd2..f8cc0e8 100644
+--- a/MFTLib.Tests/MftVolumeAdminTests.cs
++++ b/MFTLib.Tests/MftVolumeAdminTests.cs
+@@ -142,21 +142,21 @@ public class MftVolumeAdminTests
+         var withPaths = records.Where(r => r.FullPath != null).ToArray();
+         Assert.IsTrue(withPaths.Length > 0, "Expected resolved paths");
+         Assert.IsTrue(timings.TotalRecords > 0);
+     }
+ 
+     [TestMethod]
+     public void StreamRecords_SubstringWithPaths_CombinesFlags()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords(".dll", MatchFlags.Contains | MatchFlags.ResolvePaths);
++        using var result = volume.StreamRecords(".dll", MatchFlags.Contains | MatchFlags.ResolvePaths, null, null, CancellationToken.None);
+ 
+         var count = 0;
+         MftRecord? firstWithPath = null;
+         foreach (var record in result)
+         {
+             Assert.IsTrue(record.FileName.Contains(".dll", StringComparison.OrdinalIgnoreCase),
+                 $"Record '{record.FileName}' doesn't match substring '.dll'");
+ 
+             if (firstWithPath == null && record.FullPath != null)
+             {
+@@ -174,21 +174,21 @@ public class MftVolumeAdminTests
+         Assert.IsNotNull(firstWithPath, "Expected at least one record with a resolved path");
+         Assert.IsTrue(firstWithPath.Value.FullPath!.StartsWith(@"C:\", StringComparison.Ordinal),
+             $"Expected path to start with C:\\ but got '{firstWithPath.Value.FullPath}'");
+     }
+ 
+     [TestMethod]
+     public void StreamRecords_FilterWithNoMatchBits_ReturnsEmpty()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords("explorer.exe");
++        using var result = volume.StreamRecords("explorer.exe", MatchFlags.None, null, null, CancellationToken.None);
+ 
+         var count = 0;
+         foreach (var _ in result)
+         {
+             count++;
+         }
+ 
+         Assert.AreEqual(0, count, "Expected no results when filter is set but no match bits");
+     }
+ 
+@@ -214,79 +214,79 @@ public class MftVolumeAdminTests
+         var paths = volume.FindDirectories("Windows").ToList();
+ 
+         Assert.IsTrue(paths.Count > 0, "Expected to find Windows directory");
+     }
+ 
+     [TestMethod]
+     public void StreamRecords_CanEnumerate()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords();
++        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+ 
+         var count = 0;
+         foreach (var unused in result)
+         {
+             count++;
+             if (count >= 100)
+             {
+                 break; // Don't enumerate everything
+             }
+         }
+ 
+         Assert.IsTrue(count >= 100, "Expected at least 100 records on C:");
+     }
+ 
+     [TestMethod]
+     public void StreamRecords_WithFilter_ReturnsFiltered()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch);
++        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch, null, null, CancellationToken.None);
+ 
+         var records = new List<MftRecord>();
+         foreach (var record in result)
+         {
+             records.Add(record.Materialize());
+         }
+ 
+         Assert.IsTrue(records.Count > 0, "Expected to find explorer.exe");
+         foreach (var r in records)
+         {
+             Assert.AreEqual("explorer.exe", r.FileName);
+         }
+     }
+ 
+     [TestMethod]
+     public void StreamRecords_ToArray_MaterializesAll()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords();
++        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+         var records = result.ToArray();
+ 
+         Assert.IsTrue(records.Length > 0);
+         // Verify materialized records have stable strings
+         var first = records[0];
+         var name1 = first.FileName;
+         var name2 = first.FileName;
+         Assert.AreEqual(name1, name2, "Materialized FileName should be stable");
+     }
+ 
+     [TestMethod]
+     public void Dispose_PreventsSubsequentCalls()
+     {
+         RequireElevation();
+         var volume = MftVolume.Open("C");
+         volume.Dispose();
+ 
+-        Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords());
++        Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None));
+     }
+ 
+     [TestMethod]
+     public void Dispose_CanBeCalledMultipleTimes()
+     {
+         RequireElevation();
+         var volume = MftVolume.Open("C");
+         volume.Dispose();
+         volume.Dispose(); // Should not throw
+     }
+@@ -312,60 +312,60 @@ public class MftVolumeAdminTests
+     {
+         RequireElevation();
+         Assert.ThrowsException<IOException>(() => FileUtilities._getVolumeHandle(@"\\.\Q:"));
+     }
+ 
+     [TestMethod]
+     public void MftResult_Dispose_PreventsEnumeration()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+-        var result = volume.StreamRecords();
++        var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+         result.Dispose();
+ 
+         Assert.ThrowsException<ObjectDisposedException>(() =>
+         {
+             foreach (var _ in result)
+             {
+             }
+         });
+     }
+ 
+     [TestMethod]
+     public void MftResult_Dispose_PreventsToArray()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+-        var result = volume.StreamRecords();
++        var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+         result.Dispose();
+ 
+         Assert.ThrowsException<ObjectDisposedException>(result.ToArray);
+     }
+ 
+     [TestMethod]
+     public void MftResult_Properties_MatchRecordCounts()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords();
++        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+ 
+         Assert.IsTrue(result.TotalRecords > 0);
+         Assert.IsTrue(result.UsedRecords > 0);
+         Assert.IsTrue(result.UsedRecords <= result.TotalRecords);
+     }
+ 
+     [TestMethod]
+     public void StreamRecords_WithPaths_FileNameExtractedFromPath()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords("explorer", MatchFlags.Contains | MatchFlags.ResolvePaths);
++        using var result = volume.StreamRecords("explorer", MatchFlags.Contains | MatchFlags.ResolvePaths, null, null, CancellationToken.None);
+ 
+         foreach (var record in result)
+         {
+             // When path entries are used, FileName is extracted from the path
+             Assert.IsTrue(record.FileName.Length > 0, "FileName should not be empty");
+             if (record.FullPath != null && record.FullPath.Contains('\\'))
+             {
+                 var expected = record.FullPath[(record.FullPath.LastIndexOf('\\') + 1)..];
+                 Assert.AreEqual(expected, record.FileName,
+                     $"FileName '{record.FileName}' should match end of FullPath '{record.FullPath}'");
+@@ -389,40 +389,40 @@ public class MftVolumeAdminTests
+         // isDirectory: null means return both files and directories
+         var results = volume.FindRecords("Windows").ToList();
+         Assert.IsTrue(results.Count > 0, "Expected to find records named 'Windows'");
+     }
+ 
+     [TestMethod]
+     public void MftResult_NonGenericEnumerator_Works()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch);
++        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch, null, null, CancellationToken.None);
+ 
+         // Cast to non-generic IEnumerable to hit the explicit interface implementation
+         var count = 0;
+         foreach (var item in (IEnumerable)result)
+         {
+             Assert.IsInstanceOfType<MftRecord>(item);
+             count++;
+         }
+ 
+         Assert.IsTrue(count > 0, "Expected at least one record via non-generic enumerator");
+     }
+ 
+     [TestMethod]
+     public void ReadRecordBatches_RealVolume_TakesTwoBatches_DisposesEarly()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+         var batches = new List<MftRecord[]>();
+-        foreach (var batch in volume.ReadRecordBatches(batchSize: 100))
++        foreach (var batch in volume.ReadRecordBatches(false, 100, null, null, CancellationToken.None))
+         {
+             batches.Add(batch);
+             if (batches.Count == 2)
+             {
+                 break;
+             }
+         }
+ 
+         Assert.AreEqual(2, batches.Count);
+         Assert.AreEqual(100, batches[0].Length);
+@@ -430,21 +430,21 @@ public class MftVolumeAdminTests
+         Assert.IsNotNull(batches[0][0].FileName);
+         Assert.IsNotNull(batches[1][0].FileName);
+     }
+ 
+     [TestMethod]
+     public void ReadRecordBatches_WithResolvePaths_RealVolume_PopulatesFullPath()
+     {
+         RequireElevation();
+         using var volume = MftVolume.Open("C");
+         var batches = new List<MftRecord[]>();
+-        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, 100))
++        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, 100, null, null, CancellationToken.None))
+         {
+             batches.Add(batch);
+             if (batches.Count == 2)
+             {
+                 break;
+             }
+         }
+ 
+         Assert.AreEqual(2, batches.Count);
+         var withPaths = batches.SelectMany(b => b).Where(r => r.FullPath != null).ToArray();
+diff --git a/MFTLib.Tests/MftVolumeTests.ParseControl.cs b/MFTLib.Tests/MftVolumeTests.ParseControl.cs
+new file mode 100644
+index 0000000..be3d952
+--- /dev/null
++++ b/MFTLib.Tests/MftVolumeTests.ParseControl.cs
+@@ -0,0 +1,84 @@
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++// ReadRecordBatches drives the real native parse over a synthetic NTFS image (the volume handle
++// seam returns a handle to it), in 64-record chunks.
++public partial class MftVolumeTests
++{
++    [TestMethod]
++    public void ReadRecordBatches_AllowanceLoweredBetweenChunks_LaterChunksUseTheNewCount()
++    {
++        WithImageVolume(volume =>
++        {
++            var allowance = new ParseThreadAllowance(Environment.ProcessorCount);
++            var progress = new SynchronousProgress<MftScanProgress>(_ => allowance.Count = 1);
++
++            var batches = volume.ReadRecordBatches(false, 4096, progress, allowance, CancellationToken.None).ToList();
++
++            Assert.IsTrue(batches.Count > 0);
++            var counts = ParseControlBlock.ChunkThreadCounts();
++            Assert.AreEqual(16, counts.Length);
++            Assert.AreEqual((uint)Environment.ProcessorCount, counts[0]);
++            CollectionAssert.AreEqual(Enumerable.Repeat(1u, 15).ToArray(), counts[1..]);
++        });
++    }
++
++    [TestMethod]
++    public void ReadRecordBatches_TokenCancelledDuringParse_ThrowsBeforeFirstBatch()
++    {
++        WithImageVolume(volume =>
++        {
++            using var cancellation = new CancellationTokenSource();
++            // Progress is reported inside the using scope.
++            // ReSharper disable once AccessToDisposedClosure
++            var progress = new SynchronousProgress<MftScanProgress>(_ => cancellation.Cancel());
++
++            using var batches = volume.ReadRecordBatches(false, 4096, progress, null, cancellation.Token)
++                .GetEnumerator();
++            // The assertion runs the lambda synchronously.
++            // ReSharper disable once AccessToDisposedClosure
++            var exception = Assert.ThrowsException<OperationCanceledException>(() => batches.MoveNext());
++
++            Assert.AreEqual(cancellation.Token, exception.CancellationToken);
++            Assert.AreEqual(1, ParseControlBlock.ChunkThreadCounts().Length, "The parse must stop after one chunk");
++        });
++    }
++
++    [TestMethod]
++    public void ReadRecordBatches_TokenCancelledBetweenBatches_ThrowsBeforeNextBatch()
++    {
++        WithImageVolume(volume =>
++        {
++            using var cancellation = new CancellationTokenSource();
++
++            using var batches = volume.ReadRecordBatches(false, 10, null, null, cancellation.Token).GetEnumerator();
++            Assert.IsTrue(batches.MoveNext());
++            cancellation.Cancel();
++
++            // The assertion runs the lambda synchronously.
++            // ReSharper disable once AccessToDisposedClosure
++            Assert.ThrowsException<OperationCanceledException>(() => batches.MoveNext());
++        });
++    }
++
++    static void WithImageVolume(Action<MftVolume> test)
++    {
++        var path = Path.GetTempFileName();
++        try
++        {
++            SyntheticNtfsImage.Write(path, 1024);
++            MFTLibNative.NativeSetVolumeRecordSizeOverride(1024);
++            FileUtilities._getVolumeHandle = _ => File.OpenHandle(path);
++            using (var volume = MftVolume.Open("C", 64))
++            {
++                test(volume);
++            }
++        }
++        finally
++        {
++            File.Delete(path);
++        }
++    }
++}
+diff --git a/MFTLib.Tests/MftVolumeTests.cs b/MFTLib.Tests/MftVolumeTests.cs
+index c8dcd5a..3ad4eed 100644
+--- a/MFTLib.Tests/MftVolumeTests.cs
++++ b/MFTLib.Tests/MftVolumeTests.cs
+@@ -1,35 +1,36 @@
+ using System.Runtime.CompilerServices;
+ using System.Runtime.InteropServices;
+ using MFTLib.Interop;
+ using Microsoft.VisualStudio.TestTools.UnitTesting;
+ using Microsoft.Win32.SafeHandles;
+ 
+ namespace MFTLib.Tests;
+ 
+ [TestClass]
+ [DoNotParallelize]
+-public class MftVolumeTests
++public partial class MftVolumeTests
+ {
+     string? _tempMftPath;
+ 
+     [TestInitialize]
+     public void Setup()
+     {
+         _tempMftPath = Path.GetTempFileName();
+         // Generate a small synthetic MFT with 1000 records
+         MftVolume.GenerateSyntheticMFT(_tempMftPath, 1000, 256);
+     }
+ 
+     [TestCleanup]
+     public void Cleanup()
+     {
++        MFTLibNative.NativeResetTestState();
+         MFTLibNative.ResetToDefaults();
+         FileUtilities.ResetToDefaults();
+ 
+         if (_tempMftPath != null && File.Exists(_tempMftPath))
+         {
+             File.Delete(_tempMftPath);
+         }
+     }
+ 
+     [TestMethod]
+@@ -406,36 +407,36 @@ public class MftVolumeTests
+             UsedRecords = 1,
+             Entries = entryBuf,
+             EntryStrings = IntPtr.Zero,
+             EntryStringUnits = 0,
+             AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+             EntryStride = MFTLibNative.NativeCompactEntrySize
+         };
+         var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+         Marshal.StructureToPtr(parseResult, parsePtr, false);
+ 
+-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
++        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
+         {
+-            callback?.Invoke(MftScanPhase.Parsing, 1, 10, double.NaN, context);
++            callback?.Invoke(MftScanPhase.Parsing, 1, 10, double.NaN, IntPtr.Zero);
+             return parsePtr;
+         };
+         MFTLibNative._freeMftResult = ptr =>
+         {
+             Marshal.FreeHGlobal(entryBuf);
+             Marshal.FreeHGlobal(ptr);
+         };
+ 
+         var reported = new List<MftScanProgress>();
+         var directProgress = new DirectMftProgress(reported.Add);
+ 
+         using var volume = MftVolume.Open("C");
+-        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
++        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress, null, CancellationToken.None).ToList();
+ 
+         Assert.AreEqual(1, batches.Count, "The parse itself must still succeed despite the malformed progress sample");
+         Assert.AreEqual(0, reported.Count, "The NaN-elapsed sample must be dropped, not reported");
+     }
+ 
+     [TestMethod]
+     public unsafe void StreamRecords_ProgressReportedLive_AllSamplesArriveBeforeNativeCallReturns()
+     {
+         // MftVolume.StreamRecords must call progress.Report(sample) directly from the
+         // native callback, not buffer samples into a queue and drain them only after
+@@ -462,38 +463,38 @@ public class MftVolumeTests
+             EntryStringUnits = 0,
+             AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+             EntryStride = MFTLibNative.NativeCompactEntrySize
+         };
+         var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+         Marshal.StructureToPtr(parseResult, parsePtr, false);
+ 
+         var receivedCount = 0;
+         var receivedCountAtReturn = -1;
+ 
+-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
++        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
+         {
+-            callback?.Invoke(MftScanPhase.Parsing, 1, 3, 10, context);
+-            callback?.Invoke(MftScanPhase.Parsing, 2, 3, 20, context);
+-            callback?.Invoke(MftScanPhase.Parsing, 3, 3, 30, context);
++            callback?.Invoke(MftScanPhase.Parsing, 1, 3, 10, IntPtr.Zero);
++            callback?.Invoke(MftScanPhase.Parsing, 2, 3, 20, IntPtr.Zero);
++            callback?.Invoke(MftScanPhase.Parsing, 3, 3, 30, IntPtr.Zero);
+             receivedCountAtReturn = receivedCount;
+             return parsePtr;
+         };
+         MFTLibNative._freeMftResult = ptr =>
+         {
+             Marshal.FreeHGlobal(entryBuf);
+             Marshal.FreeHGlobal(ptr);
+         };
+ 
+         var directProgress = new DirectMftProgress(_ => receivedCount++);
+ 
+         using var volume = MftVolume.Open("C");
+-        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
++        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress, null, CancellationToken.None).ToList();
+ 
+         Assert.AreEqual(1, batches.Count);
+         Assert.AreEqual(3, receivedCountAtReturn,
+             "All three progress samples must reach the consumer before the native call returns");
+         Assert.AreEqual(3, receivedCount);
+     }
+ 
+     [TestMethod]
+     public unsafe void StreamRecords_ProgressConsumerThrows_DoesNotAbortParseAndLaterSamplesStillArrive()
+     {
+@@ -515,24 +516,24 @@ public class MftVolumeTests
+             UsedRecords = 1,
+             Entries = entryBuf,
+             EntryStrings = IntPtr.Zero,
+             EntryStringUnits = 0,
+             AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+             EntryStride = MFTLibNative.NativeCompactEntrySize
+         };
+         var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+         Marshal.StructureToPtr(parseResult, parsePtr, false);
+ 
+-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
++        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
+         {
+-            callback?.Invoke(MftScanPhase.Parsing, 1, 2, 10, context);
+-            callback?.Invoke(MftScanPhase.Parsing, 2, 2, 20, context);
++            callback?.Invoke(MftScanPhase.Parsing, 1, 2, 10, IntPtr.Zero);
++            callback?.Invoke(MftScanPhase.Parsing, 2, 2, 20, IntPtr.Zero);
+             return parsePtr;
+         };
+         MFTLibNative._freeMftResult = ptr =>
+         {
+             Marshal.FreeHGlobal(entryBuf);
+             Marshal.FreeHGlobal(ptr);
+         };
+ 
+         var reported = new List<MftScanProgress>();
+         var throwOnFirst = true;
+@@ -541,21 +542,21 @@ public class MftVolumeTests
+             if (throwOnFirst)
+             {
+                 throwOnFirst = false;
+                 throw new InvalidOperationException("Consumer failure must not cross the unmanaged boundary");
+             }
+ 
+             reported.Add(sample);
+         });
+ 
+         using var volume = MftVolume.Open("C");
+-        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
++        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress, null, CancellationToken.None).ToList();
+ 
+         Assert.AreEqual(1, batches.Count, "The parse itself must still succeed despite the throwing consumer");
+         Assert.AreEqual(1, reported.Count, "The sample after the throwing report must still arrive");
+         Assert.AreEqual(2, reported[0].RecordsScanned);
+     }
+ 
+     sealed class DirectMftProgress(Action<MftScanProgress> handler) : IProgress<MftScanProgress>
+     {
+         public void Report(MftScanProgress value)
+         {
+diff --git a/MFTLib.Tests/MockVolumeTests.cs b/MFTLib.Tests/MockVolumeTests.cs
+index 8c48d44..c85e784 100644
+--- a/MFTLib.Tests/MockVolumeTests.cs
++++ b/MFTLib.Tests/MockVolumeTests.cs
+@@ -191,21 +191,21 @@ public class MockVolumeTests
+     [TestMethod]
+     public void Methods_AfterDispose_ThrowObjectDisposed()
+     {
+         FileUtilities._getVolumeHandle = _ => FakeHandle();
+ 
+         var volume = MftVolume.Open("C");
+         volume.Dispose();
+ 
+         Assert.ThrowsException<ObjectDisposedException>(volume.ReadAllRecords);
+         Assert.ThrowsException<ObjectDisposedException>(() => volume.FindByName("test"));
+-        Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords());
++        Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None));
+         Assert.ThrowsException<ObjectDisposedException>(() => volume.FindDirectories("test").ToList());
+         Assert.ThrowsException<ObjectDisposedException>(() => volume.FindFiles("test").ToList());
+         Assert.ThrowsException<ObjectDisposedException>(() => volume.FindRecords("test").ToList());
+     }
+ 
+     // --- ReadAllRecords ---
+ 
+     [TestMethod]
+     public void ReadAllRecords_NoPaths_ReturnsRecords()
+     {
+@@ -311,81 +311,81 @@ public class MockVolumeTests
+     }
+ 
+     // --- StreamRecords ---
+ 
+     [TestMethod]
+     public void StreamRecords_ReturnsEnumerableStream()
+     {
+         SetupMocks();
+ 
+         using var volume = MftVolume.Open("C");
+-        using var stream = volume.StreamRecords();
++        using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+ 
+         Assert.AreEqual(3UL, stream.TotalRecords);
+         Assert.AreEqual(3UL, stream.UsedRecords);
+ 
+         var list = stream.ToList();
+         Assert.AreEqual(3, list.Count);
+         Assert.AreEqual("file0.txt", list[0].FileName);
+     }
+ 
+     [TestMethod]
+     public void StreamRecords_NonGenericEnumerator_Works()
+     {
+         SetupMocks(2);
+ 
+         using var volume = MftVolume.Open("C");
+-        using var stream = volume.StreamRecords();
++        using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+ 
+         var count = 0;
+         foreach (var item in (IEnumerable)stream)
+         {
+             Assert.IsInstanceOfType<MftRecord>(item);
+             count++;
+         }
+ 
+         Assert.AreEqual(2, count);
+     }
+ 
+     [TestMethod]
+     public void MftResult_NativeCompactBytes_WithoutPaths_ComputesCorrectSize()
+     {
+         SetupMocks();
+ 
+         using var volume = MftVolume.Open("C");
+-        using var stream = volume.StreamRecords();
++        using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+ 
+         // 3 records * 50 bytes + string units (file0.txt=9, file1.txt=9, file2.txt=9 = 27 units * 2 bytes = 54)
+         // 150 + 54 = 204 bytes
+         Assert.AreEqual(204UL, stream.NativeCompactBytes);
+     }
+ 
+     [TestMethod]
+     public void MftResult_NativeCompactBytes_WithPaths_ComputesCorrectSize()
+     {
+         SetupMocks(3, true);
+ 
+         using var volume = MftVolume.Open("C");
+-        using var stream = volume.StreamRecords();
++        using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+ 
+         // With paths: pathEntries (3 * 50 = 150) + pathStrings (dir\file0.txt=13, 13, 13 = 39 units * 2 bytes = 78)
+         // 150 + 78 = 228 bytes
+         Assert.AreEqual(228UL, stream.NativeCompactBytes);
+     }
+ 
+     [TestMethod]
+     public void MftResult_Dispose_TotalsAndCompactBytesRemainReadable()
+     {
+         SetupMocks();
+ 
+         using var volume = MftVolume.Open("C");
+-        var stream = volume.StreamRecords();
++        var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+         stream.Dispose();
+ 
+         Assert.AreEqual(3UL, stream.TotalRecords);
+         Assert.AreEqual(3UL, stream.UsedRecords);
+         Assert.AreEqual(204UL, stream.NativeCompactBytes);
+         Assert.IsNotNull(stream.Timings);
+     }
+ 
+     // --- FindFiles, FindDirectories, FindRecords ---
+ 
+@@ -681,21 +681,21 @@ public class MockVolumeTests
+         var ex = Assert.ThrowsException<InvalidOperationException>(() =>
+             new MftResult(resultPtr, "C", 0));
+         Assert.IsTrue(ex.Message.Contains("stride"));
+     }
+ 
+     [TestMethod]
+     public void MftResult_Enumerate_WithPaths_ReadsRecords()
+     {
+         SetupMocks(withPaths: true);
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords();
++        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+ 
+         var records = new List<MftRecord>();
+         foreach (var record in result)
+         {
+             records.Add(record.Materialize());
+         }
+ 
+         Assert.AreEqual(3, records.Count);
+         Assert.AreEqual(@"C:\dir\file0.txt", records[0].FullPath);
+     }
+@@ -816,43 +816,43 @@ public class MockVolumeTests
+     [DataTestMethod]
+     [DataRow(0)]
+     [DataRow(-1)]
+     [DataRow(-50)]
+     public void MftResult_MaterializeBatches_ZeroOrNegativeBatchSize_ThrowsArgumentOutOfRangeException(int batchSize)
+     {
+         SetupMocks(5);
+         Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+         {
+             using var volume = MftVolume.Open("C");
+-            using var result = volume.StreamRecords();
++            using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+             _ = result.MaterializeBatches(batchSize).ToList();
+         });
+     }
+ 
+     [TestMethod]
+     public void MftResult_MaterializeBatches_Disposed_ThrowsObjectDisposedException()
+     {
+         SetupMocks(5);
+         using var volume = MftVolume.Open("C");
+-        var result = volume.StreamRecords();
++        var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+         result.Dispose();
+ 
+         Assert.ThrowsException<ObjectDisposedException>(() =>
+             result.MaterializeBatches().ToList());
+     }
+ 
+     [TestMethod]
+     public void MftResult_MaterializeBatches_BatchesMatchRecordsInOrder()
+     {
+         SetupMocks(7);
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords();
++        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+ 
+         var batches = result.MaterializeBatches(3).ToList();
+ 
+         Assert.AreEqual(3, batches.Count);
+         Assert.AreEqual(3, batches[0].Length);
+         Assert.AreEqual(3, batches[1].Length);
+         Assert.AreEqual(1, batches[2].Length);
+ 
+         var concatenated = batches.SelectMany(b => b).ToArray();
+         Assert.AreEqual(7, concatenated.Length);
+@@ -861,99 +861,99 @@ public class MockVolumeTests
+             Assert.AreEqual((ulong)i, concatenated[i].RecordNumber);
+             Assert.AreEqual($"file{i}.txt", concatenated[i].FileName);
+         }
+     }
+ 
+     [TestMethod]
+     public void MftResult_MaterializeBatches_WithPaths_MaterializesFullPaths()
+     {
+         SetupMocks(5, true);
+         using var volume = MftVolume.Open("C");
+-        using var result = volume.StreamRecords();
++        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+ 
+         var batches = result.MaterializeBatches(2).ToList();
+ 
+         Assert.AreEqual(3, batches.Count);
+         var concatenated = batches.SelectMany(b => b).ToArray();
+         Assert.AreEqual(5, concatenated.Length);
+         for (var i = 0; i < 5; i++)
+         {
+             Assert.AreEqual($@"C:\dir\file{i}.txt", concatenated[i].FullPath);
+             Assert.AreEqual($"file{i}.txt", concatenated[i].FileName);
+         }
+     }
+ 
+     [TestMethod]
+     public void MftResult_MaterializeBatches_RecordsStayValidAfterResultDisposed()
+     {
+         SetupMocks();
+         using var volume = MftVolume.Open("C");
+-        var result = volume.StreamRecords();
++        var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+         var batches = result.MaterializeBatches(2).ToList();
+         result.Dispose();
+ 
+         Assert.AreEqual(2, batches.Count);
+         Assert.AreEqual("file0.txt", batches[0][0].FileName);
+         Assert.AreEqual("file1.txt", batches[0][1].FileName);
+         Assert.AreEqual("file2.txt", batches[1][0].FileName);
+     }
+ 
+     [TestMethod]
+     public void MftVolume_ReadRecordBatches_Disposed_ThrowsObjectDisposedException()
+     {
+         SetupMocks(5);
+         var volume = MftVolume.Open("C");
+         volume.Dispose();
+ 
+         Assert.ThrowsException<ObjectDisposedException>(() =>
+-            volume.ReadRecordBatches().ToList());
++            volume.ReadRecordBatches(false, 4096, null, null, CancellationToken.None).ToList());
+     }
+ 
+     [DataTestMethod]
+     [DataRow(0)]
+     [DataRow(-1)]
+     public void MftVolume_ReadRecordBatches_ZeroOrNegativeBatchSize_ThrowsArgumentOutOfRangeException(int batchSize)
+     {
+         SetupMocks(5);
+         Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
+         {
+             using var volume = MftVolume.Open("C");
+-            _ = volume.ReadRecordBatches(batchSize: batchSize).ToList();
++            _ = volume.ReadRecordBatches(false, batchSize, null, null, CancellationToken.None).ToList();
+         });
+     }
+ 
+     [TestMethod]
+     public void MftVolume_ReadRecordBatches_BatchesMatchReadAllRecords()
+     {
+         SetupMocks(7);
+         using var volume = MftVolume.Open("C");
+-        var batches = volume.ReadRecordBatches(batchSize: 3).ToList();
++        var batches = volume.ReadRecordBatches(false, 3, null, null, CancellationToken.None).ToList();
+ 
+         Assert.AreEqual(3, batches.Count);
+         Assert.AreEqual(3, batches[0].Length);
+         Assert.AreEqual(3, batches[1].Length);
+         Assert.AreEqual(1, batches[2].Length);
+ 
+         var concatenated = batches.SelectMany(b => b).ToArray();
+         for (var i = 0; i < 7; i++)
+         {
+             Assert.AreEqual((ulong)i, concatenated[i].RecordNumber);
+             Assert.AreEqual($"file{i}.txt", concatenated[i].FileName);
+         }
+     }
+ 
+     [TestMethod]
+     public void MftVolume_ReadRecordBatches_WithResolvePaths_PopulatesFullPaths()
+     {
+         SetupMocks(4, true);
+         using var volume = MftVolume.Open("C");
+-        var batches = volume.ReadRecordBatches(resolvePaths: true, 2).ToList();
++        var batches = volume.ReadRecordBatches(resolvePaths: true, 2, null, null, CancellationToken.None).ToList();
+ 
+         Assert.AreEqual(2, batches.Count);
+         var concatenated = batches.SelectMany(b => b).ToArray();
+         Assert.AreEqual(4, concatenated.Length);
+         for (var i = 0; i < 4; i++)
+         {
+             Assert.AreEqual($@"C:\dir\file{i}.txt", concatenated[i].FullPath);
+             Assert.AreEqual($"file{i}.txt", concatenated[i].FileName);
+         }
+     }
+@@ -977,21 +977,21 @@ public class MockVolumeTests
+             {
+                 Marshal.FreeHGlobal(parseResult.EntryStrings);
+             }
+ 
+             Marshal.FreeHGlobal(ptr);
+             freed = true;
+         };
+ 
+         using var volume = MftVolume.Open("C");
+         MftRecord[]? firstBatch = null;
+-        foreach (var batch in volume.ReadRecordBatches(batchSize: 3))
++        foreach (var batch in volume.ReadRecordBatches(false, 3, null, null, CancellationToken.None))
+         {
+             firstBatch = batch;
+             break;
+         }
+ 
+         Assert.IsTrue(freed, "Native MftResult should be freed upon early enumeration disposal");
+         Assert.IsNotNull(firstBatch);
+         Assert.AreEqual(3, firstBatch.Length);
+         Assert.AreEqual("file0.txt", firstBatch[0].FileName);
+     }
+@@ -1027,21 +1027,21 @@ public class MockVolumeTests
+             };
+ 
+             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+             Marshal.StructureToPtr(result, resultPtr, false);
+ 
+             FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+             MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+             MFTLibNative._freeMftResult = _ => { };
+ 
+             using var volume = MftVolume.Open("T");
+-            using var stream = volume.StreamRecords();
++            using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+             var record = stream.First();
+ 
+             Assert.AreEqual("file.txt", record.FileName);
+             Assert.AreEqual("T:\\dir\\file.txt", record.FullPath);
+         }
+         finally
+         {
+             NativeMemory.Free((void*)entryBuf);
+             NativeMemory.Free((void*)stringBuf);
+         }
+@@ -1075,21 +1075,21 @@ public class MockVolumeTests
+             };
+ 
+             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+             Marshal.StructureToPtr(result, resultPtr, false);
+ 
+             FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+             MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+             MFTLibNative._freeMftResult = _ => { };
+ 
+             using var volume = MftVolume.Open("C");
+-            using var stream = volume.StreamRecords();
++            using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+             var record = stream.First();
+ 
+             Assert.AreEqual(".", record.FileName);
+             Assert.AreEqual(@"C:\", record.FullPath);
+             Assert.IsTrue(record.IsDirectory);
+             Assert.IsTrue(record.InUse);
+         }
+         finally
+         {
+             NativeMemory.Free((void*)entryBuf);
+@@ -1125,21 +1125,21 @@ public class MockVolumeTests
+             };
+ 
+             var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+             Marshal.StructureToPtr(result, resultPtr, false);
+ 
+             FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+             MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+             MFTLibNative._freeMftResult = _ => { };
+ 
+             using var volume = MftVolume.Open("C");
+-            using var stream = volume.StreamRecords();
++            using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+             var record = stream.First();
+ 
+             Assert.AreEqual(".", record.FileName);
+             Assert.IsNull(record.FullPath);
+             Assert.IsTrue(record.IsDirectory);
+             Assert.IsTrue(record.InUse);
+ 
+             var materialized = record.Materialize();
+             Assert.AreEqual(".", materialized.FileName);
+             Assert.IsNull(materialized.FullPath);
+diff --git a/MFTLib.Tests/NativeMockTests.cs b/MFTLib.Tests/NativeMockTests.cs
+index 6bae3a5..9be84ee 100644
+--- a/MFTLib.Tests/NativeMockTests.cs
++++ b/MFTLib.Tests/NativeMockTests.cs
+@@ -66,38 +66,38 @@ public class NativeMockTests
+     }
+ 
+     [TestMethod]
+     public void StreamRecords_NullReturn_ThrowsInvalidOperation()
+     {
+         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
+         MFTLibNative._parseMftRecords = (_, _, _, _) => IntPtr.Zero;
+ 
+         using var volume = MftVolume.Open("C");
+         // ReSharper disable once AccessToDisposedClosure
+-        Assert.ThrowsException<InvalidOperationException>(() => volume.StreamRecords());
++        Assert.ThrowsException<InvalidOperationException>(() => volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None));
+     }
+ 
+     [TestMethod]
+     public void ParseMftRecordsWithProgressDefault_NoOverrideConfigured_CallsRealNativeExport()
+     {
+         // Leave both _parseMftRecords and _parseMftRecordsWithProgress at their native
+         // P/Invoke defaults (guaranteed by TestCleanup running after every test in this
+         // class). NativeParseMFTRecordsWithProgressDefault's
+         // `_parseMftRecords != NativeParseMFTRecords` check is then false, so it falls
+         // through to the real ParseMFTRecordsWithProgress export instead of the
+         // ParseMFTRecords fallback other tests exercise by mocking _parseMftRecords.
+         // INVALID_HANDLE_VALUE (-1) lets the native side fail gracefully with an error
+         // result instead of needing a real, elevated volume handle.
+         using var handle = new SafeFileHandle(new IntPtr(-1), false);
+ 
+         var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
+-            handle, null, MatchFlags.None, 256, null, IntPtr.Zero);
++            handle, null, MatchFlags.None, 256, IntPtr.Zero, null);
+ 
+         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+         try
+         {
+             var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+             var errorMessage = result.ErrorMessage;
+             var expectedMessage = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                 ? errorMessage!.Contains("invalid", StringComparison.OrdinalIgnoreCase)
+                 : !string.IsNullOrEmpty(errorMessage);
+             Assert.IsTrue(expectedMessage,
+diff --git a/MFTLib.Tests/NativeParserCoverageTests.ParseControl.cs b/MFTLib.Tests/NativeParserCoverageTests.ParseControl.cs
+new file mode 100644
+index 0000000..ac9f824
+--- /dev/null
++++ b/MFTLib.Tests/NativeParserCoverageTests.ParseControl.cs
+@@ -0,0 +1,254 @@
++using System.Runtime.InteropServices;
++using MFTLib.Interop;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++// The parse control block: the thread allowance each chunk and path resolution read, and the
++// cancellation flag read before each chunk read, after each chunk's parse, and between slices.
++// Every case parses a synthetic NTFS image in 64-record chunks, so several chunks run and the
++// progress callback (fired after each chunk is parsed) can only affect the chunks after it.
++public partial class NativeParserCoverageTests
++{
++    const int ImageRecordCount = 1024;
++    const int ImageChunkCount = ImageRecordCount / 64;
++
++    static uint Processors => (uint)Environment.ProcessorCount;
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_AllowanceNull_EveryChunkUsesEveryCore()
++    {
++        WithImage(ImageRecordCount, path =>
++        {
++            var result = ParseImageWithoutControl(path);
++
++            Assert.AreEqual(0u, result.Cancelled);
++            AssertEveryChunkUsed(Processors);
++        });
++    }
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_AllowanceTwo_EveryChunkUsesAtMostTwoThreads()
++    {
++        AssertAllowanceGivesEveryChunk(2, Math.Min(2u, Processors));
++    }
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_AllowanceAboveCores_ClampsToCores()
++    {
++        AssertAllowanceGivesEveryChunk((int)Processors + 5, Processors);
++    }
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_AllowanceZero_MeansEveryCore()
++    {
++        AssertAllowanceGivesEveryChunk(0, Processors);
++    }
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_SetMaxThreadsStillCaps()
++    {
++        MFTLibNative.NativeSetMaxThreads(1);
++        AssertAllowanceGivesEveryChunk(4, 1);
++    }
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_AllowanceLoweredFromProgressCallback_LaterChunksUseTheNewCount()
++    {
++        AssertAllowanceChangedAfterFirstChunk((int)Processors, 1);
++    }
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_AllowanceRaisedFromProgressCallback_LaterChunksUseTheNewCount()
++    {
++        AssertAllowanceChangedAfterFirstChunk(1, (int)Processors);
++    }
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_PathResolutionReadsAllowanceAfterLastChunk()
++    {
++        WithImage(ImageRecordCount, path =>
++        {
++            using var control = new ParseControlBlock((int)Processors);
++            var result = ParseImage(path, MatchFlags.ResolvePaths, control, (block, phase, scanned, total) =>
++            {
++                if (phase == MftScanPhase.Parsing && scanned == total)
++                {
++                    block.Allowance = 1;
++                }
++            });
++
++            Assert.AreEqual(0u, result.Cancelled);
++            Assert.AreNotEqual(IntPtr.Zero, result.PathEntries, "Path resolution must have run");
++            Assert.AreEqual(Processors, ParseControlBlock.ChunkThreadCounts()[^1]);
++            Assert.AreEqual(1u, MFTLibNative.NativeGetResolveThreadCount());
++        });
++    }
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_CancelledDuringPathResolution_StopsBetweenSlices()
++    {
++        // One resolution worker reports every 4096 entries; the image has over three times that
++        // many in-use records, so an uncancelled resolution reports at least twice more.
++        WithImage(16384, path =>
++        {
++            using var control = new ParseControlBlock(1);
++            var resolvingReports = 0;
++            var result = ParseImage(path, MatchFlags.ResolvePaths, control, (block, phase, _, _) =>
++            {
++                if (phase == MftScanPhase.ResolvingPaths && ++resolvingReports == 1)
++                {
++                    block.RequestCancel();
++                }
++            }, 4096);
++
++            AssertCancelled(result);
++            Assert.AreEqual(1, resolvingReports, "Resolution must stop at the slice after the cancelling report");
++            Assert.AreEqual(1u, MFTLibNative.NativeGetResolveThreadCount());
++        });
++    }
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_CancelledBeforeFirstChunk_ReturnsCancelledWithoutReading()
++    {
++        WithImage(ImageRecordCount, path =>
++        {
++            using var control = new ParseControlBlock();
++            control.RequestCancel();
++            var progressCalls = 0;
++            // Reads 1 and 2 are the boot sector and record 0; read 3 would be the first chunk.
++            MFTLibNative.NativeSetReadFailCountdown(3);
++
++            var result = ParseImage(path, MatchFlags.None, control, (_, _, _, _) => progressCalls++);
++
++            AssertCancelled(result);
++            Assert.AreEqual(0, progressCalls);
++            Assert.AreEqual(0, ParseControlBlock.ChunkThreadCounts().Length, "No chunk may be parsed");
++            // The countdown is still armed only if no chunk was read, so the next parse's first
++            // read (its boot sector) is the one that fails.
++            StringAssert.Contains(ParseImageWithoutControl(path).ErrorMessage, "boot sector");
++        });
++    }
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_CancelledFromProgressCallback_StopsAfterThatChunk()
++    {
++        WithImage(ImageRecordCount, path =>
++        {
++            using var control = new ParseControlBlock();
++            var parsingCalls = 0;
++
++            var result = ParseImage(path, MatchFlags.ResolvePaths, control, (block, phase, _, _) =>
++            {
++                if (phase == MftScanPhase.Parsing && ++parsingCalls == 1)
++                {
++                    block.RequestCancel();
++                }
++            });
++
++            AssertCancelled(result);
++            Assert.AreEqual(1, parsingCalls);
++            Assert.AreEqual(1, ParseControlBlock.ChunkThreadCounts().Length);
++            Assert.AreEqual(0u, MFTLibNative.NativeGetResolveThreadCount(), "Path resolution must not run");
++        });
++    }
++
++    static void AssertAllowanceGivesEveryChunk(int allowance, uint expected)
++    {
++        WithImage(ImageRecordCount, path =>
++        {
++            using var control = new ParseControlBlock(allowance);
++            ParseImage(path, MatchFlags.None, control);
++            AssertEveryChunkUsed(expected);
++        });
++    }
++
++    static void AssertAllowanceChangedAfterFirstChunk(int initialAllowance, int laterAllowance)
++    {
++        WithImage(ImageRecordCount, path =>
++        {
++            using var control = new ParseControlBlock(initialAllowance);
++            var parsingCalls = 0;
++            ParseImage(path, MatchFlags.None, control, (block, phase, _, _) =>
++            {
++                if (phase == MftScanPhase.Parsing && ++parsingCalls == 1)
++                {
++                    block.Allowance = laterAllowance;
++                }
++            });
++
++            var counts = ParseControlBlock.ChunkThreadCounts();
++            Assert.AreEqual(ImageChunkCount, counts.Length);
++            Assert.AreEqual((uint)initialAllowance, counts[0], "The chunk the callback followed keeps its count");
++            CollectionAssert.AreEqual(
++                Enumerable.Repeat((uint)laterAllowance, ImageChunkCount - 1).ToArray(), counts[1..]);
++        });
++    }
++
++    static void AssertEveryChunkUsed(uint expected)
++    {
++        CollectionAssert.AreEqual(
++            Enumerable.Repeat(expected, ImageChunkCount).ToArray(), ParseControlBlock.ChunkThreadCounts());
++    }
++
++    static void AssertCancelled(MftParseResult result)
++    {
++        Assert.AreEqual(1u, result.Cancelled);
++        Assert.AreEqual("Parse cancelled", result.ErrorMessage);
++        Assert.AreEqual(0UL, result.UsedRecords);
++        Assert.AreEqual(IntPtr.Zero, result.Entries);
++        Assert.AreEqual(IntPtr.Zero, result.PathEntries);
++    }
++
++    static void WithImage(int recordCount, Action<string> test)
++    {
++        var path = Path.GetTempFileName();
++        try
++        {
++            SyntheticNtfsImage.Write(path, recordCount);
++            test(path);
++        }
++        finally
++        {
++            File.Delete(path);
++        }
++    }
++
++    delegate void ControlProgressObserver(ParseControlBlock control, MftScanPhase phase, ulong scanned, ulong total);
++
++    // Parses the image through the volume export with the given control block, handing that block
++    // to onProgress with each progress callback, and returns a copy of the freed result's header.
++    static MftParseResult ParseImage(string path, MatchFlags matchFlags, ParseControlBlock control,
++        ControlProgressObserver? onProgress = null, uint bufferSizeRecords = 64)
++    {
++        MFTLibNative.NativeMftProgressCallback callback = (phase, scanned, total, _, _) =>
++            onProgress?.Invoke(control, phase, scanned, total);
++        var result = ParseVolumeExport(path, matchFlags, control.Pointer, callback, bufferSizeRecords);
++        GC.KeepAlive(callback);
++        return result;
++    }
++
++    static MftParseResult ParseImageWithoutControl(string path)
++    {
++        return ParseVolumeExport(path, MatchFlags.None, IntPtr.Zero, null, 64);
++    }
++
++    static MftParseResult ParseVolumeExport(string path, MatchFlags matchFlags, IntPtr control,
++        MFTLibNative.NativeMftProgressCallback? callback, uint bufferSizeRecords)
++    {
++        MFTLibNative.NativeSetVolumeRecordSizeOverride(1024);
++        using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
++        var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
++            fileStream.SafeFileHandle, null, matchFlags, bufferSizeRecords, control, callback);
++        Assert.AreNotEqual(IntPtr.Zero, resultPointer);
++        try
++        {
++            return Marshal.PtrToStructure<MftParseResult>(resultPointer);
++        }
++        finally
++        {
++            MFTLibNative._freeMftResult(resultPointer);
++        }
++    }
++}
+diff --git a/MFTLib.Tests/NativeParserCoverageTests.cs b/MFTLib.Tests/NativeParserCoverageTests.cs
+index 5473530..63eb185 100644
+--- a/MFTLib.Tests/NativeParserCoverageTests.cs
++++ b/MFTLib.Tests/NativeParserCoverageTests.cs
+@@ -1,27 +1,28 @@
+ using System.IO.Pipes;
+ using System.Runtime.InteropServices;
+ using MFTLib.Interop;
+ using Microsoft.VisualStudio.TestTools.UnitTesting;
++using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
+ 
+ namespace MFTLib.Tests;
+ 
+ /// <summary>
+ ///     Additional tests targeting specific native C++ lines that remained
+ ///     uncovered after the initial coverage burn-down: real (non-mocked)
+ ///     progress-callback wiring, bounds-check guards in the record and
+ ///     attribute walkers, and allocation-failure seams reached only through
+ ///     the path-resolution merge phase.
+ /// </summary>
+ [TestClass]
+ [DoNotParallelize]
+-public class NativeParserCoverageTests
++public partial class NativeParserCoverageTests
+ {
+     [TestCleanup]
+     public void Cleanup()
+     {
+         MFTLibNative.NativeResetTestState();
+         MFTLibNative.ResetToDefaults();
+         FileUtilities.ResetToDefaults();
+     }
+ 
+     // --- mft.parse.cpp line 63: QueryVolumeRecordSize's real DeviceIoControl
+@@ -34,21 +35,21 @@ public class NativeParserCoverageTests
+ 
+     [TestMethod]
+     public void ParseMFTRecordsWithProgress_NonVolumeHandle_RecordSizeQueryFails()
+     {
+         var pipeName = "mftlib_test_" + Guid.NewGuid().ToString("N");
+         using var server = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1);
+         using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut);
+         client.Connect(5000);
+ 
+         var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
+-            client.SafePipeHandle, null, MatchFlags.None, 256, null, IntPtr.Zero);
++            client.SafePipeHandle, null, MatchFlags.None, 256, IntPtr.Zero, null);
+         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+         try
+         {
+             var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+             Assert.IsTrue(
+                 result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase),
+                 $"Expected a record-size query failure, got: {result.ErrorMessage}");
+         }
+         finally
+         {
+@@ -58,21 +59,21 @@ public class NativeParserCoverageTests
+ 
+     // --- mft.parse.cpp line 162: MergeExtensionDataRuns' resident
+     // AttributeList bounds guard (ValueOffset + ValueLength > RecordLength). ---
+ 
+     [TestMethod]
+     public void ParseMFTRecords_ResidentAttributeListValueOverflow_SkipsExtensionMerge()
+     {
+         var path = Path.GetTempFileName();
+         try
+         {
+-            var data = BuildSyntheticNtfs();
++            var data = BuildBootSector();
+             WriteFileRecord(data, 4096);
+ 
+             var a1 = 4096 + 0x38;
+             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
+ 
+             // Resident AttributeList whose declared ValueLength overflows its own
+             // (deliberately too small) RecordLength: ValueOffset(24) + ValueLength(28) = 52 > 32.
+             var a2 = a1 + a1Len;
+             data[a2] = 0x20; // TypeCode = AttributeList
+             data[a2 + 4] = 32; // RecordLength = 32 (too small for the declared value)
+@@ -294,36 +295,36 @@ public class NativeParserCoverageTests
+     // --- mft.parse_core.cpp lines 300-302: in-loop progress callback,
+     // reached only via a real (non-mocked) native progress callback wired
+     // through ParseMFTRecordsWithProgress with an actual data payload. ---
+ 
+     [TestMethod]
+     public void ParseMFTRecordsWithProgress_RealCallback_ReportsPerChunkProgress()
+     {
+         var path = Path.GetTempFileName();
+         try
+         {
+-            var data = BuildSyntheticNtfs();
++            var data = BuildBootSector();
+             WriteFileRecord(data, 4096);
+ 
+             var a1 = 4096 + 0x38;
+             var a1Len = WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
+             WriteEndMarker(data, a1 + a1Len);
+ 
+             File.WriteAllBytes(path, data);
+ 
+             var invocations = new List<(MftScanPhase Phase, ulong Scanned, ulong Total)>();
+             MFTLibNative.NativeMftProgressCallback callback = (phase, scanned, total, _, _) =>
+                 invocations.Add((phase, scanned, total));
+ 
+             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+             var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
+-                fileStream.SafeFileHandle, null, MatchFlags.None, 64, callback, IntPtr.Zero);
++                fileStream.SafeFileHandle, null, MatchFlags.None, 64, IntPtr.Zero, callback);
+             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+             try
+             {
+                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                 Assert.IsTrue(result.TotalRecords > 0);
+                 Assert.IsTrue(invocations.Count >= 1, "Expected at least one in-loop progress report");
+                 Assert.AreEqual(MftScanPhase.Parsing, invocations[0].Phase);
+                 Assert.IsTrue(
+                     invocations[^1].Scanned == result.TotalRecords && invocations[^1].Total == result.TotalRecords,
+                     "Last reported chunk must reach the full record count");
+@@ -348,39 +349,39 @@ public class NativeParserCoverageTests
+     // branch, reached only when the loop body never runs (first chunk read
+     // fails) while totalRecords (computed from the MFT data runs before any
+     // read is attempted) is still nonzero. ---
+ 
+     [TestMethod]
+     public void ParseMFTRecordsWithProgress_RealCallback_FirstChunkReadFails_ReportsFinalOnly()
+     {
+         var path = Path.GetTempFileName();
+         try
+         {
+-            var data = BuildSyntheticNtfs();
++            var data = BuildBootSector();
+             WriteFileRecord(data, 4096);
+ 
+             var a1 = 4096 + 0x38;
+             WriteNonResidentDataAttribute(data, a1, 1024L * 1024, 1, 256);
+             WriteEndMarker(data, a1 + 0x48);
+ 
+             File.WriteAllBytes(path, data);
+ 
+             var invocations = new List<(MftScanPhase Phase, ulong Scanned, ulong Total)>();
+             MFTLibNative.NativeMftProgressCallback callback = (phase, scanned, total, _, _) =>
+                 invocations.Add((phase, scanned, total));
+ 
+             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+             // Fail the 3rd Read: 1=boot sector, 2=record 0, 3=VolumeReadChunk's
+             // first read, so the chunk loop body never executes.
+             MFTLibNative.NativeSetReadFailCountdown(3);
+             var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
+-                fileStream.SafeFileHandle, null, MatchFlags.None, 64, callback, IntPtr.Zero);
++                fileStream.SafeFileHandle, null, MatchFlags.None, 64, IntPtr.Zero, callback);
+             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
+             try
+             {
+                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                 Assert.AreEqual(0UL, result.UsedRecords);
+                 Assert.AreEqual(1, invocations.Count, "Only the synthetic final report should fire");
+                 Assert.AreEqual(invocations[0].Total, invocations[0].Scanned);
+             }
+             finally
+             {
+@@ -570,22 +571,51 @@ public class NativeParserCoverageTests
+         }
+         finally
+         {
+             if (File.Exists(path))
+             {
+                 File.Delete(path);
+             }
+         }
+     }
+ 
+-    // --- Helpers (duplicated from NativeCoverageTests.cs, which keeps them
+-    // private; kept minimal and specific to what this file's tests need). ---
++    // A parse on one thread must number each chunk's records from that chunk's base, exactly as
++    // the multi-threaded path does; a parse thread allowance of 1 takes this path in production.
++
++    [TestMethod]
++    public void ParseFromFile_SingleThreadAcrossChunks_NumbersRecordsLikeEveryCore()
++    {
++        var path = Path.GetTempFileName();
++        try
++        {
++            File.Delete(path);
++            MftVolume.GenerateSyntheticMFT(path, 1000, 256);
++
++            var everyCore = MftVolume.ParseMFTFromFile(path, null, MatchFlags.None, out _, 64)
++                .Select(record => record.RecordNumber).ToArray();
++            MFTLibNative.NativeSetMaxThreads(1);
++            var singleThread = MftVolume.ParseMFTFromFile(path, null, MatchFlags.None, out _, 64)
++                .Select(record => record.RecordNumber).ToArray();
++
++            Assert.IsTrue(everyCore.Length > 64, "The parse must span several 64-record chunks");
++            CollectionAssert.AreEqual(everyCore, singleThread);
++        }
++        finally
++        {
++            if (File.Exists(path))
++            {
++                File.Delete(path);
++            }
++        }
++    }
++
++    // --- Helpers (the synthetic NTFS image builders live in TestSupport/SyntheticNtfsImage). ---
+ 
+     static bool TrySetParentRecord(byte[] data, int recordNumber, ulong parentRecord, out int nameLength)
+     {
+         const int recordSize = 1024;
+         var recordOffset = recordNumber * recordSize;
+         nameLength = 0;
+         if (BitConverter.ToUInt32(data, recordOffset) != 0x454C4946 ||
+             (BitConverter.ToUInt16(data, recordOffset + 0x16) & 1) == 0 ||
+             (BitConverter.ToUInt64(data, recordOffset + 0x20) & 0x0000FFFFFFFFFFFFUL) != 0)
+         {
+@@ -614,81 +644,11 @@ public class NativeParserCoverageTests
+                 nameLength = data[value + 64];
+                 BitConverter.GetBytes(parentRecord).CopyTo(data, value);
+                 return true;
+             }
+ 
+             attributeOffset += checked((int)attributeLength);
+         }
+ 
+         return false;
+     }
+-
+-    static byte[] BuildSyntheticNtfs(int fileSize = 2 * 1024 * 1024)
+-    {
+-        var data = new byte[fileSize];
+-        data[3] = (byte)'N';
+-        data[4] = (byte)'T';
+-        data[5] = (byte)'F';
+-        data[6] = (byte)'S';
+-        data[0x0B] = 0x00;
+-        data[0x0C] = 0x02; // bytesPerSector = 512
+-        data[0x0D] = 0x08; // sectorsPerCluster = 8 (4096 bytes/cluster)
+-        data[0x30] = 0x01; // mftStart = cluster 1 (offset 4096)
+-        return data;
+-    }
+-
+-    static void WriteFileRecord(byte[] data, int offset, ushort usn = 0x0001, uint recordSize = 1024)
+-    {
+-        data[offset] = 0x46;
+-        data[offset + 1] = 0x49;
+-        data[offset + 2] = 0x4C;
+-        data[offset + 3] = 0x45;
+-        var usaSize = (ushort)(recordSize / 512 + 1);
+-        data[offset + 4] = 0x30;
+-        data[offset + 5] = 0x00;
+-        data[offset + 6] = (byte)(usaSize & 0xFF);
+-        data[offset + 7] = (byte)(usaSize >> 8);
+-        var firstAttrOffset = (ushort)((48 + usaSize * 2 + 7) & ~7);
+-        data[offset + 0x14] = (byte)(firstAttrOffset & 0xFF);
+-        data[offset + 0x15] = (byte)(firstAttrOffset >> 8);
+-        data[offset + 0x16] = 0x01;
+-        BitConverter.GetBytes(recordSize).CopyTo(data, offset + 0x1C);
+-        data[offset + 48] = (byte)(usn & 0xFF);
+-        data[offset + 49] = (byte)(usn >> 8);
+-        var sectorCount = (int)(recordSize / 512);
+-        for (var i = 0; i < sectorCount; i++)
+-        {
+-            data[offset + 50 + i * 2] = 0x00;
+-            data[offset + 51 + i * 2] = 0x00;
+-            var sectorEnd = (i + 1) * 512 - 2;
+-            data[offset + sectorEnd] = (byte)(usn & 0xFF);
+-            data[offset + sectorEnd + 1] = (byte)(usn >> 8);
+-        }
+-    }
+-
+-    static int WriteNonResidentDataAttribute(byte[] data, int offset, long fileSize, int clusterOffset,
+-        int clusterCount)
+-    {
+-        data[offset] = 0x80; // TypeCode = Data
+-        data[offset + 4] = 0x48; // RecordLength = 72
+-        data[offset + 8] = 0x01; // FormCode = non-resident
+-        data[offset + 0x20] = 0x40; // MappingPairsOffset
+-        var sizeBytes = BitConverter.GetBytes(fileSize);
+-        Array.Copy(sizeBytes, 0, data, offset + 0x28, 8);
+-        Array.Copy(sizeBytes, 0, data, offset + 0x30, 8);
+-        Array.Copy(sizeBytes, 0, data, offset + 0x38, 8);
+-        data[offset + 0x40] = 0x12;
+-        data[offset + 0x41] = (byte)(clusterCount & 0xFF);
+-        data[offset + 0x42] = (byte)((clusterCount >> 8) & 0xFF);
+-        data[offset + 0x43] = (byte)(clusterOffset & 0xFF);
+-        data[offset + 0x44] = 0x00;
+-        return 0x48;
+-    }
+-
+-    static void WriteEndMarker(byte[] data, int offset)
+-    {
+-        data[offset] = 0xFF;
+-        data[offset + 1] = 0xFF;
+-        data[offset + 2] = 0xFF;
+-        data[offset + 3] = 0xFF;
+-    }
+ }
+diff --git a/MFTLib.Tests/ParseThreadAllowanceTests.cs b/MFTLib.Tests/ParseThreadAllowanceTests.cs
+new file mode 100644
+index 0000000..75ca647
+--- /dev/null
++++ b/MFTLib.Tests/ParseThreadAllowanceTests.cs
+@@ -0,0 +1,148 @@
++using System.Runtime.InteropServices;
++using MFTLib.Interop;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++using Microsoft.Win32.SafeHandles;
++
++namespace MFTLib.Tests;
++
++[TestClass]
++[DoNotParallelize]
++public class ParseThreadAllowanceTests
++{
++    [TestCleanup]
++    public void Cleanup()
++    {
++        MFTLibNative.ResetToDefaults();
++        FileUtilities.ResetToDefaults();
++    }
++
++    [DataTestMethod]
++    [DataRow(0)]
++    [DataRow(-1)]
++    public void Constructor_CountBelowOne_Throws(int count)
++    {
++        Assert.ThrowsException<ArgumentOutOfRangeException>(() => new ParseThreadAllowance(count));
++    }
++
++    [DataTestMethod]
++    [DataRow(0)]
++    [DataRow(-1)]
++    public void Count_SetBelowOne_Throws(int count)
++    {
++        var allowance = new ParseThreadAllowance(3);
++
++        Assert.ThrowsException<ArgumentOutOfRangeException>(() => allowance.Count = count);
++        Assert.AreEqual(3, allowance.Count);
++    }
++
++    [TestMethod]
++    public unsafe void Count_WrittenDuringParse_IsVisibleToTheNativeControlBlock()
++    {
++        var allowance = new ParseThreadAllowance(2);
++        var observed = new List<int>();
++        FakeParse(control =>
++        {
++            observed.Add(control->ParseThreadAllowance);
++            allowance.Count = 3;
++            observed.Add(control->ParseThreadAllowance);
++            GC.Collect();
++            GC.WaitForPendingFinalizers();
++            GC.Collect();
++            allowance.Count = 5;
++            observed.Add(control->ParseThreadAllowance);
++        });
++
++        using var volume = MftVolume.Open("C");
++        using (volume.StreamRecords(null, MatchFlags.None, null, allowance, CancellationToken.None))
++        {
++            CollectionAssert.AreEqual(new[] { 2, 3, 5 }, observed);
++        }
++
++        // Detached when the parse returned: the next parse attaches again and sees the current count.
++        observed.Clear();
++        allowance.Count = 7;
++        using (volume.StreamRecords(null, MatchFlags.None, null, allowance, CancellationToken.None))
++        {
++            Assert.AreEqual(7, observed[0]);
++        }
++    }
++
++    [TestMethod]
++    public unsafe void StreamRecords_NullAllowance_LeavesTheControlBlockAllowanceZero()
++    {
++        var observed = -1;
++        FakeParse(control => observed = control->ParseThreadAllowance);
++
++        using var volume = MftVolume.Open("C");
++        using (volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None))
++        {
++            Assert.AreEqual(0, observed);
++        }
++    }
++
++    [TestMethod]
++    public unsafe void StreamRecords_TokenCancelledDuringParse_SetsCancelRequested()
++    {
++        using var cancellation = new CancellationTokenSource();
++        var observed = new List<int>();
++        FakeParse(control =>
++        {
++            observed.Add(control->CancelRequested);
++            // The fake parse runs inside the using scope.
++            // ReSharper disable once AccessToDisposedClosure
++            cancellation.Cancel();
++            observed.Add(control->CancelRequested);
++        });
++
++        using var volume = MftVolume.Open("C");
++        using (volume.StreamRecords(null, MatchFlags.None, null, null, cancellation.Token))
++        {
++            CollectionAssert.AreEqual(new[] { 0, 1 }, observed);
++        }
++    }
++
++    [TestMethod]
++    public unsafe void Attach_WhileAttached_Throws()
++    {
++        var allowance = new ParseThreadAllowance(4);
++        using var first = new ParseControlBlock();
++        using var second = new ParseControlBlock();
++        var firstField = &((MftParseControl*)first.Pointer)->ParseThreadAllowance;
++        var secondField = &((MftParseControl*)second.Pointer)->ParseThreadAllowance;
++
++        allowance.Attach(firstField);
++        try
++        {
++            Assert.AreEqual(4, first.Allowance, "Attaching copies the current count into the control block");
++            Assert.ThrowsException<InvalidOperationException>(() => allowance.Attach(secondField));
++            Assert.AreEqual(0, second.Allowance);
++        }
++        finally
++        {
++            allowance.Detach();
++        }
++    }
++
++    unsafe delegate void ControlBlockObserver(MftParseControl* control);
++
++    // Replaces the native parse with one that hands its control block to observe, then returns an
++    // empty successful result.
++    static unsafe void FakeParse(ControlBlockObserver observe)
++    {
++        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
++        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, control, _) =>
++        {
++            observe((MftParseControl*)control);
++            var result = new MftParseResult
++            {
++                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
++                EntryStride = MFTLibNative.NativeCompactEntrySize
++            };
++            var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
++            Marshal.StructureToPtr(result, resultPtr, false);
++            return resultPtr;
++        };
++        MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
++    }
++}
+diff --git a/MFTLib.Tests/TestSupport/ParseControlBlock.cs b/MFTLib.Tests/TestSupport/ParseControlBlock.cs
+new file mode 100644
+index 0000000..f42881c
+--- /dev/null
++++ b/MFTLib.Tests/TestSupport/ParseControlBlock.cs
+@@ -0,0 +1,48 @@
++using System.Runtime.InteropServices;
++using MFTLib.Interop;
++
++namespace MFTLib.Tests.TestSupport;
++
++/// <summary>
++///     A native MftParseControl block a test owns, at one address for its whole lifetime, plus
++///     readers for the parse thread-count test hooks. Tests that use the hooks must be
++///     class-level [DoNotParallelize]: the recorded counts are process-wide.
++/// </summary>
++sealed unsafe class ParseControlBlock : IDisposable
++{
++    readonly MftParseControl* _control = (MftParseControl*)NativeMemory.AllocZeroed((nuint)sizeof(MftParseControl));
++
++    public ParseControlBlock(int allowance = 0)
++    {
++        Allowance = allowance;
++    }
++
++    public IntPtr Pointer => (IntPtr)_control;
++
++    public int Allowance
++    {
++        get => Volatile.Read(ref _control->ParseThreadAllowance);
++        set => Volatile.Write(ref _control->ParseThreadAllowance, value);
++    }
++
++    public void RequestCancel()
++    {
++        Volatile.Write(ref _control->CancelRequested, 1);
++    }
++
++    public void Dispose()
++    {
++        NativeMemory.Free(_control);
++    }
++
++    /// <summary>The thread count each chunk of the most recent native parse used, in order.</summary>
++    public static uint[] ChunkThreadCounts()
++    {
++        var counts = new uint[4096];
++        fixed (uint* first = counts)
++        {
++            var recorded = MFTLibNative.NativeGetChunkThreadCounts(first, (uint)counts.Length);
++            return counts[..(int)recorded];
++        }
++    }
++}
+diff --git a/MFTLib.Tests/TestSupport/SyntheticNtfsImage.cs b/MFTLib.Tests/TestSupport/SyntheticNtfsImage.cs
+new file mode 100644
+index 0000000..67ba16d
+--- /dev/null
++++ b/MFTLib.Tests/TestSupport/SyntheticNtfsImage.cs
+@@ -0,0 +1,112 @@
++namespace MFTLib.Tests.TestSupport;
++
++/// <summary>
++///     Builds files the volume parser (ParseMFTRecordsWithProgress) accepts in place of a volume
++///     handle: an NTFS boot sector at offset 0 and an MFT starting at cluster 1 (offset 4096), with
++///     512-byte sectors and 4096-byte clusters. Parse them with 1024-byte records forced through
++///     SetVolumeRecordSizeOverride so the host volume's record size does not matter.
++/// </summary>
++static class SyntheticNtfsImage
++{
++    const int ClusterSize = 4096;
++    const int RecordSize = 1024;
++
++    /// <summary>
++    ///     Writes an image whose MFT is <paramref name="recordCount" /> synthetic records (named
++    ///     files under a root, so paths resolve), with record 0 replaced by an $MFT record whose
++    ///     $DATA run covers them all. <paramref name="recordCount" /> must be a multiple of 4.
++    /// </summary>
++    public static void Write(string path, int recordCount)
++    {
++        var mftPath = Path.GetTempFileName();
++        try
++        {
++            File.Delete(mftPath);
++            MftVolume.GenerateSyntheticMFT(mftPath, (ulong)recordCount, 256);
++            var mft = File.ReadAllBytes(mftPath);
++
++            var data = BuildBootSector(ClusterSize + mft.Length);
++            mft.CopyTo(data, ClusterSize);
++            Array.Clear(data, ClusterSize, RecordSize);
++            WriteFileRecord(data, ClusterSize);
++            var dataAttributeLength = WriteNonResidentDataAttribute(
++                data, ClusterSize + 0x38, mft.Length, 1, mft.Length / ClusterSize);
++            WriteEndMarker(data, ClusterSize + 0x38 + dataAttributeLength);
++            File.WriteAllBytes(path, data);
++        }
++        finally
++        {
++            File.Delete(mftPath);
++        }
++    }
++
++    public static byte[] BuildBootSector(int fileSize = 2 * 1024 * 1024)
++    {
++        var data = new byte[fileSize];
++        data[3] = (byte)'N';
++        data[4] = (byte)'T';
++        data[5] = (byte)'F';
++        data[6] = (byte)'S';
++        data[0x0B] = 0x00;
++        data[0x0C] = 0x02; // bytesPerSector = 512
++        data[0x0D] = 0x08; // sectorsPerCluster = 8 (4096 bytes/cluster)
++        data[0x30] = 0x01; // mftStart = cluster 1 (offset 4096)
++        return data;
++    }
++
++    public static void WriteFileRecord(byte[] data, int offset, ushort usn = 0x0001, uint recordSize = RecordSize)
++    {
++        data[offset] = 0x46;
++        data[offset + 1] = 0x49;
++        data[offset + 2] = 0x4C;
++        data[offset + 3] = 0x45;
++        var usaSize = (ushort)(recordSize / 512 + 1);
++        data[offset + 4] = 0x30;
++        data[offset + 5] = 0x00;
++        data[offset + 6] = (byte)(usaSize & 0xFF);
++        data[offset + 7] = (byte)(usaSize >> 8);
++        var firstAttrOffset = (ushort)((48 + usaSize * 2 + 7) & ~7);
++        data[offset + 0x14] = (byte)(firstAttrOffset & 0xFF);
++        data[offset + 0x15] = (byte)(firstAttrOffset >> 8);
++        data[offset + 0x16] = 0x01;
++        BitConverter.GetBytes(recordSize).CopyTo(data, offset + 0x1C);
++        data[offset + 48] = (byte)(usn & 0xFF);
++        data[offset + 49] = (byte)(usn >> 8);
++        var sectorCount = (int)(recordSize / 512);
++        for (var i = 0; i < sectorCount; i++)
++        {
++            data[offset + 50 + i * 2] = 0x00;
++            data[offset + 51 + i * 2] = 0x00;
++            var sectorEnd = (i + 1) * 512 - 2;
++            data[offset + sectorEnd] = (byte)(usn & 0xFF);
++            data[offset + sectorEnd + 1] = (byte)(usn >> 8);
++        }
++    }
++
++    public static int WriteNonResidentDataAttribute(byte[] data, int offset, long fileSize, int clusterOffset,
++        int clusterCount)
++    {
++        data[offset] = 0x80; // TypeCode = Data
++        data[offset + 4] = 0x48; // RecordLength = 72
++        data[offset + 8] = 0x01; // FormCode = non-resident
++        data[offset + 0x20] = 0x40; // MappingPairsOffset
++        var sizeBytes = BitConverter.GetBytes(fileSize);
++        Array.Copy(sizeBytes, 0, data, offset + 0x28, 8);
++        Array.Copy(sizeBytes, 0, data, offset + 0x30, 8);
++        Array.Copy(sizeBytes, 0, data, offset + 0x38, 8);
++        data[offset + 0x40] = 0x12;
++        data[offset + 0x41] = (byte)(clusterCount & 0xFF);
++        data[offset + 0x42] = (byte)((clusterCount >> 8) & 0xFF);
++        data[offset + 0x43] = (byte)(clusterOffset & 0xFF);
++        data[offset + 0x44] = 0x00;
++        return 0x48;
++    }
++
++    public static void WriteEndMarker(byte[] data, int offset)
++    {
++        data[offset] = 0xFF;
++        data[offset + 1] = 0xFF;
++        data[offset + 2] = 0xFF;
++        data[offset + 3] = 0xFF;
++    }
++}
+diff --git a/MFTLib/Broker/Host/JournalBrokerHost.Sources.cs b/MFTLib/Broker/Host/JournalBrokerHost.Sources.cs
+index 738dc12..d01c2c8 100644
+--- a/MFTLib/Broker/Host/JournalBrokerHost.Sources.cs
++++ b/MFTLib/Broker/Host/JournalBrokerHost.Sources.cs
+@@ -1,21 +1,21 @@
+ namespace MFTLib;
+ 
+ /// <summary>Supplies native record batches without path resolution for the broker's block writer.</summary>
+ public sealed partial class JournalBrokerHost
+ {
+     static IEnumerable<IReadOnlyList<MftRecord>> ScanDriveRecordBatches(
+         string driveLetter, IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
+     {
+         using var volume = MftVolume.Open(Bare(driveLetter));
+         var mftProgress = CreateMftProgressAdapter(progress);
+-        foreach (var batch in volume.ReadRecordBatches(resolvePaths: false, 4096, mftProgress))
++        foreach (var batch in volume.ReadRecordBatches(resolvePaths: false, 4096, mftProgress, null, cancellationToken))
+         {
+             cancellationToken.ThrowIfCancellationRequested();
+             var records = Array.FindAll(batch, record => record.InUse);
+             if (records.Length > 0)
+             {
+                 yield return records;
+             }
+         }
+     }
+ 
+diff --git a/MFTLib/Internal/MFTLibNative.cs b/MFTLib/Internal/MFTLibNative.cs
+index 0fae393..f81579f 100644
+--- a/MFTLib/Internal/MFTLibNative.cs
++++ b/MFTLib/Internal/MFTLibNative.cs
+@@ -2,70 +2,74 @@ using System.Runtime.InteropServices;
+ 
+ namespace MFTLib;
+ 
+ static class MFTLibNative
+ {
+     // .NET's DllImport resolver adds the right platform suffix:
+     //   Windows -> MFTLibNative.dll
+     //   Linux   -> libMFTLibNative.so
+     const string LibraryName = "MFTLibNative";
+ 
+-    internal const uint ExpectedMftNativeAbiVersion = 1;
++    internal const uint ExpectedMftNativeAbiVersion = 2;
+     internal const uint NativeCompactEntrySize = 50;
+ 
+     // Swappable function pointers - default to the native P/Invoke implementations.
+     // Tests or platforms without the native library can replace these.
+     internal static Func<uint> _getMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
+     internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr> _parseMftRecords = NativeParseMFTRecords;
+ 
+-    internal static Func<SafeHandle, string?, MatchFlags, uint, NativeMftProgressCallback?, IntPtr, IntPtr>
++    // The IntPtr after bufferSizeRecords is the caller's MftParseControl block, or zero for none.
++    // The callback carries its own state, so the native context argument is always zero.
++    internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr, NativeMftProgressCallback?, IntPtr>
+         _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
+ 
+     internal static Action<IntPtr> _freeMftResult = NativeFreeMftResult;
+     internal static Func<string, ulong, uint, bool> _generateSyntheticMft = NativeGenerateSyntheticMFT;
+     internal static Func<string, ulong, uint, uint, bool> _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
+     internal static Func<string, bool> _generateFixtureMft = NativeGenerateFixtureMFT;
+     internal static Func<string, string?, MatchFlags, uint, IntPtr> _parseMftFromFile = NativeParseMFTFromFile;
+     internal static Func<SafeHandle, IntPtr> _queryUsnJournal = NativeQueryUsnJournal;
+     internal static Action<IntPtr> _freeUsnJournalInfo = NativeFreeUsnJournalInfo;
+     internal static Func<SafeHandle, long, ulong, IntPtr> _readUsnJournal = NativeReadUsnJournal;
+     internal static Action<IntPtr> _freeUsnJournalResult = NativeFreeUsnJournalResult;
+     internal static Func<SafeHandle, long, ulong, IntPtr> _watchUsnJournalBatch = NativeWatchUsnJournalBatch;
+     internal static Func<SafeHandle, long, ulong, SafeHandle, IntPtr> _watchUsnJournalBatchCancelable =
+         NativeWatchUsnJournalBatchCancelable;
+     internal static Func<SafeHandle, bool> _cancelUsnJournalWatch = NativeCancelUsnJournalWatch;
+ 
+     static IntPtr NativeParseMFTRecordsWithProgressDefault(
+-        SafeHandle volumeHandle, string? filter, MatchFlags matchFlags, uint bufferSizeRecords,
+-        NativeMftProgressCallback? callback, IntPtr context)
++        SafeHandle volumeHandle, string? filter, MatchFlags matchFlags, uint bufferSizeRecords, IntPtr control,
++        NativeMftProgressCallback? callback)
+     {
+         if (_parseMftRecords != NativeParseMFTRecords)
+         {
+             return _parseMftRecords(volumeHandle, filter, matchFlags, bufferSizeRecords);
+         }
+ 
+-        return NativeParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, callback, context);
++        return NativeParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, control, callback,
++            IntPtr.Zero);
+     }
+ 
+     // P/Invoke declarations (private - all access goes through the Func fields)
+     [DllImport(LibraryName, EntryPoint = "GetMftNativeAbiVersion", CallingConvention = CallingConvention.Cdecl)]
+     static extern uint NativeGetMftNativeAbiVersion();
+ 
+     [DllImport(LibraryName, EntryPoint = "ParseMFTRecords", CallingConvention = CallingConvention.Cdecl,
+         CharSet = CharSet.Unicode)]
+     static extern IntPtr NativeParseMFTRecords(SafeHandle volumeHandle, string? filter, MatchFlags matchFlags,
+         uint bufferSizeRecords);
+ 
+     [DllImport(LibraryName, EntryPoint = "ParseMFTRecordsWithProgress", CallingConvention = CallingConvention.Cdecl,
+         CharSet = CharSet.Unicode)]
+     static extern IntPtr NativeParseMFTRecordsWithProgress(SafeHandle volumeHandle, string? filter,
+-        MatchFlags matchFlags, uint bufferSizeRecords, NativeMftProgressCallback? callback, IntPtr context);
++        MatchFlags matchFlags, uint bufferSizeRecords, IntPtr control, NativeMftProgressCallback? callback,
++        IntPtr context);
+ 
+     [DllImport(LibraryName, EntryPoint = "FreeMftResult", CallingConvention = CallingConvention.Cdecl)]
+     static extern void NativeFreeMftResult(IntPtr result);
+ 
+     [DllImport(LibraryName, EntryPoint = "GenerateSyntheticMFT", CallingConvention = CallingConvention.Cdecl,
+         CharSet = CharSet.Unicode)]
+     [return: MarshalAs(UnmanagedType.I1)]
+     static extern bool NativeGenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords);
+ 
+     [DllImport(LibraryName, EntryPoint = "GenerateSyntheticMFTSized", CallingConvention = CallingConvention.Cdecl,
+@@ -118,20 +122,26 @@ static class MFTLibNative
+     [DllImport(LibraryName, EntryPoint = "SetUsnIoSuccess", CallingConvention = CallingConvention.Cdecl)]
+     internal static extern unsafe void NativeSetUsnIoSuccess(byte* data, uint size);
+ 
+     [DllImport(LibraryName, EntryPoint = "SetUsnOverlappedAbort", CallingConvention = CallingConvention.Cdecl)]
+     internal static extern void NativeSetUsnOverlappedAbort();
+ 
+     [DllImport(LibraryName, EntryPoint = "SetUsnWatchPipe", CallingConvention = CallingConvention.Cdecl)]
+     internal static extern void NativeSetUsnWatchPipe(SafeHandle handle, SafeHandle beforeIssue,
+         SafeHandle continueIssue, SafeHandle issued, int gateReadNumber);
+ 
++    [DllImport(LibraryName, EntryPoint = "GetChunkThreadCounts", CallingConvention = CallingConvention.Cdecl)]
++    internal static extern unsafe uint NativeGetChunkThreadCounts(uint* counts, uint capacity);
++
++    [DllImport(LibraryName, EntryPoint = "GetResolveThreadCount", CallingConvention = CallingConvention.Cdecl)]
++    internal static extern uint NativeGetResolveThreadCount();
++
+     [DllImport(LibraryName, EntryPoint = "ResetTestState", CallingConvention = CallingConvention.Cdecl)]
+     internal static extern void NativeResetTestState();
+ 
+     // ParseMFTRecords overload that takes raw IntPtr handle (for testing with invalid handles)
+     [DllImport(LibraryName, EntryPoint = "ParseMFTRecords", CallingConvention = CallingConvention.Cdecl,
+         CharSet = CharSet.Unicode)]
+     internal static extern IntPtr NativeParseMFTRecordsRaw(IntPtr volumeHandle, string? filter, uint matchFlags,
+         uint bufferSizeRecords);
+ 
+     [DllImport(LibraryName, EntryPoint = "QueryUsnJournal", CallingConvention = CallingConvention.Cdecl)]
+diff --git a/MFTLib/Interop/MftParseControl.cs b/MFTLib/Interop/MftParseControl.cs
+new file mode 100644
+index 0000000..7b66473
+--- /dev/null
++++ b/MFTLib/Interop/MftParseControl.cs
+@@ -0,0 +1,12 @@
++using System.Runtime.InteropServices;
++
++namespace MFTLib.Interop;
++
++// Mirrors the native MftParseControl: caller-owned, kept in place for the whole parse call,
++// written by the caller and only read by the parser.
++[StructLayout(LayoutKind.Sequential, Pack = 1)]
++struct MftParseControl
++{
++    public int CancelRequested;
++    public int ParseThreadAllowance;
++}
+diff --git a/MFTLib/Interop/MftParseResult.cs b/MFTLib/Interop/MftParseResult.cs
+index b878a9a..b4aab33 100644
+--- a/MFTLib/Interop/MftParseResult.cs
++++ b/MFTLib/Interop/MftParseResult.cs
+@@ -18,11 +18,12 @@ struct MftParseResult
+     public double ParseTimeMs;
+     public double TotalTimeMs;
+ 
+     public IntPtr PathEntries; // MftCompactEntry*, set when path resolution is requested
+     public IntPtr EntryStrings; // ushort*
+     public ulong EntryStringUnits;
+     public IntPtr PathStrings; // ushort*
+     public ulong PathStringUnits;
+     public uint AbiVersion;
+     public uint EntryStride;
++    public uint Cancelled; // 1 when MftParseControl.CancelRequested stopped the parse
+ }
+diff --git a/MFTLib/Mft/MftResult.cs b/MFTLib/Mft/MftResult.cs
+index 0dbe7ba..aebff3d 100644
+--- a/MFTLib/Mft/MftResult.cs
++++ b/MFTLib/Mft/MftResult.cs
+@@ -5,26 +5,36 @@ using MFTLib.Interop;
+ 
+ namespace MFTLib;
+ 
+ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
+ {
+     readonly char _driveLetter;
+     readonly MftParseResult _result;
+     bool _disposed;
+     IntPtr _resultPtr;
+ 
+-    internal MftResult(IntPtr resultPtr, string driveLetter, double marshalMs)
++    // cancellationToken is the token that could have stopped the parse; a cancelled result throws
++    // OperationCanceledException carrying it.
++    internal MftResult(IntPtr resultPtr, string driveLetter, double marshalMs,
++        CancellationToken cancellationToken = default)
+     {
+         _resultPtr = resultPtr;
+         _result = Marshal.PtrToStructure<MftParseResult>(resultPtr);
+         _driveLetter = string.IsNullOrEmpty(driveLetter) ? '\0' : driveLetter[0];
+ 
++        if (_result.Cancelled != 0)
++        {
++            MFTLibNative._freeMftResult(resultPtr);
++            _resultPtr = IntPtr.Zero;
++            throw new OperationCanceledException(_result.ErrorMessage, cancellationToken);
++        }
++
+         if (!string.IsNullOrEmpty(_result.ErrorMessage))
+         {
+             MFTLibNative._freeMftResult(resultPtr);
+             _resultPtr = IntPtr.Zero;
+             throw new InvalidOperationException(_result.ErrorMessage);
+         }
+ 
+         if (_result.AbiVersion != MFTLibNative.ExpectedMftNativeAbiVersion)
+         {
+             MFTLibNative._freeMftResult(resultPtr);
+diff --git a/MFTLib/Mft/MftVolume.cs b/MFTLib/Mft/MftVolume.cs
+index 486d8c0..26285e8 100644
+--- a/MFTLib/Mft/MftVolume.cs
++++ b/MFTLib/Mft/MftVolume.cs
+@@ -1,11 +1,13 @@
+ using System.Diagnostics;
++using System.Runtime.InteropServices;
++using MFTLib.Interop;
+ using Microsoft.Win32.SafeHandles;
+ 
+ namespace MFTLib;
+ 
+ public sealed partial class MftVolume : IDisposable
+ {
+     readonly uint _bufferSizeRecords;
+     readonly string _driveLetter;
+     readonly string _volumePath;
+     readonly SafeFileHandle _volumeHandle;
+@@ -51,114 +53,166 @@ public sealed partial class MftVolume : IDisposable
+         return ReadAllRecords(resolvePaths, out _);
+     }
+ 
+     public MftRecord[] ReadAllRecords(out MftParseTimings timings)
+     {
+         return ReadAllRecords(false, out timings);
+     }
+ 
+     public MftRecord[] ReadAllRecords(bool resolvePaths, out MftParseTimings timings)
+     {
+-        using var result = StreamRecords(null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None);
++        using var result = StreamRecords(
++            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None, null, null, CancellationToken.None);
+         return MaterializeWithTimings(result, out timings);
+     }
+ 
+-    public IEnumerable<MftRecord[]> ReadRecordBatches(
+-        bool resolvePaths = false, int batchSize = 4096, IProgress<MftScanProgress>? progress = null)
++    /// <summary>
++    ///     Parses every record, then yields them in batches of at most <paramref name="batchSize" />.
++    ///     <paramref name="parseThreads" /> and <paramref name="cancellationToken" /> apply as in
++    ///     <see cref="StreamRecords" />; the token is also checked before each batch is yielded.
++    /// </summary>
++    public IEnumerable<MftRecord[]> ReadRecordBatches(bool resolvePaths, int batchSize,
++        IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads, CancellationToken cancellationToken)
+     {
+         using var result = StreamRecords(
+-            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None, progress);
++            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None, progress, parseThreads,
++            cancellationToken);
+         foreach (var batch in result.MaterializeBatches(batchSize))
+         {
++            cancellationToken.ThrowIfCancellationRequested();
+             yield return batch;
+         }
+     }
+ 
+     public MftRecord[] FindByName(string name, MatchFlags matchFlags = MatchFlags.ExactMatch)
+     {
+         return FindByName(name, matchFlags, out _);
+     }
+ 
+     public MftRecord[] FindByName(string name, MatchFlags matchFlags, out MftParseTimings timings)
+     {
+-        using var result = StreamRecords(name, matchFlags);
++        using var result = StreamRecords(name, matchFlags, null, null, CancellationToken.None);
+         return MaterializeWithTimings(result, out timings);
+     }
+ 
+     /// <summary>
+     ///     Parses MFT records, optionally reporting progress as the native scan runs.
+     /// </summary>
+     /// <param name="filter">An optional name filter passed to the native parser.</param>
+     /// <param name="matchFlags">Flags controlling how <paramref name="filter" /> is matched and whether paths are resolved.</param>
+     /// <param name="progress">
+     ///     Receives one <see cref="MftScanProgress" /> sample per native progress
+     ///     callback. <see cref="IProgress{T}.Report" /> is invoked synchronously while
+     ///     the parse and resolution passes run (serialized across native parse and
+     ///     resolve worker threads), not after they complete, so consumers must be
+     ///     thread-safe, implementations must be cheap, and must not throw:
+     ///     any exception raised while constructing a sample or reporting it is
+     ///     swallowed here to preserve the never-throw-across-the-unmanaged-boundary
+     ///     guarantee, and that sample is simply dropped.
+     /// </param>
+-    public MftResult StreamRecords(
+-        string? filter = null,
+-        MatchFlags matchFlags = MatchFlags.None,
+-        IProgress<MftScanProgress>? progress = null)
++    /// <param name="parseThreads">
++    ///     The thread count the parse reads at every chunk and before path resolution; null uses
++    ///     every processor.
++    /// </param>
++    /// <param name="cancellationToken">
++    ///     Stops the native parse between chunks, between 4096-record sub-slices, and between
++    ///     path-resolution slices; a stopped parse throws <see cref="OperationCanceledException" />.
++    /// </param>
++    public MftResult StreamRecords(string? filter, MatchFlags matchFlags, IProgress<MftScanProgress>? progress,
++        ParseThreadAllowance? parseThreads, CancellationToken cancellationToken)
+     {
+         ObjectDisposedException.ThrowIf(_disposed, this);
+         MFTLibNative.EnsureCompatibleNativeAbi();
+ 
+-        MFTLibNative.NativeMftProgressCallback? nativeCallback = progress != null
++        var nativeCallback = CreateNativeProgressCallback(progress);
++        var resultPtr = ParseWithControl(filter, matchFlags, nativeCallback, parseThreads, cancellationToken);
++        GC.KeepAlive(nativeCallback);
++
++        if (resultPtr == IntPtr.Zero)
++        {
++            throw new InvalidOperationException("ParseMFTRecords returned null");
++        }
++
++        return new MftResult(resultPtr, _driveLetter, 0, cancellationToken);
++    }
++
++    // Runs the native parse against a control block that stays at one address for the whole call:
++    // the allowance writes through to it and the token registration sets its cancellation flag,
++    // and both are released before it is freed.
++    unsafe IntPtr ParseWithControl(string? filter, MatchFlags matchFlags,
++        MFTLibNative.NativeMftProgressCallback? nativeCallback, ParseThreadAllowance? parseThreads,
++        CancellationToken cancellationToken)
++    {
++        var control = (MftParseControl*)NativeMemory.AllocZeroed((nuint)sizeof(MftParseControl));
++        try
++        {
++            parseThreads?.Attach(&control->ParseThreadAllowance);
++            try
++            {
++                var controlAddress = (IntPtr)control;
++                using var registration = cancellationToken.Register(() => RequestCancel(controlAddress));
++                return MFTLibNative._parseMftRecordsWithProgress(
++                    _volumeHandle, filter, matchFlags, _bufferSizeRecords, (IntPtr)control, nativeCallback);
++            }
++            finally
++            {
++                parseThreads?.Detach();
++            }
++        }
++        finally
++        {
++            NativeMemory.Free(control);
++        }
++    }
++
++    static unsafe void RequestCancel(IntPtr control)
++    {
++        Volatile.Write(ref ((MftParseControl*)control)->CancelRequested, 1);
++    }
++
++    static MFTLibNative.NativeMftProgressCallback? CreateNativeProgressCallback(IProgress<MftScanProgress>? progress)
++    {
++        return progress != null
+             ? (phase, recordsScanned, totalRecords, elapsedMs, _) =>
+             {
+                 try
+                 {
+                     var sample = new MftScanProgress(phase, (long)recordsScanned, (long)totalRecords,
+                         TimeSpan.FromMilliseconds(elapsedMs));
+                     progress.Report(sample);
+                 }
+                 catch
+                 {
+                     // Non-throwing adapter: never throw across unmanaged boundary. This
+                     // callback runs synchronously on the native parse thread, so a
+                     // malformed sample (e.g. NaN elapsedMs) or a throwing consumer must
+                     // not abort the parse - the sample is simply dropped.
+                 }
+             }
+         : null;
+-
+-        var resultPtr = MFTLibNative._parseMftRecordsWithProgress(
+-            _volumeHandle, filter, matchFlags, _bufferSizeRecords, nativeCallback, IntPtr.Zero);
+-        GC.KeepAlive(nativeCallback);
+-
+-        if (resultPtr == IntPtr.Zero)
+-        {
+-            throw new InvalidOperationException("ParseMFTRecords returned null");
+-        }
+-
+-        return new MftResult(resultPtr, _driveLetter, 0);
+     }
+ 
+ 
+     public IEnumerable<string> FindDirectories(string name)
+     {
+         return FindRecords(name, true);
+     }
+ 
+     public IEnumerable<string> FindFiles(string name)
+     {
+         return FindRecords(name, false);
+     }
+ 
+     public IEnumerable<string> FindRecords(string name, bool? isDirectory = null)
+     {
+-        using var result = StreamRecords(name, MatchFlags.ExactMatch | MatchFlags.ResolvePaths);
++        using var result = StreamRecords(
++            name, MatchFlags.ExactMatch | MatchFlags.ResolvePaths, null, null, CancellationToken.None);
+ 
+         foreach (var record in result)
+         {
+             if (isDirectory.HasValue && record.IsDirectory != isDirectory.Value)
+             {
+                 continue;
+             }
+ 
+             yield return record.FullPath ?? record.FileName;
+         }
+diff --git a/MFTLib/Mft/ParseThreadAllowance.cs b/MFTLib/Mft/ParseThreadAllowance.cs
+new file mode 100644
+index 0000000..b94d8f2
+--- /dev/null
++++ b/MFTLib/Mft/ParseThreadAllowance.cs
+@@ -0,0 +1,76 @@
++namespace MFTLib;
++
++/// <summary>
++///     The number of threads an MFT parse may use. The parser reads it at the start of every chunk
++///     and again before path resolution, so a change made while a parse runs takes effect at the next
++///     of those points; a chunk already in progress finishes with the count it started with. The
++///     parser never uses more threads than the machine has processors.
++/// </summary>
++public sealed class ParseThreadAllowance
++{
++    readonly Lock _gate = new();
++    int _count;
++    unsafe int* _attachedField;
++
++    public ParseThreadAllowance(int count)
++    {
++        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
++        _count = count;
++    }
++
++    /// <summary>
++    ///     The thread count, at least 1. While a parse runs, a write goes through to that parse's
++    ///     control block.
++    /// </summary>
++    public int Count
++    {
++        get
++        {
++            lock (_gate)
++            {
++                return _count;
++            }
++        }
++        set
++        {
++            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1);
++            lock (_gate)
++            {
++                _count = value;
++                WriteThroughLocked();
++            }
++        }
++    }
++
++    // Binds this allowance to the parseThreadAllowance field of a control block the caller keeps
++    // in place until Detach, and copies the current count into it.
++    internal unsafe void Attach(int* allowanceField)
++    {
++        lock (_gate)
++        {
++            if (_attachedField != null)
++            {
++                throw new InvalidOperationException("The parse thread allowance is already attached to a running parse.");
++            }
++
++            _attachedField = allowanceField;
++            WriteThroughLocked();
++        }
++    }
++
++    internal unsafe void Detach()
++    {
++        lock (_gate)
++        {
++            _attachedField = null;
++        }
++    }
++
++    unsafe void WriteThroughLocked()
++    {
++        if (_attachedField != null)
++        {
++            Volatile.Write(ref *_attachedField, _count);
++        }
++    }
++}
+diff --git a/MFTLibNative/core/test_hooks.cpp b/MFTLibNative/core/test_hooks.cpp
+index 73d36e2..f289a25 100644
+--- a/MFTLibNative/core/test_hooks.cpp
++++ b/MFTLibNative/core/test_hooks.cpp
+@@ -1,54 +1,86 @@
+ #include "pch.h"
+ 
+ #include <algorithm>
+ #include <array>
++#include <mutex>
+ #include <thread>
+ 
+ #include "../internal.h"
++#include "../mft_api.h"
+ 
+ namespace {
+ unsigned g_maxThreads = 0;
+ int g_allocFailCountdown = 0;
+ int g_readFailCountdown = 0;
+ uint64_t g_namePoolCapacityOverride = 0;
+ int g_failFileSize = 0;
+ int g_failPathConversion = 0;
+ int g_failPlatformReadCountdown = 0;
+ int g_failPlatformWrite = 0;
+ uint32_t g_volumeRecordSizeOverride = 0;
++// What the most recent parse used per chunk and for path resolution. Chunks past the
++// array's capacity are not recorded; a parse only resets and appends, so it never blocks.
++std::mutex g_parseThreadCountsMutex;
++std::array<unsigned, 1024> g_chunkThreadCounts = {};
++unsigned g_chunkThreadCountLength = 0;
++unsigned g_resolveThreadCount = 0;
+ #ifdef _WIN32
+ DWORD g_usnIoFailError = 0;
+ int g_usnIoFailCountdown = 0;
+ // Ring queue of synthetic IOCTL success responses (buffers owned by the caller).
+ std::array<const uint8_t*, 8> g_usnIoData = {};
+ std::array<uint32_t, 8> g_usnIoSize = {};
+ int g_usnIoHead = 0;
+ int g_usnIoCount = 0;
+ int g_usnOverlappedAbort = 0;
+ HANDLE g_usnWatchPipe = nullptr;
+ HANDLE g_usnBeforeIssue = nullptr;
+ HANDLE g_usnContinueIssue = nullptr;
+ HANDLE g_usnIssued = nullptr;
+ int g_usnGateReadNumber = 0;
+ #endif
+ }  // namespace
+ 
+-unsigned EffectiveThreadCount() {
+-    unsigned threadCount = std::thread::hardware_concurrency();
+-    threadCount = std::max<unsigned int>(threadCount, 1);
++unsigned EffectiveThreadCount(const MftParseControl* control) {
++    const unsigned processorCount = std::max<unsigned int>(std::thread::hardware_concurrency(), 1);
++    unsigned threadCount = processorCount;
++    if (control != nullptr) {
++        const int32_t allowance = LoadSharedInt32(&control->parseThreadAllowance);
++        if (allowance != 0) {
++            threadCount = static_cast<unsigned>(std::clamp<int64_t>(allowance, 1, processorCount));
++        }
++    }
+     if (g_maxThreads > 0 && g_maxThreads < threadCount) {
+         threadCount = g_maxThreads;
+     }
+     return threadCount;
+ }
+ 
++void ResetRecordedParseThreadCounts() {
++    std::scoped_lock lock(g_parseThreadCountsMutex);
++    g_chunkThreadCountLength = 0;
++    g_resolveThreadCount = 0;
++}
++
++void RecordChunkThreadCount(unsigned threadCount) {
++    std::scoped_lock lock(g_parseThreadCountsMutex);
++    if (g_chunkThreadCountLength < g_chunkThreadCounts.size()) {
++        g_chunkThreadCounts[g_chunkThreadCountLength++] = threadCount;
++    }
++}
++
++void RecordResolveThreadCount(unsigned threadCount) {
++    std::scoped_lock lock(g_parseThreadCountsMutex);
++    g_resolveThreadCount = threadCount;
++}
++
+ bool ShouldFailAlloc() {
+     if (g_allocFailCountdown <= 0) {
+         return false;
+     }
+     return --g_allocFailCountdown == 0;
+ }
+ 
+ bool ShouldFailRead() {
+     if (g_readFailCountdown <= 0) {
+         return false;
+@@ -137,20 +169,35 @@ bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesRe
+ extern "C" {
+ EXPORT void SetMaxThreads(unsigned maxThreads) { g_maxThreads = maxThreads; }
+ EXPORT void SetAllocFailCountdown(int countdown) { g_allocFailCountdown = countdown; }
+ EXPORT void SetReadFailCountdown(int countdown) { g_readFailCountdown = countdown; }
+ EXPORT void SetNamePoolCapacityOverride(uint64_t bytes) { g_namePoolCapacityOverride = bytes; }
+ EXPORT void SetFailFileSize(int fail) { g_failFileSize = fail; }
+ EXPORT void SetFailPathConversion(int fail) { g_failPathConversion = fail; }
+ EXPORT void SetFailPlatformRead(int countdown) { g_failPlatformReadCountdown = countdown; }
+ EXPORT void SetFailPlatformWrite(int fail) { g_failPlatformWrite = fail; }
+ EXPORT void SetVolumeRecordSizeOverride(uint32_t recordSize) { g_volumeRecordSizeOverride = recordSize; }
++
++// Copies the thread count each chunk of the most recent parse used, in order, into counts
++// and returns how many were copied (at most capacity).
++EXPORT unsigned GetChunkThreadCounts(unsigned* counts, unsigned capacity) {
++    std::scoped_lock lock(g_parseThreadCountsMutex);
++    const unsigned copied = (std::min)(capacity, g_chunkThreadCountLength);
++    std::copy_n(g_chunkThreadCounts.begin(), copied, counts);
++    return copied;
++}
++
++// The thread count path resolution of the most recent parse used; 0 when it did not run.
++EXPORT unsigned GetResolveThreadCount() {
++    std::scoped_lock lock(g_parseThreadCountsMutex);
++    return g_resolveThreadCount;
++}
+ #ifdef _WIN32
+ // C-ABI test hook; (error, countdown) order is fixed by the C# P/Invoke harness.
+ // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+ EXPORT void SetUsnIoFailError(DWORD error, int countdown) {
+     g_usnIoFailError = error;
+     g_usnIoFailCountdown = countdown;
+ }
+ 
+ // Enqueue one synthetic IOCTL success buffer. The caller owns the buffer and
+ // must keep it alive until the matching native call consumes it.
+@@ -175,20 +222,21 @@ EXPORT void SetUsnWatchPipe(HANDLE handle, HANDLE beforeIssue, HANDLE continueIs
+ EXPORT void ResetTestState() {
+     g_maxThreads = 0;
+     g_allocFailCountdown = 0;
+     g_readFailCountdown = 0;
+     g_namePoolCapacityOverride = 0;
+     g_failFileSize = 0;
+     g_failPathConversion = 0;
+     g_failPlatformReadCountdown = 0;
+     g_failPlatformWrite = 0;
+     g_volumeRecordSizeOverride = 0;
++    ResetRecordedParseThreadCounts();
+     g_usnIoFailError = 0;
+     g_usnIoFailCountdown = 0;
+     g_usnIoHead = 0;
+     g_usnIoCount = 0;
+     g_usnOverlappedAbort = 0;
+     g_usnWatchPipe = nullptr;
+     g_usnBeforeIssue = nullptr;
+     g_usnContinueIssue = nullptr;
+     g_usnIssued = nullptr;
+     g_usnGateReadNumber = 0;
+@@ -197,13 +245,14 @@ EXPORT void ResetTestState() {
+ EXPORT void ResetTestState() {
+     g_maxThreads = 0;
+     g_allocFailCountdown = 0;
+     g_readFailCountdown = 0;
+     g_namePoolCapacityOverride = 0;
+     g_failFileSize = 0;
+     g_failPathConversion = 0;
+     g_failPlatformReadCountdown = 0;
+     g_failPlatformWrite = 0;
+     g_volumeRecordSizeOverride = 0;
++    ResetRecordedParseThreadCounts();
+ }
+ #endif
+ }
+diff --git a/MFTLibNative/internal.h b/MFTLibNative/internal.h
+index 7a32fef..bc3f630 100644
+--- a/MFTLibNative/internal.h
++++ b/MFTLibNative/internal.h
+@@ -1,12 +1,13 @@
+ #pragma once
+ 
++#include <atomic>
+ #include <chrono>
+ #include <cassert>
+ #include <cstdio>
+ #include <cstdint>
+ 
+ #ifdef _WIN32
+     #define EXPORT __declspec(dllexport)
+ #else
+     #define EXPORT __attribute__((visibility("default")))
+ #endif
+@@ -33,22 +34,46 @@ void SetErrorMessageBuffer(wchar_t* buffer, size_t bufferLength, const wchar_t*
+ #endif
+     assert(written >= 0 && "error message truncated");
+ }
+ 
+ template <size_t N, typename... Args>
+ // NOLINTNEXTLINE(modernize-avoid-c-arrays): array-reference parameter deduces the fixed C-ABI buffer size
+ void SetErrorMessage(wchar_t (&buffer)[N], const wchar_t* format, Args... arguments) {
+     SetErrorMessageBuffer(buffer, N, format, arguments...);
+ }
+ 
++// Reads a 32-bit field that another thread (the managed caller) may write while it is read.
++// An aligned 32-bit load is single-copy atomic on every supported target; the acquire
++// fence keeps later reads from moving ahead of it.
++inline int32_t LoadSharedInt32(const int32_t* field) {
++#ifdef _WIN32
++    int32_t value = *static_cast<const volatile int32_t*>(field);
++    std::atomic_thread_fence(std::memory_order_acquire);
++    return value;
++#else
++    return __atomic_load_n(field, __ATOMIC_ACQUIRE);
++#endif
++}
++
++struct MftParseControl;
++
++// The parse thread count for one chunk or for path resolution: every processor when control
++// is null or its allowance is 0, otherwise the allowance clamped to [1, processors]. The
++// SetMaxThreads test hook caps the result. Defined in core/test_hooks.cpp.
++unsigned EffectiveThreadCount(const MftParseControl* control);
++// Test hook recording (defined in core/test_hooks.cpp): what each chunk and path resolution
++// of the most recent parse used, read back through GetChunkThreadCounts and GetResolveThreadCount.
++void ResetRecordedParseThreadCounts();
++void RecordChunkThreadCount(unsigned threadCount);
++void RecordResolveThreadCount(unsigned threadCount);
++
+ // Test hook declarations (defined in core/test_hooks.cpp)
+-unsigned EffectiveThreadCount();
+ bool ShouldFailAlloc();
+ bool ShouldFailRead();
+ uint64_t NamePoolCapacityOverride();
+ bool ShouldFailFileSize();
+ bool ShouldFailPathConversion();
+ // Force the platform positioned read/write to take their failure branch, so
+ // pread_at/pwrite_at error handling is coverable without a real I/O failure.
+ bool ShouldFailPlatformRead();
+ bool ShouldFailPlatformWrite();
+ uint32_t VolumeRecordSizeOverride();
+diff --git a/MFTLibNative/mft/mft.internal.h b/MFTLibNative/mft/mft.internal.h
+index 3e03f66..b4be281 100644
+--- a/MFTLibNative/mft/mft.internal.h
++++ b/MFTLibNative/mft/mft.internal.h
+@@ -142,32 +142,35 @@ struct CompactOutput {
+     uint64_t entryCount = 0;
+     uint64_t entryCapacity = 0;
+     uint16_t* strings = nullptr;
+     uint64_t stringUnits = 0;
+     uint64_t stringCapacity = 0;
+ };
+ 
+ // Read-only inputs that steer record scanning: the name filter, the optional
+ // path-lookup table (null when paths aren't resolved), and the total record
+ // count. Threaded through the scan pipeline as one const& instead of three
+-// same-purpose arguments that could be transposed at a call site.
++// same-purpose arguments that could be transposed at a call site. control is the
++// caller's cancellation flag and thread allowance (null when the caller supplied none).
+ struct ScanContext {
+     FilterSpec filter{};
+     PathLookup* lookup = nullptr;
+     uint64_t totalRecords = 0;
+     ParseGeometry geometry{};
++    const MftParseControl* control = nullptr;
+ };
+ 
+ constexpr uint32_t MAX_NTFS_PATH_UNITS = 32767;
+ 
+ bool ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalRecords, std::vector<uint16_t>& path);
+ bool AppendSlice(CompactOutput& output, const SliceResult& slice, wchar_t* errorMessage);
+ void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
+                         const ScanContext& scan);
+-void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, SliceResult& batchSlice,
+-                        const ScanContext& scan);
+ 
+ using ReadChunkFn = uint64_t (*)(void* context, uint8_t* targetBuffer, double& ioMs);
+ 
++// control may be null (every processor, never cancelled). A parse stopped by
++// control->cancelRequested returns a result with no entries, cancelled set to 1 and
++// errorMessage "Parse cancelled".
+ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
+-                             uint32_t bufferSizeRecords, ParseGeometry geometry, MftProgressCallback callback = nullptr,
+-                             void* progressContext = nullptr);
++                             uint32_t bufferSizeRecords, ParseGeometry geometry, const MftParseControl* control,
++                             MftProgressCallback callback = nullptr, void* progressContext = nullptr);
+diff --git a/MFTLibNative/mft/mft.parse.cpp b/MFTLibNative/mft/mft.parse.cpp
+index f6577b0..ad55c2a 100644
+--- a/MFTLibNative/mft/mft.parse.cpp
++++ b/MFTLibNative/mft/mft.parse.cpp
+@@ -257,21 +257,21 @@ MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filte
+     }
+ 
+     if (static_cast<uint64_t>(fileSize) % geometry->recordSize != 0) {
+         mftlib::platform::close_file(file);
+         return CreateErrorResult(L"File size is not a whole multiple of record size");
+     }
+ 
+     uint64_t totalRecords = static_cast<uint64_t>(fileSize) / geometry->recordSize;
+     FileReadContext ctx = {file, totalRecords, bufferSizeRecords, 0, *geometry};
+     auto* result = ParseMFTImpl(FileReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords,
+-                                *geometry, callback, context);
++                                *geometry, nullptr, callback, context);
+     mftlib::platform::close_file(file);
+     return result;
+ }
+ 
+ }  // namespace
+ 
+ extern "C" {
+ EXPORT uint32_t GetMftNativeAbiVersion() { return MFT_NATIVE_ABI_VERSION; }
+ 
+ EXPORT void FreeMftResult(MftParseResult* result) {
+@@ -279,22 +279,22 @@ EXPORT void FreeMftResult(MftParseResult* result) {
+         free(result->entries);
+         free(result->pathEntries);
+         free(result->entryStrings);
+         free(result->pathStrings);
+         free(result);
+     }
+ }
+ 
+ #ifdef _WIN32
+ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags,
+-                                                   uint32_t bufferSizeRecords, MftProgressCallback callback,
+-                                                   void* context) {
++                                                   uint32_t bufferSizeRecords, const MftParseControl* control,
++                                                   MftProgressCallback callback, void* context) {
+     auto* result = CreateEmptyResult();
+     if (result == nullptr) {
+         return nullptr;
+     }
+ 
+     if (volumeHandle == INVALID_HANDLE_VALUE) {
+         SetErrorMessage(result->errorMessage, L"Volume handle is invalid");
+         return result;
+     }
+ 
+@@ -356,26 +356,26 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wc
+     ctx.mftRuns = &mftRuns;
+     ctx.bytesPerCluster = bytesPerCluster;
+     ctx.runIndex = 0;
+     ctx.filesRemaining = mftRuns[0].clusterCount * bytesPerCluster / geometry->recordSize;
+     ctx.positionInBlock = 0;
+     ctx.bufferSizeRecords = bufferSizeRecords;
+     ctx.geometry = *geometry;
+ 
+     free(result);
+     return ParseMFTImpl(VolumeReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords,
+-                        *geometry, callback, context);
++                        *geometry, control, callback, context);
+ }
+ 
+ EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags,
+                                        uint32_t bufferSizeRecords) {
+-    return ParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, nullptr, nullptr);
++    return ParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, nullptr, nullptr, nullptr);
+ }
+ 
+ // C-ABI export; (filePath, filter) order is fixed by the C# P/Invoke signature.
+ // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+ EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* filter, uint32_t matchFlags,
+                                         uint32_t bufferSizeRecords) {
+     int u8len =
+         ShouldFailPathConversion() ? 0 : WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
+     if (u8len <= 0) {
+         auto* result = CreateEmptyResult();
+@@ -386,27 +386,28 @@ EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t*
+     }
+     std::string utf8(static_cast<size_t>(u8len - 1), '\0');
+     WideCharToMultiByte(CP_UTF8, 0, filePath, -1, utf8.data(), u8len, nullptr, nullptr);
+     return ParseMFTFromFileImpl(utf8.c_str(), filter, matchFlags, bufferSizeRecords);
+ }
+ #endif  // _WIN32
+ 
+ #ifndef _WIN32
+ EXPORT MftParseResult* ParseMFTRecordsWithProgress(void* /*volumeHandle*/, const wchar_t* /*filter*/,
+                                                    uint32_t /*matchFlags*/, uint32_t /*bufferSizeRecords*/,
+-                                                   MftProgressCallback /*callback*/, void* /*context*/) {
++                                                   const MftParseControl* /*control*/, MftProgressCallback /*callback*/,
++                                                   void* /*context*/) {
+     return CreateErrorResult(L"Direct volume parsing is not supported on Linux");
+ }
+ 
+ EXPORT MftParseResult* ParseMFTRecords(void* volumeHandle, const wchar_t* filter, uint32_t matchFlags,
+                                        uint32_t bufferSizeRecords) {
+-    return ParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, nullptr, nullptr);
++    return ParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, nullptr, nullptr, nullptr);
+ }
+ 
+ EXPORT MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,
+                                             uint32_t bufferSizeRecords) {
+     return ParseMFTFromFileImpl(filePath, filter, matchFlags, bufferSizeRecords);
+ }
+ 
+ EXPORT MftParseResult* ParseMFTFromFileUtf8WithProgress(const char* filePath, const wchar_t* filter,
+                                                         uint32_t matchFlags, uint32_t bufferSizeRecords,
+                                                         MftProgressCallback callback, void* context) {
+diff --git a/MFTLibNative/mft/mft.parse_core.cpp b/MFTLibNative/mft/mft.parse_core.cpp
+index ec1416f..a2e967d 100644
+--- a/MFTLibNative/mft/mft.parse_core.cpp
++++ b/MFTLibNative/mft/mft.parse_core.cpp
+@@ -1,11 +1,12 @@
+ // Part of the mft component. Included by mft.cpp; do not compile directly.
++// Over 500 lines: the chunk loop, path resolution and their shared cancellation helpers are one pipeline.
+ #ifndef AISLOP_TU_FRAGMENT
+     #error "mft.parse_core.cpp is a fragment included by mft.cpp; do not compile it directly"
+ #endif
+ 
+ #include <algorithm>
+ #include <array>
+ #include <atomic>
+ #include <cstdlib>
+ #include <cstring>
+ #include <mutex>
+@@ -87,31 +88,72 @@ bool AllocateParseBuffers(std::array<uint8_t*, 2>& buf, size_t bufSize, PathLook
+         mftlib::platform::big_free(buf[1], bufSize);
+         if (resolvePaths) {
+             lookup.cleanup();
+         }
+         SetErrorMessage(result->errorMessage, L"Failed to allocate string pool");
+         return false;
+     }
+     return true;
+ }
+ 
++// A parse checks for cancellation between sub-slices of this many records.
++constexpr uint64_t kCancelCheckRecords = 4096;
++
++enum class ParseOutcome : uint8_t { Completed, Failed, Cancelled };
++
++bool IsCancelRequested(const MftParseControl* control) {
++    return control != nullptr && LoadSharedInt32(&control->cancelRequested) != 0;
++}
++
+ // Apply USA fixups to every valid record in buffer[range.start, range.end).
+ void FixupRange(uint8_t* buffer, SliceRange range, ParseGeometry geometry) {
+     for (uint64_t i = range.start; i < range.end; i++) {
+         auto* recPtr = buffer + (static_cast<size_t>(geometry.recordSize) * i);
+         const auto* rec = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(recPtr);
+         if (rec->MultiSectorHeader.Magic == 0x454C4946) {
+             ApplyFixup(recPtr, geometry.recordSize);
+         }
+     }
+ }
+ 
++// Fix up and parse buffer[range) in kCancelCheckRecords-record sub-slices, stopping between
++// sub-slices once cancellation is requested. Returns the milliseconds the fixups took.
++double FixupAndParseSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult& slice,
++                          const ScanContext& scan) {
++    double fixupMs = 0.0;
++    for (uint64_t start = range.start; start < range.end && !IsCancelRequested(scan.control);
++         start += kCancelCheckRecords) {
++        const SliceRange subSlice{start, (std::min)(start + kCancelCheckRecords, range.end)};
++        auto fixupStart = SteadyClock::now();
++        FixupRange(buffer, subSlice, scan.geometry);
++        fixupMs += ElapsedMs(fixupStart, SteadyClock::now());
++        ProcessRecordSlice(buffer, subSlice, recordBase, &slice, scan);
++    }
++    return fixupMs;
++}
++
++// Fix up and parse one chunk on the calling thread, then merge it.
++// Returns false if the merge ran out of memory (error already set).
++bool ParseChunkSerial(uint8_t* buffer, ChunkSpan chunk, const ScanContext& scan, ParseState& state,
++                      MftParseResult* result) {
++    SliceResult batchSlice;
++    batchSlice.entries.reserve((scan.filter.text != nullptr) ? 64 : chunk.chunkSize / 4);
++    batchSlice.strings.reserve(batchSlice.entries.capacity() * 32);
++
++    auto parseStart = SteadyClock::now();
++    double fixupMs = FixupAndParseSlice(buffer, SliceRange{0, chunk.chunkSize}, chunk.recordIndex, batchSlice, scan);
++    state.fixupMs += fixupMs;
++    state.parseMs += ElapsedMs(parseStart, SteadyClock::now()) - fixupMs;
++
++    return AppendSlice(state.output, batchSlice, result->errorMessage);
++}
++
+ // Fix up and parse one chunk across numThreads workers, then merge their slices.
+ // Returns false if the merge ran out of memory (error already set).
+ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, const ScanContext& scan,
+                         ParseState& state, MftParseResult* result) {
+     auto fixupStart = SteadyClock::now();
+     uint64_t perThread = (chunk.chunkSize + numThreads - 1) / numThreads;
+     std::vector<SliceResult> slices(numThreads);
+     std::vector<std::thread> workers;
+     std::vector<double> threadFixupMs(numThreads, 0.0);
+     unsigned actualThreads = 0;
+@@ -122,24 +164,21 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
+         if (tStart >= chunk.chunkSize) {
+             break;
+         }
+         actualThreads++;
+         uint64_t initCap = (scan.filter.text != nullptr) ? 64 : (tEnd - tStart) / 4;
+         initCap = std::max<uint64_t>(initCap, 64);
+         slices[ti].entries.reserve(initCap);
+         slices[ti].strings.reserve(initCap * 32);
+         uint64_t recordIndex = chunk.recordIndex;
+         workers.emplace_back([buffer, tStart, tEnd, ti, &slices, &threadFixupMs, scan, recordIndex]() {
+-            auto fStart = SteadyClock::now();
+-            FixupRange(buffer, SliceRange{tStart, tEnd}, scan.geometry);
+-            threadFixupMs[ti] = ElapsedMs(fStart, SteadyClock::now());
+-            ProcessRecordSlice(buffer, SliceRange{tStart, tEnd}, recordIndex, &slices[ti], scan);
++            threadFixupMs[ti] = FixupAndParseSlice(buffer, SliceRange{tStart, tEnd}, recordIndex, slices[ti], scan);
+         });
+     }
+     for (auto& worker : workers) {
+         worker.join();
+     }
+ 
+     double totalElapsed = ElapsedMs(fixupStart, SteadyClock::now());
+     double maxFixup =
+         (actualThreads > 0) ? *std::max_element(threadFixupMs.begin(), threadFixupMs.begin() + actualThreads) : 0.0;
+     state.fixupMs += maxFixup;
+@@ -155,20 +194,21 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
+ 
+ struct ProgressHook {
+     MftProgressCallback callback = nullptr;
+     void* context = nullptr;
+     SteadyClock::time_point wallStart;
+ };
+ 
+ struct ResolveProgressState {
+     MftProgressCallback callback = nullptr;
+     void* context = nullptr;
++    const MftParseControl* control = nullptr;
+     SteadyClock::time_point wallStart;
+     uint64_t totalEntries = 0;
+     uint64_t entriesResolved = 0;
+     std::mutex callbackMutex;
+ 
+     void reportBatch(uint64_t batchCount) {
+         if (callback == nullptr) {
+             return;
+         }
+         std::lock_guard<std::mutex> lock(callbackMutex);
+@@ -187,268 +227,296 @@ struct ResolveProgressState {
+         if (callback == nullptr) {
+             return;
+         }
+         std::lock_guard<std::mutex> lock(callbackMutex);
+         entriesResolved = totalEntries;
+         double elapsedMs = ElapsedMs(wallStart, SteadyClock::now());
+         callback(MftScanPhase::ResolvingPaths, totalEntries, totalEntries, elapsedMs, context);
+     }
+ };
+ 
++// Resolve the paths of source.entries[range), stopping between kCancelCheckRecords-entry
++// slices once cancellation is requested.
+ void PopulatePathSlice(SliceRange range, const CompactOutput& source, const PathLookup& lookup, uint64_t totalRecords,
+                        SliceResult& slice, ResolveProgressState* progressState) {
+     std::vector<uint16_t> pathBuffer;
+     slice.entries.reserve(range.end - range.start);
+     constexpr uint64_t kReportInterval = 4096;
+     uint64_t localCount = 0;
+ 
+     for (uint64_t i = range.start; i < range.end; i++) {
++        if ((i - range.start) % kCancelCheckRecords == 0 && IsCancelRequested(progressState->control)) {
++            return;
++        }
+         const auto& src = source.entries[i];
+         ParsedEntry entry{};
+         entry.recordNumber = src.recordNumber;
+         entry.parentRecordNumber = src.parentRecordNumber;
+         entry.flags = src.flags;
+         entry.fileAttributes = src.fileAttributes;
+         entry.sequenceNumber = src.sequenceNumber;
+         entry.size = src.size;
+         entry.modifiedTime = src.modifiedTime;
+         if (ResolvePath(src.recordNumber, lookup, totalRecords, pathBuffer)) {
+             entry.name = reinterpret_cast<const WCHAR*>(pathBuffer.data());
+             entry.nameLength = static_cast<uint16_t>(pathBuffer.size());
+         } else {
+             entry.name = nullptr;
+             entry.nameLength = 0;
+         }
+         slice.append(entry);
+ 
+-        if (progressState != nullptr && ++localCount >= kReportInterval) {
++        if (++localCount >= kReportInterval) {
+             progressState->reportBatch(localCount);
+             localCount = 0;
+         }
+     }
+ 
+-    if (progressState != nullptr && localCount > 0) {
++    if (localCount > 0) {
+         progressState->reportBatch(localCount);
+     }
+ }
+ 
+-// Resolve a full path for every parsed entry, fanning out across numThreads workers.
+-void ResolveAllPaths(uint64_t totalRecords, const PathLookup& lookup, unsigned numThreads, ParseState& state,
+-                     MftParseResult* result, const ProgressHook& progress) {
++// Resolve a full path for every parsed entry through scan.lookup (non-null), fanning out across
++// numThreads workers. Returns false when cancellation stopped it; nothing is published then.
++bool ResolveAllPaths(const ScanContext& scan, unsigned numThreads, ParseState& state, MftParseResult* result,
++                     const ProgressHook& progress) {
++    const PathLookup& lookup = *scan.lookup;
++    const uint64_t totalRecords = scan.totalRecords;
+     uint64_t usedCount = state.output.entryCount;
+-    if (usedCount == 0) {
+-        return;
+-    }
+-
+     CompactOutput paths;
+     paths.entryCapacity = usedCount;
+     paths.entries =
+         ShouldFailAlloc()
+             ? nullptr
+             : static_cast<MftCompactEntry*>(malloc(static_cast<size_t>(usedCount) * sizeof(MftCompactEntry)));
+     if (paths.entries == nullptr) {
+-        return;
++        return true;
+     }
+ 
+     paths.stringCapacity = std::max<uint64_t>(state.output.stringUnits, 1024);
+     paths.strings = ShouldFailAlloc()
+                         ? nullptr
+                         : static_cast<uint16_t*>(malloc(static_cast<size_t>(paths.stringCapacity) * sizeof(uint16_t)));
+     if (paths.strings == nullptr) {
+         free(paths.entries);
+-        return;
++        return true;
+     }
+ 
+     ResolveProgressState progressState;
+     progressState.callback = progress.callback;
+     progressState.context = progress.context;
++    progressState.control = scan.control;
+     progressState.wallStart = progress.wallStart;
+     progressState.totalEntries = usedCount;
+ 
+     std::vector<SliceResult> pathSlices(numThreads);
+     if (numThreads > 1) {
+         uint64_t perThread = (usedCount + numThreads - 1) / numThreads;
+         std::vector<std::thread> workers;
+         for (unsigned ti = 0; ti < numThreads; ti++) {
+             uint64_t start = (std::min)(static_cast<uint64_t>(ti) * perThread, usedCount);
+             uint64_t end = (std::min)(start + perThread, usedCount);
+             workers.emplace_back(PopulatePathSlice, SliceRange{start, end}, std::cref(state.output), std::cref(lookup),
+                                  totalRecords, std::ref(pathSlices[ti]), &progressState);
+         }
+         for (auto& worker : workers) {
+             worker.join();
+         }
+     } else {
+         PopulatePathSlice(SliceRange{0, usedCount}, state.output, lookup, totalRecords, pathSlices[0], &progressState);
+     }
+ 
++    if (IsCancelRequested(scan.control)) {
++        free(paths.entries);
++        free(paths.strings);
++        return false;
++    }
++
+     std::array<wchar_t, 256> dummyError{};
+     bool appendOk = true;
+     for (unsigned ti = 0; ti < numThreads; ti++) {
+         if (!AppendSlice(paths, pathSlices[ti], dummyError.data())) {
+             appendOk = false;
+             break;
+         }
+     }
+ 
+     if (!appendOk) {
+         free(paths.entries);
+         free(paths.strings);
+-        return;
++        return true;
+     }
+ 
+     // Atomic publication on success
+     result->pathEntries = paths.entries;
+     result->pathStrings = paths.strings;
+     result->pathStringUnits = paths.stringUnits;
+     free(state.output.entries);
+     free(state.output.strings);
+     state.output.entries = nullptr;
+     state.output.strings = nullptr;
+     progressState.reportFinal();
+     state.output.entryCount = 0;
+     state.output.stringUnits = 0;
+     state.output.entryCapacity = 0;
+     state.output.stringCapacity = 0;
++    return true;
+ }
+ 
+-// Drive the double-buffered read/parse loop over every chunk. Returns false if a
+-// chunk's merge ran out of memory (result error already set; buffers freed by caller).
+-bool ParseAllChunks(ChunkReader& reader, unsigned numThreads, const ScanContext& scan, ParseState& state,
+-                    MftParseResult* result, const ProgressHook& progress) {
++// Drive the double-buffered read/parse loop over every chunk. Each chunk reads the thread
++// allowance once at its start and keeps that count until it is merged. Failed means a chunk's
++// merge ran out of memory (result error already set); Cancelled means cancellation was seen
++// before a chunk read or after a chunk's parse. Buffers are freed by the caller either way.
++ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseState& state, MftParseResult* result,
++                            const ProgressHook& progress) {
++    if (IsCancelRequested(scan.control)) {
++        return ParseOutcome::Cancelled;
++    }
+     uint64_t recordIndex = 0;
+     uint64_t lastReportedRecords = 0;
+     uint64_t currentChunkSize = reader.readChunk(reader.readContext, (*reader.buf)[0], state.ioMs);
+     int curBuf = 0;
+ 
+     while (currentChunkSize > 0) {
++        if (IsCancelRequested(scan.control)) {
++            return ParseOutcome::Cancelled;
++        }
++        const unsigned numThreads = EffectiveThreadCount(scan.control);
++        RecordChunkThreadCount(numThreads);
++
+         uint64_t nextChunkSize = 0;
+         double nextIoMs = 0;
+         std::thread ioThread(
+             [&]() { nextChunkSize = reader.readChunk(reader.readContext, (*reader.buf)[1 - curBuf], nextIoMs); });
+ 
+         uint8_t* buffer = (*reader.buf)[curBuf];
+-
+-        if (numThreads > 1) {
+-            if (!ParseChunkParallel(buffer, ChunkSpan{recordIndex, currentChunkSize}, numThreads, scan, state,
+-                                    result)) {
+-                ioThread.join();
+-                return false;
+-            }
+-        } else {
+-            auto fixupStart = SteadyClock::now();
+-            FixupRange(buffer, SliceRange{0, currentChunkSize}, scan.geometry);
+-            state.fixupMs += ElapsedMs(fixupStart, SteadyClock::now());
+-
+-            SliceResult batchSlice;
+-            batchSlice.entries.reserve((scan.filter.text != nullptr) ? 64 : currentChunkSize / 4);
+-            batchSlice.strings.reserve(batchSlice.entries.capacity() * 32);
+-
+-            auto parseStart = SteadyClock::now();
+-            ProcessRecordBatch(buffer, currentChunkSize, recordIndex, batchSlice, scan);
+-            state.parseMs += ElapsedMs(parseStart, SteadyClock::now());
+-
+-            if (!AppendSlice(state.output, batchSlice, result->errorMessage)) {
+-                ioThread.join();
+-                return false;
+-            }
++        const ChunkSpan chunk{recordIndex, currentChunkSize};
++        const bool mergedOk = numThreads > 1 ? ParseChunkParallel(buffer, chunk, numThreads, scan, state, result)
++                                             : ParseChunkSerial(buffer, chunk, scan, state, result);
++        if (!mergedOk) {
++            ioThread.join();
++            return ParseOutcome::Failed;
+         }
+ 
+         recordIndex += currentChunkSize;
+ 
++        if (IsCancelRequested(scan.control)) {
++            ioThread.join();
++            return ParseOutcome::Cancelled;
++        }
++
+         if (progress.callback != nullptr) {
+             double elapsedMs = ElapsedMs(progress.wallStart, SteadyClock::now());
+             progress.callback(MftScanPhase::Parsing, recordIndex, scan.totalRecords, elapsedMs, progress.context);
+             lastReportedRecords = recordIndex;
+         }
+ 
+         ioThread.join();
+         state.ioMs += nextIoMs;
+ 
+         currentChunkSize = nextChunkSize;
+         curBuf = 1 - curBuf;
+     }
+ 
+     if (progress.callback != nullptr && lastReportedRecords < scan.totalRecords) {
+         double elapsedMs = ElapsedMs(progress.wallStart, SteadyClock::now());
+         progress.callback(MftScanPhase::Parsing, scan.totalRecords, scan.totalRecords, elapsedMs, progress.context);
+     }
+ 
+-    return true;
++    return ParseOutcome::Completed;
++}
++
++// Free the partial output of a cancelled parse and mark its result cancelled.
++MftParseResult* FinishCancelled(ParseState& state, MftParseResult* result) {
++    free(state.output.entries);
++    free(state.output.strings);
++    state.output = CompactOutput{};
++    result->cancelled = 1;
++    SetErrorMessage(result->errorMessage, L"Parse cancelled");
++    return result;
+ }
+ 
+ }  // namespace
+ 
+ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
+-                             uint32_t bufferSizeRecords, ParseGeometry geometry, MftProgressCallback callback,
+-                             void* progressContext) {
++                             uint32_t bufferSizeRecords, ParseGeometry geometry, const MftParseControl* control,
++                             MftProgressCallback callback, void* progressContext) {
+     auto wallStart = SteadyClock::now();
++    ResetRecordedParseThreadCounts();
+ 
+     auto* result = ShouldFailAlloc() ? nullptr : static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
+     if (result == nullptr) {
+         return nullptr;
+     }
+     result->totalRecords = totalRecords;
+     result->abiVersion = MFT_NATIVE_ABI_VERSION;
+     result->entryStride = sizeof(MftCompactEntry);
+ 
+     filter.length = (filter.text != nullptr) ? static_cast<uint16_t>(wcslen(filter.text)) : 0;
+     bool resolvePaths = (filter.flags & 4) != 0;
+ 
+     PathLookup lookup = {};
+     if (resolvePaths) {
+         if (ShouldFailAlloc() || !lookup.init(totalRecords)) {
+             SetErrorMessage(result->errorMessage, L"Failed to allocate path lookup");
+             return result;
+         }
+     }
+ 
+-    unsigned numThreads = EffectiveThreadCount();
+     const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * geometry.recordSize;
+ 
+     ParseState state = {};
+     state.output.entryCapacity = std::max<uint64_t>((filter.text != nullptr) ? 1024 : totalRecords / 4, 1024);
+     state.output.stringCapacity = std::max<uint64_t>(state.output.entryCapacity * 32, 1024);
+ 
+     std::array<uint8_t*, 2> buf = {};
+     if (!AllocateParseBuffers(buf, bufSize, lookup, resolvePaths, state, result)) {
+         return result;
+     }
+ 
+-    ScanContext scan{filter, resolvePaths ? &lookup : nullptr, totalRecords, geometry};
++    ScanContext scan{filter, resolvePaths ? &lookup : nullptr, totalRecords, geometry, control};
+     ChunkReader reader{readChunk, readContext, &buf};
+     ProgressHook progress{callback, progressContext, wallStart};
+-    bool parsedOk = ParseAllChunks(reader, numThreads, scan, state, result, progress);
++    const ParseOutcome outcome = ParseAllChunks(reader, scan, state, result, progress);
+ 
+     mftlib::platform::big_free(buf[0], bufSize);
+     mftlib::platform::big_free(buf[1], bufSize);
+ 
+-    if (!parsedOk) {
+-        if (resolvePaths) {
+-            lookup.cleanup();
+-        }
++    if (outcome != ParseOutcome::Completed && resolvePaths) {
++        lookup.cleanup();
++    }
++    if (outcome == ParseOutcome::Cancelled) {
++        return FinishCancelled(state, result);
++    }
++    if (outcome == ParseOutcome::Failed) {
+         result->entries = state.output.entries;
+         result->usedRecords = state.output.entryCount;
+         result->entryStrings = state.output.strings;
+         result->entryStringUnits = state.output.stringUnits;
+         return result;
+     }
+ 
+     if (resolvePaths && lookup.namesDropped.load(std::memory_order_relaxed) > 0) {
+         SetErrorMessage(result->errorMessage, L"Path name pool exhausted; %llu names dropped, some paths truncated",
+                         static_cast<unsigned long long>(lookup.namesDropped.load(std::memory_order_relaxed)));
+     }
+ 
+     uint64_t parsedCount = state.output.entryCount;
+     if (resolvePaths && parsedCount > 0) {
+-        ResolveAllPaths(totalRecords, lookup, numThreads, state, result, progress);
++        const unsigned resolveThreads = EffectiveThreadCount(control);
++        RecordResolveThreadCount(resolveThreads);
++        const bool resolved = ResolveAllPaths(scan, resolveThreads, state, result, progress);
+         lookup.cleanup();
++        if (!resolved) {
++            return FinishCancelled(state, result);
++        }
+     }
+ 
+     result->usedRecords = parsedCount;
+     if (result->pathEntries == nullptr) {
+         result->entries = state.output.entries;
+         result->entryStrings = state.output.strings;
+         result->entryStringUnits = state.output.stringUnits;
+     }
+ 
+     result->ioTimeMs = state.ioMs;
+diff --git a/MFTLibNative/mft/mft.records.cpp b/MFTLibNative/mft/mft.records.cpp
+index a810336..ef90020 100644
+--- a/MFTLibNative/mft/mft.records.cpp
++++ b/MFTLibNative/mft/mft.records.cpp
+@@ -380,21 +380,10 @@ bool AppendSlice(CompactOutput& output, const SliceResult& slice, wchar_t* error
+ void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
+                         const ScanContext& scan) {
+     for (uint64_t i = range.start; i < range.end; i++) {
+         ParsedEntry entry{};
+         if (ScanRecordForEntry(buffer + (static_cast<size_t>(scan.geometry.recordSize) * i), recordBase + i, scan,
+                                &entry)) {
+             slice->append(entry);
+         }
+     }
+ }
+-
+-void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, SliceResult& batchSlice,
+-                        const ScanContext& scan) {
+-    for (uint64_t i = 0; i < filesToLoad; i++, recordIndex++) {
+-        ParsedEntry entry{};
+-        if (ScanRecordForEntry(buffer + (static_cast<size_t>(scan.geometry.recordSize) * i), recordIndex, scan,
+-                               &entry)) {
+-            batchSlice.append(entry);
+-        }
+-    }
+-}
+diff --git a/MFTLibNative/mft/mft_synthetic.cpp b/MFTLibNative/mft/mft_synthetic.cpp
+index c694acf..cb805c7 100644
+--- a/MFTLibNative/mft/mft_synthetic.cpp
++++ b/MFTLibNative/mft/mft_synthetic.cpp
+@@ -304,21 +304,21 @@ void GenerateBatch(uint8_t* buffer, const BatchParams& params) {
+ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uint32_t bufferSizeRecords,
+                               uint32_t recordSize) {
+     if (!IsSupportedRecordSize(recordSize)) {
+         return false;
+     }
+     auto* hFile = mftlib::platform::open_write(filePath);
+     if (hFile == nullptr) {
+         return false;
+     }
+ 
+-    unsigned numThreads = EffectiveThreadCount();
++    unsigned numThreads = EffectiveThreadCount(nullptr);
+     const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * recordSize;
+     std::array<uint8_t*, 2> buf = {};
+     buf[0] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
+     buf[1] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
+     if ((buf[0] == nullptr) || (buf[1] == nullptr)) {
+         if (buf[0] != nullptr) {
+             mftlib::platform::big_free(buf[0], bufSize);
+         }
+         if (buf[1] != nullptr) {
+             mftlib::platform::big_free(buf[1], bufSize);
+diff --git a/MFTLibNative/mft_api.h b/MFTLibNative/mft_api.h
+index 67a0eb1..77e631b 100644
+--- a/MFTLibNative/mft_api.h
++++ b/MFTLibNative/mft_api.h
+@@ -2,21 +2,21 @@
+ #include <cstdint>
+ 
+ #ifndef EXPORT
+     #ifdef _WIN32
+         #define EXPORT __declspec(dllexport)
+     #else
+         #define EXPORT __attribute__((visibility("default")))
+     #endif
+ #endif
+ 
+-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 1;
++constexpr uint32_t MFT_NATIVE_ABI_VERSION = 2;
+ 
+ // Parser-synthesized, not an on-disk NTFS record flag. The flags field carries the
+ // raw FILE_RECORD_SEGMENT_HEADER flags, whose defined bits are 0x0001 (in use) and
+ // 0x0002 (directory); the parser sets this top bit when a non-directory record has
+ // no unnamed $DATA attribute in its base segment, so the size column holds zero
+ // because the size is unknown rather than because the file is empty.
+ constexpr uint16_t MFT_ENTRY_FLAG_SIZE_UNKNOWN = 0x8000;
+ 
+ constexpr uint32_t MATCH_FLAG_NONE = 0;
+ constexpr uint32_t MATCH_FLAG_EXACT_MATCH = 1;
+@@ -56,20 +56,30 @@ struct MftParseResult {
+     double fixupTimeMs;
+     double parseTimeMs;
+     double totalTimeMs;
+     MftCompactEntry* pathEntries;
+     uint16_t* entryStrings;
+     uint64_t entryStringUnits;
+     uint16_t* pathStrings;
+     uint64_t pathStringUnits;
+     uint32_t abiVersion;
+     uint32_t entryStride;
++    uint32_t cancelled;  // 1 when the parse stopped because MftParseControl::cancelRequested was set
++};
++
++// Caller-owned, kept in place for the whole parse call. The caller may write either field while
++// the parse runs; the parser only reads them, atomically. cancelRequested nonzero asks the parse
++// to stop. parseThreadAllowance is the thread count for each chunk and for path resolution, read
++// at the start of each: 0 means every processor, any other value is clamped to [1, processors].
++struct MftParseControl {
++    int32_t cancelRequested;
++    int32_t parseThreadAllowance;
+ };
+ 
+ struct UsnJournalInfo {
+     uint64_t journalId;
+     int64_t firstUsn;
+     int64_t nextUsn;
+     int64_t lowestValidUsn;
+     int64_t maxUsn;
+     uint64_t maximumSize;
+     uint64_t allocationDelta;
+diff --git a/MFTLibNative/test/linux_smoke_test.cpp b/MFTLibNative/test/linux_smoke_test.cpp
+index 5d30ea4..c970ac2 100644
+--- a/MFTLibNative/test/linux_smoke_test.cpp
++++ b/MFTLibNative/test/linux_smoke_test.cpp
+@@ -35,37 +35,39 @@ constexpr uint32_t kDefaultBufferRecords = 4096;
+ constexpr const char* kFixturePath = "/tmp/mftlib_synthetic.mft";
+ 
+ bool generate_fixture() { return GenerateSyntheticMFTUtf8(kFixturePath, kDefaultRecordCount, kDefaultBufferRecords); }
+ 
+ void remove_fixture() { std::remove(kFixturePath); }
+ 
+ // --- Tests ---
+ 
+ bool test_abi_version() {
+     uint32_t abiVersion = GetMftNativeAbiVersion();
+-    if (abiVersion != 1) {
+-        std::fprintf(stderr, "  FAIL: GetMftNativeAbiVersion() returned %u, expected 1\n", abiVersion);
++    if (abiVersion != MFT_NATIVE_ABI_VERSION) {
++        std::fprintf(stderr, "  FAIL: GetMftNativeAbiVersion() returned %u, expected %u\n", abiVersion,
++                     MFT_NATIVE_ABI_VERSION);
+         return false;
+     }
+     return true;
+ }
+ 
+ bool test_round_trip() {
+     if (!generate_fixture()) {
+         std::fprintf(stderr, "  setup FAIL: GenerateSyntheticMFTUtf8 returned false\n");
+         return false;
+     }
+     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
+-    bool testPassed =
+-        (parseResult != nullptr) && parseResult->usedRecords > 0 && parseResult->errorMessage[0] == L'\0' &&
+-        parseResult->abiVersion == 1 && parseResult->entryStride == 50 && parseResult->entries != nullptr &&
+-        parseResult->entryStrings != nullptr && parseResult->entryStringUnits < parseResult->usedRecords * 260;
++    bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
++                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
++                      parseResult->entryStride == 50 && parseResult->entries != nullptr &&
++                      parseResult->entryStrings != nullptr &&
++                      parseResult->entryStringUnits < parseResult->usedRecords * 260;
+     if (testPassed) {
+         // The fixture writes SequenceNumber = recordIndex + 1 for every record.
+         for (uint64_t index = 0; index < parseResult->usedRecords; ++index) {
+             const MftCompactEntry& entry = parseResult->entries[index];
+             if (entry.sequenceNumber != static_cast<uint16_t>(entry.recordNumber + 1)) {
+                 std::fprintf(stderr, "  FAIL: record %llu sequenceNumber %u, expected %llu\n",
+                              static_cast<unsigned long long>(entry.recordNumber),
+                              static_cast<unsigned>(entry.sequenceNumber),
+                              static_cast<unsigned long long>(entry.recordNumber + 1));
+                 testPassed = false;
+@@ -91,21 +93,21 @@ bool test_round_trip() {
+ }
+ 
+ bool test_round_trip_4096() {
+     constexpr const char* kFixture4096Path = "/tmp/mftlib_synthetic_4096.mft";
+     if (!GenerateSyntheticMFTSizedUtf8(kFixture4096Path, kDefaultRecordCount, kDefaultBufferRecords, 4096)) {
+         std::fprintf(stderr, "  setup FAIL: GenerateSyntheticMFTSizedUtf8(4096) returned false\n");
+         return false;
+     }
+     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixture4096Path, nullptr, 0, kDefaultBufferRecords);
+     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
+-                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == 1 &&
++                      parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
+                       parseResult->entryStride == 50;
+     if (testPassed) {
+         std::printf("  4096: total=%llu used=%llu ioMs=%.2f parseMs=%.2f totalMs=%.2f\n",
+                     static_cast<unsigned long long>(parseResult->totalRecords),
+                     static_cast<unsigned long long>(parseResult->usedRecords), parseResult->ioTimeMs,
+                     parseResult->parseTimeMs, parseResult->totalTimeMs);
+     } else if (parseResult != nullptr) {
+         std::fprintf(stderr, "  FAIL: usedRecords=%llu errorMessage[0]=%d\n",
+                      static_cast<unsigned long long>(parseResult->usedRecords),
+                      static_cast<int>(parseResult->errorMessage[0]));
+@@ -114,43 +116,44 @@ bool test_round_trip_4096() {
+         FreeMftResult(parseResult);
+     }
+     std::remove(kFixture4096Path);
+     return testPassed;
+ }
+ 
+ bool test_parse_missing_file() {
+     MftParseResult* parseResult =
+         ParseMFTFromFileUtf8("/tmp/does_not_exist_4f8e7c.mft", nullptr, 0, kDefaultBufferRecords);
+     bool testPassed = (parseResult != nullptr) && parseResult->errorMessage[0] != L'\0' &&
+-                      parseResult->usedRecords == 0 && parseResult->abiVersion == 1 && parseResult->entryStride == 50;
++                      parseResult->usedRecords == 0 && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
++                      parseResult->entryStride == 50;
+     if (!testPassed) {
+         std::fprintf(stderr, "  FAIL: expected errorMessage set; got result=%p err[0]=%d\n",
+                      static_cast<void*>(parseResult),
+                      (parseResult != nullptr) ? static_cast<int>(parseResult->errorMessage[0]) : -1);
+     }
+     if (parseResult != nullptr) {
+         FreeMftResult(parseResult);
+     }
+     return testPassed;
+ }
+ 
+ bool test_parse_empty_file() {
+     const char* path = "/tmp/mftlib_empty.mft";
+     FILE* fileHandle = std::fopen(path, "wb");
+     if (fileHandle == nullptr) {
+         return false;
+     }
+     std::fclose(fileHandle);
+ 
+     MftParseResult* parseResult = ParseMFTFromFileUtf8(path, nullptr, 0, kDefaultBufferRecords);
+-    bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 && parseResult->abiVersion == 1 &&
+-                      parseResult->entryStride == 50;
++    bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 &&
++                      parseResult->abiVersion == MFT_NATIVE_ABI_VERSION && parseResult->entryStride == 50;
+     if (!testPassed && parseResult != nullptr) {
+         std::fprintf(stderr, "  FAIL: empty file got totalRecords=%llu\n",
+                      static_cast<unsigned long long>(parseResult->totalRecords));
+     }
+     if (parseResult != nullptr) {
+         FreeMftResult(parseResult);
+     }
+     std::remove(path);
+     return testPassed;
+ }

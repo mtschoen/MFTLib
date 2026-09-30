@@ -1,0 +1,957 @@
+# Review package: cb13c86..task/265-C3a
+
+## Commits
+874c951 Port host watch tests to one channel per watch
+
+## Files changed
+ MFTLib.Tests/JournalBrokerHostTests.Watch.cs       | 198 +++++++++++++++++++++
+ .../JournalBrokerHostTests.WatchCatchUp.cs         | 108 +++++++++++
+ ...ournalBrokerHostTests.WatchDiagnosticsFilter.cs | 190 ++++++++++++++++++++
+ ...alBrokerHostTests.WatchFailureClassification.cs |  94 ++++++++++
+ .../JournalBrokerHostTests.WatchRecovery.cs        | 175 ++++++++++++++++++
+ .../JournalBrokerHostTests.WatchSupport.cs         | 141 +++++++++++++++
+ 6 files changed, 906 insertions(+)
+
+## Diff
+diff --git a/MFTLib.Tests/JournalBrokerHostTests.Watch.cs b/MFTLib.Tests/JournalBrokerHostTests.Watch.cs
+new file mode 100644
+index 0000000..f065eaa
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostTests.Watch.cs
+@@ -0,0 +1,198 @@
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++public partial class JournalBrokerHostTests
++{
++    [TestMethod]
++    public async Task StartWatch_StreamsBatches_UntilCancelled()
++    {
++        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var batches = new[]
++        {
++            (new[] { WatchEntry() }, new UsnJournalCursor(7UL, 110L)),
++            ([WatchEntry()], new UsnJournalCursor(7UL, 120L))
++        };
++        var host = CreateWatchHost(
++            watchDrive: (_, _, _, cancellationToken) =>
++            {
++                cancellationToken.Register(() => cancelled.TrySetResult());
++                return LiveWatch(batches, cancellationToken);
++            });
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var first = await HostChannelHarness.ReadFrameAsync(pipe);
++        var second = await HostChannelHarness.ReadFrameAsync(pipe);
++
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, first?.Kind);
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, second?.Kind);
++        Assert.AreEqual(new UsnJournalCursor(7UL, 110L), first?.Cursor);
++        Assert.AreEqual(new UsnJournalCursor(7UL, 120L), second?.Cursor);
++        Assert.IsFalse(cancelled.Task.IsCompleted, "The watch stays open while its pipe is open.");
++
++        await pipe.DisposeAsync();
++        await cancelled.Task.WaitAsync(HostChannelHarness.HangGuard);
++    }
++
++    [TestMethod]
++    public async Task StartWatch_ZeroCursor_QueriesCurrentCursorBeforeWatching()
++    {
++        UsnJournalCursor watchedFrom = default;
++        var host = CreateWatchHost(
++            queryCursor: _ => new UsnJournalCursor(9UL, 500L),
++            watchDrive: (_, since, _, _) =>
++            {
++                watchedFrom = since;
++                return FiniteWatch([([WatchEntry()], new UsnJournalCursor(9UL, 510L))]);
++            });
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', default);
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        CollectionAssert.AreEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch },
++            frames.Select(frame => frame.Kind).ToArray());
++        Assert.AreEqual(new UsnJournalCursor(9UL, 500L), watchedFrom);
++    }
++
++    [TestMethod]
++    public async Task StartWatch_NoWatchSourceConfigured_EmitsErrorFrame()
++    {
++        var host = CreateWatchHost();
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.AreEqual(1, frames.Count);
++        Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
++        Assert.AreEqual("Broker has no watch source", frames[0].Message);
++    }
++
++    [TestMethod]
++    public async Task WatchChannel_SourceCompletesNaturally_ClosesWithoutError()
++    {
++        var host = CreateWatchHost(
++            watchDrive: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))]));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        CollectionAssert.AreEqual(new[] { BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray(),
++            "Natural completion is not a fault: no Error frame is sent before the channel closes.");
++        await AssertControlStillServesAsync(harness);
++    }
++
++    [TestMethod]
++    public async Task WatchChannel_BatchWriteHitsBrokenPipe_EndsQuietly()
++    {
++        var secondBatchGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var siblingGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var armed = new UsnJournalCursor(7UL, 100L);
++        var host = CreateWatchHost(
++            queryCursor: _ => armed,
++            watchDrive: (drive, _, _, cancellationToken) => GatedWatch(
++                ([WatchEntry()], new UsnJournalCursor(7UL, 110L)),
++                drive == "C" ? secondBatchGate.Task : siblingGate.Task,
++                ([WatchEntry()], new UsnJournalCursor(7UL, 120L)),
++                cancellationToken));
++        var drivePipe = new BreakableDrivePipe('C');
++        await using var harness = new HostChannelHarness(host, connectChannel: drivePipe.ConnectAsync);
++        drivePipe.Harness = harness;
++
++        // The watch is live over the healthy pipe: the leading CaughtUp (the armed cursor equals
++        // the journal tip) and one batch arrive on each channel.
++        var pipe = await harness.OpenWatchChannelAsync('C', armed);
++        var sibling = await harness.OpenWatchChannelAsync('D', armed);
++        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
++        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
++
++        // The client goes away while its watch is still armed. Breaking the pipe and only then
++        // releasing the pending batch keeps the disconnect deterministic.
++        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HostChannelHarness.HangGuard);
++        brokenHostEnd.BreakPipe();
++        secondBatchGate.SetResult();
++        await brokenHostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
++
++        await AssertOnlyThatChannelEndedAsync(harness, pipe, sibling, siblingGate);
++    }
++
++    [TestMethod]
++    public async Task WatchChannel_FaultWithBrokenPipe_ErrorFrameUnsendable_EndsQuietly()
++    {
++        var faultGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var siblingGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var armed = new UsnJournalCursor(7UL, 100L);
++        var host = CreateWatchHost(
++            queryCursor: _ => armed,
++            watchDrive: (drive, _, _, cancellationToken) => drive == "C"
++                ? FaultingAfterGate(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), faultGate.Task,
++                    cancellationToken)
++                : GatedWatch(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), siblingGate.Task,
++                    ([WatchEntry()], new UsnJournalCursor(7UL, 120L)), cancellationToken));
++        var drivePipe = new BreakableDrivePipe('C');
++        await using var harness = new HostChannelHarness(host, connectChannel: drivePipe.ConnectAsync);
++        drivePipe.Harness = harness;
++
++        var pipe = await harness.OpenWatchChannelAsync('C', armed);
++        var sibling = await harness.OpenWatchChannelAsync('D', armed);
++        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
++        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
++
++        // The pipe dies, then the watch faults for real: the Error frame that reports the fault
++        // has no one left to receive it, and its write fails too.
++        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HostChannelHarness.HangGuard);
++        brokenHostEnd.BreakPipe();
++        faultGate.SetResult();
++        await brokenHostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
++
++        await AssertOnlyThatChannelEndedAsync(harness, pipe, sibling, siblingGate);
++    }
++
++    [TestMethod]
++    public async Task WatchChannel_LeadingCaughtUpWriteHitsBrokenPipe_EndsQuietly()
++    {
++        var siblingGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var armed = new UsnJournalCursor(7UL, 100L);
++        var host = CreateWatchHost(
++            queryCursor: _ => armed,
++            watchDrive: (drive, _, _, cancellationToken) => drive == "C"
++                ? LiveWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))], cancellationToken)
++                : GatedWatch(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), siblingGate.Task,
++                    ([WatchEntry()], new UsnJournalCursor(7UL, 120L)), cancellationToken));
++        // The pipe is already gone by the time the watch arms, so the leading CaughtUp for a
++        // cursor that sits at the journal tip is the first frame to land on the dead client.
++        var drivePipe = new BreakableDrivePipe('C', brokenOnConnect: true);
++        await using var harness = new HostChannelHarness(host, connectChannel: drivePipe.ConnectAsync);
++        drivePipe.Harness = harness;
++
++        var sibling = await harness.OpenWatchChannelAsync('D', armed);
++        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
++        var pipe = await harness.OpenWatchChannelAsync('C', armed);
++        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HostChannelHarness.HangGuard);
++        await brokenHostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
++
++        await AssertOnlyThatChannelEndedAsync(harness, pipe, sibling, siblingGate);
++    }
++
++    // The failed channel ended without ending the session: a sibling channel still delivers a batch
++    // released after the failure, and the control pipe still answers.
++    static async Task AssertOnlyThatChannelEndedAsync(HostChannelHarness harness, Stream failed, Stream sibling,
++        TaskCompletionSource siblingGate)
++    {
++        Assert.IsNull(await HostChannelHarness.ReadFrameAsync(failed), "The host closes the failed channel.");
++        siblingGate.SetResult();
++        var batch = await HostChannelHarness.ReadFrameAsync(sibling);
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch?.Kind);
++        Assert.AreEqual(120L, batch?.Cursor.NextUsn);
++        await AssertControlStillServesAsync(harness);
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostTests.WatchCatchUp.cs b/MFTLib.Tests/JournalBrokerHostTests.WatchCatchUp.cs
+new file mode 100644
+index 0000000..53730d1
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostTests.WatchCatchUp.cs
+@@ -0,0 +1,108 @@
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++public partial class JournalBrokerHostTests
++{
++    [TestMethod]
++    public async Task StartWatch_WithNoBacklog_WritesCaughtUpBeforeTheFirstBatch()
++    {
++        var host = CreateWatchHost(
++            queryCursor: _ => new UsnJournalCursor(7UL, 100L),
++            watchDrive: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))]));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        CollectionAssert.AreEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch },
++            frames.Select(frame => frame.Kind).ToArray());
++    }
++
++    [TestMethod]
++    public async Task StartWatch_WithBacklog_WritesCaughtUpAfterTheBatchThatPassesTheTip()
++    {
++        var host = CreateWatchHost(
++            queryCursor: _ => new UsnJournalCursor(7UL, 150L),
++            watchDrive: (_, _, _, _) => FiniteWatch(
++            [
++                ([WatchEntry()], new UsnJournalCursor(7UL, 140L)),
++                ([WatchEntry()], new UsnJournalCursor(7UL, 160L))
++            ]));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        CollectionAssert.AreEqual(
++            new[] { BrokerFrameKind.JournalBatch, BrokerFrameKind.JournalBatch, BrokerFrameKind.CaughtUp },
++            frames.Select(frame => frame.Kind).ToArray());
++        Assert.AreEqual(new UsnJournalCursor(7UL, 140L), frames[0].Cursor);
++        Assert.AreEqual(new UsnJournalCursor(7UL, 160L), frames[1].Cursor);
++    }
++
++    [TestMethod]
++    public async Task StartWatch_WhileBelowTheTip_WritesNoCaughtUp()
++    {
++        var host = CreateWatchHost(
++            queryCursor: _ => new UsnJournalCursor(7UL, 150L),
++            watchDrive: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 140L))]));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        // The channel closes after its one batch, which proves no CaughtUp followed it.
++        CollectionAssert.AreEqual(new[] { BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray());
++    }
++
++    [TestMethod]
++    public async Task StartWatch_ZeroCursorSentinel_WritesCaughtUpImmediately()
++    {
++        var host = CreateWatchHost(
++            queryCursor: _ => new UsnJournalCursor(8UL, 50L),
++            watchDrive: (_, _, _, _) => FiniteWatch([]));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', default);
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        CollectionAssert.AreEqual(new[] { BrokerFrameKind.CaughtUp }, frames.Select(frame => frame.Kind).ToArray());
++    }
++
++    [TestMethod]
++    public async Task StartWatch_QueriesTheJournalTipOncePerArm()
++    {
++        var queryCallCount = 0;
++        var host = CreateWatchHost(
++            queryCursor: _ =>
++            {
++                queryCallCount++;
++                return new UsnJournalCursor(7UL, 150L);
++            },
++            watchDrive: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 140L))]));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.AreEqual(1, queryCallCount);
++    }
++
++    [TestMethod]
++    public async Task StartWatch_TipQueryFailure_EndsTheDrivesStreamWithAnError()
++    {
++        var host = CreateWatchHost(
++            queryCursor: _ => throw new UnauthorizedAccessException("Access is denied"),
++            watchDrive: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))]));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.AreEqual(1, frames.Count);
++        Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
++        Assert.AreEqual("Access is denied", frames[0].Message);
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostTests.WatchDiagnosticsFilter.cs b/MFTLib.Tests/JournalBrokerHostTests.WatchDiagnosticsFilter.cs
+new file mode 100644
+index 0000000..50e5787
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostTests.WatchDiagnosticsFilter.cs
+@@ -0,0 +1,190 @@
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++public partial class JournalBrokerHostTests
++{
++    const string DiagClientLogPath = @"C:\broker-diag-tests\client\broker-diagnostics.log";
++    const ulong DiagOwnLogReference = 9101;
++    const ulong DiagClientLogReference = 9102;
++
++    static string DiagOwnLogPath => Path.Combine(BrokerDiagnostics.LogDirectory, "broker-diagnostics.log");
++
++    static UsnJournalEntry DiagEntry(ulong recordNumber, string fileName = "broker-diagnostics.log") =>
++        JournalEntryFactory.Create(recordNumber, 110, fileName);
++
++    // Point diagnostics at a synthetic C:-rooted directory and resolve both log paths to fixed file
++    // reference numbers, so no real file system or elevation is involved. The log lines go to a
++    // sink that discards them.
++    static void EnableDiagFilterSeams()
++    {
++        Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
++        BrokerDiagnostics.LogDirectory = @"C:\broker-diag-tests";
++        BrokerDiagnostics.ClientLogPath = DiagClientLogPath;
++        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(_ => { }, () => "broker"));
++        BrokerDiagnosticsLogFilter._resolveFileReference = path =>
++            string.Equals(path, DiagOwnLogPath, StringComparison.OrdinalIgnoreCase) ? DiagOwnLogReference :
++            string.Equals(path, DiagClientLogPath, StringComparison.OrdinalIgnoreCase) ? DiagClientLogReference :
++            null;
++    }
++
++    static void ResetDiagFilterSeams()
++    {
++        Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
++        BrokerDiagnostics.ResetToDefaults();
++        BrokerDiagnosticsLogFilter.ResetToDefaults();
++        BrokerDiagnostics.LogDirectory = Path.GetTempPath();
++    }
++
++    [TestMethod]
++    public async Task StartWatch_WithDiagnostics_SkipsLogOnlyBatches_StillReportsCaughtUp()
++    {
++        EnableDiagFilterSeams();
++        try
++        {
++            var batches = new[]
++            {
++                // First batch is nothing but diagnostics-log writes: it must not ship.
++                (new[] { DiagEntry(DiagOwnLogReference), DiagEntry(DiagClientLogReference) },
++                    new UsnJournalCursor(7UL, 150L)),
++                ([DiagEntry(4242, "real.txt")], new UsnJournalCursor(7UL, 160L))
++            };
++            var host = CreateWatchHost(
++                queryCursor: _ => new UsnJournalCursor(7UL, 140L), // journal tip at arm time
++                watchDrive: (_, _, _, _) => FiniteWatch(batches));
++            await using var harness = new HostChannelHarness(host);
++
++            // since (7,100) < tip (7,140): backlog
++            var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++            var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++            // No JournalBatch for the filtered-empty first batch, but the CaughtUp marker still
++            // fires because its cursor (7,150) passed the arm-time tip (7,140).
++            CollectionAssert.AreEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch },
++                frames.Select(frame => frame.Kind).ToArray());
++            Assert.AreEqual(1, frames[1].Entries.Length);
++            Assert.AreEqual("real.txt", frames[1].Entries[0].FileName);
++        }
++        finally
++        {
++            ResetDiagFilterSeams();
++        }
++    }
++
++    [TestMethod]
++    public async Task StartWatch_WithDiagIncludeSelf_ShipsLogEntries()
++    {
++        EnableDiagFilterSeams();
++        BrokerDiagnostics.IncludeSelfEntries = true;
++        try
++        {
++            var batches = new[]
++            {
++                (new[]
++                {
++                    DiagEntry(DiagOwnLogReference),
++                    DiagEntry(DiagClientLogReference),
++                    DiagEntry(4242, "real.txt")
++                }, new UsnJournalCursor(7UL, 110L))
++            };
++            // queryCursor returns default: the (7,100) start cursor never matches tip journal id 0,
++            // so no CaughtUp frame precedes the batch.
++            var host = CreateWatchHost(
++                queryCursor: _ => default,
++                watchDrive: (_, _, _, _) => FiniteWatch(batches));
++            await using var harness = new HostChannelHarness(host);
++
++            var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++            var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++            Assert.AreEqual(1, frames.Count);
++            Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[0].Kind);
++            Assert.AreEqual(3, frames[0].Entries.Length);
++        }
++        finally
++        {
++            ResetDiagFilterSeams();
++        }
++    }
++
++    [TestMethod]
++    public async Task StartWatch_WithDiagnosticsOff_ShipsLogEntriesUnfiltered()
++    {
++        var batches = new[]
++        {
++            (new[] { DiagEntry(DiagOwnLogReference), DiagEntry(4242, "real.txt") },
++                new UsnJournalCursor(7UL, 110L))
++        };
++        // queryCursor returns default: the (7,100) start cursor never matches tip journal id 0,
++        // so no CaughtUp frame precedes the batch.
++        var host = CreateWatchHost(
++            queryCursor: _ => default,
++            watchDrive: (_, _, _, _) => FiniteWatch(batches));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.AreEqual(1, frames.Count);
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[0].Kind);
++        Assert.AreEqual(2, frames[0].Entries.Length);
++    }
++
++    [TestMethod]
++    public async Task ArmAndScan_WithDiagnostics_FiltersCatchUpEntries_ButStillShipsTerminalBatch()
++    {
++        EnableDiagFilterSeams();
++        try
++        {
++            using var sectionWriter = new RecordingBlockSectionWriter();
++            var host = CreateWatchHost(
++                queryCursor: _ => new UsnJournalCursor(7UL, 0L),
++                readJournal: (_, cursor) => (new[] { DiagEntry(DiagOwnLogReference), DiagEntry(4242, "real.txt") },
++                    new UsnJournalCursor(cursor.JournalId, cursor.NextUsn + 2)));
++            await using var harness = new HostChannelHarness(host, sectionWriter);
++
++            var pipe = await harness.OpenScanChannelAsync('C');
++            var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++            var batches = frames.Where(frame => frame.Kind == BrokerFrameKind.JournalBatch).ToList();
++            // The terminal catch-up batch always ships (the client's scan collector waits on it),
++            // with the log entries removed.
++            Assert.AreEqual(1, batches.Count);
++            Assert.AreEqual(1, batches[0].Entries.Length);
++            Assert.AreEqual("real.txt", batches[0].Entries[0].FileName);
++        }
++        finally
++        {
++            ResetDiagFilterSeams();
++        }
++    }
++
++    [TestMethod]
++    public async Task ArmAndScan_WithDiagnostics_LogOnlyCatchUpEntries_ShipsEmptyTerminalBatch()
++    {
++        EnableDiagFilterSeams();
++        try
++        {
++            using var sectionWriter = new RecordingBlockSectionWriter();
++            var host = CreateWatchHost(
++                queryCursor: _ => new UsnJournalCursor(7UL, 0L),
++                readJournal: (_, cursor) => (new[] { DiagEntry(DiagOwnLogReference) },
++                    new UsnJournalCursor(cursor.JournalId, cursor.NextUsn + 1)));
++            await using var harness = new HostChannelHarness(host, sectionWriter);
++
++            var pipe = await harness.OpenScanChannelAsync('C');
++            var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++            var batches = frames.Where(frame => frame.Kind == BrokerFrameKind.JournalBatch).ToList();
++            // The terminal catch-up batch must still ship even when all entries were filtered out,
++            // producing an empty JournalBatch so the client's scan collector completes the drive.
++            Assert.AreEqual(1, batches.Count);
++            Assert.AreEqual(0, batches[0].Entries.Length);
++        }
++        finally
++        {
++            ResetDiagFilterSeams();
++        }
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostTests.WatchFailureClassification.cs b/MFTLib.Tests/JournalBrokerHostTests.WatchFailureClassification.cs
+new file mode 100644
+index 0000000..4ab8644
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostTests.WatchFailureClassification.cs
+@@ -0,0 +1,94 @@
++using MFTLib.Index;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++public partial class JournalBrokerHostTests
++{
++    static readonly UsnJournalCursor CachedCursor = new(7UL, 100L);
++
++    [TestMethod]
++    [DataRow("cursor rendering failed")]
++    [DataRow("temporary output deleted")]
++    [DataRow("wrapped transport failed")]
++    [DataRow("rescan UI failed")]
++    [DataRow("worker not active")]
++    [DataRow("deletion notification failed")]
++    [DataRow("view recreated")]
++    [DataRow("request 1181 failed")]
++    [DataRow("request 1179 failed")]
++    [DataRow("request 1178 failed")]
++    public async Task StartWatch_RetainedCursor_PreservesMessageDespiteFormerKeywords(string message)
++    {
++        var queriedDrives = new List<char>();
++        using var journal = JournalCheckpointCheck.OverrideJournalForTest(drive =>
++        {
++            queriedDrives.Add(drive);
++            return new JournalWindow(7UL, 100L, 1000L, 64L, 4096L);
++        });
++
++        Assert.AreEqual(message, await ReadStartupErrorAsync(message, CachedCursor));
++        CollectionAssert.AreEqual(new[] { 'C' }, queriedDrives);
++    }
++
++    [TestMethod]
++    [DataRow(7L, 101L)]
++    [DataRow(8L, 0L)]
++    public async Task StartWatch_LostCursor_DecoratesWithoutMessageKeywords(long journalId, long firstUsn)
++    {
++        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
++            new JournalWindow((ulong)journalId, firstUsn, 1000L, 64L, 4096L));
++
++        const string message = "Read failed: opaque native diagnostic";
++        Assert.AreEqual(
++            "Drive C cannot resume its live watch from journal cursor 7:100: " +
++            message + ". The records between that cursor and the current journal position " +
++            "are gone, so this drive needs a rescan before it can be watched again.",
++            await ReadStartupErrorAsync(message, CachedCursor));
++    }
++
++    [TestMethod]
++    [DataRow(false)]
++    [DataRow(true)]
++    public async Task StartWatch_UnknownJournal_PreservesOriginalMessage(bool incoherent)
++    {
++        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => incoherent
++            ? new JournalWindow(8UL, 2000L, 1000L, 64L, 4096L)
++            : null);
++
++        const string message = "cursor deleted; 1181";
++        Assert.AreEqual(message, await ReadStartupErrorAsync(message, CachedCursor));
++    }
++
++    [TestMethod]
++    public async Task StartWatch_NoQueryableCachedCursor_DoesNotReadJournal()
++    {
++        var queryCount = 0;
++        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
++        {
++            queryCount++;
++            return new JournalWindow(8UL, 200L, 1000L, 64L, 4096L);
++        });
++
++        const string message = "cursor operation failed";
++        Assert.AreEqual(message, await ReadStartupErrorAsync(message, default));
++        Assert.AreEqual(0, queryCount);
++    }
++
++    static async Task<string> ReadStartupErrorAsync(string message, UsnJournalCursor since)
++    {
++        var host = CreateWatchHost(
++            queryCursor: _ => new UsnJournalCursor(7UL, 1000L),
++            watchDrive: (_, _, _, _) => throw new InvalidOperationException(message));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', since);
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        // A sentinel start reports CaughtUp before its source fails; the Error is always last.
++        Assert.AreEqual(BrokerFrameKind.Error, frames[^1].Kind);
++        Assert.IsTrue(frames.SkipLast(1).All(frame => frame.Kind == BrokerFrameKind.CaughtUp));
++        return frames[^1].RequireMessage();
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostTests.WatchRecovery.cs b/MFTLib.Tests/JournalBrokerHostTests.WatchRecovery.cs
+new file mode 100644
+index 0000000..0e1bd3c
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostTests.WatchRecovery.cs
+@@ -0,0 +1,175 @@
++using MFTLib.Index;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++public partial class JournalBrokerHostTests
++{
++    [TestMethod]
++    public async Task StartWatch_StaleCachedCursor_EndsThatDrivesStreamWithARescanErrorAndTheOtherDriveKeepsStreaming()
++    {
++        using var journal = JournalCheckpointCheck.OverrideJournalForTest(drive => drive == 'C'
++            ? new JournalWindow(8UL, 0L, 1000L, 64L, 4096L)
++            : null);
++        var queryCallCount = 0;
++        (UsnJournalEntry[], UsnJournalCursor)[] batchD = [([WatchEntry()], new UsnJournalCursor(2UL, 210L))];
++
++        UsnJournalCursor QueryCursor(string drive)
++        {
++            Interlocked.Increment(ref queryCallCount);
++            return drive == "C" ? new UsnJournalCursor(1UL, 999L) : new UsnJournalCursor(2UL, 500L);
++        }
++
++        IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> WatchDrive(
++            string drive, UsnJournalCursor since, IBrokerOperationReporter operation,
++            CancellationToken cancellationToken)
++        {
++            if (drive == "C" && since.JournalId == 7UL)
++            {
++                throw new InvalidOperationException("USN journal entries have been deleted; full rescan needed");
++            }
++
++            return LiveWatch(batchD, cancellationToken);
++        }
++
++        var host = CreateWatchHost(QueryCursor, WatchDrive);
++        await using var harness = new HostChannelHarness(host);
++
++        var pipeC = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var pipeD = await harness.OpenWatchChannelAsync('D', new UsnJournalCursor(2UL, 200L));
++        var framesC = await HostChannelHarness.ReadToEndAsync(pipeC);
++
++        var error = framesC.Single();
++        Assert.AreEqual(BrokerFrameKind.Error, error.Kind);
++        StringAssert.Contains(error.RequireMessage(), "7:100");
++        StringAssert.Contains(error.RequireMessage(), "USN journal entries have been deleted; full rescan needed");
++        StringAssert.Contains(error.RequireMessage(), "rescan");
++
++        var batch = await HostChannelHarness.ReadFrameAsync(pipeD);
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch?.Kind);
++        Assert.AreEqual(new UsnJournalCursor(2UL, 210L), batch?.Cursor);
++        Assert.AreEqual(2, queryCallCount);
++        await AssertControlStillServesAsync(harness);
++    }
++
++    [TestMethod]
++    public async Task StartWatch_MidStreamThrows_EmitsErrorFrame_SessionContinues()
++    {
++        var queryCount = 0;
++        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
++        {
++            queryCount++;
++            return new JournalWindow(8UL, 200L, 1000L, 64L, 4096L);
++        });
++        var host = CreateWatchHost(
++            queryCursor: _ => default,
++            watchDrive: (_, _, _, _) => ThrowingWatchMidStream());
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        CollectionAssert.AreEqual(new[] { BrokerFrameKind.JournalBatch, BrokerFrameKind.Error },
++            frames.Select(frame => frame.Kind).ToArray());
++        Assert.AreEqual("journal wrapped mid-stream", frames[1].Message);
++        await AssertControlStillServesAsync(harness);
++        Assert.AreEqual(0, queryCount);
++    }
++
++    [TestMethod]
++    public async Task StartWatch_StartupFailureThatIsNotAboutTheCursor_CarriesThePlainExceptionMessage()
++    {
++        var host = CreateWatchHost(
++            queryCursor: _ => new UsnJournalCursor(1UL, 0L),
++            watchDrive: (_, _, _, _) => throw new UnauthorizedAccessException("Access is denied"));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.AreEqual(1, frames.Count);
++        Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
++        Assert.AreEqual("Access is denied", frames[0].Message);
++    }
++
++    [TestMethod]
++    public async Task StartWatch_StaleCachedCursor_NeverWatchesFromTheCurrentJournalPosition()
++    {
++        using var journal = JournalCheckpointCheck.OverrideJournalForTest(drive => drive == 'C'
++            ? new JournalWindow(8UL, 0L, 1000L, 64L, 4096L)
++            : null);
++        var queryCallCount = 0;
++        var watchCallCount = 0;
++        var host = CreateWatchHost(
++            queryCursor: _ =>
++            {
++                queryCallCount++;
++                return new UsnJournalCursor(1UL, 0L);
++            },
++            watchDrive: (_, since, _, cancellationToken) =>
++            {
++                watchCallCount++;
++                return since == new UsnJournalCursor(7UL, 100L)
++                    ? throw new InvalidOperationException("USN journal wrapped before the cached cursor")
++                    : LiveWatch([([WatchEntry()], new UsnJournalCursor(8UL, 10L))], cancellationToken);
++            });
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.AreEqual(1, frames.Count);
++        Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
++        StringAssert.Contains(frames[0].RequireMessage(), "USN journal wrapped before the cached cursor");
++        Assert.AreEqual(1, watchCallCount);
++        Assert.AreEqual(1, queryCallCount);
++    }
++
++    [TestMethod]
++    public async Task StartWatch_ZeroCursorSentinel_StartupFailure_CarriesThePlainExceptionMessage()
++    {
++        const string failureMessage = "USN journal wrapped before watching could start";
++        var host = CreateWatchHost(
++            queryCursor: _ => new UsnJournalCursor(8UL, 50L),
++            watchDrive: (_, _, _, _) => throw new InvalidOperationException(failureMessage));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', default);
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        CollectionAssert.AreEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.Error },
++            frames.Select(frame => frame.Kind).ToArray());
++        Assert.AreEqual(failureMessage, frames[1].Message);
++    }
++
++    [TestMethod]
++    public async Task StartWatch_JournalIdMismatchOnTheCachedCursor_IsAlsoAStaleCursorError()
++    {
++        using var journal = JournalCheckpointCheck.OverrideJournalForTest(drive => drive == 'C'
++            ? new JournalWindow(8UL, 0L, 1000L, 64L, 4096L)
++            : null);
++        var queryCallCount = 0;
++        var host = CreateWatchHost(
++            queryCursor: _ =>
++            {
++                queryCallCount++;
++                return new UsnJournalCursor(8UL, 50L);
++            },
++            watchDrive: (_, since, _, cancellationToken) => since.JournalId == 7UL
++                ? throw new InvalidOperationException(
++                    "Journal ID mismatch: the cached cursor refers to a journal that was recreated")
++                : LiveWatch([([WatchEntry()], new UsnJournalCursor(8UL, 60L))], cancellationToken));
++        await using var harness = new HostChannelHarness(host);
++
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        var error = frames.Single();
++        Assert.AreEqual(BrokerFrameKind.Error, error.Kind);
++        StringAssert.Contains(error.RequireMessage(), "7:100");
++        StringAssert.Contains(error.RequireMessage(), "Journal ID mismatch");
++        StringAssert.Contains(error.RequireMessage(), "rescan");
++        Assert.AreEqual(1, queryCallCount);
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostTests.WatchSupport.cs b/MFTLib.Tests/JournalBrokerHostTests.WatchSupport.cs
+new file mode 100644
+index 0000000..2ca9960
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostTests.WatchSupport.cs
+@@ -0,0 +1,141 @@
++using System.Runtime.CompilerServices;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++// Shared members of the watch partials. Their catch-up tests install JournalCheckpointCheck's
++// process-wide journal override and the diagnostics tests change BrokerDiagnostics' process-wide
++// state, so the class runs serially.
++[TestClass]
++[DoNotParallelize]
++public partial class JournalBrokerHostTests
++{
++    static readonly NtfsVolumeInformation WatchVolume = new(1024 * 1000, 1024, 512, 4096, 100, 10);
++
++    static JournalBrokerHost CreateWatchHost(
++        UsnJournalCursorQuery? queryCursor = null,
++        JournalBatchSource? watchDrive = null,
++        UsnJournalCatchUpSource? readJournal = null,
++        MftRecordBatchSource? scanDrive = null)
++    {
++        return new JournalBrokerHost(
++            queryCursor ?? (_ => new UsnJournalCursor(7, 1000)),
++            scanDrive ?? ((_, _, _, _, _) => [[WatchRecord(5, ".", 3)]]),
++            readJournal ?? ((_, since) => (Array.Empty<UsnJournalEntry>(), since)),
++            watchDrive,
++            _ => WatchVolume,
++            null,
++            4);
++    }
++
++    static MftRecord WatchRecord(ulong recordNumber, string name, ushort flags = 1)
++    {
++        return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name, null);
++    }
++
++    static UsnJournalEntry WatchEntry()
++    {
++        return JournalEntryFactory.Create(100, 110, "a.txt", UsnReason.FileCreate | UsnReason.Close);
++    }
++
++    // Yields its batches and then stays open until cancelled, the way a live watch does.
++    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> LiveWatch(
++        (UsnJournalEntry[], UsnJournalCursor)[] batches,
++        [EnumeratorCancellation] CancellationToken cancellationToken)
++    {
++        foreach (var batch in batches)
++        {
++            yield return batch;
++        }
++
++        await Task.Delay(Timeout.Infinite, cancellationToken);
++    }
++
++    // Yields its batches and then completes normally, so the channel ends by itself.
++    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> FiniteWatch(
++        (UsnJournalEntry[], UsnJournalCursor)[] batches)
++    {
++        foreach (var batch in batches)
++        {
++            yield return batch;
++        }
++
++        await Task.CompletedTask;
++    }
++
++    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> ThrowingWatchMidStream()
++    {
++        yield return ([WatchEntry()], new UsnJournalCursor(7UL, 110L));
++        await Task.Yield();
++        throw new InvalidOperationException("journal wrapped mid-stream");
++    }
++
++    // Yields one batch, parks until the gate completes (the point where the test breaks the
++    // pipe), yields a second batch whose frame write then fails, and finally blocks like a live
++    // watch until cancelled.
++    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> GatedWatch(
++        (UsnJournalEntry[], UsnJournalCursor) firstBatch,
++        Task secondBatchGate,
++        (UsnJournalEntry[], UsnJournalCursor) secondBatch,
++        [EnumeratorCancellation] CancellationToken cancellationToken)
++    {
++        yield return firstBatch;
++        await secondBatchGate.WaitAsync(cancellationToken);
++        yield return secondBatch;
++        await Task.Delay(Timeout.Infinite, cancellationToken);
++    }
++
++    // Yields one batch, parks until the gate completes, then faults for real. With the pipe
++    // broken at the gate, the attempt to report the fault as an Error frame fails too.
++    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> FaultingAfterGate(
++        (UsnJournalEntry[], UsnJournalCursor) firstBatch,
++        Task faultGate,
++        [EnumeratorCancellation] CancellationToken cancellationToken)
++    {
++        yield return firstBatch;
++        await faultGate.WaitAsync(cancellationToken);
++        throw new InvalidOperationException("journal wrapped mid-stream");
++    }
++
++    static async Task AssertControlStillServesAsync(HostChannelHarness harness)
++    {
++        var requestId = harness.NextRequestId();
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, requestId, "C"));
++        var reply = await harness.ReadControlAsync();
++
++        Assert.AreEqual(BrokerFrameKind.VolumeInfo, reply.Kind);
++        Assert.AreEqual(requestId, reply.RequestId);
++        Assert.IsFalse(harness.Serve.IsCompleted, "The session must outlive one channel's failure.");
++    }
++
++    // Connects the named in-memory pipe of one drive through a BrokenPipeStream on the host's
++    // end, so a test can make that drive's writes fail while every other drive's pipe stays healthy.
++    sealed class BreakableDrivePipe(char drive, bool brokenOnConnect = false)
++    {
++        readonly TaskCompletionSource<BrokenPipeStream> _connected =
++            new(TaskCreationOptions.RunContinuationsAsynchronously);
++
++        public HostChannelHarness? Harness { get; set; }
++
++        public Task<BrokenPipeStream> Connected => _connected.Task;
++
++        public async Task<Stream> ConnectAsync(string pipeName, CancellationToken cancellationToken)
++        {
++            var stream = await Harness!.ConnectInMemoryAsync(pipeName, cancellationToken);
++            if (!pipeName.StartsWith($"harness-{drive}-", StringComparison.Ordinal))
++            {
++                return stream;
++            }
++
++            var broken = new BrokenPipeStream(stream);
++            if (brokenOnConnect)
++            {
++                broken.BreakPipe();
++            }
++
++            _connected.TrySetResult(broken);
++            return broken;
++        }
++    }
++}

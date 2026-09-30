@@ -1,0 +1,378 @@
+# Review package: 491a88b..task/265-B1
+
+## Commits
+37bc5bb Stop on an idle drive throws, a cancelled rescan keeps its watch, and cancelled waits never run inline
+
+## Files changed
+ .../Index/FileIndexPerDriveWatchTests.Lifecycle.cs | 85 ++++++++++++++++++++++
+ MFTLib.Tests/Index/FileIndexPerDriveWatchTests.cs  | 14 +++-
+ MFTLib.Tests/Index/FileIndexRescanCleanupTests.cs  | 26 +++++++
+ MFTLib/Index/FileIndex.Rescan.cs                   |  6 +-
+ MFTLib/Index/FileIndex.RescanRestart.cs            | 11 ++-
+ MFTLib/Index/FileIndex.WatchDrive.cs               | 11 ++-
+ 6 files changed, 145 insertions(+), 8 deletions(-)
+
+## Diff
+diff --git a/MFTLib.Tests/Index/FileIndexPerDriveWatchTests.Lifecycle.cs b/MFTLib.Tests/Index/FileIndexPerDriveWatchTests.Lifecycle.cs
+index cddd5f9..2a1ddc2 100644
+--- a/MFTLib.Tests/Index/FileIndexPerDriveWatchTests.Lifecycle.cs
++++ b/MFTLib.Tests/Index/FileIndexPerDriveWatchTests.Lifecycle.cs
+@@ -86,20 +86,105 @@ public partial class FileIndexPerDriveWatchTests
+ 
+         await harness.Index.StopWatchingAsync('T', Token);
+ 
+         Assert.AreEqual(0, harness.Faults.Count, "a stopped watch's last error belongs to no current watch");
+         var drive = harness.DriveFor('T');
+         Assert.IsNull(drive.WatchFailureMessage);
+         Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUp);
+         Assert.AreEqual(1, handle.DisposeCount);
+     }
+ 
++    [TestMethod]
++    public async Task Rescan_CancelledWhileTheOldWatchDrains_RestartsTheHealthyWatch()
++    {
++        using var harness = new WatchHarness();
++        await harness.Index.StartWatchingAsync('T', Token);
++        var applying = HoldFirstApply(harness, 'T');
++        _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
++        await applying.Entered.WaitAsync(HangGuard);
++        using var rescanCancellation = new CancellationTokenSource();
++        var rescan = harness.Index.RescanAsync('T', rescanCancellation.Token);
++
++        await rescanCancellation.CancelAsync();
++        applying.Release();
++
++        await ThrowsAsync<OperationCanceledException>(() => rescan.WaitAsync(HangGuard));
++        var starts = harness.Source.StartsFor('T');
++        Assert.AreEqual(2, starts.Count, "a healthy watch resumes after a failed scan, cancellation included");
++        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn), starts[1]);
++        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
++    }
++
++    [TestMethod]
++    public async Task TokenCancelledInsideAHandler_NeverRunsTheWaitersContinuationInline()
++    {
++        using var harness = new WatchHarness();
++        await harness.Index.StartWatchingAsync('T', Token);
++        await harness.Index.StartWatchingAsync('U', Token);
++        await harness.Index.StartWatchingAsync('V', Token);
++        var draining = HoldFirstApply(harness, 'U');
++        _ = harness.Source.HandleFor('U').Queue(WatchHarness.Batch(10, "u.txt"));
++        await draining.Entered.WaitAsync(HangGuard);
++        using var waitCancellation = new CancellationTokenSource();
++        using var stopCancellation = new CancellationTokenSource();
++        bool? waitObserved = null;
++        bool? stopObserved = null;
++        var waiter = ObserveAsync(harness.Index.WaitForCatchUpAsync('V', waitCancellation.Token),
++            observed => waitObserved = observed);
++        var stopper = ObserveAsync(harness.Index.StopWatchingAsync('U', stopCancellation.Token),
++            observed => stopObserved = observed);
++        harness.Index.Changed += CancelWhileFlagged("t.txt", waitCancellation, stopCancellation);
++
++        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(9, "t.txt"));
++
++        await Task.WhenAll(waiter, stopper).WaitAsync(HangGuard);
++        Assert.IsFalse(waitObserved, "the catch-up wait's continuation ran on the cancelling handler's stack");
++        Assert.IsFalse(stopObserved, "the stop's continuation ran on the cancelling handler's stack");
++        draining.Release();
++        return;
++
++        static async Task ObserveAsync(Task operation, Action<bool> record)
++        {
++            await ThrowsAsync<OperationCanceledException>(() => operation);
++            record(_settlingPumpFault);
++        }
++    }
++
++    /// <summary>
++    ///     A <see cref="FileIndex.Changed" /> handler that, for the change named
++    ///     <paramref name="fileName" />, cancels every source with the thread-static flag set, so an
++    ///     awaiter whose continuation runs inline on that stack records it.
++    /// </summary>
++    static Action<FileChange> CancelWhileFlagged(string fileName, params CancellationTokenSource[] sources)
++    {
++        return change =>
++        {
++            if (change.Entry.Name != fileName)
++            {
++                return;
++            }
++
++            _settlingPumpFault = true;
++            try
++            {
++                foreach (var source in sources)
++                {
++                    source.Cancel();
++                }
++            }
++            finally
++            {
++                _settlingPumpFault = false;
++            }
++        };
++    }
++
+     [TestMethod]
+     public async Task Rescan_HoldsLifecycleGateThroughProduction()
+     {
+         using var harness = new WatchHarness();
+         var producing = harness.HoldNextProduction('T');
+         var rescan = harness.Index.RescanAsync('T', Token);
+         await producing.Entered.WaitAsync(HangGuard);
+ 
+         var start = harness.Index.StartWatchingAsync('T', Token);
+ 
+diff --git a/MFTLib.Tests/Index/FileIndexPerDriveWatchTests.cs b/MFTLib.Tests/Index/FileIndexPerDriveWatchTests.cs
+index 0657738..51d5882 100644
+--- a/MFTLib.Tests/Index/FileIndexPerDriveWatchTests.cs
++++ b/MFTLib.Tests/Index/FileIndexPerDriveWatchTests.cs
+@@ -249,24 +249,36 @@ public partial class FileIndexPerDriveWatchTests
+ 
+     [TestMethod]
+     public async Task Stop_RethrowsOutstandingFaultOnce()
+     {
+         using var harness = new WatchHarness();
+         await harness.Index.StartWatchingAsync('T', Token);
+         harness.Source.HandleFor('T').FailDrive(new IOException("the volume went away"));
+         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
+ 
+         var thrown = await ThrowsAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync('T', Token));
+-        await harness.Index.StopWatchingAsync('T', Token);
+ 
+         Assert.AreSame(fault.Exception, thrown);
+         Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
++        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
++            () => harness.Index.StopWatchingAsync('T', Token),
++            "the first stop cleared the request and retired the instance, so the drive is not watching");
++    }
++
++    [TestMethod]
++    public async Task Stop_DriveNeverStarted_ThrowsInvalidOperation()
++    {
++        using var harness = new WatchHarness();
++
++        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => harness.Index.StopWatchingAsync('T', Token));
++
++        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
+     }
+ 
+     [TestMethod]
+     public async Task CacheOnlyUnresumable_StartThrowsWithRescanMessage()
+     {
+         using var fixture = new CacheOnlyUnresumableFixture();
+         await using var index = await fixture.OpenAdoptingAnUnresumableBlockAsync(Token);
+ 
+         var thrown = await ThrowsAsync<InvalidOperationException>(() => index.StartWatchingAsync('T', Token));
+ 
+diff --git a/MFTLib.Tests/Index/FileIndexRescanCleanupTests.cs b/MFTLib.Tests/Index/FileIndexRescanCleanupTests.cs
+index 098eee0..8b59b74 100644
+--- a/MFTLib.Tests/Index/FileIndexRescanCleanupTests.cs
++++ b/MFTLib.Tests/Index/FileIndexRescanCleanupTests.cs
+@@ -225,20 +225,46 @@ public class FileIndexRescanCleanupTests
+             // timeout, a thrown CancelAsync, or a failed assertion): TrySetResult is
+             // idempotent, so this is a no-op on the normal path where line 205 already
+             // released it. Without this, a stranded producer leaves the rescan permanently
+             // awaiting it, and DisposeAsync then hangs waiting on that rescan instead of the
+             // test reporting the real failure.
+             producerMayReturn.TrySetResult();
+             swapGate.Release();
+         }
+     }
+ 
++    /// <summary>
++    ///     A drive whose watch ended without a stop reads faulted; a rescan replaces its block and,
++    ///     since the watch is still requested, restarts it from the fresh cursor, which clears the
++    ///     faulted catch-up and the failure message.
++    /// </summary>
++    [TestMethod]
++    public async Task RescanAsync_AfterTheSourceEndedWithoutAStop_ClearsTheStaleFaultedCatchUp()
++    {
++        using var harness = new WatchHarness();
++        await harness.Index.StartWatchingAsync('T', Token);
++        harness.Source.HandleFor('T').End();
++        await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
++        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
++        Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
++
++        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
++        await harness.Index.RescanAsync('T', Token);
++
++        var drive = harness.DriveFor('T');
++        Assert.AreEqual(DriveState.Ready, drive.State);
++        Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.WatchCatchUp,
++            "the rescan replaced the faulted watch with one started from the fresh cursor");
++        Assert.IsNull(drive.WatchFailureMessage);
++        Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.StartsFor('T')[^1]);
++    }
++
+     static SemaphoreSlim SwapGateOf(FileIndex index)
+     {
+         var swapGateField = typeof(FileIndex).GetField("_swapGate",
+             BindingFlags.NonPublic | BindingFlags.Instance)!;
+         return (SemaphoreSlim)swapGateField.GetValue(index)!;
+     }
+ 
+     static void WriteBlock(string path, uint volumeSerial, ulong journalId, long nextUsn)
+     {
+         var moment = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
+diff --git a/MFTLib/Index/FileIndex.Rescan.cs b/MFTLib/Index/FileIndex.Rescan.cs
+index 79ecc7f..45b1468 100644
+--- a/MFTLib/Index/FileIndex.Rescan.cs
++++ b/MFTLib/Index/FileIndex.Rescan.cs
+@@ -37,23 +37,23 @@ public sealed partial class FileIndex
+     ///         whose start was refused, or that has no block stays exactly as it was: its previous
+     ///         block, watch failure, faulted catch-up, outstanding watch fault, and checkpoint-loss
+     ///         report remain, and it is not restarted from a cursor that failure condemns.
+     ///         Non-cancellation producer failures are available through
+     ///         <see cref="DriveStatus.MftProducerFailureMessage" /> even when this task completes
+     ///         normally.
+     ///     </para>
+     ///     <para>
+     ///         A restart after the scan is not bounded by <paramref name="cancellationToken" />:
+     ///         the token cancels the rescan, not the drive's watch, which a stop or disposal ends
+-    ///         instead. Cancelling the token while the old watch's teardown is awaited throws before
+-    ///         the scan starts and leaves the watch stopped but still requested, so the next start
+-    ///         or rescan of the drive starts it again.
++    ///         instead. The wait for the old watch's teardown does not observe the token either; a
++    ///         cancellation is observed by the scan, and a cancelled scan follows the failed-scan
++    ///         rule above, so a healthy watch restarts from its old cursor.
+     ///     </para>
+     /// </remarks>
+     public async Task RescanAsync(char driveLetter, CancellationToken cancellationToken)
+     {
+         ObjectDisposedException.ThrowIf(_disposed, this);
+         if (!_driveConfigurations.TryGetValue(char.ToUpperInvariant(driveLetter), out var drive))
+         {
+             throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
+         }
+ 
+diff --git a/MFTLib/Index/FileIndex.RescanRestart.cs b/MFTLib/Index/FileIndex.RescanRestart.cs
+index c80c709..5f4a091 100644
+--- a/MFTLib/Index/FileIndex.RescanRestart.cs
++++ b/MFTLib/Index/FileIndex.RescanRestart.cs
+@@ -4,21 +4,21 @@ public sealed partial class FileIndex
+ {
+     /// <summary>
+     ///     The body of <see cref="RescanAsync" /> once it holds the drive's lifecycle gate: retire
+     ///     the drive's watch, produce and commit the new block, then restart the watch when it is
+     ///     still requested.
+     /// </summary>
+     async Task RescanWithGatesHeldAsync(DriveRuntime runtime, IndexedDrive drive, CancellationToken cancellationToken)
+     {
+         var driveLetter = runtime.DriveLetter;
+         var requiresReplacement = RequiresReplacementForWatchRecovery(driveLetter);
+-        await RetireWatchForRescanAsync(runtime, cancellationToken).ConfigureAwait(false);
++        await RetireWatchForRescanAsync(runtime).ConfigureAwait(false);
+ 
+         BlockReplacementOutcome replacement;
+         try
+         {
+             replacement = await SwapDriveBlockAsync(drive, driveLetter, cancellationToken).ConfigureAwait(false);
+         }
+         catch (Exception swapFailure) when (!requiresReplacement)
+         {
+             try
+             {
+@@ -45,21 +45,21 @@ public sealed partial class FileIndex
+ 
+         await RestartRequestedWatchAsync(runtime).ConfigureAwait(false);
+     }
+ 
+     /// <summary>
+     ///     Retires the drive's starting or running watch and waits for its teardown, and for any
+     ///     earlier instance still retiring, before the scan. A faulted watch stays current, since
+     ///     its pump has already ended: a rescan that produces no replacement leaves the drive
+     ///     faulted exactly as it was, and a restart after a replacement supersedes it.
+     /// </summary>
+-    async Task RetireWatchForRescanAsync(DriveRuntime runtime, CancellationToken cancellationToken)
++    async Task RetireWatchForRescanAsync(DriveRuntime runtime)
+     {
+         WatchInstance? retired = null;
+         var drains = new List<Task>(2);
+         lock (_stateLock)
+         {
+             if (runtime.Retiring is { } alreadyRetiring)
+             {
+                 drains.Add(alreadyRetiring.Drained);
+             }
+ 
+@@ -68,23 +68,28 @@ public sealed partial class FileIndex
+                 retired = RetireCurrentLocked(runtime);
+             }
+ 
+             if ((retired ?? runtime.Current) is { } instance)
+             {
+                 drains.Add(instance.Drained);
+             }
+         }
+ 
+         retired?.RequestStop();
++
++        // Not bounded by the rescan's token: the stop request already ends the pump's read, so the
++        // drain is prompt, and a rescan that gave up here would leave a healthy watch stopped with
++        // nothing to restart it. A cancellation is observed by the scan instead, whose failure
++        // restarts a healthy watch from its old cursor.
+         foreach (var drain in drains)
+         {
+-            await AwaitQueuedAsync(drain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
++            await drain.ConfigureAwait(false);
+         }
+     }
+ 
+     /// <summary>
+     ///     A replacement block has a fresh cursor, so a start refused or failed over the old block
+     ///     no longer describes the drive. A faulted current watch is left for the restart that
+     ///     follows, which supersedes it.
+     /// </summary>
+     void ClearRefusedStartAfterReplacement(DriveRuntime runtime)
+     {
+diff --git a/MFTLib/Index/FileIndex.WatchDrive.cs b/MFTLib/Index/FileIndex.WatchDrive.cs
+index fd391c2..bf6181a 100644
+--- a/MFTLib/Index/FileIndex.WatchDrive.cs
++++ b/MFTLib/Index/FileIndex.WatchDrive.cs
+@@ -33,34 +33,43 @@ public sealed partial class FileIndex
+         return StartWatchingCoreAsync(GetDriveRuntime(driveLetter), gateHeld: false, cancellationToken);
+     }
+ 
+     /// <summary>
+     ///     Stops one drive's watch and waits for its teardown, then rethrows, once, the fault that
+     ///     ended the watch or the first subscriber fault it announced, if either is outstanding.
+     ///     Takes no lifecycle gate, so it never waits for a rescan: a stop during a rescan of the
+     ///     same drive completes while the scan runs, and the rescan then leaves the watch stopped.
+     ///     The drive's <see cref="DriveStatus.WatchCatchUp" /> reads
+     ///     <see cref="WatchCatchUpState.NotStarted" /> afterwards and any pending catch-up wait is
+-    ///     cancelled. Calling this for a drive that is not watching completes without effect.
++    ///     cancelled. A drive counts as watching while its watch is requested or it has a watch
++    ///     instance, current or still retiring; a start that failed at its source leaves the watch
++    ///     requested, so stopping that drive clears the request and its faulted state.
+     ///     <paramref name="cancellationToken" /> bounds only the wait for the teardown: cancelling
+     ///     it throws while the teardown continues, and a later start waits for that teardown.
+     /// </summary>
+     /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
++    /// <exception cref="InvalidOperationException">The drive is not watching.</exception>
+     public async Task StopWatchingAsync(char driveLetter, CancellationToken cancellationToken)
+     {
+         ObjectDisposedException.ThrowIf(_disposed, this);
+         var runtime = GetDriveRuntime(driveLetter);
+         WatchInstance? retired;
+         Task? previousDrain;
+         Exception? outstandingFault = null;
+         lock (_stateLock)
+         {
++            if (!runtime.WatchRequested && runtime.Current is null && runtime.Retiring is null)
++            {
++                throw new InvalidOperationException(
++                    $"Drive {runtime.DriveLetter} is not watching, so there is no watch to stop.");
++            }
++
+             runtime.WatchRequested = false;
+             runtime.RefusedStartFault = null;
+             retired = RetireCurrentLocked(runtime);
+             if (retired is not null)
+             {
+                 outstandingFault = retired.OutstandingFault;
+                 retired.OutstandingFault = null;
+             }
+ 
+             previousDrain = runtime.Retiring?.Drained;

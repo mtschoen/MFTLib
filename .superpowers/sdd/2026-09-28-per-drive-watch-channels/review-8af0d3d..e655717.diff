@@ -1,0 +1,304 @@
+# Review package: 8af0d3d..task/265-A1
+
+## Commits
+e655717 Cover the post-parse and mid-slice cancel exits of the native parse
+
+## Files changed
+ .../NativeParserCoverageTests.ParseControl.cs      | 46 ++++++++++++++++++++++
+ MFTLib/Internal/MFTLibNative.cs                    |  3 ++
+ MFTLibNative/core/test_hooks.cpp                   | 19 +++++++++
+ MFTLibNative/internal.h                            |  3 ++
+ MFTLibNative/mft/mft.parse_core.cpp                |  2 +-
+ 5 files changed, 72 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/MFTLib.Tests/NativeParserCoverageTests.ParseControl.cs b/MFTLib.Tests/NativeParserCoverageTests.ParseControl.cs
+index ac9f824..3c5b051 100644
+--- a/MFTLib.Tests/NativeParserCoverageTests.ParseControl.cs
++++ b/MFTLib.Tests/NativeParserCoverageTests.ParseControl.cs
+@@ -147,20 +147,66 @@ public partial class NativeParserCoverageTests
+                 }
+             });
+ 
+             AssertCancelled(result);
+             Assert.AreEqual(1, parsingCalls);
+             Assert.AreEqual(1, ParseControlBlock.ChunkThreadCounts().Length);
+             Assert.AreEqual(0u, MFTLibNative.NativeGetResolveThreadCount(), "Path resolution must not run");
+         });
+     }
+ 
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_CancelledDuringChunkParse_JoinsTheReadAndStopsBeforeReporting()
++    {
++        // One thread and 64-record chunks, so the cancellation checks run in a fixed order: 1 before
++        // the first read, 2 at the top of the first chunk, 3 before its only sub-slice, 4 after its
++        // parse, while the next chunk's read runs. The countdown trips check 4.
++        WithImage(ImageRecordCount, path =>
++        {
++            using var control = new ParseControlBlock(1);
++            var progressCalls = 0;
++            MFTLibNative.NativeSetCancelCheckCountdown(4);
++
++            var result = ParseImage(path, MatchFlags.None, control, (_, _, _, _) => progressCalls++);
++
++            AssertCancelled(result);
++            Assert.AreEqual(0, progressCalls, "The parse must stop before reporting the chunk");
++            CollectionAssert.AreEqual(new[] { 1u }, ParseControlBlock.ChunkThreadCounts());
++        });
++    }
++
++    [TestMethod]
++    public void ParseMFTRecordsWithProgress_CancelledBetweenWorkerSubSlices_StopsTheChunk()
++    {
++        if (Processors < 2)
++        {
++            Assert.Inconclusive("Needs two parse workers");
++        }
++
++        // One 16384-record chunk on two workers, each checking before each of its two 4096-record
++        // sub-slices: checks 1 and 2 precede the chunk, 3 to 6 are the workers', 7 follows the
++        // parse. Each worker's second check follows its first, so the sixth check is always a
++        // check between two sub-slices of one worker; it is the only one that trips.
++        WithImage(16384, path =>
++        {
++            using var control = new ParseControlBlock(2);
++            var progressCalls = 0;
++            MFTLibNative.NativeSetCancelCheckCountdown(6);
++
++            var result = ParseImage(path, MatchFlags.None, control, (_, _, _, _) => progressCalls++, 16384);
++
++            AssertCancelled(result);
++            Assert.AreEqual(0, progressCalls);
++            CollectionAssert.AreEqual(new[] { 2u }, ParseControlBlock.ChunkThreadCounts());
++        });
++    }
++
+     static void AssertAllowanceGivesEveryChunk(int allowance, uint expected)
+     {
+         WithImage(ImageRecordCount, path =>
+         {
+             using var control = new ParseControlBlock(allowance);
+             ParseImage(path, MatchFlags.None, control);
+             AssertEveryChunkUsed(expected);
+         });
+     }
+ 
+diff --git a/MFTLib/Internal/MFTLibNative.cs b/MFTLib/Internal/MFTLibNative.cs
+index f81579f..32ce6ad 100644
+--- a/MFTLib/Internal/MFTLibNative.cs
++++ b/MFTLib/Internal/MFTLibNative.cs
+@@ -122,20 +122,23 @@ static class MFTLibNative
+     [DllImport(LibraryName, EntryPoint = "SetUsnIoSuccess", CallingConvention = CallingConvention.Cdecl)]
+     internal static extern unsafe void NativeSetUsnIoSuccess(byte* data, uint size);
+ 
+     [DllImport(LibraryName, EntryPoint = "SetUsnOverlappedAbort", CallingConvention = CallingConvention.Cdecl)]
+     internal static extern void NativeSetUsnOverlappedAbort();
+ 
+     [DllImport(LibraryName, EntryPoint = "SetUsnWatchPipe", CallingConvention = CallingConvention.Cdecl)]
+     internal static extern void NativeSetUsnWatchPipe(SafeHandle handle, SafeHandle beforeIssue,
+         SafeHandle continueIssue, SafeHandle issued, int gateReadNumber);
+ 
++    [DllImport(LibraryName, EntryPoint = "SetCancelCheckCountdown", CallingConvention = CallingConvention.Cdecl)]
++    internal static extern void NativeSetCancelCheckCountdown(int countdown);
++
+     [DllImport(LibraryName, EntryPoint = "GetChunkThreadCounts", CallingConvention = CallingConvention.Cdecl)]
+     internal static extern unsafe uint NativeGetChunkThreadCounts(uint* counts, uint capacity);
+ 
+     [DllImport(LibraryName, EntryPoint = "GetResolveThreadCount", CallingConvention = CallingConvention.Cdecl)]
+     internal static extern uint NativeGetResolveThreadCount();
+ 
+     [DllImport(LibraryName, EntryPoint = "ResetTestState", CallingConvention = CallingConvention.Cdecl)]
+     internal static extern void NativeResetTestState();
+ 
+     // ParseMFTRecords overload that takes raw IntPtr handle (for testing with invalid handles)
+diff --git a/MFTLibNative/core/test_hooks.cpp b/MFTLibNative/core/test_hooks.cpp
+index f289a25..a994b27 100644
+--- a/MFTLibNative/core/test_hooks.cpp
++++ b/MFTLibNative/core/test_hooks.cpp
+@@ -1,14 +1,15 @@
+ #include "pch.h"
+ 
+ #include <algorithm>
+ #include <array>
++#include <atomic>
+ #include <mutex>
+ #include <thread>
+ 
+ #include "../internal.h"
+ #include "../mft_api.h"
+ 
+ namespace {
+ unsigned g_maxThreads = 0;
+ int g_allocFailCountdown = 0;
+ int g_readFailCountdown = 0;
+@@ -17,20 +18,25 @@ int g_failFileSize = 0;
+ int g_failPathConversion = 0;
+ int g_failPlatformReadCountdown = 0;
+ int g_failPlatformWrite = 0;
+ uint32_t g_volumeRecordSizeOverride = 0;
+ // What the most recent parse used per chunk and for path resolution. Chunks past the
+ // array's capacity are not recorded; a parse only resets and appends, so it never blocks.
+ std::mutex g_parseThreadCountsMutex;
+ std::array<unsigned, 1024> g_chunkThreadCounts = {};
+ unsigned g_chunkThreadCountLength = 0;
+ unsigned g_resolveThreadCount = 0;
++// While armed, each parse cancellation check decrements the countdown, and the check that takes
++// it from 1, and every check after it, reports cancelled. Atomic because parse workers check
++// concurrently; unarmed, a check costs one relaxed load.
++std::atomic<bool> g_cancelCheckCountdownArmed{false};
++std::atomic<int> g_cancelCheckCountdown{0};
+ #ifdef _WIN32
+ DWORD g_usnIoFailError = 0;
+ int g_usnIoFailCountdown = 0;
+ // Ring queue of synthetic IOCTL success responses (buffers owned by the caller).
+ std::array<const uint8_t*, 8> g_usnIoData = {};
+ std::array<uint32_t, 8> g_usnIoSize = {};
+ int g_usnIoHead = 0;
+ int g_usnIoCount = 0;
+ int g_usnOverlappedAbort = 0;
+ HANDLE g_usnWatchPipe = nullptr;
+@@ -74,20 +80,25 @@ void RecordResolveThreadCount(unsigned threadCount) {
+     g_resolveThreadCount = threadCount;
+ }
+ 
+ bool ShouldFailAlloc() {
+     if (g_allocFailCountdown <= 0) {
+         return false;
+     }
+     return --g_allocFailCountdown == 0;
+ }
+ 
++bool ShouldForceCancel() {
++    return g_cancelCheckCountdownArmed.load(std::memory_order_relaxed) &&
++           g_cancelCheckCountdown.fetch_sub(1, std::memory_order_relaxed) <= 1;
++}
++
+ bool ShouldFailRead() {
+     if (g_readFailCountdown <= 0) {
+         return false;
+     }
+     return --g_readFailCountdown == 0;
+ }
+ 
+ uint64_t NamePoolCapacityOverride() { return g_namePoolCapacityOverride; }
+ 
+ bool ShouldFailFileSize() { return g_failFileSize != 0; }
+@@ -169,20 +180,24 @@ bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesRe
+ extern "C" {
+ EXPORT void SetMaxThreads(unsigned maxThreads) { g_maxThreads = maxThreads; }
+ EXPORT void SetAllocFailCountdown(int countdown) { g_allocFailCountdown = countdown; }
+ EXPORT void SetReadFailCountdown(int countdown) { g_readFailCountdown = countdown; }
+ EXPORT void SetNamePoolCapacityOverride(uint64_t bytes) { g_namePoolCapacityOverride = bytes; }
+ EXPORT void SetFailFileSize(int fail) { g_failFileSize = fail; }
+ EXPORT void SetFailPathConversion(int fail) { g_failPathConversion = fail; }
+ EXPORT void SetFailPlatformRead(int countdown) { g_failPlatformReadCountdown = countdown; }
+ EXPORT void SetFailPlatformWrite(int fail) { g_failPlatformWrite = fail; }
+ EXPORT void SetVolumeRecordSizeOverride(uint32_t recordSize) { g_volumeRecordSizeOverride = recordSize; }
++EXPORT void SetCancelCheckCountdown(int countdown) {
++    g_cancelCheckCountdown = countdown;
++    g_cancelCheckCountdownArmed = countdown > 0;
++}
+ 
+ // Copies the thread count each chunk of the most recent parse used, in order, into counts
+ // and returns how many were copied (at most capacity).
+ EXPORT unsigned GetChunkThreadCounts(unsigned* counts, unsigned capacity) {
+     std::scoped_lock lock(g_parseThreadCountsMutex);
+     const unsigned copied = (std::min)(capacity, g_chunkThreadCountLength);
+     std::copy_n(g_chunkThreadCounts.begin(), copied, counts);
+     return copied;
+ }
+ 
+@@ -223,20 +238,22 @@ EXPORT void ResetTestState() {
+     g_maxThreads = 0;
+     g_allocFailCountdown = 0;
+     g_readFailCountdown = 0;
+     g_namePoolCapacityOverride = 0;
+     g_failFileSize = 0;
+     g_failPathConversion = 0;
+     g_failPlatformReadCountdown = 0;
+     g_failPlatformWrite = 0;
+     g_volumeRecordSizeOverride = 0;
+     ResetRecordedParseThreadCounts();
++    g_cancelCheckCountdownArmed = false;
++    g_cancelCheckCountdown = 0;
+     g_usnIoFailError = 0;
+     g_usnIoFailCountdown = 0;
+     g_usnIoHead = 0;
+     g_usnIoCount = 0;
+     g_usnOverlappedAbort = 0;
+     g_usnWatchPipe = nullptr;
+     g_usnBeforeIssue = nullptr;
+     g_usnContinueIssue = nullptr;
+     g_usnIssued = nullptr;
+     g_usnGateReadNumber = 0;
+@@ -246,13 +263,15 @@ EXPORT void ResetTestState() {
+     g_maxThreads = 0;
+     g_allocFailCountdown = 0;
+     g_readFailCountdown = 0;
+     g_namePoolCapacityOverride = 0;
+     g_failFileSize = 0;
+     g_failPathConversion = 0;
+     g_failPlatformReadCountdown = 0;
+     g_failPlatformWrite = 0;
+     g_volumeRecordSizeOverride = 0;
+     ResetRecordedParseThreadCounts();
++    g_cancelCheckCountdownArmed = false;
++    g_cancelCheckCountdown = 0;
+ }
+ #endif
+ }
+diff --git a/MFTLibNative/internal.h b/MFTLibNative/internal.h
+index bc3f630..2f86603 100644
+--- a/MFTLibNative/internal.h
++++ b/MFTLibNative/internal.h
+@@ -62,20 +62,23 @@ struct MftParseControl;
+ unsigned EffectiveThreadCount(const MftParseControl* control);
+ // Test hook recording (defined in core/test_hooks.cpp): what each chunk and path resolution
+ // of the most recent parse used, read back through GetChunkThreadCounts and GetResolveThreadCount.
+ void ResetRecordedParseThreadCounts();
+ void RecordChunkThreadCount(unsigned threadCount);
+ void RecordResolveThreadCount(unsigned threadCount);
+ 
+ // Test hook declarations (defined in core/test_hooks.cpp)
+ bool ShouldFailAlloc();
+ bool ShouldFailRead();
++// The Nth parse cancellation check after SetCancelCheckCountdown(N), and every check after it,
++// reports cancelled, so a test can cancel inside a chunk's workers.
++bool ShouldForceCancel();
+ uint64_t NamePoolCapacityOverride();
+ bool ShouldFailFileSize();
+ bool ShouldFailPathConversion();
+ // Force the platform positioned read/write to take their failure branch, so
+ // pread_at/pwrite_at error handling is coverable without a real I/O failure.
+ bool ShouldFailPlatformRead();
+ bool ShouldFailPlatformWrite();
+ uint32_t VolumeRecordSizeOverride();
+ 
+ #ifdef _WIN32
+diff --git a/MFTLibNative/mft/mft.parse_core.cpp b/MFTLibNative/mft/mft.parse_core.cpp
+index a2e967d..272ae11 100644
+--- a/MFTLibNative/mft/mft.parse_core.cpp
++++ b/MFTLibNative/mft/mft.parse_core.cpp
+@@ -94,21 +94,21 @@ bool AllocateParseBuffers(std::array<uint8_t*, 2>& buf, size_t bufSize, PathLook
+     }
+     return true;
+ }
+ 
+ // A parse checks for cancellation between sub-slices of this many records.
+ constexpr uint64_t kCancelCheckRecords = 4096;
+ 
+ enum class ParseOutcome : uint8_t { Completed, Failed, Cancelled };
+ 
+ bool IsCancelRequested(const MftParseControl* control) {
+-    return control != nullptr && LoadSharedInt32(&control->cancelRequested) != 0;
++    return ShouldForceCancel() || (control != nullptr && LoadSharedInt32(&control->cancelRequested) != 0);
+ }
+ 
+ // Apply USA fixups to every valid record in buffer[range.start, range.end).
+ void FixupRange(uint8_t* buffer, SliceRange range, ParseGeometry geometry) {
+     for (uint64_t i = range.start; i < range.end; i++) {
+         auto* recPtr = buffer + (static_cast<size_t>(geometry.recordSize) * i);
+         const auto* rec = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(recPtr);
+         if (rec->MultiSectorHeader.Magic == 0x454C4946) {
+             ApplyFixup(recPtr, geometry.recordSize);
+         }

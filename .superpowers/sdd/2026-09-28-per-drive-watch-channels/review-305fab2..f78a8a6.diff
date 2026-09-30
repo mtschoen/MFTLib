@@ -1,0 +1,337 @@
+# Review package: 305fab2..task/265-A4
+
+## Commits
+f78a8a6 Journal reads take a buffer bound
+
+## Files changed
+ MFTLib.Tests/JournalBrokerHostRealSeamsTests.cs |  2 +-
+ MFTLib.Tests/UsnJournalSyntheticTests.cs        | 38 +++++++++++++++++++++++++
+ MFTLib.Tests/UsnJournalTests.cs                 |  8 +++---
+ MFTLib/Internal/MFTLibNative.cs                 |  5 ++--
+ MFTLib/Journal/MftVolume.Journal.cs             | 14 ++++++++-
+ MFTLibNative/usn/usn_journal.cpp                |  6 ++--
+ 6 files changed, 63 insertions(+), 10 deletions(-)
+
+## Diff
+diff --git a/MFTLib.Tests/JournalBrokerHostRealSeamsTests.cs b/MFTLib.Tests/JournalBrokerHostRealSeamsTests.cs
+index 489343c..dca1027 100644
+--- a/MFTLib.Tests/JournalBrokerHostRealSeamsTests.cs
++++ b/MFTLib.Tests/JournalBrokerHostRealSeamsTests.cs
+@@ -91,21 +91,21 @@ public partial class JournalBrokerHostRealSeamsTests : BrokerBlockTestBase
+             AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
+             EntryStride = MFTLibNative.NativeCompactEntrySize
+         };
+         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
+         Marshal.StructureToPtr(result, resultPtr, false);
+         return resultPtr;
+     }
+ 
+     static async Task<List<BrokerFrame>> ServeDefaultScanAsync(RecordingBlockSectionWriter writer)
+     {
+-        MFTLibNative._readUsnJournal = (_, nextUsn, journalId) => BuildEmptyWatchResult(journalId, nextUsn + 100);
++        MFTLibNative._readUsnJournal = (_, nextUsn, journalId, _) => BuildEmptyWatchResult(journalId, nextUsn + 100);
+         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
+         var (client, server) = DuplexStream.CreatePair();
+         await using var clientLifetime = client;
+         await using var serverLifetime = server;
+         var request = new ArrayBufferWriter<byte>();
+         BrokerProtocol.WriteArmAndScan(request, "C:0:0:section-C");
+         await client.WriteAsync(request.WrittenMemory);
+         await JournalBrokerHost.CreateDefault().ServeAsync(server, writer, true, CancellationToken.None);
+         await server.DisposeAsync();
+         using var response = new MemoryStream();
+diff --git a/MFTLib.Tests/UsnJournalSyntheticTests.cs b/MFTLib.Tests/UsnJournalSyntheticTests.cs
+index 03d7501..3071cd4 100644
+--- a/MFTLib.Tests/UsnJournalSyntheticTests.cs
++++ b/MFTLib.Tests/UsnJournalSyntheticTests.cs
+@@ -222,20 +222,58 @@ public partial class UsnJournalSyntheticTests
+         // entry-array grow path. Two buffers of 700 short-named records = 1400.
+         QueueSuccess(BuildManyRecords(1000, 2000, 700));
+         QueueSuccess(BuildManyRecords(2000, 3000, 700));
+         QueueSuccess(BuildReadBuffer(3000)); // terminate
+ 
+         using var volume = MftVolume.Open("C");
+         var (entries, _) = volume.ReadUsnJournal(Cursor);
+         Assert.AreEqual(1400, entries.Length);
+     }
+ 
++    [TestMethod]
++    public void ReadUsnJournal_MaximumBufferReadsOne_StopsAfterOneRead()
++    {
++        UseFakeHandle();
++        QueueSuccess(BuildReadBuffer(2000, (100, 5, 1000, 0x00000100u, "first.txt")));
++        QueueSuccess(BuildReadBuffer(3000, (200, 5, 2000, 0x00000100u, "second.txt")));
++        QueueSuccess(BuildReadBuffer(4000, (300, 5, 3000, 0x00000100u, "third.txt")));
++
++        using var volume = MftVolume.Open("C");
++        var (firstEntries, firstCursor) = volume.ReadUsnJournalBounded(Cursor, 1);
++
++        Assert.AreEqual(1, firstEntries.Length);
++        Assert.AreEqual("first.txt", firstEntries[0].FileName);
++        Assert.AreEqual(2000L, firstCursor.NextUsn);
++
++        var (secondEntries, secondCursor) = volume.ReadUsnJournalBounded(firstCursor, 1);
++
++        Assert.AreEqual(1, secondEntries.Length);
++        Assert.AreEqual("second.txt", secondEntries[0].FileName);
++        Assert.AreEqual(3000L, secondCursor.NextUsn);
++    }
++
++    [TestMethod]
++    public void ReadUsnJournal_MaximumBufferReadsZero_ReadsToTip()
++    {
++        UseFakeHandle();
++        QueueSuccess(BuildReadBuffer(2000, (100, 5, 1000, 0x00000100u, "first.txt")));
++        QueueSuccess(BuildReadBuffer(3000, (200, 5, 2000, 0x00000100u, "second.txt")));
++        QueueSuccess(BuildReadBuffer(4000, (300, 5, 3000, 0x00000100u, "third.txt")));
++        QueueSuccess(BuildReadBuffer(4000));
++
++        using var volume = MftVolume.Open("C");
++        var (entries, cursor) = volume.ReadUsnJournalBounded(Cursor, 0);
++
++        Assert.AreEqual(3, entries.Length);
++        Assert.AreEqual(4000L, cursor.NextUsn);
++    }
++
+     static byte[] BuildManyRecords(long startUsn, long nextUsn, int count)
+     {
+         using var ms = new MemoryStream();
+         using var w = new BinaryWriter(ms);
+         w.Write(nextUsn);
+         for (var i = 0; i < count; i++)
+         {
+             WriteRecord(w, (ulong)(i + 1), 5, startUsn + i, 0x00000100u, "f");
+         }
+ 
+diff --git a/MFTLib.Tests/UsnJournalTests.cs b/MFTLib.Tests/UsnJournalTests.cs
+index 9af0ce9..0842566 100644
+--- a/MFTLib.Tests/UsnJournalTests.cs
++++ b/MFTLib.Tests/UsnJournalTests.cs
+@@ -146,21 +146,21 @@ public class UsnJournalTests
+             EntryCount = 2,
+             Entries = entriesPtr,
+             NextUsn = 3000,
+             JournalId = 0xABCD
+         };
+ 
+         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
+         Marshal.StructureToPtr(nativeResult, resultPtr, false);
+ 
+         FileUtilities._getVolumeHandle = _ => FakeHandle();
+-        MFTLibNative._readUsnJournal = (_, _, _) => resultPtr;
++        MFTLibNative._readUsnJournal = (_, _, _, _) => resultPtr;
+         MFTLibNative._freeUsnJournalResult = _ =>
+         {
+             Marshal.FreeHGlobal(entriesPtr);
+             Marshal.FreeHGlobal(resultPtr);
+         };
+ 
+         using var volume = MftVolume.Open("C");
+         var cursor = new UsnJournalCursor(0xABCD, 500);
+         var (entries, updatedCursor) = volume.ReadUsnJournal(cursor);
+ 
+@@ -183,21 +183,21 @@ public class UsnJournalTests
+             EntryCount = 0,
+             Entries = IntPtr.Zero,
+             NextUsn = 500,
+             JournalId = 0xABCD
+         };
+ 
+         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
+         Marshal.StructureToPtr(nativeResult, resultPtr, false);
+ 
+         FileUtilities._getVolumeHandle = _ => FakeHandle();
+-        MFTLibNative._readUsnJournal = (_, _, _) => resultPtr;
++        MFTLibNative._readUsnJournal = (_, _, _, _) => resultPtr;
+         MFTLibNative._freeUsnJournalResult = _ => Marshal.FreeHGlobal(resultPtr);
+ 
+         using var volume = MftVolume.Open("C");
+         var (entries, updatedCursor) = volume.ReadUsnJournal(new UsnJournalCursor(0xABCD, 500));
+ 
+         Assert.AreEqual(0, entries.Length);
+         Assert.AreEqual(500L, updatedCursor.NextUsn);
+     }
+ 
+     [TestMethod]
+@@ -205,36 +205,36 @@ public class UsnJournalTests
+     {
+         var nativeResult = new UsnJournalResultNative
+         {
+             ErrorMessage = "Requested USN has been overwritten"
+         };
+ 
+         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
+         Marshal.StructureToPtr(nativeResult, resultPtr, false);
+ 
+         FileUtilities._getVolumeHandle = _ => FakeHandle();
+-        MFTLibNative._readUsnJournal = (_, _, _) => resultPtr;
++        MFTLibNative._readUsnJournal = (_, _, _, _) => resultPtr;
+         MFTLibNative._freeUsnJournalResult = _ => Marshal.FreeHGlobal(resultPtr);
+ 
+         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
+         {
+             using var volume = MftVolume.Open("C");
+             volume.ReadUsnJournal(new UsnJournalCursor(0xABCD, 500));
+         });
+         Assert.IsTrue(exception.Message.Contains("overwritten"));
+     }
+ 
+     [TestMethod]
+     public void ReadUsnJournal_NullPointer_Throws()
+     {
+         FileUtilities._getVolumeHandle = _ => FakeHandle();
+-        MFTLibNative._readUsnJournal = (_, _, _) => IntPtr.Zero;
++        MFTLibNative._readUsnJournal = (_, _, _, _) => IntPtr.Zero;
+ 
+         Assert.ThrowsException<InvalidOperationException>(() =>
+         {
+             using var volume = MftVolume.Open("C");
+             volume.ReadUsnJournal(new UsnJournalCursor(0xABCD, 500));
+         });
+     }
+ 
+     [TestMethod]
+     public void UsnJournalEntry_ReasonHelpers_Work()
+diff --git a/MFTLib/Internal/MFTLibNative.cs b/MFTLib/Internal/MFTLibNative.cs
+index 32ce6ad..3ccb1a4 100644
+--- a/MFTLib/Internal/MFTLibNative.cs
++++ b/MFTLib/Internal/MFTLibNative.cs
+@@ -22,21 +22,21 @@ static class MFTLibNative
+     internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr, NativeMftProgressCallback?, IntPtr>
+         _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
+ 
+     internal static Action<IntPtr> _freeMftResult = NativeFreeMftResult;
+     internal static Func<string, ulong, uint, bool> _generateSyntheticMft = NativeGenerateSyntheticMFT;
+     internal static Func<string, ulong, uint, uint, bool> _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
+     internal static Func<string, bool> _generateFixtureMft = NativeGenerateFixtureMFT;
+     internal static Func<string, string?, MatchFlags, uint, IntPtr> _parseMftFromFile = NativeParseMFTFromFile;
+     internal static Func<SafeHandle, IntPtr> _queryUsnJournal = NativeQueryUsnJournal;
+     internal static Action<IntPtr> _freeUsnJournalInfo = NativeFreeUsnJournalInfo;
+-    internal static Func<SafeHandle, long, ulong, IntPtr> _readUsnJournal = NativeReadUsnJournal;
++    internal static Func<SafeHandle, long, ulong, uint, IntPtr> _readUsnJournal = NativeReadUsnJournal;
+     internal static Action<IntPtr> _freeUsnJournalResult = NativeFreeUsnJournalResult;
+     internal static Func<SafeHandle, long, ulong, IntPtr> _watchUsnJournalBatch = NativeWatchUsnJournalBatch;
+     internal static Func<SafeHandle, long, ulong, SafeHandle, IntPtr> _watchUsnJournalBatchCancelable =
+         NativeWatchUsnJournalBatchCancelable;
+     internal static Func<SafeHandle, bool> _cancelUsnJournalWatch = NativeCancelUsnJournalWatch;
+ 
+     static IntPtr NativeParseMFTRecordsWithProgressDefault(
+         SafeHandle volumeHandle, string? filter, MatchFlags matchFlags, uint bufferSizeRecords, IntPtr control,
+         NativeMftProgressCallback? callback)
+     {
+@@ -147,21 +147,22 @@ static class MFTLibNative
+     internal static extern IntPtr NativeParseMFTRecordsRaw(IntPtr volumeHandle, string? filter, uint matchFlags,
+         uint bufferSizeRecords);
+ 
+     [DllImport(LibraryName, EntryPoint = "QueryUsnJournal", CallingConvention = CallingConvention.Cdecl)]
+     static extern IntPtr NativeQueryUsnJournal(SafeHandle volumeHandle);
+ 
+     [DllImport(LibraryName, EntryPoint = "FreeUsnJournalInfo", CallingConvention = CallingConvention.Cdecl)]
+     static extern void NativeFreeUsnJournalInfo(IntPtr info);
+ 
+     [DllImport(LibraryName, EntryPoint = "ReadUsnJournal", CallingConvention = CallingConvention.Cdecl)]
+-    static extern IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalId);
++    static extern IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalId,
++        uint maximumBufferReads);
+ 
+     [DllImport(LibraryName, EntryPoint = "FreeUsnJournalResult", CallingConvention = CallingConvention.Cdecl)]
+     static extern void NativeFreeUsnJournalResult(IntPtr result);
+ 
+     [DllImport(LibraryName, EntryPoint = "WatchUsnJournalBatch", CallingConvention = CallingConvention.Cdecl)]
+     static extern IntPtr NativeWatchUsnJournalBatch(SafeHandle volumeHandle, long startUsn, ulong journalId);
+ 
+     [DllImport(LibraryName, EntryPoint = "WatchUsnJournalBatchCancelable", CallingConvention = CallingConvention.Cdecl)]
+     static extern IntPtr NativeWatchUsnJournalBatchCancelable(SafeHandle volumeHandle, long startUsn, ulong journalId,
+         SafeHandle cancellationEvent);
+diff --git a/MFTLib/Journal/MftVolume.Journal.cs b/MFTLib/Journal/MftVolume.Journal.cs
+index 33259de..6fb06ec 100644
+--- a/MFTLib/Journal/MftVolume.Journal.cs
++++ b/MFTLib/Journal/MftVolume.Journal.cs
+@@ -65,22 +65,34 @@ public sealed partial class MftVolume
+     }
+ 
+     /// <summary>
+     ///     Read USN journal entries since the given cursor.
+     ///     Returns entries and an updated cursor for the next call.
+     ///     Throws InvalidOperationException if the journal was recreated or entries
+     ///     were overwritten - caller should fall back to a full MFT rescan.
+     /// </summary>
+     public (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor) ReadUsnJournal(UsnJournalCursor since)
+     {
++        return ReadUsnJournalBounded(since, 0);
++    }
++
++    /// <summary>
++    ///     Reads at most <paramref name="maximumBufferReads" /> journal buffers (64 KB each) since the
++    ///     given cursor; 0 reads to the journal tip. The updated cursor resumes where the read stopped.
++    /// </summary>
++    internal (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor) ReadUsnJournalBounded(
++        UsnJournalCursor since, int maximumBufferReads)
++    {
++        ArgumentOutOfRangeException.ThrowIfNegative(maximumBufferReads);
+         ObjectDisposedException.ThrowIf(_disposed, this);
+-        var resultPtr = MFTLibNative._readUsnJournal(_volumeHandle, since.NextUsn, since.JournalId);
++        var resultPtr = MFTLibNative._readUsnJournal(_volumeHandle, since.NextUsn, since.JournalId,
++            (uint)maximumBufferReads);
+         if (resultPtr == IntPtr.Zero)
+         {
+             throw new InvalidOperationException("ReadUsnJournal returned null");
+         }
+ 
+         try
+         {
+             var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
+             if (!string.IsNullOrEmpty(result.ErrorMessage))
+             {
+diff --git a/MFTLibNative/usn/usn_journal.cpp b/MFTLibNative/usn/usn_journal.cpp
+index 1cfc10e..04db4db 100644
+--- a/MFTLibNative/usn/usn_journal.cpp
++++ b/MFTLibNative/usn/usn_journal.cpp
+@@ -210,21 +210,22 @@ EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
+     info->lowestValidUsn = journalData.LowestValidUsn;
+     info->maxUsn = journalData.MaxUsn;
+     info->maximumSize = journalData.MaximumSize;
+     info->allocationDelta = journalData.AllocationDelta;
+     return info;
+ }
+ 
+ EXPORT void FreeUsnJournalInfo(const UsnJournalInfo* info) { std::unique_ptr<const UsnJournalInfo> owned(info); }
+ 
+ // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
+-EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId) {
++EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId,
++                                        uint32_t maximumBufferReads) {
+     auto* result = new UsnJournalResult{};
+     result->journalId = journalId;
+ 
+     constexpr size_t readBufferSize = 64ULL * 1024;
+     auto* readBuffer =
+         ShouldFailAlloc()
+             ? nullptr
+             : static_cast<uint8_t*>(VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+     if (readBuffer == nullptr) {
+         SetErrorMessage(result->errorMessage, L"Failed to allocate read buffer");
+@@ -248,21 +249,22 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
+     readData.ReasonMask = 0xFFFFFFFF;
+     readData.ReturnOnlyOnClose = 0;
+     readData.Timeout = 0;
+     readData.BytesToWaitFor = 0;
+     readData.UsnJournalID = journalId;
+     readData.MinMajorVersion = 2;
+     readData.MaxMajorVersion = 2;
+ 
+     int64_t nextUsn = startUsn;
+ 
+-    for (;;) {
++    // maximumBufferReads == 0 reads to the journal tip; otherwise at most that many 64 KB buffers.
++    for (uint32_t reads = 0; maximumBufferReads == 0 || reads < maximumBufferReads; reads++) {
+         readData.StartUsn = nextUsn;
+ 
+         DWORD bytesReturned = 0;
+         BOOL success = UsnDeviceIoControl(
+             volumeHandle, FSCTL_READ_USN_JOURNAL, IoBuffer{&readData, static_cast<DWORD>(sizeof(readData))},
+             IoBuffer{readBuffer, static_cast<DWORD>(readBufferSize)}, &bytesReturned, nullptr);
+         if (success == 0) {
+             ApplyUsnReadError(result, GetLastError(), L"FSCTL_READ_USN_JOURNAL failed");
+             break;
+         }

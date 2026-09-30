@@ -1,0 +1,1076 @@
+# Review package: 054fbb3..task/265-C2
+
+## Commits
+3541d3e Harness disposal finishes teardown before reporting a host fault, and client limits are tested on the injected clock
+
+## Files changed
+ MFTLib.Tests/BrokerProcessTests.Disposal.cs     | 117 +++++++++++++++++++++++
+ MFTLib.Tests/BrokerProcessTests.HostFault.cs    | 122 ++++++++++++++++++++++++
+ MFTLib.Tests/BrokerProcessTests.Timeouts.cs     |  56 +++++------
+ MFTLib.Tests/BrokerProcessTests.cs              |  12 ++-
+ MFTLib.Tests/TestSupport/BrokerTestStreams.cs   |  40 ++++++++
+ MFTLib.Tests/TestSupport/TimerSignalingClock.cs |  69 ++++++++++++++
+ MFTLib/Broker/Client/BrokerDriveChannel.cs      |  25 ++++-
+ MFTLib/Broker/Client/BrokerProcess.Channels.cs  |   4 +
+ MFTLib/Broker/Client/BrokerProcess.Control.cs   |   5 +-
+ MFTLib/Broker/Client/BrokerProcess.cs           |  23 ++++-
+ MFTLibTestExtensions/BrokerTestHarness.cs       |  23 ++++-
+ MFTLibTestExtensions/HostPipeEnds.cs            |  54 +++++++++++
+ MFTLibTestExtensions/InMemoryBrokerPipes.cs     |  11 +++
+ MFTLibTestExtensions/InMemoryDuplexStream.cs    |  58 +++++++----
+ 14 files changed, 561 insertions(+), 58 deletions(-)
+
+## Diff
+diff --git a/MFTLib.Tests/BrokerProcessTests.Disposal.cs b/MFTLib.Tests/BrokerProcessTests.Disposal.cs
+new file mode 100644
+index 0000000..47e39b0
+--- /dev/null
++++ b/MFTLib.Tests/BrokerProcessTests.Disposal.cs
+@@ -0,0 +1,117 @@
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++public partial class BrokerProcessTests
++{
++    [TestMethod]
++    public async Task Dispose_DuringScan_FailsScanWithChannelLostAndReleasesSection()
++    {
++        var scanning = new TestGate();
++        var sourceCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        await using var broker = new InProcessBroker(CreateHost(
++            scanDrive: (_, _, _, _, cancellationToken) => WaitForCancellation(scanning, sourceCancelled, cancellationToken)));
++
++        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(),
++            CancellationToken.None);
++        await scanning.Entered.WaitAsync(HangGuard);
++        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
++
++        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
++        Assert.AreEqual('C', lost.DriveLetter);
++        await sourceCancelled.Task.WaitAsync(HangGuard);
++        AssertSectionReleased(broker.Sections.Single());
++    }
++
++    // The host abandons a channel whose operation ignores cancellation once its grace period ends,
++    // so the client's own sweep closes the scan's pipe under a pending read.
++    [TestMethod]
++    public async Task Dispose_DuringScanTheHostAbandons_FailsScanWithChannelLostAndReleasesSection()
++    {
++        var scanning = new TestGate();
++        var hostClock = new TimerSignalingClock();
++        await using var broker = new InProcessBroker(CreateHost(timeProvider: hostClock,
++            scanDrive: (_, _, _, _, _) =>
++            {
++                scanning.MarkEntered();
++                scanning.WaitForRelease();
++                return [[Record(5, ".", 3)]];
++            }));
++        try
++        {
++            var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(),
++                CancellationToken.None);
++            await scanning.Entered.WaitAsync(HangGuard);
++            var dispose = broker.Process.DisposeAsync().AsTask();
++            await hostClock.TimerCreated(JournalBrokerHost.ControlClosedGracePeriod).WaitAsync(HangGuard);
++            hostClock.Advance(JournalBrokerHost.ControlClosedGracePeriod);
++            await dispose.WaitAsync(HangGuard);
++
++            var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
++            Assert.AreEqual('C', lost.DriveLetter);
++            AssertSectionReleased(broker.Sections.Single());
++        }
++        finally
++        {
++            scanning.Release();
++        }
++    }
++
++    // Closing the control pipe can fail; disposal still closes every drive channel and joins the
++    // control reader, and does not throw.
++    [TestMethod]
++    public async Task Dispose_ControlCloseThrows_CompletesTeardownWithoutThrowing()
++    {
++        var ended = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
++        await using var broker = new ScriptedBroker(wrapClientControl: stream => new ThrowOnAsyncDisposeStream(stream));
++        broker.Process.Ended += reason => ended.TrySetResult(reason);
++        var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
++            CancellationToken.None);
++        await using var hostEnd = await broker.AcceptChannelAsync();
++        Assert.AreEqual(BrokerFrameKind.StartWatch, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);
++        await open.WaitAsync(HangGuard);
++
++        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
++
++        Assert.IsTrue(ended.Task.IsCompleted, "The control reader was joined.");
++        Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostEnd), "The drive channel was closed first.");
++    }
++
++    // A closed in-memory pipe end fails reads and writes the way a closed named pipe does, so a
++    // consumer on the harness sees the failure production would, not a stream-specific one.
++    [TestMethod]
++    public async Task HarnessPipe_AfterClose_ReadAndWriteThrowObjectDisposed()
++    {
++        var pipes = new MFTLibTestExtensions.InMemoryBrokerPipes(new MFTLibTestExtensions.BrokerTestHarnessOptions(), null);
++        var (client, host) = pipes.CreatePair("pipe");
++        await using var hostEnd = host;
++        await client.DisposeAsync();
++
++        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => client.ReadAsync(new byte[4]).AsTask());
++        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => client.WriteAsync(new byte[4]).AsTask());
++    }
++
++    [TestMethod]
++    public async Task Dispose_DuringChannelOpen_FailsOpenWithChannelLostAndClosesPipe()
++    {
++        var tracking = new TestGate();
++        var hostEnd = new TaskCompletionSource<DisposalRecordingStream>(TaskCreationOptions.RunContinuationsAsynchronously);
++        await using var broker = new InProcessBroker(CreateHost(), wrapConnector: RecordHostEnd(hostEnd));
++        broker.Process.BeforeChannelTrackedForTest = () =>
++        {
++            tracking.MarkEntered();
++            tracking.WaitForRelease();
++        };
++
++        var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
++            CancellationToken.None);
++        await tracking.Entered.WaitAsync(HangGuard);
++        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
++        tracking.Release();
++
++        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
++        Assert.AreEqual('C', lost.DriveLetter);
++        await (await hostEnd.Task.WaitAsync(HangGuard)).Disposed.WaitAsync(HangGuard);
++    }
++}
+diff --git a/MFTLib.Tests/BrokerProcessTests.HostFault.cs b/MFTLib.Tests/BrokerProcessTests.HostFault.cs
+new file mode 100644
+index 0000000..b6b6bfe
+--- /dev/null
++++ b/MFTLib.Tests/BrokerProcessTests.HostFault.cs
+@@ -0,0 +1,122 @@
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++// A host session that faults reaches the client the way a broker process that exits does: its
++// pipes close. The harness adds no fault surface of its own.
++public partial class BrokerProcessTests
++{
++    [TestMethod]
++    public async Task HostFault_WithPendingRequest_FailsRequestEndsProcessOnceAndDisposesQuietly()
++    {
++        var corrupt = new CorruptFrameWrite(corruptWriteNumber: 1);
++        var broker = new InProcessBroker(CreateHost(), wrapClientStream: ControlOnly(corrupt));
++        var ended = new List<string>();
++        broker.Process.Ended += reason =>
++        {
++            lock (ended)
++            {
++                ended.Add(reason);
++            }
++        };
++
++        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
++            broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
++
++        Assert.IsNull(lost.DriveLetter);
++        Assert.IsTrue(broker.Process.HasEnded);
++        await broker.DisposeAsync();
++        lock (ended)
++        {
++            Assert.AreEqual(1, ended.Count);
++        }
++    }
++
++    [TestMethod]
++    public async Task HostFault_WithOpenScanChannel_FailsScanWithChannelLost()
++    {
++        var scanning = new TestGate();
++        var sourceCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        // Writes 1 and 2 are the scan's volume query and channel open; write 3 is corrupted.
++        var corrupt = new CorruptFrameWrite(corruptWriteNumber: 3);
++        var broker = new InProcessBroker(CreateHost(
++                scanDrive: (_, _, _, _, cancellationToken) =>
++                    WaitForCancellation(scanning, sourceCancelled, cancellationToken)),
++            wrapClientStream: ControlOnly(corrupt));
++
++        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(),
++            CancellationToken.None);
++        await scanning.Entered.WaitAsync(HangGuard);
++        var query = broker.Process.QueryVolumeAsync('D', CancellationToken.None);
++
++        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
++        Assert.AreEqual('C', lost.DriveLetter);
++        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => query.WaitAsync(HangGuard));
++        Assert.IsTrue(broker.Process.HasEnded);
++        AssertSectionReleased(broker.Sections.Single());
++        await broker.DisposeAsync();
++    }
++
++    [TestMethod]
++    public async Task HostFault_TestBodyThrowsInsideAwaitUsing_BodyExceptionEscapes()
++    {
++        var escaped = await Assert.ThrowsExceptionAsync<InvalidTimeZoneException>(async () =>
++        {
++            var corrupt = new CorruptFrameWrite(corruptWriteNumber: 1);
++            await using var broker = new InProcessBroker(CreateHost(), wrapClientStream: ControlOnly(corrupt));
++            var request = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
++            try
++            {
++                await request.WaitAsync(HangGuard);
++            }
++            catch (BrokerChannelLostException)
++            {
++                throw new InvalidTimeZoneException("The test body failed after the host faulted.");
++            }
++        });
++
++        Assert.AreEqual("The test body failed after the host faulted.", escaped.Message);
++    }
++
++    [TestMethod]
++    public async Task HostFault_ExceptionMessageIsWrittenToDiagnosticsLog()
++    {
++        var lines = new List<string>();
++        BrokerDiagnostics.Enable("client");
++        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
++        {
++            lock (lines)
++            {
++                lines.Add(line);
++            }
++        }));
++        try
++        {
++            var corrupt = new CorruptFrameWrite(corruptWriteNumber: 1);
++            await using (var broker = new InProcessBroker(CreateHost(), wrapClientStream: ControlOnly(corrupt)))
++            {
++                await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
++                    broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
++            }
++
++            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
++            lock (lines)
++            {
++                Assert.IsTrue(lines.Any(line =>
++                        line.Contains($":{BrokerDiagnostics.ControlChannel}]", StringComparison.Ordinal) &&
++                        line.Contains("Unknown frame kind: 200", StringComparison.Ordinal)),
++                    "The host session's failure must reach the log on the control channel.");
++            }
++        }
++        finally
++        {
++            BrokerDiagnostics.ResetToDefaults();
++        }
++    }
++
++    static Func<string, Stream, Stream> ControlOnly(CorruptFrameWrite corrupt)
++    {
++        return (name, stream) => name == "control" ? corrupt.Wrap(stream) : stream;
++    }
++}
+diff --git a/MFTLib.Tests/BrokerProcessTests.Timeouts.cs b/MFTLib.Tests/BrokerProcessTests.Timeouts.cs
+index f6a7d8b..e99fd0f 100644
+--- a/MFTLib.Tests/BrokerProcessTests.Timeouts.cs
++++ b/MFTLib.Tests/BrokerProcessTests.Timeouts.cs
+@@ -1,65 +1,67 @@
+ using MFTLib.Tests.TestSupport;
+-using Microsoft.Extensions.Time.Testing;
+ using Microsoft.VisualStudio.TestTools.UnitTesting;
+ 
+ namespace MFTLib.Tests;
+ 
++// Each test waits for the limit's timer to exist on the client's clock, identified by its due
++// time, then advances the clock to one tick short of the limit and to the limit itself. A fake clock
++// fires timers inside Advance, so whether the timer fired is known when Advance returns.
+ public partial class BrokerProcessTests
+ {
++    static readonly TimeSpan OneTick = TimeSpan.FromTicks(1);
++
+     [TestMethod]
+     public async Task ControlWrite_NeverFinishes_EndsProcessAfterReplyTimeout()
+     {
+-        var clock = new FakeTimeProvider();
++        Assert.AreEqual(TimeSpan.FromSeconds(30), BrokerLiveness.ControlReplyTimeout);
++        Assert.AreEqual(BrokerLiveness.ControlReplyTimeout, BrokerProcess.ControlReplyTimeout);
++        var clock = new TimerSignalingClock();
+         var control = new SplitFrameWrite(splitWriteNumber: 1);
+         await using var broker = new ScriptedBroker(clock, control.Wrap);
+         var ended = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+         broker.Process.Ended += reason => ended.TrySetResult(reason);
+ 
+         var held = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
+         await control.Gate.Entered.WaitAsync(HangGuard);
+-        await AdvanceUntilCompleteAsync(clock, ended.Task, BrokerProcess.ControlReplyTimeout);
++        var writeBound = await clock.TimerCreated(BrokerLiveness.ControlReplyTimeout).WaitAsync(HangGuard);
++
++        clock.Advance(BrokerLiveness.ControlReplyTimeout - OneTick);
++        Assert.IsFalse(writeBound.Fired, "The write bound must not fire before the limit.");
++        Assert.IsFalse(ended.Task.IsCompleted);
++        clock.Advance(OneTick);
+ 
+-        StringAssert.Contains(await ended.Task, "did not finish writing within 30 seconds");
++        Assert.IsTrue(writeBound.Fired);
++        StringAssert.Contains(await ended.Task.WaitAsync(HangGuard), "did not finish writing within 30 seconds");
+         await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => held.WaitAsync(HangGuard));
+         Assert.IsTrue(broker.Process.HasEnded);
+     }
+ 
+     [TestMethod]
+     public async Task OpenChannel_AcknowledgedButNeverConnected_TimesOutAndReleasesPipe()
+     {
+-        var clock = new FakeTimeProvider();
++        var clock = new TimerSignalingClock();
+         await using var broker = new ScriptedBroker(clock);
+ 
+         var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
+             CancellationToken.None);
+         var request = await broker.ReadRequestAsync();
+         await broker.WriteControlAsync(writer => BrokerProtocol.WriteChannelOpened(writer, request.RequestId));
+-        await AdvanceUntilCompleteAsync(clock, open, BrokerProcess.ControlReplyTimeout, expectFailure: true);
++        // The first timer with this due time bounded the OpenChannel write; the second is the wait
++        // for the connection that the acknowledgement promised.
++        var connectionBound = await clock.TimerCreated(BrokerLiveness.ControlReplyTimeout, occurrence: 2)
++            .WaitAsync(HangGuard);
+ 
+-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => open);
++        clock.Advance(BrokerLiveness.ControlReplyTimeout - OneTick);
++        Assert.IsFalse(connectionBound.Fired, "The connection bound must not fire before the limit.");
++        Assert.IsFalse(open.IsCompleted);
++        clock.Advance(OneTick);
++
++        Assert.IsTrue(connectionBound.Fired);
++        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => open.WaitAsync(HangGuard));
+         Assert.AreEqual('C', lost.DriveLetter);
+-        StringAssert.Contains(lost.Message, "did not connect");
++        StringAssert.Contains(lost.Message, "did not connect within 30 seconds");
+         await Assert.ThrowsExceptionAsync<IOException>(() =>
+             broker.Pipes.ConnectAsync(request.RequirePipeName(), CancellationToken.None));
+         Assert.IsFalse(broker.Process.HasEnded, "Only the channel failed.");
+     }
+-
+-    // Advances the fake clock one step at a time until the task completes, so the test never
+-    // depends on when the client created the timer it waits on.
+-    static async Task AdvanceUntilCompleteAsync(FakeTimeProvider clock, Task task, TimeSpan step,
+-        bool expectFailure = false)
+-    {
+-        using var guard = new CancellationTokenSource(HangGuard);
+-        while (!task.IsCompleted)
+-        {
+-            clock.Advance(step);
+-            await Task.WhenAny(task, Task.Delay(TimeSpan.FromMilliseconds(20), guard.Token));
+-            guard.Token.ThrowIfCancellationRequested();
+-        }
+-
+-        if (!expectFailure)
+-        {
+-            await task;
+-        }
+-    }
+ }
+diff --git a/MFTLib.Tests/BrokerProcessTests.cs b/MFTLib.Tests/BrokerProcessTests.cs
+index c463094..50eb656 100644
+--- a/MFTLib.Tests/BrokerProcessTests.cs
++++ b/MFTLib.Tests/BrokerProcessTests.cs
+@@ -230,23 +230,23 @@ public partial class BrokerProcessTests
+             Assert.IsTrue(control.Gate.Entered.IsCompleted);
+             Assert.IsTrue(broker.Process.HasEnded);
+             Assert.AreEqual(1, ended.Count);
+             StringAssert.Contains(ended[0], "could not be written");
+         }
+         finally
+         {
+             gate.Release();
+         }
+ 
+-        // The host read the prefix of a frame whose rest never came, which ends its session with
+-        // EndOfStreamException; the harness surfaces it when the process is disposed.
+-        await Assert.ThrowsExceptionAsync<EndOfStreamException>(() => broker.Process.DisposeAsync().AsTask());
++        // The host read the prefix of a frame whose rest never came, which fails its session; like a
++        // broker process that exits, that reaches the client only as closed pipes, never as a throw.
++        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+     }
+ 
+     [TestMethod]
+     public async Task HostEnds_EveryPendingRequestFailsWithChannelLost_EndedFiresOnce()
+     {
+         await using var broker = new ScriptedBroker();
+         var ended = new List<string>();
+         broker.Process.Ended += ended.Add;
+         var first = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
+         var second = broker.Process.GrowUsnJournalAsync('D', 1, 1, CancellationToken.None);
+@@ -344,27 +344,29 @@ public partial class BrokerProcessTests
+ 
+         yield break;
+     }
+ 
+     static JournalBrokerHost CreateHost(
+         UsnJournalCursorQuery? queryCursor = null,
+         MftRecordBatchSource? scanDrive = null,
+         UsnJournalCatchUpSource? readJournal = null,
+         JournalBatchSource? watchDrive = null,
+         NtfsVolumeInformationQuery? queryVolumeInfo = null,
+-        GrowUsnJournalQuery? growUsnJournal = null)
++        GrowUsnJournalQuery? growUsnJournal = null,
++        TimeProvider? timeProvider = null)
+     {
+         return new JournalBrokerHost(
+             queryCursor ?? (_ => Armed),
+             scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
+             readJournal ?? ((_, since) => (Array.Empty<UsnJournalEntry>(), since)),
+             watchDrive,
+             queryVolumeInfo ?? (_ => Volume),
+             growUsnJournal,
+-            processorCount: 4);
++            processorCount: 4,
++            timeProvider: timeProvider);
+     }
+ 
+     static MftRecord Record(ulong recordNumber, string name, ushort flags = 1)
+     {
+         return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name, null);
+     }
+ }
+diff --git a/MFTLib.Tests/TestSupport/BrokerTestStreams.cs b/MFTLib.Tests/TestSupport/BrokerTestStreams.cs
+index 6964daf..4056429 100644
+--- a/MFTLib.Tests/TestSupport/BrokerTestStreams.cs
++++ b/MFTLib.Tests/TestSupport/BrokerTestStreams.cs
+@@ -72,10 +72,50 @@ internal sealed class DisposalRecordingStream(Stream inner) : DelegatingStream(i
+     readonly TaskCompletionSource _disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+ 
+     public Task Disposed => _disposed.Task;
+ 
+     protected override void Dispose(bool disposing)
+     {
+         _disposed.TrySetResult();
+         base.Dispose(disposing);
+     }
+ }
++
++/// <summary>Closes its inner stream, then throws from <see cref="DisposeAsync" />, as a close that reports a failure does.</summary>
++internal sealed class ThrowOnAsyncDisposeStream(Stream inner) : DelegatingStream(inner)
++{
++    public override async ValueTask DisposeAsync()
++    {
++        await base.DisposeAsync();
++        throw new IOException("control close failed");
++    }
++}
++
++/// <summary>
++///     Corrupts one chosen write by replacing its frame kind byte with one no frame has, so the host
++///     reading it ends its session with <see cref="InvalidDataException" />: a host session fault.
++/// </summary>
++internal sealed class CorruptFrameWrite(int corruptWriteNumber)
++{
++    const byte UnknownKind = 200;
++    int _writes;
++
++    public Stream Wrap(Stream inner) => new CorruptFrameWriteStream(inner, this);
++
++    ReadOnlyMemory<byte> Corrupt(ReadOnlyMemory<byte> buffer)
++    {
++        if (Interlocked.Increment(ref _writes) != corruptWriteNumber)
++        {
++            return buffer;
++        }
++
++        var corrupted = buffer.ToArray();
++        corrupted[4] = UnknownKind;
++        return corrupted;
++    }
++
++    sealed class CorruptFrameWriteStream(Stream inner, CorruptFrameWrite corrupt) : DelegatingStream(inner)
++    {
++        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
++            Inner.WriteAsync(corrupt.Corrupt(buffer), cancellationToken);
++    }
++}
+diff --git a/MFTLib.Tests/TestSupport/TimerSignalingClock.cs b/MFTLib.Tests/TestSupport/TimerSignalingClock.cs
+new file mode 100644
+index 0000000..0d1eb86
+--- /dev/null
++++ b/MFTLib.Tests/TestSupport/TimerSignalingClock.cs
+@@ -0,0 +1,69 @@
++using Microsoft.Extensions.Time.Testing;
++
++namespace MFTLib.Tests.TestSupport;
++
++/// <summary>
++///     A <see cref="FakeTimeProvider" /> that signals each timer it creates, keyed by the timer's due
++///     time and the order timers with that due time were created, and records whether each has
++///     fired. A test waits for the timer under test to exist, then advances the clock to either side
++///     of its due time, instead of stepping the clock in a loop.
++/// </summary>
++internal sealed class TimerSignalingClock : FakeTimeProvider
++{
++    readonly Lock _gate = new();
++    readonly Dictionary<(TimeSpan DueTime, int Occurrence), TaskCompletionSource<CreatedTimer>> _created = [];
++    readonly Dictionary<TimeSpan, int> _counts = [];
++
++    /// <summary>
++    ///     Completes once the <paramref name="occurrence" />-th timer due after <paramref name="dueTime" />
++    ///     has been created, before or after this call.
++    /// </summary>
++    public Task<CreatedTimer> TimerCreated(TimeSpan dueTime, int occurrence = 1)
++    {
++        lock (_gate)
++        {
++            return Signal(dueTime, occurrence).Task;
++        }
++    }
++
++    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
++    {
++        var created = new CreatedTimer();
++        var timer = base.CreateTimer(callbackState =>
++        {
++            created.MarkFired();
++            callback(callbackState);
++        }, state, dueTime, period);
++        TaskCompletionSource<CreatedTimer> signal;
++        lock (_gate)
++        {
++            var occurrence = _counts.GetValueOrDefault(dueTime) + 1;
++            _counts[dueTime] = occurrence;
++            signal = Signal(dueTime, occurrence);
++        }
++
++        signal.TrySetResult(created);
++        return timer;
++    }
++
++    TaskCompletionSource<CreatedTimer> Signal(TimeSpan dueTime, int occurrence)
++    {
++        if (!_created.TryGetValue((dueTime, occurrence), out var signal))
++        {
++            signal = new TaskCompletionSource<CreatedTimer>(TaskCreationOptions.RunContinuationsAsynchronously);
++            _created[(dueTime, occurrence)] = signal;
++        }
++
++        return signal;
++    }
++
++    /// <summary>One timer the clock created. A fake clock fires timers inside <see cref="FakeTimeProvider.Advance" />.</summary>
++    internal sealed class CreatedTimer
++    {
++        int _fired;
++
++        public bool Fired => Volatile.Read(ref _fired) != 0;
++
++        internal void MarkFired() => Interlocked.Exchange(ref _fired, 1);
++    }
++}
+diff --git a/MFTLib/Broker/Client/BrokerDriveChannel.cs b/MFTLib/Broker/Client/BrokerDriveChannel.cs
+index 89618eb..72c6cb7 100644
+--- a/MFTLib/Broker/Client/BrokerDriveChannel.cs
++++ b/MFTLib/Broker/Client/BrokerDriveChannel.cs
+@@ -7,20 +7,25 @@ namespace MFTLib;
+ ///     diagnostics tag; disposing it closes the pipe, which the host reads as the operation's
+ ///     cancellation.
+ /// </summary>
+ internal sealed class BrokerDriveChannel : IAsyncDisposable
+ {
+     readonly BrokerPipeListener _pipe;
+     readonly Stream _stream;
+     readonly string _tag;
+     readonly BrokerFrameReader _reader;
+     readonly Action<BrokerDriveChannel> _closed;
++
++    // Cancelled when the channel is disposed, so a read pending at that moment ends at once
++    // whatever the stream does with a read it closes under. Never linked and never given a timer,
++    // so it holds nothing to release.
++    readonly CancellationTokenSource _closing = new();
+     int _disposed;
+ 
+     internal BrokerDriveChannel(char driveLetter, BrokerPipeListener pipe, Stream stream, string tag,
+         Action<BrokerDriveChannel> closed)
+     {
+         DriveLetter = driveLetter;
+         _pipe = pipe;
+         _stream = stream;
+         _tag = tag;
+         _reader = new BrokerFrameReader(stream, driveLetter, tag);
+@@ -40,27 +45,41 @@ internal sealed class BrokerDriveChannel : IAsyncDisposable
+             await _stream.WriteAsync(buffer.WrittenMemory, cancellationToken).ConfigureAwait(false);
+             await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+         }
+         catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+         {
+             throw new BrokerChannelLostException(DriveLetter,
+                 $"Drive {DriveLetter} broker channel could not be written: {exception.Message}", exception);
+         }
+     }
+ 
+-    /// <summary>The next frame, or null once the host has closed its end.</summary>
+-    public ValueTask<BrokerFrame?> ReadAsync(CancellationToken cancellationToken)
++    /// <summary>
++    ///     The next frame, or null once the host has closed its end. A read the channel's own
++    ///     disposal cuts off (the process being disposed, say) is a lost channel, not a cancellation.
++    /// </summary>
++    public async ValueTask<BrokerFrame?> ReadAsync(CancellationToken cancellationToken)
+     {
+-        return _reader.ReadAsync(cancellationToken);
++        using var read = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _closing.Token);
++        try
++        {
++            return await _reader.ReadAsync(read.Token).ConfigureAwait(false);
++        }
++        catch (OperationCanceledException exception) when (_closing.IsCancellationRequested &&
++                                                           !cancellationToken.IsCancellationRequested)
++        {
++            throw new BrokerChannelLostException(DriveLetter,
++                $"Drive {DriveLetter} broker channel was closed while a read was pending.", exception);
++        }
+     }
+ 
+     public ValueTask DisposeAsync()
+     {
+         if (Interlocked.Exchange(ref _disposed, 1) != 0)
+         {
+             return ValueTask.CompletedTask;
+         }
+ 
++        _closing.Cancel();
+         _closed(this);
+         return _pipe.DisposeAsync();
+     }
+ }
+diff --git a/MFTLib/Broker/Client/BrokerProcess.Channels.cs b/MFTLib/Broker/Client/BrokerProcess.Channels.cs
+index 91eab16..9da904a 100644
+--- a/MFTLib/Broker/Client/BrokerProcess.Channels.cs
++++ b/MFTLib/Broker/Client/BrokerProcess.Channels.cs
+@@ -21,20 +21,21 @@ public sealed partial class BrokerProcess
+             _lifetime.Token);
+         var connection = pipe.WaitForConnectionAsync(connectCancellation.Token);
+         try
+         {
+             await RequestChannelAsync(letter, drive, pipe.PipeName, cancellationToken).ConfigureAwait(false);
+             var stream = await AwaitConnectionAsync(letter, connection, cancellationToken).ConfigureAwait(false);
+             var channel = new BrokerDriveChannel(letter, pipe, stream, BrokerDiagnostics.DriveChannel(letter, sequence),
+                 ForgetChannel);
+             try
+             {
++                BeforeChannelTrackedForTest?.Invoke();
+                 TrackChannel(channel);
+                 await channel.WriteAsync(writeFirstRequest, cancellationToken).ConfigureAwait(false);
+             }
+             catch
+             {
+                 await channel.DisposeAsync().ConfigureAwait(false);
+                 throw;
+             }
+ 
+             return channel;
+@@ -87,20 +88,23 @@ public sealed partial class BrokerProcess
+ 
+     // The connection is released with the pipe; its outcome no longer matters, but a fault must
+     // not go unobserved.
+     static void ObserveAbandoned(Task<Stream> connection)
+     {
+         connection.ContinueWith(static completed => completed.Exception, CancellationToken.None,
+             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+             TaskScheduler.Default);
+     }
+ 
++    /// <summary>Runs between a channel's connection and its registration, so a test can dispose the process there.</summary>
++    internal Action? BeforeChannelTrackedForTest { get; set; }
++
+     // A channel opened while the process is being disposed would miss disposal's sweep, so it
+     // fails instead and its caller's cleanup closes it.
+     void TrackChannel(BrokerDriveChannel channel)
+     {
+         lock (_gate)
+         {
+             if (Volatile.Read(ref _disposed) != 0)
+             {
+                 throw new BrokerChannelLostException(channel.DriveLetter,
+                     $"Drive {channel.DriveLetter} channel could not be opened: the broker process was disposed.");
+diff --git a/MFTLib/Broker/Client/BrokerProcess.Control.cs b/MFTLib/Broker/Client/BrokerProcess.Control.cs
+index 13115dd..cd59f04 100644
+--- a/MFTLib/Broker/Client/BrokerProcess.Control.cs
++++ b/MFTLib/Broker/Client/BrokerProcess.Control.cs
+@@ -84,21 +84,24 @@ public sealed partial class BrokerProcess
+     // Sends one control request and returns its reply. An Error reply throws
+     // InvalidOperationException with the host's message.
+     async Task<BrokerFrame> RequestAsync(Action<ArrayBufferWriter<byte>, uint> write, BrokerFrameKind expectedReply,
+         CancellationToken cancellationToken)
+     {
+         var (requestId, reply) = RegisterRequest();
+         var buffer = new ArrayBufferWriter<byte>();
+         write(buffer, requestId);
+         await WriteControlRequestAsync(requestId, buffer, cancellationToken).ConfigureAwait(false);
+ 
+-        // A write that failed has already ended the process, which fails this reply too.
++        // A write that failed has already ended the process, which fails this reply too. A caller
++        // that cancelled while its frame was being finished has stopped waiting, even if the reply
++        // is already here: its entry stays until the reply is dropped.
++        cancellationToken.ThrowIfCancellationRequested();
+         var frame = await reply.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+         if (frame.Kind == BrokerFrameKind.Error)
+         {
+             throw new InvalidOperationException(frame.RequireMessage());
+         }
+ 
+         return frame.Kind == expectedReply
+             ? frame
+             : throw new BrokerChannelLostException(null,
+                 $"The broker answered request {requestId} with {frame.Kind} instead of {expectedReply}.");
+diff --git a/MFTLib/Broker/Client/BrokerProcess.cs b/MFTLib/Broker/Client/BrokerProcess.cs
+index 2977d06..2d8b148 100644
+--- a/MFTLib/Broker/Client/BrokerProcess.cs
++++ b/MFTLib/Broker/Client/BrokerProcess.cs
+@@ -72,43 +72,58 @@ public sealed partial class BrokerProcess : IAsyncDisposable
+ 
+     /// <summary>
+     ///     Fires once, from the control pipe's reader, when the process ends for any reason
+     ///     (the broker exited or crashed, the control pipe failed, or this process was disposed),
+     ///     with the reason. Every drive channel then reads EOF.
+     /// </summary>
+     public event Action<string>? Ended;
+ 
+     /// <summary>
+     ///     Closes the control pipe, which ends every channel on the host, then closes every drive
+-    ///     channel still open here and waits for the control reader. Idempotent.
++    ///     channel still open here and waits for the control reader. Idempotent, and it never throws:
++    ///     however the broker ended, the client has already reported it through <see cref="Ended" />
++    ///     and its failed requests and channels, so a pipe that fails to close is only logged.
+     /// </summary>
+     public async ValueTask DisposeAsync()
+     {
+         if (Interlocked.Exchange(ref _disposed, 1) != 0)
+         {
+             return;
+         }
+ 
+         RequestEnd("The broker process was disposed.");
+-        await _control.DisposeAsync().ConfigureAwait(false);
++        try
++        {
++            await _control.DisposeAsync().ConfigureAwait(false);
++        }
++        catch (Exception exception)
++        {
++            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel,
++                $"Closing the control pipe failed: {exception}");
++        }
++
++        await CloseChannelsAsync().ConfigureAwait(false);
++        await _controlReader.ConfigureAwait(false);
++    }
++
++    async Task CloseChannelsAsync()
++    {
+         BrokerDriveChannel[] open;
+         lock (_gate)
+         {
+             open = _channels.ToArray();
+         }
+ 
+         foreach (var channel in open)
+         {
+             await channel.DisposeAsync().ConfigureAwait(false);
+         }
+-
+-        await _controlReader.ConfigureAwait(false);
+     }
+ 
+     // Starts ending the process: the control reader stops at once, fails every pending request
+     // with this reason and raises Ended.
+     void RequestEnd(string reason)
+     {
+         lock (_gate)
+         {
+             _endRequestedReason ??= reason;
+         }
+diff --git a/MFTLibTestExtensions/BrokerTestHarness.cs b/MFTLibTestExtensions/BrokerTestHarness.cs
+index 3a9586e..61826cb 100644
+--- a/MFTLibTestExtensions/BrokerTestHarness.cs
++++ b/MFTLibTestExtensions/BrokerTestHarness.cs
+@@ -43,14 +43,35 @@ public static class BrokerTestHarness
+         ArgumentNullException.ThrowIfNull(host);
+         ArgumentNullException.ThrowIfNull(blockSectionWriter);
+         ArgumentNullException.ThrowIfNull(createBlockSection);
+         ArgumentNullException.ThrowIfNull(options);
+ 
+         var pipes = new InMemoryBrokerPipes(options, wrapClientStream);
+         var (clientControl, hostControl) = pipes.CreatePair(InMemoryBrokerPipes.ControlPipeName);
+         BrokerChannelConnector connector = pipes.ConnectAsync;
+         connector = wrapConnector?.Invoke(connector) ?? connector;
+         var serve = Task.Run(() => host.ServeAsync(hostControl, connector, blockSectionWriter, CancellationToken.None));
+-        return new BrokerProcess(new HostLifetimeStream(clientControl, hostControl, serve), pipes, createBlockSection,
++        var exited = serve.ContinueWith(ended => ExitHost(ended, pipes), CancellationToken.None,
++            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
++        return new BrokerProcess(new HostLifetimeStream(clientControl, exited), pipes, createBlockSection,
+             options.TimeProvider);
+     }
++
++    // What an elevated broker process does when its session ends, for any reason: a failed session
++    // is recorded in the diagnostics log, which observes the faulted task, and the process exit
++    // closes every pipe end it held. The client learns of it only through those pipes, as it does
++    // in production.
++    static void ExitHost(Task session, InMemoryBrokerPipes pipes)
++    {
++        if (session.Exception is { } failure)
++        {
++            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel,
++                $"Broker session failed: {failure.GetBaseException()}");
++        }
++        else if (session.IsCanceled)
++        {
++            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "Broker session was cancelled.");
++        }
++
++        pipes.CloseHostEnds();
++    }
+ }
+diff --git a/MFTLibTestExtensions/HostPipeEnds.cs b/MFTLibTestExtensions/HostPipeEnds.cs
+new file mode 100644
+index 0000000..0edb14b
+--- /dev/null
++++ b/MFTLibTestExtensions/HostPipeEnds.cs
+@@ -0,0 +1,54 @@
++namespace MFTLibTestExtensions;
++
++/// <summary>
++///     Every pipe end the in-process host was handed, so the host's exit can close them all the way
++///     a broker process's exit closes its handles. An end handed out after the exit is closed at once.
++/// </summary>
++internal sealed class HostPipeEnds
++{
++    readonly Lock _gate = new();
++    readonly List<Stream> _ends = [];
++    bool _exited;
++
++    public bool HasExited
++    {
++        get
++        {
++            lock (_gate)
++            {
++                return _exited;
++            }
++        }
++    }
++
++    public void Track(Stream end)
++    {
++        lock (_gate)
++        {
++            if (!_exited)
++            {
++                _ends.Add(end);
++                return;
++            }
++        }
++
++        end.Dispose();
++    }
++
++    /// <summary>The host's exit: closes every end it holds, so the client reads EOF on each.</summary>
++    public void CloseAll()
++    {
++        Stream[] ends;
++        lock (_gate)
++        {
++            _exited = true;
++            ends = _ends.ToArray();
++            _ends.Clear();
++        }
++
++        foreach (var end in ends)
++        {
++            end.Dispose();
++        }
++    }
++}
+diff --git a/MFTLibTestExtensions/InMemoryBrokerPipes.cs b/MFTLibTestExtensions/InMemoryBrokerPipes.cs
+index 2657c3c..47862af 100644
+--- a/MFTLibTestExtensions/InMemoryBrokerPipes.cs
++++ b/MFTLibTestExtensions/InMemoryBrokerPipes.cs
+@@ -11,40 +11,47 @@ namespace MFTLibTestExtensions;
+ ///     end is EOF to the other, as with a named pipe.
+ /// </summary>
+ internal sealed class InMemoryBrokerPipes(BrokerTestHarnessOptions options, Func<string, Stream, Stream>? wrapClientStream)
+     : IBrokerPipeFactory
+ {
+     /// <summary>The name <see cref="BrokerTestHarnessOptions" /> seams use for the control pipe.</summary>
+     public const string ControlPipeName = "control";
+ 
+     readonly ConcurrentDictionary<string, TaskCompletionSource<Stream>> _listening = new(StringComparer.Ordinal);
+ 
++    readonly HostPipeEnds _hostEnds = new();
++
+     public BrokerPipeListener Listen(string pipeName)
+     {
+         var connection = new TaskCompletionSource<Stream>(TaskCreationOptions.RunContinuationsAsynchronously);
+         if (!_listening.TryAdd(pipeName, connection))
+         {
+             throw new IOException($"A broker pipe named '{pipeName}' is already listening.");
+         }
+ 
+         return new BrokerPipeListener(pipeName, cancellationToken => connection.Task.WaitAsync(cancellationToken),
+             () => ReleaseAsync(pipeName, connection));
+     }
+ 
+     /// <summary>The host's connect: hands the client its end of a new pair and returns the host's end.</summary>
+     public Task<Stream> ConnectAsync(string pipeName, CancellationToken cancellationToken)
+     {
+         if (options.FailConnection?.Invoke(pipeName) is { } failure)
+         {
+             return Task.FromException<Stream>(failure);
+         }
+ 
++        if (_hostEnds.HasExited)
++        {
++            return Task.FromException<Stream>(new IOException("The in-process broker has exited."));
++        }
++
+         if (!_listening.TryRemove(pipeName, out var connection))
+         {
+             return Task.FromException<Stream>(new IOException($"No broker pipe named '{pipeName}' is listening."));
+         }
+ 
+         var (client, host) = CreatePair(pipeName);
+         if (!connection.TrySetResult(client))
+         {
+             client.Dispose();
+             host.Dispose();
+@@ -59,23 +66,27 @@ internal sealed class InMemoryBrokerPipes(BrokerTestHarnessOptions options, Func
+     {
+         var clientToHost = new Pipe();
+         var hostToClient = new Pipe();
+         Stream client = new InMemoryDuplexStream(hostToClient.Reader.AsStream(), clientToHost.Writer.AsStream());
+         Stream host = new InMemoryDuplexStream(clientToHost.Reader.AsStream(), hostToClient.Writer.AsStream());
+         if (options.HoldWrites is { } holdWrites)
+         {
+             host = new HeldWriteStream(host, () => holdWrites(pipeName));
+         }
+ 
++        _hostEnds.Track(host);
+         return (wrapClientStream?.Invoke(pipeName, client) ?? client, host);
+     }
+ 
++    /// <summary>The host's exit: closes every end the host holds, so the client reads EOF on each.</summary>
++    public void CloseHostEnds() => _hostEnds.CloseAll();
++
+     // Stops listening. A connection the host already made is closed, so the host reads EOF.
+     async ValueTask ReleaseAsync(string pipeName, TaskCompletionSource<Stream> connection)
+     {
+         _listening.TryRemove(KeyValuePair.Create(pipeName, connection));
+         if (!connection.TrySetCanceled() && connection.Task.IsCompletedSuccessfully)
+         {
+             await (await connection.Task.ConfigureAwait(false)).DisposeAsync().ConfigureAwait(false);
+         }
+     }
+ }
+diff --git a/MFTLibTestExtensions/InMemoryDuplexStream.cs b/MFTLibTestExtensions/InMemoryDuplexStream.cs
+index 4f4d877..eeadcb3 100644
+--- a/MFTLibTestExtensions/InMemoryDuplexStream.cs
++++ b/MFTLibTestExtensions/InMemoryDuplexStream.cs
+@@ -1,61 +1,85 @@
+ namespace MFTLibTestExtensions;
+ 
+ /// <summary>
+ ///     One end of an in-memory pipe: reads come from the peer's writes. Disposing it completes
+-///     both directions, so the peer's reads reach EOF.
++///     both directions, so the peer's reads reach EOF, and a later read or write on this end throws
++///     <see cref="ObjectDisposedException" />, as a closed named pipe does.
+ /// </summary>
+ internal sealed class InMemoryDuplexStream(Stream read, Stream write) : DelegatingStream(read)
+ {
++    volatile bool _closed;
++
+     public override bool CanWrite => true;
+ 
+-    public override void Flush() => write.Flush();
++    public override void Flush()
++    {
++        ObjectDisposedException.ThrowIf(_closed, this);
++        write.Flush();
++    }
++
++    public override Task FlushAsync(CancellationToken cancellationToken)
++    {
++        ObjectDisposedException.ThrowIf(_closed, this);
++        return write.FlushAsync(cancellationToken);
++    }
++
++    public override int Read(byte[] buffer, int offset, int count)
++    {
++        ObjectDisposedException.ThrowIf(_closed, this);
++        return base.Read(buffer, offset, count);
++    }
+ 
+-    public override Task FlushAsync(CancellationToken cancellationToken) => write.FlushAsync(cancellationToken);
++    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
++    {
++        ObjectDisposedException.ThrowIf(_closed, this);
++        return base.ReadAsync(buffer, cancellationToken);
++    }
+ 
+-    public override void Write(byte[] buffer, int offset, int count) => write.Write(buffer, offset, count);
++    public override void Write(byte[] buffer, int offset, int count)
++    {
++        ObjectDisposedException.ThrowIf(_closed, this);
++        write.Write(buffer, offset, count);
++    }
+ 
+-    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+-        write.WriteAsync(buffer, cancellationToken);
++    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
++    {
++        ObjectDisposedException.ThrowIf(_closed, this);
++        return write.WriteAsync(buffer, cancellationToken);
++    }
+ 
+     protected override void Dispose(bool disposing)
+     {
+         if (disposing)
+         {
++            _closed = true;
+             write.Dispose();
+         }
+ 
+         base.Dispose(disposing);
+     }
+ }
+ 
+ /// <summary>Every write waits on the task <c>hold</c> returns before any byte of it is written.</summary>
+ internal sealed class HeldWriteStream(Stream inner, Func<Task> hold) : DelegatingStream(inner)
+ {
+     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+     {
+         await hold().WaitAsync(cancellationToken).ConfigureAwait(false);
+         await Inner.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+     }
+ }
+ 
+ /// <summary>
+ ///     The client's end of the in-process control pipe. Closing it is EOF to the host; disposing
+-///     it asynchronously also waits for the host's session to return, then releases the host's end.
++///     it asynchronously also waits until the host has exited, which never faults: a failed host
++///     session reaches the client only as its pipes closing.
+ /// </summary>
+-internal sealed class HostLifetimeStream(Stream client, Stream host, Task serve) : DelegatingStream(client)
++internal sealed class HostLifetimeStream(Stream client, Task hostExited) : DelegatingStream(client)
+ {
+     public override async ValueTask DisposeAsync()
+     {
+         await Inner.DisposeAsync().ConfigureAwait(false);
+-        try
+-        {
+-            await serve.ConfigureAwait(false);
+-        }
+-        finally
+-        {
+-            await host.DisposeAsync().ConfigureAwait(false);
+-        }
+-
++        await hostExited.ConfigureAwait(false);
+         await base.DisposeAsync().ConfigureAwait(false);
+     }
+ }

@@ -1,0 +1,3298 @@
+# Review package: cb13c86..task/265-C3b
+
+## Commits
+bf5b1bb Port the host control-loop and scan-progress cases from the watch partials
+ecd3f52 Port host scan, control, protocol and entry-point tests
+
+## Files changed
+ MFTLib.Tests/BrokerProtocolTests.Frames.cs         | 242 ++++++++++
+ .../BrokerProtocolTests.GrowUsnJournalFrames.cs    |  89 ++++
+ MFTLib.Tests/BrokerProtocolTests.Scan.cs           | 525 +++++++++++++++++++++
+ MFTLib.Tests/BrokerProtocolTests.cs                | 104 ++++
+ MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs    | 240 +++++++++-
+ MFTLib.Tests/GrowUsnJournalHostTests.cs            |  69 +++
+ MFTLib.Tests/JournalBrokerHostBlockScanTests.cs    | 181 +++++++
+ .../JournalBrokerHostRealSeamsTests.Operations.cs  | 455 ++++++++++++++++++
+ MFTLib.Tests/JournalBrokerHostRealSeamsTests.cs    | 198 ++++++++
+ MFTLib.Tests/JournalBrokerHostTests.ControlLoop.cs |  73 +++
+ MFTLib.Tests/JournalBrokerHostTests.Progress.cs    | 338 +++++++++++++
+ .../JournalBrokerHostTests.RequestDisconnect.cs    | 143 ++++++
+ MFTLib.Tests/JournalBrokerHostTests.Scan.cs        | 263 +++++++++++
+ MFTLib.Tests/JournalBrokerHostTests.cs             |  74 +++
+ MFTLib.Tests/VolumeQueryHostTests.cs               |  76 +++
+ scripts/coverage-linux.sh                          |   4 +-
+ 16 files changed, 3061 insertions(+), 13 deletions(-)
+
+## Diff
+diff --git a/MFTLib.Tests/BrokerProtocolTests.Frames.cs b/MFTLib.Tests/BrokerProtocolTests.Frames.cs
+new file mode 100644
+index 0000000..51a223c
+--- /dev/null
++++ b/MFTLib.Tests/BrokerProtocolTests.Frames.cs
+@@ -0,0 +1,242 @@
++using System.Buffers;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++// The frames of the control pipe (OpenChannel, ChannelOpened, QueryVolume, VolumeInfo) and the
++// kinds that travel on any pipe (Error, Heartbeat, Stalled), plus the journal entry they share.
++public partial class BrokerProtocolTests
++{
++    [TestMethod]
++    public void JournalEntry_RoundTrips_AllFields()
++    {
++        var entry = UsnJournalEntry.Create(new UsnJournalEntryOptions
++        {
++            RecordNumber = 42,
++            ParentRecordNumber = 7,
++            SequenceNumber = 169,
++            Usn = 123456,
++            Timestamp = new DateTime(2026, 6, 20, 1, 2, 3, DateTimeKind.Utc),
++            Reason = UsnReason.FileCreate | UsnReason.Close,
++            FileAttributes = FileAttributes.Archive,
++            FileName = "repört.txt"
++        }); // non-ASCII to prove UTF-16
++
++        var buffer = new ArrayBufferWriter<byte>();
++        BrokerProtocol.WriteEntry(buffer, entry);
++        var read = BrokerProtocol.ReadEntry(buffer.WrittenSpan, out var consumed);
++
++        Assert.AreEqual(buffer.WrittenCount, consumed);
++        Assert.AreEqual(entry.RecordNumber, read.RecordNumber);
++        Assert.AreEqual(entry.ParentRecordNumber, read.ParentRecordNumber);
++        Assert.AreEqual(entry.SequenceNumber, read.SequenceNumber);
++        Assert.AreEqual(entry.Usn, read.Usn);
++        Assert.AreEqual(entry.Timestamp, read.Timestamp);
++        Assert.AreEqual(entry.Reason, read.Reason);
++        Assert.AreEqual(entry.FileAttributes, read.FileAttributes);
++        Assert.AreEqual(entry.FileName, read.FileName);
++    }
++
++    [TestMethod]
++    public void OpenChannelFrame_RoundTrips_RequestIdDriveAndPipeName()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteOpenChannel(writer, 0xDEADBEEF, "C", @"mftlib-drive-C-1"));
++
++        Assert.AreEqual(BrokerFrameKind.OpenChannel, frame.Kind);
++        Assert.AreEqual(0xDEADBEEF, frame.RequestId);
++        Assert.AreEqual("C", frame.Drive);
++        Assert.AreEqual("mftlib-drive-C-1", frame.PipeName);
++    }
++
++    [TestMethod]
++    public void ChannelOpenedFrame_RoundTrips_RequestId()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteChannelOpened(writer, 17));
++
++        Assert.AreEqual(BrokerFrameKind.ChannelOpened, frame.Kind);
++        Assert.AreEqual(17u, frame.RequestId);
++    }
++
++    [TestMethod]
++    public void QueryVolumeFrame_RoundTrips_RequestIdAndDrive()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteQueryVolume(writer, 4, "D"));
++
++        Assert.AreEqual(BrokerFrameKind.QueryVolume, frame.Kind);
++        Assert.AreEqual(4u, frame.RequestId);
++        Assert.AreEqual("D", frame.Drive);
++    }
++
++    [TestMethod]
++    public void VolumeInfoFrame_RoundTrips_RequestIdAndAllFields()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteVolumeInfo(writer, 9, 8_000_000, 1024, 8_192_000_000));
++
++        Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
++        Assert.AreEqual(9u, frame.RequestId);
++        Assert.AreEqual(8_000_000L, frame.RecordCount);
++        Assert.AreEqual(1024U, frame.BytesPerFileRecordSegment);
++        Assert.AreEqual(8_192_000_000L, frame.MftValidDataLength);
++        Assert.IsNull(frame.Drive, "The reply is matched by its request id, not by a drive.");
++    }
++
++    [TestMethod]
++    public void ErrorFrame_RoundTrips_RequestIdAndMessage()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteError(writer, 42, "journal wrapped"));
++
++        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
++        Assert.AreEqual(42u, frame.RequestId);
++        Assert.AreEqual("journal wrapped", frame.Message);
++        Assert.IsNull(frame.Drive);
++    }
++
++    [TestMethod]
++    public void ErrorFrame_OnDrivePipe_RoundTripsRequestIdZero()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteError(writer, 0, "no watch source"));
++
++        Assert.AreEqual(0u, frame.RequestId);
++        Assert.AreEqual("no watch source", frame.Message);
++    }
++
++    [TestMethod]
++    public void HeartbeatFrame_RoundTrips_NoPayload()
++    {
++        var frame = RoundTrip(BrokerProtocol.WriteHeartbeat);
++
++        Assert.AreEqual(BrokerFrameKind.Heartbeat, frame.Kind);
++        Assert.AreEqual(0u, frame.RequestId);
++    }
++
++    [TestMethod]
++    public void StalledFrame_RoundTrips_Message()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteStalled(writer, "no progress for 90 seconds"));
++
++        Assert.AreEqual(BrokerFrameKind.Stalled, frame.Kind);
++        Assert.AreEqual("no progress for 90 seconds", frame.Message);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_NoPayloadFrames()
++    {
++        AssertWireBytes(BrokerProtocol.WriteHeartbeat, [0x01, 0x00, 0x00, 0x00, 0x08]);
++        AssertWireBytes(BrokerProtocol.WriteCaughtUp, [0x01, 0x00, 0x00, 0x00, 0x11]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_OpenChannelFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteOpenChannel(w, 1, "C", "p"),
++        [
++            0x11, 0x00, 0x00, 0x00, // totalLength = 17
++            0x01, // kind = OpenChannel
++            0x01, 0x00, 0x00, 0x00, // requestId = 1
++            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
++            0x02, 0x00, 0x00, 0x00, 0x70, 0x00 // pipeName "p"
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_ChannelOpenedFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteChannelOpened(w, 3),
++            [0x05, 0x00, 0x00, 0x00, 0x02, 0x03, 0x00, 0x00, 0x00]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_QueryVolumeFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteQueryVolume(w, 2, "C"),
++        [
++            0x0B, 0x00, 0x00, 0x00, // totalLength = 11
++            0x03, // kind = QueryVolume
++            0x02, 0x00, 0x00, 0x00, // requestId = 2
++            0x02, 0x00, 0x00, 0x00, 0x43, 0x00 // drive "C"
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_VolumeInfoFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteVolumeInfo(w, 5, 1, 2, 3),
++        [
++            0x19, 0x00, 0x00, 0x00, // totalLength = 25 (1 + 4 + 8 + 4 + 8)
++            0x04, // kind = VolumeInfo
++            0x05, 0x00, 0x00, 0x00, // requestId = 5
++            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mftRecordCount = 1
++            0x02, 0x00, 0x00, 0x00, // bytesPerFileRecordSegment = 2
++            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // mftValidDataLength = 3
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_ErrorFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteError(w, 42, "D"),
++        [
++            0x0B, 0x00, 0x00, 0x00, // totalLength = 11
++            0x07, // kind = Error
++            0x2A, 0x00, 0x00, 0x00, // requestId = 42
++            0x02, 0x00, 0x00, 0x00, 0x44, 0x00 // message "D"
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_StalledFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteStalled(w, "D"),
++        [
++            0x07, 0x00, 0x00, 0x00, // totalLength = 7
++            0x09, // kind = Stalled
++            0x02, 0x00, 0x00, 0x00, 0x44, 0x00 // message "D"
++        ]);
++    }
++
++    [TestMethod]
++    public void Factory_OpenChannel_PopulatesRequestIdDriveAndPipeName()
++    {
++        var frame = BrokerFrame.OpenChannel(8, "E", "pipe");
++
++        Assert.AreEqual(BrokerFrameKind.OpenChannel, frame.Kind);
++        Assert.AreEqual(8u, frame.RequestId);
++        Assert.AreEqual("E", frame.Drive);
++        Assert.AreEqual("pipe", frame.PipeName);
++        Assert.AreEqual(0, frame.Entries.Length);
++        Assert.AreEqual(0, frame.KeepFileNames.Count);
++    }
++
++    [TestMethod]
++    public void Factory_VolumeInfo_PopulatesAllFields()
++    {
++        var frame = BrokerFrame.VolumeInfo(6, 8_000_000, 1024, 8_192_000_000);
++
++        Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
++        Assert.AreEqual(6u, frame.RequestId);
++        Assert.AreEqual(8_000_000L, frame.RecordCount);
++        Assert.AreEqual(1024U, frame.BytesPerFileRecordSegment);
++        Assert.AreEqual(8_192_000_000L, frame.MftValidDataLength);
++        Assert.AreEqual(0, frame.Entries.Length);
++    }
++
++    [TestMethod]
++    public void Factory_Error_PopulatesRequestIdAndMessage()
++    {
++        var frame = BrokerFrame.Error(5, "journal wrapped");
++
++        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
++        Assert.AreEqual(5u, frame.RequestId);
++        Assert.AreEqual("journal wrapped", frame.Message);
++        Assert.AreEqual(0, frame.Entries.Length);
++    }
++
++    [TestMethod]
++    public void Factory_NoPayloadKinds_SetKindAndEmptyEntries()
++    {
++        Assert.AreEqual(BrokerFrameKind.Heartbeat, BrokerFrame.Heartbeat().Kind);
++        Assert.AreEqual(BrokerFrameKind.CaughtUp, BrokerFrame.CaughtUp().Kind);
++        Assert.AreEqual(0, BrokerFrame.Heartbeat().Entries.Length);
++        Assert.AreEqual(0, BrokerFrame.CaughtUp().Entries.Length);
++    }
++}
+diff --git a/MFTLib.Tests/BrokerProtocolTests.GrowUsnJournalFrames.cs b/MFTLib.Tests/BrokerProtocolTests.GrowUsnJournalFrames.cs
+new file mode 100644
+index 0000000..8b7eafa
+--- /dev/null
++++ b/MFTLib.Tests/BrokerProtocolTests.GrowUsnJournalFrames.cs
+@@ -0,0 +1,89 @@
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++/// <summary>
++///     Round-trip and golden wire bytes for the <see cref="BrokerFrameKind.GrowUsnJournal" />
++///     request (request id, drive, sizes) and the <see cref="BrokerFrameKind.UsnJournalSettings" />
++///     reply (request id, sizes), both on the control pipe.
++/// </summary>
++public partial class BrokerProtocolTests
++{
++    [TestMethod]
++    public void GrowUsnJournalFrame_RoundTrips_RequestIdDriveAndSizes()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 12, "C", 0x08000000, 0x01000000));
++
++        Assert.AreEqual(BrokerFrameKind.GrowUsnJournal, frame.Kind);
++        Assert.AreEqual(12u, frame.RequestId);
++        Assert.AreEqual("C", frame.Drive);
++        Assert.AreEqual(0x08000000L, frame.JournalMaximumSize);
++        Assert.AreEqual(0x01000000L, frame.JournalAllocationDelta);
++    }
++
++    [TestMethod]
++    public void UsnJournalSettingsFrame_RoundTrips_RequestIdAndSizes()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteUsnJournalSettings(writer, 12, 0x10000000, 0x02000000));
++
++        Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
++        Assert.AreEqual(12u, frame.RequestId);
++        Assert.AreEqual(0x10000000L, frame.JournalMaximumSize);
++        Assert.AreEqual(0x02000000L, frame.JournalAllocationDelta);
++        Assert.IsNull(frame.Drive, "The reply is matched by its request id, not by a drive.");
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_GrowUsnJournalFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteGrowUsnJournal(w, 5, "C", 0x08000000, 0x01000000),
++        [
++            0x1B, 0x00, 0x00, 0x00, // totalLength = 27
++            0x05, // kind = GrowUsnJournal
++            0x05, 0x00, 0x00, 0x00, // requestId = 5
++            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // drive "C"
++            0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, // maximumSize = 0x08000000
++            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00 // allocationDelta = 0x01000000
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_UsnJournalSettingsFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteUsnJournalSettings(w, 5, 0x08000000, 0x01000000),
++        [
++            0x15, 0x00, 0x00, 0x00, // totalLength = 21
++            0x06, // kind = UsnJournalSettings
++            0x05, 0x00, 0x00, 0x00, // requestId = 5
++            0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, // maximumSize = 0x08000000
++            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00 // allocationDelta = 0x01000000
++        ]);
++    }
++
++    [TestMethod]
++    public void Factory_GrowUsnJournal_PopulatesKindRequestIdDriveAndSizes()
++    {
++        var frame = BrokerFrame.GrowUsnJournal(3, "C", 1, 2);
++
++        Assert.AreEqual(BrokerFrameKind.GrowUsnJournal, frame.Kind);
++        Assert.AreEqual(3u, frame.RequestId);
++        Assert.AreEqual("C", frame.Drive);
++        Assert.AreEqual(1L, frame.JournalMaximumSize);
++        Assert.AreEqual(2L, frame.JournalAllocationDelta);
++        Assert.AreEqual(0, frame.Entries.Length);
++        Assert.AreEqual(0, frame.KeepFileNames.Count);
++    }
++
++    [TestMethod]
++    public void Factory_UsnJournalSettings_PopulatesKindRequestIdAndSizes()
++    {
++        var frame = BrokerFrame.UsnJournalSettings(3, 1, 2);
++
++        Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
++        Assert.AreEqual(3u, frame.RequestId);
++        Assert.AreEqual(1L, frame.JournalMaximumSize);
++        Assert.AreEqual(2L, frame.JournalAllocationDelta);
++        Assert.AreEqual(0, frame.Entries.Length);
++        Assert.AreEqual(0, frame.KeepFileNames.Count);
++    }
++}
+diff --git a/MFTLib.Tests/BrokerProtocolTests.Scan.cs b/MFTLib.Tests/BrokerProtocolTests.Scan.cs
+new file mode 100644
+index 0000000..3ea9679
+--- /dev/null
++++ b/MFTLib.Tests/BrokerProtocolTests.Scan.cs
+@@ -0,0 +1,525 @@
++using System.Buffers;
++using MFTLib.Index;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++// The frames of a drive pipe: the two requests (ArmAndScan, StartWatch) and everything the host
++// writes back on it. A drive pipe names no drive: the channel is the drive.
++public partial class BrokerProtocolTests
++{
++    static readonly JournalCheckpointLoss FullLoss = new()
++    {
++        DriveLetter = 'C',
++        DetectedDuring = JournalCheckpointLossDetection.ScanCatchUp,
++        Cause = JournalCheckpointLossCause.CheckpointTrimmed,
++        CheckpointUsn = 1000,
++        FirstUsn = 5000,
++        NextUsn = 9000,
++        AllocationDelta = 4096,
++        MaximumSize = 32768,
++        BytesBehind = 4000,
++        SizeThatWouldHaveRetained = 12288
++    };
++
++    [TestMethod]
++    public void ArmAndScanFrame_RoundTrips_SectionAndProfile()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteArmAndScan(writer, "mftlib-scan-C", BrokerScanProfile.Full));
++
++        Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
++        Assert.AreEqual("mftlib-scan-C", frame.SectionName);
++        Assert.AreEqual(BrokerScanProfile.Full, frame.Profile);
++        Assert.AreEqual(0, frame.KeepFileNames.Count);
++        Assert.IsNull(frame.Drive, "The drive pipe names no drive.");
++    }
++
++    [TestMethod]
++    public void ArmAndScanFrame_RoundTrips_KeepFileNames()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteArmAndScan(
++            writer, "s", BrokerScanProfile.DirectoryIndex, KeepFileNamesGitAndNonAscii)); // non-ASCII to prove UTF-16
++
++        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, frame.Profile);
++        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, frame.KeepFileNames.ToArray());
++    }
++
++    [TestMethod]
++    public void ReadFrame_ArmAndScan_UnknownProfile_ThrowsInvalidDataException()
++    {
++        var buffer = new ArrayBufferWriter<byte>();
++        BrokerProtocol.WriteArmAndScan(buffer, "s", (BrokerScanProfile)99);
++
++        var exception = Assert.ThrowsException<InvalidDataException>(() =>
++            BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _));
++
++        StringAssert.Contains(exception.Message, "99");
++    }
++
++    [TestMethod]
++    public void StartWatchFrame_RoundTrips_Cursor()
++    {
++        var cursor = new UsnJournalCursor(1UL, 100L);
++        var frame = RoundTrip(writer => BrokerProtocol.WriteStartWatch(writer, cursor));
++
++        Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
++        Assert.AreEqual(cursor, frame.Cursor);
++    }
++
++    [TestMethod]
++    public void CursorFrame_RoundTrips_Cursor()
++    {
++        var cursor = new UsnJournalCursor(12345UL, 67890L);
++        var frame = RoundTrip(writer => BrokerProtocol.WriteCursor(writer, cursor));
++
++        Assert.AreEqual(BrokerFrameKind.Cursor, frame.Kind);
++        Assert.AreEqual(cursor, frame.Cursor);
++        Assert.IsNull(frame.Drive);
++    }
++
++    [TestMethod]
++    public void ScanProgressFrame_RoundTrips_AllFieldsWithEmptyDrive()
++    {
++        var progress = new BrokerScanProgress
++        {
++            DriveLetter = "C",
++            Phase = BrokerScanPhase.Parsing,
++            RecordsProcessed = 1000,
++            BytesProcessed = 20480,
++            TotalRecords = 5000,
++            TotalBytes = 102400,
++            Elapsed = TimeSpan.FromMilliseconds(150)
++        };
++        var frame = RoundTrip(writer => BrokerProtocol.WriteScanProgress(writer, progress));
++
++        Assert.AreEqual(BrokerFrameKind.ScanProgress, frame.Kind);
++        Assert.IsNotNull(frame.Progress);
++        Assert.AreEqual(progress with { DriveLetter = string.Empty }, frame.Progress.Value,
++            "The wire carries no drive: the client fills it in from the channel.");
++        Assert.AreEqual(BrokerScanPhase.Parsing, frame.Progress.Value.Phase);
++    }
++
++    [TestMethod]
++    public void ScanProgressFrame_RoundTrips_NullableFieldsAsMinusOne()
++    {
++        var progress = new BrokerScanProgress
++        {
++            DriveLetter = "D",
++            Phase = BrokerScanPhase.Transferring,
++            RecordsProcessed = 500,
++            BytesProcessed = 10240,
++            TotalRecords = null,
++            TotalBytes = null,
++            Elapsed = TimeSpan.FromMilliseconds(50)
++        };
++        var frame = RoundTrip(writer => BrokerProtocol.WriteScanProgress(writer, progress));
++
++        Assert.AreEqual(BrokerScanPhase.Transferring, frame.Progress!.Value.Phase);
++        Assert.IsNull(frame.Progress.Value.TotalRecords);
++        Assert.IsNull(frame.Progress.Value.TotalBytes);
++    }
++
++    [TestMethod]
++    public void ReadFrame_ScanProgress_InvalidPhase_ThrowsInvalidDataException()
++    {
++        byte[] payload =
++        [
++            0x2D, 0x00, 0x00, 0x00, // totalLength = 45
++            0x0C, // kind = ScanProgress
++            0x63, 0x00, 0x00, 0x00, // phase = 99 (invalid)
++            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 1
++            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 2
++            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalRecords = -1
++            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalBytes = -1
++            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // elapsedTicks = 3
++        ];
++
++        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(payload, out _));
++    }
++
++    [TestMethod]
++    public void ReadFrame_ScanProgress_PhaseOutsideByteRange_ThrowsInvalidDataException()
++    {
++        byte[] payload =
++        [
++            0x2D, 0x00, 0x00, 0x00,
++            0x0C,
++            0x00, 0x01, 0x00, 0x00, // phase = 256
++            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
++            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
++            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
++        ];
++
++        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(payload, out _));
++    }
++
++    [TestMethod]
++    public void CatchUpLostFrame_RoundTrips_EveryLossFieldAndMessage()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteCatchUpLost(writer, FullLoss, "catch-up read failed"));
++
++        Assert.AreEqual(BrokerFrameKind.CatchUpLost, frame.Kind);
++        Assert.AreEqual("catch-up read failed", frame.Message);
++        var loss = frame.RequireCatchUpLoss('C');
++        Assert.AreEqual('C', loss.DriveLetter);
++        Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);
++        Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
++        Assert.AreEqual(1000L, loss.CheckpointUsn);
++        Assert.AreEqual(5000L, loss.FirstUsn);
++        Assert.AreEqual(9000L, loss.NextUsn);
++        Assert.AreEqual(4096L, loss.AllocationDelta);
++        Assert.AreEqual(32768L, loss.MaximumSize);
++        Assert.AreEqual(4000L, loss.BytesBehind);
++        Assert.AreEqual(12288L, loss.SizeThatWouldHaveRetained);
++    }
++
++    [TestMethod]
++    public void CatchUpLostFrame_RoundTrips_NullBytesBehindAndSizeThatWouldHaveRetained()
++    {
++        var recreated = FullLoss with
++        {
++            Cause = JournalCheckpointLossCause.JournalRecreated,
++            BytesBehind = null,
++            SizeThatWouldHaveRetained = null
++        };
++        var frame = RoundTrip(writer => BrokerProtocol.WriteCatchUpLost(writer, recreated, "recreated"));
++
++        var loss = frame.RequireCatchUpLoss('D');
++        Assert.AreEqual('D', loss.DriveLetter, "The drive is the channel's, not the wire's.");
++        Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
++        Assert.IsNull(loss.BytesBehind);
++        Assert.IsNull(loss.SizeThatWouldHaveRetained);
++        Assert.AreEqual(9000L, loss.NextUsn);
++    }
++
++    [TestMethod]
++    public void CatchUpLostFrame_RoundTrips_NegativeBytesBehind()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteCatchUpLost(writer, FullLoss with { BytesBehind = -1 }, "m"));
++
++        Assert.AreEqual(-1L, frame.RequireCatchUpLoss('C').BytesBehind, "A present value of -1 is not the absent marker.");
++    }
++
++    [TestMethod]
++    public void ReadFrame_CatchUpLost_UnknownCause_ThrowsInvalidDataException()
++    {
++        var buffer = new ArrayBufferWriter<byte>();
++        BrokerProtocol.WriteCatchUpLost(buffer, FullLoss with { Cause = (JournalCheckpointLossCause)42 }, "m");
++
++        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _));
++    }
++
++    [TestMethod]
++    public void ScanReadyFrame_RoundTrips_Counts()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteScanReady(writer, 8_000_000, 900_000_000, 3));
++
++        Assert.AreEqual(BrokerFrameKind.ScanReady, frame.Kind);
++        Assert.AreEqual(8_000_000L, frame.RowCount);
++        Assert.AreEqual(900_000_000L, frame.NamePoolUsedBytes);
++        Assert.AreEqual(3L, frame.SkippedRecordCount);
++    }
++
++    [TestMethod]
++    public void JournalBatchFrame_RoundTrips_EntriesAndCursor()
++    {
++        var entries = new[]
++        {
++            JournalEntryFactory.Create(1, 10, "a"),
++            JournalEntryFactory.Create(2, 20, "b", UsnReason.FileDelete | UsnReason.Close)
++        };
++        var cursor = new UsnJournalCursor(99UL, 20L);
++
++        var frame = RoundTrip(writer => BrokerProtocol.WriteJournalBatch(writer, cursor, entries));
++
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
++        Assert.AreEqual(cursor, frame.Cursor);
++        Assert.AreEqual(2, frame.Entries.Length);
++        Assert.AreEqual("b", frame.Entries[1].FileName);
++        Assert.IsNull(frame.Drive);
++    }
++
++    [TestMethod]
++    public void JournalBatchFrame_EmptyEntries_RoundTrips()
++    {
++        var frame = RoundTrip(writer => BrokerProtocol.WriteJournalBatch(
++            writer, new UsnJournalCursor(1UL, 0L), Array.Empty<UsnJournalEntry>()));
++
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
++        Assert.AreEqual(0, frame.Entries.Length);
++    }
++
++    [TestMethod]
++    public void CaughtUpFrame_RoundTrips_NoPayload()
++    {
++        var frame = RoundTrip(BrokerProtocol.WriteCaughtUp);
++
++        Assert.AreEqual(BrokerFrameKind.CaughtUp, frame.Kind);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_ArmAndScanFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C", BrokerScanProfile.Full),
++        [
++            0x0F, 0x00, 0x00, 0x00, // totalLength = 15
++            0x0A, // kind = ArmAndScan
++            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // sectionName "C"
++            0x00, 0x00, 0x00, 0x00, // profile = Full
++            0x00, 0x00, 0x00, 0x00 // keepFileNames count = 0
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_ArmAndScanFrame_WithKeepFileNames()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C", BrokerScanProfile.DirectoryIndex,
++                KeepFileNamesSingleLetter),
++        [
++            0x15, 0x00, 0x00, 0x00, // totalLength = 21
++            0x0A, // kind = ArmAndScan
++            0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // sectionName "C"
++            0x01, 0x00, 0x00, 0x00, // profile = DirectoryIndex
++            0x01, 0x00, 0x00, 0x00, // keepFileNames count = 1
++            0x02, 0x00, 0x00, 0x00, 0x61, 0x00 // keepFileNames[0] "a"
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_CursorFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteCursor(w, new UsnJournalCursor(1UL, 2L)),
++        [
++            0x11, 0x00, 0x00, 0x00, // totalLength = 17
++            0x0B, // kind = Cursor
++            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // journalId = 1
++            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // nextUsn = 2
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_ScanProgressFrame()
++    {
++        var progress = new BrokerScanProgress
++        {
++            DriveLetter = "C",
++            Phase = BrokerScanPhase.Parsing,
++            RecordsProcessed = 100,
++            BytesProcessed = 200,
++            TotalRecords = 300,
++            TotalBytes = 400,
++            Elapsed = TimeSpan.FromTicks(500)
++        };
++        AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, progress),
++        [
++            0x2D, 0x00, 0x00, 0x00, // totalLength = 45 (1 + 4 + 8*5)
++            0x0C, // kind = ScanProgress
++            0x00, 0x00, 0x00, 0x00, // phase = Parsing (0)
++            0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 100
++            0xC8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 200
++            0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // totalRecords = 300
++            0x90, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // totalBytes = 400
++            0xF4, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // elapsedTicks = 500
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_ScanProgressFrame_NullTotals()
++    {
++        var progress = new BrokerScanProgress
++        {
++            DriveLetter = "C",
++            Phase = BrokerScanPhase.Parsing,
++            RecordsProcessed = 1,
++            BytesProcessed = 2,
++            TotalRecords = null,
++            TotalBytes = null,
++            Elapsed = TimeSpan.FromTicks(3)
++        };
++        AssertWireBytes(w => BrokerProtocol.WriteScanProgress(w, progress),
++        [
++            0x2D, 0x00, 0x00, 0x00, // totalLength = 45
++            0x0C, // kind = ScanProgress
++            0x00, 0x00, 0x00, 0x00, // phase = Parsing (0)
++            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 1
++            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 2
++            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalRecords = -1
++            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalBytes = -1
++            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // elapsedTicks = 3
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_ScanReadyFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteScanReady(w, 1, 2, 3),
++        [
++            0x19, 0x00, 0x00, 0x00, // totalLength = 25
++            0x0E, // kind = ScanReady
++            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // rowCount = 1
++            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // namePoolUsedBytes = 2
++            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // skippedRecordCount = 3
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_CatchUpLostFrame()
++    {
++        var loss = FullLoss with
++        {
++            CheckpointUsn = 1,
++            FirstUsn = 2,
++            NextUsn = 3,
++            AllocationDelta = 4,
++            MaximumSize = 5,
++            BytesBehind = 6,
++            SizeThatWouldHaveRetained = null
++        };
++        AssertWireBytes(w => BrokerProtocol.WriteCatchUpLost(w, loss, "m"),
++        [
++            0x45, 0x00, 0x00, 0x00, // totalLength = 69
++            0x0D, // kind = CatchUpLost
++            0x00, 0x00, 0x00, 0x00, // cause = CheckpointTrimmed (0)
++            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // checkpointUsn = 1
++            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // firstUsn = 2
++            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // nextUsn = 3
++            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // allocationDelta = 4
++            0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // maximumSize = 5
++            0x01, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesBehind = present, 6
++            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // sizeThatWouldHaveRetained = absent
++            0x02, 0x00, 0x00, 0x00, 0x6D, 0x00 // message "m"
++        ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_JournalBatchFrame()
++    {
++        AssertWireBytes(
++            w => BrokerProtocol.WriteJournalBatch(w, new UsnJournalCursor(1UL, 2L), Array.Empty<UsnJournalEntry>()),
++            [
++                0x15, 0x00, 0x00, 0x00, // totalLength = 21
++                0x0F, // kind = JournalBatch
++                0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // journalId = 1
++                0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // nextUsn = 2
++                0x00, 0x00, 0x00, 0x00 // entryCount = 0
++            ]);
++    }
++
++    [TestMethod]
++    public void WireBytes_Golden_StartWatchFrame()
++    {
++        AssertWireBytes(w => BrokerProtocol.WriteStartWatch(w, new UsnJournalCursor(1UL, 2L)),
++        [
++            0x11, 0x00, 0x00, 0x00, // totalLength = 17
++            0x10, // kind = StartWatch
++            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // journalId = 1
++            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // nextUsn = 2
++        ]);
++    }
++
++    [TestMethod]
++    public void Factory_ArmAndScan_PopulatesSectionProfileAndKeepFileNames()
++    {
++        var frame = BrokerFrame.ArmAndScan("section", BrokerScanProfile.DirectoryIndex, KeepFileNamesGit);
++
++        Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
++        Assert.AreEqual("section", frame.SectionName);
++        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, frame.Profile);
++        CollectionAssert.AreEqual(KeepFileNamesGit, frame.KeepFileNames.ToArray());
++        Assert.IsNotNull(frame.Entries);
++        Assert.AreEqual(0, frame.Entries.Length);
++    }
++
++    [TestMethod]
++    public void Factory_ArmAndScan_WithoutKeepFileNames_HasEmptyList()
++    {
++        var frame = BrokerFrame.ArmAndScan("section", BrokerScanProfile.Full);
++
++        Assert.AreEqual(0, frame.KeepFileNames.Count);
++    }
++
++    [TestMethod]
++    public void Factory_JournalBatch_PopulatesCursorAndEntries()
++    {
++        var cursor = new UsnJournalCursor(7UL, 110L);
++        var entries = new[] { JournalEntryFactory.Create(1, 10, "a") };
++
++        var frame = BrokerFrame.JournalBatch(cursor, entries);
++
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
++        Assert.AreEqual(cursor, frame.Cursor);
++        Assert.AreSame(entries, frame.Entries);
++    }
++
++    [TestMethod]
++    public void Factory_ScanReady_PopulatesCounts()
++    {
++        var frame = BrokerFrame.ScanReady(8_000_000, 900_000_000, 0);
++
++        Assert.AreEqual(BrokerFrameKind.ScanReady, frame.Kind);
++        Assert.AreEqual(8_000_000L, frame.RowCount);
++        Assert.AreEqual(900_000_000L, frame.NamePoolUsedBytes);
++        Assert.AreEqual(0, frame.Entries.Length);
++    }
++
++    [TestMethod]
++    public void Factory_ScanProgress_PopulatesProgress()
++    {
++        var progress = new BrokerScanProgress("E", 10, 20, 30, 40, TimeSpan.FromSeconds(1));
++
++        var frame = BrokerFrame.ScanProgress(progress);
++
++        Assert.AreEqual(BrokerFrameKind.ScanProgress, frame.Kind);
++        Assert.AreEqual(progress, frame.Progress);
++        Assert.AreEqual(BrokerScanPhase.Parsing, frame.Progress!.Value.Phase);
++        Assert.AreEqual(0, frame.Entries.Length);
++    }
++
++    [TestMethod]
++    public void Factory_ArmedCursor_PopulatesCursor()
++    {
++        var cursor = new UsnJournalCursor(12345UL, 67890L);
++
++        var frame = BrokerFrame.ArmedCursor(cursor);
++
++        Assert.AreEqual(BrokerFrameKind.Cursor, frame.Kind);
++        Assert.AreEqual(cursor, frame.Cursor);
++        Assert.AreEqual(0, frame.Entries.Length);
++    }
++
++    [TestMethod]
++    public void Factory_StartWatch_PopulatesCursor()
++    {
++        var frame = BrokerFrame.StartWatch(new UsnJournalCursor(1UL, 100L));
++
++        Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
++        Assert.AreEqual(new UsnJournalCursor(1UL, 100L), frame.Cursor);
++        Assert.AreEqual(0, frame.Entries.Length);
++    }
++
++    // The base-commit client test asserted that the old client wrote one request; with the
++    // client gone the wire contract is pinned on the host side: an ArmAndScan written by
++    // BrokerProtocol reaches the section writer with exactly the section, profile and names sent.
++    [TestMethod]
++    public async Task ArmAndScan_RawFrameOnDrivePipe_ReachesSectionWriterWithSectionProfileAndKeepNames()
++    {
++        using var sectionWriter = new RecordingBlockSectionWriter();
++        var host = new JournalBrokerHost(
++            _ => new UsnJournalCursor(7, 1000),
++            (_, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]],
++            (_, since) => (Array.Empty<UsnJournalEntry>(), since),
++            processorCount: 2);
++        await using var harness = new HostChannelHarness(host, sectionWriter);
++
++        var pipe = await harness.OpenScanChannelAsync('D', "section-D", BrokerScanProfile.DirectoryIndex, KeepFileNamesGit);
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind);
++        Assert.AreEqual("section-D", sectionWriter.LastSectionName);
++        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, sectionWriter.LastFilter.Profile);
++        CollectionAssert.AreEqual(KeepFileNamesGit, sectionWriter.LastFilter.KeepFileNames!.ToArray());
++    }
++}
+diff --git a/MFTLib.Tests/BrokerProtocolTests.cs b/MFTLib.Tests/BrokerProtocolTests.cs
+new file mode 100644
+index 0000000..28f7612
+--- /dev/null
++++ b/MFTLib.Tests/BrokerProtocolTests.cs
+@@ -0,0 +1,104 @@
++using System.Buffers;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++/// <summary>
++///     The broker wire: every frame kind round-trips through its writer and reader, the golden
++///     bytes pin the layout, and a frame the reader cannot decode fails as
++///     <see cref="InvalidDataException" />. Control-pipe kinds are in the Frames partial,
++///     drive-pipe kinds in the Scan partial, the journal grow pair in the GrowUsnJournalFrames partial.
++/// </summary>
++[TestClass]
++public partial class BrokerProtocolTests
++{
++    static readonly string[] KeepFileNamesGitAndNonAscii = [".git", "repört"];
++    static readonly string[] KeepFileNamesGit = [".git"];
++    static readonly string[] KeepFileNamesSingleLetter = ["a"];
++
++    static void AssertWireBytes(Action<ArrayBufferWriter<byte>> write, byte[] expected)
++    {
++        var buffer = new ArrayBufferWriter<byte>();
++        write(buffer);
++        CollectionAssert.AreEqual(expected, buffer.WrittenSpan.ToArray());
++    }
++
++    // Writes one frame, reads it back, and checks the reader consumed exactly the bytes written.
++    static BrokerFrame RoundTrip(Action<ArrayBufferWriter<byte>> write)
++    {
++        var buffer = new ArrayBufferWriter<byte>();
++        write(buffer);
++        var frame = BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
++        Assert.AreEqual(buffer.WrittenCount, consumed);
++        return frame;
++    }
++
++    [TestMethod]
++    public void ReadFrame_SetsConsumedToFullFrameLength()
++    {
++        var buffer = new ArrayBufferWriter<byte>();
++        BrokerProtocol.WriteError(buffer, 1, "test");
++        BrokerProtocol.WriteHeartbeat(buffer);
++
++        BrokerProtocol.ReadFrame(buffer.WrittenSpan, out var consumed);
++
++        Assert.AreEqual(buffer.WrittenCount - 5, consumed, "The reader stops at the end of the first frame.");
++    }
++
++    [DataTestMethod]
++    [DataRow((byte)0)]
++    [DataRow((byte)18)]
++    [DataRow((byte)99)]
++    public void ReadFrame_UnknownKind_ThrowsInvalidDataException(byte kind)
++    {
++        var buffer = new ArrayBufferWriter<byte>();
++        BrokerProtocol.WriteHeartbeat(buffer); // any no-payload frame gives the right shape
++        var bytes = buffer.WrittenSpan.ToArray();
++        bytes[4] = kind; // a value no BrokerFrameKind defines
++
++        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
++    }
++
++    [TestMethod]
++    public void WireTable_NumbersKindsDenselyFromOne()
++    {
++        var kinds = Enum.GetValues<BrokerFrameKind>().Select(kind => (int)kind).Order().ToArray();
++
++        CollectionAssert.AreEqual(Enumerable.Range(1, 17).ToArray(), kinds, "The wire numbers kinds densely from 1.");
++    }
++
++    // The Require* accessors guard a protocol invariant: every factory receives a real, non-null
++    // string, so a decoded frame never has these null. default(BrokerFrame) has null string
++    // fields, so it exercises the violated-invariant branch without a public path to build an
++    // otherwise-invalid frame.
++
++    [TestMethod]
++    public void RequireDrive_NullDrive_ThrowsInvalidDataException()
++    {
++        Assert.ThrowsException<InvalidDataException>(() => default(BrokerFrame).RequireDrive());
++    }
++
++    [TestMethod]
++    public void RequirePipeName_NullPipeName_ThrowsInvalidDataException()
++    {
++        Assert.ThrowsException<InvalidDataException>(() => default(BrokerFrame).RequirePipeName());
++    }
++
++    [TestMethod]
++    public void RequireSectionName_NullSectionName_ThrowsInvalidDataException()
++    {
++        Assert.ThrowsException<InvalidDataException>(() => default(BrokerFrame).RequireSectionName());
++    }
++
++    [TestMethod]
++    public void RequireMessage_NullMessage_ThrowsInvalidDataException()
++    {
++        Assert.ThrowsException<InvalidDataException>(() => default(BrokerFrame).RequireMessage());
++    }
++
++    [TestMethod]
++    public void RequireCatchUpLoss_FrameWithoutLoss_ThrowsInvalidDataException()
++    {
++        Assert.ThrowsException<InvalidDataException>(() => default(BrokerFrame).RequireCatchUpLoss('C'));
++    }
++}
+diff --git a/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs b/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs
+index 8aa4f32..f4d72c7 100644
+--- a/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs
++++ b/MFTLib.Tests/DefaultElevatedEntryRunnerTests.cs
+@@ -1,65 +1,216 @@
+ using System.IO.Pipes;
++using System.Runtime.InteropServices;
+ using System.Runtime.Versioning;
++using MFTLib.Interop;
+ using MFTLib.Tests.TestSupport;
+ using Microsoft.Extensions.Time.Testing;
+ using Microsoft.VisualStudio.TestTools.UnitTesting;
++using Microsoft.Win32.SafeHandles;
+ 
+ namespace MFTLib.Tests;
+ 
+ [TestClass]
+-[DoNotParallelize] // replaces the process-wide DefaultElevatedEntryRunner._exitProcess seam
++[DoNotParallelize] // replaces the process-wide DefaultElevatedEntryRunner._exitProcess seam and the MFTLibNative/FileUtilities delegate seams
+ public class DefaultElevatedEntryRunnerTests
+ {
++    // Set when a runner thread was still serving after its pipes closed. Restoring the real
++    // Environment.Exit then would let that thread kill the test host, so the fake stays.
++    bool _runnerStillServing;
++
+     [TestCleanup]
+     public void Cleanup()
+     {
+-        DefaultElevatedEntryRunner.ResetToDefaults();
++        if (_runnerStillServing)
++        {
++            DefaultElevatedEntryRunner._exitProcess = _ => { };
++        }
++        else
++        {
++            DefaultElevatedEntryRunner.ResetToDefaults();
++        }
++
+         BrokerDiagnostics.ResetToDefaults();
++        MFTLibNative.ResetToDefaults();
++        FileUtilities.ResetToDefaults();
+     }
+ 
+     [TestMethod]
+     [SupportedOSPlatform("windows")]
+     public void RunBroker_NullPipeName_ExitsWithCode1_WithoutConnecting()
+     {
+         int? exitCode = null;
+         DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
+ 
+         new DefaultElevatedEntryRunner().RunBroker(null);
+ 
+         Assert.AreEqual(1, exitCode);
+     }
+ 
+     [TestMethod]
+     [SupportedOSPlatform("windows")]
+-    public async Task RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilControlEof_ExitsWithCode0()
++    public async Task RunBroker_ValidControlPipe_ServesUntilControlCloses_ExitsWithCode0()
+     {
+         var pipeName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
+ 
+         int? exitCode = null;
+         DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
+ 
+-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
++        using var cts = new CancellationTokenSource(HangGuard);
+ 
+         // RunBroker blocks synchronously (.GetAwaiter().GetResult()) for the whole session, so
+         // drive it from a background thread while this thread plays the non-elevated caller's
+-        // side of the real control pipe. Leaving the server's scope closes that end, which is the
+-        // control EOF that ends the session.
+-        Task runTask;
+-        await using (var server = new NamedPipeServerStream(
+-                         pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous))
++        // side of the real control pipe. Closing that end is the control EOF that ends the session.
++        var server = new NamedPipeServerStream(
++            pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
++        var runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(pipeName));
++        try
+         {
+-            runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(pipeName));
+             await server.WaitForConnectionAsync(cts.Token);
++            await server.DisposeAsync();
++            await runTask.WaitAsync(cts.Token);
++        }
++        finally
++        {
++            await EnsureRunnerLeavesAsync(runTask, server);
++        }
++
++        Assert.AreEqual(0, exitCode);
++    }
++
++    [TestMethod]
++    [SupportedOSPlatform("windows")]
++    public async Task RunBroker_ClientDisconnectsDuringWatch_BrokenPipe_ExitsWithCode0()
++    {
++        // RunBroker serves through JournalBrokerHost.CreateDefault(), so mock the native
++        // seams its watch path uses - the test process is not elevated (the same technique
++        // as JournalBrokerHostRealSeamsTests).
++        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
++        FileUtilities._getWatchVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
++        MFTLibNative._queryUsnJournal = _ =>
++        {
++            var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
++            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalId = 7, NextUsn = 200 }, pointer, false);
++            return pointer;
++        };
++        MFTLibNative._freeUsnJournalInfo = Marshal.FreeHGlobal;
++        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
++        MFTLibNative._cancelUsnJournalWatch = _ => true;
++
++        // The kernel wait stays blocked until the test has taken the client ends away, then
++        // comes back with a journal read failure. The host reports that failure as this
++        // drive's Error frame, and the pipes are already gone by then - so the report write is
++        // the one that lands on the broken pipe, which is what used to kill the child.
++        var watchEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var releaseWatch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, journalId, _) =>
++        {
++            watchEntered.TrySetResult();
++            releaseWatch.Task.GetAwaiter().GetResult();
++            return BuildWatchFailureResult(journalId, "FSCTL_READ_USN_JOURNAL watch failed");
++        };
++
++        int? exitCode = null;
++        DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
++
++        using var cts = new CancellationTokenSource(HangGuard);
++        using var timeoutRelease = cts.Token.Register(() => releaseWatch.TrySetResult()); // never leak the blocked mock
++
++        var (control, drive, runTask) = StartRunnerWithDrivePipe();
++        try
++        {
++            await AcceptDriveChannelAsync(control, drive, cts.Token);
++
++            // Arm the live watch with a cursor at the journal tip: the host reports CaughtUp
++            // over the still-healthy pipe, then parks in the mocked kernel wait above.
++            await HostChannelHarness.WriteFrameAsync(drive,
++                writer => BrokerProtocol.WriteStartWatch(writer, new UsnJournalCursor(7, 200)));
++            var caughtUp = await HostChannelHarness.ReadFrameAsync(drive);
++            Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp?.Kind);
++
++            // Reach the kernel wait before taking the client ends away. A watch that has not
++            // got there yet observes the disconnect as a plain cancellation and never
++            // attempts the write this test is about.
++            await watchEntered.Task.WaitAsync(cts.Token);
++
++            // The consumer's process has now closed its ends while its watch was armed, so the
++            // watch's next attempt to reach it fails on the broken pipe for real.
++            await drive.DisposeAsync();
++            await control.DisposeAsync();
++            releaseWatch.TrySetResult();
++
++            await runTask.WaitAsync(cts.Token);
++        }
++        finally
++        {
++            releaseWatch.TrySetResult();
++            await EnsureRunnerLeavesAsync(runTask, drive, control);
+         }
+ 
+-        await runTask.WaitAsync(cts.Token);
++        Assert.AreEqual(0, exitCode);
++    }
++
++    [TestMethod]
++    [SupportedOSPlatform("windows")]
++    public async Task RunBroker_ClientDisconnectsDuringArmAndScan_BrokenPipe_ExitsWithCode0()
++    {
++        // RunBroker serves through JournalBrokerHost.CreateDefault(), so mock the native seams
++        // the scan's cursor arming uses - the test process is not elevated (the same technique
++        // as the watch test above). The cursor query is where the host parks: it runs only
++        // once the request frame has been read, and the armed-cursor reply is the next write.
++        FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
++        var cursorQueried = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var releaseCursorQuery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        MFTLibNative._queryUsnJournal = _ =>
++        {
++            cursorQueried.TrySetResult();
++            releaseCursorQuery.Task.GetAwaiter().GetResult();
++            var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
++            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalId = 7, NextUsn = 200 }, pointer, false);
++            return pointer;
++        };
++        MFTLibNative._freeUsnJournalInfo = Marshal.FreeHGlobal;
++        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
++
++        int? exitCode = null;
++        DefaultElevatedEntryRunner._exitProcess = code => exitCode = code;
++
++        using var cts = new CancellationTokenSource(HangGuard);
++        using var timeoutRelease = cts.Token.Register(() => releaseCursorQuery.TrySetResult());
++
++        var (control, drive, runTask) = StartRunnerWithDrivePipe();
++        try
++        {
++            await AcceptDriveChannelAsync(control, drive, cts.Token);
++            await HostChannelHarness.WriteFrameAsync(drive,
++                writer => BrokerProtocol.WriteArmAndScan(writer, "mftlib-runner-scan-C", BrokerScanProfile.Full));
++
++            // Reach the cursor query before taking the client ends away, so the reply that
++            // follows is written to a pipe that is already broken for certain. A scan that has
++            // not got there yet would answer over the healthy pipe and the disconnect would
++            // land somewhere else.
++            await cursorQueried.Task.WaitAsync(cts.Token);
++
++            // The consumer's process has now closed its ends mid-scan, so the armed-cursor reply
++            // fails on the broken pipe for real - the write that used to kill the child. The
++            // native record scan itself never starts: the channel ends at that first reply.
++            await drive.DisposeAsync();
++            await control.DisposeAsync();
++            releaseCursorQuery.TrySetResult();
++
++            await runTask.WaitAsync(cts.Token);
++        }
++        finally
++        {
++            releaseCursorQuery.TrySetResult();
++            await EnsureRunnerLeavesAsync(runTask, drive, control);
++        }
+ 
+         Assert.AreEqual(0, exitCode);
+     }
+ 
+     [TestMethod]
+     [SupportedOSPlatform("windows")]
+     public async Task RunBroker_SessionFails_FlushesDiagnosticsBeforeLeaving()
+     {
+         var pipeName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
+         int? exitCode = null;
+@@ -100,20 +251,87 @@ public class DefaultElevatedEntryRunnerTests
+         Assert.IsNull(exitCode);
+         lock (appended)
+         {
+             Assert.IsTrue(appended.Any(line => line.Contains("frame read kind=200", StringComparison.Ordinal)),
+                 "The line logged as the session failed must reach the log before the runner leaves.");
+         }
+     }
+ 
+     static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(10);
+ 
++    string _drivePipeName = string.Empty;
++
++    // RunBroker blocks synchronously for the whole session, so it runs on a background thread
++    // while this thread plays the non-elevated caller's side of the real control pipe and of one
++    // real drive pipe, both created here the way the caller creates them.
++    [SupportedOSPlatform("windows")]
++    (NamedPipeServerStream Control, NamedPipeServerStream Drive, Task RunTask) StartRunnerWithDrivePipe()
++    {
++        var controlName = "mftlib-runner-test-" + Guid.NewGuid().ToString("N");
++        _drivePipeName = "mftlib-runner-drive-" + Guid.NewGuid().ToString("N");
++        var control = new NamedPipeServerStream(
++            controlName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
++        var drive = new NamedPipeServerStream(
++            _drivePipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
++        var runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(controlName));
++        return (control, drive, runTask);
++    }
++
++    // Connects the control pipe, asks the broker to open drive C's channel on the drive pipe, and
++    // returns once the broker has connected the drive pipe and answered ChannelOpened.
++    async Task AcceptDriveChannelAsync(NamedPipeServerStream control, NamedPipeServerStream drive,
++        CancellationToken cancellationToken)
++    {
++        await control.WaitForConnectionAsync(cancellationToken);
++        await HostChannelHarness.WriteFrameAsync(control,
++            writer => BrokerProtocol.WriteOpenChannel(writer, 1, "C", _drivePipeName));
++        await drive.WaitForConnectionAsync(cancellationToken);
++        var opened = await HostChannelHarness.ReadFrameAsync(control);
++        Assert.AreEqual(BrokerFrameKind.ChannelOpened, opened?.Kind);
++    }
++
++    // Closes the caller's ends, which is what ends a session still being served, and waits for
++    // the runner thread to leave. A runner that does not leave in time is remembered, so cleanup
++    // keeps the fake exit seam in place instead of letting that thread kill the test host.
++    async Task EnsureRunnerLeavesAsync(Task runTask, params IAsyncDisposable[] pipes)
++    {
++        foreach (var pipe in pipes)
++        {
++            await pipe.DisposeAsync();
++        }
++
++        try
++        {
++            await runTask.WaitAsync(HangGuard);
++        }
++        catch (TimeoutException)
++        {
++            _runnerStillServing = true;
++            throw;
++        }
++    }
++
++    static IntPtr BuildWatchFailureResult(ulong journalId, string errorMessage)
++    {
++        var nativeResult = new UsnJournalResultNative
++        {
++            EntryCount = 0,
++            Entries = IntPtr.Zero,
++            NextUsn = 0,
++            JournalId = journalId,
++            ErrorMessage = errorMessage
++        };
++        var resultPointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
++        Marshal.StructureToPtr(nativeResult, resultPointer, false);
++        return resultPointer;
++    }
++
+     // A clock that is never advanced and signals when the runner starts its exit flush's bound,
+     // the only timer the runner creates on it.
+     sealed class FlushBoundSignalingClock : FakeTimeProvider
+     {
+         readonly TaskCompletionSource _flushBoundStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+ 
+         public Task FlushBoundStarted => _flushBoundStarted.Task;
+ 
+         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+         {
+diff --git a/MFTLib.Tests/GrowUsnJournalHostTests.cs b/MFTLib.Tests/GrowUsnJournalHostTests.cs
+new file mode 100644
+index 0000000..bc2f9d1
+--- /dev/null
++++ b/MFTLib.Tests/GrowUsnJournalHostTests.cs
+@@ -0,0 +1,69 @@
++using MFTLib.Index;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++/// <summary>
++///     Host-side handling of <see cref="BrokerFrameKind.GrowUsnJournal" />:
++///     one <see cref="BrokerFrameKind.UsnJournalSettings" /> or <see cref="BrokerFrameKind.Error" />
++///     reply per request, carrying the request's id.
++/// </summary>
++[TestClass]
++public class GrowUsnJournalHostTests
++{
++    [TestMethod]
++    public async Task GrowUsnJournal_SeamReturnsSettings_EmitsUsnJournalSettings()
++    {
++        await using var harness = new HostChannelHarness(CreateHost(growUsnJournal: (_, maximumSize, allocationDelta) =>
++            new UsnJournalSettings
++            {
++                MaximumSize = maximumSize,
++                AllocationDelta = allocationDelta
++            }));
++
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 31, "C", 0x08000000, 0x01000000));
++        var frame = await harness.ReadControlAsync();
++
++        Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
++        Assert.AreEqual(31u, frame.RequestId);
++        Assert.AreEqual(0x08000000L, frame.JournalMaximumSize);
++        Assert.AreEqual(0x01000000L, frame.JournalAllocationDelta);
++    }
++
++    [TestMethod]
++    public async Task GrowUsnJournal_SeamThrows_EmitsErrorWithMessage()
++    {
++        await using var harness = new HostChannelHarness(CreateHost(growUsnJournal: (_, _, _) =>
++            throw new InvalidOperationException("Refusing to resize: only growth is permitted.")));
++
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 32, "C", 0x08000000, 0x01000000));
++        var frame = await harness.ReadControlAsync();
++
++        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
++        Assert.AreEqual(32u, frame.RequestId);
++        Assert.AreEqual("Refusing to resize: only growth is permitted.", frame.Message);
++    }
++
++    [TestMethod]
++    public async Task GrowUsnJournal_NoSeamConfigured_EmitsError()
++    {
++        await using var harness = new HostChannelHarness(CreateHost()); // growUsnJournal omitted -> null
++
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 33, "C", 0x08000000, 0x01000000));
++        var frame = await harness.ReadControlAsync();
++
++        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
++        Assert.AreEqual(33u, frame.RequestId);
++        Assert.AreEqual("Broker has no journal grow source", frame.Message);
++    }
++
++    static JournalBrokerHost CreateHost(GrowUsnJournalQuery? growUsnJournal = null)
++    {
++        return new JournalBrokerHost(
++            _ => default,
++            (_, _, _, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
++            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
++            growUsnJournal: growUsnJournal);
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostBlockScanTests.cs b/MFTLib.Tests/JournalBrokerHostBlockScanTests.cs
+new file mode 100644
+index 0000000..6f5bde9
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostBlockScanTests.cs
+@@ -0,0 +1,181 @@
++using MFTLib.Index;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++[TestClass]
++public class JournalBrokerHostBlockScanTests
++{
++    static readonly UsnJournalCursor ArmedCursor = new(71, 12345);
++
++    [TestMethod]
++    public async Task ScanChannel_BlockFormatWritesRowsAndArmedCursorWithoutPayload()
++    {
++        using var blockWriter = new RecordingBlockSectionWriter();
++        var capturedBlockWriter = new BlockWriter(blockWriter.Block);
++        var cursorArmed = false;
++        var host = new JournalBrokerHost(
++            _ =>
++            {
++                cursorArmed = true;
++                return ArmedCursor;
++            },
++            readJournal: (_, cursor) =>
++            {
++                Assert.AreEqual(ArmedCursor, cursor);
++                Assert.IsTrue(capturedBlockWriter.Block.Header.IsComplete);
++                return (Array.Empty<UsnJournalEntry>(), new UsnJournalCursor(cursor.JournalId, 12500));
++            },
++            scanDrive: (driveLetter, _, _, _, _) =>
++            {
++                Assert.IsTrue(cursorArmed);
++                Assert.AreEqual("C", driveLetter);
++                return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
++            });
++
++        var frames = await ScanAsync(host, blockWriter);
++
++        Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
++        Assert.AreEqual(ArmedCursor, frames[0].Cursor);
++        var scanReady = frames.Single(frame => frame.Kind == BrokerFrameKind.ScanReady);
++        Assert.AreEqual(21L, scanReady.RowCount);
++        Assert.AreEqual(18L, scanReady.NamePoolUsedBytes);
++        Assert.AreEqual("section-C", blockWriter.LastSectionName);
++        Assert.IsTrue(blockWriter.Block.Header.IsComplete);
++        Assert.AreEqual(ProducerKind.Mft, blockWriter.Block.Header.ProducerKind);
++        Assert.AreEqual(5u, blockWriter.Block.Header.RootRow);
++        Assert.AreEqual(ArmedCursor.JournalId, blockWriter.Block.Header.UsnJournalId);
++        Assert.AreEqual(ArmedCursor.NextUsn, blockWriter.Block.Header.UsnNextUsn);
++        Assert.AreEqual("file.txt", NamePool.ReadRowName(blockWriter.Block, 20).ToString());
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind);
++        Assert.AreEqual(12500L, frames[^1].Cursor.NextUsn);
++        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
++    }
++
++    [TestMethod]
++    public async Task ScanChannel_BlockFormat_ForwardsDirectoryIndexProfileAndKeepNamesToSectionWriter()
++    {
++        using var blockWriter = new RecordingBlockSectionWriter();
++        var host = CreateHost((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]);
++
++        var frames = await ScanAsync(host, blockWriter, BrokerScanProfile.DirectoryIndex, [".git"]);
++
++        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
++        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, blockWriter.LastFilter.Profile);
++        Assert.IsNotNull(blockWriter.LastFilter.KeepFileNames);
++        CollectionAssert.AreEqual(new[] { ".git" }, blockWriter.LastFilter.KeepFileNames.ToArray());
++        Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, blockWriter.Block.Rows[5].Flags);
++        Assert.AreEqual(RowFlags.None, blockWriter.Block.Rows[20].Flags);
++    }
++
++    [TestMethod]
++    public async Task ScanChannel_BlockFormatWithoutSectionWriterReportsNamedError()
++    {
++        var host = CreateHost((_, _, _, _, _) => [[Record(5, ".", 3)]]);
++
++        var frames = await ScanAsync(host, null);
++
++        StringAssert.Contains(frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message,
++            "blockSectionWriter");
++        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanReady));
++    }
++
++    [TestMethod]
++    public async Task ScanChannel_BlockSourceFailureLeavesIncompleteBlockAndEmitsNoScanReady()
++    {
++        using var blockWriter = new RecordingBlockSectionWriter();
++
++        static IEnumerable<IReadOnlyList<MftRecord>> Batches()
++        {
++            yield return [Record(5, ".", 3)];
++            throw new IOException("record batch failed");
++        }
++
++        var frames = await ScanAsync(CreateHost((_, _, _, _, _) => Batches()), blockWriter);
++
++        Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
++        Assert.IsFalse(blockWriter.Block.Header.IsComplete);
++        Assert.AreEqual(0UL, blockWriter.Block.Header.UsnJournalId);
++        Assert.AreEqual("record batch failed", frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message);
++        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanReady));
++    }
++
++    [TestMethod]
++    public async Task ScanChannel_BlockProgressReportsParsingThenTransferring()
++    {
++        using var blockWriter = new RecordingBlockSectionWriter();
++        var parsingReported = new TestGate();
++        var host = CreateHost((_, _, _, progress, _) =>
++        {
++            progress!.Report(new BlockWriteProgress(100, 0, 100, null, BrokerScanPhase.Parsing));
++            parsingReported.MarkEntered();
++            parsingReported.WaitForRelease();
++            return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
++        });
++        await using var harness = new HostChannelHarness(host, blockWriter);
++        var pipe = await harness.OpenScanChannelAsync('C', "section-C");
++
++        await HostChannelHarness.ReadFrameAsync(pipe); // Cursor
++        var firstProgress = (await HostChannelHarness.ReadFrameAsync(pipe))!.Value;
++        Assert.AreEqual(BrokerScanPhase.Parsing, firstProgress.Progress?.Phase);
++        Assert.AreEqual(100L, firstProgress.Progress?.RecordsProcessed);
++        parsingReported.Release();
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        var transfers = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress).ToArray();
++        Assert.IsTrue(transfers.Length > 0);
++        Assert.IsTrue(transfers.All(frame => frame.Progress?.Phase == BrokerScanPhase.Transferring));
++        Assert.AreEqual(18L, transfers[^1].Progress?.BytesProcessed);
++        Assert.AreEqual(100L, transfers[^1].Progress?.TotalRecords);
++    }
++
++    [TestMethod]
++    public async Task ScanChannel_CancelledBlockScanLeavesIncompleteBlockWithoutErrorOrScanReady()
++    {
++        using var blockWriter = new RecordingBlockSectionWriter();
++        var scanParked = new TestGate();
++
++        // The second batch is yielded only once the session has ended, so the writer meets a
++        // cancelled token before it can write it.
++        IEnumerable<IReadOnlyList<MftRecord>> Batches(CancellationToken cancellationToken)
++        {
++            yield return [Record(5, ".", 3)];
++            scanParked.MarkEntered();
++            cancellationToken.WaitHandle.WaitOne(HostChannelHarness.HangGuard);
++            yield return [Record(20, "file.txt")];
++        }
++
++        var host = CreateHost((_, _, _, _, cancellationToken) => Batches(cancellationToken));
++        await using var harness = new HostChannelHarness(host, blockWriter);
++        var pipe = await harness.OpenScanChannelAsync('C', "section-C");
++        await scanParked.Entered.WaitAsync(HostChannelHarness.HangGuard);
++
++        await harness.CloseControlAsync();
++        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
++        Assert.IsFalse(blockWriter.Block.Header.IsComplete);
++        Assert.IsFalse(frames.Any(frame => frame.Kind is BrokerFrameKind.ScanReady or BrokerFrameKind.Error));
++    }
++
++    static JournalBrokerHost CreateHost(MftRecordBatchSource source)
++    {
++        return new JournalBrokerHost(_ => ArmedCursor, source, (_, cursor) => ([], cursor));
++    }
++
++    // Scans drive C into a section named "section-C" and returns every frame the drive pipe carried.
++    static async Task<List<BrokerFrame>> ScanAsync(JournalBrokerHost host, IBlockSectionWriter? blockWriter,
++        BrokerScanProfile profile = BrokerScanProfile.Full, IReadOnlyCollection<string>? keepFileNames = null)
++    {
++        await using var harness = new HostChannelHarness(host, blockWriter);
++        var pipe = await harness.OpenScanChannelAsync('C', "section-C", profile, keepFileNames);
++        return await HostChannelHarness.ReadToEndAsync(pipe);
++    }
++
++    static MftRecord Record(ulong recordNumber, string name, ushort flags = 1)
++    {
++        return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name, null);
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostRealSeamsTests.Operations.cs b/MFTLib.Tests/JournalBrokerHostRealSeamsTests.Operations.cs
+new file mode 100644
+index 0000000..91dc0f0
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostRealSeamsTests.Operations.cs
+@@ -0,0 +1,455 @@
++using System.Collections.Concurrent;
++using System.Runtime.CompilerServices;
++using System.Runtime.InteropServices;
++using System.Runtime.Versioning;
++using MFTLib.Index;
++using MFTLib.Interop;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++using Microsoft.Win32.SafeHandles;
++
++namespace MFTLib.Tests;
++
++public partial class JournalBrokerHostRealSeamsTests
++{
++    [TestMethod]
++    public async Task ServeAsync_ScanAndCatchUp_UseRealMftVolumeSeams()
++    {
++        var queryInfo = new UsnJournalInfoNative { JournalId = 0xABCD, NextUsn = 5000 };
++        var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
++        Marshal.StructureToPtr(queryInfo, queryPtr, false);
++        MFTLibNative._queryUsnJournal = _ => queryPtr;
++        MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
++
++        var parsePtr = BuildThreeNameRecordsResult();
++        MFTLibNative._parseMftRecords = (_, _, _, _) => parsePtr;
++        MockFreeMftResult();
++
++        using var writer = new RecordingBlockSectionWriter();
++        var frames = await ServeDefaultScanAsync(writer);
++
++        var cursor = frames.Single(frame => frame.Kind == BrokerFrameKind.Cursor).Cursor;
++        Assert.AreEqual(0xABCDUL, cursor.JournalId);
++        Assert.AreEqual(5000L, cursor.NextUsn);
++        Assert.AreEqual(RowFlags.InUse, writer.Block.Rows[100].Flags);
++        Assert.AreEqual(RowFlags.None, writer.Block.Rows[101].Flags);
++        Assert.AreEqual(RowFlags.None, writer.Block.Rows[102].Flags);
++        Assert.AreEqual("file0.txt", NamePool.ReadRowName(writer.Block, 100).ToString());
++        var catchUp = frames.Single(frame => frame.Kind == BrokerFrameKind.JournalBatch);
++        Assert.AreEqual(0, catchUp.Entries.Length);
++        Assert.AreEqual(5100L, catchUp.Cursor.NextUsn);
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_DefaultSource_AdaptsNativeProgressWithoutPathResolution()
++    {
++        var queryInfo = new UsnJournalInfoNative { JournalId = 7UL, NextUsn = 100 };
++        var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
++        Marshal.StructureToPtr(queryInfo, queryPtr, false);
++        MFTLibNative._queryUsnJournal = _ => queryPtr;
++        MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
++
++        var parsePtr = BuildThreeNameRecordsResult();
++        MFTLibNative._parseMftRecordsWithProgress = (_, _, flags, _, _, callback) =>
++        {
++            Assert.AreEqual(MatchFlags.None, flags);
++            callback?.Invoke(MftScanPhase.Parsing, 200, 300, 42.0, IntPtr.Zero);
++            callback?.Invoke(MftScanPhase.Parsing, 300, 300, 45.0, IntPtr.Zero);
++            return parsePtr;
++        };
++        MockFreeMftResult();
++
++        using var writer = new RecordingBlockSectionWriter();
++        var frames = await ServeDefaultScanAsync(writer);
++        var reports = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress)
++            .Select(frame => frame.Progress!.Value).ToArray();
++
++        // Intermediate parsing reports may be coalesced before the pump reads them. The final
++        // report must retain native totals, independent of the three written rows.
++        Assert.AreEqual(300L, reports[^1].RecordsProcessed);
++        Assert.AreEqual(300L, reports[^1].TotalRecords);
++        Assert.AreEqual(BrokerScanPhase.Transferring, reports[^1].Phase);
++        Assert.IsTrue(writer.Block.Header.IsComplete);
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_StartWatch_UsesRealWatchAndDisposeSeam()
++    {
++        FileUtilities._getVolumeHandle = _ => FakeHandle();
++        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
++        MockWatchJournalTip();
++
++        // The watch's third read blocks like a live kernel wait until the watch is cancelled.
++        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var callCount = 0;
++        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
++        {
++            switch (Interlocked.Increment(ref callCount))
++            {
++                case 1:
++                    return BuildEmptyWatchResult(journalId, startUsn);
++                case 2:
++                    return BuildSingleEntryWatchResult(journalId, startUsn + 100, "watched.txt", 0x100 /* FileCreate */);
++                default:
++                    cancelled.Task.Wait(HostChannelHarness.HangGuard);
++                    return BuildEmptyWatchResult(journalId, startUsn);
++            }
++        };
++        MFTLibNative._cancelUsnJournalWatch = _ =>
++        {
++            cancelled.TrySetResult();
++            return true;
++        };
++        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
++        await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
++
++        // The cached cursor precedes the queried tip, so the batch must precede CaughtUp.
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 100));
++
++        var batch = await HostChannelHarness.ReadFrameAsync(pipe);
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch?.Kind);
++        Assert.AreEqual("watched.txt", batch!.Value.Entries[0].FileName);
++        var caughtUp = await HostChannelHarness.ReadFrameAsync(pipe);
++        Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp?.Kind);
++
++        await pipe.DisposeAsync(); // the client closing its pipe cancels the watch
++        await cancelled.Task.WaitAsync(HostChannelHarness.HangGuard); // closing the pipe cancels the native watch
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_StartWatch_CancelledBetweenEmptyBatches_EndsWatchCleanly()
++    {
++        FileUtilities._getVolumeHandle = _ => FakeHandle();
++        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
++        MockWatchJournalTip();
++
++        // The kernel wait comes back only when the watch is cancelled, with an empty batch while
++        // already cancelled. MftVolume.WatchUsnJournalWithCursor treats that as a clean end, distinct
++        // from a cancelled Task.Run throwing OperationCanceledException.
++        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var watchEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
++        {
++            watchEntered.TrySetResult();
++            cancelled.Task.Wait(HostChannelHarness.HangGuard);
++            return BuildEmptyWatchResult(journalId, startUsn);
++        };
++        MFTLibNative._cancelUsnJournalWatch = _ =>
++        {
++            cancelled.TrySetResult();
++            return true;
++        };
++        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
++        await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
++        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 100));
++        await watchEntered.Task.WaitAsync(HostChannelHarness.HangGuard);
++
++        // Ending the session cancels the channel while the read is blocked.
++        await harness.CloseControlAsync();
++        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error),
++            "A watch cancelled between empty batches ends without reporting a failure.");
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_DefaultSource_IncludesRootDirectoryRow()
++    {
++        var queryInfo = new UsnJournalInfoNative { JournalId = 0x1234, NextUsn = 1000 };
++        var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
++        Marshal.StructureToPtr(queryInfo, queryPtr, false);
++        MFTLibNative._queryUsnJournal = _ => queryPtr;
++        MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
++
++        var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
++        var entryBuf = Marshal.AllocHGlobal((int)stride * 2);
++        unsafe
++        {
++            new Span<byte>((void*)entryBuf, (int)stride * 2).Clear();
++
++            var childName = "Users";
++            var stringBuf = Marshal.AllocHGlobal(childName.Length * sizeof(char));
++            childName.AsSpan().CopyTo(new Span<char>((void*)stringBuf, childName.Length));
++
++            // Record 5: root directory (empty native name falls back to dot)
++            var rootEntry = (byte*)entryBuf;
++            Unsafe.WriteUnaligned(rootEntry, 5UL);
++            Unsafe.WriteUnaligned(rootEntry + 8, 5UL);
++            Unsafe.WriteUnaligned(rootEntry + 16, 0UL);
++            Unsafe.WriteUnaligned(rootEntry + 24, (uint)FileAttributes.Directory);
++            Unsafe.WriteUnaligned(rootEntry + 28, (ushort)3); // InUse | Directory
++            Unsafe.WriteUnaligned(rootEntry + 30, (ushort)0); // zero-length name
++
++            // Record 100: child folder
++            var childEntry = (byte*)entryBuf + stride;
++            Unsafe.WriteUnaligned(childEntry, 100UL);
++            Unsafe.WriteUnaligned(childEntry + 8, 5UL);
++            Unsafe.WriteUnaligned(childEntry + 16, 0UL);
++            Unsafe.WriteUnaligned(childEntry + 24, (uint)FileAttributes.Directory);
++            Unsafe.WriteUnaligned(childEntry + 28, (ushort)3); // InUse | Directory
++            Unsafe.WriteUnaligned(childEntry + 30, (ushort)childName.Length);
++
++            var parseResult = new MftParseResult
++            {
++                TotalRecords = 2,
++                UsedRecords = 2,
++                Entries = entryBuf,
++                EntryStrings = stringBuf,
++                EntryStringUnits = (ulong)childName.Length,
++                AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
++                EntryStride = MFTLibNative.NativeCompactEntrySize
++            };
++            var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
++            Marshal.StructureToPtr(parseResult, parsePtr, false);
++
++            MFTLibNative._parseMftRecords = (_, _, _, _) => parsePtr;
++            MockFreeMftResult();
++        }
++
++        using var writer = new RecordingBlockSectionWriter();
++        await ServeDefaultScanAsync(writer);
++        Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, writer.Block.Rows[5].Flags);
++        Assert.AreEqual(5u, writer.Block.Rows[5].ParentRow);
++        Assert.AreEqual(".", NamePool.ReadRowName(writer.Block, 5).ToString());
++        Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, writer.Block.Rows[100].Flags);
++        Assert.AreEqual(5u, writer.Block.Rows[100].ParentRow);
++        Assert.AreEqual("Users", NamePool.ReadRowName(writer.Block, 100).ToString());
++    }
++
++    /// <summary>
++    ///     Owns the CountdownEvent and per-drive cancellation signals for
++    ///     <see cref="ServeAsync_SessionEnd_AcrossSeveralWatchChannels_SynchronousAbort_EmitsZeroErrorFrames" />.
++    ///     Exposing the seam behavior as instance methods, assigned by method group rather than by an inline
++    ///     lambda, means the native delegates never directly close over the CountdownEvent that method disposes.
++    ///     Production cancels each watched drive's native read independently: <c>MftVolume.Journal.cs</c> opens a
++    ///     dedicated watch handle per drive and its cancellation registration calls
++    ///     <c>MFTLibNative._cancelUsnJournalWatch</c> with that drive's own handle only, never a sibling's. The
++    ///     cancellation signal here is keyed the same way, by the <see cref="SafeHandle" /> instance each drive
++    ///     was watched with (<see cref="FakeHandle" /> returns a distinct instance per call even though every
++    ///     instance wraps the same raw value 1, so reference identity is a valid key). Releasing all three drives
++    ///     off one shared signal let a drive whose own token had not yet flipped
++    ///     <c>CancellationToken.IsCancellationRequested</c> unblock on a sibling's cancel, loop back, and call
++    ///     the watch read a second time after the countdown had already reached zero, throwing
++    ///     <see cref="InvalidOperationException" /> out of the watch loop and surfacing as an
++    ///     Error frame instead of the deliberate stop's normal empty stream end.
++    /// </summary>
++    sealed class SynchronousAbortWatchSeam : IDisposable
++    {
++        readonly CountdownEvent _watchEntered;
++
++        readonly ConcurrentDictionary<SafeHandle, TaskCompletionSource> _cancelSignaledByHandle =
++            new(ReferenceEqualityComparer.Instance);
++
++        volatile bool _timedOut;
++
++        public SynchronousAbortWatchSeam(int driveCount)
++        {
++            _watchEntered = new CountdownEvent(driveCount);
++        }
++
++        public bool CancelUsnJournalWatch(SafeHandle volumeHandle)
++        {
++            GetCancelSignal(volumeHandle).TrySetResult();
++            return true;
++        }
++
++        public IntPtr WatchUsnJournalBatchCancelable(SafeHandle volumeHandle, long startUsn, ulong journalId,
++            SafeHandle cancellationHandle)
++        {
++            _watchEntered.Signal();
++            // Simulate the kernel wait during live watch until this drive's own cancel arrives.
++            GetCancelSignal(volumeHandle).Task.GetAwaiter().GetResult();
++            // Return the synchronous ERROR_OPERATION_ABORTED result:
++            // an empty result with original cursor untouched and no error message.
++            return BuildEmptyWatchResult(journalId, startUsn);
++        }
++
++        public void WaitForAllDrivesEntered(CancellationToken token)
++        {
++            _watchEntered.Wait(token);
++        }
++
++        // Safety net for the outer test timeout: releases every drive currently blocked, and
++        // marks future arrivals so a drive that has not called the watch read yet does not block
++        // forever on a signal this method could not have created early.
++        public void CancelOnTimeout()
++        {
++            _timedOut = true;
++            foreach (var signal in _cancelSignaledByHandle.Values)
++            {
++                signal.TrySetCanceled();
++            }
++        }
++
++        TaskCompletionSource GetCancelSignal(SafeHandle volumeHandle)
++        {
++            var signal = _cancelSignaledByHandle.GetOrAdd(volumeHandle,
++                static _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
++            if (_timedOut)
++            {
++                signal.TrySetCanceled();
++            }
++
++            return signal;
++        }
++
++        public void Dispose()
++        {
++            _watchEntered.Dispose();
++        }
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_GrowUsnJournal_UsesRealMftVolumeSeams()
++    {
++        FileUtilities._getVolumeHandle = _ => FakeHandle();
++
++        // The pre-check reports the journal smaller than the request, so the grow is
++        // issued; the post-change read returns the grown sizing.
++        var preChange = BuildJournalInfoPointer(maximumSize: 0x200000, allocationDelta: 0x100000);
++        var postChange = BuildJournalInfoPointer(maximumSize: 0x400000, allocationDelta: 0x200000);
++        var queryCount = 0;
++        uint? capturedIoctl = null;
++        long capturedMaximum = 0;
++        long capturedDelta = 0;
++
++        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
++            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
++        {
++            capturedIoctl = ioControlCode;
++            capturedMaximum = Marshal.ReadInt64(inBuffer, 0);
++            capturedDelta = Marshal.ReadInt64(inBuffer, 8);
++            bytesReturned = 0;
++            return true;
++        }
++
++        try
++        {
++            MFTLibNative._queryUsnJournal = _ => ++queryCount == 1 ? preChange : postChange;
++            MFTLibNative._freeUsnJournalInfo = _ => { }; // the two buffers are freed by this test
++            Kernel32._deviceIoControl = FakeDeviceIoControl;
++            await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
++
++            await harness.SendControlAsync(writer =>
++                BrokerProtocol.WriteGrowUsnJournal(writer, 6, "C", 0x400000, 0x200000));
++            var frame = await harness.ReadControlAsync();
++
++            Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
++            Assert.AreEqual(6u, frame.RequestId);
++            Assert.AreEqual(0x400000L, frame.JournalMaximumSize);
++            Assert.AreEqual(0x200000L, frame.JournalAllocationDelta);
++            Assert.AreEqual(0x000900E7u, capturedIoctl, "FSCTL_CREATE_USN_JOURNAL");
++            Assert.AreEqual(0x400000L, capturedMaximum);
++            Assert.AreEqual(0x200000L, capturedDelta);
++            Assert.AreEqual(2, queryCount, "The grow reads the sizing before and after the change.");
++        }
++        finally
++        {
++            Marshal.FreeHGlobal(preChange);
++            Marshal.FreeHGlobal(postChange);
++        }
++    }
++
++    [TestMethod]
++    [SupportedOSPlatform("windows")] // NtfsVolumeInformation.Query is Windows-only
++    public async Task ServeAsync_QueryVolume_UsesRealNtfsVolumeInformationSeam()
++    {
++        if (!OperatingSystem.IsWindows())
++        {
++            Assert.Inconclusive("FSCTL_GET_NTFS_VOLUME_DATA requires Windows");
++            return;
++        }
++
++        FileUtilities._getVolumeHandle = _ => FakeHandle();
++        var native = new NtfsVolumeDataBufferNative
++        {
++            MftValidDataLength = 409_600,
++            BytesPerFileRecordSegment = 1024
++        };
++        Kernel32._deviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
++        {
++            Marshal.StructureToPtr(native, outBuffer, false);
++            bytesReturned = (uint)Marshal.SizeOf<NtfsVolumeDataBufferNative>();
++            return true;
++        };
++        await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
++
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 3, "C"));
++        var frame = await harness.ReadControlAsync();
++
++        Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
++        Assert.AreEqual(3u, frame.RequestId);
++        Assert.AreEqual(409_600L, frame.MftValidDataLength);
++        Assert.AreEqual(1024u, frame.BytesPerFileRecordSegment);
++    }
++
++    static IntPtr BuildJournalInfoPointer(ulong maximumSize, ulong allocationDelta)
++    {
++        var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
++        Marshal.StructureToPtr(new UsnJournalInfoNative
++        {
++            JournalId = 7,
++            NextUsn = 200,
++            MaximumSize = maximumSize,
++            AllocationDelta = allocationDelta
++        }, pointer, false);
++        return pointer;
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_SessionEnd_AcrossSeveralWatchChannels_SynchronousAbort_EmitsZeroErrorFrames()
++    {
++        FileUtilities._getVolumeHandle = _ => FakeHandle();
++        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
++        MockWatchJournalTip();
++
++        const int driveCount = 3;
++        var seam = new SynchronousAbortWatchSeam(driveCount);
++        try
++        {
++            MFTLibNative._cancelUsnJournalWatch = seam.CancelUsnJournalWatch;
++            MFTLibNative._watchUsnJournalBatchCancelable = seam.WatchUsnJournalBatchCancelable;
++            MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
++
++            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
++            using var timeoutRegistration = cts.Token.Register(seam.CancelOnTimeout);
++            await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
++
++            // Watch several drives with cursors at or beyond the journal tip (7:200).
++            var pipes = new List<Stream>
++            {
++                await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 200)),
++                await harness.OpenWatchChannelAsync('D', new UsnJournalCursor(7, 200)),
++                await harness.OpenWatchChannelAsync('E', new UsnJournalCursor(7, 300))
++            };
++
++            // Verify each drive reaches CaughtUp.
++            foreach (var pipe in pipes)
++            {
++                var frame = await HostChannelHarness.ReadFrameAsync(pipe);
++                Assert.AreEqual(BrokerFrameKind.CaughtUp, frame?.Kind);
++            }
++
++            // Ensure all drives are waiting inside the native watch seam before the session ends.
++            seam.WaitForAllDrivesEntered(cts.Token);
++
++            // Ending the session cancels every armed channel at once.
++            await harness.CloseControlAsync();
++            await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
++
++            foreach (var pipe in pipes)
++            {
++                var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++                var errorPayloads = string.Join("; ",
++                    frames.Where(frame => frame.Kind == BrokerFrameKind.Error).Select(frame => frame.Message));
++                Assert.AreEqual(0, frames.Count,
++                    $"Expected the channel to end without a frame after its watch was stopped. Errors: {errorPayloads}");
++            }
++        }
++        finally
++        {
++            seam.Dispose();
++        }
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostRealSeamsTests.cs b/MFTLib.Tests/JournalBrokerHostRealSeamsTests.cs
+new file mode 100644
+index 0000000..c2df2eb
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostRealSeamsTests.cs
+@@ -0,0 +1,198 @@
++using System.Runtime.CompilerServices;
++using System.Runtime.InteropServices;
++using MFTLib.Interop;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++using Microsoft.Win32.SafeHandles;
++
++namespace MFTLib.Tests;
++
++/// <summary>
++///     Exercises the real production delegates <see cref="JournalBrokerHost.CreateDefault" />
++///     wires up (MftVolume-backed query/scan/catch-up/watch), using the same non-admin
++///     native-mock technique as MockVolumeTests / UsnJournalTests, instead of the fake
++///     delegates JournalBrokerHostTests injects directly. Requests reach the host as raw frames
++///     through <see cref="HostChannelHarness" />.
++/// </summary>
++[TestClass]
++[DoNotParallelize]
++public partial class JournalBrokerHostRealSeamsTests
++{
++    const uint DefaultRecordSize = 1024;
++
++    [TestCleanup]
++    public void Cleanup()
++    {
++        MFTLibNative.ResetToDefaults();
++        FileUtilities.ResetToDefaults();
++        Kernel32.ResetToDefaults();
++    }
++
++    static SafeFileHandle FakeHandle()
++    {
++        return new SafeFileHandle(new IntPtr(1), false);
++    }
++
++    static void MockWatchJournalTip()
++    {
++        MFTLibNative._queryUsnJournal = _ =>
++        {
++            var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
++            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalId = 7, NextUsn = 200 }, pointer, false);
++            return pointer;
++        };
++        MFTLibNative._freeUsnJournalInfo = Marshal.FreeHGlobal;
++    }
++
++    // A host scan sizes its chunks from FSCTL_GET_NTFS_VOLUME_DATA before it opens the parse.
++    static void MockVolumeRecordSize()
++    {
++        FileUtilities._getVolumeHandle = _ => FakeHandle();
++        Kernel32._deviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
++        {
++            Marshal.StructureToPtr(new NtfsVolumeDataBufferNative
++            {
++                MftValidDataLength = 409_600,
++                BytesPerFileRecordSegment = DefaultRecordSize
++            }, outBuffer, false);
++            bytesReturned = (uint)Marshal.SizeOf<NtfsVolumeDataBufferNative>();
++            return true;
++        };
++    }
++
++    static void MockFreeMftResult()
++    {
++        MFTLibNative._freeMftResult = ptr =>
++        {
++            var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
++            if (parsed.Entries != IntPtr.Zero)
++            {
++                Marshal.FreeHGlobal(parsed.Entries);
++            }
++
++            if (parsed.EntryStrings != IntPtr.Zero)
++            {
++                Marshal.FreeHGlobal(parsed.EntryStrings);
++            }
++
++            Marshal.FreeHGlobal(ptr);
++        };
++    }
++
++    // Native filename entries include an in-use file, an unused file, and an empty name.
++    static unsafe IntPtr BuildThreeNameRecordsResult()
++    {
++        var stride = (nuint)MFTLibNative.NativeCompactEntrySize;
++        var entryBuf = Marshal.AllocHGlobal((int)stride * 3);
++        new Span<byte>((void*)entryBuf, (int)stride * 3).Clear();
++
++        var keptName = "file0.txt";
++        var skippedName = "skip.txt";
++        var totalUnits = keptName.Length + skippedName.Length;
++        var stringBuf = Marshal.AllocHGlobal(totalUnits * sizeof(char));
++        var stringSpan = new Span<char>((void*)stringBuf, totalUnits);
++        keptName.AsSpan().CopyTo(stringSpan);
++        skippedName.AsSpan().CopyTo(stringSpan.Slice(keptName.Length));
++
++        var kept = (byte*)entryBuf;
++        Unsafe.WriteUnaligned(kept, 100UL);
++        Unsafe.WriteUnaligned(kept + 8, 5UL);
++        Unsafe.WriteUnaligned(kept + 16, 0UL); // stringOffset
++        Unsafe.WriteUnaligned(kept + 24, (uint)FileAttributes.Normal);
++        Unsafe.WriteUnaligned(kept + 28, (ushort)1); // InUse, not directory
++        Unsafe.WriteUnaligned(kept + 30, (ushort)keptName.Length);
++
++        var notInUse = (byte*)entryBuf + stride;
++        Unsafe.WriteUnaligned(notInUse, 101UL);
++        Unsafe.WriteUnaligned(notInUse + 8, 5UL);
++        Unsafe.WriteUnaligned(notInUse + 16, (ulong)keptName.Length); // stringOffset
++        Unsafe.WriteUnaligned(notInUse + 24, (uint)FileAttributes.Normal);
++        Unsafe.WriteUnaligned(notInUse + 28, (ushort)0); // not in use
++        Unsafe.WriteUnaligned(notInUse + 30, (ushort)skippedName.Length);
++
++        var emptyName = (byte*)entryBuf + 2 * stride;
++        Unsafe.WriteUnaligned(emptyName, 102UL);
++        Unsafe.WriteUnaligned(emptyName + 8, 5UL);
++        Unsafe.WriteUnaligned(emptyName + 16, (ulong)totalUnits); // stringOffset
++        Unsafe.WriteUnaligned(emptyName + 24, (uint)FileAttributes.Normal);
++        Unsafe.WriteUnaligned(emptyName + 28, (ushort)1); // in use, but zero-length name
++        Unsafe.WriteUnaligned(emptyName + 30, (ushort)0);
++
++        var result = new MftParseResult
++        {
++            TotalRecords = 3,
++            UsedRecords = 3,
++            Entries = entryBuf,
++            EntryStrings = stringBuf,
++            EntryStringUnits = (ulong)totalUnits,
++            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
++            EntryStride = MFTLibNative.NativeCompactEntrySize
++        };
++        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
++        Marshal.StructureToPtr(result, resultPtr, false);
++        return resultPtr;
++    }
++
++    // Scans drive C through the default host over a raw ArmAndScan frame and returns every frame
++    // the drive pipe carried. The default host reads the catch-up journal through the real seam.
++    static async Task<List<BrokerFrame>> ServeDefaultScanAsync(RecordingBlockSectionWriter writer)
++    {
++        if (!OperatingSystem.IsWindows())
++        {
++            Assert.Inconclusive("Host scans size their chunks from FSCTL_GET_NTFS_VOLUME_DATA, which requires Windows.");
++        }
++
++        MockVolumeRecordSize();
++        MFTLibNative._readUsnJournal = (_, nextUsn, journalId, _) => BuildEmptyWatchResult(journalId, nextUsn + 100);
++        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
++        await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault(), writer);
++
++        var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C', "section-C"));
++
++        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error),
++            string.Join("; ", frames.Where(frame => frame.Kind == BrokerFrameKind.Error).Select(frame => frame.Message)));
++        return frames;
++    }
++
++    static IntPtr BuildEmptyWatchResult(ulong journalId, long nextUsn)
++    {
++        var nativeResult = new UsnJournalResultNative
++        {
++            EntryCount = 0,
++            Entries = IntPtr.Zero,
++            NextUsn = nextUsn,
++            JournalId = journalId
++        };
++        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
++        Marshal.StructureToPtr(nativeResult, resultPtr, false);
++        return resultPtr;
++    }
++
++    static unsafe IntPtr BuildSingleEntryWatchResult(ulong journalId, long nextUsn, string fileName, uint reason)
++    {
++        var entrySize = MftVolume.NativeUsnEntrySize;
++        var entriesPtr = Marshal.AllocHGlobal(entrySize);
++        new Span<byte>((void*)entriesPtr, entrySize).Clear();
++
++        var ptr = (byte*)entriesPtr;
++        *(ulong*)ptr = 42;
++        *(ulong*)(ptr + 8) = 5;
++        *(long*)(ptr + 16) = nextUsn - 50;
++        *(long*)(ptr + 24) = 0;
++        *(uint*)(ptr + 32) = reason;
++        *(uint*)(ptr + 36) = 0x20;
++        *(ushort*)(ptr + 40) = (ushort)fileName.Length;
++        fileName.AsSpan().CopyTo(new Span<char>(ptr + 42, fileName.Length));
++
++        var nativeResult = new UsnJournalResultNative
++        {
++            EntryCount = 1,
++            Entries = entriesPtr,
++            NextUsn = nextUsn,
++            JournalId = journalId
++        };
++        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
++        Marshal.StructureToPtr(nativeResult, resultPtr, false);
++        return resultPtr;
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostTests.ControlLoop.cs b/MFTLib.Tests/JournalBrokerHostTests.ControlLoop.cs
+new file mode 100644
+index 0000000..f01bfae
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostTests.ControlLoop.cs
+@@ -0,0 +1,73 @@
++using System.Buffers;
++using System.Buffers.Binary;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++// The control pipe's read loop: when it ends and how it reports a stream that ends mid-frame.
++public partial class JournalBrokerHostTests
++{
++    [TestMethod]
++    public async Task ServeAsync_TokenAlreadyCancelled_ReturnsImmediatelyWithoutReading()
++    {
++        var host = ScanHost();
++        await using var control = new InMemoryPipePair();
++        using var cancellation = new CancellationTokenSource();
++        await cancellation.CancelAsync();
++
++        var serve = host.ServeAsync(control.Host, (_, _) => throw new InvalidOperationException("unexpected connect"),
++            null, cancellation.Token);
++
++        await serve.WaitAsync(HostChannelHarness.HangGuard);
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_ClientClosesAfterOneRequest_ReturnsCleanlyOnEof()
++    {
++        var host = ScanHost(queryVolumeInfo: _ => ControlVolume);
++        await using var harness = new HostChannelHarness(host);
++
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, "C"));
++        Assert.AreEqual(BrokerFrameKind.VolumeInfo, (await harness.ReadControlAsync()).Kind);
++        await harness.CloseControlAsync(); // the host's next read hits clean EOF
++
++        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_TruncatedFrameBody_ThrowsEndOfStreamException()
++    {
++        var host = ScanHost();
++        var harness = new HostChannelHarness(host);
++
++        var header = new byte[4];
++        BinaryPrimitives.WriteInt32LittleEndian(header, 10); // claims a 10-byte frame
++        await harness.SendControlAsync(writer =>
++        {
++            writer.Write(header);
++            writer.Write(new byte[] { 1, 2, 3 }); // delivers only 3
++        });
++        await harness.CloseControlAsync(); // EOF partway through the frame body
++
++        // The session's fault surfaces from its serve task, which disposing the harness awaits.
++        await Assert.ThrowsExceptionAsync<EndOfStreamException>(async () => await harness.DisposeAsync());
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_HeaderOnlyThenEof_ThrowsEndOfStreamException()
++    {
++        var host = ScanHost();
++        var harness = new HostChannelHarness(host);
++
++        // A 4-byte length prefix claiming a 10-byte frame, but zero body bytes before the pipe
++        // closes: the distinct "EOF exactly at the frame boundary" case, as opposed to EOF
++        // partway through an already-started body read.
++        var header = new byte[4];
++        BinaryPrimitives.WriteInt32LittleEndian(header, 10);
++        await harness.SendControlAsync(writer => writer.Write(header));
++        await harness.CloseControlAsync();
++
++        await Assert.ThrowsExceptionAsync<EndOfStreamException>(async () => await harness.DisposeAsync());
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostTests.Progress.cs b/MFTLib.Tests/JournalBrokerHostTests.Progress.cs
+new file mode 100644
+index 0000000..5523961
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostTests.Progress.cs
+@@ -0,0 +1,338 @@
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++// A scan channel's progress frames. The progress pump is private to the host, so each case
++// drives it through a scan and reads what reaches the drive pipe.
++public partial class JournalBrokerHostTests
++{
++    static async Task WithScanProgressThrottleAsync(TimeSpan interval, Func<Task> test)
++    {
++        var original = JournalBrokerHost._progressThrottleInterval;
++        try
++        {
++            JournalBrokerHost._progressThrottleInterval = interval;
++            await test();
++        }
++        finally
++        {
++            JournalBrokerHost._progressThrottleInterval = original;
++        }
++    }
++
++    [TestMethod]
++    public Task ProgressPump_ThrottledLastReportIsFlushedOnCompletion()
++    {
++        return WithScanProgressThrottleAsync(TimeSpan.FromMinutes(10), async () =>
++        {
++            var afterFirstReport = new TestGate();
++            var host = ScanHost(scanDrive: (_, _, _, progress, _) =>
++            {
++                progress!.Report(new BlockWriteProgress(5, 0, 20, null, BrokerScanPhase.Parsing));
++                afterFirstReport.MarkEntered();
++                afterFirstReport.WaitForRelease();
++                progress.Report(new BlockWriteProgress(19, 0, 20, null, BrokerScanPhase.Parsing));
++                return [[ScanRecord(5, ".", 3)]];
++            });
++            await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter());
++            var pipe = await harness.OpenScanChannelAsync('C');
++
++            // The first report is on the wire before the second is made, so the second lands
++            // inside the throttle window deterministically.
++            var cursor = await HostChannelHarness.ReadFrameAsync(pipe);
++            var first = await HostChannelHarness.ReadFrameAsync(pipe);
++            Assert.AreEqual(BrokerFrameKind.Cursor, cursor?.Kind);
++            Assert.AreEqual(5L, first?.Progress?.RecordsProcessed, "The first report in the window is emitted immediately.");
++            afterFirstReport.Release();
++            var rest = await HostChannelHarness.ReadToEndAsync(pipe);
++
++            var progressFrames = rest.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
++            Assert.IsTrue(progressFrames.Any(f => f.Progress!.Value.RecordsProcessed == 19),
++                "The newest throttled report is flushed when the progress stream completes.");
++        });
++    }
++
++    [TestMethod]
++    public async Task ScanProgress_CancelledScan_EndsCleanlyWithoutErrorFrame()
++    {
++        var host = ScanHost(scanDrive: (_, _, _, _, cancellationToken) => throw new OperationCanceledException(cancellationToken));
++        await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter());
++
++        var frames = await ScanFramesAsync(harness);
++
++        Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Error), "Cancellation must not emit an Error frame.");
++        Assert.IsFalse(frames.Any(f => f.Kind is BrokerFrameKind.ScanReady or BrokerFrameKind.JournalBatch));
++    }
++
++    [TestMethod]
++    public Task ScanProgress_WritePhase_PassesProgressToStreamingWriterAndReportsBytes()
++    {
++        return WithScanProgressThrottleAsync(TimeSpan.Zero, async () =>
++        {
++            using var blockWriter = new RecordingBlockSectionWriter();
++            var host = ScanHost(scanDrive: (_, _, _, progress, _) =>
++            {
++                progress?.Report(new BlockWriteProgress(100, 0, 1000, null, BrokerScanPhase.Parsing));
++                return
++                [
++                    [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt", null)],
++                    [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt", null)]
++                ];
++            });
++            await using var harness = new HostChannelHarness(host, blockWriter);
++
++            var frames = await ScanFramesAsync(harness);
++            var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
++
++            Assert.IsTrue(progressFrames.Count >= 2, "Expected intermediate parse and write progress frames.");
++            Assert.IsTrue(progressFrames.Any(f => f.Progress?.BytesProcessed > 0),
++                "At least one progress frame must report BytesProcessed > 0 from the write phase.");
++            var finalProgress = progressFrames[^1].Progress!.Value;
++            Assert.AreEqual(1000L, finalProgress.TotalRecords);
++            Assert.IsTrue(finalProgress.BytesProcessed > 0);
++            Assert.AreEqual(finalProgress.BytesProcessed, finalProgress.TotalBytes);
++        });
++    }
++
++    [TestMethod]
++    public Task ScanProgress_MonotonicAcrossParseAndWritePhases()
++    {
++        // Zero, not a small interval: a non-zero throttle makes emission depend on real elapsed
++        // time between reports. With Zero the pump emits every value it manages to read.
++        return WithScanProgressThrottleAsync(TimeSpan.Zero, async () =>
++        {
++            using var blockWriter = new RecordingBlockSectionWriter();
++            var host = ScanHost(scanDrive: (_, _, _, progress, _) =>
++            {
++                for (var i = 1; i <= 5; i++)
++                {
++                    progress?.Report(new BlockWriteProgress(i * 1000, 0, 5000, null, BrokerScanPhase.Parsing));
++                }
++
++                return
++                [
++                    [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt", null)],
++                    [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt", null)],
++                    [new MftRecord(3, 0, new MftRecordFields(1, FileAttributes.Archive, 300), "r3.txt", null)]
++                ];
++            });
++            await using var harness = new HostChannelHarness(host, blockWriter);
++
++            var frames = await ScanFramesAsync(harness);
++            var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
++
++            // Only the final frame is guaranteed. Intermediate frames flow through a bounded(1)
++            // DropOldest channel, so the pump silently loses any value it has not read before the
++            // next write. The invariants below hold for whatever does arrive.
++            Assert.IsTrue(progressFrames.Count >= 1, "The final progress frame is always emitted.");
++            var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
++            var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
++            Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "The final progress frame immediately precedes ScanReady.");
++
++            // Elapsed is not asserted: the host fills it from a real Stopwatch.
++            long previousParsingRecords = 0;
++            long previousTransferringRecords = 0;
++            foreach (var progress in progressFrames.Select(f => f.Progress!.Value))
++            {
++                Assert.AreEqual(string.Empty, progress.DriveLetter, "The drive belongs to the channel, not the frame.");
++                if (progress.Phase == BrokerScanPhase.Parsing)
++                {
++                    Assert.IsTrue(progress.RecordsProcessed >= previousParsingRecords,
++                        $"Parsing RecordsProcessed must not decrease: got {progress.RecordsProcessed}, previous {previousParsingRecords}");
++                    Assert.AreEqual(5000L, progress.TotalRecords, "Parsing TotalRecords stays 5000 throughout.");
++                    previousParsingRecords = progress.RecordsProcessed;
++                }
++                else
++                {
++                    Assert.IsTrue(progress.RecordsProcessed >= previousTransferringRecords,
++                        $"Transferring RecordsProcessed must not decrease: got {progress.RecordsProcessed}");
++                    previousTransferringRecords = progress.RecordsProcessed;
++                }
++            }
++
++            var finalProgress = progressFrames[^1].Progress!.Value;
++            Assert.AreEqual(5000L, finalProgress.RecordsProcessed);
++            Assert.AreEqual(5000L, finalProgress.TotalRecords);
++            Assert.IsTrue(finalProgress.BytesProcessed > 0);
++            Assert.AreEqual(finalProgress.BytesProcessed, finalProgress.TotalBytes);
++        });
++    }
++
++    [TestMethod]
++    public Task ScanProgress_WritePhaseByteProgressFlowsThroughBeforeCompletion()
++    {
++        return WithScanProgressThrottleAsync(TimeSpan.Zero, async () =>
++        {
++            // The scan source reports no progress of its own (the production parse-phase adapter
++            // reports BytesProcessed = 0), so a frame with BytesProcessed > 0 can reach the wire
++            // before the completion frame only if the host wires the same reporter into the
++            // section writer, letting the write phase's per-batch byte progress flow through.
++            using var blockWriter = new RecordingBlockSectionWriter();
++            var host = ScanHost(scanDrive: (_, _, _, _, _) =>
++            [
++                [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt", null)],
++                [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt", null)]
++            ]);
++            await using var harness = new HostChannelHarness(host, blockWriter);
++
++            var frames = await ScanFramesAsync(harness);
++
++            var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
++            Assert.IsTrue(scanReadyIndex > 0, "ScanReady frame must be present.");
++            var beforeCompletion = frames.Take(scanReadyIndex - 1).Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
++            Assert.IsTrue(beforeCompletion.Count > 0,
++                "Expected a write-phase ScanProgress frame before the completion frame.");
++            Assert.IsTrue(beforeCompletion.All(f => f.Progress!.Value.BytesProcessed > 0),
++                "Write-phase progress frames report nonzero bytes processed.");
++        });
++    }
++
++    [TestMethod]
++    public Task ScanProgress_EmitsParsingThenTransferring()
++    {
++        return WithScanProgressThrottleAsync(TimeSpan.Zero, async () =>
++        {
++            var afterParsingReport = new TestGate();
++            using var blockWriter = new RecordingBlockSectionWriter();
++            var host = ScanHost(scanDrive: (_, _, _, progress, _) =>
++            {
++                progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BrokerScanPhase.Parsing));
++                afterParsingReport.MarkEntered();
++                afterParsingReport.WaitForRelease();
++                return [[ScanRecord(5, ".", 3)], [ScanRecord(20, "file.txt")]];
++            });
++            await using var harness = new HostChannelHarness(host, blockWriter);
++            var pipe = await harness.OpenScanChannelAsync('C');
++
++            await HostChannelHarness.ReadFrameAsync(pipe); // Cursor
++            var parsing = (await HostChannelHarness.ReadFrameAsync(pipe))!.Value.Progress!.Value;
++            afterParsingReport.Release();
++            var rest = await HostChannelHarness.ReadToEndAsync(pipe);
++            var transferring = rest.Last(f => f.Kind == BrokerFrameKind.ScanProgress).Progress!.Value;
++
++            Assert.AreEqual(BrokerScanPhase.Parsing, parsing.Phase);
++            Assert.AreEqual(500L, parsing.RecordsProcessed);
++            Assert.AreEqual(1000L, parsing.TotalRecords);
++            Assert.AreEqual(BrokerScanPhase.Transferring, transferring.Phase);
++            Assert.AreEqual(blockWriter.Block.Header.NamePoolUsed, transferring.BytesProcessed);
++            Assert.AreEqual(transferring.BytesProcessed, transferring.TotalBytes);
++        });
++    }
++
++    [TestMethod]
++    public async Task ScanProgress_ScanCancelledBeforeAnyProgressReported_EndsWithoutErrorFrame()
++    {
++        var scanStarted = new TestGate();
++        var host = ScanHost(scanDrive: (_, _, _, _, cancellationToken) =>
++        {
++            scanStarted.MarkEntered();
++            // Blocks without ever reporting progress, so the progress pump stays parked in its
++            // first wait when the session ends.
++            cancellationToken.WaitHandle.WaitOne(HostChannelHarness.HangGuard);
++            throw new OperationCanceledException(cancellationToken);
++        });
++        await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter());
++        var pipe = await harness.OpenScanChannelAsync('C');
++        await scanStarted.Entered.WaitAsync(HostChannelHarness.HangGuard);
++
++        await harness.CloseControlAsync();
++        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Error),
++            "Cancellation emits no Error frame, and the pump's own cancellation is swallowed inside the host.");
++    }
++
++    [TestMethod]
++    public async Task ScanProgress_MaximumRecordsProcessedExceedsReportedTotals_ClampsFinalCounts()
++    {
++        // More records processed than the (deliberately understated) TotalRecords, so the final
++        // frame has to bump both counts up to the processed maximum instead of trusting the
++        // last reported total.
++        var host = ScanHost(scanDrive: (_, _, _, progress, _) =>
++        {
++            progress!.Report(new BlockWriteProgress(10, 500, 5, 1000, BrokerScanPhase.Parsing));
++            return [[new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt", null)]];
++        });
++        await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter());
++
++        var frames = await ScanFramesAsync(harness);
++
++        var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
++        Assert.IsTrue(scanReadyIndex > 0, "ScanReady frame must be present.");
++        var finalProgress = frames[scanReadyIndex - 1].Progress;
++        Assert.IsNotNull(finalProgress);
++        Assert.AreEqual(10L, finalProgress.Value.RecordsProcessed,
++            "The final count is clamped up to the processed maximum when the reported total undercounts it.");
++        Assert.AreEqual(10L, finalProgress.Value.TotalRecords,
++            "The final total is clamped up to the clamped count, not left at the stale reported total.");
++    }
++
++    [TestMethod]
++    public async Task ScanProgress_FinalFrameImmediatelyPrecedesScanReadyAndCatchUp()
++    {
++        using var blockWriter = new RecordingBlockSectionWriter();
++        var host = ScanHost(
++            queryCursor: _ => new UsnJournalCursor(7UL, 0L),
++            scanDrive: (_, _, _, _, _) =>
++            [
++                [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt", null)],
++                [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "r2.txt", null)]
++            ]);
++        await using var harness = new HostChannelHarness(host, blockWriter);
++
++        var frames = await ScanFramesAsync(harness, 'C', "mftlib-progress-C");
++
++        Assert.IsTrue(frames.Count >= 3, "Expected at least Cursor, ScanProgress, and ScanReady frames.");
++        Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
++        var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
++        Assert.IsTrue(scanReadyIndex > 0, "ScanReady frame must be present.");
++        var finalProgressIndex = scanReadyIndex - 1;
++        Assert.AreEqual(BrokerFrameKind.ScanProgress, frames[finalProgressIndex].Kind,
++            "The final progress frame immediately precedes ScanReady.");
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[scanReadyIndex + 1].Kind);
++        var progress = frames[finalProgressIndex].Progress;
++        Assert.IsNotNull(progress);
++        Assert.AreEqual(string.Empty, progress.Value.DriveLetter, "The drive belongs to the channel, not the frame.");
++        Assert.AreEqual(3L, progress.Value.RecordsProcessed);
++        Assert.AreEqual(3L, progress.Value.TotalRecords);
++        Assert.IsTrue(progress.Value.BytesProcessed > 0);
++        Assert.AreEqual(progress.Value.BytesProcessed, progress.Value.TotalBytes);
++    }
++
++    [TestMethod]
++    public Task ScanProgress_ThrottlesNonFinalFrames()
++    {
++        return WithScanProgressThrottleAsync(TimeSpan.FromMinutes(10), async () =>
++        {
++            using var blockWriter = new RecordingBlockSectionWriter();
++            var host = ScanHost(
++                queryCursor: _ => new UsnJournalCursor(7UL, 0L),
++                scanDrive: (_, _, _, progress, _) =>
++                {
++                    var batches = new List<IReadOnlyList<MftRecord>>();
++                    for (var i = 0; i < 20; i++)
++                    {
++                        progress?.Report(new BlockWriteProgress(i, i * 100, 20, 2000));
++                        batches.Add([new MftRecord((ulong)i, 0, new MftRecordFields(1, FileAttributes.Archive, 100), $"r{i}.txt", null)]);
++                    }
++
++                    return batches;
++                });
++            await using var harness = new HostChannelHarness(host, blockWriter);
++
++            var frames = await ScanFramesAsync(harness, 'C', "mftlib-throttle-C");
++
++            var progressFrames = frames.Where(f => f.Kind == BrokerFrameKind.ScanProgress).ToList();
++            // With a 10-minute interval the burst of 20 reports emits at most one initial frame,
++            // one flush of the newest throttled report, and the final frame before ScanReady.
++            Assert.IsTrue(progressFrames.Count >= 1, "At least one progress frame must be emitted.");
++            Assert.IsTrue(progressFrames.Count <= 3,
++                $"Expected at most 3 progress frames due to throttling, but got {progressFrames.Count}");
++            var scanReadyIndex = frames.FindIndex(f => f.Kind == BrokerFrameKind.ScanReady);
++            var lastProgressIndex = frames.FindLastIndex(f => f.Kind == BrokerFrameKind.ScanProgress);
++            Assert.AreEqual(scanReadyIndex - 1, lastProgressIndex, "The final progress frame immediately precedes ScanReady.");
++        });
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostTests.RequestDisconnect.cs b/MFTLib.Tests/JournalBrokerHostTests.RequestDisconnect.cs
+new file mode 100644
+index 0000000..83f4389
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostTests.RequestDisconnect.cs
+@@ -0,0 +1,143 @@
++using System.Runtime.CompilerServices;
++using MFTLib.Index;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++// A client that closes its end of a pipe while a request is being answered. On a drive pipe the
++// write that finds the client gone ends that channel quietly and leaves the session serving; on
++// the control pipe it ends the session normally instead of throwing the broken pipe's
++// IOException out of ServeAsync and the elevated broker child (MFTLib#199).
++public partial class JournalBrokerHostTests
++{
++    [TestMethod]
++    public async Task ScanChannelWriteHitsBrokenPipeMidScan_ChannelEndsQuietlyAndSessionContinues()
++    {
++        var scanParked = new TestGate();
++        var host = ScanHost(
++            scanDrive: (_, _, _, _, _) =>
++            {
++                scanParked.MarkEntered();
++                scanParked.WaitForRelease();
++                return [[ScanRecord(5, ".", 3)]];
++            },
++            queryVolumeInfo: _ => ControlVolume);
++        var connector = new BreakableScanPipeConnector();
++        await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter(), connector.ConnectAsync);
++        connector.Harness = harness;
++        var pipe = await harness.OpenScanChannelAsync('C');
++
++        // The scan is live over the healthy pipe: the armed cursor arrives, and the record source
++        // then parks with the rest of the scan still ahead of it.
++        Assert.AreEqual(BrokerFrameKind.Cursor, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
++        await scanParked.Entered.WaitAsync(HostChannelHarness.HangGuard);
++
++        // The client goes away mid-scan. Breaking the pipe before releasing the scan keeps the
++        // disconnect deterministic: the next frame the host writes lands on the dead client end.
++        var hostEnd = await connector.Connected.WaitAsync(HostChannelHarness.HangGuard);
++        hostEnd.BreakPipe();
++        scanParked.Release();
++        await hostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
++
++        await AssertControlStillAnswersAsync(harness);
++        Assert.IsFalse(harness.Serve.IsCompleted, "One channel's dead pipe must not end the session.");
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_VolumeQueryReplyHitsBrokenPipe_SessionEndsNormally()
++    {
++        var host = ScanHost(queryVolumeInfo: _ => ControlVolume);
++        await using var harness = new HostChannelHarness(host, breakableControl: true);
++        // The client is already gone when its request arrives, so the VolumeInfo reply is the
++        // first frame to land on the dead pipe.
++        harness.BreakableControl!.BreakPipe();
++
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, "C"));
++        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
++
++        // ServeAsync completes rather than faulting with the broken pipe's IOException, which is
++        // what killed the elevated broker child.
++        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_GrowUsnJournalReplyHitsBrokenPipe_SessionEndsNormally()
++    {
++        var host = ScanHost(growUsnJournal: (_, maximumSize, allocationDelta) => new UsnJournalSettings
++        {
++            MaximumSize = maximumSize,
++            AllocationDelta = allocationDelta
++        });
++        await using var harness = new HostChannelHarness(host, breakableControl: true);
++        harness.BreakableControl!.BreakPipe();
++
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 1, "C", 0x08000000, 0x01000000));
++        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
++
++        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
++    }
++
++    [TestMethod]
++    public async Task ServeAsync_ControlReplyHitsBrokenPipeWhileWatchIsLive_StopsTheWatchChannel()
++    {
++        var watchStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
++        var host = ScanHost(
++            watchDrive: (_, _, _, cancellationToken) => ParkedUntilStopped(watchStopped, cancellationToken),
++            queryVolumeInfo: _ => ControlVolume);
++        await using var harness = new HostChannelHarness(host, breakableControl: true);
++
++        // The watch is armed and parked: the leading CaughtUp arrived over the healthy pipe
++        // (the cursor sits at the journal tip) and no batch follows it.
++        var watch = await harness.OpenWatchChannelAsync('C', ScanArmedCursor);
++        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(watch))?.Kind);
++
++        // A control request answers while the watch is still live, and its reply is what finds
++        // the client gone.
++        harness.BreakableControl!.BreakPipe();
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 9, "C"));
++        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
++
++        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
++
++        // Ending the session on a disconnect must not leave the armed watch behind: it was
++        // cancelled on the way out, not merely awaited.
++        await watchStopped.Task.WaitAsync(HostChannelHarness.HangGuard);
++    }
++
++    // A watch that yields nothing: it parks until the session stops it and reports that stop, so
++    // a test can see the channel was cancelled on the way out.
++    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> ParkedUntilStopped(
++        TaskCompletionSource watchStopped, [EnumeratorCancellation] CancellationToken cancellationToken)
++    {
++        try
++        {
++            await Task.Delay(Timeout.Infinite, cancellationToken);
++        }
++        finally
++        {
++            watchStopped.TrySetResult();
++        }
++
++        yield break;
++    }
++
++    // Connects the named in-memory pipe through a BrokenPipeStream on the host's end, so a test
++    // can make one channel's writes fail while the control pipe stays healthy.
++    sealed class BreakableScanPipeConnector
++    {
++        readonly TaskCompletionSource<BrokenPipeStream> _connected =
++            new(TaskCreationOptions.RunContinuationsAsynchronously);
++
++        public HostChannelHarness? Harness { get; set; }
++
++        public Task<BrokenPipeStream> Connected => _connected.Task;
++
++        public async Task<Stream> ConnectAsync(string pipeName, CancellationToken cancellationToken)
++        {
++            var broken = new BrokenPipeStream(await Harness!.ConnectInMemoryAsync(pipeName, cancellationToken));
++            _connected.TrySetResult(broken);
++            return broken;
++        }
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostTests.Scan.cs b/MFTLib.Tests/JournalBrokerHostTests.Scan.cs
+new file mode 100644
+index 0000000..a4d7e3d
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostTests.Scan.cs
+@@ -0,0 +1,263 @@
++using System.Runtime.Versioning;
++using MFTLib.Index;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++public partial class JournalBrokerHostTests
++{
++    [TestMethod]
++    public void CatchUp_DelegatesToReadJournal_ReturnsAdvancedCursor()
++    {
++        var since = new UsnJournalCursor(7UL, 100L);
++        var advanced = new UsnJournalCursor(7UL, 250L);
++        var batch = new[] { JournalEntryFactory.Create(1, 110, "a") };
++        var host = ScanHost(readJournal: (drive, cursor) =>
++        {
++            Assert.AreEqual("C:", drive);
++            Assert.AreEqual(since, cursor);
++            return (batch, advanced);
++        });
++
++        var (entries, updated) = host.CatchUp("C:", since);
++
++        Assert.AreSame(batch, entries);
++        Assert.AreEqual(advanced, updated);
++    }
++
++    [TestMethod]
++    public async Task ArmAndScan_EmitsCursorScanReadyAndCatchUp()
++    {
++        using var blockWriter = new RecordingBlockSectionWriter();
++        var host = ScanHost(
++            scanDrive: (_, _, _, _, _) => [[ScanRecord(100, "a.txt")]],
++            readJournal: (_, cursor) => ([ScanEntry()], new UsnJournalCursor(cursor.JournalId, cursor.NextUsn + 1)));
++        await using var harness = new HostChannelHarness(host, blockWriter);
++
++        var frames = await ScanFramesAsync(harness, 'C', "mftlib-scan-C");
++
++        Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
++        Assert.AreEqual(ScanArmedCursor, frames[0].Cursor);
++        Assert.IsTrue(frames.Any(f => f.Kind == BrokerFrameKind.ScanProgress));
++        var scanReady = frames.Single(f => f.Kind == BrokerFrameKind.ScanReady);
++        var journalBatch = frames.Single(f => f.Kind == BrokerFrameKind.JournalBatch);
++        Assert.AreEqual(101L, scanReady.RowCount);
++        Assert.AreEqual(1, journalBatch.Entries.Length);
++        Assert.AreEqual(1, InUseRowCount(blockWriter));
++        Assert.AreEqual("mftlib-scan-C", blockWriter.LastSectionName);
++        Assert.IsTrue(frames.All(f => f.Drive == null && f.RequestId == 0), "A drive pipe carries no drive and no request id.");
++    }
++
++    [TestMethod]
++    public async Task MftRecordBatchSource_StreamsBatchesToBlockSectionWriter()
++    {
++        using var blockWriter = new RecordingBlockSectionWriter();
++        var host = ScanHost(
++            queryCursor: _ => new UsnJournalCursor(7UL, 0L),
++            scanDrive: (_, _, _, _, _) =>
++            [
++                [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "batch1.txt", null)],
++                [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "batch2.txt", null)]
++            ]);
++        await using var harness = new HostChannelHarness(host, blockWriter);
++
++        var frames = await ScanFramesAsync(harness, 'C', "mftlib-streaming-C");
++
++        Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
++        Assert.IsTrue(frames.Any(f => f.Kind == BrokerFrameKind.ScanProgress));
++        Assert.AreEqual(3L, frames.Single(f => f.Kind == BrokerFrameKind.ScanReady).RowCount);
++        Assert.AreEqual("batch1.txt", NamePool.ReadRowName(blockWriter.Block, 1).ToString());
++        Assert.AreEqual("batch2.txt", NamePool.ReadRowName(blockWriter.Block, 2).ToString());
++        Assert.AreEqual(2, InUseRowCount(blockWriter));
++    }
++
++    [TestMethod]
++    public async Task DirectoryIndexProfile_KeepFileNameMatch_KeepsTheNamedFile()
++    {
++        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, ScanKeepFileNamesGit);
++
++        Assert.AreEqual(2, InUseRowCount(writer)); // repo (directory) + .git (named match)
++    }
++
++    [TestMethod]
++    public async Task DirectoryIndexProfile_KeepFileNameMatch_IsCaseInsensitive()
++    {
++        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, ScanKeepFileNamesGitUppercase);
++
++        Assert.AreEqual(2, InUseRowCount(writer)); // repo (directory) + .git (matched despite case)
++    }
++
++    [TestMethod]
++    public async Task DirectoryIndexProfile_NonMatchingFiles_AreDropped()
++    {
++        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, ScanKeepFileNamesNonMatching);
++
++        Assert.AreEqual(1, InUseRowCount(writer)); // repo (directory) only
++    }
++
++    [TestMethod]
++    public async Task DirectoryIndexProfile_NullKeepFileNames_YieldsDirectoriesOnly()
++    {
++        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, null);
++
++        Assert.AreEqual(1, InUseRowCount(writer)); // repo (directory) only
++    }
++
++    [TestMethod]
++    public async Task DirectoryIndexProfile_EmptyKeepFileNames_YieldsDirectoriesOnly()
++    {
++        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, Array.Empty<string>());
++
++        Assert.AreEqual(1, InUseRowCount(writer)); // repo (directory) only
++    }
++
++    [TestMethod]
++    public async Task ArmAndScan_UnknownProfile_WritesMalformedErrorAndSessionContinues()
++    {
++        var host = ScanHost(queryVolumeInfo: _ => ControlVolume);
++        using var blockWriter = new RecordingBlockSectionWriter();
++        await using var harness = new HostChannelHarness(host, blockWriter);
++        var pipe = await harness.OpenChannelAsync('C');
++
++        await HostChannelHarness.WriteFrameAsync(pipe,
++            writer => BrokerProtocol.WriteArmAndScan(writer, "section", (BrokerScanProfile)99));
++        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
++
++        Assert.AreEqual(1, frames.Count);
++        Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
++        StringAssert.Contains(frames[0].Message, "malformed");
++        StringAssert.Contains(frames[0].Message, "99");
++        Assert.IsNull(blockWriter.LastSectionName, "No scan runs for a request the host could not decode.");
++        await AssertControlStillAnswersAsync(harness);
++    }
++
++    [TestMethod]
++    public async Task DriveFailure_EmitsErrorFrameAndSessionContinues()
++    {
++        var host = ScanHost(
++            queryCursor: _ => throw new InvalidOperationException("journal wrapped"),
++            queryVolumeInfo: _ => ControlVolume);
++        using var blockWriter = new RecordingBlockSectionWriter();
++        await using var harness = new HostChannelHarness(host, blockWriter);
++
++        var frames = await ScanFramesAsync(harness, 'D', "mftlib-scan-D");
++
++        Assert.AreEqual(1, frames.Count);
++        Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
++        Assert.AreEqual(0u, frames[0].RequestId);
++        Assert.AreEqual("journal wrapped", frames[0].Message);
++        await AssertControlStillAnswersAsync(harness);
++    }
++
++    [TestMethod]
++    public async Task CatchUpThrows_EmitsErrorAfterScanReady_OtherDriveUnaffected()
++    {
++        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
++        var host = ScanHost(
++            queryCursor: drive => drive == "C" ? new UsnJournalCursor(1UL, 100L) : new UsnJournalCursor(2UL, 200L),
++            readJournal: (drive, since) => drive == "C"
++                ? throw new InvalidOperationException("journal wrapped")
++                : (Array.Empty<UsnJournalEntry>(), since));
++        await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter());
++
++        var failing = await harness.OpenScanChannelAsync('C');
++        var healthy = await harness.OpenScanChannelAsync('D');
++        var failingFrames = await HostChannelHarness.ReadToEndAsync(failing);
++        var healthyFrames = await HostChannelHarness.ReadToEndAsync(healthy);
++
++        Assert.AreEqual(BrokerFrameKind.Cursor, failingFrames[0].Kind);
++        Assert.AreEqual(BrokerFrameKind.ScanReady, failingFrames[^2].Kind);
++        Assert.AreEqual(BrokerFrameKind.Error, failingFrames[^1].Kind);
++        Assert.AreEqual("journal wrapped", failingFrames[^1].Message);
++        Assert.IsFalse(failingFrames.Any(f => f.Kind == BrokerFrameKind.JournalBatch),
++            "A failed catch-up ships no batch that would let the client treat the scan as caught up.");
++
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, healthyFrames[^1].Kind);
++        Assert.AreEqual(new UsnJournalCursor(2UL, 200L), healthyFrames[0].Cursor);
++        Assert.IsFalse(healthyFrames.Any(f => f.Kind == BrokerFrameKind.Error));
++    }
++
++    [TestMethod]
++    [SupportedOSPlatform("windows")]
++    public void RealBlockSectionWriter_WritesBlock_ClientCanReadItBack()
++    {
++        if (!OperatingSystem.IsWindows())
++        {
++            Assert.Inconclusive("Named block sections require Windows.");
++        }
++
++        var sectionName = NamedBlockSection.BuildSectionName('C');
++        var (block, lifetime) = NamedBlockSection.Create(new BlockFileCreateOptions
++        {
++            Path = Path.Combine(Path.GetTempPath(), $"broker-block-{Guid.NewGuid():N}.bin"),
++            VolumeSerial = 123,
++            ProducerKind = ProducerKind.Mft,
++            RootRow = 5,
++            SlotCapacity = 128,
++            NamePoolCapacity = 1024,
++            DeleteOnClose = true
++        }, sectionName);
++        using (block)
++        using (lifetime)
++        {
++            var cursor = new UsnJournalCursor(7, 100);
++            var written = new RealBlockSectionWriter().Write(sectionName, cursor,
++                [[new MftRecord(5, 5, new MftRecordFields(3), ".", null),
++                    new MftRecord(100, 5, new MftRecordFields(1, FileAttributes.Normal, 2048), "nöte.txt", null)]],
++                MftBlockRowFilter.Full, null, CancellationToken.None);
++
++            Assert.AreEqual(101L, written.RowCount);
++            Assert.AreEqual(18L, written.NamePoolUsedBytes);
++            Assert.AreEqual(0L, written.SkippedRecordCount);
++            Assert.IsTrue(block.Header.IsComplete);
++            Assert.AreEqual(cursor.JournalId, block.Header.UsnJournalId);
++            Assert.AreEqual(cursor.NextUsn, block.Header.UsnNextUsn);
++            Assert.AreEqual("nöte.txt", NamePool.ReadRowName(block, 100).ToString());
++            Assert.AreEqual(2048L, block.Rows[100].Size);
++        }
++    }
++
++    static async Task<RecordingBlockSectionWriter> ServeDirectoryIndexAsync(
++        MftRecord[] records, IReadOnlyCollection<string>? keepFileNames)
++    {
++        var writer = new RecordingBlockSectionWriter();
++        var host = ScanHost(scanDrive: (_, _, _, _, _) => [records]);
++        await using var harness = new HostChannelHarness(host, writer);
++
++        var frames = await ScanFramesAsync(harness, 'C', "mftlib-scan-C", BrokerScanProfile.DirectoryIndex, keepFileNames);
++
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind);
++        return writer;
++    }
++
++    // A control request answered after a channel failed proves the session outlived it.
++    static async Task AssertControlStillAnswersAsync(HostChannelHarness harness)
++    {
++        var requestId = harness.NextRequestId();
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, requestId, "C"));
++        var reply = await harness.ReadControlAsync();
++
++        Assert.AreEqual(BrokerFrameKind.VolumeInfo, reply.Kind);
++        Assert.AreEqual(requestId, reply.RequestId);
++    }
++
++    // Counts rows without writing a block, for scans that run on several drives at once (a
++    // recording writer owns one block).
++    sealed class RowCountingSectionWriter : IBlockSectionWriter
++    {
++        public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor,
++            IEnumerable<IReadOnlyList<MftRecord>> batches, MftBlockRowFilter filter,
++            IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
++        {
++            long rows = 0;
++            foreach (var batch in batches)
++            {
++                cancellationToken.ThrowIfCancellationRequested();
++                rows += batch.Count;
++            }
++
++            return new BlockWriteResult(rows, 0, 0, false);
++        }
++    }
++}
+diff --git a/MFTLib.Tests/JournalBrokerHostTests.cs b/MFTLib.Tests/JournalBrokerHostTests.cs
+new file mode 100644
+index 0000000..fb523b6
+--- /dev/null
++++ b/MFTLib.Tests/JournalBrokerHostTests.cs
+@@ -0,0 +1,74 @@
++using MFTLib.Index;
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++// The host's scan, control and progress behavior over the wire, driven with raw frames through
++// HostChannelHarness. The scan tests install JournalBrokerHost's process-wide progress throttle,
++// so the class runs serially. Members here carry scan or control in their names; the watch
++// partials keep their own.
++[TestClass]
++[DoNotParallelize]
++public partial class JournalBrokerHostTests
++{
++    static readonly UsnJournalCursor ScanArmedCursor = new(7UL, 100L);
++    static readonly NtfsVolumeInformation ControlVolume = new(1024 * 1000, 1024, 512, 4096, 100, 10);
++
++    static readonly string[] ScanKeepFileNamesGit = [".git"];
++    static readonly string[] ScanKeepFileNamesGitUppercase = [".GIT"];
++    static readonly string[] ScanKeepFileNamesNonMatching = ["other.txt"];
++
++    static readonly MftRecord[] DirectoryIndexSampleRecords =
++    [
++        new(100, 5, new MftRecordFields(3, FileAttributes.Directory), "repo", null),
++        new(101, 100, new MftRecordFields(1, FileAttributes.Archive), ".git", null),
++        new(102, 100, new MftRecordFields(1, FileAttributes.Archive), "file.txt", null)
++    ];
++
++    static JournalBrokerHost ScanHost(
++        UsnJournalCursorQuery? queryCursor = null,
++        MftRecordBatchSource? scanDrive = null,
++        UsnJournalCatchUpSource? readJournal = null,
++        JournalBatchSource? watchDrive = null,
++        NtfsVolumeInformationQuery? queryVolumeInfo = null,
++        GrowUsnJournalQuery? growUsnJournal = null,
++        int processorCount = 4,
++        TimeProvider? timeProvider = null)
++    {
++        return new JournalBrokerHost(
++            queryCursor ?? (_ => ScanArmedCursor),
++            scanDrive ?? ((_, _, _, _, _) => [[ScanRecord(5, ".", 3)]]),
++            readJournal ?? ((_, since) => (Array.Empty<UsnJournalEntry>(), since)),
++            watchDrive,
++            queryVolumeInfo,
++            growUsnJournal,
++            processorCount,
++            timeProvider);
++    }
++
++    static MftRecord ScanRecord(ulong recordNumber, string name, ushort flags = 1)
++    {
++        return new MftRecord(recordNumber, 5, new MftRecordFields(flags, FileAttributes.Archive, 100), name, null);
++    }
++
++    static UsnJournalEntry ScanEntry()
++    {
++        return JournalEntryFactory.Create(100, 110, "a.txt", UsnReason.FileCreate | UsnReason.Close);
++    }
++
++    // Opens a scan channel on the drive and returns everything the host writes on it, in order,
++    // until it closes the pipe.
++    static async Task<List<BrokerFrame>> ScanFramesAsync(HostChannelHarness harness, char drive = 'C',
++        string sectionName = "section", BrokerScanProfile profile = BrokerScanProfile.Full,
++        IReadOnlyCollection<string>? keepFileNames = null)
++    {
++        var pipe = await harness.OpenScanChannelAsync(drive, sectionName, profile, keepFileNames);
++        return await HostChannelHarness.ReadToEndAsync(pipe);
++    }
++
++    static int InUseRowCount(RecordingBlockSectionWriter writer)
++    {
++        return writer.Block.Rows.ToArray().Count(row => (row.Flags & RowFlags.InUse) != 0);
++    }
++}
+diff --git a/MFTLib.Tests/VolumeQueryHostTests.cs b/MFTLib.Tests/VolumeQueryHostTests.cs
+new file mode 100644
+index 0000000..84e67cd
+--- /dev/null
++++ b/MFTLib.Tests/VolumeQueryHostTests.cs
+@@ -0,0 +1,76 @@
++using MFTLib.Tests.TestSupport;
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++
++namespace MFTLib.Tests;
++
++/// <summary>
++///     Host-side handling of <see cref="BrokerFrameKind.QueryVolume" /> (MFTLib#97): one
++///     <see cref="BrokerFrameKind.VolumeInfo" /> or <see cref="BrokerFrameKind.Error" /> reply per
++///     request, carrying the request's id, through <see cref="JournalBrokerHost.ServeAsync" />.
++/// </summary>
++[TestClass]
++public class VolumeQueryHostTests
++{
++    [TestMethod]
++    public async Task QueryVolume_TwoRequests_OneSeamThrows_EmitsVolumeInfoAndError()
++    {
++        var host = CreateHost(queryVolumeInfo: drive => drive == "C"
++            ? new NtfsVolumeInformation(8_192_000_000L, 1024, 512, 4096, 1_000_000, 500_000)
++            : throw new InvalidOperationException("access denied"));
++        await using var harness = new HostChannelHarness(host);
++
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, "C"));
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 2, "G"));
++        var replies = new[] { await harness.ReadControlAsync(), await harness.ReadControlAsync() };
++
++        var volumeInfo = replies.Single(f => f.Kind == BrokerFrameKind.VolumeInfo);
++        Assert.AreEqual(1u, volumeInfo.RequestId);
++        Assert.AreEqual(8_192_000_000L / 1024, volumeInfo.RecordCount);
++        Assert.AreEqual(1024U, volumeInfo.BytesPerFileRecordSegment);
++        Assert.AreEqual(8_192_000_000L, volumeInfo.MftValidDataLength);
++
++        var error = replies.Single(f => f.Kind == BrokerFrameKind.Error);
++        Assert.AreEqual(2u, error.RequestId);
++        Assert.AreEqual("access denied", error.Message);
++    }
++
++    [TestMethod]
++    public async Task QueryVolume_NoSeamConfigured_EmitsError()
++    {
++        await using var harness = new HostChannelHarness(CreateHost()); // queryVolumeInfo omitted -> null
++
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 14, "C"));
++        var frame = await harness.ReadControlAsync();
++
++        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
++        Assert.AreEqual(14u, frame.RequestId);
++        Assert.AreEqual("Broker has no volume information source", frame.Message);
++    }
++
++    [TestMethod]
++    public async Task QueryVolume_DoesNotEndSession_SubsequentArmAndScanStillWorks()
++    {
++        var host = CreateHost(queryVolumeInfo: _ => new NtfsVolumeInformation(1024, 1024, 512, 4096, 1, 1));
++        using var blockWriter = new RecordingBlockSectionWriter();
++        await using var harness = new HostChannelHarness(host, blockWriter);
++
++        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 5, "C"));
++        var volumeInfo = await harness.ReadControlAsync();
++        var scanFrames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
++
++        Assert.AreEqual(BrokerFrameKind.VolumeInfo, volumeInfo.Kind, "Expected a VolumeInfo frame from the query");
++        Assert.AreEqual(5u, volumeInfo.RequestId);
++        Assert.IsTrue(scanFrames.Any(f => f.Kind == BrokerFrameKind.ScanReady),
++            "Expected the scan that followed to still complete");
++        Assert.AreEqual(BrokerFrameKind.JournalBatch, scanFrames[^1].Kind);
++    }
++
++    static JournalBrokerHost CreateHost(NtfsVolumeInformationQuery? queryVolumeInfo = null)
++    {
++        return new JournalBrokerHost(
++            _ => new UsnJournalCursor(7UL, 0L),
++            (_, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]],
++            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
++            queryVolumeInfo: queryVolumeInfo);
++    }
++}
+diff --git a/scripts/coverage-linux.sh b/scripts/coverage-linux.sh
+index 21d1dab..8aabe06 100755
+--- a/scripts/coverage-linux.sh
++++ b/scripts/coverage-linux.sh
+@@ -62,31 +62,31 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
+     mkdir -p "$MANAGED_REPORT_DIR"
+ 
+     # Tests excluded on Linux (call Windows-only entry points or use raw volume APIs):
+     #   MftResultTests, MftVolumeTests, NativeCoverageTests, NativeParserCoverageTests,
+     #   UsnJournalSyntheticTests (UsnJournalSyntheticTests P/Invokes the USN test hooks
+     #   + usn_journal exports, all #ifdef _WIN32, so they don't exist in libMFTLibNative.so)
+     # Plus individual tests that need Windows-side platform behavior:
+     #   ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse
+     #   ElevationUtilitiesTests.TryRunElevated_ProcessExitsZero_ReturnsTrue
+     #   MockVolumeTests.GetVolumeHandle_InvalidVolume_ThrowsIOException
+-    #   DefaultElevatedEntryRunnerTests.RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilControlEof_ExitsWithCode0 (real named pipe)
++    #   DefaultElevatedEntryRunnerTests.RunBroker_ValidControlPipe_ServesUntilControlCloses_ExitsWithCode0 (real named pipe)
+     # Coverlet only writes output when the run is green, so failing tests must be filtered.
+     FILTER='FullyQualifiedName!~MftResultTests'
+     FILTER+='&FullyQualifiedName!~MftVolumeTests'
+     FILTER+='&FullyQualifiedName!~NativeCoverageTests'
+     FILTER+='&FullyQualifiedName!~NativeParserCoverageTests'
+     FILTER+='&FullyQualifiedName!~UsnJournalSyntheticTests'
+     FILTER+='&FullyQualifiedName!=MFTLib.Tests.ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse'
+     FILTER+='&FullyQualifiedName!=MFTLib.Tests.ElevationUtilitiesTests.TryRunElevated_ProcessExitsZero_ReturnsTrue'
+     FILTER+='&FullyQualifiedName!=MFTLib.Tests.MockVolumeTests.GetVolumeHandle_InvalidVolume_ThrowsIOException'
+-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.DefaultElevatedEntryRunnerTests.RunBroker_ValidPipeName_ConnectsRealNamedPipe_ServesUntilControlEof_ExitsWithCode0'
++    FILTER+='&FullyQualifiedName!=MFTLib.Tests.DefaultElevatedEntryRunnerTests.RunBroker_ValidControlPipe_ServesUntilControlCloses_ExitsWithCode0'
+ 
+     echo
+     echo "==> [managed] dotnet test with coverlet"
+     dotnet test "$ROOT/MFTLib.Tests/MFTLib.Tests.csproj" \
+         --filter "$FILTER" \
+         --logger "console;verbosity=minimal" \
+         /p:CollectCoverage=true \
+         /p:CoverletOutput="$MANAGED_REPORT_DIR/coverage.cobertura.xml" \
+         /p:CoverletOutputFormat=cobertura
+ fi
