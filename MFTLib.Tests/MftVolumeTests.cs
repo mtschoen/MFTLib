@@ -8,7 +8,7 @@ namespace MFTLib.Tests;
 
 [TestClass]
 [DoNotParallelize]
-public class MftVolumeTests
+public partial class MftVolumeTests
 {
     string? _tempMftPath;
 
@@ -23,6 +23,7 @@ public class MftVolumeTests
     [TestCleanup]
     public void Cleanup()
     {
+        MFTLibNative.NativeResetTestState();
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
 
@@ -413,9 +414,9 @@ public class MftVolumeTests
         var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(parseResult, parsePtr, false);
 
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
         {
-            callback?.Invoke(MftScanPhase.Parsing, 1, 10, double.NaN, context);
+            callback?.Invoke(MftScanPhase.Parsing, 1, 10, double.NaN, IntPtr.Zero);
             return parsePtr;
         };
         MFTLibNative._freeMftResult = ptr =>
@@ -428,7 +429,7 @@ public class MftVolumeTests
         var directProgress = new DirectMftProgress(reported.Add);
 
         using var volume = MftVolume.Open("C");
-        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
+        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(1, batches.Count, "The parse itself must still succeed despite the malformed progress sample");
         Assert.AreEqual(0, reported.Count, "The NaN-elapsed sample must be dropped, not reported");
@@ -469,11 +470,11 @@ public class MftVolumeTests
         var receivedCount = 0;
         var receivedCountAtReturn = -1;
 
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
         {
-            callback?.Invoke(MftScanPhase.Parsing, 1, 3, 10, context);
-            callback?.Invoke(MftScanPhase.Parsing, 2, 3, 20, context);
-            callback?.Invoke(MftScanPhase.Parsing, 3, 3, 30, context);
+            callback?.Invoke(MftScanPhase.Parsing, 1, 3, 10, IntPtr.Zero);
+            callback?.Invoke(MftScanPhase.Parsing, 2, 3, 20, IntPtr.Zero);
+            callback?.Invoke(MftScanPhase.Parsing, 3, 3, 30, IntPtr.Zero);
             receivedCountAtReturn = receivedCount;
             return parsePtr;
         };
@@ -486,7 +487,7 @@ public class MftVolumeTests
         var directProgress = new DirectMftProgress(_ => receivedCount++);
 
         using var volume = MftVolume.Open("C");
-        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
+        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(1, batches.Count);
         Assert.AreEqual(3, receivedCountAtReturn,
@@ -522,10 +523,10 @@ public class MftVolumeTests
         var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(parseResult, parsePtr, false);
 
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback, context) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
         {
-            callback?.Invoke(MftScanPhase.Parsing, 1, 2, 10, context);
-            callback?.Invoke(MftScanPhase.Parsing, 2, 2, 20, context);
+            callback?.Invoke(MftScanPhase.Parsing, 1, 2, 10, IntPtr.Zero);
+            callback?.Invoke(MftScanPhase.Parsing, 2, 2, 20, IntPtr.Zero);
             return parsePtr;
         };
         MFTLibNative._freeMftResult = ptr =>
@@ -548,7 +549,7 @@ public class MftVolumeTests
         });
 
         using var volume = MftVolume.Open("C");
-        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress).ToList();
+        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(1, batches.Count, "The parse itself must still succeed despite the throwing consumer");
         Assert.AreEqual(1, reported.Count, "The sample after the throwing report must still arrive");

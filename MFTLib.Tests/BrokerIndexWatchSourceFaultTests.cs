@@ -5,165 +5,130 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 /// <summary>
-///     The broker-side half of per-drive fault isolation, driven by scripted broker frames. Every
-///     reply frame carries the arm epoch read off the <c>StartWatch</c> frame the client just
-///     issued, never a literal, so these pin behaviour rather than the epoch issue order.
+///     The broker-side half of per-drive fault isolation: each drive's watch is its own pipe, so a
+///     fault or a lost pipe on one drive reaches that drive's handle and no other.
 /// </summary>
+// The host's arm query consults JournalCheckpointCheck, whose override other classes install.
 [TestClass]
+[DoNotParallelize]
 public class BrokerIndexWatchSourceFaultTests
 {
     [TestMethod]
-    public async Task WatchSource_YieldsAPerDriveFaultItemAndKeepsTheOtherDriveFlowing()
+    public async Task WatchSource_OneDrivesFaultIsThatHandlesAndTheOtherDriveKeepsFlowing()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var consumption = ReadItemsAndBreakAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100), new IndexWatchTarget('D', 9, 200)],
-            harness.CancellationToken), count: 2);
+        var token = harness.CancellationToken;
+        await using var handleC = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        await using var handleD = await source.StartAsync(new IndexWatchTarget('D', 7, 100), token);
+        var readerC = handleC.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = readerC.ConfigureAwait(false);
+        var readerD = handleD.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var __ = readerD.ConfigureAwait(false);
+        var runC = await harness.Watch('C').RunAsync(1);
+        var runD = await harness.Watch('D').RunAsync(1);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
 
-        var start = await harness.ReadFrameAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, start.Kind);
-        var entryC = JournalEntryFactory.Create(1, 105, "c.txt");
-        await harness.WriteAsync(response =>
-        {
-            BrokerProtocol.WriteError(response, "D", harness.ArmEpochForDrive(start, 'D'), "journal wrapped");
-            BrokerProtocol.WriteJournalBatch(response, "C", harness.ArmEpochForDrive(start, 'C'),
-                new UsnJournalCursor(7, 110), [entryC]);
-        });
+        runD.Fail(new IOException("journal wrapped"));
 
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-
-        // Two reader tasks write into one channel, so assert by item type and drive, never by index.
-        var items = await consumption;
-        var failure = items.OfType<DriveWatchFailure>().Single();
-        Assert.AreEqual('D', failure.DriveLetter);
-        Assert.AreEqual("journal wrapped", failure.Exception.Message);
-        var batch = items.OfType<JournalBatch>().Single();
-        Assert.AreEqual('C', batch.DriveLetter);
+        var fault = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
+        Assert.AreEqual('D', fault.DriveLetter);
+        Assert.AreEqual("journal wrapped", fault.Message);
+        runC.Push(1, "c.txt", 110);
+        var batch = await WatchReads.NextBatchAsync(readerC);
         Assert.AreEqual(7ul, batch.JournalId);
         Assert.AreEqual(110L, batch.NextUsn);
     }
 
     [TestMethod]
-    public async Task WatchSource_CompletesAfterEveryDriveHasFaulted()
+    public async Task WatchSource_EveryDriveFaultsOnItsOwnHandle()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var consumption = CollectAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100), new IndexWatchTarget('D', 9, 200)],
-            harness.CancellationToken));
+        var token = harness.CancellationToken;
+        await using var handleC = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        await using var handleD = await source.StartAsync(new IndexWatchTarget('D', 7, 100), token);
+        var readerC = handleC.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = readerC.ConfigureAwait(false);
+        var readerD = handleD.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var __ = readerD.ConfigureAwait(false);
+        (await harness.Watch('C').RunAsync(1)).Fail(new IOException("C wrapped"));
+        (await harness.Watch('D').RunAsync(1)).Fail(new IOException("D wrapped"));
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
 
-        var start = await harness.ReadFrameAsync();
-        await harness.WriteAsync(response =>
-        {
-            BrokerProtocol.WriteError(response, "C", harness.ArmEpochForDrive(start, 'C'), "C wrapped");
-            BrokerProtocol.WriteError(response, "D", harness.ArmEpochForDrive(start, 'D'), "D wrapped");
-        });
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        var faultC = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerC);
+        var faultD = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
 
-        var items = await consumption;
-        Assert.AreEqual(2, items.Count);
-        CollectionAssert.AreEquivalent(new[] { 'C', 'D' },
-            items.OfType<DriveWatchFailure>().Select(failure => failure.DriveLetter).ToArray());
+        Assert.AreEqual(('C', "C wrapped"), (faultC.DriveLetter, faultC.Message));
+        Assert.AreEqual(('D', "D wrapped"), (faultD.DriveLetter, faultD.Message));
     }
 
     [TestMethod]
-    public async Task WatchSource_FaultsTheWholeStreamWhenItCannotConnect()
+    public async Task WatchSource_StartFailsWhenItCannotConnect()
     {
         var connectFailure = new IOException("the broker never launched");
         var source = new BrokerIndexWatchSource(_ => throw connectFailure);
-        var items = new List<WatchStreamItem>();
 
-        var thrown = await Assert.ThrowsExceptionAsync<IOException>(async () =>
-        {
-            await foreach (var item in source.StartWatching(
-                [new IndexWatchTarget('C', 7, 100)], CancellationToken.None))
-            {
-                items.Add(item);
-            }
-        });
+        var thrown = await WatchReads.ThrowsAsync<IOException>(() =>
+            source.StartAsync(new IndexWatchTarget('C', 7, 100), CancellationToken.None));
 
         Assert.AreSame(connectFailure, thrown);
-        Assert.AreEqual(0, items.Count);
     }
 
     [TestMethod]
-    public async Task WatchSource_RejectsTwoTargetsForOneDriveBeforeConnecting()
+    public async Task OneChannelLost_OnlyThatDriveFaults()
     {
-        await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        await using var broker = new ScriptedWatchBrokerHarness();
+        var token = broker.CancellationToken;
+        var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateWatchSource();
+        using var harness = new WatchHarness(source, 'T', 'U');
+        var index = harness.Index;
+        await index.StartWatchingAsync('T', token);
+        await index.StartWatchingAsync('U', token);
+        var runT = await broker.Watch('T').RunAsync(1);
+        var runU = await broker.Watch('U').RunAsync(1);
+        await index.WaitForCatchUpAsync('U', token).WaitAsync(HostChannelHarness.HangGuard);
 
-        var thrown = await Assert.ThrowsExceptionAsync<ArgumentException>(() => CollectAsync(
-            source.StartWatching([new IndexWatchTarget('C', 7, 100), new IndexWatchTarget('C', 9, 200)],
-                harness.CancellationToken)));
+        // The host closes T's pipe: its watch ends without a word.
+        runT.End();
+        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
+        var appliedOnU = ChangeSignal.WhenApplied(index, "u.txt");
+        runU.Push(10, "u.txt", 300);
+        await appliedOnU;
 
-        Assert.AreEqual("targets", thrown.ParamName);
-        StringAssert.Contains(thrown.Message, "C");
-        Assert.AreEqual(0, harness.ConnectionCount);
+        Assert.IsInstanceOfType<BrokerChannelLostException>(fault.Exception);
+        Assert.AreEqual('T', ((BrokerChannelLostException)fault.Exception).DriveLetter);
+        Assert.AreEqual(1, harness.Faults.Count);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
+        Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('U').WatchCatchUp);
+        Assert.IsNull(harness.DriveFor('U').WatchFailureMessage);
+        Assert.IsFalse(broker.Process.HasEnded, "one lost drive channel does not end the process");
     }
 
     [TestMethod]
-    public async Task DisarmDriveAsync_ThatThrows_LeavesNoMarkerBlockingTheStreamFromCompleting()
+    public async Task HostError_IsDriveWatchFault()
     {
-        await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var consumption = CollectAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100), new IndexWatchTarget('D', 9, 200)],
-            harness.CancellationToken));
+        await using var broker = new ScriptedWatchBrokerHarness();
+        var token = broker.CancellationToken;
+        var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateWatchSource();
+        using var harness = new WatchHarness(source, 'T', 'U');
+        var index = harness.Index;
+        await index.StartWatchingAsync('T', token);
+        await index.StartWatchingAsync('U', token);
+        var runU = await broker.Watch('U').RunAsync(1);
 
-        var start = await harness.ReadFrameAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, start.Kind);
+        (await broker.Watch('T').RunAsync(1)).Fail(new IOException("journal wrapped"));
 
-        // A disarm claims the drive's per-drive state, including its marker as a drive awaiting a
-        // reader, before it does anything that can fail. A drive letter the client cannot normalize
-        // is the one trigger that reaches that failure deterministically; a broker write that
-        // errors and a cancelled wait for the retiring reader throw from the same two awaits and
-        // unwind through the same finally.
-        await Assert.ThrowsExceptionAsync<ArgumentException>(
-            () => source.DisarmDriveAsync('1', harness.CancellationToken));
-
-        // Both real drives now fault. A marker left behind by the failed disarm gates the whole
-        // stream, not just its own drive, so nothing would ever complete the merged channel and
-        // the frame read below would never see EndWatch.
-        await harness.WriteAsync(response =>
-        {
-            BrokerProtocol.WriteError(response, "C", harness.ArmEpochForDrive(start, 'C'), "C wrapped");
-            BrokerProtocol.WriteError(response, "D", harness.ArmEpochForDrive(start, 'D'), "D wrapped");
-        });
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-
-        var items = await consumption.WaitAsync(TimeSpan.FromSeconds(10));
-        CollectionAssert.AreEquivalent(new[] { 'C', 'D' },
-            items.OfType<DriveWatchFailure>().Select(failure => failure.DriveLetter).ToArray());
-    }
-
-    static async Task<List<WatchStreamItem>> ReadItemsAndBreakAsync(
-        IAsyncEnumerable<WatchStreamItem> source, int count)
-    {
-        var items = new List<WatchStreamItem>();
-        await foreach (var item in source)
-        {
-            items.Add(item);
-            if (items.Count == count)
-            {
-                break;
-            }
-        }
-
-        return items;
-    }
-
-    static async Task<List<WatchStreamItem>> CollectAsync(IAsyncEnumerable<WatchStreamItem> source)
-    {
-        var items = new List<WatchStreamItem>();
-        await foreach (var item in source)
-        {
-            items.Add(item);
-        }
-
-        return items;
+        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
+        Assert.IsInstanceOfType<DriveWatchFaultException>(fault.Exception);
+        Assert.AreEqual('T', ((DriveWatchFaultException)fault.Exception).DriveLetter);
+        Assert.AreEqual("journal wrapped", fault.Exception.Message);
+        var appliedOnU = ChangeSignal.WhenApplied(index, "u.txt");
+        runU.Push(10, "u.txt", 300);
+        await appliedOnU;
+        Assert.IsTrue(harness.Faults.All(raised => raised.DriveLetter == 'T'), "only T raised a fault");
     }
 }

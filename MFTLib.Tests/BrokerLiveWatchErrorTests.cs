@@ -1,237 +1,185 @@
-using System.Buffers;
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
 /// <summary>
-///     Verifies that an Error frame arriving during live watch faults only the affected
-///     drive's channel, leaving other drives streaming and leaving Heartbeat unrouted.
+///     What a drive's watch handle does with the frames its pipe carries: an <c>Error</c> frame
+///     faults only that drive's handle, and a frame a watch does not carry, a stall report or a
+///     closed pipe loses only that drive's channel.
 /// </summary>
+// The host's arm query consults JournalCheckpointCheck, whose override other classes install.
 [TestClass]
-public class BrokerLiveWatchErrorTests : BrokerBlockTestBase
+[DoNotParallelize]
+public class BrokerLiveWatchErrorTests
 {
+    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
+
     [TestMethod]
-    public async Task LiveWatch_ErrorFrameForDrive_FaultsThatDrivesBatchSource()
+    public async Task LiveWatch_ErrorFrameForDrive_FaultsThatDrivesHandle()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
+        await using var harness = new ScriptedWatchBrokerHarness();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var token = harness.CancellationToken;
+        await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        var reader = handle.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = reader.ConfigureAwait(false);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
 
-        await client.SendStartWatchAsync(WatchCursors("C"));
-        var batchSource = client.CreateBatchSource();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        (await harness.Watch('C').RunAsync(1)).Fail(new IOException("journal wrapped"));
 
-        var startWatch = await ReadOneFrameAsync(serverSide, CancellationToken.None);
-        var epochC = WatchSpecArmEpochs.ForDrive(startWatch, "C");
-        var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteError(response, "C", epochC, "journal wrapped");
-        await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
-        await serverSide.FlushAsync(CancellationToken.None);
-
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
-        {
-            await foreach (var _ in batchSource("C:\\", default, cts.Token)) { }
-        });
-        Assert.AreEqual("journal wrapped", exception.Message);
-
-        await client.DisposeAsync();
+        var fault = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(reader);
+        Assert.AreEqual("journal wrapped", fault.Message);
+        Assert.AreEqual('C', fault.DriveLetter);
     }
 
     [TestMethod]
     public async Task LiveWatch_ErrorFrameForOneDrive_OtherDrivesKeepStreaming()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
+        await using var harness = new ScriptedWatchBrokerHarness();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var token = harness.CancellationToken;
+        await using var handleC = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        await using var handleD = await source.StartAsync(new IndexWatchTarget('D', 7, 100), token);
+        var readerC = handleC.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = readerC.ConfigureAwait(false);
+        var readerD = handleD.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var __ = readerD.ConfigureAwait(false);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
 
-        await client.SendStartWatchAsync(WatchCursors("C", "D"));
-        var batchSource = client.CreateBatchSource();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        (await harness.Watch('D').RunAsync(1)).Fail(new IOException("journal wrapped"));
+        (await harness.Watch('C').RunAsync(1)).Push(1, "f.txt", 210);
 
-        var cursor = new UsnJournalCursor(7UL, 210L);
-        var entry = JournalEntryFactory.Create(1, 110, "f.txt");
-
-        var startWatch = await ReadOneFrameAsync(serverSide, CancellationToken.None);
-        var epochC = WatchSpecArmEpochs.ForDrive(startWatch, "C");
-        var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteError(response, "D", WatchSpecArmEpochs.ForDrive(startWatch, "D"), "journal wrapped");
-        BrokerProtocol.WriteJournalBatch(response, "C", epochC, cursor, [entry]);
-        BrokerProtocol.WriteEndWatchAck(response);
-        await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
-        await serverSide.FlushAsync(CancellationToken.None);
-
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
-        {
-            await foreach (var _ in batchSource("D:\\", default, cts.Token))
-            {
-            }
-        });
-
-        var received = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
-        await foreach (var batch in batchSource("C:\\", default, cts.Token))
-        {
-            received.Add(batch);
-        }
-
-        Assert.AreEqual(1, received.Count);
-        Assert.AreEqual(cursor, received[0].Cursor);
-
-        await client.DisposeAsync();
+        await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
+        var batch = await WatchReads.NextBatchAsync(readerC);
+        Assert.AreEqual(new UsnJournalCursor(7, 210), new UsnJournalCursor(batch.JournalId, batch.NextUsn));
+        Assert.AreEqual("f.txt", batch.Entries.Single().FileName);
     }
 
     [TestMethod]
-    public async Task LiveWatch_ErrorFrameBeforeSubscribe_LateSubscriberGetsFault()
+    public async Task LiveWatch_ErrorFrameBeforeRead_LateReaderGetsFault()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
+        await using var harness = new ScriptedWatchBrokerHarness();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var token = harness.CancellationToken;
+        await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        var run = await harness.Watch('C').RunAsync(1);
 
-        await client.SendStartWatchAsync(WatchCursors("C"));
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        // The host's watch has failed and returned before anything reads the handle.
+        run.Fail(new IOException("journal wrapped"));
+        await run.Finished.WaitAsync(HangGuard);
 
-        var startWatch = await ReadOneFrameAsync(serverSide, CancellationToken.None);
-        var epochC = WatchSpecArmEpochs.ForDrive(startWatch, "C");
-        var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteError(response, "C", epochC, "journal wrapped");
-        await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
-        await serverSide.FlushAsync(CancellationToken.None);
-
-        // Give the demux a moment to read and route the Error frame before the first
-        // subscriber for "C" registers, so the channel is faulted before it exists.
-        await Task.Delay(20, cts.Token);
-
-        var batchSource = client.CreateBatchSource();
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
-        {
-            await foreach (var _ in batchSource("C:\\", default, cts.Token))
-            {
-            }
-        });
-        Assert.AreEqual("journal wrapped", exception.Message);
-
-        await client.DisposeAsync();
+        var reader = handle.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = reader.ConfigureAwait(false);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        var fault = await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(reader);
+        Assert.AreEqual("journal wrapped", fault.Message);
     }
 
     [TestMethod]
-    public async Task LiveWatch_WarningFrameForDrive_FaultsThatDrivesBatchSourceAndLeavesTheOthers()
+    public async Task LiveWatch_FrameOutsideAWatch_LosesThatDrivesChannelAndLeavesTheOthers()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
-        await client.SendStartWatchAsync(WatchCursors("C", "D"));
-        var batchSource = client.CreateBatchSource();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var broker = new ScriptedBroker();
+        var process = broker.Process;
+        var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
+        var (handleC, hostC) = await StartAsync(source, broker, 'C');
+        await using var _ = handleC.ConfigureAwait(false);
+        await using var __ = hostC.ConfigureAwait(false);
+        var (handleD, hostD) = await StartAsync(source, broker, 'D');
+        await using var ___ = handleD.ConfigureAwait(false);
+        await using var ____ = hostD.ConfigureAwait(false);
+        var readerC = handleC.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        await using var _____ = readerC.ConfigureAwait(false);
+        var readerD = handleD.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        await using var ______ = readerD.ConfigureAwait(false);
 
-        var cursor = new UsnJournalCursor(7UL, 210L);
-        var entry = JournalEntryFactory.Create(1, 110, "f.txt");
+        await HostChannelHarness.WriteFrameAsync(hostC, writer => BrokerProtocol.WriteCursor(writer, new UsnJournalCursor(7, 1)));
+        await HostChannelHarness.WriteFrameAsync(hostD, BrokerProtocol.WriteCaughtUp);
 
-        var startWatch = await ReadOneFrameAsync(serverSide, CancellationToken.None);
-        var epochC = WatchSpecArmEpochs.ForDrive(startWatch, "C");
-        var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteWarning(response, "D", "unexpected live warning");
-        BrokerProtocol.WriteJournalBatch(response, "C", epochC, cursor, [entry]);
-        BrokerProtocol.WriteEndWatchAck(response);
-        await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
-        await serverSide.FlushAsync(CancellationToken.None);
-
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
-        {
-            await foreach (var _ in batchSource("D:\\", default, cts.Token))
-            {
-            }
-        });
-        var received = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
-        await foreach (var batch in batchSource("C:\\", default, cts.Token))
-        {
-            received.Add(batch);
-        }
-
-        StringAssert.Contains(exception.Message, nameof(BrokerFrameKind.Warning));
-        StringAssert.Contains(exception.Message, "D");
-        Assert.AreEqual(1, received.Count);
-        Assert.AreEqual(cursor, received[0].Cursor);
-
-        await client.DisposeAsync();
+        var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(readerC);
+        Assert.AreEqual('C', lost.DriveLetter);
+        StringAssert.Contains(lost.Message, nameof(BrokerFrameKind.Cursor));
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
     }
 
     [TestMethod]
-    public async Task LiveWatch_WarningFrameForDrive_DisarmsThatDriveSoALaterBatchForItIsDropped()
+    public async Task LiveWatch_StalledFrame_LosesTheChannelWithTheHostsMessage()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
-        await client.SendStartWatchAsync(WatchCursors("C"));
-        var batchSource = client.CreateBatchSource();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var broker = new ScriptedBroker();
+        var process = broker.Process;
+        var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
+        var (handle, host) = await StartAsync(source, broker, 'C');
+        await using var _ = handle.ConfigureAwait(false);
+        await using var __ = host.ConfigureAwait(false);
+        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        await using var ___ = reader.ConfigureAwait(false);
 
-        var driveCEnumeration = batchSource("C", default, cts.Token).GetAsyncEnumerator();
-        var driveCMoveNext = driveCEnumeration.MoveNextAsync().AsTask();
+        await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, "the volume stopped answering"));
 
-        var startWatch = await ReadOneFrameAsync(serverSide, CancellationToken.None);
-        var epochC = WatchSpecArmEpochs.ForDrive(startWatch, "C");
-        var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteWarning(response, "C", "unexpected live warning");
-        BrokerProtocol.WriteJournalBatch(response, "C", epochC, new UsnJournalCursor(7UL, 210L),
-            [JournalEntryFactory.Create(1, 110, "stale.txt")]);
-        await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
-        await serverSide.FlushAsync(CancellationToken.None);
-
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
-        {
-            _ = await driveCMoveNext;
-        });
-        StringAssert.Contains(exception.Message, nameof(BrokerFrameKind.Warning));
-
-        await client.SendStartWatchAsync(WatchCursors("D"));
-        var startWatchD = await ReadOneFrameAsync(serverSide, CancellationToken.None);
-        var epochD = WatchSpecArmEpochs.ForDrive(startWatchD, "D");
-        var driveDEnumeration = batchSource("D", default, cts.Token).GetAsyncEnumerator();
-        var driveDMoveNext = driveDEnumeration.MoveNextAsync().AsTask();
-        var driveDCursor = new UsnJournalCursor(7UL, 310L);
-        response.Clear();
-        BrokerProtocol.WriteJournalBatch(response, "D", epochD, driveDCursor, [JournalEntryFactory.Create(2, 301, "d.txt")]);
-        BrokerProtocol.WriteEndWatchAck(response);
-        await serverSide.WriteAsync(response.WrittenMemory, CancellationToken.None);
-        await serverSide.FlushAsync(CancellationToken.None);
-
-        Assert.IsTrue(await driveDMoveNext);
-        Assert.AreEqual(driveDCursor, driveDEnumeration.Current.Cursor);
-
-        await using var lateDriveCEnumeration = batchSource("C", default, cts.Token).GetAsyncEnumerator();
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
-        {
-            _ = await lateDriveCEnumeration.MoveNextAsync();
-        });
-
-        await driveCEnumeration.DisposeAsync();
-        await driveDEnumeration.DisposeAsync();
-        await client.DisposeAsync();
+        var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
+        Assert.AreEqual('C', lost.DriveLetter);
+        Assert.AreEqual("the volume stopped answering", lost.Message);
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    JournalBrokerClient MakeMinimalFakeClient(Stream pipe)
+    [TestMethod]
+    public async Task LiveWatch_HeartbeatsBetweenFrames_AreSkipped()
     {
-        return new JournalBrokerClient(pipe, (letter, options) => ($"mftlib-null-{letter}", CreateBlock(options), NoOpDisposable.Instance));
+        await using var broker = new ScriptedBroker();
+        var process = broker.Process;
+        var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
+        var (handle, host) = await StartAsync(source, broker, 'C');
+        await using var _ = handle.ConfigureAwait(false);
+        await using var __ = host.ConfigureAwait(false);
+        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        await using var ___ = reader.ConfigureAwait(false);
+
+        await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteHeartbeat);
+        await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteCaughtUp);
+        await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteHeartbeat);
+        await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteJournalBatch(writer,
+            new UsnJournalCursor(7, 110), [JournalEntryFactory.Create(1, 105, "c.txt")]));
+
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        Assert.AreEqual(110L, (await WatchReads.NextBatchAsync(reader)).NextUsn);
     }
 
-    static Dictionary<string, UsnJournalCursor> WatchCursors(params string[] drives)
+    [TestMethod]
+    public async Task LiveWatch_TruncatedFrame_LosesThatDrivesChannelWithTheTruncationMessage()
     {
-        return drives.ToDictionary(d => d, _ => new UsnJournalCursor(7UL, 0L), StringComparer.OrdinalIgnoreCase);
+        await using var broker = new ScriptedBroker();
+        var process = broker.Process;
+        var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
+        var (handle, host) = await StartAsync(source, broker, 'C');
+        await using var _ = handle.ConfigureAwait(false);
+        await using var __ = host.ConfigureAwait(false);
+        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        await using var ___ = reader.ConfigureAwait(false);
+        await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteCaughtUp);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+
+        // A length prefix claiming ten bytes, three body bytes, then the pipe closes: the host died mid-frame.
+        await host.WriteAsync(new byte[] { 10, 0, 0, 0, 1, 2, 3 }).AsTask().WaitAsync(HangGuard);
+        await host.FlushAsync().WaitAsync(HangGuard);
+        await host.DisposeAsync();
+
+        var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
+        Assert.AreEqual('C', lost.DriveLetter);
+        StringAssert.Contains(lost.Message, "Truncated broker frame");
+        Assert.IsFalse(process.HasEnded, "a broken drive pipe loses that drive's channel, not the process");
     }
 
-    sealed class NoOpDisposable : IDisposable
+    // Starts a watch on the scripted broker and returns its handle with the host's end of its pipe,
+    // once the client has written StartWatch.
+    static async Task<(IIndexDriveWatch Handle, Stream Host)> StartAsync(BrokerIndexWatchSource source,
+        ScriptedBroker broker, char drive)
     {
-        public static readonly NoOpDisposable Instance = new();
-
-        public void Dispose()
-        {
-        }
-    }
-    static async Task<BrokerFrame> ReadOneFrameAsync(Stream stream, CancellationToken cancellationToken)
-    {
-        var header = new byte[4];
-        await stream.ReadExactlyAsync(header, cancellationToken);
-        var totalLength = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(header);
-        var frameBytes = new byte[4 + totalLength];
-        header.CopyTo(frameBytes.AsMemory());
-        await stream.ReadExactlyAsync(frameBytes.AsMemory(4, totalLength), cancellationToken);
-        return BrokerProtocol.ReadFrame(frameBytes, out _);
+        var starting = source.StartAsync(new IndexWatchTarget(drive, 7, 100), CancellationToken.None);
+        var host = await broker.AcceptChannelAsync();
+        var request = await HostChannelHarness.ReadFrameAsync(host);
+        Assert.AreEqual(BrokerFrameKind.StartWatch, request?.Kind);
+        Assert.AreEqual(new UsnJournalCursor(7, 100), request?.Cursor);
+        return (await starting.WaitAsync(HangGuard), host);
     }
 }

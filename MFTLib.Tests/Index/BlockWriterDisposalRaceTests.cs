@@ -39,7 +39,7 @@ public class BlockWriterDisposalRaceTests
             rowCaptured.Set();
             releaseWriter.Wait();
         };
-        block._disposeStartedForTest = disposeStarted.Set;
+        block._disposeStartedForTest = _ => disposeStarted.Set();
 
         var writeTask = Task.Run(() => writer.TryWriteRow(1, "report.pdf", FileColumns()));
         try
@@ -87,7 +87,7 @@ public class BlockWriterDisposalRaceTests
         Assert.ThrowsException<ObjectDisposedException>(() => writer.MarkCompactionNeeded());
         Assert.ThrowsException<ObjectDisposedException>(() => writer.SetJournalCursor(1, 2));
         Assert.ThrowsException<ObjectDisposedException>(() => writer.BumpGeneration());
-        Assert.ThrowsException<ObjectDisposedException>(() => writer.Complete(Moment));
+        Assert.ThrowsException<ObjectDisposedException>(() => writer.Complete(Moment, null));
         Assert.ThrowsException<ObjectDisposedException>(() => _ = writer.RowCount);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = writer.CompactionNeeded);
     }

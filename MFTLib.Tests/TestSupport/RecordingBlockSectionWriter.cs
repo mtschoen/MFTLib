@@ -20,14 +20,14 @@ public sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolv
     public MftBlockRowFilter LastFilter { get; private set; }
 
     public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor, IEnumerable<IReadOnlyList<MftRecord>> batches,
-        MftBlockRowFilter filter, IProgress<BlockWriteProgress>? progress, CancellationToken cancellationToken)
+        MftBlockRowFilter filter, BlockWriteReporting reporting, CancellationToken cancellationToken)
     {
         LastSectionName = sectionName;
         LastFilter = filter;
         var writer = new BlockWriter(resolveSection?.Invoke(sectionName) ?? Block);
-        var result = MftBlockRowWriter.WriteBatches(writer, batches, filter, progress, cancellationToken);
+        var result = MftBlockRowWriter.WriteBatches(writer, batches, filter, reporting.Progress, cancellationToken);
         writer.SetJournalCursor(cursor.JournalId, cursor.NextUsn);
-        writer.Complete(completionTimestamp ?? new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc));
+        writer.Complete(completionTimestamp ?? new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc), null);
         return result;
     }
 

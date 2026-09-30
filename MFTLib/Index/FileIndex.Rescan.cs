@@ -14,133 +14,96 @@ public sealed partial class FileIndex
     ///     straight back to restore the on-disk cache.
     /// </summary>
     /// <remarks>
-    ///     A rescan while watching disarms only this drive, swaps its block, resets catch-up to
-    ///     <see cref="WatchCatchUpState.CatchingUp" />, and re-arms it from the fresh cursor.
-    ///     A blockless drive is scanned and adopted rather than swapped; failed scans rewrite status
-    ///     to <see cref="DriveFailureKind.ProducerFailed" />. Offline drives are refused.
-    ///     Watch faults are tracked per drive: a successful re-arm clears this drive's outstanding
-    ///     watch fault, so <see cref="StopWatchingAsync" /> no longer rethrows it, and leaves every
-    ///     other drive's fault, subscriber faults, and source faults in place. If the re-arm fails,
-    ///     the drive's earlier fault is restored unless a newer fault for it was recorded meanwhile.
+    ///     The rescan holds the drive's lifecycle gate from entry to exit, so a
+    ///     <see cref="StartWatchingAsync(char, CancellationToken)" /> of the same drive waits for it, and the canonical
+    ///     file's rename-aside, the scan into the canonical path, and the restore on failure are
+    ///     serialized per drive. Nothing else serializes it: rescans of different drives produce at
+    ///     the same time, and each commits under its own drive's write gate. A blockless drive is
+    ///     scanned and adopted rather than swapped; a failed scan of one rewrites its status to
+    ///     <see cref="DriveFailureKind.ProducerFailed" />. Offline drives are refused.
     ///     <para>
-    ///         A drive whose watch was already faulted when this rescan began is recovered only
-    ///         after a replacement block is committed. If production returns no block, throws,
-    ///         or is cancelled before replacement, its previous block, watch failure, faulted
-    ///         catch-up, outstanding watch fault, and checkpoint-loss report remain in place.
-    ///         The drive is neither re-armed from its old cursor nor used to restart an ended
-    ///         watch session. Non-cancellation producer failures are available through
-    ///         <see cref="DriveStatus.MftProducerFailureMessage" /> even when this task completes
-    ///         normally. A previously healthy drive may instead resume its old watch after a
-    ///         failed rescan. Other drives continue watching independently.
+    ///         A drive that is watching has its watch stopped, and its teardown awaited, before the
+    ///         scan runs, so nothing the old watch reads can reach the new block. After a committed
+    ///         replacement the drive's watch is started again from the new block's cursor if it is
+    ///         still requested, which a <see cref="StopWatchingAsync(char, CancellationToken)" /> during the rescan clears.
+    ///         That restart replaces a faulted watch, clearing its
+    ///         <see cref="DriveStatus.WatchFailureMessage" /> and faulted
+    ///         <see cref="DriveStatus.WatchCatchUp" />. A replacement also clears a refused start's
+    ///         failure, including the refusal of a block whose checkpoint could not be resumed.
+    ///         Other drives are never touched. A rescan supersedes the drive's queued automatic
+    ///         recovery, which then ends without scanning.
     ///     </para>
     ///     <para>
-    ///         A drive a cache-only open adopted despite a lost journal checkpoint (see
-    ///         <see cref="FileIndexOptions.InitialOpenCacheOnly" />) is never disarmed here, since
-    ///         it was never armed. If the scan replaces its block, the fresh cursor is armed onto
-    ///         whatever watch session is running by the time the scan finishes, even one that
-    ///         started after this call began: the session captured at the start is a snapshot, not
-    ///         a lock, so a session can appear while the scan is still in flight. If the scan
-    ///         fails without producing a new block, the old, still-unresumable block is left in
-    ///         place and the drive's watch refusal is left exactly as it was, rather than being
-    ///         armed from a cursor the journal still cannot resume.
+    ///         A scan whose journal catch-up was lost publishes its block, raises
+    ///         <see cref="WatchFaultKind.CatchUpLost" />, and scans the drive again at once while
+    ///         this rescan still holds the lifecycle gate, until a scan's catch-up holds or the
+    ///         drive's <see cref="DriveStatus.ConsecutiveLostCatchUps" /> reaches
+    ///         <see cref="LostCatchUpRecoveryLimit" />; then this throws the last
+    ///         <see cref="JournalCatchUpLostException" />, and the drive keeps its last block,
+    ///         queryable but not watchable. With the count already at the limit it makes exactly one
+    ///         attempt.
     ///     </para>
     ///     <para>
-    ///         If the watch session ends while the rescan is in flight, because every watched
-    ///         drive failed and the pump stopped reading, the drive is not armed onto that
-    ///         session's released stream. After an eligible recovery, the rescan reclaims the ended session and starts a fresh
-    ///         one in its place, unless the session ended through cancellation, and it never stops
-    ///         a session that is still running to do so. That restart recovers only this drive: it
-    ///         clears this drive's <see cref="DriveStatus.WatchFailureMessage" /> and faulted
-    ///         <see cref="DriveStatus.WatchCatchUp" />, keeps every other drive's recorded failure,
-    ///         faulted catch-up, and <see cref="DriveStatus.CheckpointLoss" />, and leaves every
-    ///         drive with a recorded failure out of the new session. A drive whose live watch lost
-    ///         its journal checkpoint is therefore never armed from a cursor the journal no longer
-    ///         holds; each such drive needs its own rescan, which arms it onto the running session.
-    ///         The ended session's outstanding faults, other drives', subscriber, and source faults
-    ///         alike, are retained on the index until the next <see cref="StopWatchingAsync" />,
-    ///         which rethrows the earliest of them even if the fresh session has since ended on its
-    ///         own. A disarm or arm the source rejects with
-    ///         <see cref="WatchStreamNotRunningException" /> after the session's stream started
-    ///         means the stream was released while the pump was still finishing, so the rescan
-    ///         waits for the pump, bounded by <paramref name="cancellationToken" />, and treats the
-    ///         session as ended. <see cref="StartWatchingAsync" /> still clears every armed drive's
-    ///         failure.
+    ///         If the scan produces no replacement, a drive whose watch was healthy restarts its
+    ///         watch from its old cursor (when still requested). A drive whose watch had faulted,
+    ///         whose start was refused, or that has no block stays exactly as it was: its previous
+    ///         block, watch failure, faulted catch-up, outstanding watch fault, and checkpoint-loss
+    ///         report remain, and it is not restarted from a cursor that failure condemns. A
+    ///         producer that returned no block fails this task with
+    ///         <see cref="InvalidOperationException" /> carrying the producer's failure, which
+    ///         <see cref="DriveStatus.MftProducerFailureMessage" /> also reports.
     ///     </para>
     ///     <para>
-    ///         A rescan issued any time after <see cref="StartWatchingAsync" /> completes finds the
-    ///         session's stream ready for its disarm and re-arm, because that start completes only
-    ///         once the source reports readiness. A session found still starting, whether because
-    ///         the start has not been awaited or because it began while this rescan's scan ran, is
-    ///         waited for before its source is asked to disarm or arm, bounded by
-    ///         <paramref name="cancellationToken" />; a rescan cancelled during that wait has touched
-    ///         nothing and records no failure against the drive. If that start fails or is cancelled instead, it
-    ///         is the start that reports the failure and releases the session: this rescan neither
-    ///         disarms nor arms anything on it and starts no session in its place.
+    ///         <paramref name="cancellationToken" /> is linked to the index's disposal, so
+    ///         disposing the index cancels a rescan in flight, including one that has published
+    ///         its block and has not yet restarted the watch. A restart after the scan is not
+    ///         bounded by that token: the token cancels the rescan, not the drive's watch, which a
+    ///         stop or disposal ends instead. The wait for the old watch's teardown does not observe
+    ///         the token either; a cancellation is observed by the scan, and a cancelled scan
+    ///         follows the failed-scan rule above, so a healthy watch restarts from its old cursor.
     ///     </para>
     /// </remarks>
     public async Task RescanAsync(char driveLetter, CancellationToken cancellationToken)
     {
+        if (RejectInsideHandler(nameof(RescanAsync)) is { } rejection)
+        {
+            throw rejection;
+        }
+
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_driveConfigurations.TryGetValue(char.ToUpperInvariant(driveLetter), out var drive))
         {
             throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
         }
 
-        await _rescanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var runtime = GetDriveRuntime(driveLetter);
+        using var rescanCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, DisposalToken);
+        await runtime.LifecycleGate.WaitAsync(rescanCancellation.Token).ConfigureAwait(false);
         try
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            await WaitForCurrentWatchSessionToStartAsync(cancellationToken).ConfigureAwait(false);
-            var requiresReplacement = RequiresReplacementForWatchRecovery(driveLetter);
-
-            // Disarming before the gate, never under it: the pump takes _swapGate synchronously
-            // inside ApplyJournalEntriesCore, so touching the watch while this method holds the gate
-            // would deadlock the rescan against its own pump.
-            SuspendedWatch suspended;
-            try
-            {
-                suspended = await SuspendDriveForRescanAsync(driveLetter, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception suspendFailure)
-            {
-                RecordWatchFailure(driveLetter, suspendFailure);
-                throw;
-            }
-
-            BlockReplacementOutcome replacement;
-            try
-            {
-                replacement = await SwapDriveBlockAsync(drive, driveLetter, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception swapFailure)
-            {
-                await ResumeAfterFailedSwapAsync(driveLetter, suspended, requiresReplacement,
-                    swapFailure, cancellationToken).ConfigureAwait(false);
-                throw;
-            }
-
-            try
-            {
-                await ResumeDriveAfterRescanAsync(driveLetter, suspended, replacement,
-                    requiresReplacement, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception resumeFailure)
-            {
-                RecordWatchFailure(driveLetter, resumeFailure);
-                throw;
-            }
+            ThrowIfCancelledByDisposal(rescanCancellation.Token);
+            await RescanWithGateHeldAsync(runtime, drive, recovery: null, rescanCancellation.Token)
+                .ConfigureAwait(false);
         }
         finally
         {
-            _rescanGate.Release();
+            runtime.LifecycleGate.Release();
         }
     }
 
-    enum BlockReplacementOutcome
-    {
-        NotReplaced,
-        Replaced
-    }
+    /// <summary>What one attempt of a scan operation did.</summary>
+    /// <param name="Published">False when the producer returned no block, so nothing was published.</param>
+    /// <param name="ProducerFailure">The producer's failure when it returned no block.</param>
+    /// <param name="ProducerFailureMessage">What the drive's status reports for that failure.</param>
+    /// <param name="CatchUpLoss">Set when the published block's catch-up was lost.</param>
+    /// <param name="ConsecutiveLostCatchUps">The drive's count after a publish.</param>
+    readonly record struct ScanAttempt(
+        bool Published,
+        Exception? ProducerFailure = null,
+        string? ProducerFailureMessage = null,
+        JournalCheckpointLoss? CatchUpLoss = null,
+        int ConsecutiveLostCatchUps = 0);
 
     bool RequiresReplacementForWatchRecovery(char driveLetter)
     {
@@ -154,111 +117,115 @@ public sealed partial class FileIndex
     {
         return !TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal) ||
                _watchFailureMessagesByOrdinal.ContainsKey(driveOrdinal) ||
-               _cacheOnlyUnresumableCheckpointOrdinals.Contains(driveOrdinal);
+               _unresumableCheckpointsByOrdinal.ContainsKey(driveOrdinal);
     }
 
-    async Task<BlockReplacementOutcome> SwapDriveBlockAsync(IndexedDrive drive, char driveLetter, CancellationToken cancellationToken)
+    /// <summary>
+    ///     One attempt of a scan operation: produces a block for the drive and publishes it, or,
+    ///     when the producer returns none, records the producer's failure against the drive and
+    ///     publishes nothing. A drive with a block has its canonical file renamed aside first and
+    ///     restored whenever nothing replaces it.
+    /// </summary>
+    async Task<ScanAttempt> ScanAndPublishAsync(DriveRuntime runtime, IndexedDrive drive, bool clearsCheckpointLoss,
+        CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!TryGetDriveOrdinal(driveLetter, out var driveOrdinal))
-        {
-            return await ScanBlocklessDriveAsync(drive, driveLetter, cancellationToken).ConfigureAwait(false);
-        }
-
-        DriveBlock superseded;
-        CacheSlotState previousCacheSlot;
-        JournalCheckpointLoss? previousCheckpointLoss;
-        bool previouslyUnresumable;
-        lock (_stateLock)
-        {
-            superseded = _driveBlocks[driveOrdinal];
-            previousCacheSlot = _cacheSlotsByOrdinal.GetValueOrDefault(driveOrdinal);
-            previousCheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveOrdinal);
-            previouslyUnresumable = _cacheOnlyUnresumableCheckpointOrdinals.Contains(driveOrdinal);
-        }
+        ThrowIfCancelledByDisposal(cancellationToken);
+        var superseded = FindBlockForRescan(runtime.DriveLetter);
 
         // The rename-aside is licensed by the owner lock: an index that does not hold it (its
         // block came from a private scan while another index owned the slot) rescans privately
         // again and never touches the canonical file.
         var ownsCanonicalSlot = !_options.NoCache && EnsureCanonicalOwnership(drive);
         var target = ComputeScanTarget(drive, ownsCanonicalSlot);
-        var retiredPath = target.OwnsCanonicalSlot
-            ? RenameAsideForRescan(target.Path, superseded, _options.Diagnostics)
-            : null;
-        var scanResult = await ProduceRescannedBlockAsync(drive, driveOrdinal, target, retiredPath,
-            superseded, cancellationToken).ConfigureAwait(false);
-        if (scanResult is not { } completedScan)
+        var retired = RenameAsideForRescan(target, superseded);
+
+        PendingDriveResult produced;
+        try
         {
-            return BlockReplacementOutcome.NotReplaced;
+            produced = await ProduceDriveBlockAsync(drive, target.Path, target.DeleteOnClose, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            RestoreRetiredFile(retired);
+            throw;
+        }
+
+        if (produced.Block is not { } block)
+        {
+            RestoreRetiredFile(retired);
+            RecordRescanProducerFailure(runtime.DriveLetter, produced.ProducerFailureMessage);
+            return new ScanAttempt(Published: false, produced.ProducerFailure, produced.ProducerFailureMessage);
         }
 
         try
         {
-            await CommitBlockUnderSwapGateAsync(
-                () =>
-                {
-                    _driveBlocks[driveOrdinal] = completedScan.DriveBlock;
-                    _cacheSlotsByOrdinal[driveOrdinal] = DescribeCacheSlot(target.OwnsCanonicalSlot);
-                    _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
-                    _discardedBlocksByOrdinal.Remove(driveOrdinal);
-                    // All three explain how the block being replaced came to be (or, for the
-                    // last one, that it could not be watched), so all three stop applying the
-                    // moment a new block with a fresh cursor takes its place.
-                    _checkpointLossesByOrdinal.Remove(driveOrdinal);
-                    _cacheOnlyUnresumableCheckpointOrdinals.Remove(driveOrdinal);
-                    _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
-                },
-                () =>
-                {
-                    if (ReferenceEquals(_driveBlocks[driveOrdinal], completedScan.DriveBlock))
-                    {
-                        _driveBlocks[driveOrdinal] = superseded;
-                        _cacheSlotsByOrdinal[driveOrdinal] = previousCacheSlot;
-                        if (previousCheckpointLoss is not null)
-                        {
-                            _checkpointLossesByOrdinal[driveOrdinal] = previousCheckpointLoss;
-                        }
-
-                        if (previouslyUnresumable)
-                        {
-                            _cacheOnlyUnresumableCheckpointOrdinals.Add(driveOrdinal);
-                        }
-                    }
-                },
-                completedScan.DriveBlock, cancellationToken).ConfigureAwait(false);
-            return BlockReplacementOutcome.Replaced;
+            var consecutiveLostCatchUps = await PublishRescannedBlockAsync(runtime, drive, block,
+                produced with { CacheSlot = DescribeCacheSlot(target.OwnsCanonicalSlot) }, clearsCheckpointLoss,
+                cancellationToken).ConfigureAwait(false);
+            return new ScanAttempt(Published: true, CatchUpLoss: produced.CatchUpLoss,
+                ConsecutiveLostCatchUps: consecutiveLostCatchUps);
         }
         catch
         {
-            if (retiredPath is not null)
-            {
-                RestoreRetiredFile(retiredPath, target.Path, superseded, _options.Diagnostics);
-            }
-
+            // Never published, so it owns no references; its mapping is closed directly.
+            block.Dispose();
+            RestoreRetiredFile(retired);
             throw;
         }
     }
 
-    (DriveStatus Blockless, ushort DriveOrdinal) GetBlocklessDriveForRescan(char driveLetter)
+    /// <summary>
+    ///     The drive's published block, or null for a drive that has none because a cache-only
+    ///     open declined it or its producer failed. An offline drive cannot be rescanned.
+    /// </summary>
+    DriveBlock? FindBlockForRescan(char driveLetter)
     {
         lock (_stateLock)
         {
+            if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
+            {
+                return _driveBlocks[driveOrdinal];
+            }
+
             var index = FindBlocklessStatusIndexLocked(driveLetter);
             if (index < 0 || _blocklessDriveStatuses[index].State != DriveState.Failed)
             {
                 throw new ArgumentException($"Drive {driveLetter} has no block.", nameof(driveLetter));
             }
 
-            return (_blocklessDriveStatuses[index], (ushort)_driveBlocks.Count);
+            return null;
         }
     }
 
-    void RecordBlocklessProducerFailure(char driveLetter, ushort driveOrdinal)
+    /// <summary>
+    ///     Records a rescan's producer failure: against the published block's ordinal when the
+    ///     drive has one, and otherwise on the drive's blockless status, keyed by letter, which
+    ///     then reads <see cref="DriveFailureKind.ProducerFailed" />.
+    /// </summary>
+    void RecordRescanProducerFailure(char driveLetter, string? message, bool endsOpenSettle = false)
     {
         lock (_stateLock)
         {
-            var message = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveOrdinal);
-            _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
+            if (endsOpenSettle)
+            {
+                ClaimSettledCountLocked(driveLetter);
+            }
+
+            if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
+            {
+                if (message is null)
+                {
+                    _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
+                }
+                else
+                {
+                    _mftProducerFailureMessagesByOrdinal[driveOrdinal] = message;
+                }
+
+                return;
+            }
+
             var index = FindBlocklessStatusIndexLocked(driveLetter);
             if (index >= 0)
             {
@@ -268,123 +235,12 @@ public sealed partial class FileIndex
                     FailureKind = DriveFailureKind.ProducerFailed
                 };
             }
+
+            ReleaseCanonicalOwnershipLocked(driveLetter);
         }
-    }
-
-    async Task CommitBlockUnderSwapGateAsync(Action commit, Action rollback, DriveBlock driveBlock,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await _swapGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                lock (_stateLock)
-                {
-                    commit();
-                }
-
-                PublishSnapshot();
-            }
-            finally
-            {
-                _swapGate.Release();
-            }
-        }
-        catch
-        {
-            lock (_stateLock)
-            {
-                rollback();
-            }
-
-            driveBlock.Block.Dispose();
-            throw;
-        }
-    }
-
-    /// <summary>
-    ///     The rescan of a drive that has no block: one a cache-only open declined or whose
-    ///     producer failed. Scans and adopts rather than swapping.
-    /// </summary>
-    async Task<BlockReplacementOutcome> ScanBlocklessDriveAsync(IndexedDrive drive, char driveLetter, CancellationToken cancellationToken)
-    {
-        var (blockless, driveOrdinal) = GetBlocklessDriveForRescan(driveLetter);
-        var ownsCanonicalSlot = !_options.NoCache && EnsureCanonicalOwnership(drive);
-        var target = ComputeScanTarget(drive, ownsCanonicalSlot);
-        var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, target.Path,
-            target.DeleteOnClose, cancellationToken).ConfigureAwait(false);
-        if (scanResult is not { } completedScan)
-        {
-            RecordBlocklessProducerFailure(driveLetter, driveOrdinal);
-            ReleaseCanonicalOwnership(driveLetter);
-            return BlockReplacementOutcome.NotReplaced;
-        }
-
-        await CommitBlockUnderSwapGateAsync(
-            () =>
-            {
-                _driveBlocks.Add(completedScan.DriveBlock);
-                _cacheSlotsByOrdinal[driveOrdinal] = DescribeCacheSlot(target.OwnsCanonicalSlot);
-                _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
-                _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
-                var index = FindBlocklessStatusIndexLocked(driveLetter);
-                if (index >= 0)
-                {
-                    _blocklessDriveStatuses.RemoveAt(index);
-                }
-            },
-            () =>
-            {
-                if (_driveBlocks.Count > driveOrdinal &&
-                    ReferenceEquals(_driveBlocks[driveOrdinal], completedScan.DriveBlock))
-                {
-                    _driveBlocks.RemoveAt(driveOrdinal);
-                }
-
-                _blockSourcesByOrdinal.Remove(driveOrdinal);
-                _cacheSlotsByOrdinal.Remove(driveOrdinal);
-                _accessDeniedSubtreeCountByOrdinal.Remove(driveOrdinal);
-                if (FindBlocklessStatusIndexLocked(driveLetter) < 0)
-                {
-                    _blocklessDriveStatuses.Add(blockless);
-                }
-            },
-            completedScan.DriveBlock, cancellationToken).ConfigureAwait(false);
-        return BlockReplacementOutcome.Replaced;
     }
 
     int FindBlocklessStatusIndexLocked(char driveLetter) =>
         _blocklessDriveStatuses.FindIndex(status =>
             char.ToUpperInvariant(status.DriveLetter) == char.ToUpperInvariant(driveLetter));
-
-    /// <summary>
-    ///     Runs the producer for a rescan and restores the renamed-aside cache file whenever the
-    ///     scan fails, is cancelled, or reports this drive failed. Null means nothing to swap.
-    /// </summary>
-    async Task<ScanDriveResult?> ProduceRescannedBlockAsync(IndexedDrive drive, ushort driveOrdinal,
-        ScanBlockTarget target, string? retiredPath, DriveBlock superseded,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, target.Path, target.DeleteOnClose,
-                cancellationToken).ConfigureAwait(false);
-            if (scanResult is null && retiredPath is not null)
-            {
-                RestoreRetiredFile(retiredPath, target.Path, superseded, _options.Diagnostics);
-            }
-
-            return scanResult;
-        }
-        catch
-        {
-            if (retiredPath is not null)
-            {
-                RestoreRetiredFile(retiredPath, target.Path, superseded, _options.Diagnostics);
-            }
-
-            throw;
-        }
-    }
 }

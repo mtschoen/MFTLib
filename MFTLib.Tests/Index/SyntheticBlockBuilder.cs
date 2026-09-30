@@ -98,7 +98,7 @@ internal sealed class SyntheticBlockBuilder : IDisposable
     public void SetSequenceNumber(uint rowIndex, ushort sequenceNumber)
     {
         _block.SequenceNumbers[(int)rowIndex] = sequenceNumber;
-        _block.Flush();
+        _block.Flush(null);
     }
 
     public void MutateNameDescriptor(uint rowIndex, uint nameOffsetBytes, ushort nameLengthUnits)
@@ -107,7 +107,7 @@ internal sealed class SyntheticBlockBuilder : IDisposable
         var descriptor = FileRow.ReadDescriptorWord(in row);
         FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, nameLengthUnits,
             FileRow.DescriptorFlags(descriptor));
-        _block.Flush();
+        _block.Flush(null);
     }
 
     public static SyntheticBlockBuilder MftShaped()
@@ -133,7 +133,7 @@ internal sealed class SyntheticBlockBuilder : IDisposable
     {
         ArgumentNullException.ThrowIfNull(mutation);
         mutation(ref _block.Header);
-        _block.Flush();
+        _block.Flush(null);
     }
 
     public void Complete(DateTime scanTimestampUtc)
@@ -154,7 +154,7 @@ internal sealed class SyntheticBlockBuilder : IDisposable
         header.ScanTimestampTicks = scanTimestampUtc.Ticks;
         header.Generation = 1;
         header.Flags |= BlockFlags.Complete;
-        _block.Flush();
+        _block.Flush(null);
     }
 
     public BlockFile? OpenForReading(out BlockValidationResult validation)

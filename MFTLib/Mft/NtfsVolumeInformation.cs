@@ -17,7 +17,7 @@ namespace MFTLib;
 ///     When queried directly on Windows via <see cref="Query(string)" /> with administrator
 ///     elevation, all cluster and sector geometry fields are populated from the live volume.
 ///     When reconstructed on a non-elevated client from a broker query
-///     (<see cref="JournalBrokerClient.QueryVolumesAsync" />), only
+///     (a <see cref="BrokerFrameKind.QueryVolume" /> request), only
 ///     <see cref="MftValidDataLength" /> and <see cref="BytesPerFileRecordSegment" /> (and
 ///     derived <see cref="MftRecordCount" />) are transmitted; <see cref="BytesPerSector" />,
 ///     <see cref="BytesPerCluster" />, <see cref="TotalClusters" />, and
@@ -49,9 +49,11 @@ public readonly record struct NtfsVolumeInformation(
     ///     access-denied when not elevated.
     /// </summary>
     [SupportedOSPlatform("windows")]
-    public static NtfsVolumeInformation Query(string driveLetter)
+    public static NtfsVolumeInformation Query(string driveLetter) => Query(driveLetter, OperatingSystem.IsWindows());
+
+    internal static NtfsVolumeInformation Query(string driveLetter, bool isWindows)
     {
-        if (!OperatingSystem.IsWindows())
+        if (!isWindows)
         {
             throw new PlatformNotSupportedException(
                 "NTFS volume information queries require Windows (FSCTL_GET_NTFS_VOLUME_DATA).");

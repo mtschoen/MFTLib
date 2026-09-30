@@ -1,168 +1,47 @@
 # Integrating the elevated broker
 
-Master File Table (MFT) and USN journal access require an Administrator volume handle.
-`JournalBrokerScanSession` lets a desktop or CLI application keep its main process
-non-elevated while one elevated child performs all raw-volume work for the session.
+Master File Table (MFT) and USN journal access require an Administrator volume
+handle. `BrokerProcess` lets a desktop or CLI application keep its main process
+non-elevated while one elevated child performs raw-volume work for the consumer
+session.
 
 Use the broker when your application:
 
 - has a UI or other code that should not run as Administrator;
-- needs a full MFT scan followed by live USN updates;
-- scans or rescans multiple volumes without repeated UAC prompts; or
-- needs to close the cold-start race between a full scan and journal watching.
+- opens a `FileIndex` over MFT-backed drives;
+- scans, watches, or rescans several volumes after one UAC prompt; or
+- needs scan and watch failures isolated to the drive that produced them.
 
 For a short tool that already runs elevated, use `MftVolume` directly instead.
 
-## How it works
+## Process and channel model
 
-The non-elevated process creates a named pipe and launches its own executable with
-`runas`. `JournalBrokerClient` queries `NtfsVolumeInformation` through that connection,
-plans capacities with `MftBlockCapacity`, and creates each block file and named section.
-It sends the section name in the scan spec. The elevated child:
+One `BrokerProcess` owns the elevated child and its control pipe. Volume queries,
+journal growth, and channel-open requests use that pipe. Each scan and each live
+watch then runs on a new pipe dedicated to one drive and one operation.
 
-1. captures each volume's USN cursor;
-2. opens the client-created section and scans the MFT without resolving paths;
-3. writes packed rows and names directly as parse batches arrive;
-4. reads journal entries produced during the scan; and
-5. optionally continues streaming live journal batches over the pipe.
+The separation is important:
 
-Capturing the cursor before scanning is important: applying the returned catch-up batch
-to the scan result produces a current inventory without a scan-to-watch gap.
+- a slow scan on one drive does not delay another drive's watch;
+- a watch reader that stops consuming holds back only its own pipe;
+- closing a watch pipe stops only that drive;
+- a drive pipe failure names that drive in `BrokerChannelLostException`; and
+- losing the control pipe ends the process, fires `BrokerProcess.Ended` once, and
+  causes every open drive channel to fail.
 
-The broker stamps that armed cursor and writes the completed header last. It then sends
-`ScanReady` with `RowCount`, `NamePoolUsedBytes`, and `SkippedRecordCount` (three int64
-fields). `RowCount` includes empty slots below the highest written row. A crash before
-completion leaves an incomplete block the client discards; rows alone are not evidence
-of a successful scan. `BrokerMftBlockProducer` validates the header and armed cursor
-before `FileIndex` adopts the block. Rows carry native sizes and modified times, and
-their own NTFS sequence number (`RowColumns.SequenceNumber`, read back from a block as
-`BlockFile.SequenceNumbers`); paths use parent rows. `FileEntry.Open` combines a row's
-sequence number with its record number to open the file by NTFS file id, which detects a
-record NTFS has reused for a different file since the row was written.
-
-### The live watch bridge
-
-`MFTLib.Index.FileIndex` owns live watching end to end; nothing in this guide's session
-or client API is required to keep an index current. `BrokerMftBlockProducer.CreateWatchSource()`
-returns a `BrokerIndexWatchSource` that borrows the connection factory supplied to the
-producer, bridging the broker's per-drive live-watch enumerables onto the single merged
-stream `FileIndex.StartWatchingAsync` reads. Wire it up next to the producer:
-
-```csharp
-var producer = new BrokerMftBlockProducer(connectAsync);
-var options = new FileIndexOptions
-{
-    Drives = drives,
-    MftProducer = producer.CreateProducer(),
-    WatchSource = producer.CreateWatchSource()
-};
-
-await using var index = await FileIndex.OpenAsync(options, cancellationToken);
-await index.StartWatchingAsync(cancellationToken);
-```
-
-`StartWatchingAsync` returns once the watch source is ready for per-drive arm and disarm:
-the broker is connected, the watch is requested, and every drive's reader is running. A
-`RescanAsync` issued any time after it returns therefore finds a running stream. It does not
-wait for any drive to catch up; await `index.WaitForCatchUpAsync(cancellationToken)` for that.
-Because the call now covers connecting, a broker that cannot be reached, or a stream that fails
-before it is ready, fails the call with that exception (after the `WatchFaulted` source
-announcement), and cancelling `cancellationToken` before readiness cancels it. Either way the
-unready session is released, so `StartWatchingAsync` can simply be called again.
-
-Cancellation, `StopWatchingAsync`, and `DisposeAsync` end a start promptly even while the
-StartWatch frame is stuck on the broker pipe. The frame is never abandoned half-written: the
-send finishes in the background and the watch it started is then stopped cleanly, with the
-broker's acknowledgement read, before the source starts another. A `StartWatchingAsync` issued
-in that interval waits for the cleanup, bounded by its own token, and then starts normally. If
-the cleanup fails, for example because the broker never acknowledged the stop, that source
-refuses every later start with an `InvalidOperationException`; reconnect and create a new
-watch source (and index) to watch again.
-
-Each drive's watch resumes from the cursor stamped in its own block header, which is the
-cursor armed before that drive's cold scan, not the cursor advanced past the scan's own
-catch-up entries. Starting the live watch from the armed cursor deliberately replays the
-whole scan window, so `BrokerScanResult.CatchUpEntries` is never read by the index: the
-live watch subsumes it. A drive whose watch fails is reported on `FileIndex.WatchFaulted`
-and `DriveStatus.WatchFailureMessage` without ending any other drive's watch, and
-`FileIndex.RescanAsync` disarms, rebuilds, and re-arms that one drive on the running
-watch session, leaving every other drive undisturbed.
-
-### Sizing the USN change journal
-
-A live watch dies when the journal wraps before the watch reads the records it
-missed, and a wrapped journal turns the next warm start into a cold rescan.
-Windows creates the journal with a 32 MB maximum, which a busy volume wraps in
-minutes. MFTLib exposes the sizing but never changes it by itself.
-`FileIndex.QueryUsnJournalSettings(driveLetter)` reads `MaximumSize` and
-`AllocationDelta` without elevation (`FSCTL_QUERY_USN_JOURNAL` against a
-backup-semantics handle on the volume root; no broker needed).
-The moment worth acting on is a rescan the journal forced. Opening a drive reads
-the live journal through that same unelevated handle before adopting a cached
-block, and when the block's checkpoint is no longer in the journal it cold-scans
-and fills in `DriveStatus.CheckpointLoss`: the checkpoint, the journal's
-`FirstUsn` and `NextUsn` at that moment, its `AllocationDelta` and `MaximumSize`,
-how far behind the checkpoint was, and the size a journal would need to be at
-least to have kept it. `SizeThatWouldHaveRetained` is the checkpoint-to-tip span
-rounded up to `AllocationDelta`, plus one more allocation delta. The margin comes
-from NTFS's documented trimming behavior in `CREATE_USN_JOURNAL_DATA` and
-`USN_JOURNAL_DATA`, not from a live measurement. `Cause` says whether the same
-journal trimmed past the checkpoint (`CheckpointTrimmed`, where this is the size to offer,
-when it fits in a `long`) or the journal was recreated (`JournalRecreated`, where
-no size would have helped). A consumer branches on `Cause`, not on whether the
-size is null: an oversized span leaves `SizeThatWouldHaveRetained` null under
-`CheckpointTrimmed` too. A volume that cannot answer reports nothing rather than
-a guess.
-
-A cache-only open reports it too, which is the one case where the consumer is
-told why no index could be opened at all: that drive comes back
-`DriveFailureKind.CacheDeclined` with the loss attached. A successful
-`RescanAsync` clears it, since the block it explained has been replaced.
-
-The same read answers for a watch that dies mid-session. When a drive's live
-watch faults, MFTLib asks the journal about the position that watch had reached,
-which is the drive's block cursor and so the same number a warm start would ask
-about, and fills in `CheckpointLoss` on exactly the same terms when the journal
-has moved past it. The classification is the journal's answer, not a reading of
-the exception. Nothing in the broker protocol changes for this, since the query
-is unelevated and runs on the client side. A drive in that state keeps its block
-and its rows, with nothing after the lost position applied; `RescanAsync` is what
-makes it current again and re-arms its watch, and clears the report with the
-block it described. The report is recorded before the `WatchFaulted` event is
-raised, so a handler that reads `index.Drives` already sees it.
-
-`JournalCheckpointLoss.DetectedDuring` says which of the two checks produced a
-report, and a fault handler branches on it rather than on the report merely being
-present. A report lives until a rescan replaces the block it explains, so a drive
-that cold-scanned at open carries a `DriveOpening` report for the rest of the
-session, including while it is watched and including after an unrelated watch
-fault. Only `LiveWatch` means the journal outran the drive and the drive is
-behind now; `DriveOpening` is the standing explanation of a cold scan that has
-already happened, and is informational. A fault that has nothing to do with the
-journal leaves whatever is there untouched, label included, rather than
-rewriting it or deleting it: the open's report did not stop being true because a
-volume handle was later revoked, and a consumer showing its journal-size hint
-does not want that hint to vanish on an unrelated error. A `LiveWatch` report
-replaces a `DriveOpening` one, being the newer fact about the same drive.
-
-That report is what a consumer turns into a hint: when `Cause` is
-`CheckpointTrimmed` and a size is present, the last position was too old so
-a rescan was needed, and a journal of at least that size would have kept it.
-When the user consents,
-`JournalBrokerClient.GrowUsnJournalAsync(driveLetter, maximumSize, allocationDelta)`
-asks the elevated host to resize the journal in place via
-`FSCTL_CREATE_USN_JOURNAL` (request frame kind 16, reply frame kind 17). The
-host refuses any requested maximum at or below the current one (grow only,
-never shrink) with an error the client rethrows as `InvalidOperationException`,
-and on success replies with the post-change settings read back from the volume.
-Growing the journal is a persistent change to a resource shared with Windows
-Search, backup agents, and replication, which is why MFTLib only reports and the
-grow is an explicit consumer call.
+The host sends heartbeats on an idle control pipe, a watch pipe waiting on its
+volume, and a queued scan pipe. A processing operation that continues to report
+progress also receives heartbeats while it remains within the processing limit.
+A pipe with a host write already in flight is skipped by the heartbeat sender;
+if it remains silent, the client's 30 second stall limit closes it. Any received
+frame counts as activity. A processing step that reports no progress past its
+limit receives a `Stalled` frame and its channel is cancelled. The client exposes
+that as `BrokerChannelLostException`, not as a drive-reported error.
 
 ## 1. Dispatch broker mode before normal startup
 
-The launched executable must recognize MFTLib's `--broker` mode before initializing the
-normal application. Put this at the beginning of `Program.cs`:
+The launched executable must recognize MFTLib's broker mode before initializing
+the normal application. Put this at the beginning of `Program.cs`:
 
 ```csharp
 using MFTLib;
@@ -177,304 +56,269 @@ if (ElevatedEntryPoint.TryHandle(
 // Normal application startup follows.
 ```
 
-Run the compiled app host (`MyApp.exe`), not `dotnet MyApp.dll`. `BrokerLauncher`
-relaunches the current executable, so the current process must be the application
-executable that contains this dispatch code.
+Run the compiled app host (`MyApp.exe`), not `dotnet MyApp.dll`.
+`BrokerLauncher` relaunches the current executable, so the current process must
+be the application executable that contains this dispatch code.
 
-## 2. Run one scan-to-watch session
+## 2. Launch and own one BrokerProcess
 
-`JournalBrokerScanSession` owns one elevated `JournalBrokerClient` for the whole
-consumer session: it spawns the broker, scans, discovers, watches, rescans, and
-disposes as a single unit. The session owns the completed blocks in
-`LatestScan.BlockOutcomes`: a rescan disposes the blocks of the result it replaces, and
-disposing the session disposes the blocks of the result it still holds. Take a block out
-of the result first if it has to outlive either. Keep the session alive in one
-`await using` scope that covers
-discovery, watching, and teardown together. In the examples below, `blockTargets` is an
-`IReadOnlyDictionary<string, BlockScanTarget>` with a destination path, volume serial,
-and delete-on-close choice for each requested drive. For example, given an existing
-`cacheDirectory` and the discovered volume serials:
+Launch the process once for the lifetime of the indexes that use it:
 
 ```csharp
-var blockTargets = new Dictionary<string, BlockScanTarget>
-{
-    ["C"] = new(Path.Combine(cacheDirectory, $"C-{volumeSerialC:X8}.mlix"), volumeSerialC, false),
-    ["D"] = new(Path.Combine(cacheDirectory, $"D-{volumeSerialD:X8}.mlix"), volumeSerialD, false)
-};
-```
-
-```csharp
-await using var session = await JournalBrokerScanSession.StartAsync(
+await using var broker = await BrokerProcess.LaunchAsync(
     BrokerLauncher.Launch,
-    new[] { "C", "D" },
-    new BrokerScanOptions { BlockTargets = blockTargets },
     cancellationToken);
 
-session.Faulted += reason =>
-    Console.Error.WriteLine($"MFT broker stopped: {reason}");
+broker.Ended += reason =>
+    Console.Error.WriteLine($"MFT broker ended: {reason}");
+```
 
-// Discovery: LatestScan is the parked scan-and-catch-up result.
-foreach (var (drive, error) in session.LatestScan.Errors)
-    Console.Error.WriteLine($"{drive}: {error}");
+`LaunchAsync` creates the control pipe, invokes `BrokerLauncher.Launch`, and
+waits up to `BrokerProcess.DefaultConnectTimeout` for the elevated child. The
+overload taking a `TimeSpan` lets a host choose a different connection timeout.
+A declined UAC prompt throws `InvalidOperationException`; a child that does not
+connect in time throws `TimeoutException`.
 
-// Live watch: one StartWatchAsync, then one WatchDriveAsync consumer per drive.
-await session.StartWatchAsync(cancellationToken);
+`HasEnded` becomes true when the control pipe is lost or the process is disposed.
+`Ended` reports the reason once. Pending control operations fail with
+`BrokerChannelLostException`, and open drive pipes then fail independently as
+they observe the process exit. `DisposeAsync` closes the control pipe and every
+open drive channel. The reason the host ended is reported through `Ended` and
+the affected operations, not thrown again by disposal.
 
-async Task WatchDriveAsync(string drive)
+The application owns the process returned by `LaunchAsync`. The connection
+callback given to the producer and watch source borrows it; neither type disposes
+it. After `Ended`, close the indexes using that process, dispose it, launch a new
+process, and open new indexes against the replacement.
+
+## 3. Build FileIndex over the broker
+
+`BrokerMftBlockProducer` adapts broker scans to `FileIndex`. Its watch source
+uses the same connection callback and opens a separate broker channel for every
+drive watch.
+
+Given an `IReadOnlyList<IndexedDrive>` named `drives`:
+
+```csharp
+using MFTLib;
+using MFTLib.Index;
+
+Task<BrokerProcess> ConnectAsync(CancellationToken token)
 {
-    await foreach (var (entries, cursor) in session.WatchDriveAsync(drive, cancellationToken))
+    token.ThrowIfCancellationRequested();
+    return Task.FromResult(broker);
+}
+
+var producer = new BrokerMftBlockProducer(
+    ConnectAsync,
+    new BrokerScanOptions
     {
-        ApplyChanges(drive, entries);
-        PersistCursor(drive, cursor);
+        Profile = BrokerScanProfile.Full
+    });
+
+var options = new FileIndexOptions
+{
+    Drives = drives,
+    MftProducer = producer.CreateProducer(),
+    WatchSource = producer.CreateWatchSource()
+};
+
+await using var index = await FileIndex.OpenAsync(options, cancellationToken);
+```
+
+`BrokerMftBlockProducer.CreateProducer()` returns the `MftBlockProducer` used
+for cold opens and rescans. `CreateWatchSource()` returns an
+`IIndexWatchSource` implemented by `BrokerIndexWatchSource`. Each call to
+`IIndexWatchSource.StartAsync` connects through the callback, opens the drive's
+pipe, writes its watch request, and returns the drive's running
+`IIndexDriveWatch`.
+
+The producer's optional `BrokerScanOptions` supplies `Profile`,
+`KeepFileNames`, and scan progress. Its optional `scanCompleted` callback runs
+after a result passes validation. The callback must not retain the result's
+block because ownership passes immediately to the index.
+
+### What a broker scan does
+
+For one drive, `BrokerProcess.ScanDriveAsync` first queries MFT sizing through
+`QueryVolumeAsync`, creates the client-owned block section, and opens a scan
+channel. The elevated host:
+
+1. captures the drive's journal cursor;
+2. scans MFT records into the shared block;
+3. completes and flushes the block;
+4. reads journal entries produced during the scan; and
+5. returns either the catch-up batch or a proven catch-up loss.
+
+`ScanDriveAsync` is available for advanced callers and returns
+`BrokerDriveScanResult`; its block belongs to the caller. A successful result
+contains the armed cursor, the advanced cursor, and catch-up entries. A proven
+loss still returns the completed block, with `CatchUpLoss` set,
+`AdvancedCursor` null, and an empty `CatchUpEntries` collection.
+
+The `FileIndex` adapter deliberately watches from the cursor armed before the
+scan, so the live watch replays the scan window. The adapter uses the scan's
+catch-up result to prove that cursor is still resumable; the live watch applies
+the entries.
+
+### Concurrent open progress
+
+`FileIndex.OpenAsync` settles its drives concurrently. A drive whose scan loses
+catch-up rescans itself up to `FileIndex.LostCatchUpRecoveryLimit` times. At the
+limit, open still returns that drive as `Ready` with the last complete block,
+but the block is unresumable and watching it is refused until a successful
+`RescanAsync`.
+
+`FileIndexOptions.OpenProgress` reports once for each drive that settles, on the
+thread that settled it and with no index lock held. Callbacks can overlap and can
+arrive out of order. `IndexDriveOpened.SettledCount` records settle order, so a
+consumer tracking overall progress keeps the report with the largest count. A
+drive whose settle is cancelled reports nothing; a cancelled or failed open may
+therefore have reported only part of the configured drive set.
+
+## 4. Start and stop per-drive watches
+
+The all-drive forms fan out concurrently and return one `DriveOperationResult`
+per configured drive:
+
+```csharp
+var starts = await index.StartWatchingAsync(cancellationToken);
+foreach (var result in starts)
+{
+    if (result.Outcome == DriveOperationOutcome.Failed)
+    {
+        Console.Error.WriteLine(
+            $"Drive {result.DriveLetter} did not start: {result.Failure}");
     }
 }
 
-var watchTasks = session.LatestScan.AdvancedCursors.Keys.Select(WatchDriveAsync);
-await Task.WhenAll(watchTasks);
+var catchUps = await index.WaitForCatchUpAsync(cancellationToken);
 ```
 
-`StartAsync` displays the UAC prompt via `launchBroker` (typically `BrokerLauncher.Launch`).
-It throws `InvalidOperationException` if the broker declines to launch or dies before the
-initial scan completes; the session is fully disposed before the exception is thrown, so
-there is no session left to clean up. The broker writes bounded batches directly into
-each packed block. Successful blocks are published on `LatestScan.BlockOutcomes` and are
-disposed by the next rescan or by the session's own disposal, whichever comes first.
+The single-drive overloads act on one letter. The list overloads act on the
+letters supplied. Batched calls preserve that order in their result list, wait
+for every drive they started to settle, and report per-drive failures without
+hiding successful siblings.
 
-Run one consumer task per drive returned by `WatchDriveAsync`; the session owns the pipe
-reader and routes batches to per-drive channels, so consumers must not read the pipe directly.
+`StartWatchingAsync` completes when each successful drive has a returned watch
+handle and its pump is reading. It does not wait for the journal backlog.
+`WaitForCatchUpAsync` waits for `DriveCaughtUp` per drive.
 
-`LatestScan` (a `BrokerScanResult?`) is always populated after `StartAsync` and after any
-`RescanAsync`; it is `null` only on a warm session that has not yet rescanned (see Warm
-start below). It contains:
+`StopWatchingAsync` stops only the requested drive or drives. The single-drive
+form rethrows that watch instance's outstanding fault once. The batched form
+places it in the affected drive's failed result. `DisposeAsync` does not rethrow
+watch faults.
 
-| Property | Meaning |
+If the watch source fails during a start, the failed start leaves a watch
+request and a refused-start fault. Stopping that drive clears both without
+rethrowing the source-start failure. A fresh start after a faulted watch
+instance supersedes that instance and discards its outstanding fault.
+
+A rescan stops the selected drive's current handle, builds and publishes a new
+block, and starts a fresh handle from the new cursor when watching is still
+requested. Other drives continue independently. If a start was refused because
+the block was unresumable, the refusal leaves no watch request: after a
+successful `RescanAsync`, call `StartWatchingAsync` for that drive again.
+
+## 5. Handle faults and recovery
+
+Subscribe before starting watches:
+
+```csharp
+index.WatchFaulted += fault =>
+{
+    var status = index.Drives.Single(
+        drive => drive.DriveLetter == fault.DriveLetter);
+
+    Console.Error.WriteLine(
+        $"Drive {fault.DriveLetter}: {fault.Kind}, {status.WatchCatchUp}");
+};
+```
+
+`WatchFaulted` always names a drive. Faults from different drives may be raised
+concurrently. The status has already been updated when the event runs.
+
+| Signal | Meaning and consumer action |
 | --- | --- |
-| `ArmedCursors` | Cursors captured before each scan |
-| `CatchUpEntries` | Changes recorded while each scan was running |
-| `AdvancedCursors` | Resume cursors after catch-up; also the drives `StartWatchAsync` will watch |
-| `Errors` | Per-drive failures; one failed drive does not abort the others |
-| `BlockOutcomes` | Per-drive completed blocks; owned by the session, or the caller for a bare result |
+| `BrokerProcess.Ended` or `HasEnded` | The control connection and elevated process are gone. Stop using the process, close its indexes, and create a new process and new indexes. |
+| `BrokerChannelLostException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. `DriveLetter` names a drive pipe; null names the control pipe. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
+| `DriveWatchFaultException` | The host reported an `Error` on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
+| `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan and start the drive again. |
+| `WatchCatchUpState.Recovering` | A drive or apply fault is being recovered, or a lost catch-up is being retried. Queries still use the current complete block, which may be behind the volume. |
+| `WatchCatchUpState.Faulted` | Recovery did not restore the watch, a channel was lost, a start was refused, or the catch-up loss limit was reached. Inspect `WatchFailureMessage` and the fault exception. Call `RescanAsync` or `StartWatchingAsync` after the triggering condition is fixed. An unresumable block must be rescanned first. |
 
-The default `BrokerScanOptions.Profile` is `BrokerScanProfile.Full`, which returns
-the complete MFT inventory. The `DirectoryIndex` profile retains every directory plus any
-non-directory records whose name matches `keepFileNames` (case-insensitive); use it for
-journal path indexing plus a small set of caller-named marker files to reduce retained
-file rows and names. `keepFileNames` is ignored under `Full`.
+`WatchFaultKind.Apply` follows the same automatic recovery path as
+`WatchFaultKind.Drive`. If the replacement watch faults before it first reaches
+`CaughtUp`, or if the recovery scan or restart fails, the index publishes
+`WatchFaultKind.Recovery` and leaves the drive `Faulted`. A second automatic
+recovery is not started. `WatchFaultKind.Channel` also leaves the drive
+`Faulted` without an automatic rescan.
 
-### Scan options and progress reporting
+A stop that races a recovery or rescan wins. It prevents that operation from
+restarting the watch and reports the stopped watch instance's outstanding fault
+once.
 
-Cold-scan parameters and progress callbacks are bundled in `BrokerScanOptions`, which can
-be passed to `JournalBrokerScanSession.StartAsync`, `RescanAsync`, or directly to
-`JournalBrokerClient.ArmScanAndCatchUpAsync`:
+### Callback reentrancy
 
-```csharp
-var progress = new Progress<BrokerScanProgress>(p =>
-{
-    Console.WriteLine(
-        $"Scanning drive {p.DriveLetter}: {p.RecordsProcessed:N0} records " +
-        $"({p.BytesProcessed / (1024 * 1024):N1} MB) in {p.Elapsed.TotalSeconds:F1}s");
-});
+Do not call an index lifecycle method synchronously from that index's `Changed`
+or `WatchFaulted` handler. Start, stop, rescan, dispose, their batched forms, and
+an unsettled catch-up wait fail immediately with `InvalidOperationException`.
+Queue the work so it begins after the handler returns. Queries, `Drives`,
+`QueryUsnJournalSettings`, and already settled catch-up waits are allowed.
+`BrokerProcess.GrowUsnJournalAsync` is outside the index and is also allowed.
 
-await using var session = await JournalBrokerScanSession.StartAsync(
-    BrokerLauncher.Launch,
-    new[] { "C", "D" },
-    new BrokerScanOptions
-    {
-        Profile = BrokerScanProfile.DirectoryIndex,
-        KeepFileNames = new[] { ".git" },
-        Progress = progress,
-        BlockTargets = blockTargets
-    },
-    cancellationToken);
-```
+## 6. Recover from a lost scan catch-up
 
-Progress arrives as `BrokerFrameKind.ScanProgress` (frame kind 11), carrying `DriveLetter`,
-`Phase` (`BrokerScanPhase.Parsing` or `Transferring`), `RecordsProcessed`, `BytesProcessed`,
-`TotalRecords`, `TotalBytes`, and `Elapsed`. The host throttles reports to every 250ms per
-drive and flushes the newest pending report at completion. Counts never decrease within
-a phase. Immediately before `ScanReady`, the final `Transferring` report has
-`RecordsProcessed == TotalRecords`. Late progress during live watch is discarded. A
-`FileIndex` reads the same shape through `IndexScanProgress`: `BrokerProgressAdapter`
-maps `BrokerScanPhase` onto `IndexScanPhase.ParsingMft`/`Transferring` and forwards each
-sample to `FileIndexOptions.Progress`, the same progress type `EnumerationProducer`
-reports on with `IndexScanPhase.Enumerating`.
+A scan reads journal catch-up in bounded chunks. A chunk that returns entries
+without advancing its cursor is an error because accepting it would deliver
+duplicates. When a catch-up read fails, the host asks the live journal whether
+the armed cursor is actually gone. Only a proven trimmed or recreated journal
+becomes `JournalCatchUpLostException`; an unavailable journal query or a cursor
+that is still retained remains an ordinary scan failure.
 
-`IProgress<BrokerScanProgress>.Report` runs synchronously on the pipe-reading task without
-UI marshaling. Use `System.Progress<T>` to capture the constructing thread's context or
-marshal in your callback. Cancellation stops reporting and surfaces as
-`OperationCanceledException` from the scan call; do not wait for a final equality report
-after cancellation.
+Every proven loss increments `DriveStatus.ConsecutiveLostCatchUps`. A successful
+scan resets the count. A manual or recovery rescan retries until success or
+`FileIndex.LostCatchUpRecoveryLimit`; at the limit it throws the last
+`JournalCatchUpLostException`, keeps the complete block queryable, and refuses a
+watch from that block. At open, the same retries happen before the drive settles;
+the open returns the unresumable block instead of throwing at the limit.
 
-`FileIndexOptions.Progress` samples only while a producer runs, so a warm start
-emits nothing on it. Per-drive progress across the whole open, warm starts
-included, comes from `FileIndexOptions.OpenProgress`: one `IndexDriveOpened`
-report per configured drive as it settles, carrying its 1-based ordinal and the
-configured drive count. See
-[the FileIndex overview](../README.md#build-a-live-index-with-fileindex) for the
-full contract.
+The exception's `CheckpointLoss` has
+`DetectedDuring == JournalCheckpointLossDetection.ScanCatchUp`. If its `Cause`
+is `JournalCheckpointLossCause.CheckpointTrimmed` and
+`SizeThatWouldHaveRetained` has a value, offer that value as the minimum journal
+size that would have retained the cursor. If the cause is `JournalRecreated`, no
+size would have preserved the old journal.
 
-See [sizing blocks and customizing watch cursors](broker-scan-tuning.md) for
-`MftBlockCapacity` planning and direct volume-geometry queries.
+Journal growth is an explicit, persistent system change. After user consent:
 
-### Warm start: resume watching from persisted cursors without a scan
+1. Read current sizing with `index.QueryUsnJournalSettings(driveLetter)`.
+2. Choose a new maximum greater than the current `MaximumSize` and at least the
+   loss report's `SizeThatWouldHaveRetained`.
+3. Call `broker.GrowUsnJournalAsync(driveLetter, maximumSize,
+   allocationDelta, cancellationToken)`. The broker refuses a maximum at or
+   below the current size and returns the settings read back after success.
+4. Call `index.RescanAsync(driveLetter, cancellationToken)`.
+5. Call `index.StartWatchingAsync(driveLetter, cancellationToken)` if the
+   earlier start was refused.
 
-A consumer that already holds its own cached inventory and a persisted resume cursor per
-drive can skip the cold scan entirely and go straight to watching, letting the kernel
-replay the gap since the persisted cursor. `StartFromCursorsAsync` spawns the same
-elevated broker (one UAC prompt) but performs no arm-and-scan; the session parks on the
-supplied cursors, and `StartWatchAsync` resumes each drive from them:
+Growing the journal does not make the already lost records reappear. The rescan
+is what rebuilds current state; the larger journal reduces the chance that the
+next scan window is lost.
 
-```csharp
-IReadOnlyDictionary<string, UsnJournalCursor> persisted = LoadPersistedCursors();
+## 7. Direct control operations
 
-await using var session = await JournalBrokerScanSession.StartFromCursorsAsync(
-    BrokerLauncher.Launch,
-    persisted,
-    cancellationToken);
+`BrokerProcess.QueryVolumeAsync` returns the MFT sizing used by block planning.
+Only `MftValidDataLength` and `BytesPerFileRecordSegment` cross the broker
+protocol; the other geometry fields are zero.
 
-await session.StartWatchAsync(cancellationToken);
-foreach (var drive in persisted.Keys)
-    _ = ConsumeDriveAsync(drive); // one WatchDriveAsync consumer per drive, as in section 2
-```
-
-A cursor whose `JournalId` is 0 is the "watch from current position" sentinel: the broker
-resolves the drive's current cursor and watches from now, losing only the pre-launch gap
-for that drive. Use it for a drive you want to watch but have no persisted cursor for.
-
-Because no scan ran, `LatestScan` is `null` until the first `RescanAsync`. A warm session
-rescans on the same broker using explicit `BrokerScanOptions` with block targets, profile,
-and keep-file names. `LatestScan` is then populated and `StartWatchAsync` resumes from the
-fresh advanced cursors instead of the originally supplied ones.
-
-If starting a live watch with a cached cursor fails because the journal wrapped or its ID
-changed, the broker ends that drive's stream with an `Error` frame whose message names
-the stale cursor and the required rescan. `WatchDriveAsync` throws for that drive while
-the other drives keep streaming. Scan warnings arrive on `BrokerScanResult.Warnings`.
-Rescan the failed drive before arming it again. Fault latching, terminal-state checks,
-single-flight operations, and idempotent disposal are identical to a scanned session.
-
-See [sizing blocks and customizing watch cursors](broker-scan-tuning.md) for
-`ReplaceWatchCursors`/`WatchCursors`, which replace the drive set a parked session
-watches, for example when a user selects or deselects individual drives.
-
-## 3. Stop watching, rescan, and restart
-
-`StopWatchAsync` and `RescanAsync` reuse the same elevated broker; neither triggers a
-second UAC prompt.
-
-```csharp
-await session.StopWatchAsync();
-await session.RescanAsync(new BrokerScanOptions
-{
-    BlockTargets = blockTargets,
-    Profile = BrokerScanProfile.DirectoryIndex,
-    KeepFileNames = new[] { ".git" }
-}, cancellationToken);   // same drives, explicit scan options
-await session.StartWatchAsync(cancellationToken);
-```
-
-`RescanAsync` also accepts a new drive list plus `BrokerScanOptions`; both overloads
-replace `LatestScan` in place, disposing the blocks of the result they replace, so supply
-destinations suitable for the new scan and take any block you still need out of the old
-result before rescanning. `RescanAsync` and
-`StartWatchAsync` both require the session to be parked (call `StopWatchAsync` first if
-currently watching) and throw `InvalidOperationException` otherwise.
-
-## 4. Handle broker death
-
-`IsFaulted` latches once and never reverts; `FaultReason` holds the reason once faulted.
-The `Faulted` event fires exactly once, and fires immediately for a handler added after
-the fault already happened, so a consumer that only starts watching after discovery
-still learns about a death that occurred while parked.
-
-Once faulted, every session operation except queries and `DisposeAsync` throws
-`InvalidOperationException` carrying `FaultReason`. Recovery is `DisposeAsync` followed by
-a fresh `StartAsync`.
-
-Broker death surfaces on two channels at once: the `Faulted` event (with the
-`IsFaulted`/`FaultReason` latch) fires, and every in-flight `WatchDriveAsync` enumerable
-throws `InvalidOperationException`. These are redundant by design - either alone is enough
-to detect the death - but a consumer running one watch task per drive under a
-`Task.WhenAll` will still see that `WhenAll` throw, so handle both surfaces in one place
-rather than letting the per-drive exception escape as an unobserved fault. Catch a
-broker-death `InvalidOperationException` (and the normal `OperationCanceledException` on a
-cancelled shutdown) around the aggregate await and route both through the same teardown
-the `Faulted` handler runs:
-
-```csharp
-try
-{
-    await Task.WhenAll(watchTasks);
-}
-catch (Exception exception) when (exception is OperationCanceledException || session.IsFaulted)
-{
-    // Broker died (or the watch was cancelled): the Faulted latch already holds the
-    // reason. Stop consuming, mark watches inactive, and reconnect if the user chooses.
-}
-```
-
-For testing a consumer of this session and the `FileIndex` watch bridge without
-elevation, see [testing your integration](broker-testing.md).
-
-## Low-level primitive: JournalBrokerClient
-
-`JournalBrokerScanSession` is built on `JournalBrokerClient` and is the recommended entry
-point for non-elevated consumers. Use `JournalBrokerClient` directly only when your
-process is already elevated and you want the pipe/transport primitive without session
-ownership; see `JournalBrokerClient.SpawnAndConnectAsync`, `ArmScanAndCatchUpAsync`,
-`SendStartWatchAsync`, `CreateBatchSource`, and `StopLiveWatchAsync`. Callers that hold a
-`JournalBrokerClient` directly are responsible for the same ordering the session enforces:
-arm-before-scan, one pipe reader at a time, and disposing the client exactly once.
-
-The first `SendStartWatchAsync` call starts the live generation and arms every drive it
-names. Later calls add or re-arm only their named drives and leave the others running.
-`SendDisarmDriveAsync` retires one drive and completes its current batch source normally;
-`StopLiveWatchAsync` ends the complete generation. The host handles control frames in
-order and awaits an existing drive task before starting its replacement, so one drive
-never has two host tasks writing frames at once.
-
-Each `SendStartWatchAsync` arms every named drive under a fresh per-drive arm epoch
-carried in its `StartWatch` token (`letter:journalId:nextUsn:armEpoch`). The broker tags
-every live `JournalBatch` and per-drive `Error` with the epoch of the arm that produced
-it. The client delivers a frame only while that is still the drive's current epoch,
-discarding batches and failures produced before a disarm or re-arm instead of delivering
-them into the replacement channel. `DisarmDrive` has no acknowledgement and needs none.
-
-The low-level JournalBrokerClient supports QueryVolumesAsync,
-ArmScanAndCatchUpAsync, and GrowUsnJournalAsync while other drives remain
-live-watched. FileIndex.RescanAsync
-uses this path to disarm one drive, rebuild and swap its block, then re-arm only
-that drive. The live demux remains the sole pipe reader during the exchange;
-epoch-zero scan replies are separate from epoch-tagged live batches and errors.
-Reply-bearing operations on one client are serialized. Watch start, disarm, and
-stop requests wait for an active exchange rather than taking over its reader.
-
-Cancellation before request transmission leaves the client reusable. Interruption
-after transmission makes the connection terminal because the protocol has no
-request IDs or per-scan cancellation acknowledgement. Dispose that client and
-establish a fresh broker connection before another scan; affected watch consumers
-receive the terminal failure. Do not retry on the interrupted pipe.
-
-JournalBrokerScanSession is a separate stateful API: its RescanAsync still requires
-StopWatchAsync first. This restriction does not apply to FileIndex's per-drive
-rescan through BrokerMftBlockProducer and its shared watch source.
-
-`BrokerIndexWatchSource` (see [the live watch bridge](#the-live-watch-bridge) above)
-builds on this primitive rather than replacing it: it is a `JournalBrokerClient` consumer
-like any other, merging every drive's `SendStartWatchAsync`/`CreateBatchSource` output
-into the single stream `IIndexWatchSource` declares.
-
-## Persisting state and recovery
-
-Persist the post-batch cursor, not the armed cursor. On restart, a direct
-`MftVolume.ReadUsnJournal` call can resume from a persisted cursor. If MFTLib reports
-that the journal was recreated or overwritten, discard the cursor and perform another
-full arm/scan/catch-up cycle (`RescanAsync` on an existing session, or a fresh
-`JournalBrokerScanSession.StartAsync`).
-
-Treat `IsFaulted`/`Faulted` as loss of the elevated session. A fault from `WatchDriveAsync`
-ends only that drive's watch: mark it inactive, keep consuming the other drives, and rescan it
-before arming it again.
+`BrokerProcess.GrowUsnJournalAsync` grows a journal in place. It never shrinks
+one. Both methods are control requests. Cancellation before their request starts
+writing sends nothing. Once writing begins, the process completes the frame so a
+partial request cannot corrupt the control stream; a cancelled caller stops
+waiting and the eventual reply is discarded. A control write failure ends the
+process. A reply timeout throws `TimeoutException` without reusing that request
+identifier.
 
 ## Diagnostics
 
@@ -485,18 +329,16 @@ BrokerDiagnostics.LogDirectory = appDataDirectory;
 BrokerDiagnostics.Enable("client");
 ```
 
-Alternatively, set `MFTLIB_BROKER_DIAG=1` before spawning the client. MFTLib propagates
-`--diag` across the `runas` boundary because environment inheritance is not reliable
-for elevated launches. Both processes append frame and event traces to
+Alternatively, set `MFTLIB_BROKER_DIAG=1` before launching. MFTLib propagates
+diagnostics arguments across the `runas` boundary. Both processes append to
 `broker-diagnostics.log` in `BrokerDiagnostics.LogDirectory`.
 
-Diagnostics are best-effort and disabled by default.
-
-While diagnostics are enabled, the broker filters the diagnostics log files' own journal
-entries out of the watch stream (matched by file reference number, so a renamed log stays
-filtered); otherwise every logged frame would generate the journal traffic it observes.
-Set `MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` before spawning the client to keep those entries
-when debugging the diagnostics themselves.
+Diagnostics are best effort and disabled by default. Writes are queued so disk
+logging does not block a channel. Each line carries its control or drive-channel
+tag. While diagnostics are enabled, the broker filters the diagnostics logs' own
+journal entries from the watch stream. Set
+`MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` before launching to retain those entries
+while debugging diagnostics themselves.
 
 ## Deployment checklist
 
@@ -505,8 +347,8 @@ when debugging the diagnostics themselves.
   `MFTLibNative.dll` to the output directory.
 - Publish an executable app host and launch that `.exe`.
 - Dispatch `ElevatedEntryPoint.TryHandle` before normal app startup.
-- Keep one `JournalBrokerScanSession` per active elevated consumer session.
-- Call `StopWatchAsync` before rescanning on that session.
-- Dispose the session (`await using` or an explicit `DisposeAsync`) during application shutdown.
-- Handle UAC decline, per-drive scan errors, journal invalidation, and broker death
-  (`IsFaulted`/`Faulted`).
+- Launch one `BrokerProcess` for the consumer session and retain ownership of it.
+- Give `BrokerMftBlockProducer` and `BrokerIndexWatchSource` access to that same
+  process.
+- Handle `Ended`, per-drive start results, watch faults, and lost catch-up.
+- Dispose indexes before disposing the process during application shutdown.

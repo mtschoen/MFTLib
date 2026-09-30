@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -10,15 +11,16 @@ namespace MFTLib.Tests.Index;
 ///     position, so the same <see cref="JournalCheckpointCheck" /> that decides a warm start
 ///     answers here too, and the answer is a fact about the journal rather than about the
 ///     exception that ended the watch. The journal read is swapped out through
-///     <c>JournalCheckpointCheck._journalOverride</c>, so these run on every platform and never
-///     touch a real volume.
+///     <c>JournalCheckpointCheck.OverrideJournalForTest</c>, so these run on every platform and
+///     never touch a real volume. Each drive's pump asks about its own drive, so an override
+///     callback can run on several pump threads at once and keeps no unsynchronized state.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
 public class FileIndexMidSessionCheckpointLossTests
 {
-    const ulong WatchedJournalId = 7;
-    const long ArmedUsn = 1_000_000;
+    const ulong WatchedJournalId = WatchHarness.JournalId;
+    const long ArmedUsn = WatchHarness.NextUsn;
     const long AllocationDelta = 64;
     const long MaximumSize = 128L * 1024 * 1024;
 
@@ -32,27 +34,27 @@ public class FileIndexMidSessionCheckpointLossTests
             _ => new JournalWindow(journalId, firstUsn, nextUsn, AllocationDelta, MaximumSize));
     }
 
-    static DriveStatus DriveFor(WatchHarness harness, char driveLetter)
+    /// <summary>T has lost its position by 500 bytes; every other drive's is still inside the journal.</summary>
+    static IDisposable TrimmedForTOnly()
     {
-        return harness.Index.Drives.Single(drive => drive.DriveLetter == char.ToUpperInvariant(driveLetter));
+        return JournalCheckpointCheck.OverrideJournalForTest(driveLetter =>
+            char.ToUpperInvariant(driveLetter) == 'T'
+                ? new JournalWindow(WatchedJournalId, ArmedUsn + 500, ArmedUsn + 4_000,
+                    AllocationDelta, MaximumSize)
+                : new JournalWindow(WatchedJournalId, 0, ArmedUsn + 4_000, AllocationDelta, MaximumSize));
     }
 
-    /// <summary>The condition NTFS reports as ERROR_JOURNAL_ENTRY_DELETED, as the source ends a drive on.</summary>
-    static DriveWatchFailure JournalEntriesDeleted(char driveLetter)
+    async Task<WatchHarness> StartedHarnessAsync(params char[] driveLetters)
     {
-        return new DriveWatchFailure(driveLetter,
-            new IOException("USN journal entries have been deleted; full rescan needed"));
-    }
-
-    async Task<WatchHarness> StartedHarnessAsync(params IndexWatchTarget[] targets)
-    {
-        var harness = new WatchHarness(targets.Length > 0
-            ? targets
-            : [new IndexWatchTarget('T', WatchedJournalId, ArmedUsn)]);
+        var harness = new WatchHarness(driveLetters.Length > 0 ? driveLetters : ['T']);
+        harness.Index.HoldEveryRecovery();
         try
         {
-            await harness.Index.StartWatchingAsync(Token);
-            await harness.SourceStartedAsync();
+            foreach (var driveLetter in harness.Index.Drives.Select(drive => drive.DriveLetter))
+            {
+                await harness.Index.StartWatchingAsync(driveLetter, Token);
+            }
+
             return harness;
         }
         catch
@@ -60,6 +62,24 @@ public class FileIndexMidSessionCheckpointLossTests
             harness.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    ///     Ends a drive's watch with the condition NTFS reports as ERROR_JOURNAL_ENTRY_DELETED,
+    ///     and returns once the fault has been announced, which is after the checkpoint-loss
+    ///     check ran.
+    /// </summary>
+    static Task<WatchFault> FailWithJournalEntriesDeletedAsync(WatchHarness harness, char driveLetter)
+    {
+        return FailDriveAsync(harness, driveLetter,
+            new IOException("USN journal entries have been deleted; full rescan needed"));
+    }
+
+    static Task<WatchFault> FailDriveAsync(WatchHarness harness, char driveLetter, Exception failure)
+    {
+        var announced = harness.WaitForFaultAsync(WatchFaultKind.Drive, driveLetter);
+        harness.Source.HandleFor(driveLetter).FailDrive(failure);
+        return announced;
     }
 
     [TestMethod]
@@ -71,11 +91,11 @@ public class FileIndexMidSessionCheckpointLossTests
         using var journal = Journal(WatchedJournalId,
             firstUsn: ArmedUsn + 500, nextUsn: ArmedUsn + 4_000);
 
-        await harness.PublishAsync(JournalEntriesDeleted('T'));
+        await FailWithJournalEntriesDeletedAsync(harness, 'T');
 
-        var drive = DriveFor(harness, 'T');
+        var drive = harness.DriveFor('T');
         Assert.IsNotNull(drive.WatchFailureMessage, "the watch still reports that it died");
-        Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Recovering, drive.WatchCatchUp);
 
         var loss = drive.CheckpointLoss;
         Assert.IsNotNull(loss);
@@ -90,7 +110,8 @@ public class FileIndexMidSessionCheckpointLossTests
         // The 4000-byte span rounds to 4032, then the trimming margin adds one 64-byte delta.
         Assert.AreEqual(4_096L, loss.SizeThatWouldHaveRetained);
 
-        await Assert.ThrowsExceptionAsync<IOException>(() => harness.Index.StopWatchingAsync(Token));
+        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
     }
 
     /// <summary>
@@ -102,7 +123,7 @@ public class FileIndexMidSessionCheckpointLossTests
     public async Task WatchFaultAfterAppliedBatches_ReportsThePositionTheWatchReached()
     {
         using var harness = await StartedHarnessAsync();
-        await harness.PublishAsync(new JournalBatch('T',
+        await harness.Source.HandleFor('T').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "applied.txt")],
             JournalId: WatchedJournalId, NextUsn: ArmedUsn + 2_000));
         Assert.AreEqual(ArmedUsn + 2_000, harness.BlockFor('T').Header.UsnNextUsn);
@@ -110,15 +131,16 @@ public class FileIndexMidSessionCheckpointLossTests
         using var journal = Journal(WatchedJournalId,
             firstUsn: ArmedUsn + 2_500, nextUsn: ArmedUsn + 3_000);
 
-        await harness.PublishAsync(JournalEntriesDeleted('T'));
+        await FailWithJournalEntriesDeletedAsync(harness, 'T');
 
-        var loss = DriveFor(harness, 'T').CheckpointLoss;
+        var loss = harness.DriveFor('T').CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(ArmedUsn + 2_000, loss.CheckpointUsn,
             "the watch position, not the cursor the drive was armed from");
         Assert.AreEqual(500L, loss.BytesBehind);
 
-        await Assert.ThrowsExceptionAsync<IOException>(() => harness.Index.StopWatchingAsync(Token));
+        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
     }
 
     [TestMethod]
@@ -127,9 +149,9 @@ public class FileIndexMidSessionCheckpointLossTests
         using var harness = await StartedHarnessAsync();
         using var journal = Journal(journalId: 0xFEED, firstUsn: 0, nextUsn: 200);
 
-        await harness.PublishAsync(JournalEntriesDeleted('T'));
+        await FailWithJournalEntriesDeletedAsync(harness, 'T');
 
-        var loss = DriveFor(harness, 'T').CheckpointLoss;
+        var loss = harness.DriveFor('T').CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
         Assert.AreEqual('T', loss.DriveLetter);
@@ -137,7 +159,8 @@ public class FileIndexMidSessionCheckpointLossTests
         Assert.IsNull(loss.SizeThatWouldHaveRetained, "different journal instances have no comparable span");
         Assert.IsNull(loss.BytesBehind);
 
-        await Assert.ThrowsExceptionAsync<IOException>(() => harness.Index.StopWatchingAsync(Token));
+        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
     }
 
     /// <summary>
@@ -149,25 +172,24 @@ public class FileIndexMidSessionCheckpointLossTests
     public async Task WatchFaultWhileTheWatchPositionIsStillInTheJournal_LeavesTheLossNull()
     {
         using var harness = await StartedHarnessAsync();
-        var queriedDrives = new List<char>();
+        var queriedDrives = new ConcurrentQueue<char>();
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(driveLetter =>
         {
-            queriedDrives.Add(char.ToUpperInvariant(driveLetter));
-            return new JournalWindow(WatchedJournalId, ArmedUsn - 500, ArmedUsn + 4_000,
+            queriedDrives.Enqueue(char.ToUpperInvariant(driveLetter));
+            return new JournalWindow(WatchedJournalId, ArmedUsn - 50, ArmedUsn + 4_000,
                 AllocationDelta, MaximumSize);
         });
 
-        await harness.PublishAsync(new DriveWatchFailure('T',
-            new UnauthorizedAccessException("the volume handle was revoked")));
+        await FailDriveAsync(harness, 'T', new UnauthorizedAccessException("the volume handle was revoked"));
 
-        var drive = DriveFor(harness, 'T');
+        var drive = harness.DriveFor('T');
         Assert.IsNotNull(drive.WatchFailureMessage);
         Assert.IsNull(drive.CheckpointLoss, "a fault unrelated to the journal reports no checkpoint loss");
-        CollectionAssert.AreEqual(new[] { 'T' }, queriedDrives,
+        CollectionAssert.AreEqual(new[] { 'T' }, queriedDrives.ToArray(),
             "the journal is asked once, and its answer is what decides");
 
-        await Assert.ThrowsExceptionAsync<UnauthorizedAccessException>(
-            () => harness.Index.StopWatchingAsync(Token));
+        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
     }
 
     [TestMethod]
@@ -176,59 +198,34 @@ public class FileIndexMidSessionCheckpointLossTests
         using var harness = await StartedHarnessAsync();
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
 
-        await harness.PublishAsync(JournalEntriesDeleted('T'));
+        await FailWithJournalEntriesDeletedAsync(harness, 'T');
 
-        var drive = DriveFor(harness, 'T');
+        var drive = harness.DriveFor('T');
         Assert.IsNotNull(drive.WatchFailureMessage);
         Assert.IsNull(drive.CheckpointLoss, "a volume that cannot answer reports nothing rather than guessing");
 
-        await Assert.ThrowsExceptionAsync<IOException>(() => harness.Index.StopWatchingAsync(Token));
+        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
     }
 
     /// <summary>One drive losing its position says nothing about another drive's.</summary>
     [TestMethod]
     public async Task OneDriveLosesItsPosition_AndTheOtherDriveKeepsNoReport()
     {
-        using var harness = await StartedHarnessAsync(
-            new IndexWatchTarget('T', WatchedJournalId, ArmedUsn),
-            new IndexWatchTarget('U', WatchedJournalId, ArmedUsn));
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(driveLetter =>
-            char.ToUpperInvariant(driveLetter) == 'T'
-                ? new JournalWindow(WatchedJournalId, ArmedUsn + 500, ArmedUsn + 4_000,
-                    AllocationDelta, MaximumSize)
-                : new JournalWindow(WatchedJournalId, 0, ArmedUsn + 4_000, AllocationDelta, MaximumSize));
+        using var harness = await StartedHarnessAsync('T', 'U');
+        using var journal = TrimmedForTOnly();
 
-        await harness.PublishAsync(JournalEntriesDeleted('T'));
-        await harness.PublishAsync(JournalEntriesDeleted('U'));
+        await FailWithJournalEntriesDeletedAsync(harness, 'T');
+        await FailWithJournalEntriesDeletedAsync(harness, 'U');
 
-        Assert.IsNotNull(DriveFor(harness, 'T').CheckpointLoss);
-        Assert.IsNull(DriveFor(harness, 'U').CheckpointLoss,
+        Assert.IsNotNull(harness.DriveFor('T').CheckpointLoss);
+        Assert.IsNull(harness.DriveFor('U').CheckpointLoss,
             "U's watch died too, but its position is still in the journal");
 
-        await Assert.ThrowsExceptionAsync<IOException>(() => harness.Index.StopWatchingAsync(Token));
-    }
-
-    /// <summary>
-    ///     A fault announced for a drive letter this index has no block for has no position to
-    ///     ask about, so nothing is queried and nothing is reported.
-    /// </summary>
-    [TestMethod]
-    public async Task WatchFaultOnADriveWithNoBlock_QueriesNoJournal()
-    {
-        using var harness = await StartedHarnessAsync();
-        var queriedDrives = new List<char>();
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(driveLetter =>
-        {
-            queriedDrives.Add(char.ToUpperInvariant(driveLetter));
-            return null;
-        });
-
-        await harness.PublishAsync(new DriveWatchFailure('Q', new IOException("no such drive here")));
-
-        Assert.AreEqual(0, queriedDrives.Count);
-        Assert.IsTrue(harness.Index.Drives.All(drive => drive.CheckpointLoss is null));
-
-        await Assert.ThrowsExceptionAsync<IOException>(() => harness.Index.StopWatchingAsync(Token));
+        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
+        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync('U', Token));
     }
 
     /// <summary>
@@ -238,52 +235,79 @@ public class FileIndexMidSessionCheckpointLossTests
     [TestMethod]
     public async Task ASuccessfulRescanClearsAMidSessionLoss()
     {
-        // A second drive keeps the stream live after T faults, so the rescan takes the ordinary
-        // disarm-swap-rearm path rather than restarting the whole session.
-        using var harness = await StartedHarnessAsync(
-            new IndexWatchTarget('T', WatchedJournalId, ArmedUsn),
-            new IndexWatchTarget('U', WatchedJournalId, ArmedUsn));
+        using var harness = await StartedHarnessAsync('T', 'U');
         using (Journal(WatchedJournalId, firstUsn: ArmedUsn + 500, nextUsn: ArmedUsn + 4_000))
         {
-            await harness.PublishAsync(JournalEntriesDeleted('T'));
-            Assert.IsNotNull(DriveFor(harness, 'T').CheckpointLoss);
+            await FailWithJournalEntriesDeletedAsync(harness, 'T');
+            Assert.IsNotNull(harness.DriveFor('T').CheckpointLoss);
         }
 
         harness.SetNextProducedCursor('T', WatchedJournalId, ArmedUsn + 4_000);
         await harness.Index.RescanAsync('T', Token);
 
-        Assert.IsNull(DriveFor(harness, 'T').CheckpointLoss,
+        Assert.IsNull(harness.DriveFor('T').CheckpointLoss,
             "the rescan replaced the block whose cursor the report described");
-        Assert.IsNull(DriveFor(harness, 'T').WatchFailureMessage);
+        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.IsNull(harness.DriveFor('U').WatchFailureMessage);
     }
 
     /// <summary>
-    ///     A stream that ends while drives are still watched faults every one of them, and each
-    ///     is classified against the journal the same way a per-drive failure is.
+    ///     A watch that ends without anyone stopping it is a fault of its own, and each drive's
+    ///     is classified against that drive's journal the same way a drive failure is.
     /// </summary>
     [TestMethod]
-    public async Task SourceEndingWithoutAStop_ClassifiesEveryWatchedDrive()
+    public async Task WatchEndingWithoutAStop_ClassifiesEachDriveAgainstItsOwnJournal()
     {
-        using var harness = await StartedHarnessAsync(
-            new IndexWatchTarget('T', WatchedJournalId, ArmedUsn),
-            new IndexWatchTarget('U', WatchedJournalId, ArmedUsn));
-        using var journal = JournalCheckpointCheck.OverrideJournalForTest(driveLetter =>
-            char.ToUpperInvariant(driveLetter) == 'T'
-                ? new JournalWindow(WatchedJournalId, ArmedUsn + 500, ArmedUsn + 4_000,
-                    AllocationDelta, MaximumSize)
-                : new JournalWindow(WatchedJournalId, 0, ArmedUsn + 4_000, AllocationDelta, MaximumSize));
-        var announced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        harness.Index.WatchFaulted += _ => announced.TrySetResult();
+        using var harness = await StartedHarnessAsync('T', 'U');
+        using var journal = TrimmedForTOnly();
+        var announcedT = harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
+        var announcedU = harness.WaitForFaultAsync(WatchFaultKind.Channel, 'U');
 
-        await harness.CompleteSourceAsync();
-        // Waiting for the announcement, not for time: the source iterator's own end runs before
-        // the pump observes it, and the report is recorded before the fault is announced.
-        await announced.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+        harness.Source.HandleFor('T').End();
+        harness.Source.HandleFor('U').End();
+        // Waiting for the announcements, not for time: the report is recorded before the fault
+        // is announced.
+        await announcedT;
+        await announcedU;
 
-        var lost = DriveFor(harness, 'T').CheckpointLoss;
+        var lost = harness.DriveFor('T').CheckpointLoss;
         Assert.IsNotNull(lost);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, lost.Cause);
         Assert.AreEqual(500L, lost.BytesBehind);
-        Assert.IsNull(DriveFor(harness, 'U').CheckpointLoss);
+        Assert.IsNull(harness.DriveFor('U').CheckpointLoss);
+    }
+
+    /// <summary>
+    ///     A <see cref="FileIndex.WatchFaulted" /> handler decides whether to blame the journal
+    ///     by reading <see cref="DriveStatus.CheckpointLoss" />, so the live-watch report must
+    ///     already be on the drive when the handler runs, not recorded after it returns.
+    /// </summary>
+    [TestMethod]
+    public async Task WatchFaultOnT_LiveWatchLossRecordedBeforeWatchFaultedRaised()
+    {
+        using var harness = await StartedHarnessAsync();
+        using var journal = Journal(WatchedJournalId,
+            firstUsn: ArmedUsn + 500, nextUsn: ArmedUsn + 4_000);
+        var seenByHandler = new TaskCompletionSource<JournalCheckpointLoss?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var index = harness.Index;
+        index.WatchFaulted += fault =>
+        {
+            if (fault.Kind == WatchFaultKind.Drive)
+            {
+                seenByHandler.TrySetResult(index.Drives.Single(drive => drive.DriveLetter == 'T').CheckpointLoss);
+            }
+        };
+
+        harness.Source.HandleFor('T').FailDrive(
+            new IOException("USN journal entries have been deleted; full rescan needed"));
+
+        var loss = await seenByHandler.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+        Assert.IsNotNull(loss, "the handler must see the loss the fault found");
+        Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, loss.DetectedDuring);
+        Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
+
+        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
+            () => harness.Index.StopWatchingAsync('T', Token));
     }
 }

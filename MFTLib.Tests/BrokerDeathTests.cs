@@ -1,152 +1,144 @@
+using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
 /// <summary>
-///     Verifies broker-death detection:
-///     <list type="bullet">
-///         <item>BrokerDied fires exactly once when the pipe drops.</item>
-///         <item>
-///             The batch source throws InvalidOperationException (not yield-break) so
-///             a journal watcher can flip the drive inactive.
-///         </item>
-///         <item>A second EOF / repeated death does not re-fire BrokerDied.</item>
-///     </list>
+///     What a watch sees when the broker process ends: the process reports it once through
+///     <see cref="BrokerProcess.Ended" />, and every drive's channel reads the host's closed pipe as
+///     its own loss, naming the drive.
 /// </summary>
+// The host's arm query consults JournalCheckpointCheck, whose override other classes install.
 [TestClass]
-public class BrokerDeathTests : BrokerBlockTestBase
+[DoNotParallelize]
+public class BrokerDeathTests
 {
+    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
+
     [TestMethod]
-    public async Task BatchSource_PipeDeath_FiresBrokerDiedOnce_AndThrowsInvalidOperation()
+    public async Task WatchChannel_ProcessDeath_FiresEndedOnce_AndReadThrowsChannelLost()
     {
-        // Arrange: build a client over a DuplexStream pair.
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
+        await using var broker = new ScriptedBroker();
+        var deaths = new EndedRecorder(broker.Process);
+        var process = broker.Process;
+        var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
+        var (handle, host) = await StartAsync(source, broker, 'C');
+        await using var _ = handle.ConfigureAwait(false);
+        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        await using var __ = reader.ConfigureAwait(false);
+        var pending = reader.MoveNextAsync().AsTask();
 
-        var deathMessages = new List<string>();
-        client.BrokerDied += message =>
-        {
-            lock (deathMessages)
-            {
-                deathMessages.Add(message);
-            }
-        };
+        await EndHostAsync(broker, host);
 
-        // Start the live-watch demux (single pipe reader) before subscribing per drive.
-        await client.SendStartWatchAsync(WatchCursors("C"));
-        var batchSource = client.CreateBatchSource();
-        // Not a `using var`: the token is captured by the Task.Run lambda below, which
-        // must outlive this method's own scope-exit ordering, so it is disposed
-        // explicitly at the end instead - safe because that Dispose() runs only after
-        // the lambda's task has already been awaited to completion below.
-        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var cancellationToken = cts.Token;
-
-        // Act: close the broker side so the client reads EOF.
-        var enumerateTask = Task.Run(async () =>
-        {
-            await foreach (var _ in batchSource("C:\\", default, cancellationToken))
-            {
-            }
-        }, cancellationToken);
-
-        // Give the enumerate task a moment to start before closing the pipe.
-        await Task.Delay(20, cancellationToken);
-        await serverSide.DisposeAsync();
-
-        // Assert: the enumerate task must throw InvalidOperationException (not complete normally).
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => enumerateTask);
-        StringAssert.Contains(exception.Message.ToLowerInvariant(), "broker pipe closed");
-
-        // BrokerDied must have fired exactly once.
-        Assert.AreEqual(1, deathMessages.Count);
-
-        await client.DisposeAsync();
-        cts.Dispose();
+        var lost = await WatchReads.ThrowsAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+        Assert.AreEqual('C', lost.DriveLetter);
+        await deaths.First.WaitAsync(HangGuard);
+        Assert.AreEqual(1, deaths.Count);
     }
 
     [TestMethod]
-    public async Task BatchSource_DeathBeforeSubscribe_LateSubscribersThrow_BrokerDiedFiresOnce()
+    public async Task WatchChannel_DeathBeforeRead_LateReadsThrow_EndedFiresOnce()
     {
-        // Arrange: start the demux while the pipe is open, then kill it. The single
-        // demux reader detects death once and latches it; subscribers (even ones that
-        // subscribe AFTER death) must each throw, but BrokerDied fires exactly once.
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
+        // The host ends while nothing reads: a read that starts afterwards still fails, for the
+        // drive it was watching, and so does a watch that starts after the death.
+        await using var broker = new ScriptedBroker();
+        var deaths = new EndedRecorder(broker.Process);
+        var process = broker.Process;
+        var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
+        var (handle, host) = await StartAsync(source, broker, 'C');
+        await using var _ = handle.ConfigureAwait(false);
 
-        var deathCount = 0;
-        client.BrokerDied += _ => Interlocked.Increment(ref deathCount);
+        await EndHostAsync(broker, host);
+        await deaths.First.WaitAsync(HangGuard);
 
-        await client.SendStartWatchAsync(WatchCursors("C"));
-        var batchSource = client.CreateBatchSource();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-
-        await serverSide.DisposeAsync(); // EOF -> demux detects death and latches it
-
-        // A subscriber for a drive that never had a channel must still fault (the latch
-        // hands it an already-completed channel) rather than awaiting a batch forever.
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
-        {
-            await foreach (var _ in batchSource("C:\\", default, cts.Token))
-            {
-            }
-        });
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
-        {
-            await foreach (var _ in batchSource("D:\\", default, cts.Token))
-            {
-            }
-        });
-
-        // BrokerDied fires at most once regardless of how many subscribers see death.
-        Assert.AreEqual(1, deathCount);
-
-        await client.DisposeAsync();
+        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        await using var __ = reader.ConfigureAwait(false);
+        var late = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
+        Assert.AreEqual('C', late.DriveLetter);
+        var restart = await WatchReads.ThrowsAsync<BrokerChannelLostException>(() =>
+            source.StartAsync(new IndexWatchTarget('D', 7, 100), CancellationToken.None));
+        Assert.AreEqual('D', restart.DriveLetter);
+        Assert.AreEqual(1, deaths.Count);
     }
 
     [TestMethod]
-    public async Task ControlOperation_AfterBrokerDeath_ThrowsConnectionEnded()
+    public async Task ControlOperation_AfterProcessDeath_ThrowsChannelLost()
     {
-        // A pipe EOF during a live watch latches broker death without poisoning the
-        // control exchange; the next control operation must fail with the clear
-        // "connection has ended" error rather than writing into a dead pipe.
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
-        var died = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        client.BrokerDied += _ => died.TrySetResult();
+        await using var broker = new ScriptedBroker();
+        var deaths = new EndedRecorder(broker.Process);
+        await broker.CloseControlAsync();
+        await deaths.First.WaitAsync(HangGuard);
 
-        await client.SendStartWatchAsync(WatchCursors("C"));
+        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
+            broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
 
-        await serverSide.DisposeAsync(); // EOF -> demux latches the death
-        await died.Task.WaitAsync(TimeSpan.FromSeconds(10));
-
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => client.QueryVolumesAsync(["C"]));
-        StringAssert.Contains(exception.Message, "broker connection has ended");
-
-        await client.DisposeAsync();
+        Assert.IsNull(lost.DriveLetter, "the control pipe is what was lost");
+        Assert.IsTrue(broker.Process.HasEnded);
+        Assert.AreEqual(1, deaths.Count);
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    JournalBrokerClient MakeMinimalFakeClient(Stream pipe)
+    [TestMethod]
+    public async Task ProcessDeath_FaultsEveryDriveByName_EndedFiresOnce()
     {
-        return new JournalBrokerClient(pipe, (letter, options) => ($"mftlib-null-{letter}", CreateBlock(options), NoOpDisposable.Instance));
+        await using var broker = new ScriptedWatchBrokerHarness();
+        var token = broker.CancellationToken;
+        var deaths = new EndedRecorder(broker.Process);
+        var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateWatchSource();
+        using var harness = new WatchHarness(source, 'T', 'U');
+        await harness.Index.StartWatchingAsync('T', token);
+        await harness.Index.StartWatchingAsync('U', token);
+        await broker.Watch('T').RunAsync(1);
+        await broker.Watch('U').RunAsync(1);
+
+        await broker.EndHostAsync();
+
+        var faultT = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
+        var faultU = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'U');
+        await deaths.First.WaitAsync(HangGuard);
+        Assert.AreEqual('T', ((BrokerChannelLostException)faultT.Exception).DriveLetter);
+        Assert.AreEqual('U', ((BrokerChannelLostException)faultU.Exception).DriveLetter);
+        CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, harness.Faults.Select(fault => fault.DriveLetter).ToArray());
+        Assert.IsTrue(harness.Faults.All(fault => fault.Kind == WatchFaultKind.Channel));
+        Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.IsNotNull(harness.DriveFor('U').WatchFailureMessage);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('U').WatchCatchUp);
+        Assert.AreEqual(1, deaths.Count);
     }
 
-    // Cursor map for SendStartWatchAsync in the death tests (values are not asserted).
-    static Dictionary<string, UsnJournalCursor> WatchCursors(params string[] drives)
+    // The scripted host ends the way a process does: its control pipe and every drive pipe close.
+    static async Task EndHostAsync(ScriptedBroker broker, Stream hostDrivePipe)
     {
-        return drives.ToDictionary(d => d, _ => new UsnJournalCursor(7UL, 0L), StringComparer.OrdinalIgnoreCase);
+        await broker.CloseControlAsync();
+        await hostDrivePipe.DisposeAsync();
     }
 
-    sealed class NoOpDisposable : IDisposable
+    static async Task<(IIndexDriveWatch Handle, Stream Host)> StartAsync(BrokerIndexWatchSource source,
+        ScriptedBroker broker, char drive)
     {
-        public static readonly NoOpDisposable Instance = new();
+        var starting = source.StartAsync(new IndexWatchTarget(drive, 7, 100), CancellationToken.None);
+        var host = await broker.AcceptChannelAsync();
+        Assert.AreEqual(BrokerFrameKind.StartWatch, (await HostChannelHarness.ReadFrameAsync(host))?.Kind);
+        return (await starting.WaitAsync(HangGuard), host);
+    }
 
-        public void Dispose()
+    sealed class EndedRecorder
+    {
+        readonly TaskCompletionSource _first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int _count;
+
+        public EndedRecorder(BrokerProcess process)
         {
+            process.Ended += _ =>
+            {
+                Interlocked.Increment(ref _count);
+                _first.TrySetResult();
+            };
         }
+
+        public Task First => _first.Task;
+
+        public int Count => Volatile.Read(ref _count);
     }
 }

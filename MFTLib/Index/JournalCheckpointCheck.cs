@@ -45,7 +45,7 @@ static class JournalCheckpointCheck
     public static JournalCheckpointLoss? Check(char driveLetter, ulong checkpointJournalId, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring)
     {
-        if (ReadJournal(driveLetter) is not { } journal)
+        if (ProcessJournal.Read(driveLetter) is not { } journal)
         {
             return null;
         }
@@ -110,32 +110,58 @@ static class JournalCheckpointCheck
         }
     }
 
-    static JournalWindow? ReadJournal(char driveLetter)
+    /// <summary>
+    ///     The reader <see cref="Check" /> uses: its guard is this process's one-way flag, and
+    ///     nothing can replace it or its guard.
+    /// </summary>
+    static readonly JournalReader ProcessJournal = new(
+        () => Volatile.Read(ref _liveJournalReadsForbidden) != 0, ReadLiveJournal);
+
+    /// <summary>
+    ///     Reads the journal a check decides on, from a guard and a live read. The process reads
+    ///     through its own instance; a test builds another instance to exercise the unguarded
+    ///     path without touching the process's guard.
+    /// </summary>
+    internal sealed class JournalReader(Func<bool> liveReadsForbidden, Func<char, JournalWindow?> readLive)
     {
-        if (_journalOverride is { } journalOverride)
+        /// <summary>
+        ///     The override when one is installed, otherwise nothing while live reads are
+        ///     forbidden, otherwise the live journal.
+        /// </summary>
+        public JournalWindow? Read(char driveLetter)
         {
-            return journalOverride(driveLetter);
-        }
+            if (_journalOverride is { } journalOverride)
+            {
+                return journalOverride(driveLetter);
+            }
 
-        if (Volatile.Read(ref _liveJournalReadsForbidden) != 0)
-        {
-            // A test process reads no real volume unless a test asked for one. Answering null
-            // is the same answer a volume that cannot be queried already gives, so a warm
-            // start behaves identically on every machine instead of depending on whether the
-            // test's drive letter happens to name a real NTFS volume.
-            return null;
-        }
+            if (liveReadsForbidden())
+            {
+                // A test process reads no real volume unless a test asked for one. Answering null
+                // is the same answer a volume that cannot be queried already gives, so a warm
+                // start behaves identically on every machine instead of depending on whether the
+                // test's drive letter happens to name a real NTFS volume.
+                return null;
+            }
 
-        return ReadLiveJournal(driveLetter);
+            return readLive(driveLetter);
+        }
     }
 
     /// <summary>
     ///     The real unelevated read, reachable from a test that deliberately wants a real
     ///     volume even while <see cref="ForbidLiveJournalReads" /> is active.
     /// </summary>
-    internal static JournalWindow? ReadLiveJournal(char driveLetter)
+    internal static JournalWindow? ReadLiveJournal(char driveLetter) =>
+        ReadLiveJournal(driveLetter, OperatingSystem.IsWindows());
+
+    /// <summary>
+    ///     The read behind <see cref="ReadLiveJournal(char)" />, given whether the host is Windows,
+    ///     so the answer off Windows is tested on every platform.
+    /// </summary>
+    internal static JournalWindow? ReadLiveJournal(char driveLetter, bool isWindows)
     {
-        if (!OperatingSystem.IsWindows())
+        if (!isWindows || !OperatingSystem.IsWindows())
         {
             return null;
         }
@@ -164,7 +190,7 @@ static class JournalCheckpointCheck
     ///     Stops this process reading any real volume's journal for the rest of its life, so a
     ///     warm start in a test decides the same way whatever drive letters the host happens
     ///     to have. One way and idempotent, like the cache-directory guard; a test that wants
-    ///     a real volume installs an override over <see cref="ReadLiveJournal" />.
+    ///     a real volume installs an override over <see cref="ReadLiveJournal(char)" />.
     /// </summary>
     internal static void ForbidLiveJournalReads()
     {

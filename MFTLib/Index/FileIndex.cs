@@ -31,30 +31,17 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// </summary>
     readonly Dictionary<ushort, JournalCheckpointLoss> _checkpointLossesByOrdinal = [];
 
-    /// <summary>
-    ///     Ordinals of drives a cache-only open adopted despite a lost journal checkpoint (see
-    ///     <see cref="RejectUnresumableCheckpoint" />): <see cref="FileIndexOptions.InitialOpenCacheOnly" />
-    ///     never watches, and the block is still a correct snapshot as of its age, so the open
-    ///     keeps it rather than failing the drive. <see cref="BuildWatchTargets" /> reads this to
-    ///     keep such a drive off a later <see cref="StartWatchingAsync" />, since arming a watch
-    ///     from that block's cursor would resume from a position the journal no longer holds.
-    ///     A successful <see cref="RescanAsync" /> writes a fresh cursor and clears the ordinal
-    ///     from here along with <see cref="_checkpointLossesByOrdinal" />.
-    /// </summary>
-    readonly HashSet<ushort> _cacheOnlyUnresumableCheckpointOrdinals = [];
     readonly Dictionary<char, BlockOwnerLock> _canonicalLocksByLetter = [];
     readonly List<RetiredSnapshot> _retiredSnapshots = [];
     readonly FileIndexOptions _options;
-    readonly SemaphoreSlim _rescanGate = new(1, 1);
-    readonly SemaphoreSlim _swapGate = new(1, 1);
 
     /// <summary>
     ///     Cancelled by <see cref="DisposeAsync" /> before it waits for anything. Every query's
     ///     effective token is linked to this one, so a scan in flight is told to stop rather than
-    ///     holding disposal open for the rest of a whole-drive pass. Deliberately not disposed,
-    ///     for the same reason as <see cref="_swapGate" />: a query that raced the disposal still
-    ///     reads this token, and a disposed source would answer it with an exception naming the
-    ///     source rather than the index.
+    ///     holding disposal open for the rest of a whole-drive pass. Every rescan's token is linked
+    ///     to it as well. Deliberately not disposed, for the same reason as the drives' gates: a
+    ///     query that raced the disposal still reads this token, and a disposed source would
+    ///     answer it with an exception naming the source rather than the index.
     /// </summary>
     readonly CancellationTokenSource _disposalCancellation = new();
 
@@ -75,24 +62,45 @@ public sealed partial class FileIndex : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Guards reads and writes of <see cref="_snapshot" /> and <see cref="_driveBlocks" />
-    ///     against a concurrent reader (<see cref="Drives" />, <see cref="CurrentSnapshot" />,
-    ///     <see cref="TryGetDriveOrdinal" />) observing a partial swap. <see cref="_swapGate" />
-    ///     already serializes block mutations; this also serializes watch initialization and guards
-    ///     what a reader on another thread can see mid-mutation. It is never held across an
-    ///     <c>await</c>.
+    ///     Guards every drive's watch records and every ordinal-keyed record, and is the one step
+    ///     that publishes a snapshot: a commit of a drive's block, the new
+    ///     <see cref="Snapshot.Create" />, and the retirement of the previous snapshot all happen
+    ///     under it, so a reader (<see cref="Drives" />, <see cref="CurrentSnapshot" />,
+    ///     <see cref="TryGetDriveOrdinal" />) never observes a partial swap. It is innermost in the
+    ///     lock order (see <see cref="DriveRuntime" />) and never held across an <c>await</c>.
     /// </summary>
     readonly Lock _stateLock = new();
 
     Snapshot? _snapshot;
-    WatchSession? _watchSession;
     bool _disposed;
+
+    /// <summary>
+    ///     The open's settle counts by drive letter, claimed under <see cref="_stateLock" /> in the
+    ///     same section that records the drive's final state, so count order is settle order and,
+    ///     for drives with a block, ordinal order.
+    /// </summary>
+    readonly Dictionary<char, int> _settledCountsByLetter = [];
+
+    /// <summary>
+    ///     Claims the next settle count for a drive whose final open state is being recorded. The
+    ///     caller holds <see cref="_stateLock" />.
+    /// </summary>
+    void ClaimSettledCountLocked(char driveLetter) =>
+        _settledCountsByLetter[char.ToUpperInvariant(driveLetter)] = _settledCountsByLetter.Count + 1;
 
     FileIndex(FileIndexOptions options, string cacheDirectoryPath)
     {
-        _options = options;
+        // A private copy: the index re-enumerates its drives on every status read, so a later
+        // change to the caller's list must never reach it.
+        _options = options with { Drives = [.. options.Drives] };
         CacheDirectoryPath = cacheDirectoryPath;
+        _enumerateCacheFiles = options.EnumerateCacheFilesForTest ?? Directory.EnumerateFiles;
         _snapshot = Snapshot.Create([]);
+        foreach (var drive in _options.Drives)
+        {
+            var driveLetter = char.ToUpperInvariant(drive.DriveLetter);
+            _driveRuntimes.TryAdd(driveLetter, new DriveRuntime(driveLetter));
+        }
     }
 
     public string CacheDirectoryPath { get; }
@@ -105,9 +113,12 @@ public sealed partial class FileIndex : IAsyncDisposable
     {
         get
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
+            DrivesReadBeforeLockForTest?.Invoke();
             lock (_stateLock)
             {
+                // Checked under the lock: disposal sets the flag under it before it unpublishes
+                // any block, so a read that sees the flag clear sees every block still published.
+                ObjectDisposedException.ThrowIf(_disposed, this);
                 var statuses = new List<DriveStatus>(_options.Drives.Count);
                 foreach (var configured in _options.Drives)
                 {
@@ -119,6 +130,9 @@ public sealed partial class FileIndex : IAsyncDisposable
             }
         }
     }
+
+    /// <summary>A test seam: invoked by a read of <see cref="Drives" /> just before it takes <see cref="_stateLock" />.</summary>
+    internal Action? DrivesReadBeforeLockForTest { get; set; }
 
     internal Snapshot CurrentSnapshot
     {
@@ -143,33 +157,22 @@ public sealed partial class FileIndex : IAsyncDisposable
         var index = new FileIndex(options, cacheDirectoryPath);
         try
         {
-            var openProgress = options.OpenProgress;
-            var openOrdinal = 0;
-            foreach (var drive in options.Drives)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (openProgress is null)
-                {
-                    await index.AddDriveAsync(drive, cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    await index.AddDriveWithProgressAsync(drive, openOrdinal + 1, options.Drives.Count, openProgress,
-                        cancellationToken).ConfigureAwait(false);
-                }
-
-                openOrdinal++;
-            }
+            await index.SettleDrivesAsync(cancellationToken).ConfigureAwait(false);
         }
         catch
         {
-            // A later drive's failure or a mid-loop cancellation must not leak the mappings
-            // (and, for a no-cache block, the temp file) that earlier drives already opened.
+            // Every drive's settle has finished by now, so a failure or a cancellation must not
+            // leak the mappings (and, for a no-cache block, the temp file) that the drives that
+            // did settle already adopted.
             index.ReleaseUnpublishedBlocks();
             throw;
         }
 
-        index.PublishSnapshot();
+        lock (index._stateLock)
+        {
+            index.PublishSnapshotLocked();
+        }
+
         return index;
     }
 
@@ -204,9 +207,12 @@ public sealed partial class FileIndex : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Stops the live watch, prevents new index operations, waits for mutation and rescan
-    ///     ownership of <see cref="_swapGate" />, and releases every snapshot it holds, current
-    ///     and retired.
+    ///     Prevents new index operations and cancels every rescan in flight, stops every drive's
+    ///     live watch and waits for each drive's teardown, takes every drive's lifecycle gate and
+    ///     then every drive's write gate in ascending drive-letter order, so no rescan, start,
+    ///     commit, or batch is still running, and releases every snapshot it holds, current and
+    ///     retired. A fault a drive's watch ended with is never thrown from here: it was announced
+    ///     through <see cref="WatchFaulted" /> when it happened.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -242,30 +248,27 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
+        if (RejectInsideHandler(nameof(DisposeAsync)) is { } rejection)
         {
-            return;
+            throw rejection;
         }
 
-        try
+        lock (_stateLock)
         {
-            // No token of its own, and none may abandon a pump whose blocks this is about to unmap.
-            await StopWatchingAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            // Disposal still owns the block mappings after a reported pump fault. The fault was
-            // announced when observed and StopWatchingAsync remains the explicit rethrow surface.
-            // Discarded through the variable rather than an empty body, which is this repository's
-            // idiom for a deliberate swallow and what keeps RCS1075 honest here.
-            _ = exception;
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
         }
 
-        _disposed = true;
+        DisposedFlagSetForTest?.Invoke();
 
-        // Before the gate, not after: a query already inside the index holds a borrow that every
+        // Before the gates, not after: a query already inside the index holds a borrow that every
         // release below waits for, so it has to be told to stop before anything starts waiting on
-        // it. A query that has not started yet is turned away by the disposed flag instead.
+        // it. A query that has not started yet is turned away by the disposed flag instead. The
+        // same token cancels every drive's watch start and every rescan still in progress.
         ExceptionDispatchInfo? cancellationFailure = null;
         try
         {
@@ -280,6 +283,9 @@ public sealed partial class FileIndex : IAsyncDisposable
             // own failure if the release fails too.
             cancellationFailure = ExceptionDispatchInfo.Capture(exception);
         }
+
+        // No token of its own, and none may abandon a pump whose blocks this is about to unmap.
+        await StopEveryWatchForDisposalAsync().ConfigureAwait(false);
 
         try
         {
@@ -355,42 +361,18 @@ public sealed partial class FileIndex : IAsyncDisposable
             _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            GetWatchCatchUpState(driveBlock.DriveOrdinal),
+            GetWatchCatchUpStateLocked(driveBlock.DriveLetter),
             _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal));
-        return DescribeDrive(driveBlock, in annotations);
-    }
-
-    DriveStatus DescribeSettledDrive(char driveLetter)
-    {
-        lock (_stateLock)
+        return DescribeDrive(driveBlock, in annotations) with
         {
-            if (_driveBlocks.Count > 0 && char.ToUpperInvariant(_driveBlocks[^1].DriveLetter) == driveLetter)
-            {
-                return DescribeOnlineDriveBlock(_driveBlocks[^1]);
-            }
-
-            if (_blocklessDriveStatuses.Count > 0 &&
-                char.ToUpperInvariant(_blocklessDriveStatuses[^1].DriveLetter) == driveLetter)
-            {
-                return _blocklessDriveStatuses[^1];
-            }
-
-            return DescribeOnlineDrive(driveLetter) ?? DescribeBlocklessDrive(driveLetter);
-        }
+            ConsecutiveLostCatchUps = GetDriveRuntime(driveBlock.DriveLetter).ConsecutiveLostCatchUps
+        };
     }
 
     DriveStatus DescribeBlocklessDrive(char driveLetter)
     {
-        foreach (var status in _blocklessDriveStatuses)
-        {
-            if (char.ToUpperInvariant(status.DriveLetter) == driveLetter)
-            {
-                return status;
-            }
-        }
-
-        throw new InvalidOperationException(
-            $"Drive {driveLetter} is in FileIndexOptions.Drives but has no online or blockless status.");
+        // Every configured drive of an undisposed index is online or blockless once it settles.
+        return _blocklessDriveStatuses.First(status => char.ToUpperInvariant(status.DriveLetter) == driveLetter);
     }
 
     /// <summary>Everything a drive's status carries that is not read off its block header.</summary>

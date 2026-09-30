@@ -1,18 +1,18 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Text;
+using MFTLib.Index;
 
 namespace MFTLib;
 
 /// <summary>
-///     Binary frame codec for broker to UI IPC. Fixed-width little-endian numeric fields
-///     followed by a length-prefixed UTF-16 filename. No pipes, no text parsing - replaces
-///     the pipe-delimited helper serializers.
+///     Binary frame codec for broker IPC. Fixed-width little-endian numeric fields and
+///     length-prefixed UTF-16 strings.
 ///     Every frame: [totalLength int32][kind byte][payload]
 ///     totalLength counts the kind byte plus payload bytes.
 ///     ReadFrame sets out consumed to the full frame length including the 4-byte length prefix.
-///     Strings are length-prefixed UTF-16. This file holds the entry codec and the read
-///     side; the control-frame write methods live in BrokerProtocol.Write.cs.
+///     This file holds the entry codec and the read side; the write methods live in
+///     BrokerProtocol.Write.cs and the payload primitives in BrokerProtocol.Payload.cs.
 /// </summary>
 public static partial class BrokerProtocol
 {
@@ -83,182 +83,113 @@ public static partial class BrokerProtocol
     {
         var totalLength = BinaryPrimitives.ReadInt32LittleEndian(span);
         consumed = 4 + totalLength;
-        var payload = span.Slice(5, totalLength - 1); // skip 4-byte prefix + 1 kind byte
         var kind = (BrokerFrameKind)span[4];
+        var payload = new PayloadReader(span.Slice(5, totalLength - 1)); // skip 4-byte prefix + 1 kind byte
 
         return kind switch
         {
-            BrokerFrameKind.ArmAndScan => ReadArmAndScanFrame(payload),
-            BrokerFrameKind.StartWatch => BrokerFrame.StartWatch(ReadString(payload, 0, out _)),
-            BrokerFrameKind.DisarmDrive => BrokerFrame.DisarmDrive(ReadString(payload, 0, out _)),
-            BrokerFrameKind.Shutdown => BrokerFrame.Shutdown(),
+            BrokerFrameKind.OpenChannel => BrokerFrame.OpenChannel(
+                payload.UInt32(), payload.String(), payload.String()),
+            BrokerFrameKind.ChannelOpened => BrokerFrame.ChannelOpened(payload.UInt32()),
+            BrokerFrameKind.QueryVolume => BrokerFrame.QueryVolume(payload.UInt32(), payload.String()),
+            BrokerFrameKind.VolumeInfo => BrokerFrame.VolumeInfo(
+                payload.UInt32(), payload.Int64(), payload.UInt32(), payload.Int64()),
+            BrokerFrameKind.GrowUsnJournal => BrokerFrame.GrowUsnJournal(
+                payload.UInt32(), payload.String(), payload.Int64(), payload.Int64()),
+            BrokerFrameKind.UsnJournalSettings => BrokerFrame.UsnJournalSettings(
+                payload.UInt32(), payload.Int64(), payload.Int64()),
+            BrokerFrameKind.Error => BrokerFrame.Error(payload.UInt32(), payload.String()),
             BrokerFrameKind.Heartbeat => BrokerFrame.Heartbeat(),
-            BrokerFrameKind.EndWatch => BrokerFrame.EndWatch(),
-            BrokerFrameKind.EndWatchAck => BrokerFrame.EndWatchAck(),
-            BrokerFrameKind.ScanReady => ReadScanReadyFrame(payload),
-            BrokerFrameKind.Cursor => ReadCursorFrame(payload),
-            BrokerFrameKind.JournalBatch => ReadJournalBatchFrame(payload),
-            BrokerFrameKind.Error => ReadErrorFrame(payload),
-            BrokerFrameKind.CaughtUp => ReadCaughtUpFrame(payload),
-            BrokerFrameKind.ScanProgress => ReadScanProgressFrame(payload),
-            BrokerFrameKind.Warning => ReadWarningFrame(payload),
-            BrokerFrameKind.QueryVolumes => BrokerFrame.QueryVolumes(ReadString(payload, 0, out _)),
-            BrokerFrameKind.VolumeInfo => ReadVolumeInfoFrame(payload),
-            BrokerFrameKind.GrowUsnJournal => ReadDriveAndJournalSizesFrame(payload, BrokerFrame.GrowUsnJournal),
-            BrokerFrameKind.UsnJournalSettings => ReadDriveAndJournalSizesFrame(payload, BrokerFrame.UsnJournalSettings),
+            BrokerFrameKind.Stalled => BrokerFrame.Stalled(payload.String()),
+            BrokerFrameKind.ArmAndScan => ReadArmAndScanFrame(ref payload),
+            BrokerFrameKind.Cursor => BrokerFrame.ArmedCursor(ReadCursor(ref payload)),
+            BrokerFrameKind.ScanProgress => BrokerFrame.ScanProgress(ReadScanProgress(ref payload)),
+            BrokerFrameKind.CatchUpLost => ReadCatchUpLostFrame(ref payload),
+            BrokerFrameKind.ScanReady => BrokerFrame.ScanReady(payload.Int64(), payload.Int64(), payload.Int64()),
+            BrokerFrameKind.JournalBatch => ReadJournalBatchFrame(ref payload),
+            BrokerFrameKind.StartWatch => BrokerFrame.StartWatch(ReadCursor(ref payload)),
+            BrokerFrameKind.CaughtUp => BrokerFrame.CaughtUp(),
             _ => throw new InvalidDataException($"Unknown frame kind: {kind}")
         };
     }
 
     // Private read helpers
 
-    static string ReadString(ReadOnlySpan<byte> span, int offset, out int end)
+    static UsnJournalCursor ReadCursor(ref PayloadReader payload)
     {
-        var length = BinaryPrimitives.ReadInt32LittleEndian(span[offset..]);
-        offset += 4;
-        var value = Encoding.Unicode.GetString(span.Slice(offset, length));
-        offset += length;
-        end = offset;
-        return value;
+        var journalId = payload.UInt64();
+        return new UsnJournalCursor(journalId, payload.Int64());
     }
 
-    static BrokerFrame ReadArmAndScanFrame(ReadOnlySpan<byte> payload)
+    static BrokerFrame ReadArmAndScanFrame(ref PayloadReader payload)
     {
-        var drivesSpec = ReadString(payload, 0, out var offset);
-        var nameCount = BinaryPrimitives.ReadInt32LittleEndian(payload[offset..]);
-        offset += 4;
-        var keepFileNames = new string[nameCount];
-        for (var i = 0; i < nameCount; i++)
+        var sectionName = payload.String();
+        var profile = (BrokerScanProfile)payload.Int32();
+        if (!Enum.IsDefined(profile))
         {
-            keepFileNames[i] = ReadString(payload, offset, out offset);
+            throw new InvalidDataException($"Unknown broker scan profile: {(int)profile}");
         }
 
-        return BrokerFrame.ArmAndScan(drivesSpec, keepFileNames);
-    }
-
-    static BrokerFrame ReadScanReadyFrame(ReadOnlySpan<byte> payload)
-    {
-        var mmfName = ReadString(payload, 0, out var offset);
-        var rowCount = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        offset += 8;
-        var namePoolUsedBytes = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        offset += 8;
-        var skippedRecordCount = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        return BrokerFrame.ScanReady(mmfName, rowCount, namePoolUsedBytes, skippedRecordCount);
-    }
-
-    static BrokerFrame ReadCursorFrame(ReadOnlySpan<byte> payload)
-    {
-        var drive = ReadString(payload, 0, out var offset);
-        var journalId = BinaryPrimitives.ReadUInt64LittleEndian(payload[offset..]);
-        offset += 8;
-        var nextUsn = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        return BrokerFrame.ArmedCursor(drive, new UsnJournalCursor(journalId, nextUsn));
-    }
-
-    static BrokerFrame ReadJournalBatchFrame(ReadOnlySpan<byte> payload)
-    {
-        var drive = ReadString(payload, 0, out var offset);
-        var armEpoch = BinaryPrimitives.ReadUInt32LittleEndian(payload[offset..]);
-        offset += 4;
-        var journalId = BinaryPrimitives.ReadUInt64LittleEndian(payload[offset..]);
-        offset += 8;
-        var nextUsn = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        offset += 8;
-        var entryCount = BinaryPrimitives.ReadInt32LittleEndian(payload[offset..]);
-        offset += 4;
-        var entries = new UsnJournalEntry[entryCount];
-        for (var i = 0; i < entryCount; i++)
+        var nameCount = payload.Count(minimumItemBytes: 4);
+        var keepFileNames = new List<string>(nameCount);
+        while (keepFileNames.Count < nameCount)
         {
-            entries[i] = ReadEntry(payload[offset..], out var entryConsumed);
-            offset += entryConsumed;
+            keepFileNames.Add(payload.String());
         }
 
-        return BrokerFrame.JournalBatch(drive, armEpoch, new UsnJournalCursor(journalId, nextUsn), entries);
+        return BrokerFrame.ArmAndScan(sectionName, profile, keepFileNames);
     }
 
-    static BrokerFrame ReadErrorFrame(ReadOnlySpan<byte> payload)
+    static BrokerFrame ReadJournalBatchFrame(ref PayloadReader payload)
     {
-        var drive = ReadString(payload, 0, out var offset);
-        var armEpoch = BinaryPrimitives.ReadUInt32LittleEndian(payload[offset..]);
-        offset += 4;
-        var message = ReadString(payload, offset, out _);
-        return BrokerFrame.Error(drive, armEpoch, message);
-    }
-
-    static BrokerFrame ReadCaughtUpFrame(ReadOnlySpan<byte> payload)
-    {
-        var drive = ReadString(payload, 0, out var offset);
-        var armEpoch = BinaryPrimitives.ReadUInt32LittleEndian(payload[offset..]);
-        return BrokerFrame.CaughtUp(drive, armEpoch);
-    }
-
-    static BrokerFrame ReadWarningFrame(ReadOnlySpan<byte> payload)
-    {
-        var drive = ReadString(payload, 0, out var offset);
-        var message = ReadString(payload, offset, out _);
-        return BrokerFrame.Warning(drive, message);
-    }
-
-    static BrokerFrame ReadScanProgressFrame(ReadOnlySpan<byte> payload)
-    {
-        var drive = ReadString(payload, 0, out var offset);
-        var phaseRaw = BinaryPrimitives.ReadInt32LittleEndian(payload[offset..]);
-        if (phaseRaw < byte.MinValue || phaseRaw > byte.MaxValue)
+        var cursor = ReadCursor(ref payload);
+        var entryCount = payload.EntryCount();
+        var entries = new List<UsnJournalEntry>(entryCount);
+        while (entries.Count < entryCount)
         {
-            throw new InvalidDataException($"Unknown broker scan phase: {phaseRaw}");
+            entries.Add(payload.Entry());
         }
+
+        return BrokerFrame.JournalBatch(cursor, entries.ToArray());
+    }
+
+    static BrokerFrame ReadCatchUpLostFrame(ref PayloadReader payload)
+    {
+        var cause = (JournalCheckpointLossCause)payload.Int32();
+        if (!Enum.IsDefined(cause))
+        {
+            throw new InvalidDataException($"Unknown checkpoint loss cause: {(int)cause}");
+        }
+
+        var loss = new BrokerCatchUpLoss(cause, payload.Int64(), payload.Int64(), payload.Int64(),
+            payload.Int64(), payload.Int64(), payload.NullableInt64(), payload.NullableInt64());
+        return BrokerFrame.CatchUpLost(loss, payload.String());
+    }
+
+    static BrokerScanProgress ReadScanProgress(ref PayloadReader payload)
+    {
+        var phaseRaw = payload.Int32();
         var phase = (BrokerScanPhase)phaseRaw;
-        if (!Enum.IsDefined(phase))
+        if (phaseRaw < byte.MinValue || phaseRaw > byte.MaxValue || !Enum.IsDefined(phase))
         {
             throw new InvalidDataException($"Unknown broker scan phase: {phaseRaw}");
         }
-        offset += 4;
-        var recordsProcessed = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        offset += 8;
-        var bytesProcessed = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        offset += 8;
-        var totalRecordsRaw = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        offset += 8;
-        var totalBytesRaw = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        offset += 8;
-        var elapsedTicks = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
 
-        long? totalRecords = totalRecordsRaw >= 0 ? totalRecordsRaw : null;
-        long? totalBytes = totalBytesRaw >= 0 ? totalBytesRaw : null;
-        var elapsed = TimeSpan.FromTicks(elapsedTicks);
+        var recordsProcessed = payload.Int64();
+        var bytesProcessed = payload.Int64();
+        var totalRecordsRaw = payload.Int64();
+        var totalBytesRaw = payload.Int64();
+        var elapsedTicks = payload.Int64();
 
-        var progress = new BrokerScanProgress
+        return new BrokerScanProgress
         {
-            DriveLetter = drive,
+            DriveLetter = string.Empty,
             Phase = phase,
             RecordsProcessed = recordsProcessed,
             BytesProcessed = bytesProcessed,
-            TotalRecords = totalRecords,
-            TotalBytes = totalBytes,
-            Elapsed = elapsed
+            TotalRecords = totalRecordsRaw >= 0 ? totalRecordsRaw : null,
+            TotalBytes = totalBytesRaw >= 0 ? totalBytesRaw : null,
+            Elapsed = TimeSpan.FromTicks(elapsedTicks)
         };
-        return BrokerFrame.ScanProgress(progress);
-    }
-
-    static BrokerFrame ReadVolumeInfoFrame(ReadOnlySpan<byte> payload)
-    {
-        var drive = ReadString(payload, 0, out var offset);
-        var mftRecordCount = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        offset += 8;
-        var bytesPerFileRecordSegment = BinaryPrimitives.ReadUInt32LittleEndian(payload[offset..]);
-        offset += 4;
-        var mftValidDataLength = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        return BrokerFrame.VolumeInfo(drive, mftRecordCount, bytesPerFileRecordSegment, mftValidDataLength);
-    }
-
-    static BrokerFrame ReadDriveAndJournalSizesFrame(ReadOnlySpan<byte> payload,
-        Func<string, long, long, BrokerFrame> factory)
-    {
-        var drive = ReadString(payload, 0, out var offset);
-        var maximumSize = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        offset += 8;
-        var allocationDelta = BinaryPrimitives.ReadInt64LittleEndian(payload[offset..]);
-        return factory(drive, maximumSize, allocationDelta);
     }
 }

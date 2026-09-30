@@ -1,5 +1,3 @@
-using System.Buffers;
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
@@ -13,17 +11,21 @@ namespace MFTLib.Tests;
 ///     Exercises the real production delegates <see cref="JournalBrokerHost.CreateDefault" />
 ///     wires up (MftVolume-backed query/scan/catch-up/watch), using the same non-admin
 ///     native-mock technique as MockVolumeTests / UsnJournalTests, instead of the fake
-///     delegates JournalBrokerHostTests injects directly.
+///     delegates JournalBrokerHostTests injects directly. Requests reach the host as raw frames
+///     through <see cref="HostChannelHarness" />.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public partial class JournalBrokerHostRealSeamsTests : BrokerBlockTestBase
+public partial class JournalBrokerHostRealSeamsTests
 {
+    const uint DefaultRecordSize = 1024;
+
     [TestCleanup]
     public void Cleanup()
     {
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
+        Kernel32.ResetToDefaults();
     }
 
     static SafeFileHandle FakeHandle()
@@ -40,6 +42,41 @@ public partial class JournalBrokerHostRealSeamsTests : BrokerBlockTestBase
             return pointer;
         };
         MFTLibNative._freeUsnJournalInfo = Marshal.FreeHGlobal;
+    }
+
+    // A host scan sizes its chunks from FSCTL_GET_NTFS_VOLUME_DATA before it opens the parse.
+    static void MockVolumeRecordSize()
+    {
+        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        Kernel32._deviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
+        {
+            Marshal.StructureToPtr(new NtfsVolumeDataBufferNative
+            {
+                MftValidDataLength = 409_600,
+                BytesPerFileRecordSegment = DefaultRecordSize
+            }, outBuffer, false);
+            bytesReturned = (uint)Marshal.SizeOf<NtfsVolumeDataBufferNative>();
+            return true;
+        };
+    }
+
+    static void MockFreeMftResult()
+    {
+        MFTLibNative._freeMftResult = ptr =>
+        {
+            var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
+            if (parsed.Entries != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(parsed.Entries);
+            }
+
+            if (parsed.EntryStrings != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(parsed.EntryStrings);
+            }
+
+            Marshal.FreeHGlobal(ptr);
+        };
     }
 
     // Native filename entries include an in-use file, an unused file, and an empty name.
@@ -96,29 +133,31 @@ public partial class JournalBrokerHostRealSeamsTests : BrokerBlockTestBase
         return resultPtr;
     }
 
+    // Scans drive C through the default host over a raw ArmAndScan frame and returns every frame
+    // the drive pipe carried. The default host reads the catch-up journal through the real seam.
     static async Task<List<BrokerFrame>> ServeDefaultScanAsync(RecordingBlockSectionWriter writer)
     {
-        MFTLibNative._readUsnJournal = (_, nextUsn, journalId) => BuildEmptyWatchResult(journalId, nextUsn + 100);
-        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
-        var (client, server) = DuplexStream.CreatePair();
-        await using var clientLifetime = client;
-        await using var serverLifetime = server;
-        var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(request, "C:0:0:section-C");
-        await client.WriteAsync(request.WrittenMemory);
-        await JournalBrokerHost.CreateDefault().ServeAsync(server, writer, true, CancellationToken.None);
-        await server.DisposeAsync();
-        using var response = new MemoryStream();
-        await client.CopyToAsync(response);
-        var bytes = response.ToArray();
-        var frames = new List<BrokerFrame>();
-        for (var offset = 0; offset < bytes.Length;)
+        if (!OperatingSystem.IsWindows())
         {
-            frames.Add(BrokerProtocol.ReadFrame(bytes.AsSpan(offset), out var consumed));
-            offset += consumed;
+            Assert.Inconclusive("Host scans size their chunks from FSCTL_GET_NTFS_VOLUME_DATA, which requires Windows.");
         }
 
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
+        MockVolumeRecordSize();
+        // The first bounded read advances 100 USNs past the armed cursor; the journal tip stays
+        // there, so the next read returns the cursor unchanged and catch-up ends.
+        long? tip = null;
+        MFTLibNative._readUsnJournal = (_, nextUsn, journalId, _) =>
+        {
+            tip ??= nextUsn + 100;
+            return BuildEmptyWatchResult(journalId, tip.Value);
+        };
+        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
+        await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault(), writer);
+
+        var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C', "section-C"));
+
+        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error),
+            string.Join("; ", frames.Where(frame => frame.Kind == BrokerFrameKind.Error).Select(frame => frame.Message)));
         return frames;
     }
 
@@ -163,16 +202,4 @@ public partial class JournalBrokerHostRealSeamsTests : BrokerBlockTestBase
         Marshal.StructureToPtr(nativeResult, resultPtr, false);
         return resultPtr;
     }
-
-    static async Task<BrokerFrame> ReadOneFrameAsync(Stream stream)
-    {
-        var header = new byte[4];
-        await stream.ReadExactlyAsync(header);
-        var totalLength = BinaryPrimitives.ReadInt32LittleEndian(header);
-        var frameBytes = new byte[4 + totalLength];
-        header.CopyTo(frameBytes.AsMemory());
-        await stream.ReadExactlyAsync(frameBytes.AsMemory(4, totalLength));
-        return BrokerProtocol.ReadFrame(frameBytes, out _);
-    }
-
 }

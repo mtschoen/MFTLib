@@ -9,7 +9,7 @@ static class MFTLibNative
     //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
-    internal const uint ExpectedMftNativeAbiVersion = 1;
+    internal const uint ExpectedMftNativeAbiVersion = 2;
     internal const uint NativeCompactEntrySize = 50;
 
     // Swappable function pointers - default to the native P/Invoke implementations.
@@ -17,7 +17,9 @@ static class MFTLibNative
     internal static Func<uint> _getMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
     internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr> _parseMftRecords = NativeParseMFTRecords;
 
-    internal static Func<SafeHandle, string?, MatchFlags, uint, NativeMftProgressCallback?, IntPtr, IntPtr>
+    // The IntPtr after bufferSizeRecords is the caller's MftParseControl block, or zero for none.
+    // The callback carries its own state, so the native context argument is always zero.
+    internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr, NativeMftProgressCallback?, IntPtr>
         _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
 
     internal static Action<IntPtr> _freeMftResult = NativeFreeMftResult;
@@ -27,7 +29,7 @@ static class MFTLibNative
     internal static Func<string, string?, MatchFlags, uint, IntPtr> _parseMftFromFile = NativeParseMFTFromFile;
     internal static Func<SafeHandle, IntPtr> _queryUsnJournal = NativeQueryUsnJournal;
     internal static Action<IntPtr> _freeUsnJournalInfo = NativeFreeUsnJournalInfo;
-    internal static Func<SafeHandle, long, ulong, IntPtr> _readUsnJournal = NativeReadUsnJournal;
+    internal static Func<SafeHandle, long, ulong, uint, IntPtr> _readUsnJournal = NativeReadUsnJournal;
     internal static Action<IntPtr> _freeUsnJournalResult = NativeFreeUsnJournalResult;
     internal static Func<SafeHandle, long, ulong, IntPtr> _watchUsnJournalBatch = NativeWatchUsnJournalBatch;
     internal static Func<SafeHandle, long, ulong, SafeHandle, IntPtr> _watchUsnJournalBatchCancelable =
@@ -35,15 +37,16 @@ static class MFTLibNative
     internal static Func<SafeHandle, bool> _cancelUsnJournalWatch = NativeCancelUsnJournalWatch;
 
     static IntPtr NativeParseMFTRecordsWithProgressDefault(
-        SafeHandle volumeHandle, string? filter, MatchFlags matchFlags, uint bufferSizeRecords,
-        NativeMftProgressCallback? callback, IntPtr context)
+        SafeHandle volumeHandle, string? filter, MatchFlags matchFlags, uint bufferSizeRecords, IntPtr control,
+        NativeMftProgressCallback? callback)
     {
         if (_parseMftRecords != NativeParseMFTRecords)
         {
             return _parseMftRecords(volumeHandle, filter, matchFlags, bufferSizeRecords);
         }
 
-        return NativeParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, callback, context);
+        return NativeParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, control, callback,
+            IntPtr.Zero);
     }
 
     // P/Invoke declarations (private - all access goes through the Func fields)
@@ -58,7 +61,8 @@ static class MFTLibNative
     [DllImport(LibraryName, EntryPoint = "ParseMFTRecordsWithProgress", CallingConvention = CallingConvention.Cdecl,
         CharSet = CharSet.Unicode)]
     static extern IntPtr NativeParseMFTRecordsWithProgress(SafeHandle volumeHandle, string? filter,
-        MatchFlags matchFlags, uint bufferSizeRecords, NativeMftProgressCallback? callback, IntPtr context);
+        MatchFlags matchFlags, uint bufferSizeRecords, IntPtr control, NativeMftProgressCallback? callback,
+        IntPtr context);
 
     [DllImport(LibraryName, EntryPoint = "FreeMftResult", CallingConvention = CallingConvention.Cdecl)]
     static extern void NativeFreeMftResult(IntPtr result);
@@ -125,6 +129,15 @@ static class MFTLibNative
     internal static extern void NativeSetUsnWatchPipe(SafeHandle handle, SafeHandle beforeIssue,
         SafeHandle continueIssue, SafeHandle issued, int gateReadNumber);
 
+    [DllImport(LibraryName, EntryPoint = "SetCancelCheckCountdown", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void NativeSetCancelCheckCountdown(int countdown);
+
+    [DllImport(LibraryName, EntryPoint = "GetChunkThreadCounts", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe uint NativeGetChunkThreadCounts(uint* counts, uint capacity);
+
+    [DllImport(LibraryName, EntryPoint = "GetResolveThreadCount", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern uint NativeGetResolveThreadCount();
+
     [DllImport(LibraryName, EntryPoint = "ResetTestState", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeResetTestState();
 
@@ -141,7 +154,8 @@ static class MFTLibNative
     static extern void NativeFreeUsnJournalInfo(IntPtr info);
 
     [DllImport(LibraryName, EntryPoint = "ReadUsnJournal", CallingConvention = CallingConvention.Cdecl)]
-    static extern IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalId);
+    static extern IntPtr NativeReadUsnJournal(SafeHandle volumeHandle, long startUsn, ulong journalId,
+        uint maximumBufferReads);
 
     [DllImport(LibraryName, EntryPoint = "FreeUsnJournalResult", CallingConvention = CallingConvention.Cdecl)]
     static extern void NativeFreeUsnJournalResult(IntPtr result);

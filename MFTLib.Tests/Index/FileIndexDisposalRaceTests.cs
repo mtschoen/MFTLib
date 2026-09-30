@@ -4,10 +4,10 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     The swap gate admits one waiter at a time, and <see cref="FileIndex.DisposeAsync" /> sets
-///     the disposal flag before it queues on that gate. A caller already queued behind an in-flight
-///     scan therefore reaches the front after the index has been declared disposed, past the check
-///     at the top of its own method. It has to notice.
+///     <see cref="FileIndex.DisposeAsync" /> sets the disposal flag and cancels the disposal token
+///     before it waits for any drive's gate. A rescan in flight and a rescan queued behind it on the
+///     drive's lifecycle gate are both linked to that token, so both end cancelled rather than
+///     publishing, and a call made after disposal is refused by the flag.
 /// </summary>
 [TestClass]
 public class FileIndexDisposalRaceTests
@@ -100,15 +100,17 @@ public class FileIndexDisposalRaceTests
     }
 
     [TestMethod]
-    public async Task RescanAsync_AdmittedToTheGateAfterDisposeAsync_ThrowsInsteadOfPublishing()
+    public async Task RescanAsync_QueuedOnTheGateWhenDisposeAsyncBegins_IsCancelledInsteadOfPublishing()
     {
         using var progress = new BlockOnFirstReport();
         var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None);
         try
         {
             progress.Armed = true;
+            var original = index.Root('T').DriveBlock;
 
-            // Parks inside the scan while holding the gate, so both calls below queue behind it.
+            // Parks inside the scan while holding the drive's lifecycle gate, so the call below
+            // queues behind it.
             var gateHolder = index.RescanAsync('T', CancellationToken.None);
             Assert.IsTrue(progress.WaitUntilParked(),
                 "the first rescan never reached its progress callback, so it never took the gate");
@@ -116,23 +118,73 @@ public class FileIndexDisposalRaceTests
             // Runs its own disposal check and queues on the gate while the flag is still clear.
             var queuedRescan = index.RescanAsync('T', CancellationToken.None);
 
-            // Sets the disposal flag synchronously, before awaiting the gate behind the rescan
-            // above. That ordering is exactly what the re-check inside the gate exists for.
+            // Sets the disposal flag and cancels the token both rescans are linked to, then waits
+            // for the drive's gates.
             var disposal = index.DisposeAsync();
 
             progress.Release();
-            await gateHolder;
-
-            var thrown = await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => queuedRescan);
-            StringAssert.Contains(thrown.ObjectName, nameof(FileIndex),
-                "the index itself must report the disposal, not the swap gate: a gate disposed out "
-                + "from under a waiter reports the semaphore and hides what actually went wrong");
+            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => gateHolder);
+            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => queuedRescan);
             await disposal;
+            Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");
         }
         finally
         {
             progress.Release();
             await index.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    ///     The same two rescans, reaching their next checkpoints in the window where disposal has
+    ///     set its flag but not yet cancelled the disposal token: the scan in flight reaches its
+    ///     publish, and the queued rescan takes the gate the first one released. Both were admitted
+    ///     before disposal began, so both are cancelled by it, never refused as if they had been
+    ///     called after it.
+    /// </summary>
+    [TestMethod]
+    public async Task RescanAsync_AdmittedBeforeDisposal_ReachingACheckpointBeforeTheTokenIsCancelled_IsCancelled()
+    {
+        using var progress = new BlockOnFirstReport();
+        var index = await FileIndex.OpenAsync(Options(progress), CancellationToken.None).WaitAsync(HandoffTimeout);
+        try
+        {
+            progress.Armed = true;
+            var original = index.Root('T').DriveBlock;
+            var gateHolder = index.RescanAsync('T', CancellationToken.None);
+            Assert.IsTrue(progress.WaitUntilParked(),
+                "the first rescan never reached its progress callback, so it never took the gate");
+            var queuedRescan = index.RescanAsync('T', CancellationToken.None);
+            var settledInTheWindow = false;
+            Action releaseTheScan = progress.Release;
+            index.DisposedFlagSetForTest = () =>
+            {
+                releaseTheScan();
+                try
+                {
+                    settledInTheWindow = Task.WaitAll([gateHolder, queuedRescan], HandoffTimeout);
+                }
+                catch (AggregateException)
+                {
+                    // Both are expected to fault; their exceptions are asserted below.
+                    settledInTheWindow = true;
+                }
+            };
+
+            var disposal = index.DisposeAsync().AsTask();
+
+            Assert.IsTrue(settledInTheWindow, "both rescans settled before disposal cancelled its token");
+            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => gateHolder)
+                .WaitAsync(HandoffTimeout);
+            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => queuedRescan)
+                .WaitAsync(HandoffTimeout);
+            await disposal.WaitAsync(HandoffTimeout);
+            Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");
+        }
+        finally
+        {
+            progress.Release();
+            await index.DisposeAsync().AsTask().WaitAsync(HandoffTimeout);
         }
     }
 

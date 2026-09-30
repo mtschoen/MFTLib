@@ -26,9 +26,17 @@ public readonly partial record struct FileEntry
     }
 
     static FileStream DefaultOpenById(string anyPathOnVolume, uint recordNumber, ushort sequenceNumber,
-        FileAccess access)
+        FileAccess access) =>
+        OpenById(OperatingSystem.IsWindows(), anyPathOnVolume, recordNumber, sequenceNumber, access);
+
+    /// <summary>
+    ///     The route behind <see cref="DefaultOpenById" />, given whether the host is Windows, so the
+    ///     refusal off Windows is tested on every platform.
+    /// </summary>
+    internal static FileStream OpenById(bool isWindows, string anyPathOnVolume, uint recordNumber,
+        ushort sequenceNumber, FileAccess access)
     {
-        if (!OperatingSystem.IsWindows())
+        if (!isWindows || !OperatingSystem.IsWindows())
         {
             throw new PlatformNotSupportedException(
                 "Opening an MFT entry by file id is only supported on Windows.");

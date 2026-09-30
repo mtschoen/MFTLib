@@ -387,14 +387,3 @@ void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, 
         }
     }
 }
-
-void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, SliceResult& batchSlice,
-                        const ScanContext& scan) {
-    for (uint64_t i = 0; i < filesToLoad; i++, recordIndex++) {
-        ParsedEntry entry{};
-        if (ScanRecordForEntry(buffer + (static_cast<size_t>(scan.geometry.recordSize) * i), recordIndex, scan,
-                               &entry)) {
-            batchSlice.append(entry);
-        }
-    }
-}

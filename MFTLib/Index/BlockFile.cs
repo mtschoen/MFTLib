@@ -50,30 +50,28 @@ public sealed unsafe partial class BlockFile : IDisposable
     ///     Invoked once disposal has begun and before the view is unmapped, which is the window a
     ///     racing writer has to observe.
     /// </summary>
-    internal Action? _disposeStartedForTest;
+    internal Action<bool>? _disposeStartedForTest;
 
-    BlockFile(string path, long length, bool deleteOnClose, MemoryMappedFile mappedFile,
+    BlockFile(string path, long length, MemoryMappedFile mappedFile,
         MemoryMappedViewAccessor view)
     {
         Path = path;
         Length = length;
-        DeleteOnClose = deleteOnClose;
         _mappedFile = mappedFile;
         _view = view;
+        _flushViewRange = FlushViewRangeNatively;
+        _synchronizeViewRange = SynchronizeViewRangeNatively;
         byte* pointer = null;
         _view.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
         _base = pointer;
     }
 
+    /// <summary>Bounds each native flush call so progress is reported while a large block is written out.</summary>
+    internal const long FlushRangeBytes = 64L * 1024 * 1024;
+
     public string Path { get; }
 
     public long Length { get; }
-
-    /// <summary>
-    ///     True when this block was created in a no-cache path and therefore owns deletion via
-    ///     <see cref="FileOptions.DeleteOnClose" />, so the process is not required to delete it.
-    /// </summary>
-    public bool DeleteOnClose { get; }
 
     /// <summary>
     ///     Takes one writer access, or reports that disposal has begun and the view is on its way
@@ -168,41 +166,36 @@ public sealed unsafe partial class BlockFile : IDisposable
 
     /// <summary>
     ///     Takes ownership of a freshly built mapping and turns it into an initialized block. If
-    ///     either step throws, everything this attempt created is torn down before the exception
+    ///     construction throws, everything this attempt created is torn down before the exception
     ///     propagates: the view and the mapping are disposed, and the file is deleted, because
     ///     <see cref="FileMode.Create" /> has already truncated whatever was at that path and what
     ///     remains is a block with no valid header that the next <see cref="Open" /> could only
     ///     reject. Deleting matters most in cache mode, where nothing else would ever remove it:
     ///     it would sit at the canonical path and cost every later open a needless rejection.
+    ///     Initializing the header only stores option values through the pointer the constructor
+    ///     acquired, so it has no failure of its own to unwind.
     ///     Internal rather than private so a regression test can provoke the failure directly and
     ///     verify that neither a handle nor a file survives it.
     /// </summary>
     internal static BlockFile BuildAndInitialize(BlockFileCreateOptions options, long length,
         MemoryMappedFile mappedFile, MemoryMappedViewAccessor view)
     {
-        BlockFile? block = null;
+        BlockFile block;
         try
         {
-            block = new BlockFile(options.Path, length, options.DeleteOnClose, mappedFile, view);
-            block.InitializeHeader(options);
-            return block;
+            block = new BlockFile(options.Path, length, mappedFile, view);
         }
         catch
         {
-            if (block is null)
-            {
-                // The constructor never returned, so nothing else owns these two yet.
-                view.Dispose();
-                mappedFile.Dispose();
-            }
-            else
-            {
-                block.Dispose();
-            }
-
+            // The constructor never returned, so nothing else owns these two yet.
+            view.Dispose();
+            mappedFile.Dispose();
             TryDeleteFailedCreate(options.Path, options.Diagnostics);
             throw;
         }
+
+        block.InitializeHeader(options);
+        return block;
     }
 
     /// <summary>
@@ -211,7 +204,7 @@ public sealed unsafe partial class BlockFile : IDisposable
     ///     by another process.
     /// </summary>
     internal BlockFile(MemoryMappedFile mappedFile, MemoryMappedViewAccessor view, long length)
-        : this(string.Empty, length, deleteOnClose: false, mappedFile, view)
+        : this(string.Empty, length, mappedFile, view)
     {
     }
 
@@ -238,26 +231,16 @@ public sealed unsafe partial class BlockFile : IDisposable
 
             length = info.Length;
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            validation = BlockValidationResult.WrongMagic;
-            return null;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // A block the process may not read is "no usable block here" exactly like a missing
-            // one: the caller discards it and cold-scans. See this method's summary.
+            // A path the file system cannot describe (PathTooLongException is an IOException), or
+            // a file the process may not describe, is "no usable block here" exactly like a
+            // missing one: the caller discards it and cold-scans. See this method's summary.
             validation = BlockValidationResult.WrongMagic;
             return null;
         }
 
         return OpenMapped(path, expectedVolumeSerial, length, out validation);
-    }
-
-    public void Flush()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        _view.Flush();
     }
 
     /// <summary>
@@ -288,7 +271,7 @@ public sealed unsafe partial class BlockFile : IDisposable
             drained = _accessDrained;
         }
 
-        _disposeStartedForTest?.Invoke();
+        _disposeStartedForTest?.Invoke(drained is not null);
 
         // Invariant: blocks synchronously on the ManualResetEventSlim until in-flight writers drain, not on a Task.
         drained?.Wait();
@@ -316,7 +299,7 @@ public sealed unsafe partial class BlockFile : IDisposable
         {
             var (mappedFile, view) = OpenMapping(path, FileMode.Open, mappingCapacity: 0, viewLength: length,
                 fileOptions: FileOptions.None);
-            block = new BlockFile(path, length, deleteOnClose: false, mappedFile, view);
+            block = new BlockFile(path, length, mappedFile, view);
             validation = BlockHeader.Validate(in block.Header, expectedVolumeSerial, length);
             if (validation == BlockValidationResult.Valid)
             {

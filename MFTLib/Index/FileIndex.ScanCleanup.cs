@@ -9,7 +9,7 @@ public sealed partial class FileIndex
         DeclinedInUse
     }
 
-    CanonicalSlotOutcome ResolveCanonicalOwnership(IndexedDrive drive, char driveLetter, ushort driveOrdinal)
+    CanonicalSlotOutcome ResolveCanonicalOwnership(IndexedDrive drive)
     {
         if (_options.NoCache)
         {
@@ -24,25 +24,14 @@ public sealed partial class FileIndex
             return CanonicalSlotOutcome.Owned;
         }
 
-        if (_options.InitialOpenCacheOnly)
-        {
-            lock (_stateLock)
-            {
-                _mftProducerFailureMessagesByOrdinal[driveOrdinal] =
-                    $"Drive {driveLetter}: cache block is in use by another FileIndex and --cache-only forbids a scan.";
-            }
-
-            RecordFailedDrive(driveLetter, driveOrdinal, DriveFailureKind.InUse);
-            return CanonicalSlotOutcome.DeclinedInUse;
-        }
-
-        return CanonicalSlotOutcome.NotOwned;
+        return _options.InitialOpenCacheOnly ? CanonicalSlotOutcome.DeclinedInUse : CanonicalSlotOutcome.NotOwned;
     }
 
     void RecordOfflineDrive(char driveLetter)
     {
         lock (_stateLock)
         {
+            ClaimSettledCountLocked(driveLetter);
             _blocklessDriveStatuses.Add(new DriveStatus
             {
                 DriveLetter = driveLetter,
@@ -58,10 +47,15 @@ public sealed partial class FileIndex
         }
     }
 
-    void RecordFailedDrive(char driveLetter, ushort driveOrdinal, DriveFailureKind failureKind)
+    /// <summary>
+    ///     Records a drive that opening left with no block, from its settled result and keyed by
+    ///     letter, since a drive that never adds a block never takes an ordinal.
+    /// </summary>
+    void RecordFailedDrive(char driveLetter, DriveFailureKind failureKind, PendingDriveResult settled)
     {
         lock (_stateLock)
         {
+            ClaimSettledCountLocked(driveLetter);
             _blocklessDriveStatuses.Add(new DriveStatus
             {
                 DriveLetter = driveLetter,
@@ -73,25 +67,14 @@ public sealed partial class FileIndex
                 ScanTimestamp = DateTime.MinValue,
                 CompactionNeeded = false,
                 WatchSupported = false,
-                DiscardedBlock = _discardedBlocksByOrdinal.TryGetValue(driveOrdinal, out var discarded)
-                    ? discarded
-                    : null,
-                MftProducerFailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveOrdinal),
+                DiscardedBlock = settled.DiscardedBlock,
+                MftProducerFailureMessage = settled.ProducerFailureMessage,
                 FailureKind = failureKind,
                 // A cache-only open declines the drive precisely because the checkpoint was
                 // lost, so this is where that reason has to reach the consumer: the drive ends
                 // up with no block, and so never travels through DescribeDrive.
-                CheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveOrdinal)
+                CheckpointLoss = settled.CheckpointLoss
             });
-            _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
-            _discardedBlocksByOrdinal.Remove(driveOrdinal);
-            _blockSourcesByOrdinal.Remove(driveOrdinal);
-            _cacheSlotsByOrdinal.Remove(driveOrdinal);
-
-            // A drive that never adds a block does not consume its ordinal, so everything keyed
-            // by it has to go once the status above has taken its own copy. Otherwise the next
-            // drive to take this ordinal inherits this drive's report.
-            _checkpointLossesByOrdinal.Remove(driveOrdinal);
             ReleaseCanonicalOwnershipLocked(driveLetter);
         }
     }
@@ -163,14 +146,6 @@ public sealed partial class FileIndex
         return true;
     }
 
-    void ReleaseCanonicalOwnership(char driveLetter)
-    {
-        lock (_stateLock)
-        {
-            ReleaseCanonicalOwnershipLocked(driveLetter);
-        }
-    }
-
     /// <summary>The caller holds <see cref="_stateLock" />.</summary>
     void ReleaseCanonicalOwnershipLocked(char driveLetter)
     {
@@ -180,12 +155,18 @@ public sealed partial class FileIndex
         }
     }
 
+    /// <summary>
+    ///     Lists the cache directory's files matching a pattern: <see cref="Directory.EnumerateFiles(string, string)" />
+    ///     unless the options supplied <see cref="FileIndexOptions.EnumerateCacheFilesForTest" />.
+    /// </summary>
+    readonly Func<string, string, IEnumerable<string>> _enumerateCacheFiles;
+
     void CleanupRetiredSiblings(char driveLetter, uint volumeSerial)
     {
         var pattern = CacheDirectory.BlockFileName(driveLetter, volumeSerial) + ".retired-*";
         try
         {
-            foreach (var path in Directory.EnumerateFiles(CacheDirectoryPath, pattern))
+            foreach (var path in _enumerateCacheFiles(CacheDirectoryPath, pattern))
             {
                 TryDeleteBestEffort(path,
                     "sweeping a stale \".retired-*\" sibling left by a killed process");
@@ -220,28 +201,41 @@ public sealed partial class FileIndex
         }
     }
 
+    /// <summary>A canonical cache file renamed aside so a scan can write the drive's new block in its place.</summary>
+    readonly record struct RetiredCanonicalFile(string RetiredPath, string CanonicalPath, DriveBlock Superseded);
+
     /// <summary>
-    ///     Renames the file currently at <paramref name="canonicalPath" /> aside, if one exists,
-    ///     and schedules it for deletion once <paramref name="superseded" /> is fully released.
+    ///     Renames the file at <paramref name="target" />'s canonical path aside, when the scan
+    ///     writes there, <paramref name="superseded" /> is the block that file backs, and a file
+    ///     exists, and schedules it for deletion once <paramref name="superseded" /> is fully
+    ///     released. Null when nothing was renamed.
     /// </summary>
-    static string? RenameAsideForRescan(string canonicalPath, DriveBlock superseded, Action<string>? diagnostics)
+    RetiredCanonicalFile? RenameAsideForRescan(ScanBlockTarget target, DriveBlock? superseded)
     {
-        if (!File.Exists(canonicalPath))
+        if (superseded is null || !target.OwnsCanonicalSlot || !File.Exists(target.Path))
         {
             return null;
         }
 
-        var retiredPath = $"{canonicalPath}.retired-{Guid.NewGuid():N}";
-        File.Move(canonicalPath, retiredPath);
-        superseded.ScheduleDeleteAt(retiredPath, diagnostics);
-        return retiredPath;
+        var retiredPath = $"{target.Path}.retired-{Guid.NewGuid():N}";
+        File.Move(target.Path, retiredPath);
+        superseded.ScheduleDeleteAt(retiredPath, _options.Diagnostics);
+        return new RetiredCanonicalFile(retiredPath, target.Path, superseded);
     }
 
     /// <summary>
-    ///     Undoes <see cref="RenameAsideForRescan" /> when the scan fails or is cancelled.
+    ///     Undoes <see cref="RenameAsideForRescan" /> when the scan fails or is cancelled. Nothing to
+    ///     do when nothing was renamed.
     /// </summary>
-    static void RestoreRetiredFile(string retiredPath, string canonicalPath, DriveBlock superseded, Action<string>? diagnostics)
+    void RestoreRetiredFile(RetiredCanonicalFile? retired)
     {
+        if (retired is not { } renamed)
+        {
+            return;
+        }
+
+        var (retiredPath, canonicalPath, superseded) = renamed;
+        var diagnostics = _options.Diagnostics;
         try
         {
             if (File.Exists(retiredPath))
@@ -263,28 +257,25 @@ public sealed partial class FileIndex
         superseded.ClearScheduledDelete();
     }
 
-    /// <summary>Swaps in a new snapshot over the current <see cref="_driveBlocks" /> list.</summary>
-    void PublishSnapshot()
+    /// <summary>
+    ///     Swaps in a new snapshot over the current <see cref="_driveBlocks" /> list, which the
+    ///     caller has just committed. The caller holds <see cref="_stateLock" />, which is what
+    ///     orders every publication and every change to <see cref="_retiredSnapshots" />.
+    /// </summary>
+    void PublishSnapshotLocked()
     {
-        Snapshot previous;
-        lock (_stateLock)
-        {
-            previous = _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
-            _snapshot = Snapshot.Create(_driveBlocks);
-        }
-
-        _retiredSnapshots.RemoveAll(retired => retired.Release.IsReleaseComplete);
-        _retiredSnapshots.Add(new RetiredSnapshot(previous));
+        RetireCurrentSnapshotLocked(Snapshot.Create(_driveBlocks));
     }
 
-    /// <summary>Forces every retained release state to release its blocks now.</summary>
-    async ValueTask ReleaseAllRetiredSnapshotsAsync()
+    /// <summary>
+    ///     Makes <paramref name="replacement" /> the current snapshot and keeps the previous one's
+    ///     release state until its release completes. The caller holds <see cref="_stateLock" />.
+    /// </summary>
+    void RetireCurrentSnapshotLocked(Snapshot replacement)
     {
-        foreach (var retired in _retiredSnapshots)
-        {
-            await retired.Release.ReleaseAsync().ConfigureAwait(false);
-        }
-
-        _retiredSnapshots.Clear();
+        var previous = _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
+        _snapshot = replacement;
+        _retiredSnapshots.RemoveAll(retired => retired.Release.IsReleaseComplete);
+        _retiredSnapshots.Add(new RetiredSnapshot(previous));
     }
 }

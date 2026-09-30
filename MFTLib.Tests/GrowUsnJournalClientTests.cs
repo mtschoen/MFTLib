@@ -1,131 +1,83 @@
-using System.Buffers;
-using System.Buffers.Binary;
 using MFTLib.Tests.TestSupport;
+using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
-/// <summary>
-///     Client-side <see cref="JournalBrokerClient.GrowUsnJournalAsync" />: request shape,
-///     success reply, refusal as a thrown exception, and disconnect mid-exchange.
-/// </summary>
 [TestClass]
 public class GrowUsnJournalClientTests : BrokerBlockTestBase
 {
     [TestMethod]
     public async Task GrowUsnJournalAsync_Success_SendsRequestAndReturnsSettings()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
-
-        var brokerTask = Task.Run(async () =>
+        var received = new List<(string Drive, long MaximumSize, long AllocationDelta)>();
+        await using var broker = new InProcessBroker(CreateHost(growUsnJournal: (drive, maximumSize, allocationDelta) =>
         {
-            var request = await ReadOneFrameAsync(serverSide);
-            Assert.AreEqual(BrokerFrameKind.GrowUsnJournal, request.Kind);
-            Assert.AreEqual("C", request.Drive);
-            Assert.AreEqual(0x08000000L, request.JournalMaximumSize);
-            Assert.AreEqual(0x01000000L, request.JournalAllocationDelta);
-            var response = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteUsnJournalSettings(response, "C", 0x08000000, 0x01000000);
-            await serverSide.WriteAsync(response.WrittenMemory);
-            await serverSide.FlushAsync();
-        });
+            received.Add((drive, maximumSize, allocationDelta));
+            return new UsnJournalSettings { MaximumSize = maximumSize, AllocationDelta = allocationDelta };
+        }));
 
-        var settings = await client.GrowUsnJournalAsync('C', 0x08000000, 0x01000000);
-        await brokerTask;
+        var settings = await broker.Process.GrowUsnJournalAsync('C', 0x08000000, 0x01000000, CancellationToken.None)
+            .WaitAsync(HangGuard);
 
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
-
-        await client.DisposeAsync();
+        Assert.AreEqual(1, received.Count);
+        Assert.AreEqual("C", received[0].Drive);
+        Assert.AreEqual(0x08000000L, received[0].MaximumSize);
+        Assert.AreEqual(0x01000000L, received[0].AllocationDelta);
     }
 
     [TestMethod]
     public async Task GrowUsnJournalAsync_ErrorFrame_ThrowsWithTheRefusalMessage()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
-
-        var brokerTask = Task.Run(async () =>
-        {
-            await ReadOneFrameAsync(serverSide);
-            var response = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteError(response, "C", BrokerFrame.NoArmEpoch,
-                "Refusing to resize the USN journal to 32 bytes: the current maximum is 64 bytes, " +
-                "and only growth is permitted.");
-            await serverSide.WriteAsync(response.WrittenMemory);
-            await serverSide.FlushAsync();
-        });
+        await using var broker = new InProcessBroker(CreateHost(growUsnJournal: (_, _, _) =>
+            throw new InvalidOperationException("Refusing to resize the USN journal to 32 bytes: the current maximum " +
+                                                "is 64 bytes, and only growth is permitted.")));
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            client.GrowUsnJournalAsync('C', 32, 16));
-        await brokerTask;
+            broker.Process.GrowUsnJournalAsync('C', 32, 16, CancellationToken.None).WaitAsync(HangGuard));
 
         StringAssert.Contains(exception.Message, "only growth");
-
-        await client.DisposeAsync();
     }
 
     [TestMethod]
     public async Task GrowUsnJournalAsync_BrokerDisconnects_Throws()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
+        await using var broker = new ScriptedBroker();
+        var request = broker.Process.GrowUsnJournalAsync('C', 0x08000000, 0x01000000, CancellationToken.None);
+        var sent = await broker.ReadRequestAsync();
+        await broker.CloseControlAsync();
 
-        var brokerTask = Task.Run(async () =>
-        {
-            await ReadOneFrameAsync(serverSide);
-            await serverSide.DisposeAsync(); // disconnect before answering
-        });
+        var exception = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => request.WaitAsync(HangGuard));
 
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            client.GrowUsnJournalAsync('C', 0x08000000, 0x01000000));
-        await brokerTask;
-
-        StringAssert.Contains(exception.Message, "disconnected");
-
-        await client.DisposeAsync();
+        Assert.AreEqual(BrokerFrameKind.GrowUsnJournal, sent.Kind);
+        Assert.AreEqual("C", sent.Drive);
+        Assert.AreEqual(0x08000000L, sent.JournalMaximumSize);
+        Assert.AreEqual(0x01000000L, sent.JournalAllocationDelta);
+        Assert.IsNull(exception.DriveLetter);
+        Assert.IsFalse(string.IsNullOrEmpty(exception.Message));
     }
 
     [TestMethod]
-    public async Task GrowUsnJournalAsync_NonPositiveSizes_ThrowBeforeAnyFrameIsWritten()
+    public async Task GrowUsnJournalAsync_NonPositiveSizes_AreForwardedAndTheHostRefusalIsThrown()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var client = MakeMinimalFakeClient(clientSide);
-
-        // The validation throws synchronously, before the exchange starts, so nothing is
-        // written for the broker side to read (which is why serverSide is never touched).
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
-            client.GrowUsnJournalAsync('C', 0, 0x01000000));
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
-            client.GrowUsnJournalAsync('C', 0x08000000, -1));
-
-        await client.DisposeAsync();
-        await serverSide.DisposeAsync();
-    }
-
-    JournalBrokerClient MakeMinimalFakeClient(Stream pipe)
-    {
-        return new JournalBrokerClient(pipe, (letter, options) => ($"mftlib-null-{letter}", CreateBlock(options), NoOpDisposable.Instance));
-    }
-
-    static async Task<BrokerFrame> ReadOneFrameAsync(Stream stream)
-    {
-        var header = new byte[4];
-        await stream.ReadExactlyAsync(header);
-        var totalLength = BinaryPrimitives.ReadInt32LittleEndian(header);
-        var frameBytes = new byte[4 + totalLength];
-        header.CopyTo(frameBytes.AsMemory());
-        await stream.ReadExactlyAsync(frameBytes.AsMemory(4, totalLength));
-        return BrokerProtocol.ReadFrame(frameBytes, out _);
-    }
-
-    sealed class NoOpDisposable : IDisposable
-    {
-        public static readonly NoOpDisposable Instance = new();
-
-        public void Dispose()
+        // The client does not validate sizes (BrokerProcess.Control.cs, GrowUsnJournalAsync): the
+        // volume behind the host does, and its refusal returns as an Error frame.
+        var received = new List<(long MaximumSize, long AllocationDelta)>();
+        await using var broker = new InProcessBroker(CreateHost(growUsnJournal: (_, maximumSize, allocationDelta) =>
         {
-        }
+            received.Add((maximumSize, allocationDelta));
+            throw new ArgumentException("positive sizes are required");
+        }));
+
+        var zero = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            broker.Process.GrowUsnJournalAsync('C', 0, 0x01000000, CancellationToken.None).WaitAsync(HangGuard));
+        var negative = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            broker.Process.GrowUsnJournalAsync('C', 0x08000000, -1, CancellationToken.None).WaitAsync(HangGuard));
+
+        StringAssert.Contains(zero.Message, "positive sizes are required");
+        StringAssert.Contains(negative.Message, "positive sizes are required");
+        CollectionAssert.AreEqual(new[] { (0L, 0x01000000L), (0x08000000L, -1L) }, received);
     }
 }

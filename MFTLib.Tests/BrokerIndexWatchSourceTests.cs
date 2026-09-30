@@ -4,194 +4,159 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
+// The host's arm query consults JournalCheckpointCheck, whose override other classes install.
 [TestClass]
+[DoNotParallelize]
 public class BrokerIndexWatchSourceTests
 {
+    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
+
     [TestMethod]
-    public async Task WatchSource_StartsOneWatchForEveryTargetAndTagsEachBatch()
+    public async Task WatchSource_StartsOnePipePerDriveAndEachBatchArrivesOnItsOwnHandle()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var consumption = ReadTwoItemsAndBreakAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100), new IndexWatchTarget('D', 9, 200)],
-            harness.CancellationToken));
+        var token = harness.CancellationToken;
+        await using var handleC = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        await using var handleD = await source.StartAsync(new IndexWatchTarget('D', 7, 200), token);
+        var readerC = handleC.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = readerC.ConfigureAwait(false);
+        var readerD = handleD.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var __ = readerD.ConfigureAwait(false);
 
-        var start = await harness.ReadFrameAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, start.Kind);
-        Assert.IsNotNull(start.DrivesSpec);
-        Assert.IsTrue(start.DrivesSpec.StartsWith("C:7:100:", StringComparison.Ordinal));
+        var runC = await harness.Watch('C').RunAsync(1);
+        var runD = await harness.Watch('D').RunAsync(1);
+        Assert.AreEqual(new UsnJournalCursor(7, 100), runC.Since);
+        Assert.AreEqual(new UsnJournalCursor(7, 200), runD.Since);
+        Assert.AreEqual('C', handleC.DriveLetter);
+        Assert.AreEqual('D', handleD.DriveLetter);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
+        runC.Push(1, "c.txt", 110);
+        runD.Push(2, "d.txt", 210);
 
-        var entryC = JournalEntryFactory.Create(1, 105, "c.txt");
-        var entryD = JournalEntryFactory.Create(2, 205, "d.txt");
-        await harness.WriteAsync(response =>
-        {
-            BrokerProtocol.WriteJournalBatch(response, "C", harness.ArmEpochForDrive(start, 'C'),
-                new UsnJournalCursor(7, 110), [entryC]);
-            BrokerProtocol.WriteJournalBatch(response, "D", harness.ArmEpochForDrive(start, 'D'),
-                new UsnJournalCursor(9, 210), [entryD]);
-        });
-
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-
-        var items = await consumption;
-        Assert.AreEqual(2, items.Count);
-        var batchesByDrive = items.OfType<JournalBatch>().ToDictionary(batch => batch.DriveLetter);
-        Assert.AreEqual(7ul, batchesByDrive['C'].JournalId);
-        Assert.AreEqual(110L, batchesByDrive['C'].NextUsn);
-        CollectionAssert.AreEqual(new[] { entryC }, batchesByDrive['C'].Entries.ToArray());
-        Assert.AreEqual(9ul, batchesByDrive['D'].JournalId);
-        Assert.AreEqual(210L, batchesByDrive['D'].NextUsn);
-        CollectionAssert.AreEqual(new[] { entryD }, batchesByDrive['D'].Entries.ToArray());
+        var batchC = await WatchReads.NextBatchAsync(readerC);
+        var batchD = await WatchReads.NextBatchAsync(readerD);
+        Assert.AreEqual(7ul, batchC.JournalId);
+        Assert.AreEqual(110L, batchC.NextUsn);
+        Assert.AreEqual("c.txt", batchC.Entries.Single().FileName);
+        Assert.AreEqual(7ul, batchD.JournalId);
+        Assert.AreEqual(210L, batchD.NextUsn);
+        Assert.AreEqual("d.txt", batchD.Entries.Single().FileName);
+        Assert.AreEqual(2, harness.ConnectionCount, "each start connects once and shares the process");
     }
 
     [TestMethod]
-    public async Task WatchSource_ReportsReadyOncePublished_BeforeAnyItemAndWithAPerDriveCallAccepted()
-    {
-        await using var harness = new ScriptedWatchBrokerHarness();
-        IIndexWatchSource source = new BrokerIndexWatchSource(harness.ConnectAsync);
-        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var streamCancellation = CancellationTokenSource.CreateLinkedTokenSource(harness.CancellationToken);
-        await using var reader = source.StartWatching([new IndexWatchTarget('C', 7, 100)],
-            () => ready.TrySetResult(), streamCancellation.Token).GetAsyncEnumerator();
-
-        var first = reader.MoveNextAsync().AsTask();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
-        await ready.Task.WaitAsync(harness.CancellationToken);
-
-        // Ready is about per-drive control, not data: nothing has been delivered, and a disarm
-        // is accepted and reaches the wire instead of being rejected for want of a stream.
-        Assert.IsFalse(first.IsCompleted);
-        await source.DisarmDriveAsync('C', harness.CancellationToken);
-        Assert.AreEqual(BrokerFrameKind.DisarmDrive, (await harness.ReadFrameAsync()).Kind);
-
-        await streamCancellation.CancelAsync();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => first);
-    }
-
-    [TestMethod]
-    public async Task WatchSource_LeavesTheBorrowedClientReadyForAnotherWatch()
+    public async Task WatchSource_LeavesTheBorrowedProcessReadyForAnotherWatch()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var consumption = ReadTwoItemsAndBreakAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100), new IndexWatchTarget('D', 9, 200)],
-            harness.CancellationToken));
+        var token = harness.CancellationToken;
+        var first = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        var firstReader = first.ReadAsync(token).GetAsyncEnumerator(token);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(firstReader));
+        var firstRun = await harness.Watch('C').RunAsync(1);
+        firstRun.Push(1, "before.txt", 110);
+        await WatchReads.NextBatchAsync(firstReader);
 
-        var start = await harness.ReadFrameAsync();
-        await harness.WriteAsync(response =>
-        {
-            BrokerProtocol.WriteJournalBatch(response, "C", harness.ArmEpochForDrive(start, 'C'),
-                new UsnJournalCursor(7, 110), [JournalEntryFactory.Create(1, 105, "c.txt")]);
-            BrokerProtocol.WriteJournalBatch(response, "D", harness.ArmEpochForDrive(start, 'D'),
-                new UsnJournalCursor(9, 210), [JournalEntryFactory.Create(2, 205, "d.txt")]);
-        });
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-        await consumption;
+        await firstReader.DisposeAsync();
+        await first.DisposeAsync();
+        await firstRun.Cancelled.WaitAsync(HangGuard);
 
-        // The source's finally leaves the borrowed client usable rather than half torn down.
-        await harness.Client.SendStartWatchAsync(new Dictionary<string, UsnJournalCursor>
-        {
-            ["C"] = new(7, 110)
-        }, harness.CancellationToken);
-        Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
-        var stop = harness.Client.StopLiveWatchAsync();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-        await stop;
+        // The process is the caller's: closing one drive's watch leaves it serving the next.
+        await using var second = await source.StartAsync(new IndexWatchTarget('C', 7, 110), token);
+        var secondReader = second.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = secondReader.ConfigureAwait(false);
+        var secondRun = await harness.Watch('C').RunAsync(2);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(secondReader));
+        secondRun.Push(2, "after.txt", 120);
+        Assert.AreEqual("after.txt", (await WatchReads.NextBatchAsync(secondReader)).Entries.Single().FileName);
+        Assert.IsFalse(harness.Process.HasEnded);
     }
 
     [TestMethod]
     public async Task WatchSource_CompletesWhenTheTokenIsCancelled()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        using var cancellation = new CancellationTokenSource();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var consumption = ConsumeAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100)], cancellation.Token));
+        await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), harness.CancellationToken);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(harness.CancellationToken);
+        var reader = handle.ReadAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
+        await using var _ = reader.ConfigureAwait(false);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        var pending = reader.MoveNextAsync().AsTask();
 
-        Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
         await cancellation.CancelAsync();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => consumption);
+        await WatchReads.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
     }
 
     [TestMethod]
-    public async Task WatchSource_CancellationLeavesBorrowedClientReadyForRestart()
+    public async Task WatchSource_CancellationLeavesBorrowedProcessReadyForRestart()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        using var cancellation = new CancellationTokenSource();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var cancelledConsumption = ConsumeAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100)], cancellation.Token));
-
-        Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
+        var token = harness.CancellationToken;
+        var cancelled = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var cancelledReader = cancelled.ReadAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(cancelledReader));
+        var pending = cancelledReader.MoveNextAsync().AsTask();
         await cancellation.CancelAsync();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => cancelledConsumption);
+        await WatchReads.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
+        await cancelledReader.DisposeAsync();
+        await cancelled.DisposeAsync();
 
-        var restartedConsumption = ReadOneItemAndBreakAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100)], harness.CancellationToken));
-        var startWatch = await harness.ReadFrameAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, startWatch.Kind);
-        var entry = JournalEntryFactory.Create(1, 105, "after-restart.txt");
-        await harness.WriteAsync(response => BrokerProtocol.WriteJournalBatch(response, "C",
-            harness.ArmEpochForDrive(startWatch, 'C'), new UsnJournalCursor(7, 110), [entry]));
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        await using var restarted = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        var reader = restarted.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = reader.ConfigureAwait(false);
+        var run = await harness.Watch('C').RunAsync(2);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        run.Push(1, "after-restart.txt", 110);
 
-        var batch = (JournalBatch)(await restartedConsumption).Single();
-        Assert.AreEqual('C', batch.DriveLetter);
-        Assert.AreEqual(7ul, batch.JournalId);
+        var batch = await WatchReads.NextBatchAsync(reader);
+        Assert.AreEqual("after-restart.txt", batch.Entries.Single().FileName);
         Assert.AreEqual(110L, batch.NextUsn);
-        CollectionAssert.AreEqual(new[] { entry }, batch.Entries.ToArray());
     }
 
     [TestMethod]
-    public async Task WatchSource_DoesNotFaultTheStreamForOneDrivesError()
+    public async Task WatchSource_OneDrivesErrorDoesNotEndAnotherDrivesHandle()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var consumption = ReadTwoItemsAndBreakAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100), new IndexWatchTarget('D', 9, 200)],
-            harness.CancellationToken));
+        var token = harness.CancellationToken;
+        await using var handleC = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        await using var handleD = await source.StartAsync(new IndexWatchTarget('D', 7, 100), token);
+        var readerC = handleC.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = readerC.ConfigureAwait(false);
+        var readerD = handleD.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var __ = readerD.ConfigureAwait(false);
+        var runC = await harness.Watch('C').RunAsync(1);
+        var runD = await harness.Watch('D').RunAsync(1);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
 
-        var start = await harness.ReadFrameAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, start.Kind);
-        await harness.WriteAsync(response =>
-        {
-            BrokerProtocol.WriteError(response, "D", harness.ArmEpochForDrive(start, 'D'), "journal wrapped");
-            BrokerProtocol.WriteJournalBatch(response, "C", harness.ArmEpochForDrive(start, 'C'),
-                new UsnJournalCursor(7, 110), [JournalEntryFactory.Create(1, 105, "c.txt")]);
-        });
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        runD.Fail(new IOException("journal wrapped"));
+        runC.Push(1, "c.txt", 110);
 
-        var items = await consumption;
-        Assert.AreEqual('D', items.OfType<DriveWatchFailure>().Single().DriveLetter);
-        Assert.AreEqual(110L, items.OfType<JournalBatch>().Single().NextUsn);
+        await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
+        Assert.AreEqual(110L, (await WatchReads.NextBatchAsync(readerC)).NextUsn);
     }
 
     [TestMethod]
-    public async Task WatchSource_CompletesNormallyWhenAllDriveSourcesComplete()
+    public async Task WatchSource_HostClosingThePipeIsAChannelLossNotAnEnd()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var consumption = ConsumeAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100), new IndexWatchTarget('D', 9, 200)],
-            harness.CancellationToken));
+        await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), harness.CancellationToken);
+        var reader = handle.ReadAsync(harness.CancellationToken).GetAsyncEnumerator(harness.CancellationToken);
+        await using var _ = reader.ConfigureAwait(false);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
 
-        Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
+        (await harness.Watch('C').RunAsync(1)).End();
 
-        await consumption;
+        var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
+        Assert.AreEqual('C', lost.DriveLetter);
     }
 
     [TestMethod]
@@ -202,92 +167,123 @@ public class BrokerIndexWatchSourceTests
         await cancellation.CancelAsync();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => ConsumeAsync(
-            source.StartWatching([new IndexWatchTarget('C', 7, 100)], cancellation.Token)));
+        await WatchReads.ThrowsAsync<OperationCanceledException>(() =>
+            source.StartAsync(new IndexWatchTarget('C', 7, 100), cancellation.Token));
+
         Assert.AreEqual(0, harness.ConnectionCount);
+        Assert.AreEqual(0, harness.Watch('C').StartedCount);
     }
 
     [TestMethod]
-    public async Task WatchSource_RejectsNullTargetsBeforeConnecting()
+    public async Task WatchSource_RejectsANullTargetBeforeConnecting()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
 
         await Assert.ThrowsExceptionAsync<ArgumentNullException>(() =>
-            ConsumeAsync(source.StartWatching(null!, harness.CancellationToken)));
+            source.StartAsync(null!, harness.CancellationToken));
+
         Assert.AreEqual(0, harness.ConnectionCount);
     }
 
     [TestMethod]
-    public async Task WatchSource_EmptyTargetsCompletesNormally()
+    public async Task ReadAsync_TokenCancelled_ReturnsPromptlyWithoutDisposal()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var consumption = ConsumeAsync(source.StartWatching([], harness.CancellationToken));
+        var token = harness.CancellationToken;
+        await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        var run = await harness.Watch('C').RunAsync(1);
+        using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var reader = handle.ReadAsync(pumpStop.Token).GetAsyncEnumerator(pumpStop.Token);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        var pending = reader.MoveNextAsync().AsTask();
 
-        var start = await harness.ReadFrameAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, start.Kind);
-        Assert.AreEqual(string.Empty, start.DrivesSpec);
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
+        // The index's pump cancels its read first and disposes the handle only afterwards.
+        await pumpStop.CancelAsync();
+        await WatchReads.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
+        await reader.DisposeAsync();
 
-        await consumption;
+        Assert.IsFalse(run.Cancelled.IsCompleted, "cancelling a read must leave the drive's pipe open");
+        var reread = handle.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = reread.ConfigureAwait(false);
+        run.Push(1, "after-cancel.txt", 110);
+        Assert.AreEqual("after-cancel.txt", (await WatchReads.NextBatchAsync(reread)).Entries.Single().FileName);
     }
 
     [TestMethod]
-    public async Task StartWatching_WhileAStreamIsAlreadyRunning_ThrowsInvalidOperationException()
+    public async Task TimedOutStop_ThenNewWatch_RunsUndisturbed()
     {
-        await using var harness = new ScriptedWatchBrokerHarness();
-        using var cancellation = new CancellationTokenSource();
-        var source = new BrokerIndexWatchSource(harness.ConnectAsync);
+        await using var broker = new ScriptedWatchBrokerHarness();
+        var token = broker.CancellationToken;
+        var inner = new BrokerMftBlockProducer(broker.ConnectAsync).CreateWatchSource();
+        var teardown = new TestGate();
+        using var harness = new WatchHarness(new HoldFirstDisposalSource(inner, teardown), 'T');
+        var index = harness.Index;
+        broker.Watch('T').IgnoreCancellationInNextRun();
+        await index.StartWatchingAsync('T', token);
+        var first = await broker.Watch('T').RunAsync(1);
+        await first.Entered.WaitAsync(HangGuard);
 
-        // The synchronous prefix of StartWatching claims the stream before it ever awaits
-        // anything, so the claim is already in place by the time this call returns here.
-        var firstConsumption = ConsumeAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100)], cancellation.Token));
-        Assert.AreEqual(BrokerFrameKind.StartWatch, (await harness.ReadFrameAsync()).Kind);
+        // The first watch's teardown is held at the handle's disposal, so the stop's wait for it
+        // really runs out: the token is cancelled once the stop is waiting on that teardown.
+        using var stopTimeout = new CancellationTokenSource();
+        var stop = index.StopWatchingAsync('T', stopTimeout.Token);
+        await teardown.Entered.WaitAsync(HangGuard);
+        Assert.IsFalse(stop.IsCompleted, "the stop waits for the held teardown");
+        await stopTimeout.CancelAsync();
+        await WatchReads.ThrowsAsync<OperationCanceledException>(() => stop.WaitAsync(HangGuard));
+        Assert.IsFalse(first.Cancelled.IsCompleted, "the held teardown has not closed the pipe yet");
 
-        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            ConsumeAsync(source.StartWatching([new IndexWatchTarget('D', 9, 200)], harness.CancellationToken)));
-        StringAssert.Contains(thrown.Message, "already running a stream");
+        // The teardown carries on after the stop gave up, and closes the pipe.
+        teardown.Release();
+        await first.Cancelled.WaitAsync(HangGuard);
 
-        await cancellation.CancelAsync();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => firstConsumption);
+        await index.StartWatchingAsync('T', token);
+        var second = await broker.Watch('T').RunAsync(2);
+        var freshApplied = ChangeSignal.WhenApplied(index, "fresh.txt");
+        second.Push(9, "fresh.txt", 300);
+        await freshApplied;
+
+        // The first host watch is still alive and now yields what it held; its pipe is gone.
+        first.Push(10, "stale.txt", 400);
+        first.Release();
+        await first.Finished.WaitAsync(HangGuard);
+        var afterApplied = ChangeSignal.WhenApplied(index, "after.txt");
+        second.Push(11, "after.txt", 500);
+        await afterApplied;
+
+        CollectionAssert.AreEqual(new[] { "fresh.txt", "after.txt" },
+            harness.Changes.Select(change => change.Entry.Name).ToArray());
+        Assert.AreEqual(0, harness.Faults.Count, string.Join("; ", harness.Faults.Select(fault => fault.Exception.Message)));
+        Assert.AreEqual(500L, harness.BlockFor('T').Header.UsnNextUsn);
+        Assert.IsFalse(broker.Process.HasEnded);
     }
 
-    static async Task<List<WatchStreamItem>> ReadTwoItemsAndBreakAsync(IAsyncEnumerable<WatchStreamItem> source)
+    // Hands out the inner source's handles, and holds the disposal of the first one on a gate.
+    sealed class HoldFirstDisposalSource(IIndexWatchSource inner, TestGate teardown) : IIndexWatchSource
     {
-        var items = new List<WatchStreamItem>();
-        await foreach (var item in source)
+        int _starts;
+
+        public async Task<IIndexDriveWatch> StartAsync(IndexWatchTarget target, CancellationToken cancellationToken)
         {
-            items.Add(item);
-            if (items.Count == 2)
-            {
-                break;
-            }
+            var handle = await inner.StartAsync(target, cancellationToken);
+            return Interlocked.Increment(ref _starts) == 1 ? new HeldDisposalWatch(handle, teardown) : handle;
         }
-
-        return items;
     }
 
-    static async Task<List<WatchStreamItem>> ReadOneItemAndBreakAsync(IAsyncEnumerable<WatchStreamItem> source)
+    sealed class HeldDisposalWatch(IIndexDriveWatch inner, TestGate teardown) : IIndexDriveWatch
     {
-        var items = new List<WatchStreamItem>();
-        await foreach (var item in source)
-        {
-            items.Add(item);
-            break;
-        }
+        public char DriveLetter => inner.DriveLetter;
 
-        return items;
-    }
+        public IAsyncEnumerable<WatchStreamItem> ReadAsync(CancellationToken cancellationToken) =>
+            inner.ReadAsync(cancellationToken);
 
-    static async Task ConsumeAsync(IAsyncEnumerable<WatchStreamItem> source)
-    {
-        await foreach (var _ in source)
+        public async ValueTask DisposeAsync()
         {
+            teardown.MarkEntered();
+            await teardown.WaitForReleaseAsync(CancellationToken.None);
+            await inner.DisposeAsync();
         }
     }
 }

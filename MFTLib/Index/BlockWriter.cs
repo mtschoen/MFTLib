@@ -28,6 +28,13 @@ public sealed class BlockWriter
     /// </summary>
     internal Action? _rowCapturedForTest;
 
+    /// <summary>
+    ///     A test seam, per instance. Invoked in <see cref="Complete" /> once its access is held and
+    ///     before the header is stamped, which is the window in which a dispose can begin while the
+    ///     operation is still admitted.
+    /// </summary>
+    internal Action? _completeAccessTakenForTest;
+
     public uint RowCount
     {
         get
@@ -178,12 +185,14 @@ public sealed class BlockWriter
     }
 
     /// <summary>
-    ///     Stamps the scan timestamp and sets the complete flag last, then flushes. A producer
+    ///     Stamps the scan timestamp and sets the complete flag last, then flushes, reporting each
+    ///     flushed range to <paramref name="rangeFlushed" /> when it is not null. A producer
     ///     that dies before this call leaves a block that validation rejects.
     /// </summary>
-    public void Complete(DateTime scanTimestampUtc)
+    public void Complete(DateTime scanTimestampUtc, Action<long>? rangeFlushed)
     {
         using var access = Block.TakeAccess();
+        _completeAccessTakenForTest?.Invoke();
         ref var header = ref Block.Header;
         header.ScanTimestampTicks = scanTimestampUtc.Ticks;
         if (header.Generation == 0)
@@ -192,7 +201,7 @@ public sealed class BlockWriter
         }
 
         header.Flags |= BlockFlags.Complete;
-        Block.Flush();
+        Block.FlushUnderHeldAccess(rangeFlushed);
     }
 
     /// <summary>

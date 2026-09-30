@@ -1,83 +1,159 @@
 # Testing your integration
 
-Reference **`MFTLib.TestExtensions`** to test drives, `BrokerScanProfile`, and keep-file
-names without elevation or friend-listing your assembly. Build a fake
-`JournalBrokerClient` constructed on an in-memory duplex stream. The client constructor
-requires a block section factory immediately after the stream. A Windows test can supply
-it with `NamedBlockSection`; here `clientSide` is your connected duplex stream endpoint:
+Reference **`MFTLib.TestExtensions`** from consumer test projects. It provides an
+in-process broker harness and opt-in guards against accidental access to the
+real per-user cache or a real volume's USN journal.
+
+## BrokerTestHarness
+
+`BrokerTestHarness.StartInProcess` runs a real `JournalBrokerHost` on a
+background task and returns a real `BrokerProcess` connected through in-memory
+control and drive pipes. It needs no elevation and launches no child process.
+Consumer tests therefore exercise the same request routing, per-drive channels,
+frame decoding, timeouts, producer, and watch source used in production.
+
+The required arguments are:
+
+- a `JournalBrokerHost` whose cursor, scan, catch-up, watch, volume-query, and
+  journal-grow delegates are test fakes;
+- an `IBlockSectionWriter` that writes scan batches into the section named by
+  the host request; and
+- a `BrokerBlockSectionFactory` that creates the client side's block and section
+  lifetime.
+
+The returned process owns the harness session from the client side. Disposing
+it closes the control pipe, ends the host, closes the drive pipes, and waits for
+the session task. The harness has no separate fault event or stored host
+exception. A host failure reaches the test through the production surfaces:
+
+- `BrokerProcess.Ended` and `HasEnded`;
+- `BrokerChannelLostException` on pending control or drive operations; or
+- a host `Error` frame translated by the operation reading that channel.
+
+Host exception detail is written only to broker diagnostics. Disposing the
+process does not throw the host fault again.
+
+`BrokerTestHarnessOptions` adds deterministic transport seams:
+
+- `TimeProvider` is the client clock for write and reply timeouts;
+- `FailConnection` returns the exception a named drive-pipe connection should
+  throw; and
+- `HoldWrites` returns a task that a named host pipe waits on before writing.
+  The name is `"control"` for the control pipe or the generated drive-pipe name.
+
+The host's clock and processor count belong to the `JournalBrokerHost`
+constructor. Use those parameters to drive host deadlines and parse-thread
+admission. Use `BrokerTestHarnessOptions.TimeProvider` for the client's deadlines.
+
+For portable block-writing examples, see
+`MFTLib.Tests/TestSupport/RecordingBlockSectionWriter.cs` and the broker harness
+fixtures in this repository. Those helpers are repository test types, not part
+of `MFTLib.TestExtensions`; consumer tests implement the same public
+`IBlockSectionWriter` and `BrokerBlockSectionFactory` seams.
+
+## Fake the FileIndex watch boundary directly
+
+A test focused on `FileIndex` policy does not need a broker. Implement
+`IIndexWatchSource.StartAsync` so each call returns one `IIndexDriveWatch` for
+the requested drive. The handle yields only that drive's `JournalBatch` and
+`DriveCaughtUp` items and completes by throwing a classified failure.
+
+This minimal fake uses a channel as the drive's script:
 
 ```csharp
-using MFTLibTestExtensions;
+using System.Threading.Channels;
 using MFTLib.Index;
 
-var client = new JournalBrokerClient(clientSide, (drive, options) =>
+sealed class FakeWatchSource(Action<FakeDriveWatch> started) : IIndexWatchSource
 {
-    var sectionName = NamedBlockSection.BuildSectionName(drive[0]);
-    var (block, lifetime) = NamedBlockSection.Create(options, sectionName);
-    return (sectionName, block, lifetime);
-});
-
-await using var session = await ScanSessionTestHarness.StartScannedAsync(
-    _ => Task.FromResult(client), drives, new BrokerScanOptions
+    public Task<IIndexDriveWatch> StartAsync(
+        IndexWatchTarget target,
+        CancellationToken cancellationToken)
     {
-        BlockTargets = blockTargets,
-        Profile = BrokerScanProfile.DirectoryIndex,
-        KeepFileNames = keepFileNames
-    });
+        cancellationToken.ThrowIfCancellationRequested();
+        var watch = new FakeDriveWatch(target.DriveLetter);
+        started(watch);
+        return Task.FromResult<IIndexDriveWatch>(watch);
+    }
+}
+
+sealed class FakeDriveWatch(char driveLetter) : IIndexDriveWatch
+{
+    readonly Channel<WatchStreamItem> _items =
+        Channel.CreateUnbounded<WatchStreamItem>();
+
+    public char DriveLetter { get; } = driveLetter;
+
+    public ValueTask EmitAsync(WatchStreamItem item) =>
+        _items.Writer.WriteAsync(item);
+
+    public void Fail(Exception exception) =>
+        _items.Writer.TryComplete(exception);
+
+    public IAsyncEnumerable<WatchStreamItem> ReadAsync(
+        CancellationToken cancellationToken) =>
+        _items.Reader.ReadAllAsync(cancellationToken);
+
+    public ValueTask DisposeAsync()
+    {
+        _items.Writer.TryComplete();
+        return ValueTask.CompletedTask;
+    }
+}
 ```
 
-`ScanSessionTestHarness.StartScannedAsync` and `StartFromCursorsAsync` mirror the
-shipping `JournalBrokerScanSession.StartAsync` / `StartFromCursorsAsync` with an injected
-client factory. The harness warm start takes an initial profile but no keep-file names;
-rescans supply those in explicit options. The factory must yield a **fresh** client per
-call - the session takes exclusive ownership and disposes it. From there, assert on the
-frames your test reads off `serverSide` (arm-and-scan drives spec, keep-file names, watch
-cursors) and on the session's `LatestScan` and `WatchCursors`. Scanned tests must answer
-the volume query and fill the client-created blocks before sending scan-completion
-frames.
+Return from `StartAsync` only when the handle is ready to be read. The index
+starts one pump per returned handle and disposes that handle exactly once. A
+test can drive the public behavior as follows:
 
-For a portable in-process example, see
-`MFTLib.Tests/TestSupport/RecordingBlockSectionWriter.cs` and
-`InProcessBlockBrokerHarness.cs` in this repository. `RecordingBlockSectionWriter`
-implements `IBlockSectionWriter`, resolves section names to test blocks, and stamps an
-injected completion timestamp after writing batches. These are repository test helpers,
-not types shipped in `MFTLib.TestExtensions`; implement the same seam in your test
-project. Warm tests need no block writer until a rescan. Your test assembly needs no
-`InternalsVisibleTo` from MFTLib. Disposing the session disposes the blocks still held in
-`LatestScan.BlockOutcomes`.
+- emit `JournalBatch` to apply changes and advance the block cursor;
+- emit `DriveCaughtUp` to settle that drive's catch-up wait;
+- complete with `DriveWatchFaultException` to produce
+  `WatchFaultKind.Drive` and automatic recovery; or
+- complete with another exception to produce `WatchFaultKind.Channel` with no
+  automatic recovery.
 
-A section writer that keeps serving after the client cancelled races the client's teardown: the
-block the writer is filling may be disposed on another thread mid-write. That race is memory-safe:
-the in-flight `BlockWriter` operation completes, `BlockFile.Dispose` waits for it before
-unmapping, and the writer's next operation throws `ObjectDisposedException`. A fixture should
-still stop its serving task when the session ends rather than rely on that exception as its only
-stop signal.
+A normal end before the index cancels the read is also a channel fault. The
+handle must observe the read token promptly; this is how stop, rescan, and
+dispose end its pump. Keep fakes per drive. Sharing one queue between handles
+would reintroduce cross-drive ordering and failure coupling that the public seam
+is designed to exclude.
 
-## Testing the FileIndex watch bridge
+## Isolate cache and journal state
 
-A consumer testing `FileIndex` itself, rather than a hand-rolled `JournalBrokerScanSession`
-consumer, fakes `FileIndexOptions.WatchSource` directly: implement `IIndexWatchSource`
-(`StartWatching`, `ArmDriveAsync`, `DisarmDriveAsync`) over an in-memory queue of
-`WatchStreamItem` values (`JournalBatch` or `DriveWatchFailure`) instead of standing up a
-broker connection at all. This is how this repository's own `FileIndex` watch tests avoid
-elevation; there is no `MFTLib.TestExtensions` type for it because `IIndexWatchSource` is
-already a small, public seam.
+Consumer test assemblies can activate both guards from a module initializer:
 
-`FileIndex.StartWatchingAsync` completes once the source reports that its stream is ready for
-per-drive arm and disarm. A fake that implements only the two-argument `StartWatching` gets the
-interface's default readiness, which is reported as soon as the stream's first `MoveNextAsync`
-call returns control with the stream still running: still pending, or having produced an item.
-A first call that already ended the stream or threw reports nothing, so the start fails with
-that end or exception. For an async iterator that is its first incomplete await, so a fake over an
-in-memory queue that marks itself live before awaiting its queue needs nothing more, and
-`StartWatchingAsync` returns with that fake already answering `ArmDriveAsync` and
-`DisarmDriveAsync`. The default cannot see past that first await: a fake that awaits something
-(a connection, a gate) before it accepts per-drive calls is reported ready while it is still
-waiting, so a rescan in that window can be rejected, and a failure after that await faults the
-running session instead of the start. Such a fake, or one that wants to hold a
-test inside the start, implements the three-argument
-`StartWatching(targets, reportStreamReady, cancellationToken)` overload and calls
-`reportStreamReady` itself once it accepts per-drive calls; `StartWatchingAsync` then stays
-incomplete until it does. Throwing from the stream before that fails the start with the thrown
-exception. A fake whose stream needs its test to read a frame or release a gate before it can
-become ready must be started without awaiting, the gate driven, and the start awaited after.
+```csharp
+using System.Runtime.CompilerServices;
+using MFTLibTestExtensions;
+
+static class TestIsolation
+{
+    [ModuleInitializer]
+    internal static void Initialize()
+    {
+        CacheDirectoryIsolation.ForbidDefaultCacheDirectory();
+        JournalIsolation.ForbidLiveJournalReads();
+    }
+}
+```
+
+`CacheDirectoryIsolation.ForbidDefaultCacheDirectory` is process-wide,
+idempotent, and one-way. After activation, resolving the default cache directory
+throws `InvalidOperationException`. Every test opening an index must set
+`FileIndexOptions.CacheDirectory` to a temporary directory it owns, including
+`NoCache` and empty-drive tests.
+
+`JournalIsolation.ForbidLiveJournalReads` is also process-wide, idempotent, and
+one-way. It makes live journal observations answer "cannot say" instead of
+reading a volume. It does not throw and does not affect broker source delegates
+supplied by the test.
+
+Use `JournalIsolation.OverrideJournalWindow` when a test needs a retained,
+trimmed, or recreated journal window. The callback receives a drive letter and
+returns `SyntheticJournalWindow?`; null means "cannot say" and never falls back
+to a live read. The returned scope is process-global, so mark the whole fixture
+nonparallel, keep the scope through all awaited work, and stop and dispose every
+index and watch before disposing it. Nested or overlapping public scopes throw
+`InvalidOperationException`. Mutable callback state must be synchronized because
+different drive pumps can query it concurrently.

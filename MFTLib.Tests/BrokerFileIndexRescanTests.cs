@@ -1,73 +1,69 @@
-using System.Runtime.CompilerServices;
-using System.Threading.Channels;
+using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
+/// <summary>
+///     A <see cref="FileIndex" /> over drives <c>T</c> and <c>U</c> on one in-process broker: the
+///     index scans and watches every drive through its own pipes, so rescanning one drive
+///     reopens that drive's watch channel and touches no other.
+/// </summary>
+// The host's arm query consults JournalCheckpointCheck, whose override other classes install.
 [TestClass]
+[DoNotParallelize]
 public sealed class BrokerFileIndexRescanTests
 {
+    static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
+
     [TestMethod]
-    public async Task Rescan_UsesTheSharedBrokerAndRearmsOnlyItsDrive()
+    public async Task RescanOfT_OverBroker_ReopensOnlyTsChannel()
     {
-        using var scenario = new SharedBrokerScenario();
+        using var scenario = new BrokerScenario();
         await using var harness = scenario.CreateHarness();
         var token = harness.CancellationToken;
         var producer = new BrokerMftBlockProducer(harness.ConnectAsync);
         await using var index = await scenario.OpenIndexAsync(producer.CreateProducer(),
             producer.CreateWatchSource(), token);
+        await index.StartWatchingAsync('T', token);
+        await index.StartWatchingAsync('U', token);
+        var firstT = await harness.Watch('T').RunAsync(1);
+        var firstU = await harness.Watch('U').RunAsync(1);
+        var scanning = scenario.HoldSecondScanOfT();
 
-        await index.StartWatchingAsync(token);
-        await Task.WhenAll(scenario.FirstArmC, scenario.FirstArmD).WaitAsync(token);
-        await scenario.RescanWhileTheSiblingDeliversAsync(index, token);
-        await index.StopWatchingAsync(token);
-    }
+        var rescan = index.RescanAsync('T', token);
+        await scanning.Entered.WaitAsync(HangGuard);
 
-    [TestMethod]
-    public async Task StartWatchingAsync_WaitsForTheBrokerStreamToBePublished_SoAnImmediateRescanRearmsOnlyItsDrive()
-    {
-        using var scenario = new SharedBrokerScenario();
-        await using var harness = scenario.CreateHarness();
-        var token = harness.CancellationToken;
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync);
-        var publishGate = new TestGate();
-        var source = new BrokerIndexWatchSource(harness.ConnectAsync)
-        {
-            BeforeStreamPublishedForTest = async gateToken =>
-            {
-                publishGate.MarkEntered();
-                await publishGate.WaitForReleaseAsync(gateToken);
-            }
-        };
-        try
-        {
-            await using var index = await scenario.OpenIndexAsync(producer.CreateProducer(), source, token);
-            var faults = new List<WatchFault>();
-            index.WatchFaulted += faults.Add;
+        // T is off the watch while its scan runs: its channel is closed, U's is not, and U keeps delivering.
+        await firstT.Cancelled.WaitAsync(HangGuard);
+        var appliedOnU = ChangeSignal.WhenApplied(index, "during.txt");
+        firstU.Push(40, "during.txt", 200);
+        await appliedOnU;
+        Assert.IsFalse(firstU.Cancelled.IsCompleted, "U's channel stays open through T's rescan");
+        Assert.IsFalse(rescan.IsCompleted, "the rescan is held inside T's scan");
 
-            var start = index.StartWatchingAsync(token);
-            await publishGate.Entered.WaitAsync(token);
-            Assert.IsFalse(start.IsCompleted,
-                "StartWatchingAsync completed while the StartWatch frame was sent but the stream was unpublished.");
+        scanning.Release();
+        await rescan.WaitAsync(HangGuard);
 
-            publishGate.Release();
-            await start.WaitAsync(token);
-            await scenario.RescanWhileTheSiblingDeliversAsync(index, token);
-            Assert.AreEqual(0, faults.Count, string.Join("; ", faults.Select(fault => fault.Exception.Message)));
-            await index.StopWatchingAsync(token);
-        }
-        finally
-        {
-            publishGate.Release();
-        }
+        var secondT = await harness.Watch('T').RunAsync(2);
+        Assert.AreEqual(2, harness.Watch('T').StartedCount);
+        Assert.AreEqual(1, harness.Watch('U').StartedCount, "U's channel was never reopened");
+        Assert.AreEqual(ScriptedWatchBrokerHarness.DefaultTip, secondT.Since, "T reopens from its fresh block's cursor");
+        Assert.AreEqual(1, index.FindByName("scan-2.txt", token).Count);
+        Assert.AreEqual(1, index.FindByName("scan-1.txt", token).Count, "only U's first scan is left");
+        Assert.IsTrue(index.Drives.All(drive => drive.WatchFailureMessage == null));
+        var appliedOnT = ChangeSignal.WhenApplied(index, "after.txt");
+        secondT.Push(41, "after.txt", 300);
+        await appliedOnT;
+        await index.StopWatchingAsync('T', token);
+        await index.StopWatchingAsync('U', token);
     }
 
     [TestMethod]
     public async Task StartWatchingAsync_WaitsForTheBrokerConnection_AndARescanNeedsNoDeliveredItem()
     {
-        using var scenario = new SharedBrokerScenario();
+        using var scenario = new BrokerScenario();
         await using var harness = scenario.CreateHarness();
         var token = harness.CancellationToken;
         var producer = new BrokerMftBlockProducer(harness.ConnectAsync);
@@ -83,16 +79,16 @@ public sealed class BrokerFileIndexRescanTests
         {
             await using var index = await scenario.OpenIndexAsync(producer.CreateProducer(), source, token);
 
-            var start = index.StartWatchingAsync(token);
-            await connectGate.Entered.WaitAsync(token);
+            var start = index.StartWatchingAsync('T', token);
+            await connectGate.Entered.WaitAsync(HangGuard);
             Assert.IsFalse(start.IsCompleted, "StartWatchingAsync completed before the broker connected.");
 
             connectGate.Release();
-            await start.WaitAsync(token);
-            await index.RescanAsync('D', token);
+            await start.WaitAsync(HangGuard);
+            await index.RescanAsync('U', token);
 
             Assert.IsTrue(index.Drives.All(drive => drive.WatchFailureMessage == null));
-            await index.StopWatchingAsync(token);
+            await index.StopWatchingAsync('T', token);
         }
         finally
         {
@@ -103,7 +99,7 @@ public sealed class BrokerFileIndexRescanTests
     [TestMethod]
     public async Task StartWatchingAsync_WhenTheBrokerConnectionFails_ThrowsItAndLeavesTheIndexStartable()
     {
-        using var scenario = new SharedBrokerScenario();
+        using var scenario = new BrokerScenario();
         await using var harness = scenario.CreateHarness();
         var token = harness.CancellationToken;
         var producer = new BrokerMftBlockProducer(harness.ConnectAsync);
@@ -111,24 +107,25 @@ public sealed class BrokerFileIndexRescanTests
         var connectionFailure = new IOException("the broker pipe is gone");
         var connectAttempts = 0;
         var source = new BrokerIndexWatchSource(connectToken => Interlocked.Increment(ref connectAttempts) == 1
-            ? Task.FromException<JournalBrokerClient>(connectionFailure)
+            ? Task.FromException<BrokerProcess>(connectionFailure)
             : connect(connectToken));
         await using var index = await scenario.OpenIndexAsync(producer.CreateProducer(), source, token);
 
-        var thrown = await Assert.ThrowsExceptionAsync<IOException>(() => index.StartWatchingAsync(token));
+        var thrown = await WatchReads.ThrowsAsync<IOException>(() => index.StartWatchingAsync('T', token));
 
         Assert.AreSame(connectionFailure, thrown);
-        await index.StopWatchingAsync(token);
-        await index.StartWatchingAsync(token);
-        await index.RescanAsync('C', token);
+        Assert.AreEqual(WatchCatchUpState.Faulted, index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUp);
+        await index.StopWatchingAsync('T', token);
+        await index.StartWatchingAsync('T', token);
+        await index.RescanAsync('T', token);
         Assert.IsTrue(index.Drives.All(drive => drive.WatchFailureMessage == null));
-        await index.StopWatchingAsync(token);
+        await index.StopWatchingAsync('T', token);
     }
 
     [TestMethod]
     public async Task StartWatchingAsync_CancelledWhileTheBrokerConnects_ThrowsAndLeavesTheIndexStartable()
     {
-        using var scenario = new SharedBrokerScenario();
+        using var scenario = new BrokerScenario();
         await using var harness = scenario.CreateHarness();
         var token = harness.CancellationToken;
         var producer = new BrokerMftBlockProducer(harness.ConnectAsync);
@@ -150,15 +147,15 @@ public sealed class BrokerFileIndexRescanTests
             await using var index = await scenario.OpenIndexAsync(producer.CreateProducer(), source, token);
             using var startCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-            var start = index.StartWatchingAsync(startCancellation.Token);
-            await connectGate.Entered.WaitAsync(token);
+            var start = index.StartWatchingAsync('T', startCancellation.Token);
+            await connectGate.Entered.WaitAsync(HangGuard);
             await startCancellation.CancelAsync();
 
-            await AssertCancelledAsync(start, token);
-            await index.StartWatchingAsync(token);
-            await index.RescanAsync('C', token);
+            await WatchReads.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
+            await index.StartWatchingAsync('T', token);
+            await index.RescanAsync('T', token);
             Assert.IsTrue(index.Drives.All(drive => drive.WatchFailureMessage == null));
-            await index.StopWatchingAsync(token);
+            await index.StopWatchingAsync('T', token);
         }
         finally
         {
@@ -166,144 +163,52 @@ public sealed class BrokerFileIndexRescanTests
         }
     }
 
-    static async Task AssertCancelledAsync(Task task, CancellationToken token)
-    {
-        try
-        {
-            await task.WaitAsync(token);
-        }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested)
-        {
-            return;
-        }
-
-        Assert.Fail("The start completed instead of being cancelled.");
-    }
-
     /// <summary>
-    ///     Two drives on one in-process broker. Drive C's second scan publishes a batch for drive D
-    ///     and waits until the index applies it, so a rescan of C proves D kept delivering while C
-    ///     was off the watch.
+    ///     Drives <c>T</c> and <c>U</c> scanned by the in-process host, each scan naming its one file
+    ///     after the drive's scan number, so a test can tell which scan produced a block.
     /// </summary>
-    sealed class SharedBrokerScenario : IDisposable
+    sealed class BrokerScenario : IDisposable
     {
-        readonly Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> _batchesC =
-            Channel.CreateUnbounded<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
-
-        readonly Channel<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> _batchesD =
-            Channel.CreateUnbounded<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
-
-        readonly TaskCompletionSource _firstArmC = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        readonly TaskCompletionSource _firstArmD = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        readonly TaskCompletionSource _secondArmC = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        readonly TaskCompletionSource _appliedD = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        readonly TaskCompletionSource _appliedC = new(TaskCreationOptions.RunContinuationsAsynchronously);
         readonly string _cacheDirectory = Path.Combine(Path.GetTempPath(), $"broker-rescan-{Guid.NewGuid():N}");
-        InProcessBlockBrokerHarness? _harness;
-        int _armsC;
-        int _armsD;
-        int _scansC;
-
-        public Task FirstArmC => _firstArmC.Task;
+        readonly ConcurrentDictionary<string, int> _scans = new(StringComparer.Ordinal);
+        TestGate? _heldScanOfT;
 
         public void Dispose()
         {
+            _heldScanOfT?.Release();
             if (Directory.Exists(_cacheDirectory))
             {
                 Directory.Delete(_cacheDirectory, recursive: true);
             }
         }
 
-        public Task FirstArmD => _firstArmD.Task;
+        public ScriptedWatchBrokerHarness CreateHarness() => new(scanDrive: Scan);
 
-        public InProcessBlockBrokerHarness CreateHarness()
-        {
-            _harness = new InProcessBlockBrokerHarness(recordBatches: Scan,
-                catchUp: (_, cursor) => ([], cursor), watchDrive: Watch);
-            return _harness;
-        }
+        /// <summary>Parks T's second scan inside the host until the returned gate is released.</summary>
+        public TestGate HoldSecondScanOfT() => _heldScanOfT = new TestGate();
 
-        public async Task<FileIndex> OpenIndexAsync(MftBlockProducer producer, IIndexWatchSource watchSource,
+        public Task<FileIndex> OpenIndexAsync(MftBlockProducer producer, IIndexWatchSource watchSource,
             CancellationToken token)
         {
-            var index = await FileIndex.OpenAsync(new FileIndexOptions
+            return FileIndex.OpenAsync(new FileIndexOptions
             {
-                Drives = [new IndexedDrive('C', Path.GetTempPath(), 123),
-                    new IndexedDrive('D', Path.GetTempPath(), 456)],
+                Drives = [new IndexedDrive('T', Path.GetTempPath(), 123), new IndexedDrive('U', Path.GetTempPath(), 456)],
                 CacheDirectory = _cacheDirectory,
                 NoCache = true,
                 MftProducer = producer,
                 WatchSource = watchSource
             }, token);
-            index.Changed += change =>
-            {
-                if (change.Entry.Name == "during.txt")
-                {
-                    _appliedD.TrySetResult();
-                }
-
-                if (change.Entry.Name == "after.txt")
-                {
-                    _appliedC.TrySetResult();
-                }
-            };
-            return index;
         }
 
-        /// <summary>
-        ///     Rescans C while D delivers, observing the rescan's own failure directly rather than
-        ///     through a timeout on the sibling's batch, then proves C was re-armed on the same
-        ///     broker from its fresh block and delivers again.
-        /// </summary>
-        public async Task RescanWhileTheSiblingDeliversAsync(FileIndex index, CancellationToken token)
+        IEnumerable<IReadOnlyList<MftRecord>> Scan(string drive, ParseThreadAllowance parseThreads,
+            IBrokerOperationReporter operation, IProgress<BlockWriteProgress>? progress,
+            CancellationToken cancellationToken)
         {
-            var rescan = index.RescanAsync('C', token);
-            var firstFinished = await Task.WhenAny(_appliedD.Task, rescan).WaitAsync(token);
-            await firstFinished;
-            await rescan;
-            await _secondArmC.Task.WaitAsync(token);
-            Assert.AreEqual(2, _scansC);
-            Assert.AreEqual(2, _armsC);
-            Assert.AreEqual(1, _armsD);
-            Assert.AreEqual("scan-2.txt", NamePool.ReadRowName(_harness!.CreatedBlock!, 20).ToString());
-            Assert.AreEqual(1, index.FindByName("scan-2.txt", token).Count);
-            Assert.AreEqual(1, index.FindByName("scan-1.txt", token).Count);
-            Assert.IsTrue(index.Drives.All(drive => drive.WatchFailureMessage == null));
-            _batchesC.Writer.TryWrite(([JournalEntryFactory.Create(41, 12700, "after.txt", UsnReason.FileCreate)],
-                new UsnJournalCursor(71, 12701)));
-            await _appliedC.Task.WaitAsync(token);
-        }
-
-        async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> Watch(
-            string drive, UsnJournalCursor cursor, [EnumeratorCancellation] CancellationToken token)
-        {
-            if (drive == "C")
+            var scanNumber = _scans.AddOrUpdate(drive, 1, (_, count) => count + 1);
+            if (drive == "T" && scanNumber == 2 && _heldScanOfT is { } held)
             {
-                (Interlocked.Increment(ref _armsC) == 1 ? _firstArmC : _secondArmC).TrySetResult();
-            }
-            else
-            {
-                Interlocked.Increment(ref _armsD);
-                _firstArmD.TrySetResult();
-            }
-
-            var channel = drive == "C" ? _batchesC : _batchesD;
-            await foreach (var batch in channel.Reader.ReadAllAsync(token))
-            {
-                yield return batch;
-            }
-        }
-
-        IEnumerable<IReadOnlyList<MftRecord>> Scan(string drive,
-            IProgress<BlockWriteProgress>? progress, CancellationToken token)
-        {
-            token.ThrowIfCancellationRequested();
-            var scanNumber = drive == "C" ? Interlocked.Increment(ref _scansC) : 1;
-            if (drive == "C" && scanNumber == 2)
-            {
-                _batchesD.Writer.TryWrite(([JournalEntryFactory.Create(40, 12600, "during.txt", UsnReason.FileCreate)],
-                    new UsnJournalCursor(71, 12601)));
-                _appliedD.Task.Wait(token);
+                held.MarkEntered();
+                held.WaitForRelease();
             }
 
             yield return [new MftRecord(5, 5, new MftRecordFields(3), ".", null),

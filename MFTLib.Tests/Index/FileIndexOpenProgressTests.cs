@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -6,8 +7,10 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     <see cref="FileIndexOptions.OpenProgress" />'s contract: one report per configured drive
-///     from <see cref="FileIndex.OpenAsync" />, in configured order, after that drive settles,
-///     whatever the outcome. <see cref="FileIndex.RescanAsync" /> stays silent.
+///     from <see cref="FileIndex.OpenAsync" />, after that drive settles, whatever the outcome,
+///     numbered by <see cref="IndexDriveOpened.SettledCount" /> in settle order. Drives settle
+///     concurrently, so these cases assert on each drive's report by letter and on the set of
+///     counts, never on which drive settled first. <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> stays silent.
 /// </summary>
 [TestClass]
 public class FileIndexOpenProgressTests
@@ -98,24 +101,32 @@ public class FileIndexOpenProgressTests
                 new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
                     ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
             writer.SetJournalCursor(journalId, nextUsn);
-            writer.Complete(FixedMoment);
+            writer.Complete(FixedMoment, null);
         }
 
         return BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
     }
 
-    static void AssertReport(IndexDriveOpened report, char driveLetter, int ordinal, int total,
+    static void AssertReport(IndexDriveOpened report, char driveLetter, int total,
         BlockSource blockSource, DriveState state)
     {
         Assert.AreEqual(driveLetter, report.DriveLetter);
-        Assert.AreEqual(ordinal, report.Ordinal);
         Assert.AreEqual(total, report.Total);
         Assert.AreEqual(blockSource, report.BlockSource);
         Assert.AreEqual(state, report.State);
     }
 
+    /// <summary>The one report a drive made, and proof that the counts are exactly 1 to the total.</summary>
+    static IndexDriveOpened ReportOf(ConcurrentQueue<IndexDriveOpened> reports, char driveLetter)
+    {
+        var settledCounts = reports.Select(report => report.SettledCount).Order().ToArray();
+        CollectionAssert.AreEqual(Enumerable.Range(1, reports.Count).ToArray(), settledCounts,
+            "every settle takes the next count once");
+        return reports.Single(report => report.DriveLetter == driveLetter);
+    }
+
     [TestMethod]
-    public async Task OpenAsync_CacheOnlyWarmStart_ReportsEveryDriveInConfiguredOrder()
+    public async Task OpenAsync_CacheOnlyWarmStart_ReportsEveryDriveOnceWithSettledCounts()
     {
         var drives = new[]
         {
@@ -130,14 +141,16 @@ public class FileIndexOpenProgressTests
         {
         }
 
-        var reports = new List<IndexDriveOpened>();
-        var options = Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Add), cacheOnly: true);
+        var reports = new ConcurrentQueue<IndexDriveOpened>();
+        var options = Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Enqueue), cacheOnly: true);
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(3, reports.Count);
-        AssertReport(reports[0], 'T', 1, 3, BlockSource.WarmStartedFromCache, DriveState.Ready);
-        AssertReport(reports[1], 'U', 2, 3, BlockSource.WarmStartedFromCache, DriveState.Ready);
-        AssertReport(reports[2], 'V', 3, 3, BlockSource.WarmStartedFromCache, DriveState.Ready);
+        foreach (var driveLetter in "TUV")
+        {
+            AssertReport(ReportOf(reports, driveLetter), driveLetter, 3, BlockSource.WarmStartedFromCache,
+                DriveState.Ready);
+        }
     }
 
     [TestMethod]
@@ -150,21 +163,21 @@ public class FileIndexOpenProgressTests
         {
         }
 
-        var reports = new List<IndexDriveOpened>();
-        var options = Options([warmDrive, coldDrive], new SynchronousProgress<IndexDriveOpened>(reports.Add),
+        var reports = new ConcurrentQueue<IndexDriveOpened>();
+        var options = Options([warmDrive, coldDrive], new SynchronousProgress<IndexDriveOpened>(reports.Enqueue),
             cacheOnly: true);
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(2, reports.Count);
-        AssertReport(reports[0], 'T', 1, 2, BlockSource.WarmStartedFromCache, DriveState.Ready);
-        AssertReport(reports[1], 'U', 2, 2, BlockSource.None, DriveState.Failed);
+        AssertReport(ReportOf(reports, 'T'), 'T', 2, BlockSource.WarmStartedFromCache, DriveState.Ready);
+        AssertReport(ReportOf(reports, 'U'), 'U', 2, BlockSource.None, DriveState.Failed);
         Assert.AreEqual(DriveState.Failed, index.Drives.Single(drive => drive.DriveLetter == 'U').State);
     }
 
     [TestMethod]
     public async Task OpenAsync_ColdScan_ReportsAfterTheProducerCompletes()
     {
-        var reports = new List<IndexDriveOpened>();
+        var reports = new ConcurrentQueue<IndexDriveOpened>();
         var reportCountAtProduceTime = -1;
 
         Task<MftBlockProduceResult> FakeProducer(MftBlockProduceRequest request, CancellationToken _)
@@ -176,27 +189,29 @@ public class FileIndexOpenProgressTests
         }
 
         var drives = new[] { new IndexedDrive('T', CreateDriveRoot("first"), 1) };
-        var options = Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Add),
+        var options = Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Enqueue),
             producerPolicy: ProducerPolicy.Mft, mftProducer: FakeProducer);
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(0, reportCountAtProduceTime, "the drive's report must follow its producer's completion");
         Assert.AreEqual(1, reports.Count);
-        AssertReport(reports[0], 'T', 1, 1, BlockSource.ProducedByScan, DriveState.Ready);
+        AssertReport(reports.Single(), 'T', 1, BlockSource.ProducedByScan, DriveState.Ready);
+        Assert.AreEqual(1, reports.Single().SettledCount);
     }
 
     [TestMethod]
     public async Task OpenAsync_OfflineDrive_ReportsOfflineWithNoBlock()
     {
         var drives = new[] { new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1) };
-        var reports = new List<IndexDriveOpened>();
+        var reports = new ConcurrentQueue<IndexDriveOpened>();
 
         await using var index = await FileIndex.OpenAsync(
-            Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Add)),
+            Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Enqueue)),
             TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(1, reports.Count);
-        AssertReport(reports[0], 'Z', 1, 1, BlockSource.None, DriveState.Offline);
+        AssertReport(reports.Single(), 'Z', 1, BlockSource.None, DriveState.Offline);
+        Assert.AreEqual(1, reports.Single().SettledCount);
     }
 
     [TestMethod]
@@ -221,10 +236,10 @@ public class FileIndexOpenProgressTests
     public async Task RescanAsync_DoesNotReportOpenProgress()
     {
         var drives = new[] { new IndexedDrive('T', CreateDriveRoot("first"), 1) };
-        var reports = new List<IndexDriveOpened>();
+        var reports = new ConcurrentQueue<IndexDriveOpened>();
 
         await using var index = await FileIndex.OpenAsync(
-            Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Add)),
+            Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Enqueue)),
             TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(1, reports.Count);
 
@@ -234,7 +249,7 @@ public class FileIndexOpenProgressTests
     }
 
     [TestMethod]
-    public async Task OpenAsync_InterleavedDrives_ReportsSettledStateInOrder()
+    public async Task OpenAsync_InterleavedDrives_ReportsEachSettledStateOnce()
     {
         var warmDrive = new IndexedDrive('T', CreateDriveRoot("first"), 1);
         var coldDrive = new IndexedDrive('U', CreateDriveRoot("second"), 2);
@@ -245,15 +260,15 @@ public class FileIndexOpenProgressTests
         {
         }
 
-        var reports = new List<IndexDriveOpened>();
+        var reports = new ConcurrentQueue<IndexDriveOpened>();
         var options = Options([warmDrive, coldDrive, offlineDrive],
-            new SynchronousProgress<IndexDriveOpened>(reports.Add));
+            new SynchronousProgress<IndexDriveOpened>(reports.Enqueue));
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(3, reports.Count);
-        AssertReport(reports[0], 'T', 1, 3, BlockSource.WarmStartedFromCache, DriveState.Ready);
-        AssertReport(reports[1], 'U', 2, 3, BlockSource.ProducedByScan, DriveState.Ready);
-        AssertReport(reports[2], 'V', 3, 3, BlockSource.None, DriveState.Offline);
+        AssertReport(ReportOf(reports, 'T'), 'T', 3, BlockSource.WarmStartedFromCache, DriveState.Ready);
+        AssertReport(ReportOf(reports, 'U'), 'U', 3, BlockSource.ProducedByScan, DriveState.Ready);
+        AssertReport(ReportOf(reports, 'V'), 'V', 3, BlockSource.None, DriveState.Offline);
 
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives[0].BlockSource);
@@ -266,7 +281,7 @@ public class FileIndexOpenProgressTests
     [TestMethod]
     public async Task OpenAsync_AsynchronousHandledProducerFailure_ReportsFailedState()
     {
-        var reports = new List<IndexDriveOpened>();
+        var reports = new ConcurrentQueue<IndexDriveOpened>();
 
         async Task<MftBlockProduceResult> FailingProducer(MftBlockProduceRequest request,
             CancellationToken cancellationToken)
@@ -277,12 +292,12 @@ public class FileIndexOpenProgressTests
         }
 
         var drives = new[] { new IndexedDrive('T', CreateDriveRoot("failing"), 1) };
-        var options = Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Add),
+        var options = Options(drives, new SynchronousProgress<IndexDriveOpened>(reports.Enqueue),
             producerPolicy: ProducerPolicy.Mft, mftProducer: FailingProducer);
         await using var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
 
         Assert.AreEqual(1, reports.Count);
-        AssertReport(reports[0], 'T', 1, 1, BlockSource.None, DriveState.Failed);
+        AssertReport(reports.Single(), 'T', 1, BlockSource.None, DriveState.Failed);
         Assert.AreEqual(DriveState.Failed, index.Drives[0].State);
         StringAssert.Contains(index.Drives[0].MftProducerFailureMessage, "simulated MFT producer failure");
     }

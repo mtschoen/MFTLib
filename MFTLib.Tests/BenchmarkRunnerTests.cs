@@ -1127,8 +1127,8 @@ public class BenchmarkRunnerTests
     // ValidateBeforeBaseline always rejects a non-positive throughput or peak-private-bytes
     // value before EvaluateThresholds runs, so the "not positive" side of these ternaries is
     // unreachable through the public Run(...) surface. EvaluateThresholds is called directly
-    // via reflection (the same private-member pattern already used elsewhere in this suite,
-    // e.g. JournalBrokerClientTests) to exercise it.
+    // via reflection (the same private-member pattern used elsewhere in this suite) to
+    // exercise it.
 
     [TestMethod]
     public void EvaluateThresholds_BeforeThroughputNotPositive_SkipsRegressionFormula()

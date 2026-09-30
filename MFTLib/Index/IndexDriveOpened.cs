@@ -2,9 +2,12 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     One open-time notification from <see cref="FileIndex.OpenAsync" />: the named drive has
-///     settled, whatever the outcome. Reports arrive once per configured drive, in
-///     <see cref="FileIndexOptions.Drives" /> order, so a consumer can render "drive 3 of 9: G:"
-///     while the open is still in flight. The initial watch catch-up MFTLib#139 describes is a
+///     settled, whatever the outcome. Each drive that settles reports once, from the thread that
+///     settled it; a drive whose settle is cancelled reports nothing, so a cancelled or failed open
+///     may have reported only some of the configured drives. Drives settle concurrently and no lock is held while a handler runs, so
+///     reports can overlap and arrive out of order: <see cref="SettledCount" /> gives the order,
+///     and a consumer rendering "3 of 9 drives settled" keeps the report with the largest count
+///     rather than the last one received. The initial watch catch-up MFTLib#139 describes is a
 ///     later moment in the same per-drive lifecycle; its notification can follow this record's
 ///     shape as a sibling rather than introducing a second vocabulary.
 /// </summary>
@@ -14,10 +17,12 @@ public sealed record IndexDriveOpened
     public required char DriveLetter { get; init; }
 
     /// <summary>
-    ///     The drive's 1-based position in <see cref="FileIndexOptions.Drives" />. This is the
-    ///     configured open order, not the block ordinal a <see cref="DriveBlock" /> carries.
+    ///     This drive was the <see cref="SettledCount" />-th of the open's drives to settle, counted
+    ///     from 1. Claimed when the drive's final open state is recorded, so it is settle order,
+    ///     and for drives with a block it is also block ordinal order. It is not the drive's
+    ///     position in <see cref="FileIndexOptions.Drives" />.
     /// </summary>
-    public required int Ordinal { get; init; }
+    public required int SettledCount { get; init; }
 
     /// <summary>How many drives this open was configured with.</summary>
     public required int Total { get; init; }

@@ -119,7 +119,7 @@ dotnet build external\MFTLib\MFTLibTestExtensions\MFTLibTestExtensions.csproj -c
 | Scenario | Recommended API |
 | --- | --- |
 | Elevated CLI or service; simplest integration | `MftVolume` directly |
-| Non-elevated desktop/CLI app; one UAC prompt | `JournalBrokerScanSession` (owned scan-to-watch session; `JournalBrokerClient` remains available as the low-level primitive) |
+| Non-elevated desktop/CLI app; one UAC prompt | `BrokerProcess` with `BrokerMftBlockProducer` and `BrokerIndexWatchSource` |
 | One-time filename lookup | `MftVolume.FindByName` |
 | Full in-memory index | `MftVolume.ReadAllRecords` |
 | Process records while native memory is alive | `MftVolume.StreamRecords` |
@@ -286,11 +286,9 @@ sizing, `MaximumSize` and `AllocationDelta`, without elevation.
 
 The only journal event that costs anything is a drive's journal position falling
 out of the journal, because the drive must then be scanned from scratch instead
-of caught up. It happens in two places and reports the same way in both. Opening
-a drive finds it in a cached block's checkpoint and cold-scans; a live watch that
-faults is asked the same question about the position it had reached, so a watch
-the journal outran says so rather than only reporting that it died. Either way it
-is recorded on that drive's status:
+of caught up. It is detected when opening a cached block, when a live watch
+faults, or when the journal outruns a scan before that scan can catch up. Each
+case is recorded on that drive's status:
 
 ```csharp
 await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -336,21 +334,22 @@ trim can leave the journal below it. The value is not a live measurement, and
 there is no clock, rate or cap.
 
 The report is attached to the drive it describes, for as long as the block it
-explains is in place. A `FileIndexOptions.InitialOpenCacheOnly` open reports it
-too: that drive comes back `DriveState.Failed` with
-`DriveFailureKind.CacheDeclined`, which says the cache was refused, while
-`CheckpointLoss` says why and the size a journal would need to be at least to
-have kept the checkpoint. A successful
-`RescanAsync` clears it, because the block it explained has been replaced.
+explains is in place. A `FileIndexOptions.InitialOpenCacheOnly` open adopts a
+usable cached block even when its checkpoint is gone: the drive is `Ready`, the
+report explains why its cursor cannot be resumed, and a watch start is refused
+until `RescanAsync` supplies a fresh cursor. A successful manual rescan clears
+the report. Because the refused start retains no watch request, call
+`StartWatchingAsync` again after the rescan succeeds.
 
 A loss found mid-session sits alongside `WatchFailureMessage` and
-`WatchCatchUp` of `WatchCatchUpState.Faulted`, and answers the question those two
-cannot: the watch did not merely stop, the journal moved past where it had
-reached. The drive keeps its block and every query still answers from it, with
-nothing after that position applied, so `RescanAsync(driveLetter, token)` is what
-makes it current and re-arms its watch. Subscribe to `FileIndex.WatchFaulted` to
-see it as it happens: the report is recorded before the fault is announced, so a
-handler that reads `index.Drives` already has it.
+`WatchCatchUp`. It answers the question those two cannot: the watch did not
+merely stop, the journal moved past where it had reached. `Drive` and `Apply`
+faults recover by rescanning automatically; `Channel` faults do not. A scan-time
+loss records `JournalCheckpointLossDetection.ScanCatchUp`, publishes the complete
+but unresumable block, and retries the scan up to
+`FileIndex.LostCatchUpRecoveryLimit`. Subscribe to `FileIndex.WatchFaulted` to
+observe live and scan-time losses. The report is recorded before the fault is
+announced, so a handler that reads `index.Drives` already has it.
 
 **In a fault handler, branch on `DetectedDuring`, not on the loss being
 non-null.** A report lives until a rescan replaces the block it explains, so a
@@ -361,34 +360,32 @@ doing. `DetectedDuring` says which check found it:
 ```csharp
 index.WatchFaulted += fault =>
 {
-    if (fault.DriveLetter is not { } driveLetter)
+    var drive = index.Drives.Single(d => d.DriveLetter == fault.DriveLetter);
+    if (drive.CheckpointLoss is
+        {
+            DetectedDuring: JournalCheckpointLossDetection.LiveWatch or
+                JournalCheckpointLossDetection.ScanCatchUp
+        } loss)
     {
-        return;
-    }
-
-    var drive = index.Drives.Single(d => d.DriveLetter == char.ToUpperInvariant(driveLetter));
-    if (drive.CheckpointLoss is { DetectedDuring: JournalCheckpointLossDetection.LiveWatch } loss)
-    {
-        // The journal outran this drive. It stays behind until a rescan rebuilds it.
-        OfferRescan(loss);
+        Console.WriteLine(
+            $"Drive {fault.DriveLetter}: {loss.DetectedDuring}, {loss.Cause}");
         return;
     }
 
     // Anything else is a plain watch failure, whatever else the drive is carrying.
-    ReportWatchFailure(drive.WatchFailureMessage);
+    Console.Error.WriteLine(drive.WatchFailureMessage);
 };
 ```
 
 `JournalCheckpointLossDetection.DriveOpening` means the report explains why this
-session cold-scanned at open. That rescan has already happened, so it is
-informational: show the journal-size hint, but do not read it as a diagnosis of
-a fault. `LiveWatch` means the drive is behind now and wants `RescanAsync`. A
-watch that fails for any other reason leaves the report exactly as it was,
-`DriveOpening` label included, or leaves it null, because the classification is
-the journal's answer about that drive's position rather than a reading of the
-exception that ended the watch. A `LiveWatch` loss replaces an earlier
-`DriveOpening` one, as the newer fact about the same drive; an unrelated fault
-neither rewrites nor deletes what is there.
+session cold-scanned at open, or why a cache-only drive cannot be watched. It is
+not a diagnosis of a later fault. `LiveWatch` means the drive's live cursor was
+gone when its watch faulted. `ScanCatchUp` means the cursor armed before a scan
+was gone when that scan finished. A watch that fails for any other reason leaves
+the report exactly as it was, `DriveOpening` label included, or leaves it null,
+because the classification is the journal's answer about that drive's position
+rather than a reading of the exception that ended the watch. A newer loss
+replaces an earlier report; an unrelated fault neither rewrites nor deletes it.
 
 `Cause` separates the two situations MFTLib can actually tell apart.
 `CheckpointTrimmed` means the journal is the one the checkpoint came from and has
@@ -411,7 +408,7 @@ is worth it or whether an occasional rescan is cheaper. Scans are fast by design
 so a rescan is an acceptable outcome, not a failure.
 
 MFTLib never changes the journal on its own:
-enlarging it is an explicit call, `JournalBrokerClient.GrowUsnJournalAsync`,
+enlarging it is an explicit call, `BrokerProcess.GrowUsnJournalAsync`,
 which the broker performs elevated and which only grows, refusing a requested
 maximum at or below the current one. Growing is persistent and shared with
 every other journal consumer on the volume (Windows Search, backup and
@@ -420,9 +417,9 @@ replication agents), so surface it as a user action, not a startup default.
 ## Keep the application non-elevated
 
 For desktop applications and long-running tools, use the elevated broker instead of
-running the entire process as Administrator. One broker session can arm cursors, scan
-multiple drives, catch up changes that occurred during each scan, stream live journal
-batches, and rescan without another UAC prompt.
+running the entire process as Administrator. One `BrokerProcess` owns the control pipe
+for the consumer session. Each scan and each drive watch gets its own drive pipe, so a
+slow, stopped, or failed drive does not end another drive's operation.
 
 At minimum, the application must dispatch broker mode before normal startup:
 
@@ -435,45 +432,98 @@ if (ElevatedEntryPoint.TryHandle(
 }
 ```
 
-The non-elevated side then creates one client. Given an existing `cacheDirectory` and
-the discovered `uint volumeSerial` for C, supply the destination for that drive:
+The non-elevated side launches one broker process, then shares it with the index adapters:
 
 ```csharp
-await using var broker = await JournalBrokerClient.SpawnAndConnectAsync(
+await using var broker = await BrokerProcess.LaunchAsync(
     BrokerLauncher.Launch,
     cancellationToken);
 
-var scan = await broker.ArmScanAndCatchUpAsync(
-    new[] { "C" },
-    new BrokerScanOptions
-    {
-        BlockTargets = new Dictionary<string, BlockScanTarget>
-        {
-            ["C"] = new(Path.Combine(cacheDirectory, $"C-{volumeSerial:X8}.mlix"), volumeSerial, false)
-        }
-    },
+broker.Ended += reason => Console.Error.WriteLine($"Broker ended: {reason}");
+
+Task<BrokerProcess> ConnectBrokerAsync(CancellationToken _) =>
+    Task.FromResult(broker);
+
+var brokerAdapter = new BrokerMftBlockProducer(ConnectBrokerAsync);
+var drive = IndexedDrive.FromWindowsVolume("C:");
+var options = new FileIndexOptions
+{
+    Drives = [drive],
+    CacheDirectory = cacheDirectory,
+    MftProducer = brokerAdapter.CreateProducer(),
+    WatchSource = brokerAdapter.CreateWatchSource()
+};
+
+await using var index = await FileIndex.OpenAsync(options, cancellationToken);
+```
+
+The adapter's connection callback does not transfer ownership: the application keeps and
+disposes the shared `BrokerProcess`. `BrokerProcess.QueryVolumeAsync`,
+`GrowUsnJournalAsync`, and `ScanDriveAsync` are the direct broker entry points. A block
+returned by `ScanDriveAsync` belongs to the caller and must be disposed:
+
+```csharp
+NtfsVolumeInformation volume =
+    await broker.QueryVolumeAsync(drive.DriveLetter, cancellationToken);
+
+var scan = await broker.ScanDriveAsync(
+    drive.DriveLetter,
+    new BlockScanTarget(directBlockPath, drive.VolumeSerial, true),
+    new BrokerScanOptions(),
+    cancellationToken);
+using var directBlock = scan.Block.Block;
+
+UsnJournalSettings grown = await broker.GrowUsnJournalAsync(
+    drive.DriveLetter,
+    requestedMaximumSize,
+    requestedAllocationDelta,
     cancellationToken);
 ```
 
-Completed blocks in `scan.BlockOutcomes` belong to the caller and must be disposed
-separately when scanning through `JournalBrokerClient` directly like this.
-
-`JournalBrokerScanSession` wraps this same client into one owned scan-to-watch object
-(`StartAsync` through discovery, live watch, rescan, and disposal). A session owns the
-blocks it publishes: those in `session.LatestScan.BlockOutcomes` are disposed by the next
-rescan and by the session's own disposal, so take a block out of the result first if it
-has to outlive either. The session also owns the client. See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
-for startup dispatch, result handling, live watch, rescans, recovery, and diagnostics.
+Journal growth is an explicit user action; the broker refuses a requested maximum at or
+below the current value. `HasEnded` and `Ended` report loss of the control pipe. See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
+for startup dispatch, direct scans, watch channels, recovery, and diagnostics.
 
 ## Build a live index with FileIndex
 
 `MFTLib.Index.FileIndex` builds a packed, substrate-neutral per-drive file index and
-keeps it current with a live USN watch it owns end to end: `StartWatchingAsync` arms
-every MFT-backed drive from its own block's journal cursor, `Changed` raises one event
-per applied change, and `WatchFaulted` reports a per-drive or whole-stream failure
-without tearing down the index. See [the block format](docs/index-format.md) for the
+keeps it current with one live USN watch handle per drive. A start arms the named drive
+from its own block's journal cursor, `Changed` raises one event per applied change, and
+every `WatchFaulted` notification names the affected drive. See [the block format](docs/index-format.md) for the
 on-disk layout and [the broker integration guide](docs/broker-integration.md) for how
 the live watch bridges to the elevated broker.
+
+The single-drive lifecycle calls throw that drive's failure directly:
+
+```csharp
+await index.StartWatchingAsync('C', cancellationToken);
+await index.WaitForCatchUpAsync('C', cancellationToken);
+
+await index.RescanAsync('C', cancellationToken); // Restarts C if its watch is still requested.
+await index.StopWatchingAsync('C', cancellationToken);
+```
+
+The batched forms run the requested drives concurrently and return one
+`DriveOperationResult` per drive in request order. One drive's `Failed` result does not
+discard the others. `NotApplicable` means the operation has nothing to do for that
+drive, such as starting an enumeration-backed drive or waiting on a drive with no watch.
+
+```csharp
+IReadOnlyList<char> driveLetters = ['C', 'D'];
+
+IReadOnlyList<DriveOperationResult> starts =
+    await index.StartWatchingAsync(driveLetters, cancellationToken);
+IReadOnlyList<DriveOperationResult> catchUps =
+    await index.WaitForCatchUpAsync(driveLetters, cancellationToken);
+IReadOnlyList<DriveOperationResult> rescans =
+    await index.RescanAsync(driveLetters, cancellationToken);
+IReadOnlyList<DriveOperationResult> stops =
+    await index.StopWatchingAsync(driveLetters, cancellationToken);
+```
+
+Omit the drive list to apply a batched call to every configured drive in
+`FileIndexOptions.Drives` order. Batched calls throw for invalid input, disposal, and
+cancellation; drive-specific operational failures stay in `DriveOperationResult.Failure`.
 
 `FileIndexOptions.ProducerPolicy` selects how each drive's block is built:
 `ProducerPolicy.Mft` (the default) reads the Master File Table through
@@ -502,18 +552,33 @@ system if the process dies, so a killed index never strands its cache slot. Ever
 delete is reported through `FileIndexOptions.Diagnostics` with the path and the reason.
 
 `FileIndexOptions.OpenProgress` reports open-time progress per drive: `OpenAsync`
-fires one `IndexDriveOpened` per configured drive, in configured order and
-synchronously on the opening thread, after that drive settles: warm-started from
-cache, cold-scanned, declined by `InitialOpenCacheOnly`, offline, or failed. The
-report carries the drive letter, its 1-based ordinal in the configured drive
-list, the total configured drive count, and the settled `BlockSource` and
-`DriveState`, so a consumer can render "drive 3 of 9: G:" while the open is still
-in flight. A declined or failed drive still counts toward the total and still
-reports. It defaults to null, which reports and allocates nothing, and it fires
-on warm starts too, unlike `FileIndexOptions.Progress`, which samples only while
-a producer runs. `RescanAsync` stays silent: its caller already awaits the one
-drive it rescans. Marshalling belongs to the `IProgress<T>` implementation, the
-same convention `FileIndexOptions.Progress` uses.
+fires one `IndexDriveOpened` for each drive that settles, synchronously on the
+thread that settled it: warm-started from cache, cold-scanned, declined by
+`InitialOpenCacheOnly`, offline, or failed. A cancelled or failed open may have
+reported only some of the drives. `OpenAsync` settles its
+drives concurrently and runs no lock around a handler, so reports can overlap and
+arrive out of order; `SettledCount` gives the order. The report
+carries the drive letter, `SettledCount` (this drive was the n-th to settle,
+counted from 1), the total configured drive count, and the settled `BlockSource`
+and `DriveState`, so a consumer can render "3 of 9 drives settled" while the open
+is still in flight. Keep the report with the largest `SettledCount`, not simply
+the last callback to arrive. A declined or failed drive still counts toward the total and
+still reports. Block ordinals follow the same order for drives with a block;
+`FileIndex.Drives` keeps the configured order. It defaults to null, which reports
+and allocates nothing, and it fires on warm starts too, unlike
+`FileIndexOptions.Progress`, which samples only while a producer runs.
+`RescanAsync` stays silent: its caller already awaits the one drive it rescans.
+Marshalling belongs to the `IProgress<T>` implementation, the same convention
+`FileIndexOptions.Progress` uses.
+
+A cold drive that loses its journal catch-up is scanned again by its own settle,
+up to `FileIndex.LostCatchUpRecoveryLimit` times in a row, and settles `Ready`
+with its last block unresumable if every attempt lost it. `OpenAsync` raises no
+`WatchFaulted` event because the caller cannot subscribe before it returns; inspect
+`DriveStatus.ConsecutiveLostCatchUps`, `CheckpointLoss`, `WatchFailureMessage`, and
+`WatchCatchUp` instead. The drive's watch is refused until a manual `RescanAsync`
+produces a resumable block. Call `StartWatchingAsync` again after that rescan succeeds;
+the refused start retained no watch request for the rescan to restart.
 
 `FileEntry.Path` is a real filesystem path: the drive block's root directory joined
 with the entry's name chain using the host separator. It can be opened, and
@@ -566,9 +631,89 @@ with the native error message. Common causes include:
 - the USN journal is unavailable, recreated, or wrapped; or
 - native allocation or path-pool capacity is exhausted.
 
-Broker scans instead collect per-drive failures in `BrokerScanResult.Errors`, allowing
-other requested drives to complete. `JournalBrokerClient.BrokerDied` fires at most once
-when the pipe closes or fails.
+`WatchFaulted` reports a `WatchFault` containing `Kind`, `DriveLetter`, and the original
+`Exception`:
+
+- `Subscriber`: a `Changed` handler threw. The drive keeps watching, and this is announced
+  once for that drive's current watch.
+- `Drive` or `Apply`: the watch or batch application failed. The drive publishes
+  `WatchCatchUpState.Recovering` before the event, rescans itself, and starts a fresh watch
+  from the replacement block.
+- `CatchUpLost`: a scan completed, but the journal no longer held the cursor armed before
+  it. The exception is `JournalCatchUpLostException`; the drive records a
+  `JournalCheckpointLossDetection.ScanCatchUp` report and rescans itself while its
+  consecutive count is below `FileIndex.LostCatchUpRecoveryLimit`.
+- `Channel`: the drive pipe was lost or ended without a stop. This fault does not recover
+  automatically.
+- `Recovery`: an automatic recovery scan failed, or its restarted watch failed before
+  reaching `WatchCatchUpState.CaughtUp`. The drive stays `Faulted` until the consumer calls
+  `RescanAsync` or `StartWatchingAsync` for that drive.
+
+A bounded catch-up read that returns entries without advancing its cursor fails that
+catch-up immediately. Those entries are not delivered, so they cannot be applied twice.
+The live journal check then reports `CatchUpLost` when it proves the armed cursor was lost,
+or an `Error` when it cannot prove that loss.
+
+```csharp
+index.WatchFaulted += fault =>
+{
+    var status = index.Drives.Single(drive => drive.DriveLetter == fault.DriveLetter);
+    switch (fault.Kind)
+    {
+        case WatchFaultKind.Drive:
+        case WatchFaultKind.Apply:
+            Console.WriteLine(
+                $"Drive {fault.DriveLetter}: {status.WatchCatchUp == WatchCatchUpState.Recovering}");
+            break;
+
+        case WatchFaultKind.CatchUpLost
+            when fault.Exception is JournalCatchUpLostException lost:
+            Console.WriteLine(
+                $"Drive {fault.DriveLetter}: loss {lost.ConsecutiveLostCatchUps}, " +
+                $"stopped {lost.RecoveryStopped}, report {status.CheckpointLoss?.DetectedDuring}");
+            break;
+
+        case WatchFaultKind.Channel:
+        case WatchFaultKind.Recovery:
+            Console.Error.WriteLine(fault.Exception.Message);
+            break;
+
+        case WatchFaultKind.Subscriber:
+            Console.Error.WriteLine($"Changed handler failed: {fault.Exception.Message}");
+            break;
+    }
+};
+```
+
+During automatic recovery, a catch-up wait faults immediately with the fault that started
+the recovery. Wait again after `DriveStatus.WatchCatchUp` returns to `CatchingUp` if the
+consumer needs to observe the replacement watch reaching `CaughtUp`. When a lost catch-up
+reaches the retry limit, `JournalCatchUpLostException.RecoveryStopped` is true, the drive
+keeps its last queryable block, and its watch is refused until a manual rescan succeeds.
+
+The single-drive `StopWatchingAsync` rethrows the watch's outstanding fault once. A
+batched stop returns that exception in the affected drive's `DriveOperationResult`.
+The following edge dispositions describe current behavior: a source start failure leaves
+a refused-start fault that a later stop clears without rethrowing; a fresh start supersedes
+a faulted watch instance and discards its outstanding fault; and a stop that arrives while
+a recovery or rescan is restarting the watch wins, leaves the drive stopped, and rethrows
+the stopped instance's outstanding fault once. `DisposeAsync` does not rethrow watch or
+broker-host faults.
+
+Do not call a lifecycle method from inside that index's `Changed` or `WatchFaulted`
+handler. Start, stop, rescan, an unsettled catch-up wait, disposal, and their batched forms
+fail immediately with `InvalidOperationException`. Queue the operation, for example with
+`Task.Run`, so it begins after the handler returns. Queries, `Drives`, and already-settled
+catch-up waits are allowed.
+
+A broker `Error` frame fails only its pending operation with the host's message. Losing
+the control pipe sets `BrokerProcess.HasEnded`, raises `BrokerProcess.Ended` once, and
+fails pending operations with `BrokerChannelLostException`. Losing a drive pipe faults
+only that drive. Idle control and watch pipes, queued scans, and processing operations
+that recently reported progress receive heartbeats. A processing operation with no
+progress past the processing limit receives `Stalled` and its channel is cancelled. A
+pipe with a write already in flight is skipped by the heartbeat sender; if it remains
+silent, the client's 30-second no-frame limit ends that pipe.
 
 ## Building from source
 

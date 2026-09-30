@@ -70,4 +70,44 @@ public partial class FileIndexResilienceTests
             }
         }
     }
+
+    /// <summary>
+    ///     A cache directory that cannot be listed while the sweep runs neither fails the open nor
+    ///     stops the drive settling; the stale sibling it could not see is simply left for a later
+    ///     open to sweep.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false, DisplayName = "the listing fails with an I/O error")]
+    [DataRow(true, DisplayName = "the listing is denied")]
+    public async Task OpenAsync_CacheMode_RetiredSiblingListingFails_OpensAndLeavesTheSibling(bool denied)
+    {
+        Directory.CreateDirectory(_cacheDirectory);
+        var staleRetiredPath = Path.Combine(_cacheDirectory,
+            CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-" + Guid.NewGuid().ToString("N"));
+        await File.WriteAllTextAsync(staleRetiredPath, "leftover from a killed process").WaitAsync(HangGuard);
+        var listings = new List<string>();
+        var options = Options() with
+        {
+            EnumerateCacheFilesForTest = (directory, pattern) =>
+            {
+                listings.Add(pattern);
+                throw denied
+                    ? new UnauthorizedAccessException($"listing {directory} is denied")
+                    : new IOException($"listing {directory} failed");
+            }
+        };
+
+        var index = await FileIndex.OpenAsync(options, CancellationToken.None).WaitAsync(HangGuard);
+        try
+        {
+            CollectionAssert.AreEqual(new[] { CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*" },
+                listings);
+            Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
+            Assert.IsTrue(File.Exists(staleRetiredPath), "the sweep that could not list deleted nothing");
+        }
+        finally
+        {
+            await index.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        }
+    }
 }

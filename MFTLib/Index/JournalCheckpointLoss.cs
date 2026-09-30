@@ -20,11 +20,19 @@ public enum JournalCheckpointLossDetection
     /// <summary>
     ///     Found when the drive's live watch faulted, against the position that watch had
     ///     reached. This one is actionable: nothing after that position has been applied, so
-    ///     the drive stays behind until <see cref="FileIndex.RescanAsync" /> rebuilds it. A
+    ///     the drive stays behind until <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> rebuilds it. A
     ///     watch fault that leaves the report reading <see cref="DriveOpening" />, or leaves it
     ///     null, was not the journal outrunning the index.
     /// </summary>
-    LiveWatch
+    LiveWatch,
+
+    /// <summary>
+    ///     Proven by the broker host against the live journal when a scan's catch-up failed, for the
+    ///     cursor armed before that scan: the journal trimmed past it, or was recreated, while the
+    ///     drive was being scanned. The scan's block is complete but cannot be resumed from that
+    ///     cursor.
+    /// </summary>
+    ScanCatchUp
 }
 
 /// <summary>Why a cached block's journal checkpoint could not be resumed.</summary>
@@ -65,7 +73,7 @@ public sealed record JournalCheckpointLoss
     /// <summary>
     ///     Which check found this, and so whether the drive still needs anything done about it.
     ///     A report is replaced only by a newer report for the same drive or cleared by a
-    ///     successful <see cref="FileIndex.RescanAsync" />, never by an unrelated watch fault,
+    ///     successful <see cref="FileIndex.RescanAsync(char, CancellationToken)" />, never by an unrelated watch fault,
     ///     so a handler that acts on a loss reads this before deciding the fault it is handling
     ///     was the journal's doing.
     /// </summary>
@@ -111,7 +119,7 @@ public sealed record JournalCheckpointLoss
     ///     rounded up to <see cref="AllocationDelta" />, plus one more allocation delta. The
     ///     margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
     ///     USN_JOURNAL_DATA, not a live measurement. This is the size to offer the user
-    ///     alongside <c>JournalBrokerClient.GrowUsnJournalAsync</c>, when there is one to offer.
+    ///     alongside the broker's journal grow request (<c>BrokerFrameKind.GrowUsnJournal</c>), when there is one to offer.
     ///     Null for <see cref="JournalCheckpointLossCause.JournalRecreated" />, where no size
     ///     would have helped, and also null for <see cref="JournalCheckpointLossCause.CheckpointTrimmed" />
     ///     when the size does not fit in a <see cref="long" />: a consumer branches on

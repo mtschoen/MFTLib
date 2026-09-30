@@ -1,9 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Public, consumer-facing test-harness surface over MFTLib's internal session
-       construction seams. Consumers reference this from their own test assemblies so
-       they can build a JournalBrokerScanSession over a fake in-memory client without
-       MFTLib friend-listing their test assembly by name.
+  <!-- Public, consumer-facing test harness for MFTLib. Consumers reference this from
+       their own test assemblies to isolate the cache directory and the live USN journal
+       without MFTLib friend-listing their test assembly by name.
 
        IsPackable is false for now: at NuGet-publish time this ships as a separate
        MFTLib.TestExtensions package, never folded into the MFTLib package. -->
@@ -18,6 +17,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MFTLib.Tests" />
   </ItemGroup>
 
 </Project>

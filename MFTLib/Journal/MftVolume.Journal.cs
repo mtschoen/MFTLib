@@ -72,8 +72,20 @@ public sealed partial class MftVolume
     /// </summary>
     public (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor) ReadUsnJournal(UsnJournalCursor since)
     {
+        return ReadUsnJournalBounded(since, 0);
+    }
+
+    /// <summary>
+    ///     Reads at most <paramref name="maximumBufferReads" /> journal buffers (64 KB each) since the
+    ///     given cursor; 0 reads to the journal tip. The updated cursor resumes where the read stopped.
+    /// </summary>
+    internal (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor) ReadUsnJournalBounded(
+        UsnJournalCursor since, int maximumBufferReads)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumBufferReads);
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var resultPtr = MFTLibNative._readUsnJournal(_volumeHandle, since.NextUsn, since.JournalId);
+        var resultPtr = MFTLibNative._readUsnJournal(_volumeHandle, since.NextUsn, since.JournalId,
+            (uint)maximumBufferReads);
         if (resultPtr == IntPtr.Zero)
         {
             throw new InvalidOperationException("ReadUsnJournal returned null");
@@ -137,30 +149,6 @@ public sealed partial class MftVolume
         return entries;
     }
 
-    static void CancelWatch(object? state)
-    {
-        if (state is not ValueTuple<EventWaitHandle, SafeHandle> cancellationState)
-        {
-            throw new InvalidOperationException("Watch cancellation state is missing");
-        }
-
-        var (cancellationEvent, watchHandle) = cancellationState;
-        cancellationEvent.Set();
-        MFTLibNative._cancelUsnJournalWatch(watchHandle);
-    }
-
-    static IntPtr ReadWatchBatch(object? state)
-    {
-        if (state is not ValueTuple<SafeHandle, long, ulong, SafeHandle> readState)
-        {
-            throw new InvalidOperationException("Watch read state is missing");
-        }
-
-        var (watchHandle, currentUsn, journalId, cancellationEvent) = readState;
-        return MFTLibNative._watchUsnJournalBatchCancelable(
-            watchHandle, currentUsn, journalId, cancellationEvent);
-    }
-
     /// <summary>
     ///     Yields batches of USN journal entries as filesystem changes arrive.
     ///     Blocks on the kernel (zero CPU) until new entries appear.
@@ -175,22 +163,16 @@ public sealed partial class MftVolume
         var nextUsn = since.NextUsn;
         var journalId = since.JournalId;
 
-        using var watchHandle = FileUtilities._getWatchVolumeHandle(_volumePath);
-        using var cancellationEvent = new EventWaitHandle(false, EventResetMode.ManualReset);
-        await using var registration = cancellationToken.Register(
-            CancelWatch, (cancellationEvent, (SafeHandle)watchHandle));
+        using var session = new UsnWatchSession(FileUtilities._getWatchVolumeHandle(_volumePath));
+        await using var registration = cancellationToken.Register(session.Cancel);
 
         while (!cancellationToken.IsCancellationRequested)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
             var currentUsn = nextUsn;
-            var resultPtr = await Task.Factory.StartNew(
-                ReadWatchBatch,
-                ((SafeHandle)watchHandle, currentUsn, journalId, (SafeHandle)cancellationEvent.SafeWaitHandle),
-                cancellationToken,
-                TaskCreationOptions.DenyChildAttach,
-                TaskScheduler.Default).ConfigureAwait(false);
+            var resultPtr = await session.ReadBatchAsync(currentUsn, journalId, cancellationToken)
+                .ConfigureAwait(false);
 
             if (resultPtr == IntPtr.Zero)
             {
@@ -244,22 +226,16 @@ public sealed partial class MftVolume
         var nextUsn = since.NextUsn;
         var journalId = since.JournalId;
 
-        using var watchHandle = FileUtilities._getWatchVolumeHandle(_volumePath);
-        using var cancellationEvent = new EventWaitHandle(false, EventResetMode.ManualReset);
-        await using var registration = cancellationToken.Register(
-            CancelWatch, (cancellationEvent, (SafeHandle)watchHandle));
+        using var session = new UsnWatchSession(FileUtilities._getWatchVolumeHandle(_volumePath));
+        await using var registration = cancellationToken.Register(session.Cancel);
 
         while (!cancellationToken.IsCancellationRequested)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
             var currentUsn = nextUsn;
-            var resultPtr = await Task.Factory.StartNew(
-                ReadWatchBatch,
-                ((SafeHandle)watchHandle, currentUsn, journalId, (SafeHandle)cancellationEvent.SafeWaitHandle),
-                cancellationToken,
-                TaskCreationOptions.DenyChildAttach,
-                TaskScheduler.Default).ConfigureAwait(false);
+            var resultPtr = await session.ReadBatchAsync(currentUsn, journalId, cancellationToken)
+                .ConfigureAwait(false);
 
             if (resultPtr == IntPtr.Zero)
             {

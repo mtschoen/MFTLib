@@ -93,7 +93,7 @@ public class FileIndexCheckpointLossDetectionTests
                 new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
                     ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
             writer.SetJournalCursor(CachedJournalId, CachedNextUsn);
-            writer.Complete(FixedMoment);
+            writer.Complete(FixedMoment, null);
         }
 
         return Task.FromResult(new MftBlockProduceResult(
@@ -147,23 +147,23 @@ public class FileIndexCheckpointLossDetectionTests
     [TestMethod]
     public async Task AnUnrelatedWatchFault_LeavesTheOpensReportIntactAndStillLabelledAsTheOpens()
     {
-        using var source = new FakeIndexWatchSource();
+        var source = new FakeIndexWatchSource();
         await using var index = await OpenWithAnOpenTimeLossAsync(source);
+        index.HoldEveryRecovery();
         var openReport = index.Drives.Single().CheckpointLoss;
         Assert.IsNotNull(openReport);
 
         // The cold scan wrote a fresh cursor and the journal holds it, so the drive is healthy
         // now. Only the report from the open remains.
         using var journal = Journal(firstUsn: 0, nextUsn: CachedNextUsn + 4_000);
-        await index.StartWatchingAsync(Token);
-        await source.SourceStartedAsync();
+        await index.StartWatchingAsync('T', Token);
 
-        await source.PublishAsync(new DriveWatchFailure('T',
-            new UnauthorizedAccessException("the volume handle was revoked")));
+        await FailDriveAndWaitForFaultAsync(index, source,
+            new UnauthorizedAccessException("the volume handle was revoked"));
 
         var drive = index.Drives.Single();
         Assert.IsNotNull(drive.WatchFailureMessage, "the watch still reports that it died");
-        Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Recovering, drive.WatchCatchUp);
 
         var loss = drive.CheckpointLoss;
         Assert.IsNotNull(loss, "an unrelated fault must not delete a true report from the open");
@@ -171,8 +171,8 @@ public class FileIndexCheckpointLossDetectionTests
             "the report still describes the open, so a fault handler must not read it as its own");
         Assert.AreEqual(openReport, loss, "nothing about the open's report changed");
 
-        await Assert.ThrowsExceptionAsync<UnauthorizedAccessException>(
-            () => index.StopWatchingAsync(Token));
+        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
+            () => index.StopWatchingAsync('T', Token));
     }
 
     /// <summary>
@@ -182,16 +182,16 @@ public class FileIndexCheckpointLossDetectionTests
     [TestMethod]
     public async Task AWatchTimeLoss_ReplacesTheOpensReportAndIsLabelledAsTheWatchs()
     {
-        using var source = new FakeIndexWatchSource();
+        var source = new FakeIndexWatchSource();
         await using var index = await OpenWithAnOpenTimeLossAsync(source);
+        index.HoldEveryRecovery();
 
-        await index.StartWatchingAsync(Token);
-        await source.SourceStartedAsync();
+        await index.StartWatchingAsync('T', Token);
 
         // A window distinct from the open's, so the numbers say which detection produced them.
         using var journal = Journal(firstUsn: CachedNextUsn + 900, nextUsn: CachedNextUsn + 8_000);
-        await source.PublishAsync(new DriveWatchFailure('T',
-            new IOException("USN journal entries have been deleted; full rescan needed")));
+        await FailDriveAndWaitForFaultAsync(index, source,
+            new IOException("USN journal entries have been deleted; full rescan needed"));
 
         var loss = index.Drives.Single().CheckpointLoss;
         Assert.IsNotNull(loss);
@@ -201,15 +201,35 @@ public class FileIndexCheckpointLossDetectionTests
         Assert.AreEqual(900L, loss.BytesBehind, "the watch's window, not the open's");
         Assert.AreEqual(CachedNextUsn + 8_000, loss.NextUsn);
 
-        await Assert.ThrowsExceptionAsync<IOException>(() => index.StopWatchingAsync(Token));
+        await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(() => index.StopWatchingAsync('T', Token));
+    }
+
+    /// <summary>
+    ///     Fails drive <c>T</c>'s watch through its handle and returns once the index has
+    ///     recorded the fault and announced it, which is after the checkpoint-loss check ran.
+    /// </summary>
+    static async Task FailDriveAndWaitForFaultAsync(FileIndex index, FakeIndexWatchSource source,
+        Exception failure)
+    {
+        var announced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Observe(WatchFault fault) => announced.TrySetResult();
+        index.WatchFaulted += Observe;
+        try
+        {
+            source.HandleFor('T').FailDrive(failure);
+            await announced.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+        }
+        finally
+        {
+            index.WatchFaulted -= Observe;
+        }
     }
 
     /// <summary>A report from the open says so even when no watch has ever run.</summary>
     [TestMethod]
     public async Task AReportFromTheOpen_IsLabelledAsTheOpens()
     {
-        using var source = new FakeIndexWatchSource();
-        await using var index = await OpenWithAnOpenTimeLossAsync(source);
+        await using var index = await OpenWithAnOpenTimeLossAsync(new FakeIndexWatchSource());
 
         Assert.AreEqual(JournalCheckpointLossDetection.DriveOpening,
             index.Drives.Single().CheckpointLoss!.DetectedDuring);

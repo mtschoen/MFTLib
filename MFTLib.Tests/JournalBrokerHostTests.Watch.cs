@@ -1,6 +1,3 @@
-using System.Buffers;
-using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -11,373 +8,191 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     public async Task StartWatch_StreamsBatches_UntilCancelled()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var batches = new[]
         {
-            (new[] { SampleEntry() }, new UsnJournalCursor(7UL, 110L)),
-            ([SampleEntry()], new UsnJournalCursor(7UL, 120L))
+            (new[] { WatchEntry() }, new UsnJournalCursor(7UL, 110L)),
+            ([WatchEntry()], new UsnJournalCursor(7UL, 120L))
         };
-        var host = CreateHost(
-            _ => default,
-            (_, _, _) => [],
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            (_, _, cancellationToken) => FakeWatch(batches, cancellationToken));
+        var host = CreateWatchHost(
+            watchDrive: (_, _, _, cancellationToken) =>
+            {
+                cancellationToken.Register(() => cancelled.TrySetResult());
+                return LiveWatch(batches, cancellationToken);
+            });
+        await using var harness = new HostChannelHarness(host);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
-        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
-        await clientSide.FlushAsync(CancellationToken.None);
+        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
+        var first = await HostChannelHarness.ReadFrameAsync(pipe);
+        var second = await HostChannelHarness.ReadFrameAsync(pipe);
 
-        var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, first?.Kind);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, second?.Kind);
+        Assert.AreEqual(new UsnJournalCursor(7UL, 110L), first?.Cursor);
+        Assert.AreEqual(new UsnJournalCursor(7UL, 120L), second?.Cursor);
+        Assert.IsFalse(cancelled.Task.IsCompleted, "The watch stays open while its pipe is open.");
 
-        var first = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        var second = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, first.Kind);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, second.Kind);
-        Assert.AreEqual("C", first.Drive);
-        Assert.AreEqual(new UsnJournalCursor(7UL, 110L), first.Cursor);
-        Assert.AreEqual(new UsnJournalCursor(7UL, 120L), second.Cursor);
-
-        await cts.CancelAsync();
-        await serveTask; // returns cleanly once cancelled
+        await pipe.DisposeAsync();
+        await cancelled.Task.WaitAsync(HostChannelHarness.HangGuard);
     }
 
     [TestMethod]
     public async Task StartWatch_ZeroCursor_QueriesCurrentCursorBeforeWatching()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
         UsnJournalCursor watchedFrom = default;
-        var host = CreateHost(
-            _ => new UsnJournalCursor(9UL, 500L),
-            (_, _, _) => [],
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            (_, since, cancellationToken) =>
+        var host = CreateWatchHost(
+            queryCursor: _ => new UsnJournalCursor(9UL, 500L),
+            watchDrive: (_, since, _, _) =>
             {
                 watchedFrom = since;
-                return FakeWatch([([SampleEntry()], new UsnJournalCursor(9UL, 510L))],
-                    cancellationToken);
+                return FiniteWatch([([WatchEntry()], new UsnJournalCursor(9UL, 510L))]);
             });
+        await using var harness = new HostChannelHarness(host);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:0:0:1"); // no cached cursor -> sentinel
-        await clientSide.WriteAsync(request.WrittenMemory, CancellationToken.None);
-        await clientSide.FlushAsync(CancellationToken.None);
+        var pipe = await harness.OpenWatchChannelAsync('C', default);
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
-
-        var first = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.CaughtUp, first.Kind);
-        Assert.AreEqual(1U, first.ArmEpoch);
-        var batch = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
+        CollectionAssert.AreEqual(new[] { BrokerFrameKind.CaughtUp, BrokerFrameKind.JournalBatch },
+            frames.Select(frame => frame.Kind).ToArray());
         Assert.AreEqual(new UsnJournalCursor(9UL, 500L), watchedFrom);
-
-        await cts.CancelAsync();
-        await serveTask;
-    }
-
-    [TestMethod]
-    public async Task EndWatch_StopsWatchTasks_AndWritesEndWatchAck()
-    {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        // The watch source yields one batch then would block on Infinite until
-        // cancelled. After EndWatch cancels it, no further batch can appear, and
-        // the host must reply EndWatchAck.
-        var watchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var host = CreateHost(
-            _ => default,
-            (_, _, _) => [],
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            (_, _, cancellationToken) =>
-            {
-                watchStarted.TrySetResult();
-                return FakeWatch([([SampleEntry()], new UsnJournalCursor(7UL, 110L))],
-                    cancellationToken);
-            });
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var startRequest = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(startRequest, "C:7:100:1");
-        await clientSide.WriteAsync(startRequest.WrittenMemory, cts.Token);
-        await clientSide.FlushAsync(cts.Token);
-
-        var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
-
-        // Drain the single live batch, then ask the host to end the watch.
-        var batch = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
-        await watchStarted.Task;
-
-        var endRequest = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteEndWatch(endRequest);
-        await clientSide.WriteAsync(endRequest.WrittenMemory, cts.Token);
-        await clientSide.FlushAsync(cts.Token);
-
-        // The next frame the host writes must be the ack: the cancelled watch task
-        // stopped yielding (FakeWatch was blocked on Infinite), so no further
-        // JournalBatch can race ahead of the ack.
-        var ack = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.EndWatchAck, ack.Kind);
-
-        // The session stays alive after the ack; shut it down cleanly.
-        var shutdownRequest = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteShutdown(shutdownRequest);
-        await clientSide.WriteAsync(shutdownRequest.WrittenMemory, cts.Token);
-        await clientSide.FlushAsync(cts.Token);
-        await serveTask;
-    }
-
-    [TestMethod]
-    public async Task ServeAsync_TokenAlreadyCancelled_ReturnsImmediatelyWithoutReading()
-    {
-        var (_, serverSide) = DuplexStream.CreatePair();
-        var host = MakeFakeHost(Array.Empty<MftRecord>(), Array.Empty<UsnJournalEntry>());
-        using var cts = new CancellationTokenSource();
-        await cts.CancelAsync();
-
-        var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
-        var finished = await Task.WhenAny(serveTask, Task.Delay(TimeSpan.FromSeconds(5), CancellationToken.None));
-
-        Assert.AreSame(serveTask, finished);
-        await serveTask;
-    }
-
-    [TestMethod]
-    public async Task ServeAsync_ClientClosesAfterOneRequest_ReturnsCleanlyOnEof()
-    {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var host = MakeFakeHost(Array.Empty<MftRecord>(), Array.Empty<UsnJournalEntry>());
-
-        var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(request, "C:0:0:mftlib-scan-C");
-        await clientSide.WriteAsync(request.WrittenMemory);
-        await clientSide.FlushAsync();
-        await clientSide.DisposeAsync(); // close before Shutdown - the host's second read hits clean EOF
-
-        // oneShot: false so ServeAsync loops back and must observe the EOF itself.
-        await host.ServeAsync(serverSide, CreateSectionWriter(), false, CancellationToken.None);
-    }
-
-    [TestMethod]
-    public async Task ServeAsync_TruncatedFrameBody_ThrowsEndOfStreamException()
-    {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var host = MakeFakeHost(Array.Empty<MftRecord>(), Array.Empty<UsnJournalEntry>());
-
-        var header = new byte[4];
-        BinaryPrimitives.WriteInt32LittleEndian(header, 10); // claims a 10-byte frame
-        await clientSide.WriteAsync(header);
-        await clientSide.WriteAsync(new byte[] { 1, 2, 3 }); // delivers only 3
-        await clientSide.FlushAsync();
-        await clientSide.DisposeAsync(); // EOF partway through the frame body
-
-        await Assert.ThrowsExceptionAsync<EndOfStreamException>(() =>
-            host.ServeAsync(serverSide, CreateSectionWriter(), false, CancellationToken.None));
-    }
-
-    [TestMethod]
-    public async Task ServeAsync_HeaderOnlyThenEof_ThrowsEndOfStreamException()
-    {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var host = MakeFakeHost(Array.Empty<MftRecord>(), Array.Empty<UsnJournalEntry>());
-
-        // A 4-byte length prefix claiming a 10-byte frame, but zero body bytes before
-        // the pipe closes - the distinct "EOF exactly at the frame boundary" case, as
-        // opposed to EOF partway through an already-started body read.
-        var header = new byte[4];
-        BinaryPrimitives.WriteInt32LittleEndian(header, 10);
-        await clientSide.WriteAsync(header);
-        await clientSide.FlushAsync();
-        await clientSide.DisposeAsync();
-
-        await Assert.ThrowsExceptionAsync<EndOfStreamException>(() =>
-            host.ServeAsync(serverSide, CreateSectionWriter(), false, CancellationToken.None));
     }
 
     [TestMethod]
     public async Task StartWatch_NoWatchSourceConfigured_EmitsErrorFrame()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var host = CreateHost(
-            _ => default,
-            (_, _, _) => [],
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
-        // watchDrive omitted -> null
+        var host = CreateWatchHost();
+        await using var harness = new HostChannelHarness(host);
 
-        var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
-        await clientSide.WriteAsync(request.WrittenMemory);
-        await clientSide.FlushAsync();
+        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
-
-        var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
-        Assert.AreEqual("C", frame.Drive);
-        Assert.AreEqual("Broker has no watch source", frame.Message);
-
-        await cts.CancelAsync();
-        await serveTask;
+        Assert.AreEqual(1, frames.Count);
+        Assert.AreEqual(BrokerFrameKind.Error, frames[0].Kind);
+        Assert.AreEqual("Broker has no watch source", frames[0].Message);
     }
 
     [TestMethod]
-    public async Task StartWatch_WatchSourceCompletesNaturally_EndsWithoutError()
+    public async Task WatchChannel_SourceCompletesNaturally_ClosesWithoutError()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        var host = CreateHost(
-            _ => default,
-            (_, _, _) => [],
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            (_, _, _) => FiniteWatch([([SampleEntry()], new UsnJournalCursor(7UL, 110L))]));
+        var host = CreateWatchHost(
+            watchDrive: (_, _, _, _) => FiniteWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))]));
+        await using var harness = new HostChannelHarness(host);
 
-        var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
-        await clientSide.WriteAsync(request.WrittenMemory);
-        await clientSide.FlushAsync();
+        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7UL, 100L));
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
-
-        var batch = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
-
-        var shutdown = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteShutdown(shutdown);
-        await clientSide.WriteAsync(shutdown.WrittenMemory, CancellationToken.None);
-        await clientSide.FlushAsync(CancellationToken.None);
-        await serveTask;
+        CollectionAssert.AreEqual(new[] { BrokerFrameKind.JournalBatch }, frames.Select(frame => frame.Kind).ToArray(),
+            "Natural completion is not a fault: no Error frame is sent before the channel closes.");
+        await AssertControlStillServesAsync(harness);
     }
 
     [TestMethod]
-    public async Task ServeAsync_WatchBatchWriteHitsBrokenPipe_SessionEndsNormally()
+    public async Task WatchChannel_BatchWriteHitsBrokenPipe_EndsQuietly()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        await using var brokenServer = new BrokenPipeStream(serverSide);
         var secondBatchGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var host = CreateHost(
-            _ => new UsnJournalCursor(7UL, 100L),
-            (_, _, _) => [],
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            (_, _, cancellationToken) => GatedWatch(
-                ([SampleEntry()], new UsnJournalCursor(7UL, 110L)),
-                secondBatchGate.Task,
-                ([SampleEntry()], new UsnJournalCursor(7UL, 120L)),
+        var siblingGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var armed = new UsnJournalCursor(7UL, 100L);
+        var host = CreateWatchHost(
+            queryCursor: _ => armed,
+            watchDrive: (drive, _, _, cancellationToken) => GatedWatch(
+                ([WatchEntry()], new UsnJournalCursor(7UL, 110L)),
+                drive == "C" ? secondBatchGate.Task : siblingGate.Task,
+                ([WatchEntry()], new UsnJournalCursor(7UL, 120L)),
                 cancellationToken));
+        var drivePipe = new BreakableDrivePipe('C');
+        await using var harness = new HostChannelHarness(host, connectChannel: drivePipe.ConnectAsync);
+        drivePipe.Harness = harness;
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await WriteStartWatchAsync(clientSide, "C:7:100:1", cts.Token);
+        // The watch is live over the healthy pipe: the leading CaughtUp (the armed cursor equals
+        // the journal tip) and one batch arrive on each channel.
+        var pipe = await harness.OpenWatchChannelAsync('C', armed);
+        var sibling = await harness.OpenWatchChannelAsync('D', armed);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
 
-        var serveTask = host.ServeAsync(brokenServer, CreateSectionWriter(), false, cts.Token);
-
-        // The watch is live over the healthy pipe: the leading CaughtUp (the armed cursor
-        // equals the journal tip) and one batch arrive.
-        var caughtUp = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp.Kind);
-        var batch = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
-
-        // The client goes away while its watch is still armed. Breaking the pipe and only
-        // then releasing the pending batch keeps the disconnect deterministic: the serve
-        // loop is still blocked on its read, so no cancellation can pre-empt the write
-        // that is about to land on the dead client end.
-        brokenServer.BreakPipe();
+        // The client goes away while its watch is still armed. Breaking the pipe and only then
+        // releasing the pending batch keeps the disconnect deterministic.
+        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HostChannelHarness.HangGuard);
+        brokenHostEnd.BreakPipe();
         secondBatchGate.SetResult();
-        await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
-        await clientSide.DisposeAsync();
+        await brokenHostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
 
-        // A client disconnect is the normal end of a broker session: ServeAsync completes
-        // rather than faulting with the broken-pipe IOException out of
-        // StopWatchGenerationAsync, which is what killed the elevated broker child.
-        await serveTask.WaitAsync(cts.Token);
+        await AssertOnlyThatChannelEndedAsync(harness, pipe, sibling, siblingGate);
     }
 
     [TestMethod]
-    public async Task ServeAsync_WatchFaultsWithBrokenPipe_ErrorFrameUnsendable_SessionEndsNormally()
+    public async Task WatchChannel_FaultWithBrokenPipe_ErrorFrameUnsendable_EndsQuietly()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        await using var brokenServer = new BrokenPipeStream(serverSide);
         var faultGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var host = CreateHost(
-            _ => new UsnJournalCursor(7UL, 100L),
-            (_, _, _) => [],
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            (_, _, _) => FaultingAfterGate(
-                ([SampleEntry()], new UsnJournalCursor(7UL, 110L)), faultGate.Task));
+        var siblingGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var armed = new UsnJournalCursor(7UL, 100L);
+        var host = CreateWatchHost(
+            queryCursor: _ => armed,
+            watchDrive: (drive, _, _, cancellationToken) => drive == "C"
+                ? FaultingAfterGate(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), faultGate.Task,
+                    cancellationToken)
+                : GatedWatch(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), siblingGate.Task,
+                    ([WatchEntry()], new UsnJournalCursor(7UL, 120L)), cancellationToken));
+        var drivePipe = new BreakableDrivePipe('C');
+        await using var harness = new HostChannelHarness(host, connectChannel: drivePipe.ConnectAsync);
+        drivePipe.Harness = harness;
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await WriteStartWatchAsync(clientSide, "C:7:100:1", cts.Token);
+        var pipe = await harness.OpenWatchChannelAsync('C', armed);
+        var sibling = await harness.OpenWatchChannelAsync('D', armed);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
 
-        var serveTask = host.ServeAsync(brokenServer, CreateSectionWriter(), false, cts.Token);
-
-        var caughtUp = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp.Kind);
-        var batch = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
-
-        // The pipe dies, then the watch faults for real: the per-drive Error frame that
-        // reports the fault has no one left to receive it, and its write fails too.
-        brokenServer.BreakPipe();
+        // The pipe dies, then the watch faults for real: the Error frame that reports the fault
+        // has no one left to receive it, and its write fails too.
+        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HostChannelHarness.HangGuard);
+        brokenHostEnd.BreakPipe();
         faultGate.SetResult();
-        await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
-        await clientSide.DisposeAsync();
+        await brokenHostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
 
-        await serveTask.WaitAsync(cts.Token);
+        await AssertOnlyThatChannelEndedAsync(harness, pipe, sibling, siblingGate);
     }
 
     [TestMethod]
-    public async Task ServeAsync_LeadingCaughtUpWriteHitsBrokenPipe_SessionEndsNormally()
+    public async Task WatchChannel_LeadingCaughtUpWriteHitsBrokenPipe_EndsQuietly()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var siblingGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var armed = new UsnJournalCursor(7UL, 100L);
+        var host = CreateWatchHost(
+            queryCursor: _ => armed,
+            watchDrive: (drive, _, _, cancellationToken) => drive == "C"
+                ? LiveWatch([([WatchEntry()], new UsnJournalCursor(7UL, 110L))], cancellationToken)
+                : GatedWatch(([WatchEntry()], new UsnJournalCursor(7UL, 110L)), siblingGate.Task,
+                    ([WatchEntry()], new UsnJournalCursor(7UL, 120L)), cancellationToken));
         // The pipe is already gone by the time the watch arms, so the leading CaughtUp for a
         // cursor that sits at the journal tip is the first frame to land on the dead client.
-        await using var brokenServer = new BrokenPipeStream(serverSide);
-        brokenServer.BreakPipe();
-        var host = CreateHost(
-            _ => new UsnJournalCursor(7UL, 100L),
-            (_, _, _) => [],
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            (_, _, cancellationToken) => FakeWatch([([SampleEntry()], new UsnJournalCursor(7UL, 110L))],
-                cancellationToken));
+        var drivePipe = new BreakableDrivePipe('C', brokenOnConnect: true);
+        await using var harness = new HostChannelHarness(host, connectChannel: drivePipe.ConnectAsync);
+        drivePipe.Harness = harness;
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await WriteStartWatchAsync(clientSide, "C:7:100:1", cts.Token);
+        var sibling = await harness.OpenWatchChannelAsync('D', armed);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadFrameAsync(sibling))?.Kind);
+        var pipe = await harness.OpenWatchChannelAsync('C', armed);
+        var brokenHostEnd = await drivePipe.Connected.WaitAsync(HostChannelHarness.HangGuard);
+        await brokenHostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
 
-        var serveTask = host.ServeAsync(brokenServer, CreateSectionWriter(), false, cts.Token);
-
-        await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
-        await clientSide.DisposeAsync();
-
-        await serveTask.WaitAsync(cts.Token);
+        await AssertOnlyThatChannelEndedAsync(harness, pipe, sibling, siblingGate);
     }
 
-    // Yields one batch, parks until the gate completes (the point where the test breaks the
-    // pipe), yields a second batch whose frame write then fails, and finally blocks like a
-    // live watch until cancelled.
-    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> GatedWatch(
-        (UsnJournalEntry[], UsnJournalCursor) firstBatch,
-        Task secondBatchGate,
-        (UsnJournalEntry[], UsnJournalCursor) secondBatch,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+    // The failed channel ended without ending the session: a sibling channel still delivers a batch
+    // released after the failure, and the control pipe still answers.
+    static async Task AssertOnlyThatChannelEndedAsync(HostChannelHarness harness, Stream failed, Stream sibling,
+        TaskCompletionSource siblingGate)
     {
-        yield return firstBatch;
-        await secondBatchGate;
-        yield return secondBatch;
-        await Task.Delay(Timeout.Infinite, cancellationToken);
-    }
-
-    // Yields one batch, parks until the gate completes, then faults for real. With the pipe
-    // broken at the gate, the host's attempt to report the fault as an Error frame fails too -
-    // the exact double failure the client-disconnect guard exists for.
-    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> FaultingAfterGate(
-        (UsnJournalEntry[], UsnJournalCursor) firstBatch,
-        Task faultGate)
-    {
-        yield return firstBatch;
-        await faultGate;
-        throw new InvalidOperationException("journal wrapped mid-stream");
+        Assert.IsNull(await HostChannelHarness.ReadFrameAsync(failed), "The host closes the failed channel.");
+        siblingGate.SetResult();
+        var batch = await HostChannelHarness.ReadFrameAsync(sibling);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch?.Kind);
+        Assert.AreEqual(120L, batch?.Cursor.NextUsn);
+        await AssertControlStillServesAsync(harness);
     }
 }

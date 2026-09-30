@@ -18,9 +18,10 @@ public sealed partial class FileIndex
     /// <remarks>
     ///     The journal read runs outside <see cref="_stateLock" />, and what it answers is a
     ///     point-in-time fact about a journal that keeps moving, which is all it claims to be.
-    ///     The loss is recorded only while the block whose cursor it describes is still this
-    ///     drive's block, so a rescan that swapped the block in the meantime, and cleared the
-    ///     reports that explained the old one with it, is not undone by this.
+    ///     The loss is recorded only while <paramref name="instance" /> is still the drive's
+    ///     current watch and the block it was armed from is still this drive's block, so a rescan
+    ///     that swapped the block in the meantime, and cleared the reports that explained the old
+    ///     one with it, is not undone by this, and neither is a newer watch.
     ///     <para>
     ///         What this deliberately does not do is clear a report it did not produce. A drive
     ///         can already carry one from <see cref="JournalCheckpointLossDetection.DriveOpening" />,
@@ -31,21 +32,19 @@ public sealed partial class FileIndex
     ///         distinguishable to a <see cref="WatchFaulted" /> handler.
     ///     </para>
     /// </remarks>
-    void RecordCheckpointLossForFaultedDrive(char driveLetter)
+    void RecordCheckpointLossForFaultedDrive(DriveRuntime runtime, WatchInstance instance)
     {
+        var driveLetter = runtime.DriveLetter;
+        var driveBlock = instance.ArmedBlock;
         ulong journalId;
         long watchPositionUsn;
-        DriveBlock driveBlock;
         lock (_stateLock)
         {
-            if (FindWatchableDriveBlockLocked(driveLetter) is not { } watched)
+            if (!IsCurrentWatchOverItsBlockLocked(runtime, instance))
             {
-                // A letter with no block of its own, or one an enumeration producer filled, has
-                // no journal cursor and so nothing that can have fallen out of a journal.
                 return;
             }
 
-            driveBlock = watched;
             ref readonly var header = ref driveBlock.Block.Header;
             journalId = header.UsnJournalId;
             watchPositionUsn = header.UsnNextUsn;
@@ -64,11 +63,22 @@ public sealed partial class FileIndex
 
         lock (_stateLock)
         {
-            if (ReferenceEquals(FindWatchableDriveBlockLocked(driveLetter), driveBlock))
+            if (IsCurrentWatchOverItsBlockLocked(runtime, instance))
             {
                 _checkpointLossesByOrdinal[driveBlock.DriveOrdinal] = loss;
             }
         }
+    }
+
+    /// <summary>
+    ///     The scoping rule's check: <paramref name="instance" /> is still its drive's current
+    ///     watch and the block it was armed from is still the drive's published block. The caller
+    ///     holds <see cref="_stateLock" />.
+    /// </summary>
+    bool IsCurrentWatchOverItsBlockLocked(DriveRuntime runtime, WatchInstance instance)
+    {
+        return ReferenceEquals(runtime.Current, instance) &&
+               ReferenceEquals(FindWatchableDriveBlockLocked(runtime.DriveLetter), instance.ArmedBlock);
     }
 
     /// <summary>

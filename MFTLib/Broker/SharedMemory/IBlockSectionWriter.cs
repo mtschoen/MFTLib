@@ -8,6 +8,14 @@ namespace MFTLib;
 public readonly record struct BlockWriteResult(
     long RowCount, long NamePoolUsedBytes, long SkippedRecordCount, bool CompactionNeeded);
 
+/// <summary>Where one block write reports what it is doing.</summary>
+/// <param name="Progress">Receives per-batch transfer progress for the scan's progress frames; null reports none.</param>
+/// <param name="Operation">
+///     Receives a processing step for each flushed range of the completed block, so a long flush
+///     keeps restarting the scan pipe's progress clock; null reports none.
+/// </param>
+public readonly record struct BlockWriteReporting(IProgress<BlockWriteProgress>? Progress, IBrokerOperationReporter? Operation);
+
 /// <summary>Writes record batches into a client-created block section and completes its header.</summary>
 public interface IBlockSectionWriter
 {
@@ -17,6 +25,6 @@ public interface IBlockSectionWriter
         UsnJournalCursor cursor,
         IEnumerable<IReadOnlyList<MftRecord>> batches,
         MftBlockRowFilter filter,
-        IProgress<BlockWriteProgress>? progress,
+        BlockWriteReporting reporting,
         CancellationToken cancellationToken);
 }

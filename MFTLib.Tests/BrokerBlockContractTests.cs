@@ -5,39 +5,53 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
-public class BrokerBlockContractTests
+public class BrokerBlockContractTests : BrokerBlockTestBase
 {
     [TestMethod]
-    public async Task Scan_WithoutTargetsRejectsBeforeWritingAnyFrame()
+    public async Task Scan_WithoutTargetRejectsBeforeWritingAnyFrame()
     {
-        using var stream = new MemoryStream();
-        await using var client = new JournalBrokerClient(stream,
-            (_, _) => throw new AssertFailedException("No section should be created"));
+        await using var broker = new ScriptedBroker();
 
-        // Options are now required, so the only way to reach the scan without a
-        // destination for a requested drive is to supply options that carry none.
-        var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
-            client.ArmScanAndCatchUpAsync(["C"], new BrokerScanOptions()));
+        await Assert.ThrowsExceptionAsync<ArgumentNullException>(() =>
+            broker.Process.ScanDriveAsync('C', null!, new BrokerScanOptions(), CancellationToken.None).WaitAsync(HangGuard));
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
-        StringAssert.Contains(exception.Message, "C");
-        Assert.AreEqual(0L, stream.Length);
+        Assert.AreEqual(0, broker.Sections.All().Count);
+        await Assert.ThrowsExceptionAsync<AssertFailedException>(() => broker.ReadRequestAsync(),
+            "no request may reach the control pipe before the client closed it");
+    }
+
+    [TestMethod]
+    public async Task Scan_NormalizesTheDriveLetter()
+    {
+        var drives = new List<string>();
+        await using var broker = new InProcessBroker(CreateHost(queryVolumeInfo: drive =>
+        {
+            drives.Add(drive);
+            return VolumeInformation;
+        }));
+
+        var result = await broker.Process.ScanDriveAsync('c', Target(), new BrokerScanOptions(), CancellationToken.None)
+            .WaitAsync(HangGuard);
+        result.Block.Block.Dispose();
+
+        Assert.AreEqual('C', result.DriveLetter);
+        CollectionAssert.AreEqual(new[] { "C" }, drives);
+        StringAssert.StartsWith(broker.Sections.Single().SectionName, "section-C-");
     }
 
     [TestMethod]
     public void ScanReady_RoundTripsBlockCounts()
     {
-        var expected = BrokerFrame.ScanReady("section-C", 4_000_000_000L, 5_000_000_000L, 3_000_000_000L);
         var writer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteScanReady(writer, expected.MmfName!, expected.RowCount,
-            expected.NamePoolUsedBytes, expected.SkippedRecordCount);
+        BrokerProtocol.WriteScanReady(writer, 4_000_000_000L, 5_000_000_000L, 3_000_000_000L);
 
         var actual = BrokerProtocol.ReadFrame(writer.WrittenSpan, out var consumed);
 
         Assert.AreEqual(BrokerFrameKind.ScanReady, actual.Kind);
-        Assert.AreEqual(expected.MmfName, actual.MmfName);
-        Assert.AreEqual(expected.RowCount, actual.RowCount);
-        Assert.AreEqual(expected.NamePoolUsedBytes, actual.NamePoolUsedBytes);
-        Assert.AreEqual(expected.SkippedRecordCount, actual.SkippedRecordCount);
+        Assert.AreEqual(4_000_000_000L, actual.RowCount);
+        Assert.AreEqual(5_000_000_000L, actual.NamePoolUsedBytes);
+        Assert.AreEqual(3_000_000_000L, actual.SkippedRecordCount);
         Assert.AreEqual(writer.WrittenCount, consumed);
     }
 
@@ -51,12 +65,12 @@ public class BrokerBlockContractTests
     [TestMethod]
     public async Task Produce_ReportsSkippedRecordsFromTheBlockWriter()
     {
-        await using var harness = new InProcessBlockBrokerHarness(recordBatches: (_, _, _) =>
-        [[new MftRecord(5, 5, new MftRecordFields(3), ".", null),
-            new MftRecord(20, 5, new MftRecordFields(1), string.Empty, null)]]);
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync).CreateProducer();
+        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _) =>
+        [
+            [Record(5, ".", 3), Record(20, string.Empty)]
+        ]));
 
-        var result = await producer(harness.Request, harness.CancellationToken);
+        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
         using var block = result.Block;
 
         Assert.AreEqual(1, result.SkippedRecordCount);

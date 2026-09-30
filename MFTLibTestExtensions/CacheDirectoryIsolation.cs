@@ -6,7 +6,7 @@ namespace MFTLibTestExtensions;
 public static class CacheDirectoryIsolation
 {
     /// <summary>
-    ///     Forbids <see cref="CacheDirectory.ResolveDefaultPath" /> for the remainder
+    ///     Forbids <see cref="CacheDirectory.ResolveDefaultPath()" /> for the remainder
     ///     of this test process. Call from the test assembly's module initializer,
     ///     before opening any indexes. Repeated calls are safe; there is no reset.
     /// </summary>

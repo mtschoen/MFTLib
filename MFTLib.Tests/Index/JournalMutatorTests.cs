@@ -36,7 +36,7 @@ public class JournalMutatorTests
         _writer.TryWriteRow(1, "Documents", directoryColumns);
         _writer.TryWriteRow(2, "existing.txt", new RowColumns(ParentRow: 1, RowFlags.InUse,
             Attributes: 32, Size: 100, Moment.Ticks, SequenceNumber: 0));
-        _writer.Complete(Moment);
+        _writer.Complete(Moment, null);
 
         _driveBlock = new DriveBlock('T', 0, _block, rootDirectoryPath: TestDriveRoot.For('T'));
         _snapshot = Snapshot.Create([_driveBlock]);

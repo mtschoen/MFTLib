@@ -47,4 +47,12 @@ public sealed record MftBlockProduceResult(
     ulong JournalId,
     long NextUsn,
     int SkippedRecordCount,
-    bool CompactionNeeded);
+    bool CompactionNeeded)
+{
+    /// <summary>
+    ///     Set only when the journal proved that catch-up after the scan lost the armed cursor: the
+    ///     block is complete, but a watch started from its cursor would fail at once. A producer
+    ///     never sets it for a catch-up failure the journal did not prove.
+    /// </summary>
+    public JournalCheckpointLoss? CatchUpLoss { get; init; }
+}

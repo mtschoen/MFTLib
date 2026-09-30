@@ -99,6 +99,22 @@ public class BlockFileTests
         Assert.IsNull(block);
     }
 
+    /// <summary>
+    ///     A path the file system cannot even describe (on Windows, one longer than the 32,767
+    ///     characters a path may have, which fails describing the file with PathTooLongException)
+    ///     is no usable block here, like a missing one: the caller discards it and cold-scans.
+    /// </summary>
+    [TestMethod]
+    public void Open_PathTheFileSystemCannotDescribe_IsReportedWithoutThrowing()
+    {
+        var overLong = Path.Combine(Path.GetTempPath(), new string('a', 40_000));
+
+        using var block = BlockFile.Open(overLong, 1, out var validation);
+
+        Assert.AreEqual(BlockValidationResult.WrongMagic, validation);
+        Assert.IsNull(block);
+    }
+
     [TestMethod]
     public void Open_TruncatedFile_IsRejectedWithoutThrowing()
     {

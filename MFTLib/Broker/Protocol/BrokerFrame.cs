@@ -1,64 +1,99 @@
+using MFTLib.Index;
+
 namespace MFTLib;
 
+/// <summary>
+///     Frame kinds of the broker wire. The control pipe carries the request kinds that carry a
+///     request id (<see cref="OpenChannel" />, <see cref="QueryVolume" />,
+///     <see cref="GrowUsnJournal" />) and their replies. A drive pipe carries one operation for
+///     the drive its <see cref="OpenChannel" /> named: the client writes one request
+///     (<see cref="ArmAndScan" /> or <see cref="StartWatch" />) and every frame after it flows
+///     from the host.
+/// </summary>
 public enum BrokerFrameKind : byte
 {
-    ArmAndScan = 1,
-    StartWatch = 2,
-    Shutdown = 3,
-    ScanReady = 4,
-    Cursor = 5,
-    JournalBatch = 6,
+    OpenChannel = 1,
+    ChannelOpened = 2,
+    QueryVolume = 3,
+    VolumeInfo = 4,
+    GrowUsnJournal = 5,
+    UsnJournalSettings = 6,
     Error = 7,
     Heartbeat = 8,
-    EndWatch = 9,
-    EndWatchAck = 10,
-    ScanProgress = 11,
-    Warning = 12,
-    QueryVolumes = 13,
-    VolumeInfo = 14,
-    DisarmDrive = 15,
-    GrowUsnJournal = 16,
-    UsnJournalSettings = 17,
-    CaughtUp = 18
+    Stalled = 9,
+    ArmAndScan = 10,
+    Cursor = 11,
+    ScanProgress = 12,
+    CatchUpLost = 13,
+    ScanReady = 14,
+    JournalBatch = 15,
+    StartWatch = 16,
+    CaughtUp = 17
 }
+
+/// <summary>
+///     The journal facts a <see cref="BrokerFrameKind.CatchUpLost" /> frame carries: the fields of
+///     the <see cref="JournalCheckpointLoss" /> the host proved against the live journal. The drive
+///     is the channel's, so the wire carries neither the drive nor which check produced the loss.
+/// </summary>
+internal readonly record struct BrokerCatchUpLoss(
+    JournalCheckpointLossCause Cause,
+    long CheckpointUsn,
+    long FirstUsn,
+    long NextUsn,
+    long AllocationDelta,
+    long MaximumSize,
+    long? BytesBehind,
+    long? SizeThatWouldHaveRetained);
 
 public readonly record struct BrokerFrame
 {
-    // Scan and volume-query frames belong to no live arm; clients never issue zero.
-    public const uint NoArmEpoch = 0;
     public BrokerFrameKind Kind { get; private init; }
-    // Live batches and errors are delivered only while this is the drive's current epoch.
-    public uint ArmEpoch { get; private init; }
+
+    /// <summary>Nonzero on every control request and reply; zero on an Error written to a drive pipe.</summary>
+    public uint RequestId { get; private init; }
+
     public string? Drive { get; private init; }
+    public string? PipeName { get; private init; }
+    public string? SectionName { get; private init; }
+    public BrokerScanProfile Profile { get; private init; }
     public UsnJournalCursor Cursor { get; private init; }
     public UsnJournalEntry[] Entries { get; private init; }
-    public string? MmfName { get; private init; }
     public long RecordCount { get; private init; }
     public long RowCount { get; private init; }
     public long NamePoolUsedBytes { get; private init; }
     public long SkippedRecordCount { get; private init; }
     public string? Message { get; private init; }
-    public string? DrivesSpec { get; private init; }
     public IReadOnlyList<string> KeepFileNames { get; private init; }
+
+    /// <summary>
+    ///     A scan's progress. The drive belongs to the channel, so a frame read off the wire carries
+    ///     an empty <see cref="BrokerScanProgress.DriveLetter" />.
+    /// </summary>
     public BrokerScanProgress? Progress { get; private init; }
+
     public uint BytesPerFileRecordSegment { get; private init; }
     public long MftValidDataLength { get; private init; }
+
     // Journal sizing payload of the GrowUsnJournal request and UsnJournalSettings reply.
     public long JournalMaximumSize { get; private init; }
     public long JournalAllocationDelta { get; private init; }
 
-    // Drive-carrying frames always carry a real (possibly empty, never null) drive
-    // string: BrokerProtocol.ReadFrame decodes it via a length-prefixed string, not a
-    // nullable field. These turn that protocol invariant into a clear diagnostic if it
-    // is ever violated, instead of a silent null-forgiving `!`.
+    internal BrokerCatchUpLoss? CatchUpLoss { get; private init; }
+
     public string RequireDrive()
     {
         return Drive ?? throw new InvalidDataException($"{Kind} frame is missing its drive field");
     }
 
-    public string RequireMmfName()
+    public string RequirePipeName()
     {
-        return MmfName ?? throw new InvalidDataException($"{Kind} frame is missing its MMF name field");
+        return PipeName ?? throw new InvalidDataException($"{Kind} frame is missing its pipe name field");
+    }
+
+    public string RequireSectionName()
+    {
+        return SectionName ?? throw new InvalidDataException($"{Kind} frame is missing its section name field");
     }
 
     public string RequireMessage()
@@ -66,232 +101,153 @@ public readonly record struct BrokerFrame
         return Message ?? throw new InvalidDataException($"{Kind} frame is missing its message field");
     }
 
-    // Per-kind factories: the only way to build a valid frame. Each initializes
-    // Entries (empty for non-batch kinds) so consumers never see a null Entries.
-    // The Cursor-kind factory is named ArmedCursor to avoid colliding with the
-    // Cursor property.
-    public static BrokerFrame ArmAndScan(string drivesSpec, IReadOnlyList<string>? keepFileNames = null)
+    /// <summary>The proven loss of a <see cref="BrokerFrameKind.CatchUpLost" /> frame, for the channel's drive.</summary>
+    internal JournalCheckpointLoss RequireCatchUpLoss(char driveLetter)
     {
-        return new BrokerFrame
+        var loss = CatchUpLoss ?? throw new InvalidDataException($"{Kind} frame is missing its loss field");
+        return new JournalCheckpointLoss
         {
-            Kind = BrokerFrameKind.ArmAndScan,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            DrivesSpec = drivesSpec,
-            KeepFileNames = keepFileNames ?? Array.Empty<string>()
+            DriveLetter = driveLetter,
+            DetectedDuring = JournalCheckpointLossDetection.ScanCatchUp,
+            Cause = loss.Cause,
+            CheckpointUsn = loss.CheckpointUsn,
+            FirstUsn = loss.FirstUsn,
+            NextUsn = loss.NextUsn,
+            AllocationDelta = loss.AllocationDelta,
+            MaximumSize = loss.MaximumSize,
+            BytesBehind = loss.BytesBehind,
+            SizeThatWouldHaveRetained = loss.SizeThatWouldHaveRetained
         };
     }
 
-    public static BrokerFrame StartWatch(string drivesSpec)
+    // Per-kind factories: the only way to build a valid frame. Each initializes Entries and
+    // KeepFileNames (empty for kinds that carry none) so consumers never see a null.
+
+    public static BrokerFrame OpenChannel(uint requestId, string drive, string pipeName)
     {
-        return new BrokerFrame
+        return Empty(BrokerFrameKind.OpenChannel, requestId) with { Drive = drive, PipeName = pipeName };
+    }
+
+    public static BrokerFrame ChannelOpened(uint requestId)
+    {
+        return Empty(BrokerFrameKind.ChannelOpened, requestId);
+    }
+
+    public static BrokerFrame QueryVolume(uint requestId, string drive)
+    {
+        return Empty(BrokerFrameKind.QueryVolume, requestId) with { Drive = drive };
+    }
+
+    // mftRecordCount is the pre-computed NtfsVolumeInformation.MftRecordCount value;
+    // bytesPerFileRecordSegment and mftValidDataLength are the two raw fields it was derived
+    // from, carried alongside so a client can reconstruct the count independently.
+    public static BrokerFrame VolumeInfo(uint requestId, long mftRecordCount, uint bytesPerFileRecordSegment,
+        long mftValidDataLength)
+    {
+        return Empty(BrokerFrameKind.VolumeInfo, requestId) with
         {
-            Kind = BrokerFrameKind.StartWatch,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            DrivesSpec = drivesSpec,
-            KeepFileNames = Array.Empty<string>()
+            RecordCount = mftRecordCount,
+            BytesPerFileRecordSegment = bytesPerFileRecordSegment,
+            MftValidDataLength = mftValidDataLength
         };
     }
 
-    // Retires one drive from the live watch generation and leaves every other drive
-    // running. EndWatch stays the generation-wide stop and keeps its acknowledgement;
-    // this one needs none, because the host reads request frames in order and the client
-    // completes the drive's channel itself before writing this.
-    public static BrokerFrame DisarmDrive(string drive)
+    // The host refuses any requested maximum at or below the current one (grow only).
+    public static BrokerFrame GrowUsnJournal(uint requestId, string drive, long maximumSize, long allocationDelta)
     {
-        return new BrokerFrame
+        return Empty(BrokerFrameKind.GrowUsnJournal, requestId) with
         {
-            Kind = BrokerFrameKind.DisarmDrive,
-            Entries = Array.Empty<UsnJournalEntry>(),
             Drive = drive,
-            KeepFileNames = Array.Empty<string>()
+            JournalMaximumSize = maximumSize,
+            JournalAllocationDelta = allocationDelta
         };
     }
 
-    public static BrokerFrame Shutdown()
+    // The post-change journal sizing, read back from the volume after FSCTL_CREATE_USN_JOURNAL.
+    public static BrokerFrame UsnJournalSettings(uint requestId, long maximumSize, long allocationDelta)
     {
-        return Empty(BrokerFrameKind.Shutdown);
+        return Empty(BrokerFrameKind.UsnJournalSettings, requestId) with
+        {
+            JournalMaximumSize = maximumSize,
+            JournalAllocationDelta = allocationDelta
+        };
+    }
+
+    public static BrokerFrame Error(uint requestId, string message)
+    {
+        return Empty(BrokerFrameKind.Error, requestId) with { Message = message };
     }
 
     public static BrokerFrame Heartbeat()
     {
-        return Empty(BrokerFrameKind.Heartbeat);
+        return Empty(BrokerFrameKind.Heartbeat, 0);
     }
 
-    public static BrokerFrame EndWatch()
+    public static BrokerFrame Stalled(string message)
     {
-        return Empty(BrokerFrameKind.EndWatch);
+        return Empty(BrokerFrameKind.Stalled, 0) with { Message = message };
     }
 
-    public static BrokerFrame EndWatchAck()
+    public static BrokerFrame ArmAndScan(string sectionName, BrokerScanProfile profile,
+        IReadOnlyList<string>? keepFileNames = null)
     {
-        return Empty(BrokerFrameKind.EndWatchAck);
-    }
-
-    public static BrokerFrame ScanReady(string mmfName, long rowCount, long namePoolUsedBytes, long skippedRecordCount)
-    {
-        return new BrokerFrame
+        return Empty(BrokerFrameKind.ArmAndScan, 0) with
         {
-            Kind = BrokerFrameKind.ScanReady,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            MmfName = mmfName,
-            RowCount = rowCount,
-            NamePoolUsedBytes = namePoolUsedBytes,
-            SkippedRecordCount = skippedRecordCount,
-            KeepFileNames = Array.Empty<string>()
+            SectionName = sectionName,
+            Profile = profile,
+            KeepFileNames = keepFileNames ?? Array.Empty<string>()
         };
     }
 
-    public static BrokerFrame ArmedCursor(string drive, UsnJournalCursor cursor)
+    // Named ArmedCursor to avoid colliding with the Cursor property.
+    public static BrokerFrame ArmedCursor(UsnJournalCursor cursor)
     {
-        return new BrokerFrame
-        {
-            Kind = BrokerFrameKind.Cursor,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            Drive = drive,
-            Cursor = cursor,
-            KeepFileNames = Array.Empty<string>()
-        };
-    }
-
-    public static BrokerFrame JournalBatch(string drive, uint armEpoch, UsnJournalCursor cursor, UsnJournalEntry[] entries)
-    {
-        return new BrokerFrame
-        {
-            Kind = BrokerFrameKind.JournalBatch,
-            ArmEpoch = armEpoch,
-            Entries = entries,
-            Drive = drive,
-            Cursor = cursor,
-            KeepFileNames = Array.Empty<string>()
-        };
+        return Empty(BrokerFrameKind.Cursor, 0) with { Cursor = cursor };
     }
 
     public static BrokerFrame ScanProgress(BrokerScanProgress progress)
     {
-        return new BrokerFrame
-        {
-            Kind = BrokerFrameKind.ScanProgress,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            Drive = progress.DriveLetter,
-            Progress = progress,
-            KeepFileNames = Array.Empty<string>()
-        };
+        return Empty(BrokerFrameKind.ScanProgress, 0) with { Progress = progress };
     }
 
-    public static BrokerFrame Error(string drive, uint armEpoch, string message)
+    internal static BrokerFrame CatchUpLost(BrokerCatchUpLoss loss, string message)
     {
-        return new BrokerFrame
-        {
-            Kind = BrokerFrameKind.Error,
-            ArmEpoch = armEpoch,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            Drive = drive,
-            KeepFileNames = Array.Empty<string>(),
-            Message = message
-        };
+        return Empty(BrokerFrameKind.CatchUpLost, 0) with { CatchUpLoss = loss, Message = message };
     }
 
-    // One drive's arm has delivered its whole initial journal backlog; everything after this
-    // frame is a live entry. It carries the arm epoch like JournalBatch and Error, so a
-    // superseded arm's marker is dropped with that arm's batches.
-    public static BrokerFrame CaughtUp(string drive, uint armEpoch)
+    public static BrokerFrame ScanReady(long rowCount, long namePoolUsedBytes, long skippedRecordCount)
     {
-        return new BrokerFrame
+        return Empty(BrokerFrameKind.ScanReady, 0) with
         {
-            Kind = BrokerFrameKind.CaughtUp,
-            ArmEpoch = armEpoch,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            Drive = drive,
-            KeepFileNames = Array.Empty<string>()
+            RowCount = rowCount,
+            NamePoolUsedBytes = namePoolUsedBytes,
+            SkippedRecordCount = skippedRecordCount
         };
     }
 
-    // A non-fatal, per-drive scan degradation: unlike Error, the drive still produced
-    // a usable scan result. The message explains what was lost, not that the drive
-    // failed.
-    public static BrokerFrame Warning(string drive, string message)
+    public static BrokerFrame JournalBatch(UsnJournalCursor cursor, UsnJournalEntry[] entries)
     {
-        return new BrokerFrame
-        {
-            Kind = BrokerFrameKind.Warning,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            Drive = drive,
-            KeepFileNames = Array.Empty<string>(),
-            Message = message
-        };
+        return Empty(BrokerFrameKind.JournalBatch, 0) with { Cursor = cursor, Entries = entries };
     }
 
-    // A request for volume information on each drive in drivesSpec, without arming a
-    // scan or allocating any shared-memory map. drivesSpec uses three-field
-    // arm-and-scan tokens ("letter:0:0", comma-joined), with unused journal fields
-    // and no section or profile, so the host reads them through ParseScanSpec.
-    public static BrokerFrame QueryVolumes(string drivesSpec)
+    public static BrokerFrame StartWatch(UsnJournalCursor since)
     {
-        return new BrokerFrame
-        {
-            Kind = BrokerFrameKind.QueryVolumes,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            DrivesSpec = drivesSpec,
-            KeepFileNames = Array.Empty<string>()
-        };
+        return Empty(BrokerFrameKind.StartWatch, 0) with { Cursor = since };
     }
 
-    // One drive's answer to a QueryVolumes request. mftRecordCount is the pre-computed
-    // NtfsVolumeInformation.MftRecordCount value; bytesPerFileRecordSegment and
-    // mftValidDataLength are the two raw fields it was derived from, carried alongside so
-    // a client can reconstruct NtfsVolumeInformation.MftRecordCount independently instead
-    // of trusting the transmitted count outright.
-    public static BrokerFrame VolumeInfo(
-        string drive, long mftRecordCount, uint bytesPerFileRecordSegment, long mftValidDataLength)
+    // The watch has delivered its whole initial journal backlog; everything after this frame is
+    // a live entry.
+    public static BrokerFrame CaughtUp()
     {
-        return new BrokerFrame
-        {
-            Kind = BrokerFrameKind.VolumeInfo,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            Drive = drive,
-            RecordCount = mftRecordCount,
-            BytesPerFileRecordSegment = bytesPerFileRecordSegment,
-            MftValidDataLength = mftValidDataLength,
-            KeepFileNames = Array.Empty<string>()
-        };
+        return Empty(BrokerFrameKind.CaughtUp, 0);
     }
 
-    // A request to resize one drive's USN journal in place. The host refuses any
-    // requested maximum at or below the current one (grow only) and answers with one
-    // UsnJournalSettings or Error frame, both tagged NoArmEpoch.
-    public static BrokerFrame GrowUsnJournal(string drive, long maximumSize, long allocationDelta)
-    {
-        return new BrokerFrame
-        {
-            Kind = BrokerFrameKind.GrowUsnJournal,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            Drive = drive,
-            JournalMaximumSize = maximumSize,
-            JournalAllocationDelta = allocationDelta,
-            KeepFileNames = Array.Empty<string>()
-        };
-    }
-
-    // One drive's answer to a GrowUsnJournal request: the post-change journal sizing,
-    // read back from the volume after FSCTL_CREATE_USN_JOURNAL.
-    public static BrokerFrame UsnJournalSettings(string drive, long maximumSize, long allocationDelta)
-    {
-        return new BrokerFrame
-        {
-            Kind = BrokerFrameKind.UsnJournalSettings,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            Drive = drive,
-            JournalMaximumSize = maximumSize,
-            JournalAllocationDelta = allocationDelta,
-            KeepFileNames = Array.Empty<string>()
-        };
-    }
-
-    static BrokerFrame Empty(BrokerFrameKind kind)
+    static BrokerFrame Empty(BrokerFrameKind kind, uint requestId)
     {
         return new BrokerFrame
         {
             Kind = kind,
+            RequestId = requestId,
             Entries = Array.Empty<UsnJournalEntry>(),
             KeepFileNames = Array.Empty<string>()
         };

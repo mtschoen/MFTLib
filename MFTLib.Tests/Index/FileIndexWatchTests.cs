@@ -10,6 +10,12 @@ public class FileIndexWatchTests
     static readonly DateTime ChangeMoment = new(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
 
     string _treeRoot = null!;
+
+    /// <summary>
+    ///     The enumeration drive's own tree. Drives settle concurrently and ordinals follow settle
+    ///     order, so a path both drives could resolve would land on whichever settled first.
+    /// </summary>
+    string _enumerationRoot = null!;
     string _cacheDirectory = null!;
     FileIndex _index = null!;
 
@@ -18,6 +24,8 @@ public class FileIndexWatchTests
     {
         _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
         _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _enumerationRoot = Path.Combine(Path.GetTempPath(), $"mftlib-enumeration-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_enumerationRoot);
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
 
@@ -37,7 +45,7 @@ public class FileIndexWatchTests
             writer.TryWriteRow(0, "", new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 16, 0, ChangeMoment.Ticks, 0));
             writer.TryWriteRow(1, "Documents", new RowColumns(0, RowFlags.InUse | RowFlags.Directory, 16, 0, ChangeMoment.Ticks, 0));
             writer.TryWriteRow(2, "readme.md", new RowColumns(1, RowFlags.InUse, 32, 100, ChangeMoment.Ticks, 0));
-            writer.Complete(ChangeMoment);
+            writer.Complete(ChangeMoment, null);
         }
 
         _index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -45,7 +53,7 @@ public class FileIndexWatchTests
             Drives =
             [
                 new IndexedDrive('T', _treeRoot, 0x0BADF00D),
-                new IndexedDrive('E', _treeRoot, 0x0E0E0E0E),
+                new IndexedDrive('E', _enumerationRoot, 0x0E0E0E0E),
                 new IndexedDrive('Z', Path.Combine(_treeRoot, "does-not-exist"), 0xDEAD0000)
             ],
             CacheDirectory = _cacheDirectory,
@@ -57,7 +65,7 @@ public class FileIndexWatchTests
     public async Task Cleanup()
     {
         await _index.DisposeAsync();
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
+        foreach (var directory in new[] { _treeRoot, _enumerationRoot, _cacheDirectory })
         {
             try
             {
@@ -91,11 +99,11 @@ public class FileIndexWatchTests
         Assert.IsFalse(_index.Drives[1].WatchSupported);
         Assert.IsTrue(_index.Drives[0].WatchSupported);
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => _index.StartWatchingAsync(CancellationToken.None));
+            () => _index.StartWatchingAsync('T', CancellationToken.None));
     }
 
     [TestMethod]
-    public async Task StartWatchingAsync_OnAnEnumerationOnlyIndex_CompletesWithoutCallingSource()
+    public async Task StartWatchingAsync_OnAnEnumerationDrive_ThrowsWithoutCallingSource()
     {
         var source = new FailIfCalledWatchSource();
 
@@ -107,8 +115,10 @@ public class FileIndexWatchTests
             WatchSource = source
         }, CancellationToken.None);
 
-        await index.StartWatchingAsync(CancellationToken.None);
+        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => index.StartWatchingAsync('E', CancellationToken.None));
 
+        StringAssert.Contains(thrown.Message, "no MFT-backed block");
         Assert.IsFalse(source.WasCalled);
     }
 
@@ -342,24 +352,11 @@ public class FileIndexWatchTests
     {
         public bool WasCalled { get; private set; }
 
-        public IAsyncEnumerable<WatchStreamItem> StartWatching(IReadOnlyList<IndexWatchTarget> targets,
-            CancellationToken cancellationToken)
+        public Task<IIndexDriveWatch> StartAsync(IndexWatchTarget target, CancellationToken cancellationToken)
         {
             WasCalled = true;
             throw new AssertFailedException(
-                $"Source received {targets.Count} target(s) with cancellation {cancellationToken.CanBeCanceled}.");
-        }
-
-        public Task ArmDriveAsync(IndexWatchTarget target, CancellationToken cancellationToken)
-        {
-            WasCalled = true;
-            throw new AssertFailedException($"Source was asked to arm drive {target.DriveLetter}.");
-        }
-
-        public Task DisarmDriveAsync(char driveLetter, CancellationToken cancellationToken)
-        {
-            WasCalled = true;
-            throw new AssertFailedException($"Source was asked to disarm drive {driveLetter}.");
+                $"Source was asked to start drive {target.DriveLetter} with cancellation {cancellationToken.CanBeCanceled}.");
         }
     }
 }

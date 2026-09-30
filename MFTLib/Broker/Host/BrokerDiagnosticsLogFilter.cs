@@ -33,11 +33,11 @@ sealed class BrokerDiagnosticsLogFilter
 
     internal BrokerDiagnosticsLogFilter(string ownLogPath, string? clientLogPath)
     {
-        var normalizedOwn = NormalizePath(ownLogPath);
+        var normalizedOwn = NormalizePath(ownLogPath, OperatingSystem.IsWindows());
         _logPaths.Add(normalizedOwn);
         if (!string.IsNullOrEmpty(clientLogPath))
         {
-            var normalizedClient = NormalizePath(clientLogPath);
+            var normalizedClient = NormalizePath(clientLogPath, OperatingSystem.IsWindows());
             if (!string.Equals(normalizedClient, normalizedOwn, StringComparison.OrdinalIgnoreCase))
             {
                 _logPaths.Add(normalizedClient);
@@ -109,9 +109,11 @@ sealed class BrokerDiagnosticsLogFilter
         }
     }
 
-    internal static ulong? ResolveFileReference(string path)
+    internal static ulong? ResolveFileReference(string path) => ResolveFileReference(path, OperatingSystem.IsWindows());
+
+    internal static ulong? ResolveFileReference(string path, bool isWindows)
     {
-        if (!OperatingSystem.IsWindows())
+        if (!isWindows)
         {
             return null;
         }
@@ -137,7 +139,10 @@ sealed class BrokerDiagnosticsLogFilter
 
     // Extract the bare drive letter from a rooted path ("C:\...", "C:...", or extended "\\?\C:\...");
     // anything else (UNC, non-Windows root) never matches a watched drive and stays pending.
-    internal static bool TryGetDriveLetter(string path, out string driveLetter)
+    internal static bool TryGetDriveLetter(string path, out string driveLetter) =>
+        TryGetDriveLetter(path, OperatingSystem.IsWindows(), out driveLetter);
+
+    internal static bool TryGetDriveLetter(string path, bool isWindows, out string driveLetter)
     {
         driveLetter = string.Empty;
         if (string.IsNullOrWhiteSpace(path))
@@ -166,7 +171,7 @@ sealed class BrokerDiagnosticsLogFilter
             return true;
         }
 
-        if (OperatingSystem.IsWindows())
+        if (isWindows)
         {
             try
             {
@@ -186,14 +191,14 @@ sealed class BrokerDiagnosticsLogFilter
         return false;
     }
 
-    static string NormalizePath(string path)
+    internal static string NormalizePath(string path, bool isWindows)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
             return path;
         }
 
-        if (OperatingSystem.IsWindows())
+        if (isWindows)
         {
             try
             {

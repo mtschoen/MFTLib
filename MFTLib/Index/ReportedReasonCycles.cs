@@ -14,7 +14,7 @@ namespace MFTLib.Index;
 ///     stays small no matter how large the block is. Runtime-only state: it is not persisted
 ///     in the block and dies with the <see cref="DriveBlock" /> that owns it, which is the
 ///     lifecycle reset a rescan (block replacement) provides. Not thread-safe: every
-///     journal mutation is already serialized by the index-wide swap gate
+///     journal mutation of a drive's block is already serialized by that drive's write gate
 ///     (<see cref="FileIndex.ApplyJournalEntries" />), and tests drive it single-threaded.
 /// </summary>
 internal sealed class ReportedReasonCycles

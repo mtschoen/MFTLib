@@ -289,7 +289,7 @@ public partial class BlockWriterTests
             var writer = new BlockWriter(block);
             writer.TryWriteRow(0, "", RootColumns);
             Assert.IsFalse(block.Header.IsComplete);
-            writer.Complete(Moment);
+            writer.Complete(Moment, null);
             Assert.IsTrue(block.Header.IsComplete);
             Assert.AreEqual(Moment, block.Header.ScanTimestampUtc);
         }

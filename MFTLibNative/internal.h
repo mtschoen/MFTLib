@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cassert>
 #include <cstdio>
@@ -40,10 +41,37 @@ void SetErrorMessage(wchar_t (&buffer)[N], const wchar_t* format, Args... argume
     SetErrorMessageBuffer(buffer, N, format, arguments...);
 }
 
+// Reads a 32-bit field that another thread (the managed caller) may write while it is read.
+// An aligned 32-bit load is single-copy atomic on every supported target; the acquire
+// fence keeps later reads from moving ahead of it.
+inline int32_t LoadSharedInt32(const int32_t* field) {
+#ifdef _WIN32
+    int32_t value = *static_cast<const volatile int32_t*>(field);
+    std::atomic_thread_fence(std::memory_order_acquire);
+    return value;
+#else
+    return __atomic_load_n(field, __ATOMIC_ACQUIRE);
+#endif
+}
+
+struct MftParseControl;
+
+// The parse thread count for one chunk or for path resolution: every processor when control
+// is null or its allowance is 0, otherwise the allowance clamped to [1, processors]. The
+// SetMaxThreads test hook caps the result. Defined in core/test_hooks.cpp.
+unsigned EffectiveThreadCount(const MftParseControl* control);
+// Test hook recording (defined in core/test_hooks.cpp): what each chunk and path resolution
+// of the most recent parse used, read back through GetChunkThreadCounts and GetResolveThreadCount.
+void ResetRecordedParseThreadCounts();
+void RecordChunkThreadCount(unsigned threadCount);
+void RecordResolveThreadCount(unsigned threadCount);
+
 // Test hook declarations (defined in core/test_hooks.cpp)
-unsigned EffectiveThreadCount();
 bool ShouldFailAlloc();
 bool ShouldFailRead();
+// The Nth parse cancellation check after SetCancelCheckCountdown(N), and every check after it,
+// reports cancelled, so a test can cancel inside a chunk's workers.
+bool ShouldForceCancel();
 uint64_t NamePoolCapacityOverride();
 bool ShouldFailFileSize();
 bool ShouldFailPathConversion();

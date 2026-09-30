@@ -12,11 +12,21 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     bool _disposed;
     IntPtr _resultPtr;
 
-    internal MftResult(IntPtr resultPtr, string driveLetter, double marshalMs)
+    // cancellationToken is the token that could have stopped the parse; a cancelled result throws
+    // OperationCanceledException carrying it.
+    internal MftResult(IntPtr resultPtr, string driveLetter, double marshalMs,
+        CancellationToken cancellationToken = default)
     {
         _resultPtr = resultPtr;
         _result = Marshal.PtrToStructure<MftParseResult>(resultPtr);
         _driveLetter = string.IsNullOrEmpty(driveLetter) ? '\0' : driveLetter[0];
+
+        if (_result.Cancelled != 0)
+        {
+            MFTLibNative._freeMftResult(resultPtr);
+            _resultPtr = IntPtr.Zero;
+            throw new OperationCanceledException(_result.ErrorMessage, cancellationToken);
+        }
 
         if (!string.IsNullOrEmpty(_result.ErrorMessage))
         {

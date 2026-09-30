@@ -4,7 +4,9 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
+// The host's arm query consults JournalCheckpointCheck, whose override other classes install.
 [TestClass]
+[DoNotParallelize]
 public class BrokerIndexWatchSourceCaughtUpTests
 {
     [TestMethod]
@@ -12,89 +14,66 @@ public class BrokerIndexWatchSourceCaughtUpTests
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var consumption = ReadItemsAndBreakAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100)], harness.CancellationToken), count: 2);
+        var token = harness.CancellationToken;
+        await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        var reader = handle.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = reader.ConfigureAwait(false);
+        var run = await harness.Watch('C').RunAsync(1);
 
-        var start = await harness.ReadFrameAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, start.Kind);
-        var entry = JournalEntryFactory.Create(1, 105, "c.txt");
-        await harness.WriteAsync(response =>
-        {
-            BrokerProtocol.WriteCaughtUp(response, "C", harness.ArmEpochForDrive(start, 'C'));
-            BrokerProtocol.WriteJournalBatch(response, "C", harness.ArmEpochForDrive(start, 'C'),
-                new UsnJournalCursor(7, 110), [entry]);
-        });
+        // A watch that starts at the journal tip has no backlog, so the marker leads.
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        run.Push(1, "c.txt", 110);
 
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-
-        var items = await consumption;
-        Assert.AreEqual(2, items.Count);
-        Assert.IsInstanceOfType<DriveCaughtUp>(items[0]);
-        var caughtUp = (DriveCaughtUp)items[0];
-        Assert.AreEqual('C', caughtUp.DriveLetter);
-
-        // The marker ends nothing: the arm's batches keep flowing after it.
-        Assert.IsInstanceOfType<JournalBatch>(items[1]);
-        var batch = (JournalBatch)items[1];
+        // The marker ends nothing: the watch's batches keep flowing after it.
+        var batch = await WatchReads.NextBatchAsync(reader);
         Assert.AreEqual(110L, batch.NextUsn);
-        CollectionAssert.AreEqual(new[] { entry }, batch.Entries.ToArray());
+        Assert.AreEqual("c.txt", batch.Entries.Single().FileName);
     }
 
     [TestMethod]
-    public async Task WatchSource_AfterAReArm_SurfacesOnlyTheFreshArmsMarker()
+    public async Task WatchSource_SurfacesTheMarkerOnlyOnceTheBacklogReachesTheTip()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var consumption = ReadItemsAndBreakAsync(source.StartWatching(
-            [new IndexWatchTarget('C', 7, 100)], harness.CancellationToken), count: 2);
+        var token = harness.CancellationToken;
+        await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 50), token);
+        var reader = handle.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = reader.ConfigureAwait(false);
+        var run = await harness.Watch('C').RunAsync(1);
 
-        var firstArm = await harness.ReadFrameAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, firstArm.Kind);
+        run.Push(1, "backlog.txt", 80);
+        Assert.AreEqual(80L, (await WatchReads.NextBatchAsync(reader)).NextUsn);
+        run.Push(2, "tip.txt", ScriptedWatchBrokerHarness.DefaultTip.NextUsn);
 
-        await source.ArmDriveAsync(new IndexWatchTarget('C', 7, 500), harness.CancellationToken);
-        var secondArm = await harness.ReadFrameAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, secondArm.Kind);
-
-        // The superseded arm's marker is dropped by the client's demux with its epoch; only the
-        // fresh arm's marker reaches the merged stream.
-        await harness.WriteAsync(response =>
-        {
-            BrokerProtocol.WriteCaughtUp(response, "C", harness.ArmEpochForDrive(firstArm, 'C'));
-            BrokerProtocol.WriteCaughtUp(response, "C", harness.ArmEpochForDrive(secondArm, 'C'));
-            BrokerProtocol.WriteJournalBatch(response, "C", harness.ArmEpochForDrive(secondArm, 'C'),
-                new UsnJournalCursor(7, 510), [JournalEntryFactory.Create(2, 505, "fresh.txt")]);
-        });
-
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await harness.ReadFrameAsync()).Kind);
-        await harness.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-
-        var items = await consumption;
-        Assert.AreEqual(2, items.Count);
-        Assert.IsInstanceOfType<DriveCaughtUp>(items[0]);
-        Assert.IsInstanceOfType<JournalBatch>(items[1]);
-        var batch = (JournalBatch)items[1];
-        Assert.AreEqual(510L, batch.NextUsn);
+        Assert.AreEqual(ScriptedWatchBrokerHarness.DefaultTip.NextUsn, (await WatchReads.NextBatchAsync(reader)).NextUsn);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
     }
 
-    // Collecting then breaking is what writes the EndWatch the test reads back: disposing the
-    // enumerator runs the source's finally, which stops the live watch on the borrowed client.
-    static Task<List<WatchStreamItem>> ReadItemsAndBreakAsync(
-        IAsyncEnumerable<WatchStreamItem> stream, int count)
+    [TestMethod]
+    public async Task WatchSource_AfterARestart_SurfacesOnlyTheFreshWatchsMarker()
     {
-        return Task.Run(async () =>
-        {
-            var items = new List<WatchStreamItem>();
-            await foreach (var item in stream)
-            {
-                items.Add(item);
-                if (items.Count == count)
-                {
-                    break;
-                }
-            }
+        await using var harness = new ScriptedWatchBrokerHarness();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var token = harness.CancellationToken;
+        var first = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
+        var firstReader = first.ReadAsync(token).GetAsyncEnumerator(token);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(firstReader));
+        await firstReader.DisposeAsync();
+        await first.DisposeAsync();
 
-            return items;
-        });
+        // The fresh watch starts behind the tip: no marker until its own backlog is delivered,
+        // and the first watch's marker is not delivered again.
+        await using var restarted = await source.StartAsync(new IndexWatchTarget('C', 7, 50), token);
+        var reader = restarted.ReadAsync(token).GetAsyncEnumerator(token);
+        await using var _ = reader.ConfigureAwait(false);
+        var run = await harness.Watch('C').RunAsync(2);
+        run.Push(1, "backlog.txt", 80);
+        run.Push(2, "tip.txt", ScriptedWatchBrokerHarness.DefaultTip.NextUsn);
+        run.Push(3, "live.txt", 200);
+
+        Assert.AreEqual(80L, (await WatchReads.NextBatchAsync(reader)).NextUsn);
+        Assert.AreEqual(ScriptedWatchBrokerHarness.DefaultTip.NextUsn, (await WatchReads.NextBatchAsync(reader)).NextUsn);
+        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
+        Assert.AreEqual(200L, (await WatchReads.NextBatchAsync(reader)).NextUsn);
     }
 }

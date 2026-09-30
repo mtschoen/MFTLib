@@ -5,8 +5,7 @@ namespace MFTLib.Tests;
 [TestClass]
 public class ElevatedEntryPointTests
 {
-    static readonly string[] BrokerWithOnceArgs = ["--broker", "--pipe", "mftlib-pipe-123", "--once"];
-    static readonly string[] BrokerWithoutOnceArgs = ["--broker", "--pipe", "p"];
+    static readonly string[] BrokerArgs = ["--broker", "--pipe", "mftlib-pipe-123"];
     static readonly string[] LeadingExecutablePathArgs = [@"C:\apps\SomeApp.exe", "--broker", "--pipe", "p"];
     static readonly string[] ScanOnlyArgs = ["--scan-only"];
     static readonly string[] BrokerWithDiagArgs = ["--broker", "--pipe", "p", "--diag"];
@@ -24,23 +23,11 @@ public class ElevatedEntryPointTests
     {
         var runner = new RecordingRunner();
 
-        var handled = ElevatedEntryPoint.TryHandle(BrokerWithOnceArgs, runner);
+        var handled = ElevatedEntryPoint.TryHandle(BrokerArgs, runner);
 
         Assert.IsTrue(handled);
         Assert.AreEqual(1, runner.BrokerCalls);
         Assert.AreEqual("mftlib-pipe-123", runner.BrokerPipe);
-        Assert.IsTrue(runner.BrokerOnce);
-    }
-
-    [TestMethod]
-    public void TryHandle_BrokerMode_WithoutOnce_DefaultsToPersistent()
-    {
-        var runner = new RecordingRunner();
-
-        var handled = ElevatedEntryPoint.TryHandle(BrokerWithoutOnceArgs, runner);
-
-        Assert.IsTrue(handled);
-        Assert.IsFalse(runner.BrokerOnce);
     }
 
     [TestMethod]
@@ -73,7 +60,7 @@ public class ElevatedEntryPointTests
     }
 
     [TestMethod]
-    public void TryHandle_BrokerModeWithDiagFlag_EnablesDiagnostics()
+    public async Task TryHandle_BrokerModeWithDiagFlag_EnablesDiagnostics()
     {
         var runner = new RecordingRunner();
 
@@ -88,7 +75,8 @@ public class ElevatedEntryPointTests
         try
         {
             BrokerDiagnostics.LogDirectory = tempDir;
-            BrokerDiagnostics.Log("diag-enabled-check");
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "diag-enabled-check");
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None);
             Assert.IsTrue(File.Exists(Path.Combine(tempDir, "broker-diagnostics.log")));
         }
         finally
@@ -160,15 +148,13 @@ public class ElevatedEntryPointTests
     {
         public int BrokerCalls { get; private set; }
         public string? BrokerPipe { get; private set; }
-        public bool BrokerOnce { get; private set; }
 
         public int TotalCalls => BrokerCalls;
 
-        public void RunBroker(string? pipeName, bool oneShot)
+        public void RunBroker(string? controlPipeName)
         {
             BrokerCalls++;
-            BrokerPipe = pipeName;
-            BrokerOnce = oneShot;
+            BrokerPipe = controlPipeName;
         }
     }
 }

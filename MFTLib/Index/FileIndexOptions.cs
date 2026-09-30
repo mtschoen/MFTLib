@@ -9,7 +9,7 @@ public sealed record FileIndexOptions
     public IReadOnlyList<IndexedDrive> Drives { get; init; } = [];
 
     /// <summary>
-    ///     Null resolves to <see cref="MFTLib.Index.CacheDirectory.ResolveDefaultPath" />.
+    ///     Null resolves to <see cref="MFTLib.Index.CacheDirectory.ResolveDefaultPath()" />.
     ///     Test hosts that activate <c>CacheDirectoryIsolation.ForbidDefaultCacheDirectory</c>
     ///     must supply a temporary path; null then causes <see cref="FileIndex.OpenAsync" />
     ///     to throw <see cref="InvalidOperationException" /> before directory creation.
@@ -29,14 +29,14 @@ public sealed record FileIndexOptions
     ///     or incompatible) is reported as <see cref="DriveState.Failed" /> with
     ///     <see cref="DriveFailureKind.CacheDeclined" />, <see cref="DriveFailureKind.CacheTagMismatch" />
     ///     (or <see cref="DriveFailureKind.InUse" /> when another live index holds the cache block's
-    ///     owner lock) instead of falling back to a scan, and <see cref="FileIndex.RescanAsync" />
+    ///     owner lock) instead of falling back to a scan, and <see cref="FileIndex.RescanAsync(char, CancellationToken)" />
     ///     remains available to scan it later.
     ///     A cache block whose journal checkpoint the journal no longer holds is different: this
     ///     open never watches, and the block is still a correct snapshot as of its age, so it is
     ///     adopted instead of declined, with <see cref="DriveStatus.CheckpointLoss" /> set to say
     ///     why the checkpoint could not be resumed. Such a drive is left out of a later
-    ///     <see cref="FileIndex.StartWatchingAsync" /> (see <see cref="DriveStatus.WatchFailureMessage" />)
-    ///     until <see cref="FileIndex.RescanAsync" /> gives it a fresh cursor.
+    ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> (see <see cref="DriveStatus.WatchFailureMessage" />)
+    ///     until <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> gives it a fresh cursor.
     /// </summary>
     public bool InitialOpenCacheOnly { get; init; }
 
@@ -51,11 +51,10 @@ public sealed record FileIndexOptions
     public MftBlockProducer? MftProducer { get; init; }
 
     /// <summary>
-    ///     Supplies the merged watch stream used by <see cref="FileIndex.StartWatchingAsync" />.
-    ///     That stream carries a per-drive failure as a <see cref="DriveWatchFailure" /> item and
-    ///     faults only for a failure that names no drive. This is also the object a rescan asks to
-    ///     disarm and re-arm the one drive it rebuilds. Required when any opened drive has an MFT
-    ///     block and ignored when none does.
+    ///     Starts each drive's own watch for <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" />, one
+    ///     <see cref="IIndexDriveWatch" /> handle per drive. A rescan of a watched drive stops that
+    ///     drive's handle and starts a fresh one from the new block's cursor through the same
+    ///     source. Required to watch an MFT-backed drive and ignored otherwise.
     /// </summary>
     public IIndexWatchSource? WatchSource { get; init; }
 
@@ -63,12 +62,17 @@ public sealed record FileIndexOptions
 
     /// <summary>
     ///     Open-time per-drive progress: <see cref="FileIndex.OpenAsync" /> reports one
-    ///     <see cref="IndexDriveOpened" /> per configured drive, in <see cref="Drives" /> order,
-    ///     synchronously on the opening thread, after that drive settles, whatever the outcome:
-    ///     warm-started, cold-scanned, declined by <see cref="InitialOpenCacheOnly" />, offline,
-    ///     or failed. A declined or failed drive still counts toward the total and still reports.
+    ///     <see cref="IndexDriveOpened" /> for each drive that settles, synchronously on the thread
+    ///     that settled it, whatever the outcome: warm-started, cold-scanned, declined by
+    ///     <see cref="InitialOpenCacheOnly" />, offline, or failed. A drive whose settle is
+    ///     cancelled does not settle and reports nothing, so a cancelled or failed open may have
+    ///     reported only some of the configured drives. Drives settle concurrently and no lock is held while a handler runs,
+    ///     so reports can overlap and can arrive out of order; a handler that blocks holds up no
+    ///     other drive. <see cref="IndexDriveOpened.SettledCount" /> gives each report's place in
+    ///     settle order, so keep the report with the largest count rather than the last one
+    ///     received. A declined or failed drive still counts toward the total and still reports.
     ///     Null (the default) reports and allocates nothing. Only the initial open reports;
-    ///     <see cref="FileIndex.RescanAsync" /> stays silent, because its caller already awaits
+    ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> stays silent, because its caller already awaits
     ///     the one drive it rescans. Unlike <see cref="Progress" />, which samples only while a
     ///     producer runs, this fires on warm starts too. Marshalling belongs to the
     ///     <see cref="IProgress{T}" /> implementation, the same convention <see cref="Progress" />
@@ -93,4 +97,15 @@ public sealed record FileIndexOptions
     ///     MFTLib does not interpret the tag or compare scan filters.
     /// </summary>
     public CacheTag CacheTag { get; init; }
+
+    /// <summary>
+    ///     A test seam, owned by the index these options open: lists the cache directory's files
+    ///     matching a pattern for the sweep of stale ".retired-*" siblings. Null (the default)
+    ///     lists the real directory. The directory holds the index's owner lock file while the
+    ///     sweep runs, so only a failure of the listing itself (a network share that drops, an
+    ///     access-control change made meanwhile) reaches the sweep's handlers, and a test needs
+    ///     this to stand in for one. Supplied through the options so the index is never handed
+    ///     to test code before it has settled.
+    /// </summary>
+    internal Func<string, string, IEnumerable<string>>? EnumerateCacheFilesForTest { get; init; }
 }

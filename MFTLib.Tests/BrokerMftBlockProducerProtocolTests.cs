@@ -1,46 +1,86 @@
-using System.Buffers;
-using System.Buffers.Binary;
-using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
 [TestClass]
-public class BrokerMftBlockProducerProtocolTests
+public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
 {
     [TestMethod]
     public async Task Produce_PreservesMaximumSkippedRecordCount()
     {
-        await using var harness = new Harness(fault: "MaximumSkippedCount");
-        var result = await harness.ProduceAsync();
-        using var block = result.Block;
+        await using var broker = new ScriptedBroker();
+        var resultTask = ProduceAsync(broker.Process, Request(Target()));
+
+        await SendCompleteScanAsync(broker, int.MaxValue);
+        var result = await resultTask.WaitAsync(HangGuard);
+        result.Block.Dispose();
+
         Assert.AreEqual(int.MaxValue, result.SkippedRecordCount);
     }
 
     [TestMethod]
     public async Task Produce_SkippedRecordCountOverflowThrowsAndDisposesBlock()
     {
-        await using var harness = new Harness(fault: "SkippedCountOverflow");
-        await Assert.ThrowsExceptionAsync<OverflowException>(() => harness.ProduceAsync());
-        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
-        BlockFileAssertions.IsDisposed(harness.CreatedBlock!);
-        Assert.IsFalse(File.Exists(harness.Request.BlockPath));
+        await using var broker = new ScriptedBroker();
+        var request = Request(Target());
+        var resultTask = ProduceAsync(broker.Process, request);
+
+        await SendCompleteScanAsync(broker, (long)int.MaxValue + 1);
+        await Assert.ThrowsExceptionAsync<OverflowException>(() => resultTask.WaitAsync(HangGuard));
+
+        var section = broker.Sections.Single();
+        Assert.AreEqual(1, section.Lifetime.DisposeCount);
+        BlockFileAssertions.IsDisposed(section.Block);
+        Assert.IsFalse(File.Exists(request.BlockPath));
     }
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task Scan_SendsBlockSpecificationAndPlansFromVolumeQuery(bool queryFails)
+    public async Task Scan_SendsBlockSpecificationAndPlansFromVolumeQuery()
     {
-        await using var harness = new Harness(queryFails: queryFails);
-        var result = await harness.ProduceAsync();
+        await using var broker = new ScriptedBroker();
+        var request = Request(Target());
+        var resultTask = ProduceAsync(broker.Process, request);
+
+        var (pipe, order) = await broker.AcceptScanAsync(VolumeInformation);
+        var section = broker.Sections.Single();
+
+        Assert.AreEqual(BrokerFrameKind.ArmAndScan, order.Kind);
+        Assert.AreEqual(section.SectionName, order.RequireSectionName());
+        Assert.AreEqual(BrokerScanProfile.Full, order.Profile);
+        Assert.AreEqual(0, order.KeepFileNames.Count);
+        var expected = MftBlockCapacity.Plan(VolumeInformation);
+        Assert.AreEqual(expected.SlotCapacity, section.Block.Header.SlotCapacity);
+        Assert.AreEqual(expected.NamePoolCapacity, section.Block.Header.NamePoolCapacity);
+        Assert.AreEqual(request.BlockPath, section.Block.Path);
+
+        await CompleteScanAsync(broker, pipe, section.SectionName, 0);
+        await pipe.DisposeAsync();
+        var result = await resultTask.WaitAsync(HangGuard);
         using var block = result.Block;
-        Assert.AreEqual("C:0:0:protocol-section:0", harness.ScanSpecification);
-        var expected = MftBlockCapacity.Plan(queryFails ? null : Harness.VolumeInformation);
-        Assert.AreEqual(expected.SlotCapacity, block.Header.SlotCapacity);
-        Assert.AreEqual(expected.NamePoolCapacity, block.Header.NamePoolCapacity);
-        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
+
+        Assert.AreSame(section.Block, block);
+        Assert.AreEqual(1, section.Lifetime.DisposeCount);
+    }
+
+    [TestMethod]
+    public async Task Scan_VolumeQueryFailure_FailsBeforeCreatingBlock()
+    {
+        // The block is sized from the volume query, so a refused query fails the scan before any
+        // section exists (BrokerProcess.Scan.cs: ScanDriveAsync awaits QueryVolumeAsync first).
+        await using var broker = new ScriptedBroker();
+        var request = Request(Target());
+        var resultTask = ProduceAsync(broker.Process, request);
+
+        var query = await broker.ReadRequestAsync();
+        Assert.AreEqual(BrokerFrameKind.QueryVolume, query.Kind);
+        await broker.WriteControlAsync(writer => BrokerProtocol.WriteError(writer, query.RequestId, "query failed"));
+
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard));
+
+        Assert.AreEqual("query failed", exception.Message);
+        Assert.AreEqual(0, broker.Sections.All().Count);
+        Assert.IsFalse(File.Exists(request.BlockPath));
     }
 
     [TestMethod]
@@ -48,154 +88,110 @@ public class BrokerMftBlockProducerProtocolTests
     [DataRow(true)]
     public async Task Produce_DisconnectionDisposesBlockBeforeReturning(bool sendReady)
     {
-        await using var harness = new Harness(sendReady, disconnect: true);
-        await Assert.ThrowsExceptionAsync<EndOfStreamException>(() => harness.ProduceAsync());
-        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
-        BlockFileAssertions.IsDisposed(harness.CreatedBlock!);
-        Assert.IsFalse(File.Exists(harness.Request.BlockPath));
+        await using var broker = new ScriptedBroker();
+        var request = Request(Target());
+        var resultTask = ProduceAsync(broker.Process, request);
+
+        var (pipe, _) = await broker.AcceptScanAsync(VolumeInformation);
+        await using (pipe)
+        {
+            if (sendReady)
+            {
+                broker.WriteSection(broker.Sections.Single().SectionName, ArmedCursor);
+                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, ArmedCursor));
+                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 21, 18, 0));
+            }
+        }
+
+        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => resultTask.WaitAsync(HangGuard));
+        var section = broker.Sections.Single();
+        Assert.AreEqual(1, section.Lifetime.DisposeCount);
+        BlockFileAssertions.IsDisposed(section.Block);
+        Assert.IsFalse(File.Exists(request.BlockPath));
     }
 
     [TestMethod]
     public async Task Produce_CompletionCallbackFailureDisposesBlock()
     {
-        await using var harness = new Harness();
-        await Assert.ThrowsExceptionAsync<IOException>(() => harness.ProduceAsync(
-            _ => throw new IOException("callback failed")));
-        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
-        BlockFileAssertions.IsDisposed(harness.CreatedBlock!);
+        await using var broker = new InProcessBroker(CreateHost());
+        var request = Request(Target());
+
+        await Assert.ThrowsExceptionAsync<IOException>(() => ProduceAsync(broker.Process, request,
+            scanCompleted: _ => throw new IOException("callback failed")).WaitAsync(HangGuard));
+
+        var section = broker.Sections.Single();
+        Assert.AreEqual(1, section.Lifetime.DisposeCount);
+        BlockFileAssertions.IsDisposed(section.Block);
     }
 
     [TestMethod]
-    [DataRow("MissingOutcome", "No block outcome")]
-    [DataRow("MissingCursor", "No armed journal cursor")]
-    [DataRow("RepeatedReady", "No pending block")]
+    [DataRow("MissingReady", "ScanProgress or ScanReady")]
+    [DataRow("MissingCursor", "Cursor")]
+    [DataRow("RepeatedReady", "JournalBatch or CatchUpLost")]
     [DataRow("ErrorAfterReady", "scan failed after ready")]
     public async Task Produce_RejectsBrokenExchangeAndDisposesBlock(string fault, string message)
     {
-        await using var harness = new Harness(fault: fault);
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => harness.ProduceAsync());
-        StringAssert.Contains(exception.Message, message);
-        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
-        BlockFileAssertions.IsDisposed(harness.CreatedBlock!);
-    }
+        await using var broker = new ScriptedBroker();
+        var resultTask = ProduceAsync(broker.Process, Request(Target()));
 
-    sealed class Harness : IAsyncDisposable
-    {
-        public static readonly NtfsVolumeInformation VolumeInformation = new(1024L * 100000, 1024, 0, 0, 0, 0);
-        static readonly UsnJournalCursor Cursor = new(71, 12345);
-        readonly Stream _server;
-        readonly CancellationTokenSource _timeout = new(TimeSpan.FromSeconds(20));
-        readonly Task _serving;
-        readonly JournalBrokerClient _client;
-
-        public Harness(bool sendReady = true, bool disconnect = false, bool queryFails = false, string fault = "")
+        var (pipe, _) = await broker.AcceptScanAsync(VolumeInformation);
+        await using (pipe)
         {
-            var (client, server) = DuplexStream.CreatePair();
-            _server = server;
-            _client = new JournalBrokerClient(client,
-                (_, options) =>
-                {
-                    CreatedBlock = BlockFile.Create(options);
-                    return ("protocol-section", CreatedBlock, Lifetime);
-                });
-            _serving = ServeAsync(sendReady, disconnect, queryFails, fault);
-        }
-
-        public BlockFile? CreatedBlock { get; private set; }
-        public CountingLifetime Lifetime { get; } = new();
-        public string? ScanSpecification { get; private set; }
-        public MftBlockProduceRequest Request { get; } = new()
-        {
-            DriveLetter = 'C',
-            VolumeSerial = 123,
-            DeleteOnClose = true,
-            BlockPath = Path.Combine(Path.GetTempPath(), $"producer-protocol-{Guid.NewGuid():N}.bin")
-        };
-
-        public Task<MftBlockProduceResult> ProduceAsync(Action<BrokerScanResult>? completed = null) =>
-            new BrokerMftBlockProducer(_ => Task.FromResult(_client), scanCompleted: completed)
-                .CreateProducer()(Request, _timeout.Token);
-
-        async Task ServeAsync(bool sendReady, bool disconnect, bool queryFails, string fault)
-        {
-            var query = await ReadFrameAsync();
-            Assert.AreEqual(BrokerFrameKind.QueryVolumes, query.Kind);
-            var response = new ArrayBufferWriter<byte>();
-            if (queryFails)
+            broker.WriteSection(broker.Sections.Single().SectionName, ArmedCursor);
+            if (fault != "MissingCursor")
             {
-                BrokerProtocol.WriteError(response, "C", BrokerFrame.NoArmEpoch, "query failed");
+                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, ArmedCursor));
+            }
+
+            if (fault == "MissingReady")
+            {
+                await HostChannelHarness.WriteFrameAsync(pipe,
+                    writer => BrokerProtocol.WriteJournalBatch(writer, ArmedCursor, []));
             }
             else
             {
-                BrokerProtocol.WriteVolumeInfo(response, "C", VolumeInformation.MftRecordCount,
-                    VolumeInformation.BytesPerFileRecordSegment, VolumeInformation.MftValidDataLength);
+                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 21, 18, 0));
             }
 
-            await _server.WriteAsync(response.WrittenMemory, _timeout.Token);
-            var scan = await ReadFrameAsync();
-            Assert.AreEqual(BrokerFrameKind.ArmAndScan, scan.Kind);
-            ScanSpecification = scan.DrivesSpec;
-            response.Clear();
-            if (fault != "MissingCursor")
+            if (fault == "RepeatedReady")
             {
-                BrokerProtocol.WriteCursor(response, "C", Cursor);
+                await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 21, 18, 0));
             }
-
-            if (sendReady && fault != "MissingOutcome")
+            else if (fault == "ErrorAfterReady")
             {
-                using var writer = new RecordingBlockSectionWriter(_ => CreatedBlock);
-                var result = writer.Write("protocol-section", Cursor,
-                    [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]], MftBlockRowFilter.Full, null, _timeout.Token);
-                var skippedRecordCount = fault switch
-                {
-                    "MaximumSkippedCount" => int.MaxValue,
-                    "SkippedCountOverflow" => (long)int.MaxValue + 1,
-                    _ => result.SkippedRecordCount
-                };
-                BrokerProtocol.WriteScanReady(response, "protocol-section", result.RowCount, result.NamePoolUsedBytes, skippedRecordCount);
-                if (fault == "RepeatedReady")
-                {
-                    BrokerProtocol.WriteScanReady(response, "protocol-section", result.RowCount, result.NamePoolUsedBytes, result.SkippedRecordCount);
-                }
+                await HostChannelHarness.WriteFrameAsync(pipe,
+                    writer => BrokerProtocol.WriteError(writer, 0, "scan failed after ready"));
             }
-
-            if (fault == "ErrorAfterReady")
-            {
-                BrokerProtocol.WriteError(response, "C", BrokerFrame.NoArmEpoch, "scan failed after ready");
-            }
-            else if (!disconnect)
-            {
-                BrokerProtocol.WriteJournalBatch(response, "C", BrokerFrame.NoArmEpoch, Cursor, []);
-            }
-
-            await _server.WriteAsync(response.WrittenMemory, _timeout.Token);
-            await _server.DisposeAsync();
         }
 
-        async Task<BrokerFrame> ReadFrameAsync()
+        Exception exception;
+        if (fault == "ErrorAfterReady")
         {
-            var header = new byte[4];
-            await _server.ReadExactlyAsync(header, _timeout.Token);
-            var frame = new byte[4 + BinaryPrimitives.ReadInt32LittleEndian(header)];
-            header.CopyTo(frame, 0);
-            await _server.ReadExactlyAsync(frame.AsMemory(4), _timeout.Token);
-            return BrokerProtocol.ReadFrame(frame, out _);
+            exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => resultTask.WaitAsync(HangGuard));
+        }
+        else
+        {
+            exception = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => resultTask.WaitAsync(HangGuard));
         }
 
-        public async ValueTask DisposeAsync()
-        {
-            await _serving;
-            await _client.DisposeAsync();
-            await _server.DisposeAsync();
-            CreatedBlock?.Dispose();
-            _timeout.Dispose();
-        }
+        StringAssert.Contains(exception.Message, message);
+        var section = broker.Sections.Single();
+        Assert.AreEqual(1, section.Lifetime.DisposeCount);
+        BlockFileAssertions.IsDisposed(section.Block);
     }
 
-    sealed class CountingLifetime : IDisposable
+    static async Task SendCompleteScanAsync(ScriptedBroker broker, long skippedRecordCount)
     {
-        public int DisposeCount { get; private set; }
-        public void Dispose() => DisposeCount++;
+        var (pipe, _) = await broker.AcceptScanAsync(VolumeInformation);
+        await using var channel = pipe;
+        await CompleteScanAsync(broker, channel, broker.Sections.Single().SectionName, skippedRecordCount);
     }
 
+    static async Task CompleteScanAsync(ScriptedBroker broker, Stream pipe, string sectionName, long skippedRecordCount)
+    {
+        broker.WriteSection(sectionName, ArmedCursor);
+        await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteCursor(writer, ArmedCursor));
+        await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteScanReady(writer, 21, 18, skippedRecordCount));
+        await HostChannelHarness.WriteFrameAsync(pipe, writer => BrokerProtocol.WriteJournalBatch(writer, ArmedCursor, []));
+    }
 }

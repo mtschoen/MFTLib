@@ -6,6 +6,8 @@ namespace MFTLib.Tests;
 
 public partial class JournalBrokerHostTests
 {
+    static readonly UsnJournalCursor CachedCursor = new(7UL, 100L);
+
     [TestMethod]
     [DataRow("cursor rendering failed")]
     [DataRow("temporary output deleted")]
@@ -26,7 +28,7 @@ public partial class JournalBrokerHostTests
             return new JournalWindow(7UL, 100L, 1000L, 64L, 4096L);
         });
 
-        Assert.AreEqual(message, await ReadStartupErrorAsync(message));
+        Assert.AreEqual(message, await ReadStartupErrorAsync(message, CachedCursor));
         CollectionAssert.AreEqual(new[] { 'C' }, queriedDrives);
     }
 
@@ -43,7 +45,7 @@ public partial class JournalBrokerHostTests
             "Drive C cannot resume its live watch from journal cursor 7:100: " +
             message + ". The records between that cursor and the current journal position " +
             "are gone, so this drive needs a rescan before it can be watched again.",
-            await ReadStartupErrorAsync(message));
+            await ReadStartupErrorAsync(message, CachedCursor));
     }
 
     [TestMethod]
@@ -56,14 +58,11 @@ public partial class JournalBrokerHostTests
             : null);
 
         const string message = "cursor deleted; 1181";
-        Assert.AreEqual(message, await ReadStartupErrorAsync(message));
+        Assert.AreEqual(message, await ReadStartupErrorAsync(message, CachedCursor));
     }
 
     [TestMethod]
-    [DataRow("C:0:0:1")]
-    [DataRow(":7:100:1")]
-    [DataRow("invalid:7:100:1")]
-    public async Task StartWatch_NoQueryableCachedCursor_DoesNotReadJournal(string specification)
+    public async Task StartWatch_NoQueryableCachedCursor_DoesNotReadJournal()
     {
         var queryCount = 0;
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
@@ -73,45 +72,23 @@ public partial class JournalBrokerHostTests
         });
 
         const string message = "cursor operation failed";
-        Assert.AreEqual(message, await ReadStartupErrorAsync(message, specification));
+        Assert.AreEqual(message, await ReadStartupErrorAsync(message, default));
         Assert.AreEqual(0, queryCount);
     }
 
-    async Task<string> ReadStartupErrorAsync(string message, string specification = "C:7:100:1")
+    static async Task<string> ReadStartupErrorAsync(string message, UsnJournalCursor since)
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        await using var client = clientSide;
-        await using var server = serverSide;
-        using var cancellationSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var host = CreateHost(
-            _ => new UsnJournalCursor(7UL, 1000L),
-            (_, _, _) => [],
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            (_, _, _) => throw new InvalidOperationException(message));
+        var host = CreateWatchHost(
+            queryCursor: _ => new UsnJournalCursor(7UL, 1000L),
+            watchDrive: (_, _, _, _) => throw new InvalidOperationException(message));
+        await using var harness = new HostChannelHarness(host);
 
-        await WriteStartWatchAsync(client, specification, cancellationSource.Token);
-        var serveTask = host.ServeAsync(server, CreateSectionWriter(), false, cancellationSource.Token);
-        try
-        {
-            var frame = await ReadOneFrameAsync(client).WaitAsync(cancellationSource.Token);
-            if (frame.Kind == BrokerFrameKind.CaughtUp)
-            {
-                frame = await ReadOneFrameAsync(client).WaitAsync(cancellationSource.Token);
-            }
+        var pipe = await harness.OpenWatchChannelAsync('C', since);
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-            Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
-            Assert.AreEqual(specification.Split(':')[0], frame.Drive);
-            Assert.AreEqual(1U, frame.ArmEpoch);
-            Assert.AreEqual(BrokerFrameKind.EndWatchAck,
-                (await EndWatchAndReadAcknowledgementAsync(client, cancellationSource.Token)).Kind);
-            await ShutdownAsync(client, cancellationSource.Token);
-            await serveTask.WaitAsync(cancellationSource.Token);
-            return frame.RequireMessage();
-        }
-        finally
-        {
-            await cancellationSource.CancelAsync();
-            await serveTask.WaitAsync(TimeSpan.FromSeconds(10));
-        }
+        // A sentinel start reports CaughtUp before its source fails; the Error is always last.
+        Assert.AreEqual(BrokerFrameKind.Error, frames[^1].Kind);
+        Assert.IsTrue(frames.SkipLast(1).All(frame => frame.Kind == BrokerFrameKind.CaughtUp));
+        return frames[^1].RequireMessage();
     }
 }

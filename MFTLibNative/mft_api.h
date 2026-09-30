@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 
 #ifndef EXPORT
@@ -9,7 +10,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 1;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 2;
 
 // Parser-synthesized, not an on-disk NTFS record flag. The flags field carries the
 // raw FILE_RECORD_SEGMENT_HEADER flags, whose defined bits are 0x0001 (in use) and
@@ -30,6 +31,21 @@ enum class MftScanPhase : uint8_t {
 
 using MftProgressCallback = void (*)(MftScanPhase phase, uint64_t recordsScanned, uint64_t totalRecords,
                                      double elapsedMs, void* context);
+
+// Caller-owned, kept in place for the whole parse call. The caller may write either field while
+// the parse runs; the parser only reads them, atomically. cancelRequested nonzero asks the parse
+// to stop. parseThreadAllowance is the thread count for each chunk and for path resolution, read
+// at the start of each: 0 means every processor, any other value is clamped to [1, processors].
+struct MftParseControl {
+    int32_t cancelRequested;
+    int32_t parseThreadAllowance;
+};
+
+static_assert(sizeof(MftParseControl) == 8, "MftParseControl is two 32-bit fields");
+static_assert(offsetof(MftParseControl, cancelRequested) == 0, "cancelRequested leads MftParseControl");
+static_assert(offsetof(MftParseControl, parseThreadAllowance) == 4, "parseThreadAllowance follows cancelRequested");
+static_assert(alignof(MftParseControl) == alignof(int32_t),
+              "MftParseControl fields are shared 32-bit loads and need natural alignment");
 
 #pragma pack(push, 1)
 
@@ -63,6 +79,7 @@ struct MftParseResult {
     uint64_t pathStringUnits;
     uint32_t abiVersion;
     uint32_t entryStride;
+    uint32_t cancelled;  // 1 when the parse stopped because MftParseControl::cancelRequested was set
 };
 
 struct UsnJournalInfo {

@@ -2,164 +2,212 @@ namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
+    /// <summary>
+    ///     Settles every configured drive and returns once each has settled: one task per drive,
+    ///     each reporting <see cref="FileIndexOptions.OpenProgress" /> from its own thread when it
+    ///     settles. The tasks are awaited all together, so a failure or a cancellation is thrown
+    ///     only after every other drive's settle has finished, which is what lets the caller
+    ///     release every block that was adopted. The configured drives are recorded before the
+    ///     first task starts, so no task writes them.
+    /// </summary>
+    async Task SettleDrivesAsync(CancellationToken cancellationToken)
+    {
+        foreach (var drive in _options.Drives)
+        {
+            _driveConfigurations[char.ToUpperInvariant(drive.DriveLetter)] = drive;
+        }
+
+        var total = _options.Drives.Count;
+        var settling = new List<Task>(total);
+        foreach (var drive in _options.Drives)
+        {
+            settling.Add(Task.Run(() => SettleDriveAsync(drive, total, cancellationToken), CancellationToken.None));
+        }
+
+        try
+        {
+            await Task.WhenAll(settling).ConfigureAwait(false);
+        }
+        catch when (cancellationToken.IsCancellationRequested)
+        {
+            // A cancelled open reports its cancellation, whatever else a drive's settle failed with
+            // while the token was being observed.
+            throw new OperationCanceledException(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    ///     Settles one drive, then reports its settled state to
+    ///     <see cref="FileIndexOptions.OpenProgress" /> synchronously on the calling thread with no
+    ///     lock held. The drive's <see cref="IndexDriveOpened.SettledCount" /> was claimed under
+    ///     <see cref="_stateLock" /> when its final state was recorded, so a callback that is slow
+    ///     or blocked holds up no other drive, and reports may overlap and arrive out of count order.
+    /// </summary>
+    async Task SettleDriveAsync(IndexedDrive drive, int total, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await AddDriveAsync(drive, cancellationToken).ConfigureAwait(false);
+        if (_options.OpenProgress is not { } openProgress)
+        {
+            return;
+        }
+
+        var driveLetter = char.ToUpperInvariant(drive.DriveLetter);
+        int settledCount;
+        DriveStatus settled;
+        lock (_stateLock)
+        {
+            settledCount = _settledCountsByLetter[driveLetter];
+            settled = DescribeOnlineDrive(driveLetter) ?? DescribeBlocklessDrive(driveLetter);
+        }
+
+        openProgress.Report(new IndexDriveOpened
+        {
+            DriveLetter = settled.DriveLetter,
+            SettledCount = settledCount,
+            Total = total,
+            BlockSource = settled.BlockSource,
+            State = settled.State
+        });
+    }
+
+    /// <summary>
+    ///     Settles one drive while opening: warm-starts it from its cached block or scans it into a
+    ///     <see cref="PendingDriveResult" /> that nothing shared has seen yet, then adopts that result
+    ///     under <see cref="_stateLock" />, which is where the drive's ordinal is assigned. A drive
+    ///     that ends with no block is recorded by letter as blockless instead.
+    /// </summary>
     async Task AddDriveAsync(IndexedDrive drive, CancellationToken cancellationToken)
     {
         var driveLetter = char.ToUpperInvariant(drive.DriveLetter);
-        _driveConfigurations[driveLetter] = drive;
         if (!Directory.Exists(drive.RootDirectory))
         {
             RecordOfflineDrive(driveLetter);
             return;
         }
 
-        ushort driveOrdinal;
-        lock (_stateLock)
-        {
-            driveOrdinal = (ushort)_driveBlocks.Count;
-        }
-
-        var slotOutcome = ResolveCanonicalOwnership(drive, driveLetter, driveOrdinal);
+        var slotOutcome = ResolveCanonicalOwnership(drive);
         if (slotOutcome == CanonicalSlotOutcome.DeclinedInUse)
         {
+            RecordFailedDrive(driveLetter, DriveFailureKind.InUse, new PendingDriveResult
+            {
+                ProducerFailureMessage =
+                    $"Drive {driveLetter}: cache block is in use by another FileIndex and --cache-only forbids a scan."
+            });
             return;
         }
 
         var ownsCanonicalSlot = slotOutcome == CanonicalSlotOutcome.Owned;
         var warmStart = ownsCanonicalSlot
-            ? TryOpenExistingBlock(drive, driveOrdinal)
+            ? TryOpenExistingBlock(drive)
             : new WarmStartResult(null, null);
-        if (warmStart.DiscardedBlock is { } discardReason)
+        warmStart = RejectUnresumableCheckpoint(driveLetter, warmStart);
+        var opened = new PendingDriveResult
         {
-            lock (_stateLock)
+            DiscardedBlock = warmStart.DiscardedBlock,
+            CheckpointLoss = warmStart.CheckpointLoss,
+            CacheSlot = DescribeCacheSlot(ownsCanonicalSlot)
+        };
+
+        if (warmStart.Block is { } warmStartedBlock)
+        {
+            AdoptOpenedDrive(drive, warmStartedBlock, opened with
             {
-                _discardedBlocksByOrdinal[driveOrdinal] = discardReason;
-            }
+                Block = warmStartedBlock,
+                BlockSource = BlockSource.WarmStartedFromCache,
+                CacheOnlyUnresumable = warmStart.CacheOnlyUnresumable
+            });
+            return;
         }
 
-        warmStart = RejectUnresumableCheckpoint(driveLetter, driveOrdinal, warmStart);
-
-        DriveBlock driveBlock;
-        if (warmStart.DriveBlock is { } warmStartedBlock)
+        if (_options.InitialOpenCacheOnly)
         {
-            driveBlock = warmStartedBlock;
-            lock (_stateLock)
+            var failureKind = warmStart.DiscardedBlock == BlockValidationResult.WrongCacheTag
+                ? DriveFailureKind.CacheTagMismatch
+                : DriveFailureKind.CacheDeclined;
+            RecordFailedDrive(driveLetter, failureKind, opened with
             {
-                _blockSourcesByOrdinal[driveOrdinal] = BlockSource.WarmStartedFromCache;
-            }
-        }
-        else
-        {
-            if (_options.InitialOpenCacheOnly)
-            {
-                lock (_stateLock)
-                {
-                    _mftProducerFailureMessagesByOrdinal[driveOrdinal] =
-                        $"Drive {driveLetter}: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan.";
-                }
-
-                var failureKind = warmStart.DiscardedBlock == BlockValidationResult.WrongCacheTag
-                    ? DriveFailureKind.CacheTagMismatch
-                    : DriveFailureKind.CacheDeclined;
-                RecordFailedDrive(driveLetter, driveOrdinal, failureKind);
-                return;
-            }
-
-            var target = ComputeScanTarget(drive, ownsCanonicalSlot);
-            var scanResult = await ProduceDriveBlockAsync(drive, driveOrdinal, target.Path,
-                target.DeleteOnClose, cancellationToken).ConfigureAwait(false);
-            if (scanResult is not { } completedScan)
-            {
-                RecordFailedDrive(driveLetter, driveOrdinal, DriveFailureKind.ProducerFailed);
-                return;
-            }
-
-            driveBlock = completedScan.DriveBlock;
-            lock (_stateLock)
-            {
-                _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = completedScan.AccessDeniedSubtreeCount;
-                _blockSourcesByOrdinal[driveOrdinal] = BlockSource.ProducedByScan;
-            }
+                ProducerFailureMessage =
+                    $"Drive {driveLetter}: no usable cache (missing, corrupt, or incompatible) and --cache-only forbids a scan."
+            });
+            return;
         }
 
+        await ScanOpenedDriveAsync(drive, ownsCanonicalSlot, opened, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    ///     Adopts an opened drive's settled result: assigns its ordinal (the one of
+    ///     <paramref name="replacing" />, an unpublished block an earlier attempt of the same settle
+    ///     adopted, when there is one), builds its <see cref="DriveBlock" /> over
+    ///     <paramref name="block" />, and records every field of the result against that ordinal in
+    ///     one step under <see cref="_stateLock" />; the adoption that ends the drive's settle, one
+    ///     that held its catch-up or reached the limit, also claims the drive's settle count. The
+    ///     snapshot is published once every drive has settled. Returns the adopted block and the drive's count of lost catch-ups in a row.
+    /// </summary>
+    (DriveBlock Adopted, int ConsecutiveLostCatchUps) AdoptOpenedDrive(IndexedDrive drive, BlockFile block,
+        PendingDriveResult settled, DriveBlock? replacing = null)
+    {
+        var runtime = GetDriveRuntime(drive.DriveLetter);
         lock (_stateLock)
         {
-            _driveBlocks.Add(driveBlock);
-            _cacheSlotsByOrdinal[driveOrdinal] = DescribeCacheSlot(ownsCanonicalSlot);
+            var driveOrdinal = replacing is null ? (ushort)_driveBlocks.Count : replacing.DriveOrdinal;
+            var adopted = BuildDriveBlock(drive, driveOrdinal, block);
+            if (replacing is null)
+            {
+                _driveBlocks.Add(adopted);
+            }
+            else
+            {
+                _driveBlocks[driveOrdinal] = adopted;
+            }
+
+            RecordPendingResultLocked(runtime, driveOrdinal, settled, clearsCheckpointLoss: false);
+            if (settled.CatchUpLoss is null || runtime.ConsecutiveLostCatchUps >= LostCatchUpRecoveryLimit)
+            {
+                ClaimSettledCountLocked(drive.DriveLetter);
+            }
+
+            return (adopted, runtime.ConsecutiveLostCatchUps);
         }
     }
 
     /// <summary>
-    ///     Opens one drive, then reports its settled state to <paramref name="openProgress" />.
-    ///     The settled status is re-read under <see cref="_stateLock" /> through
-    ///     <see cref="DescribeSettledDrive" /> without traversing previously settled drives.
-    ///     If <see cref="AddDriveAsync" /> completed synchronously, progress reports
-    ///     synchronously without allocating an async state machine.
+    ///     What opening a drive's cached block found: the block to adopt, if any; why an existing
+    ///     block was discarded; the journal checkpoint loss that rejected the block, or that a
+    ///     cache-only open adopted it despite, which <see cref="CacheOnlyUnresumable" /> then says.
     /// </summary>
-    Task AddDriveWithProgressAsync(IndexedDrive drive, int openOrdinal, int openTotal,
-        IProgress<IndexDriveOpened> openProgress, CancellationToken cancellationToken)
-    {
-        var task = AddDriveAsync(drive, cancellationToken);
-        if (task.IsCompletedSuccessfully)
-        {
-            ReportSettledDrive(drive, openOrdinal, openTotal, openProgress);
-            return Task.CompletedTask;
-        }
-
-        return ReportSettledDriveAwaitedAsync(task, drive, openOrdinal, openTotal, openProgress);
-    }
-
-    async Task ReportSettledDriveAwaitedAsync(Task task, IndexedDrive drive, int openOrdinal, int openTotal,
-        IProgress<IndexDriveOpened> openProgress)
-    {
-        await task.ConfigureAwait(false);
-        ReportSettledDrive(drive, openOrdinal, openTotal, openProgress);
-    }
-
-    void ReportSettledDrive(IndexedDrive drive, int openOrdinal, int openTotal,
-        IProgress<IndexDriveOpened> openProgress)
-    {
-        var settled = DescribeSettledDrive(char.ToUpperInvariant(drive.DriveLetter));
-        openProgress.Report(new IndexDriveOpened
-        {
-            DriveLetter = settled.DriveLetter,
-            Ordinal = openOrdinal,
-            Total = openTotal,
-            BlockSource = settled.BlockSource,
-            State = settled.State
-        });
-    }
-
-    readonly record struct WarmStartResult(DriveBlock? DriveBlock, BlockValidationResult? DiscardedBlock);
-
-    /// <summary>
-    ///     <paramref name="JournalId" /> and <paramref name="NextUsn" /> are the journal cursor
-    ///     armed before the block was built, already durable in the adopted block's own header
-    ///     (an MFT producer stamps them before its own completion flush; an enumeration block has
-    ///     no journal cursor, so these stay zero, matching the header's initialized default). A
-    ///     later watch starts from this cursor.
-    /// </summary>
-    readonly record struct ScanDriveResult(
-        DriveBlock DriveBlock,
-        int AccessDeniedSubtreeCount,
-        ulong JournalId = 0,
-        long NextUsn = 0);
+    readonly record struct WarmStartResult(
+        BlockFile? Block,
+        BlockValidationResult? DiscardedBlock,
+        JournalCheckpointLoss? CheckpointLoss = null,
+        bool CacheOnlyUnresumable = false);
 
     readonly record struct BlockScanResult(BlockFile Block, EnumerationResult Result);
 
     /// <summary>
-    ///     Picks the producer for one drive's cold scan. Enumeration walks the directory tree;
-    ///     MFT failures return null so the caller can mark only that drive failed. Cancellation
-    ///     always propagates.
+    ///     Picks the producer for one drive's scan and returns what it produced, keyed by nothing:
+    ///     the finished block with its access-denied count and its lost catch-up, or no block and
+    ///     the MFT producer's failure. Enumeration walks the directory tree; an MFT failure is
+    ///     returned so the caller can mark only that drive failed. Cancellation always propagates.
+    ///     The caller builds the <see cref="DriveBlock" /> when it publishes.
     /// </summary>
-    async Task<ScanDriveResult?> ProduceDriveBlockAsync(IndexedDrive drive, ushort driveOrdinal, string blockPath,
-        bool deleteOnClose, CancellationToken cancellationToken)
+    async Task<PendingDriveResult> ProduceDriveBlockAsync(IndexedDrive drive, string blockPath, bool deleteOnClose,
+        CancellationToken cancellationToken)
     {
         if (_options.ProducerPolicy == ProducerPolicy.Enumeration)
         {
-            return await Task
-                .Run(() => ScanDrive(drive, driveOrdinal, blockPath, deleteOnClose, cancellationToken),
+            using var walkLease = await EnumerationWalkLimit.EnterAsync(cancellationToken).ConfigureAwait(false);
+            var (scannedBlock, walked) = await Task
+                .Run(() => CreateAndPopulateBlock(drive, blockPath, deleteOnClose, cancellationToken),
                     cancellationToken)
                 .ConfigureAwait(false);
+            return new PendingDriveResult
+            {
+                Block = scannedBlock,
+                BlockSource = BlockSource.ProducedByScan,
+                AccessDeniedSubtreeCount = walked.AccessDeniedSubtreeCount
+            };
         }
 
         var producer = _options.MftProducer ?? throw new InvalidOperationException(
@@ -168,50 +216,38 @@ public sealed partial class FileIndex
 
         try
         {
-            var mftScanResult = await RunMftProducerAsync(drive, driveOrdinal, blockPath, deleteOnClose, producer,
-                cancellationToken).ConfigureAwait(false);
-            lock (_stateLock)
+            var produced = await RunMftProducerAsync(drive, blockPath, deleteOnClose, producer, cancellationToken)
+                .ConfigureAwait(false);
+            return new PendingDriveResult
             {
-                _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
-            }
-
-            return mftScanResult;
+                Block = produced.Block,
+                BlockSource = BlockSource.ProducedByScan,
+                AccessDeniedSubtreeCount = produced.SkippedRecordCount,
+                CatchUpLoss = produced.CatchUpLoss
+            };
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            lock (_stateLock)
-            {
-                _mftProducerFailureMessagesByOrdinal[driveOrdinal] = exception.Message;
-            }
-
-            return null;
+            return new PendingDriveResult { ProducerFailure = exception, ProducerFailureMessage = exception.Message };
         }
     }
 
     /// <summary>
-    ///     Runs the MFT producer for one drive and adopts its finished block exactly as a warm
-    ///     start or an enumeration scan would: ownership passes to a new reference-counted
-    ///     <see cref="DriveBlock" />. <paramref name="producer" />'s own
-    ///     <see cref="MftBlockProduceResult.SkippedRecordCount" /> is surfaced as this drive's
-    ///     access-denied subtree count, the same warning slot an enumeration walk uses for
-    ///     records it could not place. <see cref="MftBlockProduceResult.JournalId" /> and
-    ///     <see cref="MftBlockProduceResult.NextUsn" /> are already durable in the returned
-    ///     <see cref="MftBlockProduceResult.Block" />'s header by the time it gets here (the
-    ///     producer stamps them before its own <c>Complete()</c> call, the one flush-safe place to
-    ///     do it), so this method does not write them again.
-    ///     <see cref="MftBlockProduceResult.CompactionNeeded" /> is intentionally not read here
-    ///     either: <see cref="DescribeDrive" /> derives <see cref="DriveStatus.CompactionNeeded" />
-    ///     from the header's own <see cref="BlockFlags.CompactionNeeded" /> flag, which the
-    ///     producer sets on the block directly (the same way <see cref="EnumerationProducer" />
-    ///     does via <see cref="BlockWriter.MarkCompactionNeeded" />), so this result field would be
-    ///     a redundant second copy of that same flag rather than a value this method needs to act
-    ///     on. The cursor is instead used for a consistency check once <see cref="ScanDriveResult" />
-    ///     is built: a producer that reports one cursor but stamped a different one into the block
-    ///     it built violated its own contract, and that must not go unnoticed any more than an
-    ///     on-disk block that fails validation would. It is treated as a producer failure, not
-    ///     adopted as a warning on an otherwise-trusted block.
+    ///     Runs the MFT producer for one drive and checks its finished block before anything adopts
+    ///     it. <see cref="MftBlockProduceResult.JournalId" /> and <see cref="MftBlockProduceResult.NextUsn" />
+    ///     are already durable in the returned <see cref="MftBlockProduceResult.Block" />'s header by
+    ///     the time it gets here (the producer stamps them before its own <c>Complete()</c> call, the
+    ///     one flush-safe place to do it), so this method does not write them again.
+    ///     <see cref="MftBlockProduceResult.CompactionNeeded" /> is not read either:
+    ///     <see cref="DescribeDrive" /> derives <see cref="DriveStatus.CompactionNeeded" /> from the
+    ///     header's own <see cref="BlockFlags.CompactionNeeded" /> flag, which the producer sets on
+    ///     the block directly. The cursor is instead used for a consistency check: a producer that
+    ///     reports one cursor but stamped a different one into the block it built violated its own
+    ///     contract, and that must not go unnoticed any more than an on-disk block that fails
+    ///     validation would. It is treated as a producer failure, not adopted as a warning on an
+    ///     otherwise-trusted block.
     /// </summary>
-    async Task<ScanDriveResult> RunMftProducerAsync(IndexedDrive drive, ushort driveOrdinal, string blockPath,
+    async Task<MftBlockProduceResult> RunMftProducerAsync(IndexedDrive drive, string blockPath,
         bool deleteOnClose, MftBlockProducer producer, CancellationToken cancellationToken)
     {
         var request = new MftBlockProduceRequest
@@ -227,22 +263,11 @@ public sealed partial class FileIndex
         var produceResult = await producer(request, cancellationToken).ConfigureAwait(false);
         ValidateProducedCacheTag(produceResult, blockPath);
 
-        // produceResult.Block's ownership passes directly to the DriveBlock built here, which
-        // releases it through the reference-counted Release() (see DriveBlock's own summary),
-        // not through IDisposable.
-        var driveBlock = new DriveBlock(drive.DriveLetter, driveOrdinal, produceResult.Block,
-            rootDirectoryPath: drive.RootDirectory);
-        var scanResult = new ScanDriveResult(driveBlock, produceResult.SkippedRecordCount, produceResult.JournalId,
-            produceResult.NextUsn);
-
-        var header = driveBlock.Block.Header;
-        if (header.UsnJournalId != scanResult.JournalId || header.UsnNextUsn != scanResult.NextUsn)
+        var header = produceResult.Block.Header;
+        if (header.UsnJournalId != produceResult.JournalId || header.UsnNextUsn != produceResult.NextUsn)
         {
-            // The block was already adopted into driveBlock above, but never handed to
-            // _driveBlocks (reference count is still zero), so it is released the same way
-            // ReleaseUnpublishedBlocks unwinds an unpublished block: disposing Block directly,
-            // not through the reference-counted Release().
-            driveBlock.Block.Dispose();
+            // Nothing has adopted the block yet, so its mapping is closed directly.
+            produceResult.Block.Dispose();
 
             // The producer already Complete()d this block before this check ran, so it would
             // pass BlockHeader.Validate like any other valid block. Deleting it here, mirroring
@@ -252,16 +277,16 @@ public sealed partial class FileIndex
                 "the MFT producer's block failed the journal cursor consistency check");
             throw new InvalidOperationException(
                 $"The MFT producer's block header carries journal cursor ({header.UsnJournalId}, " +
-                $"{header.UsnNextUsn}) but its result reported cursor ({scanResult.JournalId}, " +
-                $"{scanResult.NextUsn}). A producer that contradicts its own block cannot be trusted.");
+                $"{header.UsnNextUsn}) but its result reported cursor ({produceResult.JournalId}, " +
+                $"{produceResult.NextUsn}). A producer that contradicts its own block cannot be trusted.");
         }
 
-        return scanResult;
+        return produceResult;
     }
 
     /// <summary>
     ///     Drops a warm-start candidate whose journal checkpoint the journal no longer holds,
-    ///     recording why. Adopting such a block arms a watch that dies on its first read and
+    ///     returning why in the result. Adopting such a block arms a watch that dies on its first read and
     ///     rescans anyway, with nothing left to tell the consumer why; rejecting it here
     ///     rescans once and keeps the reason. Only an MFT-backed block carries a checkpoint:
     ///     an enumeration block is not watched through the journal, so nothing about it can
@@ -270,15 +295,16 @@ public sealed partial class FileIndex
     ///         <see cref="FileIndexOptions.InitialOpenCacheOnly" /> forbids the scan that would
     ///         otherwise follow a rejection, so the reasoning above does not apply to it: a
     ///         cache-only open never watches, and the block is still a correct snapshot as of
-    ///         its age, so it is adopted anyway rather than failing the drive. The ordinal is
-    ///         recorded in <see cref="_cacheOnlyUnresumableCheckpointOrdinals" /> so a later
-    ///         <see cref="StartWatchingAsync" /> does not silently arm a watch from a cursor the
+    ///         its age, so it is adopted anyway rather than failing the drive. The result says so,
+    ///         and the adoption marks the block unresumable in
+    ///         <see cref="_unresumableCheckpointsByOrdinal" /> so a later
+    ///         <see cref="StartWatchingAsync(char, CancellationToken)" /> refuses to start a watch from a cursor the
     ///         journal no longer holds.
     ///     </para>
     /// </summary>
-    WarmStartResult RejectUnresumableCheckpoint(char driveLetter, ushort driveOrdinal, WarmStartResult warmStart)
+    WarmStartResult RejectUnresumableCheckpoint(char driveLetter, WarmStartResult warmStart)
     {
-        if (warmStart.DriveBlock is not { ProducerKind: ProducerKind.Mft } candidate)
+        if (warmStart.Block is not { } candidate || candidate.Header.ProducerKind != ProducerKind.Mft)
         {
             return warmStart;
         }
@@ -286,7 +312,7 @@ public sealed partial class FileIndex
         var accepted = false;
         try
         {
-            ref readonly var header = ref candidate.Block.Header;
+            ref readonly var header = ref candidate.Header;
             if (JournalCheckpointCheck.Check(driveLetter, header.UsnJournalId, header.UsnNextUsn,
                     JournalCheckpointLossDetection.DriveOpening) is not { } loss)
             {
@@ -294,42 +320,32 @@ public sealed partial class FileIndex
                 return warmStart;
             }
 
-            lock (_stateLock)
-            {
-                _checkpointLossesByOrdinal[driveOrdinal] = loss;
-            }
-
             if (_options.InitialOpenCacheOnly)
             {
-                lock (_stateLock)
-                {
-                    _cacheOnlyUnresumableCheckpointOrdinals.Add(driveOrdinal);
-                }
-
                 accepted = true;
-                return warmStart;
+                return warmStart with { CheckpointLoss = loss, CacheOnlyUnresumable = true };
             }
 
-            return new WarmStartResult(null, warmStart.DiscardedBlock);
+            return new WarmStartResult(null, warmStart.DiscardedBlock, loss);
         }
         finally
         {
             if (!accepted)
             {
-                // An unpublished candidate owns no references; close its mapping directly.
-                candidate.Block.Dispose();
+                // An unadopted candidate owns no references; close its mapping directly.
+                candidate.Dispose();
             }
         }
     }
 
-    WarmStartResult TryOpenExistingBlock(IndexedDrive drive, ushort driveOrdinal)
+    WarmStartResult TryOpenExistingBlock(IndexedDrive drive)
     {
         var path = CanonicalBlockPath(drive);
         var existedBeforeOpen = File.Exists(path);
 
-        // Ownership of a successfully opened block passes directly to the DriveBlock built in
-        // the same expression below, which releases it through the reference-counted Release()
-        // (see DriveBlock's own summary), not through IDisposable.
+        // Ownership of a successfully opened block passes to the DriveBlock its adoption builds,
+        // which releases it through the reference-counted Release() (see DriveBlock's own
+        // summary), not through IDisposable.
         if (BlockFile.Open(path, drive.VolumeSerial, out var validation) is { } block)
         {
             if (block.Header.CacheTag != _options.CacheTag)
@@ -348,8 +364,7 @@ public sealed partial class FileIndex
                 }
             }
 
-            return new WarmStartResult(
-                new DriveBlock(drive.DriveLetter, driveOrdinal, block, rootDirectoryPath: drive.RootDirectory), null);
+            return new WarmStartResult(block, null);
         }
 
         if (validation != BlockValidationResult.WrongMagic || existedBeforeOpen)
@@ -360,27 +375,6 @@ public sealed partial class FileIndex
         // A block is only "discarded" when one genuinely existed and was rejected; a first-ever
         // scan with nothing at the path is not a discard.
         return new WarmStartResult(null, existedBeforeOpen ? validation : null);
-    }
-
-    /// <summary>
-    ///     Cold-scans one drive: obtains a freshly populated block from
-    ///     <see cref="CreateAndPopulateBlock" /> and hands its ownership to a new reference-counted
-    ///     <see cref="DriveBlock" />, reporting that block together with the number of subtrees the
-    ///     scan could not enter. Nothing is caught here, so a failed or cancelled scan propagates
-    ///     with no block to release: <see cref="CreateAndPopulateBlock" /> has already disposed the
-    ///     partially written one.
-    /// </summary>
-    ScanDriveResult ScanDrive(IndexedDrive drive, ushort driveOrdinal, string blockPath, bool deleteOnClose,
-        CancellationToken cancellationToken)
-    {
-        var (block, result) = CreateAndPopulateBlock(drive, blockPath, deleteOnClose, cancellationToken);
-
-        // block's ownership passes directly to the DriveBlock built here, which releases it
-        // through the reference-counted Release() (see DriveBlock's own summary), not through
-        // IDisposable.
-        return new ScanDriveResult(
-            new DriveBlock(drive.DriveLetter, driveOrdinal, block, rootDirectoryPath: drive.RootDirectory),
-            result.AccessDeniedSubtreeCount);
     }
 
     /// <summary>
@@ -419,7 +413,7 @@ public sealed partial class FileIndex
             });
 
             var result = producer.Produce(writer, _options.Progress, cancellationToken);
-            writer.Complete(DateTime.UtcNow);
+            writer.Complete(DateTime.UtcNow, null);
             var completed = new BlockScanResult(block, result);
             block = null;
             return completed;

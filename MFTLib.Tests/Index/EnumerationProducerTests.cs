@@ -66,7 +66,7 @@ public class EnumerationProducerTests
         });
 
         result = producer.Produce(created.Writer, progress: null, CancellationToken.None);
-        created.Writer.Complete(new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc));
+        created.Writer.Complete(new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc), null);
         return Snapshot.Create([new DriveBlock('T', 0, block, rootDirectoryPath: _treeRoot)]);
     }
 

@@ -1,4 +1,3 @@
-using System.Reflection;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -6,11 +5,10 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     The rescan failure paths around the swap gate and the renamed-aside cache file: a
-///     commit cancelled at the swap gate restores the canonical file, a restore that cannot
+///     The rescan failure paths around the drive's write gate and the renamed-aside cache file: a
+///     commit cancelled at the write gate restores the canonical file, a restore that cannot
 ///     delete a locked replacement stays best-effort, a blockless drive's cancelled adoption
-///     leaves it blockless, and reclaiming a session whose pump recorded a subscriber fault
-///     swallows that fault so the rescan can start a fresh session.
+///     leaves it blockless.
 /// </summary>
 [TestClass]
 public class FileIndexRescanCleanupTests
@@ -51,7 +49,7 @@ public class FileIndexRescanCleanupTests
     }
 
     [TestMethod]
-    public async Task RescanAsync_CancelledAtTheSwapGate_RestoresTheRenamedAsideCacheFile()
+    public async Task RescanAsync_CancelledAtTheWriteGate_RestoresTheRenamedAsideCacheFile()
     {
         var producedBlocks = new List<BlockFile>();
         var producerReturned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -78,14 +76,13 @@ public class FileIndexRescanCleanupTests
         var canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 1));
         Assert.IsTrue(File.Exists(canonicalPath), "the cold scan wrote the canonical cache file");
 
-        var swapGate = SwapGateOf(index);
-        await swapGate.WaitAsync(Token);
+        await index.WaitForDriveWriteGateForTest('T');
         try
         {
             using var rescanCancellation = new CancellationTokenSource();
             var rescan = index.RescanAsync('T', rescanCancellation.Token);
 
-            // The rescan has produced its replacement block and is parked at the swap gate.
+            // The rescan has produced its replacement block and is parked at the write gate.
             await producerReturned.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
             await rescanCancellation.CancelAsync();
 
@@ -101,7 +98,7 @@ public class FileIndexRescanCleanupTests
         }
         finally
         {
-            swapGate.Release();
+            index.ReleaseDriveWriteGateForTest('T');
         }
     }
 
@@ -148,10 +145,12 @@ public class FileIndexRescanCleanupTests
         Assert.IsTrue(File.Exists(canonicalPath));
 
         failTheScan.Value = true;
-        await index.RescanAsync('T', Token);
+        var thrown = await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+            () => index.RescanAsync('T', Token));
 
         try
         {
+            Assert.AreSame(producerFailure, thrown.InnerException);
             var drive = index.Drives.Single();
             Assert.AreEqual("the producer lost the volume", drive.MftProducerFailureMessage);
             Assert.AreEqual(DriveState.Ready, drive.State,
@@ -166,7 +165,7 @@ public class FileIndexRescanCleanupTests
     }
 
     [TestMethod]
-    public async Task RescanAsync_CacheDeclinedDriveCancelledAtTheSwapGate_StaysBlockless()
+    public async Task RescanAsync_CacheDeclinedDriveCancelledAtTheWriteGate_StaysBlockless()
     {
         var producerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var producerMayReturn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -191,8 +190,7 @@ public class FileIndexRescanCleanupTests
         Assert.AreEqual(DriveState.Failed, declined.State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, declined.FailureKind);
 
-        var swapGate = SwapGateOf(index);
-        await swapGate.WaitAsync(Token);
+        await index.WaitForDriveWriteGateForTest('T');
         try
         {
             using var rescanCancellation = new CancellationTokenSource();
@@ -200,7 +198,7 @@ public class FileIndexRescanCleanupTests
 
             await producerEntered.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
             // Cancel before the producer returns: the scan completes normally, and the
-            // cancellation is observed by the commit's swap-gate wait.
+            // cancellation is observed by the commit's write-gate wait.
             await rescanCancellation.CancelAsync();
             producerMayReturn.TrySetResult();
 
@@ -211,7 +209,7 @@ public class FileIndexRescanCleanupTests
             }
             catch (OperationCanceledException)
             {
-                // Expected: the commit's swap-gate wait observes the cancellation. The
+                // Expected: the commit's write-gate wait observes the cancellation. The
                 // concrete subtype differs between a pre-cancelled and a parked wait.
             }
 
@@ -229,100 +227,34 @@ public class FileIndexRescanCleanupTests
             // awaiting it, and DisposeAsync then hangs waiting on that rescan instead of the
             // test reporting the real failure.
             producerMayReturn.TrySetResult();
-            swapGate.Release();
+            index.ReleaseDriveWriteGateForTest('T');
         }
     }
 
-    [TestMethod]
-    public async Task RescanAsync_WhenTheEndedSessionRecordedASubscriberFault_CarriesItIntoAFreshSession()
-    {
-        using var harness = new WatchHarness();
-        var subscriberFault = new InvalidOperationException("the subscriber blew up");
-        harness.Index.Changed += _ => throw subscriberFault;
-        await harness.Index.StartWatchingAsync(Token);
-        await harness.SourceStartedAsync();
-
-        // The subscriber fault is recorded and the pump keeps going; when the source then
-        // ends, the pump completes with the fault latched for the next stop.
-        await harness.PublishAsync(WatchHarness.Batch('T', 9, "fresh.txt"));
-        await harness.CompleteSourceAsync();
-        await harness.SourceEndedAsync();
-        await harness.WaitForPumpToCompleteAsync();
-
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
-
-        // The reclaimed session's pump launches via Task.Yield() (FileIndex.WatchPump.PumpAsync),
-        // deliberately releasing the state lock before the fresh source connects, so RescanAsync
-        // returning does not itself guarantee the second StartWatching call has run yet. Wait for
-        // that fresh session to actually start before reading the invocation count it bumps.
-        await harness.SourceStartedAsync();
-
-        Assert.AreEqual(2, harness.SourceInvocationCount,
-            "the rescan reclaimed the ended session and started a fresh one");
-        Assert.AreEqual(DriveState.Ready, harness.Index.Drives.Single().State);
-
-        // The rescan recovers its drive, not the subscriber, so the stop still reports it.
-        var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => harness.Index.StopWatchingAsync(Token));
-        Assert.AreSame(subscriberFault, thrown);
-    }
-
     /// <summary>
-    ///     The reclaim path's stop has nothing to rethrow when the pump ended with no fault:
-    ///     the watch's caller token was cancelled, ending the watch quietly while leaving the
-    ///     session claimed, and the rescan's stop of it returns normally.
+    ///     A drive whose watch ended without a stop reads faulted; a rescan replaces its block and,
+    ///     since the watch is still requested, restarts it from the fresh cursor, which clears the
+    ///     faulted catch-up and the failure message.
     /// </summary>
-    [TestMethod]
-    public async Task RescanAsync_WhenTheWatchsCallerTokenEndedTheSession_ReclaimsItWithoutAFault()
-    {
-        using var harness = new WatchHarness();
-        using var watchCancellation = new CancellationTokenSource();
-        await harness.Index.StartWatchingAsync(watchCancellation.Token);
-        await harness.SourceStartedAsync();
-
-        await watchCancellation.CancelAsync();
-        await harness.SourceEndedAsync();
-        await harness.WaitForPumpToCompleteAsync();
-
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
-        await harness.Index.RescanAsync('T', Token);
-
-        Assert.AreEqual(DriveState.Ready, harness.Index.Drives.Single().State);
-        Assert.IsNull(harness.Index.Drives.Single().WatchFailureMessage);
-    }
-
     [TestMethod]
     public async Task RescanAsync_AfterTheSourceEndedWithoutAStop_ClearsTheStaleFaultedCatchUp()
     {
         using var harness = new WatchHarness();
-        var announced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        harness.Index.WatchFaulted += _ => announced.TrySetResult();
-        await harness.Index.StartWatchingAsync(Token);
-        await harness.SourceStartedAsync();
-
-        // The source ending without a stop faults every watched drive's catch-up and
-        // releases the session, leaving the faulted slot behind.
-        await harness.CompleteSourceAsync();
-        await announced.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.Index.Drives.Single().WatchCatchUp);
-        Assert.IsNotNull(harness.Index.Drives.Single().WatchFailureMessage);
+        await harness.Index.StartWatchingAsync('T', Token);
+        harness.Source.HandleFor('T').End();
+        await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
+        Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
 
         harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
-        var drive = harness.Index.Drives.Single();
+        var drive = harness.DriveFor('T');
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUp,
-            "the rescan removes the stale faulted slot with no session to arm onto");
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.WatchCatchUp,
+            "the rescan replaced the faulted watch with one started from the fresh cursor");
         Assert.IsNull(drive.WatchFailureMessage);
-    }
-
-    static SemaphoreSlim SwapGateOf(FileIndex index)
-    {
-        var swapGateField = typeof(FileIndex).GetField("_swapGate",
-            BindingFlags.NonPublic | BindingFlags.Instance)!;
-        return (SemaphoreSlim)swapGateField.GetValue(index)!;
+        Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.StartsFor('T')[^1]);
     }
 
     static void WriteBlock(string path, uint volumeSerial, ulong journalId, long nextUsn)
@@ -347,7 +279,7 @@ public class FileIndexRescanCleanupTests
                 new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
                     ModifiedTicks: moment.Ticks, SequenceNumber: 0));
             writer.SetJournalCursor(journalId, nextUsn);
-            writer.Complete(moment);
+            writer.Complete(moment, null);
         }
     }
 }

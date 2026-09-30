@@ -198,7 +198,7 @@ public class MockVolumeTests
 
         Assert.ThrowsException<ObjectDisposedException>(volume.ReadAllRecords);
         Assert.ThrowsException<ObjectDisposedException>(() => volume.FindByName("test"));
-        Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords());
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None));
         Assert.ThrowsException<ObjectDisposedException>(() => volume.FindDirectories("test").ToList());
         Assert.ThrowsException<ObjectDisposedException>(() => volume.FindFiles("test").ToList());
         Assert.ThrowsException<ObjectDisposedException>(() => volume.FindRecords("test").ToList());
@@ -318,7 +318,7 @@ public class MockVolumeTests
         SetupMocks();
 
         using var volume = MftVolume.Open("C");
-        using var stream = volume.StreamRecords();
+        using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
 
         Assert.AreEqual(3UL, stream.TotalRecords);
         Assert.AreEqual(3UL, stream.UsedRecords);
@@ -334,7 +334,7 @@ public class MockVolumeTests
         SetupMocks(2);
 
         using var volume = MftVolume.Open("C");
-        using var stream = volume.StreamRecords();
+        using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
 
         var count = 0;
         foreach (var item in (IEnumerable)stream)
@@ -352,7 +352,7 @@ public class MockVolumeTests
         SetupMocks();
 
         using var volume = MftVolume.Open("C");
-        using var stream = volume.StreamRecords();
+        using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
 
         // 3 records * 50 bytes + string units (file0.txt=9, file1.txt=9, file2.txt=9 = 27 units * 2 bytes = 54)
         // 150 + 54 = 204 bytes
@@ -365,7 +365,7 @@ public class MockVolumeTests
         SetupMocks(3, true);
 
         using var volume = MftVolume.Open("C");
-        using var stream = volume.StreamRecords();
+        using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
 
         // With paths: pathEntries (3 * 50 = 150) + pathStrings (dir\file0.txt=13, 13, 13 = 39 units * 2 bytes = 78)
         // 150 + 78 = 228 bytes
@@ -378,7 +378,7 @@ public class MockVolumeTests
         SetupMocks();
 
         using var volume = MftVolume.Open("C");
-        var stream = volume.StreamRecords();
+        var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
         stream.Dispose();
 
         Assert.AreEqual(3UL, stream.TotalRecords);
@@ -688,7 +688,7 @@ public class MockVolumeTests
     {
         SetupMocks(withPaths: true);
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
+        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
 
         var records = new List<MftRecord>();
         foreach (var record in result)
@@ -823,7 +823,7 @@ public class MockVolumeTests
         Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            using var result = volume.StreamRecords();
+            using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
             _ = result.MaterializeBatches(batchSize).ToList();
         });
     }
@@ -833,7 +833,7 @@ public class MockVolumeTests
     {
         SetupMocks(5);
         using var volume = MftVolume.Open("C");
-        var result = volume.StreamRecords();
+        var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
         result.Dispose();
 
         Assert.ThrowsException<ObjectDisposedException>(() =>
@@ -845,7 +845,7 @@ public class MockVolumeTests
     {
         SetupMocks(7);
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
+        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
 
         var batches = result.MaterializeBatches(3).ToList();
 
@@ -868,7 +868,7 @@ public class MockVolumeTests
     {
         SetupMocks(5, true);
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords();
+        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
 
         var batches = result.MaterializeBatches(2).ToList();
 
@@ -887,7 +887,7 @@ public class MockVolumeTests
     {
         SetupMocks();
         using var volume = MftVolume.Open("C");
-        var result = volume.StreamRecords();
+        var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
         var batches = result.MaterializeBatches(2).ToList();
         result.Dispose();
 
@@ -905,7 +905,7 @@ public class MockVolumeTests
         volume.Dispose();
 
         Assert.ThrowsException<ObjectDisposedException>(() =>
-            volume.ReadRecordBatches().ToList());
+            volume.ReadRecordBatches(false, 4096, null, null, CancellationToken.None).ToList());
     }
 
     [DataTestMethod]
@@ -917,7 +917,7 @@ public class MockVolumeTests
         Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            _ = volume.ReadRecordBatches(batchSize: batchSize).ToList();
+            _ = volume.ReadRecordBatches(false, batchSize, null, null, CancellationToken.None).ToList();
         });
     }
 
@@ -926,7 +926,7 @@ public class MockVolumeTests
     {
         SetupMocks(7);
         using var volume = MftVolume.Open("C");
-        var batches = volume.ReadRecordBatches(batchSize: 3).ToList();
+        var batches = volume.ReadRecordBatches(false, 3, null, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(3, batches.Count);
         Assert.AreEqual(3, batches[0].Length);
@@ -946,7 +946,7 @@ public class MockVolumeTests
     {
         SetupMocks(4, true);
         using var volume = MftVolume.Open("C");
-        var batches = volume.ReadRecordBatches(resolvePaths: true, 2).ToList();
+        var batches = volume.ReadRecordBatches(resolvePaths: true, 2, null, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(2, batches.Count);
         var concatenated = batches.SelectMany(b => b).ToArray();
@@ -984,7 +984,7 @@ public class MockVolumeTests
 
         using var volume = MftVolume.Open("C");
         MftRecord[]? firstBatch = null;
-        foreach (var batch in volume.ReadRecordBatches(batchSize: 3))
+        foreach (var batch in volume.ReadRecordBatches(false, 3, null, null, CancellationToken.None))
         {
             firstBatch = batch;
             break;
@@ -1034,7 +1034,7 @@ public class MockVolumeTests
             MFTLibNative._freeMftResult = _ => { };
 
             using var volume = MftVolume.Open("T");
-            using var stream = volume.StreamRecords();
+            using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
             var record = stream.First();
 
             Assert.AreEqual("file.txt", record.FileName);
@@ -1082,7 +1082,7 @@ public class MockVolumeTests
             MFTLibNative._freeMftResult = _ => { };
 
             using var volume = MftVolume.Open("C");
-            using var stream = volume.StreamRecords();
+            using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
             var record = stream.First();
 
             Assert.AreEqual(".", record.FileName);
@@ -1132,7 +1132,7 @@ public class MockVolumeTests
             MFTLibNative._freeMftResult = _ => { };
 
             using var volume = MftVolume.Open("C");
-            using var stream = volume.StreamRecords();
+            using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
             var record = stream.First();
 
             Assert.AreEqual(".", record.FileName);

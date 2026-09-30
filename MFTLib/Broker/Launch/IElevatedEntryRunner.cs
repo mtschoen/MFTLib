@@ -9,10 +9,9 @@ namespace MFTLib;
 public interface IElevatedEntryRunner
 {
     /// <summary>
-    ///     Serve the journal broker over the named pipe <paramref name="pipeName" /> the
-    ///     non-elevated caller created. When <paramref name="oneShot" /> is set the broker
-    ///     returns after a single arm-and-scan (a single-UAC CLI-style path); otherwise it
-    ///     serves until the caller sends Shutdown (a persistent GUI-style path).
+    ///     Serve the journal broker over the control pipe <paramref name="controlPipeName" /> the
+    ///     non-elevated caller created, until that pipe closes. Drive pipes are named on the
+    ///     control pipe as the caller opens them.
     /// </summary>
-    void RunBroker(string? pipeName, bool oneShot);
+    void RunBroker(string? controlPipeName);
 }

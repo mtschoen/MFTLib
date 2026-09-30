@@ -6,110 +6,66 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.Index;
 
 /// <summary>
-///     A drive that was healthy when its rescan began but faulted while the rescan's producer was
-///     still running. The rescan's entry-time check saw no fault, so these pin that a failed
-///     production still leaves the newer fault, and the old cursor it condemns, alone.
+///     A drive that was healthy when its rescan began and whose retiring pump then fails while
+///     applying a batch it had already accepted. The retired pump's fault belongs to no current
+///     watch, so it is not recorded against the drive, and the failed production still restarts
+///     the healthy watch from its old cursor.
 /// </summary>
 [TestClass]
 [DoNotParallelize]
 public class FileIndexWatchRescanFaultDuringProductionTests
 {
-    static readonly IndexWatchTarget[] TwoDrives =
-        [new('T', 11, 4242), new('U', 22, 8484)];
-
     public TestContext TestContext { get; set; } = null!;
-    CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    static DriveStatus DriveFor(WatchHarness harness, char letter) =>
-        harness.Index.Drives.Single(drive => drive.DriveLetter == letter);
+    CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     static IDisposable LostCheckpointForT() =>
         JournalCheckpointCheck.OverrideJournalForTest(letter => letter == 'T'
-            ? new JournalWindow(11, FirstUsn: 5000, NextUsn: 8000,
+            ? new JournalWindow(WatchHarness.JournalId, FirstUsn: 5000, NextUsn: 8000,
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024)
             : null);
 
-    /// <summary>
-    ///     "running": T's already-delivered batch fails to apply mid-production while U keeps the
-    ///     session alive. "ended": the same with T as the only drive, so the fault ends the session.
-    ///     "stream-ended": the source completes mid-production, which faults every target,
-    ///     including the disarmed T.
-    /// </summary>
-    [DataTestMethod]
-    [DataRow("running")]
-    [DataRow("ended")]
-    [DataRow("stream-ended")]
-    public async Task FaultRecordedDuringFailedProduction_IsKeptAndOldCursorIsNotRearmed(string shape)
+    [TestMethod]
+    public async Task ApplyFailureOfTheRetiringPump_DuringRescan_IsNotRecordedAndTheWatchRestartsFromTheOldCursor()
     {
-        using var harness = new WatchHarness(shape == "ended" ? [TwoDrives[0]] : TwoDrives);
+        using var harness = new WatchHarness('T', 'U');
         using var journal = LostCheckpointForT();
-        var faultAnnounced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        harness.Index.WatchFaulted += fault =>
-        {
-            if (shape == "stream-ended" ? fault.Kind == WatchFaultKind.Source : fault.DriveLetter == 'T')
-            {
-                faultAnnounced.TrySetResult();
-            }
-        };
-        await harness.Index.StartWatchingAsync(Token);
-        await harness.SourceStartedAsync();
+        await harness.Index.StartWatchingAsync('T', Token);
+        await harness.Index.StartWatchingAsync('U', Token);
 
-        // The batch passes the source's arm-generation check before the rescan disarms T, which
-        // is what a real stream does with an item it has already handed to the pump. Its apply
-        // is parked until the rescan's producer is running, then fails.
+        // The pump accepts a batch and parks inside its apply. The rescan retires the watch and
+        // waits for that pump, so the apply fails only once the rescan is under way.
         var applyFailure = new IOException("T's in-flight batch could not be applied");
         var applyGate = new TestGate();
-        Task? consumed = null;
-        if (shape != "stream-ended")
-        {
-            consumed = harness.Queue(new JournalBatch('T', new GatedFailingEntries(applyGate, applyFailure),
-                JournalId: 11, NextUsn: 4300));
-            await applyGate.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
-        }
+        var consumed = harness.Source.HandleFor('T').Queue(new JournalBatch(
+            new GatedFailingEntries(applyGate, applyFailure), WatchHarness.JournalId, WatchHarness.NextUsn + 300));
+        await applyGate.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
 
         var original = harness.Index.Root('T').DriveBlock;
         harness.FailNextProduction('T', new IOException("rescan producer failed"));
-        var production = harness.HoldNextProduction('T');
         var rescan = harness.Index.RescanAsync('T', Token);
-        await production.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
-        Assert.IsNull(DriveFor(harness, 'T').WatchFailureMessage);
-        var operationOffset = harness.WatchOperations.Count;
-        CollectionAssert.Contains(harness.WatchOperations.ToArray(), "disarm:T");
+        Assert.IsFalse(rescan.IsCompleted, "the rescan waits for the retiring pump to drain");
 
-        if (consumed is not null)
-        {
-            applyGate.Release();
-            await consumed.WaitAsync(FakeIndexWatchSource.HangGuard);
-        }
-        else
-        {
-            await harness.CompleteSourceAsync();
-        }
+        applyGate.Release();
+        await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+            () => rescan.WaitAsync(FakeIndexWatchSource.HangGuard));
+        await consumed.WaitAsync(FakeIndexWatchSource.HangGuard);
 
-        await faultAnnounced.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
-        var faulted = DriveFor(harness, 'T');
-        Assert.IsNotNull(faulted.WatchFailureMessage);
-        Assert.IsNotNull(faulted.CheckpointLoss);
-        Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, faulted.CheckpointLoss.DetectedDuring);
-
-        production.Release();
-        await rescan.WaitAsync(FakeIndexWatchSource.HangGuard);
-
-        CollectionAssert.DoesNotContain(harness.WatchOperations.Skip(operationOffset).ToArray(), "arm:T");
-        Assert.AreEqual(1, harness.SourceInvocationCount);
-        var after = DriveFor(harness, 'T');
+        Assert.AreEqual(0, harness.Faults.Count(fault => fault.DriveLetter == 'T'),
+            "the retired pump's failure belongs to no current watch");
+        var after = harness.DriveFor('T');
         Assert.AreSame(original, harness.Index.Root('T').DriveBlock);
         Assert.AreEqual("rescan producer failed", after.MftProducerFailureMessage);
-        Assert.AreEqual(faulted.WatchFailureMessage, after.WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.Faulted, after.WatchCatchUp);
-        Assert.AreEqual(faulted.CheckpointLoss, after.CheckpointLoss);
+        Assert.IsNull(after.WatchFailureMessage);
+        Assert.IsNull(after.CheckpointLoss, "the retired pump's fault ran no checkpoint check");
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, after.WatchCatchUp);
+        var starts = harness.Source.StartsFor('T');
+        Assert.AreEqual(2, starts.Count);
+        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn), starts[1]);
 
-        if (shape != "stream-ended")
-        {
-            var stopFailure = await Assert.ThrowsExceptionAsync<IOException>(
-                () => harness.Index.StopWatchingAsync(Token));
-            Assert.AreSame(applyFailure, stopFailure);
-        }
+        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 4500));
+        Assert.AreEqual(4500L, harness.BlockFor('T').Header.UsnNextUsn);
+        await harness.Index.StopWatchingAsync('T', Token);
     }
 
     /// <summary>

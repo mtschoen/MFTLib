@@ -173,4 +173,111 @@ public class FileIndexDriveStatusTests
 
         Assert.AreEqual(1, index.Drives[0].AccessDeniedSubtreeCount);
     }
+
+    [TestMethod]
+    public async Task Drives_CallerListMutatedAfterOpen_LeavesTheIndexUnchanged()
+    {
+        var configured = new List<IndexedDrive> { new('T', _treeRoot, 0x0BADF00D) };
+        var options = new FileIndexOptions
+        {
+            Drives = configured,
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration
+        };
+        var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
+        try
+        {
+            var before = index.Drives.Select(drive => drive.DriveLetter).ToArray();
+
+            configured.Add(new IndexedDrive('U', _treeRoot, 0x0BADF00E));
+
+            CollectionAssert.AreEqual(before, index.Drives.Select(drive => drive.DriveLetter).ToArray());
+            CollectionAssert.AreEqual(new[] { 'T' }, before);
+        }
+        finally
+        {
+            await index.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    /// <summary>
+    ///     A caller-owned drive list that can be enumerated exactly once; any later enumeration
+    ///     throws, so an index that reads the caller's list after taking its private copy fails.
+    /// </summary>
+    sealed class EnumerableOnceDriveList(params IndexedDrive[] drives) : IReadOnlyList<IndexedDrive>
+    {
+        int _enumerationCount;
+
+        public int EnumerationCount => _enumerationCount;
+
+        public int Count => drives.Length;
+
+        public IndexedDrive this[int index] => drives[index];
+
+        public IEnumerator<IndexedDrive> GetEnumerator()
+        {
+            if (Interlocked.Increment(ref _enumerationCount) > 1)
+            {
+                throw new InvalidOperationException("The caller's drive list was enumerated a second time.");
+            }
+
+            return ((IEnumerable<IndexedDrive>)drives).GetEnumerator();
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    [TestMethod]
+    public async Task OpenAsync_CallerDriveListEnumerableOnlyOnce_OpensFromTheFirstEnumeration()
+    {
+        var configured = new EnumerableOnceDriveList(
+            new IndexedDrive('Z', Path.Combine(_treeRoot, "absent"), 1),
+            new IndexedDrive('T', _treeRoot, 0x0BADF00D));
+        var options = new FileIndexOptions
+        {
+            Drives = configured,
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration
+        };
+
+        var index = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+        try
+        {
+            var statuses = index.Drives;
+
+            Assert.AreEqual(1, configured.EnumerationCount);
+            CollectionAssert.AreEqual(new[] { 'Z', 'T' },
+                statuses.Select(drive => drive.DriveLetter).ToArray());
+            Assert.AreEqual(DriveState.Offline, statuses[0].State);
+            Assert.AreEqual(DriveState.Ready, statuses[1].State);
+        }
+        finally
+        {
+            await index.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    /// <summary>
+    ///     A read of <see cref="FileIndex.Drives" /> that a disposal overtakes before the read
+    ///     takes the index's state lock reports the disposal, not a drive the disposal already
+    ///     unpublished.
+    /// </summary>
+    [TestMethod]
+    public async Task Drives_DisposalCompletesBeforeTheReadTakesTheStateLock_ThrowsObjectDisposed()
+    {
+        var index = await FileIndex.OpenAsync(Options(), TestContext.CancellationTokenSource.Token)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+        var disposals = 0;
+        index.DrivesReadBeforeLockForTest = () =>
+        {
+            if (Interlocked.Increment(ref disposals) == 1)
+            {
+                index.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+            }
+        };
+
+        Assert.ThrowsException<ObjectDisposedException>(() => index.Drives);
+        Assert.AreEqual(1, disposals);
+    }
 }

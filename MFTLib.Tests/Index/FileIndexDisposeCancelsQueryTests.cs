@@ -405,7 +405,7 @@ public class FileIndexDisposeCancelsQueryTests
             }
 
             writer.SetJournalCursor(7, 4096);
-            writer.Complete(FixedMoment);
+            writer.Complete(FixedMoment, null);
         }
 
         return BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;

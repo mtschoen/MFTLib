@@ -230,17 +230,11 @@ public sealed class JournalMutator
     ///     alongside <c>ModifiedTicks</c> here is intentional (plan decision 10), not an
     ///     oversight: a non-create, non-delete, non-rename USN reason is exactly the case where
     ///     attribute metadata can have changed without the name or the parent changing.
+    ///     <see cref="ApplyOne" /> calls this only for a classification that still holds a reason
+    ///     other than Close and RenameOldName.
     /// </summary>
     FileChange? ApplyModification(Snapshot snapshot, ushort driveOrdinal, UsnJournalEntry entry, uint rowIndex)
     {
-        // Close on its own is bookkeeping, not a content change, and RenameOldName is the
-        // paired frame whose RenameNewName sibling already carries the rename.
-        var meaningful = entry.Reason & ~(UsnReason.Close | UsnReason.RenameOldName);
-        if (meaningful == UsnReason.None)
-        {
-            return null;
-        }
-
         if (!TryHydrateRow(entry, rowIndex, out _))
         {
             return null;

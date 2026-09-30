@@ -229,6 +229,44 @@ public partial class UsnJournalSyntheticTests
         Assert.AreEqual(1400, entries.Length);
     }
 
+    [TestMethod]
+    public void ReadUsnJournal_MaximumBufferReadsOne_StopsAfterOneRead()
+    {
+        UseFakeHandle();
+        QueueSuccess(BuildReadBuffer(2000, (100, 5, 1000, 0x00000100u, "first.txt")));
+        QueueSuccess(BuildReadBuffer(3000, (200, 5, 2000, 0x00000100u, "second.txt")));
+        QueueSuccess(BuildReadBuffer(4000, (300, 5, 3000, 0x00000100u, "third.txt")));
+
+        using var volume = MftVolume.Open("C");
+        var (firstEntries, firstCursor) = volume.ReadUsnJournalBounded(Cursor, 1);
+
+        Assert.AreEqual(1, firstEntries.Length);
+        Assert.AreEqual("first.txt", firstEntries[0].FileName);
+        Assert.AreEqual(2000L, firstCursor.NextUsn);
+
+        var (secondEntries, secondCursor) = volume.ReadUsnJournalBounded(firstCursor, 1);
+
+        Assert.AreEqual(1, secondEntries.Length);
+        Assert.AreEqual("second.txt", secondEntries[0].FileName);
+        Assert.AreEqual(3000L, secondCursor.NextUsn);
+    }
+
+    [TestMethod]
+    public void ReadUsnJournal_MaximumBufferReadsZero_ReadsToTip()
+    {
+        UseFakeHandle();
+        QueueSuccess(BuildReadBuffer(2000, (100, 5, 1000, 0x00000100u, "first.txt")));
+        QueueSuccess(BuildReadBuffer(3000, (200, 5, 2000, 0x00000100u, "second.txt")));
+        QueueSuccess(BuildReadBuffer(4000, (300, 5, 3000, 0x00000100u, "third.txt")));
+        QueueSuccess(BuildReadBuffer(4000));
+
+        using var volume = MftVolume.Open("C");
+        var (entries, cursor) = volume.ReadUsnJournalBounded(Cursor, 0);
+
+        Assert.AreEqual(3, entries.Length);
+        Assert.AreEqual(4000L, cursor.NextUsn);
+    }
+
     static byte[] BuildManyRecords(long startUsn, long nextUsn, int count)
     {
         using var ms = new MemoryStream();

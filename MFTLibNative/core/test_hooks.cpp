@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <mutex>
 #include <thread>
 
 #include "../internal.h"
+#include "../mft_api.h"
 
 namespace {
 unsigned g_maxThreads = 0;
@@ -16,6 +19,17 @@ int g_failPathConversion = 0;
 int g_failPlatformReadCountdown = 0;
 int g_failPlatformWrite = 0;
 uint32_t g_volumeRecordSizeOverride = 0;
+// What the most recent parse used per chunk and for path resolution. Chunks past the
+// array's capacity are not recorded; a parse only resets and appends, so it never blocks.
+std::mutex g_parseThreadCountsMutex;
+std::array<unsigned, 1024> g_chunkThreadCounts = {};
+unsigned g_chunkThreadCountLength = 0;
+unsigned g_resolveThreadCount = 0;
+// While armed, each parse cancellation check decrements the countdown, and the check that takes
+// it from 1, and every check after it, reports cancelled. Atomic because parse workers check
+// concurrently; unarmed, a check costs one relaxed load.
+std::atomic<bool> g_cancelCheckCountdownArmed{false};
+std::atomic<int> g_cancelCheckCountdown{0};
 #ifdef _WIN32
 DWORD g_usnIoFailError = 0;
 int g_usnIoFailCountdown = 0;
@@ -33,13 +47,37 @@ int g_usnGateReadNumber = 0;
 #endif
 }  // namespace
 
-unsigned EffectiveThreadCount() {
-    unsigned threadCount = std::thread::hardware_concurrency();
-    threadCount = std::max<unsigned int>(threadCount, 1);
+unsigned EffectiveThreadCount(const MftParseControl* control) {
+    const unsigned processorCount = std::max<unsigned int>(std::thread::hardware_concurrency(), 1);
+    unsigned threadCount = processorCount;
+    if (control != nullptr) {
+        const int32_t allowance = LoadSharedInt32(&control->parseThreadAllowance);
+        if (allowance != 0) {
+            threadCount = static_cast<unsigned>(std::clamp<int64_t>(allowance, 1, processorCount));
+        }
+    }
     if (g_maxThreads > 0 && g_maxThreads < threadCount) {
         threadCount = g_maxThreads;
     }
     return threadCount;
+}
+
+void ResetRecordedParseThreadCounts() {
+    std::scoped_lock lock(g_parseThreadCountsMutex);
+    g_chunkThreadCountLength = 0;
+    g_resolveThreadCount = 0;
+}
+
+void RecordChunkThreadCount(unsigned threadCount) {
+    std::scoped_lock lock(g_parseThreadCountsMutex);
+    if (g_chunkThreadCountLength < g_chunkThreadCounts.size()) {
+        g_chunkThreadCounts[g_chunkThreadCountLength++] = threadCount;
+    }
+}
+
+void RecordResolveThreadCount(unsigned threadCount) {
+    std::scoped_lock lock(g_parseThreadCountsMutex);
+    g_resolveThreadCount = threadCount;
 }
 
 bool ShouldFailAlloc() {
@@ -47,6 +85,11 @@ bool ShouldFailAlloc() {
         return false;
     }
     return --g_allocFailCountdown == 0;
+}
+
+bool ShouldForceCancel() {
+    return g_cancelCheckCountdownArmed.load(std::memory_order_relaxed) &&
+           g_cancelCheckCountdown.fetch_sub(1, std::memory_order_relaxed) <= 1;
 }
 
 bool ShouldFailRead() {
@@ -144,6 +187,25 @@ EXPORT void SetFailPathConversion(int fail) { g_failPathConversion = fail; }
 EXPORT void SetFailPlatformRead(int countdown) { g_failPlatformReadCountdown = countdown; }
 EXPORT void SetFailPlatformWrite(int fail) { g_failPlatformWrite = fail; }
 EXPORT void SetVolumeRecordSizeOverride(uint32_t recordSize) { g_volumeRecordSizeOverride = recordSize; }
+EXPORT void SetCancelCheckCountdown(int countdown) {
+    g_cancelCheckCountdown = countdown;
+    g_cancelCheckCountdownArmed = countdown > 0;
+}
+
+// Copies the thread count each chunk of the most recent parse used, in order, into counts
+// and returns how many were copied (at most capacity).
+EXPORT unsigned GetChunkThreadCounts(unsigned* counts, unsigned capacity) {
+    std::scoped_lock lock(g_parseThreadCountsMutex);
+    const unsigned copied = (std::min)(capacity, g_chunkThreadCountLength);
+    std::copy_n(g_chunkThreadCounts.begin(), copied, counts);
+    return copied;
+}
+
+// The thread count path resolution of the most recent parse used; 0 when it did not run.
+EXPORT unsigned GetResolveThreadCount() {
+    std::scoped_lock lock(g_parseThreadCountsMutex);
+    return g_resolveThreadCount;
+}
 #ifdef _WIN32
 // C-ABI test hook; (error, countdown) order is fixed by the C# P/Invoke harness.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
@@ -182,6 +244,9 @@ EXPORT void ResetTestState() {
     g_failPlatformReadCountdown = 0;
     g_failPlatformWrite = 0;
     g_volumeRecordSizeOverride = 0;
+    ResetRecordedParseThreadCounts();
+    g_cancelCheckCountdownArmed = false;
+    g_cancelCheckCountdown = 0;
     g_usnIoFailError = 0;
     g_usnIoFailCountdown = 0;
     g_usnIoHead = 0;
@@ -204,6 +269,9 @@ EXPORT void ResetTestState() {
     g_failPlatformReadCountdown = 0;
     g_failPlatformWrite = 0;
     g_volumeRecordSizeOverride = 0;
+    ResetRecordedParseThreadCounts();
+    g_cancelCheckCountdownArmed = false;
+    g_cancelCheckCountdown = 0;
 }
 #endif
 }

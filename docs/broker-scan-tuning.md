@@ -1,55 +1,84 @@
-# Sizing blocks and customizing watch cursors
+# Sizing broker scans
 
-Reference material for [the broker integration guide](broker-integration.md): planning a
-cold-scan block's capacity, and replacing the drive set a session watches while parked.
+Reference material for [the broker integration guide](broker-integration.md):
+planning a cold-scan block, understanding the broker's parse-thread budget, and
+recovering when the journal outruns scan catch-up.
 
 ## Sizing the block
 
-Before a cold scan, `JournalBrokerClient` queries the elevated broker for each volume's
-MFT geometry, then creates a file-backed named section using the corresponding
-`BrokerScanOptions.BlockTargets` destination. Targets are required for every drive.
-`MftBlockCapacity.Plan` estimates rows from `MftRecordCount`, with a minimum of 65,536
-when information is absent or smaller. Slot capacity adds 25 percent or 65,536 rows,
-whichever is larger. The default name estimate is 48 bytes per slot, then name-pool
-headroom adds 25 percent or one mebibyte, whichever is larger. A failed volume query
-currently uses the minimum estimate; capacity exhaustion marks the block for compaction
-and reports skipped records. Treat that as a reason to rescan.
+Before a cold scan, `BrokerProcess.ScanDriveAsync` queries the elevated broker
+for the drive's MFT geometry and creates a file-backed named section at the
+`BlockScanTarget` path. `BrokerMftBlockProducer` creates that target from the
+path, volume serial, delete-on-close choice, and cache tag in the index's
+`MftBlockProduceRequest`.
 
-A volume's NTFS geometry and MFT sizing can also be queried directly, without arming a
-scan, via `JournalBrokerClient.QueryVolumesAsync` or (already elevated, no broker involved)
-`NtfsVolumeInformation.Query`. Note that `QueryVolumesAsync` populates only MFT sizing
-(`MftValidDataLength`, `BytesPerFileRecordSegment`, and derived `MftRecordCount`) for block
-capacity planning; cluster and sector geometry fields (`BytesPerSector`, `BytesPerCluster`,
-`TotalClusters`, `FreeClusters`) are not sent over the broker protocol and are set to zero.
+`MftBlockCapacity.Plan` estimates rows from `MftRecordCount`, with a minimum of
+65,536 when information is absent or smaller. Slot capacity adds 25 percent or
+65,536 rows, whichever is larger. The default name estimate is 48 bytes per
+slot, then name-pool headroom adds 25 percent or one mebibyte, whichever is
+larger. Capacity exhaustion marks the block for compaction and reports skipped
+records. Treat that as a reason to rescan.
 
-## Customizing watch cursors: ReplaceWatchCursors and WatchCursors
+A drive's MFT sizing can also be queried without starting a scan through
+`BrokerProcess.QueryVolumeAsync`. The broker protocol returns
+`MftValidDataLength`, `BytesPerFileRecordSegment`, and the derived
+`MftRecordCount`; cluster and sector geometry fields (`BytesPerSector`,
+`BytesPerCluster`, `TotalClusters`, and `FreeClusters`) are zero. Code that is
+already elevated can call `NtfsVolumeInformation.Query` directly for the full
+geometry.
 
-By default, `StartWatchAsync` watches every drive armed during the latest scan (or
-supplied at warm start) using its advanced cursor. `ReplaceWatchCursors` lets an
-application replace the complete watch set while parked - for example, when a user
-selects or deselects individual drives:
+## Concurrent scans and parse threads
 
-```csharp
-// Read back what the session is currently configured to watch:
-IReadOnlyDictionary<string, UsnJournalCursor> current = session.WatchCursors;
+Every scan has its own drive channel. The host owns one process-wide parse-thread
+budget equal to its processor count. At most that many scans run at once, so
+every admitted scan has at least one parse thread; additional scan channels wait
+in admission order and continue receiving heartbeats.
 
-// Replace with a custom or narrowed set:
-session.ReplaceWatchCursors(new Dictionary<string, UsnJournalCursor>
-{
-    ["C"] = cachedCursorC,
-    ["D"] = advancedCursorD
-});
+When `n` scans run, the host divides the budget among them. Each scan gets the
+processor count divided by `n`, with the remainder assigned in admission order.
+Whenever a scan starts, finishes, or is cancelled, the host rebalances every
+running scan's `ParseThreadAllowance`.
 
-await session.StartWatchAsync(cancellationToken);
-```
+The native parser reads its current allowance at the start of every MFT chunk
+and before path resolution. A chunk already in progress finishes with the count
+it started with, so admission can make the total briefly exceed the processor
+count for at most one chunk. Callers do not choose a thread count:
+`BrokerScanOptions`, `MftBlockProduceRequest`, and the broker wire request carry
+none. The same allocator governs open scans, single-drive and batched rescans,
+and automatic recovery scans.
 
-Keys passed to `ReplaceWatchCursors` are normalized (bare letter, case-insensitive) and
-the call replaces rather than merges the previous set. An empty dictionary is accepted,
-in which case `StartWatchAsync` will throw `InvalidOperationException` ("No drives to
-watch"). Keys that do not represent a valid drive letter (e.g. malformed paths, null
-keys, delimiters, non-letter strings) throw `ArgumentException`.
+## Lost scan catch-up
 
-Note the interaction with rescans: `RescanAsync` overwrites the watch set with its own
-scan result's `AdvancedCursors`. A consumer that maintains a narrowed or custom drive
-selection should call `ReplaceWatchCursors` again after each rescan to preserve the
-selection.
+The host captures a journal cursor before scanning, completes the block, and
+then reads catch-up from that cursor in bounded chunks. Each successful bounded
+read that advances the cursor restarts the channel's progress clock. A read that
+returns entries without advancing its cursor fails catch-up instead of accepting
+duplicate entries.
+
+When catch-up fails, the host asks the live journal whether the armed cursor is
+gone. A proven trimmed or recreated journal produces a catch-up-loss result. A
+cursor that is still retained, or a journal query that cannot answer, leaves the
+failure as an ordinary scan error.
+
+`FileIndex` publishes the complete block from a proven loss, marks it
+unresumable, raises `WatchFaultKind.CatchUpLost` when handlers exist, and rescans
+the drive. A successful catch-up resets
+`DriveStatus.ConsecutiveLostCatchUps`. After
+`FileIndex.LostCatchUpRecoveryLimit` consecutive losses, automatic retries stop,
+and the block stays queryable but cannot be watched. A manual or recovery rescan
+at the limit leaves the drive `WatchCatchUpState.Faulted`. During
+`FileIndex.OpenAsync`, the same retry loop settles the drive `DriveState.Ready`
+with the last block at the limit rather than failing the whole open, while its
+watch catch-up state is already `WatchCatchUpState.Faulted`. A later
+`StartWatchingAsync` is refused until `RescanAsync` succeeds. The consumer then
+calls `StartWatchingAsync` again.
+
+The `JournalCatchUpLostException.CheckpointLoss` report tells the consumer what
+happened. For `JournalCheckpointLossCause.CheckpointTrimmed`, a non-null
+`SizeThatWouldHaveRetained` is the minimum size that would have kept the cursor.
+After user consent, grow the journal through
+`BrokerProcess.GrowUsnJournalAsync`, choosing a maximum greater than the current
+`UsnJournalSettings.MaximumSize` and at least the suggested size. Then rescan the
+drive. Journal growth cannot recover records already discarded, so the rescan is
+required. If watching had been refused over the unresumable block, call
+`FileIndex.StartWatchingAsync` again after the successful rescan.

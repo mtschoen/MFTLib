@@ -14,8 +14,35 @@ namespace MFTLib.Tests.Index;
 ///     <c>IndexedDriveTests</c>: it satisfies CA1416 and is inert at runtime.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 public class UsnJournalSettingsQueryLiveTests
 {
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public void Query_HostIsNotWindows_ThrowsPlatformNotSupported()
+    {
+        var exception = Assert.ThrowsException<PlatformNotSupportedException>(
+            () => UsnJournalSettingsQuery.Query('C', isWindows: false));
+
+        StringAssert.Contains(exception.Message, "FSCTL_QUERY_USN_JOURNAL");
+    }
+
+    /// <summary>
+    ///     The platform-taking query reads nothing but its arguments: an installed override
+    ///     answers the public entry point and is never consulted by the platform-taking one.
+    /// </summary>
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public void Query_OverrideInstalled_AnswersThePublicEntryAndNotThePlatformTakingQuery()
+    {
+        var overridden = new UsnJournalSettings { MaximumSize = 7, AllocationDelta = 3 };
+        using var restore = UsnJournalSettingsQuery.OverrideQueryForTest(_ => overridden);
+
+        Assert.AreEqual(overridden, UsnJournalSettingsQuery.Query('C'));
+        Assert.ThrowsException<PlatformNotSupportedException>(
+            () => UsnJournalSettingsQuery.Query('C', isWindows: false));
+    }
+
     [TestMethod]
     [SupportedOSPlatform("windows")]
     public void Query_OnRealVolume_ReturnsSettingsUnelevated()

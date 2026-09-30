@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -16,8 +15,6 @@ public partial class JournalBrokerHostRealSeamsTests
     [TestMethod]
     public async Task ServeAsync_ScanAndCatchUp_UseRealMftVolumeSeams()
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
-
         var queryInfo = new UsnJournalInfoNative { JournalId = 0xABCD, NextUsn = 5000 };
         var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
         Marshal.StructureToPtr(queryInfo, queryPtr, false);
@@ -26,23 +23,9 @@ public partial class JournalBrokerHostRealSeamsTests
 
         var parsePtr = BuildThreeNameRecordsResult();
         MFTLibNative._parseMftRecords = (_, _, _, _) => parsePtr;
-        MFTLibNative._freeMftResult = ptr =>
-        {
-            var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
-            if (parsed.Entries != IntPtr.Zero)
-            {
-                Marshal.FreeHGlobal(parsed.Entries);
-            }
+        MockFreeMftResult();
 
-            if (parsed.EntryStrings != IntPtr.Zero)
-            {
-                Marshal.FreeHGlobal(parsed.EntryStrings);
-            }
-
-            Marshal.FreeHGlobal(ptr);
-        };
-
-        using var writer = CreateSectionWriter();
+        using var writer = new RecordingBlockSectionWriter();
         var frames = await ServeDefaultScanAsync(writer);
 
         var cursor = frames.Single(frame => frame.Kind == BrokerFrameKind.Cursor).Cursor;
@@ -60,8 +43,6 @@ public partial class JournalBrokerHostRealSeamsTests
     [TestMethod]
     public async Task ServeAsync_DefaultSource_AdaptsNativeProgressWithoutPathResolution()
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
-
         var queryInfo = new UsnJournalInfoNative { JournalId = 7UL, NextUsn = 100 };
         var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
         Marshal.StructureToPtr(queryInfo, queryPtr, false);
@@ -69,35 +50,22 @@ public partial class JournalBrokerHostRealSeamsTests
         MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
 
         var parsePtr = BuildThreeNameRecordsResult();
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, flags, _, callback, context) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, flags, _, _, callback) =>
         {
             Assert.AreEqual(MatchFlags.None, flags);
-            callback?.Invoke(MftScanPhase.Parsing, 200, 300, 42.0, context);
-            callback?.Invoke(MftScanPhase.Parsing, 300, 300, 45.0, context);
+            callback?.Invoke(MftScanPhase.Parsing, 200, 300, 42.0, IntPtr.Zero);
+            callback?.Invoke(MftScanPhase.Parsing, 300, 300, 45.0, IntPtr.Zero);
             return parsePtr;
         };
-        MFTLibNative._freeMftResult = ptr =>
-        {
-            var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
-            if (parsed.Entries != IntPtr.Zero)
-            {
-                Marshal.FreeHGlobal(parsed.Entries);
-            }
+        MockFreeMftResult();
 
-            if (parsed.EntryStrings != IntPtr.Zero)
-            {
-                Marshal.FreeHGlobal(parsed.EntryStrings);
-            }
-
-            Marshal.FreeHGlobal(ptr);
-        };
-
-        using var writer = CreateSectionWriter();
+        using var writer = new RecordingBlockSectionWriter();
         var frames = await ServeDefaultScanAsync(writer);
         var reports = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress)
             .Select(frame => frame.Progress!.Value).ToArray();
-        // Intermediate parsing reports may be coalesced before the pump reads them.
-        // The final report must retain native totals, independent of the three written rows.
+
+        // Intermediate parsing reports may be coalesced before the pump reads them. The final
+        // report must retain native totals, independent of the three written rows.
         Assert.AreEqual(300L, reports[^1].RecordsProcessed);
         Assert.AreEqual(300L, reports[^1].TotalRecords);
         Assert.AreEqual(BrokerScanPhase.Transferring, reports[^1].Phase);
@@ -111,40 +79,41 @@ public partial class JournalBrokerHostRealSeamsTests
         FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
         MockWatchJournalTip();
 
+        // The watch's third read blocks like a live kernel wait until the watch is cancelled.
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var callCount = 0;
         MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
         {
-            callCount++;
-            return callCount == 1
-                ? BuildEmptyWatchResult(journalId, startUsn)
-                : BuildSingleEntryWatchResult(journalId, startUsn + 100, "watched.txt", 0x100 /* FileCreate */);
+            switch (Interlocked.Increment(ref callCount))
+            {
+                case 1:
+                    return BuildEmptyWatchResult(journalId, startUsn);
+                case 2:
+                    return BuildSingleEntryWatchResult(journalId, startUsn + 100, "watched.txt", 0x100 /* FileCreate */);
+                default:
+                    cancelled.Task.Wait(HostChannelHarness.HangGuard);
+                    return BuildEmptyWatchResult(journalId, startUsn);
+            }
         };
-        MFTLibNative._cancelUsnJournalWatch = _ => true;
+        MFTLibNative._cancelUsnJournalWatch = _ =>
+        {
+            cancelled.TrySetResult();
+            return true;
+        };
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
-
-        var host = JournalBrokerHost.CreateDefault();
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
         // The cached cursor precedes the queried tip, so the batch must precede CaughtUp.
-        var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
-        await clientSide.WriteAsync(request.WrittenMemory);
-        await clientSide.FlushAsync();
+        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 100));
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
+        var batch = await HostChannelHarness.ReadFrameAsync(pipe);
+        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch?.Kind);
+        Assert.AreEqual("watched.txt", batch!.Value.Entries[0].FileName);
+        var caughtUp = await HostChannelHarness.ReadFrameAsync(pipe);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp?.Kind);
 
-        var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
-        Assert.AreEqual("watched.txt", frame.Entries[0].FileName);
-
-        var caughtUp = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp.Kind);
-        Assert.AreEqual("C", caughtUp.Drive);
-        Assert.AreEqual(1U, caughtUp.ArmEpoch);
-
-        await cts.CancelAsync();
-        await serveTask; // ServeAsync swallows OperationCanceledException internally
+        await pipe.DisposeAsync(); // the client closing its pipe cancels the watch
+        await cancelled.Task.WaitAsync(HostChannelHarness.HangGuard); // closing the pipe cancels the native watch
     }
 
     [TestMethod]
@@ -153,43 +122,40 @@ public partial class JournalBrokerHostRealSeamsTests
         FileUtilities._getVolumeHandle = _ => FakeHandle();
         FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
         MockWatchJournalTip();
-        // Not a `using var`: the token is captured by the WatchUsnJournalBatch mock
-        // below, so it is disposed explicitly at the end instead - safe because that
-        // Dispose() runs only after ServeAsync (which drives the mock) completes.
-        var cts = new CancellationTokenSource();
-        Action cancel = cts.Cancel;
 
+        // The kernel wait comes back only when the watch is cancelled, with an empty batch while
+        // already cancelled. MftVolume.WatchUsnJournalWithCursor treats that as a clean end, distinct
+        // from a cancelled Task.Run throwing OperationCanceledException.
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watchEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
         {
-            // Simulate cancellation racing the kernel wait: cancel, then return an
-            // empty batch. MftVolume.WatchUsnJournalWithCursor treats "empty batch +
-            // already cancelled" as a clean `yield break`, distinct from a cancelled
-            // Task.Run throwing OperationCanceledException.
-            cancel();
+            watchEntered.TrySetResult();
+            cancelled.Task.Wait(HostChannelHarness.HangGuard);
             return BuildEmptyWatchResult(journalId, startUsn);
         };
-        MFTLibNative._cancelUsnJournalWatch = _ => true;
+        MFTLibNative._cancelUsnJournalWatch = _ =>
+        {
+            cancelled.TrySetResult();
+            return true;
+        };
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
+        await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
+        var pipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 100));
+        await watchEntered.Task.WaitAsync(HostChannelHarness.HangGuard);
 
-        var host = JournalBrokerHost.CreateDefault();
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        // Ending the session cancels the channel while the read is blocked.
+        await harness.CloseControlAsync();
+        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteStartWatch(request, "C:7:100:1");
-        await clientSide.WriteAsync(request.WrittenMemory, cts.Token);
-        await clientSide.FlushAsync(cts.Token);
-
-        // ServeAsync's own token is the same source: once the watch ends cleanly,
-        // the outer serve loop unwinds too (its blocked read gets cancelled).
-        await host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
-        cts.Dispose();
+        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error),
+            "A watch cancelled between empty batches ends without reporting a failure.");
     }
 
     [TestMethod]
     public async Task ServeAsync_DefaultSource_IncludesRootDirectoryRow()
     {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
-
         var queryInfo = new UsnJournalInfoNative { JournalId = 0x1234, NextUsn = 1000 };
         var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
         Marshal.StructureToPtr(queryInfo, queryPtr, false);
@@ -238,24 +204,10 @@ public partial class JournalBrokerHostRealSeamsTests
             Marshal.StructureToPtr(parseResult, parsePtr, false);
 
             MFTLibNative._parseMftRecords = (_, _, _, _) => parsePtr;
-            MFTLibNative._freeMftResult = ptr =>
-            {
-                var parsed = Marshal.PtrToStructure<MftParseResult>(ptr);
-                if (parsed.Entries != IntPtr.Zero)
-                {
-                    Marshal.FreeHGlobal(parsed.Entries);
-                }
-
-                if (parsed.EntryStrings != IntPtr.Zero)
-                {
-                    Marshal.FreeHGlobal(parsed.EntryStrings);
-                }
-
-                Marshal.FreeHGlobal(ptr);
-            };
+            MockFreeMftResult();
         }
 
-        using var writer = CreateSectionWriter();
+        using var writer = new RecordingBlockSectionWriter();
         await ServeDefaultScanAsync(writer);
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, writer.Block.Rows[5].Flags);
         Assert.AreEqual(5u, writer.Block.Rows[5].ParentRow);
@@ -267,20 +219,20 @@ public partial class JournalBrokerHostRealSeamsTests
 
     /// <summary>
     ///     Owns the CountdownEvent and per-drive cancellation signals for
-    ///     <see cref="ServeAsync_EndWatch_AcrossSeveralArmedDrives_SynchronousAbort_EmitsZeroErrorFramesBeforeAck" />.
+    ///     <see cref="ServeAsync_SessionEnd_AcrossSeveralWatchChannels_SynchronousAbort_EmitsZeroErrorFrames" />.
     ///     Exposing the seam behavior as instance methods, assigned by method group rather than by an inline
     ///     lambda, means the native delegates never directly close over the CountdownEvent that method disposes.
-    ///     Production cancels each armed drive's native read independently: <c>MftVolume.Journal.cs</c> opens a
+    ///     Production cancels each watched drive's native read independently: <c>MftVolume.Journal.cs</c> opens a
     ///     dedicated watch handle per drive and its cancellation registration calls
     ///     <c>MFTLibNative._cancelUsnJournalWatch</c> with that drive's own handle only, never a sibling's. The
     ///     cancellation signal here is keyed the same way, by the <see cref="SafeHandle" /> instance each drive
-    ///     was armed with (<see cref="FakeHandle" /> returns a distinct instance per call even though every
+    ///     was watched with (<see cref="FakeHandle" /> returns a distinct instance per call even though every
     ///     instance wraps the same raw value 1, so reference identity is a valid key). Releasing all three drives
     ///     off one shared signal let a drive whose own token had not yet flipped
     ///     <c>CancellationToken.IsCancellationRequested</c> unblock on a sibling's cancel, loop back, and call
-    ///     <see cref="WatchUsnJournalBatchCancelable" /> a second time after the countdown had already reached
-    ///     zero, throwing <see cref="InvalidOperationException" /> out of the watch loop and surfacing as an
-    ///     Error frame instead of the deliberate-stop's normal empty stream end.
+    ///     the watch read a second time after the countdown had already reached zero, throwing
+    ///     <see cref="InvalidOperationException" /> out of the watch loop and surfacing as an
+    ///     Error frame instead of the deliberate stop's normal empty stream end.
     /// </summary>
     sealed class SynchronousAbortWatchSeam : IDisposable
     {
@@ -319,8 +271,8 @@ public partial class JournalBrokerHostRealSeamsTests
         }
 
         // Safety net for the outer test timeout: releases every drive currently blocked, and
-        // marks future arrivals so a drive that has not called WatchUsnJournalBatchCancelable
-        // yet does not block forever on a signal this method could not have created early.
+        // marks future arrivals so a drive that has not called the watch read yet does not block
+        // forever on a signal this method could not have created early.
         public void CancelOnTimeout()
         {
             _timedOut = true;
@@ -361,6 +313,7 @@ public partial class JournalBrokerHostRealSeamsTests
         uint? capturedIoctl = null;
         long capturedMaximum = 0;
         long capturedDelta = 0;
+
         bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
             uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
         {
@@ -376,33 +329,23 @@ public partial class JournalBrokerHostRealSeamsTests
             MFTLibNative._queryUsnJournal = _ => ++queryCount == 1 ? preChange : postChange;
             MFTLibNative._freeUsnJournalInfo = _ => { }; // the two buffers are freed by this test
             Kernel32._deviceIoControl = FakeDeviceIoControl;
+            await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
-            var host = JournalBrokerHost.CreateDefault();
-            var (clientSide, serverSide) = DuplexStream.CreatePair();
-            var request = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteGrowUsnJournal(request, "C", 0x400000, 0x200000);
-            await clientSide.WriteAsync(request.WrittenMemory);
-            await clientSide.FlushAsync();
-
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
-
-            var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
+            await harness.SendControlAsync(writer =>
+                BrokerProtocol.WriteGrowUsnJournal(writer, 6, "C", 0x400000, 0x200000));
+            var frame = await harness.ReadControlAsync();
 
             Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
-            Assert.AreEqual("C", frame.Drive);
+            Assert.AreEqual(6u, frame.RequestId);
             Assert.AreEqual(0x400000L, frame.JournalMaximumSize);
             Assert.AreEqual(0x200000L, frame.JournalAllocationDelta);
             Assert.AreEqual(0x000900E7u, capturedIoctl, "FSCTL_CREATE_USN_JOURNAL");
             Assert.AreEqual(0x400000L, capturedMaximum);
             Assert.AreEqual(0x200000L, capturedDelta);
             Assert.AreEqual(2, queryCount, "The grow reads the sizing before and after the change.");
-
-            await ShutdownAndAwaitAsync(clientSide, serveTask, cts);
         }
         finally
         {
-            Kernel32.ResetToDefaults();
             Marshal.FreeHGlobal(preChange);
             Marshal.FreeHGlobal(postChange);
         }
@@ -410,7 +353,7 @@ public partial class JournalBrokerHostRealSeamsTests
 
     [TestMethod]
     [SupportedOSPlatform("windows")] // NtfsVolumeInformation.Query is Windows-only
-    public async Task ServeAsync_QueryVolumes_UsesRealNtfsVolumeInformationSeam()
+    public async Task ServeAsync_QueryVolume_UsesRealNtfsVolumeInformationSeam()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -424,41 +367,21 @@ public partial class JournalBrokerHostRealSeamsTests
             MftValidDataLength = 409_600,
             BytesPerFileRecordSegment = 1024
         };
-        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
-            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
+        Kernel32._deviceIoControl = (_, _, _, _, outBuffer, _, out bytesReturned, _) =>
         {
             Marshal.StructureToPtr(native, outBuffer, false);
             bytesReturned = (uint)Marshal.SizeOf<NtfsVolumeDataBufferNative>();
             return true;
-        }
+        };
+        await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
-        try
-        {
-            Kernel32._deviceIoControl = FakeDeviceIoControl;
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 3, "C"));
+        var frame = await harness.ReadControlAsync();
 
-            var host = JournalBrokerHost.CreateDefault();
-            var (clientSide, serverSide) = DuplexStream.CreatePair();
-            var request = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteQueryVolumes(request, "C:0:0");
-            await clientSide.WriteAsync(request.WrittenMemory);
-            await clientSide.FlushAsync();
-
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
-
-            var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-
-            Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
-            Assert.AreEqual("C", frame.Drive);
-            Assert.AreEqual(409_600L, frame.MftValidDataLength);
-            Assert.AreEqual(1024u, frame.BytesPerFileRecordSegment);
-
-            await ShutdownAndAwaitAsync(clientSide, serveTask, cts);
-        }
-        finally
-        {
-            Kernel32.ResetToDefaults();
-        }
+        Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
+        Assert.AreEqual(3u, frame.RequestId);
+        Assert.AreEqual(409_600L, frame.MftValidDataLength);
+        Assert.AreEqual(1024u, frame.BytesPerFileRecordSegment);
     }
 
     static IntPtr BuildJournalInfoPointer(ulong maximumSize, ulong allocationDelta)
@@ -474,17 +397,8 @@ public partial class JournalBrokerHostRealSeamsTests
         return pointer;
     }
 
-    static async Task ShutdownAndAwaitAsync(Stream clientSide, Task serveTask, CancellationTokenSource cts)
-    {
-        var shutdown = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteShutdown(shutdown);
-        await clientSide.WriteAsync(shutdown.WrittenMemory, cts.Token);
-        await clientSide.FlushAsync(cts.Token);
-        await serveTask;
-    }
-
     [TestMethod]
-    public async Task ServeAsync_EndWatch_AcrossSeveralArmedDrives_SynchronousAbort_EmitsZeroErrorFramesBeforeAck()
+    public async Task ServeAsync_SessionEnd_AcrossSeveralWatchChannels_SynchronousAbort_EmitsZeroErrorFrames()
     {
         FileUtilities._getVolumeHandle = _ => FakeHandle();
         FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
@@ -498,72 +412,43 @@ public partial class JournalBrokerHostRealSeamsTests
             MFTLibNative._watchUsnJournalBatchCancelable = seam.WatchUsnJournalBatchCancelable;
             MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
 
-            var host = JournalBrokerHost.CreateDefault();
-            var (clientSide, serverSide) = DuplexStream.CreatePair();
-
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             using var timeoutRegistration = cts.Token.Register(seam.CancelOnTimeout);
+            await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault());
 
-            var serveTask = host.ServeAsync(serverSide, CreateSectionWriter(), false, cts.Token);
-
-            // Arm watches across several drives with cursors matching the journal tip (7:200).
-            var startRequest = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteStartWatch(startRequest, "C:7:200:1,D:7:200:2,E:7:300:3");
-            await clientSide.WriteAsync(startRequest.WrittenMemory, cts.Token);
-            await clientSide.FlushAsync(cts.Token);
+            // Watch several drives with cursors at or beyond the journal tip (7:200).
+            var pipes = new List<Stream>
+            {
+                await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 200)),
+                await harness.OpenWatchChannelAsync('D', new UsnJournalCursor(7, 200)),
+                await harness.OpenWatchChannelAsync('E', new UsnJournalCursor(7, 300))
+            };
 
             // Verify each drive reaches CaughtUp.
-            var caughtUpDrives = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < driveCount; i++)
+            foreach (var pipe in pipes)
             {
-                var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-                Assert.AreEqual(BrokerFrameKind.CaughtUp, frame.Kind);
-                Assert.IsNotNull(frame.Drive);
-                caughtUpDrives.Add(frame.Drive);
+                var frame = await HostChannelHarness.ReadFrameAsync(pipe);
+                Assert.AreEqual(BrokerFrameKind.CaughtUp, frame?.Kind);
             }
 
-            Assert.AreEqual(driveCount, caughtUpDrives.Count);
-
-            // Ensure all drives are actively waiting inside the native watch seam before EndWatch is issued.
+            // Ensure all drives are waiting inside the native watch seam before the session ends.
             seam.WaitForAllDrivesEntered(cts.Token);
 
-            // Deliberate EndWatch across the armed drives.
-            var endRequest = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteEndWatch(endRequest);
-            await clientSide.WriteAsync(endRequest.WrittenMemory, cts.Token);
-            await clientSide.FlushAsync(cts.Token);
+            // Ending the session cancels every armed channel at once.
+            await harness.CloseControlAsync();
+            await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
 
-            // Drain frames between EndWatch and EndWatchAck, asserting zero Error (kind=7) frames are emitted.
-            var framesBetween = new List<BrokerFrame>();
-            while (true)
+            foreach (var pipe in pipes)
             {
-                var frame = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-                if (frame.Kind == BrokerFrameKind.EndWatchAck)
-                {
-                    break;
-                }
-
-                framesBetween.Add(frame);
+                var frames = await HostChannelHarness.ReadToEndAsync(pipe);
+                var errorPayloads = string.Join("; ",
+                    frames.Where(frame => frame.Kind == BrokerFrameKind.Error).Select(frame => frame.Message));
+                Assert.AreEqual(0, frames.Count,
+                    $"Expected the channel to end without a frame after its watch was stopped. Errors: {errorPayloads}");
             }
-
-            var errorFrames = framesBetween.Where(frame => frame.Kind == BrokerFrameKind.Error).ToList();
-            var errorPayloads = string.Join("; ",
-                errorFrames.Select(frame => $"drive={frame.Drive}, message=\"{frame.Message}\""));
-            Assert.AreEqual(0, errorFrames.Count,
-                $"Expected zero Error (kind=7) frames between EndWatch and its ack. Captured: {errorPayloads}");
-            Assert.AreEqual(0, framesBetween.Count,
-                "Expected EndWatchAck to follow immediately without intervening frames.");
-
-            // Shut down the broker session cleanly.
-            var shutdownRequest = new ArrayBufferWriter<byte>();
-            BrokerProtocol.WriteShutdown(shutdownRequest);
-            await clientSide.WriteAsync(shutdownRequest.WrittenMemory, cts.Token);
-            await clientSide.FlushAsync(cts.Token);
-            await serveTask;
         }
         finally
         {
-            MFTLibNative.ResetToDefaults();
             seam.Dispose();
         }
     }

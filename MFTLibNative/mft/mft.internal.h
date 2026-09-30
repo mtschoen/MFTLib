@@ -149,12 +149,14 @@ struct CompactOutput {
 // Read-only inputs that steer record scanning: the name filter, the optional
 // path-lookup table (null when paths aren't resolved), and the total record
 // count. Threaded through the scan pipeline as one const& instead of three
-// same-purpose arguments that could be transposed at a call site.
+// same-purpose arguments that could be transposed at a call site. control is the
+// caller's cancellation flag and thread allowance (null when the caller supplied none).
 struct ScanContext {
     FilterSpec filter{};
     PathLookup* lookup = nullptr;
     uint64_t totalRecords = 0;
     ParseGeometry geometry{};
+    const MftParseControl* control = nullptr;
 };
 
 constexpr uint32_t MAX_NTFS_PATH_UNITS = 32767;
@@ -163,11 +165,12 @@ bool ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalR
 bool AppendSlice(CompactOutput& output, const SliceResult& slice, wchar_t* errorMessage);
 void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
                         const ScanContext& scan);
-void ProcessRecordBatch(uint8_t* buffer, uint64_t filesToLoad, uint64_t& recordIndex, SliceResult& batchSlice,
-                        const ScanContext& scan);
 
 using ReadChunkFn = uint64_t (*)(void* context, uint8_t* targetBuffer, double& ioMs);
 
+// control may be null (every processor, never cancelled). A parse stopped by
+// control->cancelRequested returns a result with no entries, cancelled set to 1 and
+// errorMessage "Parse cancelled".
 MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
-                             uint32_t bufferSizeRecords, ParseGeometry geometry, MftProgressCallback callback = nullptr,
-                             void* progressContext = nullptr);
+                             uint32_t bufferSizeRecords, ParseGeometry geometry, const MftParseControl* control,
+                             MftProgressCallback callback = nullptr, void* progressContext = nullptr);

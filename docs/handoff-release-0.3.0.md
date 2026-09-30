@@ -1,20 +1,29 @@
 # Handoff: MFTLib 0.3.0 Release
 
-Updated 2026-09-10. `CHANGELOG.md` is the authoritative description of 0.3.0;
+Updated 2026-09-29. `CHANGELOG.md` is the authoritative description of 0.3.0;
 this document tracks the remaining release sequence.
 
 ## Status
 
-`origin/main` is at `4c59efa` (`[pr-crew] Add tests for concurrent reader mutation, disposed FileEntry reads, and Snapshot finalizer release (#136)`).
+`main` and `gitea/main` are at `3597586`, the merged per-drive channel
+specification. The implementation is complete on `impl/265-per-drive-channels`
+at `2889deb`: `BrokerProcess`, one scan or watch channel per drive operation,
+per-drive `FileIndex` lifecycle and recovery, concurrent scan admission with
+per-chunk thread rebalancing, and the issue 252 fix. It still needs its final
+documentation and CI lanes merged to `main`. Consumer ports, issue 264 package
+work, and the attended Windows release dry run remain release gates.
 
-The packed-index redesign has landed on `main`:
-- Plan 1: Core `MFTLib.Index` architecture, on-disk columnar block format, `FileIndex`, immutable snapshots, queries, journal mutation, and enumeration producer (PR #115).
-- Plan 2: Native size and timestamp extraction, 50-byte compact ABI version 1, and `BrokerMftBlockProducer` block-writing path (PR #131).
-- Plan 2b: Per-drive USN live watch bridge (`BrokerIndexWatchSource`), per-drive `MftOnly` failure handling, `NoCache` delete-on-close temporary blocks, and consumer API parity (PR #137).
-- Follow-up fixes and test hardening: PRs #129, #130, #133, #134, #135, #136.
+Issue 264 makes the 0.3.0 NuGet artifact set:
 
-Consumer ports (file-wizard, git-wizard) are currently in flight and gate the release.
-The attended release dry run has not yet been executed on the current tree and must be re-run on Windows (`chonkers`) prior to publish.
+- `MFTLib` version 0.3.0, including `MFTLibNative.dll` for Windows x64; and
+- `MFTLib.TestExtensions` version 0.3.0, a pure managed test package with an
+  exact-version dependency on `MFTLib` 0.3.0. It contains
+  `BrokerTestHarness`, `BrokerTestHarnessOptions`, `CacheDirectoryIsolation`,
+  `JournalIsolation`, and `SyntheticJournalWindow`.
+
+At this handoff commit `MFTLibTestExtensions.csproj` remains non-packable and
+`scripts/release.ps1` packs only `MFTLib`, so issue 264 must update both before
+the release dry run can validate the complete artifact set.
 
 Validation measured on Linux (`scripts/coverage-linux.sh`):
 
@@ -102,12 +111,18 @@ Publishing 0.3.0 unblocks resolving downstream consumer port issues file-wizard#
 - **file-wizard (unblocks file-wizard#288):** remove the `external/MFTLib` submodule and its solution entries,
   delete the temporary root `Directory.Build.targets`, add
   `<PackageReference Include="MFTLib" Version="0.3.0" />` to
-  `FileWizard/FileWizard.csproj`, switch to `MFTLib.Index` block reading and `BrokerIndexWatchSource`, and remove the CI native-submodule build step.
+  `FileWizard/FileWizard.csproj`, add
+  `<PackageReference Include="MFTLib.TestExtensions" Version="0.3.0" />` to
+  broker test projects that use `BrokerTestHarness`, switch to `MFTLib.Index`
+  block reading and `BrokerIndexWatchSource`, and remove the CI native-submodule
+  build step.
 
 - **git-wizard (unblocks git-wizard#134):** follow `lib/MFTLib/README.md`: add
   `<PackageReference Include="MFTLib" Version="0.3.0" />`, delete the
   vendored DLL bridge and root `Directory.Build.targets`, adopt `MFTLib.Index` and live change notifications, restore release workflow
-  triggers, and verify required checks.
+  triggers, add
+  `<PackageReference Include="MFTLib.TestExtensions" Version="0.3.0" />` to
+  broker test projects that use `BrokerTestHarness`, and verify required checks.
 
 ### 6. Release notes highlights (0.3.0)
 

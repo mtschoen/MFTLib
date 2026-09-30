@@ -141,11 +141,8 @@ internal static class IndexNavigation
             }
         }
 
-        if (current == target)
-        {
-            return true;
-        }
-
+        // Every hop above compared the row it reached with the target, so the walk that ran out
+        // of depth ended on a row that is not the target.
         if (!TryGetParentRow(block, current, out _))
         {
             return false;

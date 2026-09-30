@@ -23,7 +23,17 @@ static class UsnJournalSettingsQuery
             return queryOverride(driveLetter);
         }
 
-        if (!OperatingSystem.IsWindows())
+        return Query(driveLetter, OperatingSystem.IsWindows());
+    }
+
+    /// <summary>
+    ///     The real query behind <see cref="Query(char)" />, given whether the host is Windows, so
+    ///     the refusal off Windows is tested on every platform. Depends only on its arguments and
+    ///     the platform APIs; the test override is handled by <see cref="Query(char)" />.
+    /// </summary>
+    internal static UsnJournalSettings Query(char driveLetter, bool isWindows)
+    {
+        if (!isWindows || !OperatingSystem.IsWindows())
         {
             throw new PlatformNotSupportedException(
                 "USN journal settings queries require Windows (FSCTL_QUERY_USN_JOURNAL).");

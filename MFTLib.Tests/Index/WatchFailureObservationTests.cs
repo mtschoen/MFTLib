@@ -47,36 +47,39 @@ public class WatchFailureObservationTests
             .GetAwaiter().GetResult();
     }
 
+    // The failure is a Stalled frame, the one channel-loss frame that carries its own text, so the
+    // marker reaches the fault the index announces.
     static async Task<WeakReference[]> RunIndexScenarioAsync(
         string marker, bool caughtUpFirst, bool requestLateWaits)
     {
-        await using var broker = new ScriptedWatchBrokerHarness();
-        var source = new BrokerIndexWatchSource(broker.ConnectAsync);
-        using var harness = new WatchHarness(source);
+        await using var broker = new ScriptedBroker();
+        var process = broker.Process;
+        var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
+        using var harness = new WatchHarness(source, 'T');
         var index = harness.Index;
+        using var timeout = new CancellationTokenSource(HostChannelHarness.HangGuard);
+        var token = timeout.Token;
         var announced = new TaskCompletionSource<WatchFault>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         void OnFault(WatchFault fault) => announced.TrySetResult(fault);
         index.WatchFaulted += OnFault;
         try
         {
-            // The scripted pipe does not buffer, so the StartWatch frame has to be read before the
-            // source can publish its stream and the start can report ready.
-            var starting = index.StartWatchingAsync(broker.CancellationToken);
-            var start = await broker.ReadFrameAsync();
-            Assert.AreEqual(BrokerFrameKind.StartWatch, start.Kind);
+            // The scripted host answers the channel open and reads StartWatch before the start can return.
+            var starting = index.StartWatchingAsync('T', token);
+            await using var host = await broker.AcceptChannelAsync();
+            Assert.AreEqual(BrokerFrameKind.StartWatch, (await HostChannelHarness.ReadFrameAsync(host))?.Kind);
             await starting;
-            var epoch = broker.ArmEpochForDrive(start, 'T');
             if (caughtUpFirst)
             {
-                await broker.WriteAsync(writer => BrokerProtocol.WriteCaughtUp(writer, "T", epoch));
-                await index.WaitForCatchUpAsync('T', broker.CancellationToken);
+                await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteCaughtUp);
+                await index.WaitForCatchUpAsync('T', token);
                 Assert.AreEqual(WatchCatchUpState.CaughtUp, index.Drives.Single().WatchCatchUp);
             }
 
-            await broker.WriteAsync(writer => BrokerProtocol.WriteError(writer, "T", epoch, marker));
-            var fault = await announced.Task.WaitAsync(broker.CancellationToken);
-            Assert.AreEqual(WatchFaultKind.Source, fault.Kind);
+            await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteStalled(writer, marker));
+            var fault = await announced.Task.WaitAsync(token);
+            Assert.AreEqual(WatchFaultKind.Channel, fault.Kind);
             Assert.AreEqual('T', fault.DriveLetter);
             Assert.AreEqual(marker, fault.Exception.Message);
             var status = index.Drives.Single();
@@ -85,18 +88,16 @@ public class WatchFailureObservationTests
 
             if (requestLateWaits)
             {
-                var single = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-                    () => index.WaitForCatchUpAsync('T', broker.CancellationToken));
-                var all = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-                    () => index.WaitForCatchUpAsync(broker.CancellationToken));
-                Assert.AreSame(fault.Exception, single);
-                Assert.AreSame(fault.Exception, all);
+                var late = await WatchReads.ThrowsAsync<BrokerChannelLostException>(
+                    () => index.WaitForCatchUpAsync('T', token));
+                Assert.AreSame(fault.Exception, late);
+                var lateBatch = (await index.WaitForCatchUpAsync(token)).Single();
+                Assert.AreEqual(DriveOperationOutcome.Failed, lateBatch.Outcome);
+                Assert.AreSame(fault.Exception, lateBatch.Failure);
             }
 
-            Assert.AreEqual(BrokerFrameKind.EndWatch, (await broker.ReadFrameAsync()).Kind);
-            await broker.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-            var stopped = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-                () => index.StopWatchingAsync(broker.CancellationToken));
+            var stopped = await WatchReads.ThrowsAsync<BrokerChannelLostException>(
+                () => index.StopWatchingAsync('T', token));
             Assert.AreSame(fault.Exception, stopped);
             return [new WeakReference(index), new WeakReference(source)];
         }
@@ -114,24 +115,22 @@ public class WatchFailureObservationTests
 
     static async Task<WeakReference[]> RunBrokerScenarioAsync(string marker)
     {
-        await using var broker = new ScriptedWatchBrokerHarness();
-        var source = new BrokerIndexWatchSource(broker.ConnectAsync);
-        await using var reader = source.StartWatching(
-            [new IndexWatchTarget('T', 7, 100)], broker.CancellationToken).GetAsyncEnumerator();
+        await using var broker = new ScriptedBroker();
+        var process = broker.Process;
+        var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
+        var starting = source.StartAsync(new IndexWatchTarget('T', 7, 100), CancellationToken.None);
+        await using var host = await broker.AcceptChannelAsync();
+        Assert.AreEqual(BrokerFrameKind.StartWatch, (await HostChannelHarness.ReadFrameAsync(host))?.Kind);
+        await using var handle = await starting.WaitAsync(HostChannelHarness.HangGuard);
+        var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+        await using var _ = reader.ConfigureAwait(false);
         var first = reader.MoveNextAsync().AsTask();
-        var start = await broker.ReadFrameAsync();
-        Assert.AreEqual(BrokerFrameKind.StartWatch, start.Kind);
-        await broker.WriteAsync(writer => BrokerProtocol.WriteError(
-            writer, "T", broker.ArmEpochForDrive(start, 'T'), marker));
-        Assert.IsTrue(await first);
-        Assert.IsInstanceOfType<DriveWatchFailure>(reader.Current);
-        var failure = (DriveWatchFailure)reader.Current;
+        await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteError(writer, 0, marker));
+
+        var failure = await WatchReads.ThrowsAsync<DriveWatchFaultException>(
+            () => first.WaitAsync(HostChannelHarness.HangGuard));
         Assert.AreEqual('T', failure.DriveLetter);
-        Assert.AreEqual(marker, failure.Exception.Message);
-        var finished = reader.MoveNextAsync().AsTask();
-        Assert.AreEqual(BrokerFrameKind.EndWatch, (await broker.ReadFrameAsync()).Kind);
-        await broker.WriteAsync(BrokerProtocol.WriteEndWatchAck);
-        Assert.IsFalse(await finished);
+        Assert.AreEqual(marker, failure.Message);
         return [new WeakReference(source)];
     }
 
@@ -159,7 +158,7 @@ public class WatchFailureObservationTests
         {
             var references = runScenario();
             var collectedPasses = 0;
-            for (var attempt = 0; attempt < 40; attempt++)
+            for (var attempt = 0; attempt < 400; attempt++)
             {
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
@@ -170,7 +169,7 @@ public class WatchFailureObservationTests
                     return counter.Value;
                 }
 
-                await Task.Delay(TimeSpan.FromMilliseconds(25));
+                await Task.Yield();
             }
 
             Assert.Fail("Scenario objects remained rooted; the collection assertion would be inconclusive.");

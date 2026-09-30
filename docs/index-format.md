@@ -289,24 +289,45 @@ the row resets the cycle, since the MFT segment was reused by a new file.
 
 ## Watch catch-up
 
-When a watch session starts or a drive is re-armed after a rescan, the drive arms from its persisted
-journal cursor (`USN journal id` and `USN next USN` in the block header). The broker or watch source
-captures the current journal tip for that arm. Backlog journal batches between the resumed cursor and
-the arm tip are streamed and applied to the block in place, advancing the header's `USN next USN` and
-updating `LiveRowCount` and file rows under `_swapGate`. Once all backlog batches up to the arm tip have
-been applied, an epoch-tagged `CaughtUp` marker transitions the drive's `DriveStatus.WatchCatchUp` from
-`WatchCatchUpState.CatchingUp` to `WatchCatchUpState.CaughtUp` and completes `FileIndex.WaitForCatchUpAsync`.
-Live journal mutations continue seamlessly from that point. If a drive's watch faults (before or after
-catch-up), its state transitions to `WatchCatchUpState.Faulted` and any pending or subsequent
-`WaitForCatchUpAsync` call faults with the drive's exception. The all-drives `WaitForCatchUpAsync` overload
-completes when the slowest drive catches up and faults immediately upon the first drive watch failure or
-cancellation. Disposing the index, cancelling the watch session, or superseding the arm through `RescanAsync`
-cancels pending catch-up waits.
+Each MFT-backed drive has its own watch handle and catch-up state. When
+`FileIndex.StartWatchingAsync(char, CancellationToken)` starts a drive, or a rescan restarts
+one whose watch is still requested, that drive arms from the journal cursor persisted in its
+block header (`USN journal id` and `USN next USN`). Other drives' handles and blocks are
+untouched.
 
-Calling `WaitForCatchUpAsync` is optional. The index observes its internally owned failure
-notification tasks even when no caller waits for catch-up; drive failures still reach
-`WatchFaulted` and `DriveStatus.WatchFailureMessage`. Pending and subsequent catch-up waits
-continue to throw the drive's exception.
+The source captures the journal tip for the arm. Backlog batches between the persisted
+cursor and that tip are streamed and applied to the block in place, advancing the header's
+`USN next USN` and updating `LiveRowCount` and file rows under the drive's write gate. A
+`DriveCaughtUp` item transitions `DriveStatus.WatchCatchUp` from
+`WatchCatchUpState.CatchingUp` to `WatchCatchUpState.CaughtUp`. Live mutations continue on
+the same handle.
+
+`FileIndex.WaitForCatchUpAsync(char, CancellationToken)` follows that drive's current
+handle. It completes immediately when the drive is already caught up, faults with the
+drive's exception when the watch failed or its last start was refused, and throws
+`InvalidOperationException` when the drive has no current watch. Stop, rescan, and index
+disposal cancel a pending wait because they retire that handle. Cancelling the wait's own
+token cancels only the wait, not the drive's watch.
+
+A `Drive` or `Apply` fault moves the drive to `WatchCatchUpState.Recovering` and starts an
+automatic rescan. A wait issued during recovery faults immediately with the exception that
+ended the prior watch. After recovery starts the replacement handle and the drive reads
+`CatchingUp`, call the wait again to follow that handle. If recovery fails, or the
+replacement handle faults before reaching `CaughtUp`, the index raises a `Recovery` fault
+and leaves the drive `Faulted` until a consumer starts or rescans it. A `Channel` fault does
+not recover automatically.
+
+The batched overload accepts an `IReadOnlyList<char>` and returns one
+`DriveOperationResult` per requested drive in request order after every drive has settled.
+A failed drive has `DriveOperationOutcome.Failed` and carries the exception in `Failure`;
+it does not end the waits for other drives. A drive with no watch is `NotApplicable`. The
+overload with only a `CancellationToken` uses every drive in `FileIndexOptions.Drives`
+order. Caller cancellation cancels the batched call; disposal cancels it through the
+index's disposal token.
+
+Calling either wait form is optional. The index observes each handle's failure even when
+no caller waits; faults still reach `WatchFaulted`, `DriveStatus.WatchFailureMessage`, and
+`DriveStatus.WatchCatchUp`.
 
 ## Sidecars
 

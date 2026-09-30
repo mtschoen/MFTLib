@@ -40,8 +40,8 @@ public class CacheDirectoryRejectionTests
         var writer = new BlockWriter(block);
         Assert.IsTrue(writer.TryWriteRow(0, _directory,
             new RowColumns(0, RowFlags.InUse, 0, 0, 0, 0)));
-        writer.Complete(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
-        block.Flush();
+        writer.Complete(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), null);
+        block.Flush(null);
         return path;
     }
 

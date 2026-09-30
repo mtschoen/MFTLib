@@ -1,396 +1,91 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace MFTLib.Index;
 
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     One watched drive's catch-up state, keyed by drive ordinal like
-    ///     <see cref="_watchFailureMessagesByOrdinal" />. An entry exists from the drive's arm
-    ///     until the session that armed it is reclaimed; a missing entry reads as
-    ///     <see cref="WatchCatchUpState.NotStarted" />.
-    /// </summary>
-    readonly Dictionary<ushort, WatchCatchUpSlot> _watchCatchUpByOrdinal = [];
-
-    /// <summary>
-    ///     Starts one drive's catch-up tracking: a fresh slot reading
-    ///     <see cref="WatchCatchUpState.CatchingUp" />, replacing whatever the drive's previous arm
-    ///     left. The caller holds <see cref="_stateLock" />.
-    /// </summary>
-    void ArmWatchCatchUpLocked(char driveLetter)
-    {
-        lock (_stateLock)
-        {
-            if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
-            {
-                if (_watchCatchUpByOrdinal.TryGetValue(driveOrdinal, out var previous))
-                {
-                    previous.Cancel();
-                }
-
-                _watchCatchUpByOrdinal[driveOrdinal] =
-                    new WatchCatchUpSlot { State = WatchCatchUpState.CatchingUp };
-            }
-        }
-    }
-
-    /// <summary>
-    ///     Flips one drive to <see cref="WatchCatchUpState.CaughtUp" /> when its arm's marker
-    ///     arrives. A marker for a drive that is not catching up (unknown, superseded, already
-    ///     settled) is stale and ignored.
-    /// </summary>
-    void CompleteWatchCatchUp(char driveLetter)
-    {
-        lock (_stateLock)
-        {
-            if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal) &&
-                _watchCatchUpByOrdinal.TryGetValue(driveOrdinal, out var slot) &&
-                slot.State == WatchCatchUpState.CatchingUp)
-            {
-                slot.State = WatchCatchUpState.CaughtUp;
-                slot.Waiter.TrySetResult();
-            }
-        }
-    }
-
-    /// <summary>
-    ///     Flips one drive to <see cref="WatchCatchUpState.Faulted" /> alongside its watch failure
-    ///     message. The caller holds <see cref="_stateLock" />.
-    /// </summary>
-    void FaultWatchCatchUpLocked(ushort driveOrdinal, Exception exception)
-    {
-        lock (_stateLock)
-        {
-            if (!_watchCatchUpByOrdinal.TryGetValue(driveOrdinal, out var slot))
-            {
-                slot = new WatchCatchUpSlot();
-                _watchCatchUpByOrdinal[driveOrdinal] = slot;
-            }
-
-            slot.Fault(exception);
-        }
-    }
-
-    /// <summary>
-    ///     Ends every drive's catch-up tracking when the session that armed them is reclaimed:
-    ///     with nothing draining, no catch-up state is true of any drive. The caller holds
+    ///     The drive's <see cref="DriveStatus.WatchCatchUp" />, from its watch records:
+    ///     <see cref="WatchCatchUpState.Recovering" /> while a recovery of the drive is queued or
+    ///     running or a scan of the watched drive retries after a lost catch-up, the current
+    ///     instance's slot while it runs,
+    ///     <see cref="WatchCatchUpState.Faulted" /> for a faulted instance or a refused start, and
+    ///     <see cref="WatchCatchUpState.NotStarted" /> otherwise. The caller holds
     ///     <see cref="_stateLock" />.
     /// </summary>
-    void ResetWatchCatchUpLocked()
+    WatchCatchUpState GetWatchCatchUpStateLocked(char driveLetter)
     {
-        lock (_stateLock)
+        var runtime = GetDriveRuntime(driveLetter);
+        if (runtime.RetryingLostCatchUp || runtime.RecoveryState == RecoveryState.Recovering)
         {
-            foreach (var slot in _watchCatchUpByOrdinal.Values)
-            {
-                slot.Cancel();
-            }
-
-            _watchCatchUpByOrdinal.Clear();
+            return WatchCatchUpState.Recovering;
         }
+
+        if (runtime.Current is { } instance)
+        {
+            return instance.State == WatchInstanceState.Faulted
+                ? WatchCatchUpState.Faulted
+                : instance.CatchUp.State;
+        }
+
+        return runtime.RefusedStartFault is null ? WatchCatchUpState.NotStarted : WatchCatchUpState.Faulted;
     }
 
     /// <summary>
-    ///     <see cref="ResetWatchCatchUpLocked" /> for a session a rescan reclaims: a drive whose
-    ///     watch failure message is still recorded keeps its <see cref="WatchCatchUpState.Faulted" />
-    ///     slot, because the rescan recovers only its own drive and the other drives' failures
-    ///     remain true. The caller holds <see cref="_stateLock" />.
+    ///     The task a wait on the drive follows: the fault of a lost catch-up being retried, the
+    ///     current instance's catch-up, or the fault of a refused start; null when the drive has no
+    ///     catch-up to wait for. The caller holds <see cref="_stateLock" />.
     /// </summary>
-    void ResetWatchCatchUpKeepingRecordedFailuresLocked()
+    static Task? GetCatchUpWaitLocked(DriveRuntime runtime)
     {
-        lock (_stateLock)
+        if (runtime.RetriedLostCatchUp is { } retried)
         {
-            foreach (var (driveOrdinal, slot) in _watchCatchUpByOrdinal.ToArray())
-            {
-                if (slot.State == WatchCatchUpState.Faulted &&
-                    _watchFailureMessagesByOrdinal.ContainsKey(driveOrdinal))
-                {
-                    continue;
-                }
-
-                slot.Cancel();
-                _watchCatchUpByOrdinal.Remove(driveOrdinal);
-            }
+            return Task.FromException(retried);
         }
+
+        if (runtime.Current is { } instance)
+        {
+            return instance.CatchUp.Waiter.Task;
+        }
+
+        return runtime.RefusedStartFault is { } refused ? Task.FromException(refused) : null;
     }
 
     /// <summary>
-    ///     Cancels any drive catch-up wait that is still catching up when the session is cancelled.
-    ///     The caller holds <see cref="_stateLock" />.
+    ///     Waits for one drive's initial journal catch-up: the returned task completes once the
+    ///     backlog present when the drive's current watch started has been applied and the drive
+    ///     is on live entries. It completes immediately when the drive is already caught up,
+    ///     faults with the drive's exception when its watch fails (before or after this call) or
+    ///     its last start failed, faults at once while the drive reads
+    ///     <see cref="WatchCatchUpState.Recovering" /> (with the fault that ended its watch, or
+    ///     the lost catch-up a scan is retrying; a consumer that wants the recovered watch waits
+    ///     again once the drive reads <see cref="WatchCatchUpState.CatchingUp" />), and is
+    ///     cancelled when that watch is stopped, retired by a
+    ///     rescan, or the index is disposed. <paramref name="cancellationToken" /> and the index's
+    ///     disposal cancel the wait itself without touching the drive's watch. The wait's
+    ///     continuation never runs inline on the thread that settles it.
     /// </summary>
-    void CancelPendingWatchCatchUpLocked()
-    {
-        lock (_stateLock)
-        {
-            foreach (var slot in _watchCatchUpByOrdinal.Values)
-            {
-                if (slot.State == WatchCatchUpState.CatchingUp)
-                {
-                    slot.Cancel();
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    ///     Faults every watched drive's catch-up wait when the stream encounters an unhandled source
-    ///     exception. The caller holds <see cref="_stateLock" />.
-    /// </summary>
-    void FaultPendingWatchCatchUpLocked(IReadOnlyList<IndexWatchTarget> targets, Exception exception)
-    {
-        lock (_stateLock)
-        {
-            foreach (var target in targets)
-            {
-                if (TryGetDriveOrdinalLocked(target.DriveLetter, out var driveOrdinal))
-                {
-                    FaultWatchCatchUpLocked(driveOrdinal, exception);
-                }
-            }
-        }
-    }
-
-    WatchCatchUpState GetWatchCatchUpState(ushort driveOrdinal)
-    {
-        lock (_stateLock)
-        {
-            return _watchCatchUpByOrdinal.TryGetValue(driveOrdinal, out var slot)
-                ? slot.State
-                : WatchCatchUpState.NotStarted;
-        }
-    }
-
-    /// <summary>
-    ///     Removes a stale <see cref="WatchCatchUpState.Faulted" /> slot when a rescan clears the
-    ///     drive's failure message with no session to arm the drive back onto: the fault is gone
-    ///     with its message, and nothing is catching up either.
-    /// </summary>
-    void RemoveStaleFaultedCatchUp(char driveLetter)
-    {
-        lock (_stateLock)
-        {
-            if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal) &&
-                _watchCatchUpByOrdinal.TryGetValue(driveOrdinal, out var slot) &&
-                slot.State == WatchCatchUpState.Faulted)
-            {
-                _watchCatchUpByOrdinal.Remove(driveOrdinal);
-            }
-        }
-    }
-
-    /// <summary>
-    ///     Waits for one watched drive's initial journal catch-up: the returned task completes
-    ///     once the backlog present when the drive's current arm started has been applied and the
-    ///     drive is on live entries. It completes immediately when the drive is already caught up,
-    ///     faults with the drive's exception when the drive's watch fails (before or after this
-    ///     call), and is cancelled when the arm it tracks is superseded by a rescan's re-arm or
-    ///     when the watch session ends. The wait is linked to the index's disposal token, so
-    ///     disposing the index cancels it. A wait issued while its drive is mid-rescan tracks the
-    ///     arm that is current at that moment; issue the wait after
-    ///     <see cref="RescanAsync" /> returns to track the re-armed catch-up. A drive a rescan
-    ///     armed mid-session (one that had no block when the session started) is waited the same
-    ///     way; its catch-up slot exists from the re-arm even though it is not among the
-    ///     session's initial targets.
-    /// </summary>
-    /// <exception cref="ArgumentException">
-    ///     <paramref name="driveLetter" /> is not part of this index.
-    /// </exception>
-    /// <exception cref="InvalidOperationException">
-    ///     The drive is not being watched: no watch session is running, or the drive has no
-    ///     catch-up slot on the running session (never armed, or not watchable).
-    /// </exception>
+    /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
+    /// <exception cref="InvalidOperationException">The drive has no current watch.</exception>
     public Task WaitForCatchUpAsync(char driveLetter, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        cancellationToken.ThrowIfCancellationRequested();
-        var upperDriveLetter = char.ToUpperInvariant(driveLetter);
-        if (!_driveConfigurations.ContainsKey(upperDriveLetter))
+        var runtime = GetDriveRuntime(driveLetter);
+        if (cancellationToken.IsCancellationRequested)
         {
-            throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
+            return Task.FromCanceled(cancellationToken);
         }
 
         Task wait;
         lock (_stateLock)
         {
-            // Armed-ness is the catch-up slot, which matches the session's registered targets:
-            // a blockless drive its rescan just adopted is registered and armed mid-session, so its
-            // slot exists from the re-arm and its wait is as real as any initial target's. Slots
-            // are cleared at session reclaim, so a drive with no slot is still refused.
-            if (_watchSession is null ||
-                !TryGetDriveOrdinalLocked(upperDriveLetter, out var driveOrdinal) ||
-                !_watchCatchUpByOrdinal.TryGetValue(driveOrdinal, out var slot))
-            {
-                throw new InvalidOperationException(
-                    $"Drive {driveLetter} is not being watched, so there is no catch-up to wait for.");
-            }
-
-            wait = slot.Task;
+            wait = GetCatchUpWaitLocked(runtime) ?? throw new InvalidOperationException(
+                $"Drive {driveLetter} is not being watched, so there is no catch-up to wait for.");
         }
 
-        return WaitCatchUpLinkedAsync(wait, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Waits for every watched drive's initial journal catch-up: the returned task completes
-    ///     when the slowest watched drive is caught up and faults with the first drive's watch
-    ///     failure. Cancellation, disposal, and arm supersession behave as in
-    ///     <see cref="WaitForCatchUpAsync(char, CancellationToken)" />.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">No watch session is running.</exception>
-    public Task WaitForCatchUpAsync(CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        Task wait;
-        CatchUpCoordinator? coordinator;
-        lock (_stateLock)
+        if (!wait.IsCompleted && RejectedTask(nameof(WaitForCatchUpAsync)) is { } rejected)
         {
-            if (_watchSession is not { } session)
-            {
-                throw new InvalidOperationException("No watch session is running, so there is no catch-up to wait for.");
-            }
-
-            var targets = session.Targets;
-            var slots = new List<WatchCatchUpSlot>(targets.Length);
-            foreach (var target in targets)
-            {
-                if (!TryGetDriveOrdinalLocked(target.DriveLetter, out var driveOrdinal) ||
-                    !_watchCatchUpByOrdinal.TryGetValue(driveOrdinal, out var slot))
-                {
-                    throw new InvalidOperationException(
-                        $"Drive {target.DriveLetter} is not being watched, so there is no catch-up to wait for.");
-                }
-
-                if (slot.State == WatchCatchUpState.Faulted && slot.Exception is not null)
-                {
-                    return WaitCatchUpLinkedAsync(Task.FromException(slot.Exception), cancellationToken);
-                }
-
-                slots.Add(slot);
-            }
-
-            wait = WhenAllCatchUpAsync(slots, out coordinator);
+            return rejected;
         }
 
-        return WaitCatchUpLinkedAsync(wait, cancellationToken, coordinator);
-    }
-
-    /// <summary>
-    ///     A test seam, held per instance: invoked with each aggregate-wait coordinator as it is
-    ///     created, so a test can watch whether the coordinator is collected after its wait ends.
-    /// </summary>
-    internal Action<object>? _catchUpCoordinatorCreatedForTest;
-
-    Task WhenAllCatchUpAsync(IReadOnlyList<WatchCatchUpSlot> slots, out CatchUpCoordinator? coordinator)
-    {
-        coordinator = null;
-        if (slots.Count == 0)
-        {
-            return Task.CompletedTask;
-        }
-
-        if (slots.Count == 1)
-        {
-            return slots[0].Task;
-        }
-
-        if (TryGetSettledCatchUpTask(slots, out var settledTask))
-        {
-            return settledTask;
-        }
-
-        var completionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        coordinator = new CatchUpCoordinator(slots, completionSource);
-        _catchUpCoordinatorCreatedForTest?.Invoke(coordinator);
-        coordinator.Attach();
-        return completionSource.Task;
-    }
-
-    static bool TryGetSettledCatchUpTask(
-        IReadOnlyList<WatchCatchUpSlot> slots,
-        [NotNullWhen(true)] out Task? settledTask)
-    {
-        foreach (var slot in slots)
-        {
-            if (slot.State == WatchCatchUpState.Faulted && slot.Exception is not null)
-            {
-                settledTask = Task.FromException(slot.Exception);
-                return true;
-            }
-
-            if (slot.FaultWaiter.Task.IsFaulted)
-            {
-                settledTask = slot.FaultWaiter.Task;
-                return true;
-            }
-
-            if (slot.Task.IsFaulted)
-            {
-                settledTask = slot.Task;
-                return true;
-            }
-
-            if (slot.WasCanceled || slot.FaultWaiter.Task.IsCanceled || slot.Task.IsCanceled)
-            {
-                settledTask = Task.FromCanceled(new CancellationToken(true));
-                return true;
-            }
-        }
-
-        foreach (var slot in slots)
-        {
-            if (slot.State != WatchCatchUpState.CaughtUp || !slot.Task.IsCompletedSuccessfully)
-            {
-                settledTask = null;
-                return false;
-            }
-        }
-
-        settledTask = Task.CompletedTask;
-        return true;
-    }
-
-    /// <summary>
-    ///     Links one wait to the disposal token (and the caller's, when it has one), which is the
-    ///     query contract: disposing the index cancels the wait rather than waiting it out.
-    /// </summary>
-    async Task WaitCatchUpLinkedAsync(Task wait, CancellationToken cancellationToken, CatchUpCoordinator? coordinator = null)
-    {
-        if (wait.IsCompletedSuccessfully)
-        {
-            return;
-        }
-
-        if (wait.IsFaulted || wait.IsCanceled)
-        {
-            await wait.ConfigureAwait(false);
-            return;
-        }
-
-        if (!cancellationToken.CanBeCanceled)
-        {
-            try
-            {
-                await wait.WaitAsync(DisposalToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                coordinator?.Cancel();
-                throw;
-            }
-
-            return;
-        }
-
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, DisposalToken);
-        try
-        {
-            await wait.WaitAsync(linked.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            coordinator?.Cancel();
-            throw;
-        }
+        return AwaitQueuedAsync(wait, cancellationToken, DisposalToken);
     }
 }

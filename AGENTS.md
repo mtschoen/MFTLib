@@ -143,8 +143,9 @@ MFTLibTestExtensions.JournalIsolation.OverrideJournalWindow with a
 Func<char, SyntheticJournalWindow?> to drive real open-time and watch-fault
 checks. SyntheticJournalWindow carries JournalId, FirstUsn, NextUsn,
 AllocationDelta, and MaximumSize; null means "cannot say" and never falls back
-to a live read. The callback is evaluated for each query and may run on the
-watch-pump thread, so mutable per-drive observations need synchronization.
+to a live read. The callback is evaluated for each query and may run on any
+drive's pump thread, concurrently for different drives, so mutable per-drive
+observations need synchronization.
 
 The returned IDisposable owns a process-global override. Nested and overlapping
 public scopes throw InvalidOperationException. Disposal restores the previous
@@ -223,7 +224,7 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
 
 ## Architecture
 
-- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant. MFT record geometry (1024 or 4096-byte records) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through compact ABI version 1 (`MFT_NATIVE_ABI_VERSION`): 50-byte `MftCompactEntry` rows with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, and uint16 sequence number at offset 48, plus separate UTF-16 string pools. Flags bit `0x8000` marks an unknown size. The broker's block path parses without path resolution.
+- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant. MFT record geometry (1024 or 4096-byte records) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through compact ABI version 2 (`MFT_NATIVE_ABI_VERSION`): 50-byte `MftCompactEntry` rows with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, and uint16 sequence number at offset 48, plus separate UTF-16 string pools. Flags bit `0x8000` marks an unknown size. The broker's block path parses without path resolution.
 - **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop. The `MFTLib.Index` namespace provides a substrate-neutral columnar block format and query engine; see `docs/index-format.md`.
     - **Index namespace boundary**: `MFTLib.Index` depends on nothing in the flat `MFTLib` namespace or in `MFTLib.Interop` beyond an allowlist of journal value types (`UsnJournalEntry`, `UsnJournalEntryOptions`, `UsnReason`). Enforced by `MFTLib.Tests/Index/NamespaceBoundaryTests.cs`, an IL-level ArchUnitNET test over the built assembly, with a mandatory negative-control fixture. Not an aislop rule: the forbidden folders share the flat `MFTLib` namespace, so there is no `using` for an import rule to match. Growing the allowlist is a review decision.
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
@@ -246,106 +247,28 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       checkpoint-to-tip span rounded up to the allocation delta, plus one more allocation delta).
       The margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
       USN_JOURNAL_DATA, not a live measurement. A volume that cannot answer the query warm-starts
-      as before and reports nothing.
-      The same check also runs mid-session, from `FileIndex.WatchPump`'s
-      `RecordCheckpointLossForFaultedDrive`: any watch fault on an MFT-backed drive asks the live
-      journal about that drive's current block cursor, which is both what `BuildWatchTarget` armed
-      the watch from and what every applied batch has advanced it to. Running the check on every
-      fault rather than on a classified subset is deliberate,
-      because no journal error code reaches managed code: `ApplyUsnReadError` in
-      `MFTLibNative/usn/usn_journal.cpp` turns native failures into English strings in
-      the result's fixed `errorMessage` buffer. The journal is the classifier on both
-      sides: `JournalBrokerHost.DescribeWatchFailure` calls `JournalCheckpointCheck.Check`
-      for a failed nonzero cached-cursor startup, adding rescan wording only when the
-      live journal proves that cursor is lost. A retained cursor or an unavailable
-      query keeps the original message. Sentinel starts and failures after a batch
-      keep their original messages without this broker query. The index independently
-      checks its current block cursor on every watch fault, including mid-session
-      failures, and records nothing new when that position is still retained or the
-      journal cannot answer. Neither path classifies exception wording. The journal read runs
-      outside `_stateLock` and the loss is recorded only while the block whose cursor it describes
-      is still the drive's block, so it cannot resurrect a report a concurrent rescan cleared.
-      A source stream that ends without a stop classifies every drive it was watching the same way.
-      `JournalCheckpointLoss.DetectedDuring` (`JournalCheckpointLossDetection.DriveOpening` or
-      `.LiveWatch`) records which check produced a report, because a report outlives the moment
-      that produced it: a drive that cold-scanned at open carries its report for the whole
-      session, so without the label a `WatchFaulted` handler reading a non-null `CheckpointLoss`
-      would blame the journal for an unrelated fault (PR 227 review finding). A watch fault that
-      finds the position still in the journal leaves any existing report untouched rather than
-      clearing it. Do not "fix" that by clearing: the open's report explains the block still in
-      place and an unrelated fault does not falsify it, and consumers build their
-      grow-the-journal hint from exactly that report (git-wizard's `JournalWarning` via
-      `IndexVolumeChangeSource.Journals.cs`, file-wizard's `JournalSettingsPresenter`), so
-      clearing it would make their hint vanish on an unrelated error. A `LiveWatch` loss replaces
-      a `DriveOpening` one as the newer fact about the same drive; a rescan clears either.
-      `FileIndexOptions.InitialOpenCacheOnly` changes what an unresumable checkpoint does at open:
-      a cache-only open never watches, and the block is still a correct snapshot as of its age, so
-      `RejectUnresumableCheckpoint` adopts it instead of failing the drive - `DriveStatus.State`
-      reads `Ready` and `BlockSource.WarmStartedFromCache`, with `CheckpointLoss` still set so a
-      consumer sees why the checkpoint could not be resumed. The drive's ordinal is recorded in
-      `FileIndex._cacheOnlyUnresumableCheckpointOrdinals` so a later `StartWatchingAsync` leaves it
-      out of the watch rather than arming a cursor the journal no longer holds: `BuildWatchTargets`
-      splits it out and `RecordUnresumableCheckpointWatchFailureLocked` reports it the same way any
-      other watch failure is, through `DriveStatus.WatchFailureMessage` and
-      `WatchCatchUpState.Faulted`, pointing at `FileIndex.RescanAsync`. A successful rescan writes a
-      fresh cursor, clears the ordinal alongside `CheckpointLoss`, and arms the drive onto whatever
-      watch session is running by the time the scan finishes - `ResumeDriveAfterRescanAsync` reads
-      `_watchSession` fresh at resume time rather than trusting the session captured before the scan
-      ran, because a session can start (excluding this drive, since its block has not swapped yet)
-      while the scan is still in flight; without the fresh read the drive would join no session at
-      all even though one now exists (PR 230 review finding 2). A rescan whose scan fails without
-      throwing (`ProduceRescannedBlockAsync` returns null) leaves the old, still-unresumable block in
-      place; `ResumeDriveAfterRescanAsync` checks `_cacheOnlyUnresumableCheckpointOrdinals` (through
-      `LeavesDriveFaultedLocked`) before registering or arming anything, so a failed scan leaves the drive's refusal exactly as it was
-      instead of arming a cursor the journal still cannot resume (PR 230 review finding 1). The
-      whole cache-only adoption behavior traces to file-wizard#481.
-      A rescan of a drive that was already watch-faulted requires a committed replacement
-      block before it can recover that watch. The swap/adoption step reports an explicit
-      internal replacement outcome; null production, a thrown swap, and cancellation before
-      replacement leave the prior block, WatchFailureMessage, faulted catch-up, outstanding
-      watch fault, and CheckpointLoss intact. Non-cancellation producer failures remain
-      visible through MftProducerFailureMessage. Such a failure neither arms the old cursor
-      nor restarts a session on that drive's behalf. A previously healthy drive may restore
-      its old watch after a failed rescan, but only if it is still healthy when resume decides:
-      a watch failure recorded while the producer ran (an item the pump accepted before the
-      disarm and applied or failed afterwards, or a stream that ended without a stop, which
-      faults every target including the disarmed drive) counts the same as one present at
-      entry. Resume re-checks `RequiresReplacementForWatchRecoveryLocked` under `_stateLock`
-      at each step that would clear the failure, re-arm, reclaim the ended session, or restart
-      (`LeavesDriveFaultedLocked`), so a failed rescan never erases that newer fault or arms the
-      cursor it condemns. Suspension remembers an ended session without
-      reclaiming it, preserving its faults and restart intent until an eligible recovery
-      or an explicit stop. Successful replacement retains per-drive re-arm and last-drive
-      restart behavior, and healthy siblings are never stopped for the failed attempt.
-      A rescan also survives the watch session ending while it is in flight (MFTLib issue 241). When
-      the last watched drive faults, the pump marks the session `Ended` under `_stateLock` before it
-      releases the source stream, and it makes that decision under the same lock a rescan's resume
-      holds while it clears its drive's failure and registers it again, so a re-arm either keeps the
-      session alive or finds it ended. The resume re-arms on the current session only while it is
-      not ended, its pump has not completed, and its cancellation is not requested. Otherwise, or when
-      the arm fails and the session is found ended by then, or when the rescan's disarm fails on an
-      already-ended session, the rescan reclaims the session and starts a fresh one instead of arming
-      a released stream. A session ended through cancellation is reclaimed but not restarted, and a
-      running session is never stopped for this. That rescan-triggered restart clears the watch
-      failure and faulted catch-up of the rescanned drive only. Every other drive keeps its recorded
-      failure, faulted catch-up, and `CheckpointLoss`, and any drive with a recorded failure is left
-      out of the new session's targets, which is what keeps a drive whose `LiveWatch` loss says its
-      cursor is gone from being armed from that cursor; each such drive needs its own rescan. When
-      an eligible rescan recovery reclaims the ended session it moves that session's outstanding faults, other than
-      the rescanned drive's, into the index-level `_unreportedWatchFaults` ledger rather than into
-      any session, so no later session can drop them by ending cleanly and releasing itself, and a
-      restart that starts no session or a session ended by cancellation loses nothing either. The
-      next `StopWatchingAsync` rethrows the earliest of them ahead of its own session's faults, even
-      when no session is left, then clears the ledger; a rescan that recovers one of those drives
-      removes its entry. The pump's own `HasFaults` never sees them. A source that
-      releases its stream does so in its iterator's `finally`, before the pump can mark the session
-      ended, so a disarm or arm rejected in that window with `WatchStreamNotRunningException` (the
-      type `IIndexWatchSource` sources throw when no stream runs) on a session whose stream already
-      delivered an item makes the rescan wait for the pump, bounded by its token, before classifying
-      the failure. A rejection before the first item cannot be told apart from a stream not yet
-      started, so it is judged on the session state as it stands. Public
-      `StartWatchingAsync` keeps clearing every armed drive's failure and leaves the retained
-      faults for the next stop.
+      and reports nothing. A faulting MFT-backed drive asks the live journal about the cursor in
+      its current block; the read runs outside `_stateLock`, and the result is recorded only while
+      that block is still published. `JournalBrokerHost.DescribeWatchFailure` applies the same
+      journal classification to a failed nonzero watch start. Neither path classifies exception
+      wording, and a retained cursor or unavailable query records nothing new.
+      `JournalCheckpointLoss.DetectedDuring` distinguishes `DriveOpening`, `LiveWatch`, and
+      `ScanCatchUp`. A report remains until a newer report replaces it or a consumer rescan clears
+      it; an unrelated watch fault does not clear it. A `LiveWatch` report is retained by its
+      automatic recovery rescan, because it explains why the published replacement block exists.
+      A cache-only open adopts an unresumable block as a `Ready` snapshot with its report attached,
+      but `StartWatchingAsync` refuses that drive and leaves no watch request. After `RescanAsync`
+      publishes a resumable block, the consumer calls `StartWatchingAsync` again.
+      When catch-up after a scan fails, the host checks the armed cursor against the live journal.
+      A proven loss travels through `BrokerDriveScanResult.CatchUpLoss` and
+      `MftBlockProduceResult.CatchUpLoss`; the index publishes the complete block as unresumable,
+      records a `ScanCatchUp` report (including `SizeThatWouldHaveRetained` when the journal was
+      trimmed), and scans the drive again. `DriveStatus.ConsecutiveLostCatchUps` reaches
+      `FileIndex.LostCatchUpRecoveryLimit` after three consecutive losses; a scan whose catch-up
+      holds resets it to zero. At the limit an open settles the drive `Ready` with its last block,
+      refuses its watch, and requires a consumer `RescanAsync` before another watch start.
+      A catch-up failure the journal cannot prove is an ordinary failed scan and carries no report.
+      A bounded catch-up read that returns entries without advancing its cursor fails the scan.
     - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory.
     - **Query lifetime**: the eight entry points that scan rows (`Find`, `FindByName`, `Search`, `Enumerate`, `Largest`,
       `DuplicateNames`, `Root`, and `FileEntry.Children`) each take an optional `CancellationToken`, observed
@@ -361,59 +284,53 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
       bound applies to active scanning, not time spent suspended. Scanning on one thread while another
       disposes is therefore safe. The snapshot finalizer path
       is unaffected: a borrow holds the snapshot, so a borrowed snapshot is never collected.
-    - **Watch start readiness**: `FileIndex.StartWatchingAsync` completes only once the session's
-      source reports that its stream accepts per-drive arm and disarm, so a `RescanAsync` issued any
-      time after it returns finds a running stream (MFTLib issue 247). The index always starts a
-      source through `IIndexWatchSource.StartWatching(targets, reportStreamReady, cancellationToken)`;
-      readiness belongs to one `WatchSession` (`WatchSession.Ready`), so no other session's source
-      can satisfy it, and the pump settles it before it finishes, so no waiter is stranded. A first
-      item also counts as ready. Readiness is not catch-up: `WaitForCatchUpAsync` stays the separate
-      backlog wait. `BrokerIndexWatchSource` reports readiness once connected, the StartWatch frame is
-      sent, and its stream is published with every initial reader running; its internal
-      `BeforeStreamPublishedForTest` gate lets a test hold the window between the frame and the
-      publish. A source implementing only the two-argument `StartWatching` gets the default
-      interface member, which reports readiness once the stream's first `MoveNextAsync` call has
-      returned control with the stream still running, pending or having produced an item
-      (`ReadyOnFirstMoveWatchStream`); a first call that already ended the stream or faulted reports
-      nothing, so the start fails with it. That closes the interval before the pump invokes the
-      source for every source, and covers a source that goes live before its first incomplete
-      await, but not one that awaits a connection first: such a source's failure or end after that
-      await faults the running session rather than the start. A stream that throws or ends
-      before it is ready fails the start with that exception after the usual `WatchFaulted` source
-      announcement; cancelling the start's token, or a stop or dispose, before readiness cancels it.
-      Either way the start cancels and releases the unready session once its pump finishes, so the
-      fault is reported by the start rather than by a later `StopWatchingAsync` and a fresh start is
-      accepted. The waits run outside `_stateLock` and `_swapGate`; zero-target starts complete
-      without invoking the source. A rescan that meets a session still starting waits for it before
-      disarming or arming (a rescan cancelled during that wait records nothing against its drive),
-      and leaves a session whose start failed or was cancelled to that start.
-      The start's wait is bounded by its token and by a stop or dispose even while the broker's
-      StartWatch send is blocked on the client's arm-ordering gate or the pipe write (MFTLib issue
-      250): `BrokerIndexWatchSource` never cancels that send (cancelling it could leave the
-      EndWatchAck to end the next watch, or half a frame on the pipe), it only stops waiting for it
-      with `WaitAsync(token)`. A send abandoned that way finishes in the background, and
-      `RetireAbandonedStartAsync` then runs `StopLiveWatchAsync`, whose demux reads the EndWatchAck,
-      before releasing the stream. The source's stream stays claimed until then, and a new
-      `StartWatching` on the same source waits for that teardown (bounded by its own token) instead
-      of being rejected, so the next StartWatch frame is never sent ahead of the old watch's
-      EndWatch. A teardown that fails, including a `StopLiveWatchAsync` that timed out
-      (`LastStopTimedOut`) without reading the ack, is recorded rather than thrown, so the
-      retirement task never faults, and it fails every later start on that source with an
-      `InvalidOperationException` wrapping it: the ack could still arrive and end a later watch on
-      the same connection, so the consumer needs a new connection and source. The ordinary
-      `StopWatchingAsync` path (`StopStreamAsync`) does not check `LastStopTimedOut` and still
-      releases the source after a timed-out stop.
-    - **Watch and catch-up lifetime**: `FileIndex.StartWatchingAsync` arms each MFT-backed drive and
-      transitions its `DriveStatus.WatchCatchUp` to `WatchCatchUpState.CatchingUp`. Backlog batches up to
-      the journal tip captured at arm time are applied to the block before an epoch-tagged `CaughtUp`
-      marker flips the drive to `WatchCatchUpState.CaughtUp`. `FileIndex.WaitForCatchUpAsync(char driveLetter, CancellationToken)`
-      waits for a single drive's initial catch-up: completes immediately if already caught up, faults if the
-      drive's watch faults (before or after the call), and cancels if superseded by a rescan re-arm, session
-      cancellation, or index disposal. The all-drives overload `FileIndex.WaitForCatchUpAsync(CancellationToken)`
-      completes when the slowest drive catches up and faults immediately on the first drive watch failure or
-      cancellation. Like scan queries, catch-up waits are linked to the index's disposal token so disposing
-      the index cancels pending waits rather than waiting them out; session cancellation or unhandled source
-      exceptions fault or cancel pending waiters rather than stranding them.
+    - **Watch start readiness**: `StartWatchingAsync(X)` returns once X's channel is connected and
+      `StartWatch` is written.
+    - **Watch and catch-up lifetime**: each MFT-backed drive has an independent
+      `IIndexDriveWatch`, pump, stop source, and catch-up slot. `StartWatchingAsync(X)` begins at
+      `WatchCatchUpState.CatchingUp`; journal batches through the tip captured at start are applied
+      before `DriveCaughtUp` moves X to `CaughtUp`. `WaitForCatchUpAsync(X)` follows that instance:
+      it completes when X catches up, faults with X's watch fault, and is cancelled when stop,
+      rescan, or disposal retires the instance. The list and all-drive overloads fan out to the
+      requested drives concurrently and return one `DriveOperationResult` per drive. A `Drive` or
+      `Apply` fault publishes `Recovering`, raises `WatchFaulted`, and automatically rescans and
+      restarts only X. A second fault before the restarted watch reaches `CaughtUp`, or a failed
+      recovery scan, raises `WatchFaulted(Recovery, X)` and leaves X `Faulted` until a consumer
+      calls `RescanAsync(X)` or `StartWatchingAsync(X)`. `Channel` faults never recover.
+    - **Per-drive state machine**: each configured drive has a `DriveRuntime`; each start creates
+      a distinct `WatchInstance` with its own generation, cancellation sources, handle, pump,
+      catch-up slot, armed block, fault, and `Drained` task. `Current` holds at most one instance,
+      and `Retiring` holds its predecessor until teardown finishes. A pump applies a batch only
+      while it is still the current running instance armed against the published block; every
+      completion, fault, checkpoint report, recovery ticket, and cleanup performs the same
+      identity check, so a retiring pump cannot change its successor's block or state.
+      Start linearizes when the returned handle is published and the instance becomes running;
+      stop linearizes when `WatchRequested` is cleared and the instance becomes retiring; rescan
+      and recovery linearize when the replacement block is committed; disposal linearizes when
+      `_disposed` is set and its token is cancelled. A rescan or recovery holds the drive's
+      lifecycle gate through retirement, production, commit, and an eligible restart. Recovery is
+      ticketed to the faulted instance and its block and is dropped if either is no longer current.
+      Stop during a recovery or rescan wins: it clears the request, prevents the restart, and
+      rethrows the stopped instance's outstanding fault once. A fresh consumer start supersedes a
+      recovery and discards the faulted instance's outstanding fault. If a restart itself failed
+      before publishing a handle, stop clears the request and refused-start fault without
+      rethrowing it. `DisposeAsync` cancels and drains all instances and recovery work without
+      throwing a watch fault.
+    - **Concurrent open**: `OpenAsync` settles every configured drive concurrently and waits for
+      them all before publishing the first snapshot or throwing. `FileIndexOptions.OpenProgress`
+      reports once for each drive that settles, from that drive's settling thread with no lock
+      held. Callbacks may overlap and arrive out of `IndexDriveOpened.SettledCount` order, so a
+      consumer keeps the report with the largest count. A cancelled settle claims no count and
+      reports nothing; a cancelled or failed open may therefore have reported only some drives.
+    - **Lock order**: for drive X the order is X's lifecycle gate, X's write gate, then
+      `_stateLock`. No gate is acquired while `_stateLock` is held, and no operation except
+      disposal holds gates for two drives; disposal takes every lifecycle gate and then every
+      write gate in ascending drive-letter order. Production holds the lifecycle gate but neither
+      the write gate nor `_stateLock`; publication takes the write gate and commits the block,
+      snapshot, and pending result under `_stateLock`. `Changed` and `WatchFaulted` run with no
+      write gate and no `_stateLock`; pumps hold no gate when raising either event. The scan path
+      may raise `WatchFaulted(CatchUpLost, X)` while holding X's lifecycle gate.
+    - **Callback reentrancy**: a `Changed` or `WatchFaulted` handler runs on a drive's pump (or, for `WatchFaultKind.CatchUpLost`, on the scan operation that holds the drive's lifecycle gate), so a lifecycle call that waits for a pump can deadlock across drives (X's handler stops Y while Y's handler stops X). `FileIndex.Reentrancy.cs` sets an `AsyncLocal` delivery marker around every handler invocation (`Deliver`, used by `RaiseChanged` and `RaiseWatchFaulted`); `StartWatchingAsync`, `StopWatchingAsync`, `RescanAsync`, `DisposeAsync`, their batched forms and an unsettled `WaitForCatchUpAsync` check it synchronously at entry and return an already faulted task carrying `InvalidOperationException`, whichever drive they name. The marker flows into awaits and work the handler starts; its `Active` flag is cleared when the invocation returns, so work queued from a handler that runs afterwards is allowed. Queries, `Drives`, `QueryUsnJournalSettings` and a settled catch-up wait are never rejected. The recovery's restart and a rescan's restart use internal helpers that carry no check. Every waiter a handler can settle or cancel completes its continuations asynchronously (`RunContinuationsAsynchronously`, `AwaitQueuedAsync` for token cancellation), so a continuation never runs on the handler's stack.
     - **Writer lifetime**: every `BlockWriter` operation holds a `BlockAccessScope` on its
       `BlockFile` for the operation's whole duration. `BlockFile.Dispose` refuses new scopes when
       it begins and waits for outstanding ones before unmapping, so a write racing disposal either
@@ -465,11 +382,39 @@ For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
     - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`; `MaterializeBatches`/`ReadRecordBatches` provide bounded-memory batch materialization over the same result.
     - **ElevationUtilities**: Shared logic for detecting and ensuring Administrative privileges.
-    - **VolumeBroker**: `JournalBrokerHost`/`JournalBrokerClient` run elevated MFT scans and USN journal watches through one elevated child process over a named pipe (control/journal frames) - one UAC prompt per consumer session. `JournalBrokerClient` supports `QueryVolumesAsync`, `ArmScanAndCatchUpAsync`, and `GrowUsnJournalAsync` (a grow-only USN journal resize whose unelevated sizing query is `FileIndex.QueryUsnJournalSettings`, and whose reason to be offered is `DriveStatus.CheckpointLoss`) while other drives remain live-watched; `FileIndex.RescanAsync` uses this path to disarm one drive, rebuild and swap its block, then re-arm only that drive. The cold scan is written straight into a client-created file-backed block section. `BrokerMftBlockProducer` supplies the index producer delegate, validates finished blocks, and transfers their ownership to the caller; its connection factory retains client ownership. `BrokerMftBlockProducer.CreateWatchSource()` returns a `BrokerIndexWatchSource` that borrows the same connection factory to bridge the broker's per-drive live-watch enumerables onto `FileIndex`'s merged watch stream. `ElevatedEntryPoint`/`BrokerLauncher` dispatch and launch the `--broker` child mode; `BrokerDiagnostics` provides opt-in frame tracing; while tracing is on, the broker drops journal entries for both diagnostics log files (its own and the client's, forwarded as `--diag-log`) before building JournalBatch frames - matched by file reference number, so a renamed log stays filtered - and skips batches the filter empties, so the log's own writes cannot feed the watch stream; `MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` (forwarded as `--diag-include-self`) opts back in for debugging the diagnostics themselves.
+    - **VolumeBroker**: `BrokerProcess` owns one elevated process and its control pipe, with one
+      UAC prompt per consumer session. Nonzero request ids route concurrent `OpenChannel`,
+      `QueryVolume`, and `GrowUsnJournal` replies; an id remains reserved until its reply arrives
+      or the process ends. Opening a drive operation creates a client-owned pipe, sends its name
+      on the control pipe, waits for both the host connection and `ChannelOpened`, and writes one
+      request. Each scan or watch then owns that drive channel, so closing or faulting it cancels
+      only that operation. Control EOF ends the process and every channel;
+      `BrokerProcess.Ended` and `HasEnded` report that lifecycle, and pending work fails with
+      `BrokerChannelLostException`. The host admits concurrent scans under one processor-sized
+      parse-thread budget and rebalances each `ParseThreadAllowance` when scans enter or leave;
+      native parsing reads the allowance at each chunk and before path resolution. A scan writes
+      `ScanReady` before bounded catch-up; a journal-proven loss ends it with `CatchUpLost`, while
+      any unproven failure ends it with `Error`.
+      One dedicated background thread visits every pipe every five seconds. An idle control pipe,
+      a watch waiting on its volume, a queued scan, and a processing operation that has reported
+      progress within 30 seconds receive `Heartbeat`; a processing operation with no progress for
+      30 seconds receives `Stalled` and its channel is cancelled. A pipe with a frame write in
+      flight is skipped, so it cannot delay other pipes; the client's 30-second no-frame limit
+      then closes that pipe. Any frame resets the client limit. `BrokerMftBlockProducer` validates
+      completed blocks and transfers them to the index, while `BrokerIndexWatchSource` opens one
+      channel per drive watch. `ElevatedEntryPoint` and `BrokerLauncher` dispatch `--broker` mode.
+      `BrokerDiagnostics` writes through a bounded background queue and filters the two diagnostic
+      logs from journal batches unless `MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` opts in.
 - **TestProgram** (C# Console App) - CLI that reads MFT metadata for specified drives. Automatically self-elevates.
 - **Benchmark** (C# Console App) - Performance benchmark using synthetic MFT generation.
 - **MFTLib.Tests** (C# MSTest) - Unit tests for record mapping and path resolution.
-- **MFTLibTestExtensions** (C# Library) - Public, consumer-facing test harness (`ScanSessionTestHarness`) over MFTLib's internal `JournalBrokerScanSession` construction seams, so consumer test assemblies can build a session over a fake client without MFTLib friend-listing them. Ships as the separate `MFTLib.TestExtensions` NuGet package at publish time; never folded into the `MFTLib` package.
+- **MFTLibTestExtensions** (C# Library) - Public, consumer-facing `BrokerTestHarness` that runs a
+  `JournalBrokerHost` in process over in-memory control and drive pipes and returns the production
+  `BrokerProcess` connected to it. `BrokerTestHarnessOptions` supplies the client clock, per-pipe
+  connection failures, and held host writes. Host faults surface only through production behavior:
+  `BrokerProcess.Ended` and `HasEnded`, `BrokerChannelLostException` on pending operations, and
+  `Error` frames; disposing the process never throws a host fault. Ships as the separate
+  `MFTLib.TestExtensions` NuGet package at publish time; never folded into the `MFTLib` package.
 
 ### Native error messages
 

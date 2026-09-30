@@ -149,6 +149,28 @@ public class UsnJournalVolumeInteropTests
     }
 
     /// <summary>
+    ///     A volume root that cannot be opened (a letter no volume is mounted on) is not evidence
+    ///     that a cached checkpoint is unusable either: the live read reports nothing. Off Windows
+    ///     there is no volume root to open at all, and the live read reports nothing there too.
+    /// </summary>
+    [TestMethod]
+    public void ReadLiveJournal_VolumeRootWillNotOpen_ReportsNothing()
+    {
+        var mounted = DriveInfo.GetDrives().Select(drive => char.ToUpperInvariant(drive.Name[0])).ToHashSet();
+        var unmounted = Enumerable.Range('D', 'Z' - 'D' + 1).Select(letter => (char)letter)
+            .First(letter => !mounted.Contains(letter));
+
+        Assert.IsNull(JournalCheckpointCheck.ReadLiveJournal(unmounted));
+    }
+
+    /// <summary>A host that is not Windows has no volume root to read, so the live read reports nothing.</summary>
+    [TestMethod]
+    public void ReadLiveJournal_HostIsNotWindows_ReportsNothing()
+    {
+        Assert.IsNull(JournalCheckpointCheck.ReadLiveJournal('C', isWindows: false));
+    }
+
+    /// <summary>
     ///     The check against a real volume, through the real unelevated handle. C:'s journal
     ///     id is never zero, so a checkpoint claiming journal 0 is always a recreated journal.
     ///     The test process forbids live journal reads, so this opts back in explicitly: it is
@@ -200,6 +222,28 @@ public class UsnJournalVolumeInteropTests
         using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
         Assert.IsNotNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening));
+    }
+
+    /// <summary>
+    ///     With no override installed, the guard's state alone decides between reporting nothing
+    ///     and reading the live journal, so a process whose guard is off reads the real volume.
+    /// </summary>
+    [TestMethod]
+    [SupportedOSPlatform("windows")]
+    public void JournalReader_NoOverride_TheGuardAloneDecidesWhetherTheLiveJournalIsRead()
+    {
+        if (SkipOffWindows())
+        {
+            return;
+        }
+
+        Assert.IsNull(new JournalCheckpointCheck.JournalReader(() => true, JournalCheckpointCheck.ReadLiveJournal).Read('C'));
+
+        var journal = new JournalCheckpointCheck.JournalReader(() => false, JournalCheckpointCheck.ReadLiveJournal).Read('C');
+
+        Assert.IsNotNull(journal, "C: has a journal the unelevated handle can read");
+        Assert.AreNotEqual(0UL, journal.Value.JournalId);
+        Assert.IsTrue(journal.Value.AllocationDelta > 0);
     }
 
     [TestMethod]

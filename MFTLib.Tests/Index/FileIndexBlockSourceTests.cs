@@ -76,7 +76,7 @@ public class FileIndexBlockSourceTests
                 new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
                     ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
             writer.SetJournalCursor(journalId, nextUsn);
-            writer.Complete(FixedMoment);
+            writer.Complete(FixedMoment, null);
         }
 
         return BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;

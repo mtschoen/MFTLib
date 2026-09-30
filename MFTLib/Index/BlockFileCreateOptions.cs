@@ -31,8 +31,7 @@ public sealed record BlockFileCreateOptions
     public bool DeleteOnClose { get; init; }
 
     /// <summary>
-    ///     Receives the log line when a block whose creation or header initialization failed is
-    ///     deleted. Null (the default) logs nothing. Forwarded from
+    ///     Receives the log line when a block whose creation failed is deleted. Null (the default) logs nothing. Forwarded from
     ///     <see cref="FileIndexOptions.Diagnostics" /> by the index; producers may leave it null.
     /// </summary>
     public Action<string>? Diagnostics { get; init; }

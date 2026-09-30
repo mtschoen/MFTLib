@@ -1,5 +1,3 @@
-using System.Buffers;
-using static MFTLib.Tests.TestSupport.InProcessBlockBrokerHarness;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -7,24 +5,23 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
-public class BrokerMftBlockProducerTests
+public class BrokerMftBlockProducerTests : BrokerBlockTestBase
 {
-    static readonly UsnJournalCursor ArmedCursor = new(71, 12345);
-
     [TestMethod]
     public async Task Produce_AdoptsClientBlockAndReleasesOnlySectionLifetime()
     {
-        await using var harness = new InProcessBlockBrokerHarness();
-        BrokerScanResult? completed = null;
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync,
-            scanCompleted: result => completed = result).CreateProducer();
+        await using var broker = new InProcessBroker(CreateHost(
+            readJournal: CatchUpSources.ToTip(AdvancedCursor, JournalEntryFactory.Create(20, 12400, "file.txt"))));
+        BrokerDriveScanResult? completed = null;
+        var request = Request(Target());
 
-        var result = await producer(harness.Request, harness.CancellationToken);
-        using var block = result.Block;
+        var result = await ProduceAsync(broker.Process, request, scanCompleted: scan => completed = scan).WaitAsync(HangGuard);
+        var block = result.Block;
 
-        Assert.AreSame(harness.CreatedBlock, block);
-        Assert.AreEqual(harness.Request.BlockPath, block.Path);
-        Assert.IsTrue(block.DeleteOnClose);
+        var section = broker.Sections.Single();
+        Assert.AreSame(section.Block, block);
+        Assert.AreEqual(request.BlockPath, block.Path);
+        Assert.IsTrue(File.Exists(request.BlockPath));
         Assert.IsTrue(block.Header.IsComplete);
         Assert.AreEqual(ProducerKind.Mft, block.Header.ProducerKind);
         Assert.AreEqual(5u, block.Header.RootRow);
@@ -36,19 +33,23 @@ public class BrokerMftBlockProducerTests
         Assert.AreEqual(0, result.SkippedRecordCount);
         Assert.IsFalse(result.CompactionNeeded);
         Assert.AreEqual("file.txt", NamePool.ReadRowName(block, 20).ToString());
-        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
+        Assert.AreEqual(1, section.Lifetime.DisposeCount);
         Assert.IsNotNull(completed);
-        var outcome = completed.BlockOutcomes["C"];
-        Assert.AreEqual(harness.SectionName, outcome.SectionName);
+        var outcome = completed.Block;
+        Assert.AreEqual(section.SectionName, outcome.SectionName);
         Assert.AreSame(block, outcome.Block);
         Assert.AreEqual(21L, outcome.RowCount);
         Assert.AreEqual(18L, outcome.NamePoolUsedBytes);
-        Assert.AreEqual(12500L, completed.AdvancedCursors["C"].NextUsn);
-        Assert.AreEqual(1, completed.CatchUpEntries["C"].Length);
-        await harness.Client.DisposeAsync();
-        harness.ClientDisposed = true;
-        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
+        Assert.AreEqual(ArmedCursor, completed.ArmedCursor);
+        Assert.AreEqual(AdvancedCursor.NextUsn, completed.AdvancedCursor!.Value.NextUsn);
+        Assert.AreEqual(1, completed.CatchUpEntries.Count);
+
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        Assert.AreEqual(1, section.Lifetime.DisposeCount);
         Assert.IsTrue(block.Header.IsComplete);
+        var path = block.Path;
+        block.Dispose();
+        Assert.IsFalse(File.Exists(path), "the block the producer returns is delete-on-close");
     }
 
     [TestMethod]
@@ -59,7 +60,7 @@ public class BrokerMftBlockProducerTests
     [DataRow("journal cursor")]
     public async Task Produce_RejectsInvalidHeaderAndDisposesBlock(string check)
     {
-        await using var harness = new InProcessBlockBrokerHarness(block =>
+        await using var broker = CreateBrokerChangingBlock(block =>
         {
             switch (check)
             {
@@ -70,15 +71,16 @@ public class BrokerMftBlockProducerTests
                 case "journal cursor": block.Header.UsnNextUsn++; break;
             }
         });
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync).CreateProducer();
+        var request = Request(Target());
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => producer(harness.Request, harness.CancellationToken));
+            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
 
         StringAssert.Contains(exception.Message, check);
-        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
-        BlockFileAssertions.IsDisposed(harness.CreatedBlock!);
-        Assert.IsFalse(File.Exists(harness.Request.BlockPath));
+        var section = broker.Sections.Single();
+        Assert.AreEqual(1, section.Lifetime.DisposeCount);
+        BlockFileAssertions.IsDisposed(section.Block);
+        Assert.IsFalse(File.Exists(request.BlockPath));
     }
 
     [TestMethod]
@@ -89,77 +91,75 @@ public class BrokerMftBlockProducerTests
         // reach the validated-result callback or be handed back as an adopted block.
         var requested = new CacheTag("GITW", 7);
         var stored = new CacheTag("FILE", 1);
-        await using var harness = new InProcessBlockBrokerHarness(block =>
+        await using var broker = CreateBrokerChangingBlock(block =>
         {
             block.Header.CacheTagFourCc = stored.PackedFourCc;
             block.Header.CacheTagVersion = stored.Version;
         });
         var invocations = 0;
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync,
-            scanCompleted: _ => invocations++).CreateProducer();
+        var request = Request(Target()) with { CacheTag = requested };
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => producer(harness.Request with { CacheTag = requested }, harness.CancellationToken));
+            () => ProduceAsync(broker.Process, request, scanCompleted: _ => invocations++).WaitAsync(HangGuard));
 
         StringAssert.Contains(exception.Message, "cache tag");
         Assert.AreEqual(0, invocations, "the callback must not run for a block whose tag does not match the request");
-        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
-        BlockFileAssertions.IsDisposed(harness.CreatedBlock!);
-        Assert.IsFalse(File.Exists(harness.Request.BlockPath));
+        var section = broker.Sections.Single();
+        Assert.AreEqual(1, section.Lifetime.DisposeCount);
+        BlockFileAssertions.IsDisposed(section.Block);
+        Assert.IsFalse(File.Exists(request.BlockPath));
     }
 
     [TestMethod]
     public async Task Produce_InvalidHeader_DoesNotInvokeScanCompleted()
     {
         // The producer disposes the block on every failure path, so a callback that ran
-        // before validation would hand out a BrokerScanResult whose block is dead by the
+        // before validation would hand out a BrokerDriveScanResult whose block is dead by the
         // time the callback returns. Reading through it is undefined behaviour rather
         // than an exception, which is why the callback must not see this result at all.
-        await using var harness = new InProcessBlockBrokerHarness(block => block.Header.RowCount = 0);
+        await using var broker = CreateBrokerChangingBlock(block => block.Header.RowCount = 0);
         var invocations = 0;
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync,
-            scanCompleted: _ => invocations++).CreateProducer();
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => producer(harness.Request, harness.CancellationToken));
+            () => ProduceAsync(broker.Process, Request(Target()), scanCompleted: _ => invocations++).WaitAsync(HangGuard));
 
         StringAssert.Contains(exception.Message, "RowCount");
         Assert.AreEqual(0, invocations, "the callback must not run for a result that failed validation");
-        BlockFileAssertions.IsDisposed(harness.CreatedBlock!);
+        BlockFileAssertions.IsDisposed(broker.Sections.Single().Block);
     }
 
     [TestMethod]
     public async Task Produce_BrokerErrorIsReportedAndPendingBlockDisposed()
     {
-        await using var harness = new InProcessBlockBrokerHarness(sourceFails: true);
+        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _) =>
+            throw new IOException("batch failed")));
         var invocations = 0;
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync,
-            scanCompleted: _ => invocations++).CreateProducer();
+        var request = Request(Target());
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => producer(harness.Request, harness.CancellationToken));
+            () => ProduceAsync(broker.Process, request, scanCompleted: _ => invocations++).WaitAsync(HangGuard));
 
         // The per-drive error reaches the caller as this exception. The callback sees only
         // validated results, so a failed drive does not reach it.
         StringAssert.Contains(exception.Message, "batch failed");
         Assert.AreEqual(0, invocations);
-        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
-        BlockFileAssertions.IsDisposed(harness.CreatedBlock!);
+        var section = broker.Sections.Single();
+        Assert.AreEqual(1, section.Lifetime.DisposeCount);
+        BlockFileAssertions.IsDisposed(section.Block);
     }
 
     [TestMethod]
     public async Task ProduceAsync_ForwardsBrokerProgressOntoTheIndexProgressChannel()
     {
-        await using var harness = new InProcessBlockBrokerHarness();
+        await using var broker = new InProcessBroker(CreateHost());
         var samples = new List<IndexScanProgress>();
-        var request = harness.Request with { Progress = new SynchronousProgress<IndexScanProgress>(samples.Add) };
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync);
+        var request = Request(Target()) with { Progress = new SynchronousProgress<IndexScanProgress>(samples.Add) };
 
-        var result = await producer.CreateProducer()(request, harness.CancellationToken);
+        var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard);
         result.Block.Dispose();
 
         Assert.IsTrue(samples.Count > 0, "the broker reported no progress to the index channel");
-        Assert.IsTrue(samples.All(sample => sample.DriveLetter == 'c'));
+        Assert.IsTrue(samples.All(sample => sample.DriveLetter == 'C'));
         Assert.IsTrue(samples.Any(sample => sample.Phase == IndexScanPhase.Transferring));
         Assert.IsTrue(samples.All(sample => sample.TotalRows is null || sample.TotalRows.Value >= sample.RowsWritten),
             "when present, total rows should not be less than rows written");
@@ -168,11 +168,13 @@ public class BrokerMftBlockProducerTests
     [TestMethod]
     public async Task ProduceAsync_KeepsTheCallersOwnBrokerProgressChannel()
     {
-        await using var harness = new InProcessBlockBrokerHarness();
+        await using var broker = new InProcessBroker(CreateHost());
         var brokerSamples = new List<BrokerScanProgress>();
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync,
-            new BrokerScanOptions { Progress = new SynchronousProgress<BrokerScanProgress>(brokerSamples.Add) });
-        var result = await producer.CreateProducer()(harness.Request, harness.CancellationToken);
+
+        var result = await ProduceAsync(broker.Process, Request(Target()), new BrokerScanOptions
+        {
+            Progress = new SynchronousProgress<BrokerScanProgress>(brokerSamples.Add)
+        }).WaitAsync(HangGuard);
         result.Block.Dispose();
 
         Assert.IsTrue(brokerSamples.Count > 0);
@@ -181,100 +183,26 @@ public class BrokerMftBlockProducerTests
     [TestMethod]
     public async Task Produce_ReportsCompactionFlag()
     {
-        await using var harness = new InProcessBlockBrokerHarness(block => block.Header.Flags |= BlockFlags.CompactionNeeded);
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync).CreateProducer();
-        var result = await producer(harness.Request, harness.CancellationToken);
+        await using var broker = CreateBrokerChangingBlock(block => block.Header.Flags |= BlockFlags.CompactionNeeded);
+
+        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
         using var block = result.Block;
+
         Assert.IsTrue(result.CompactionNeeded);
-    }
-
-    [TestMethod]
-    public async Task Scan_NormalizesTargets()
-    {
-        await using var harness = new InProcessBlockBrokerHarness();
-        var result = await harness.Client.ArmScanAndCatchUpAsync([@"\\.\c:"], new BrokerScanOptions
-        {
-            BlockTargets = new Dictionary<string, BlockScanTarget>
-            {
-                [@"c:\"] = new(harness.Request.BlockPath, 123, true)
-            },
-        }, harness.CancellationToken);
-        using var block = result.BlockOutcomes["C"].Block;
-        Assert.AreEqual(MftBlockCapacity.Plan(null).SlotCapacity, block.Header.SlotCapacity);
-        Assert.AreEqual(MftBlockCapacity.Plan(null).NamePoolCapacity, block.Header.NamePoolCapacity);
-        Assert.AreEqual(1, harness.Lifetime.DisposeCount);
-    }
-
-    [TestMethod]
-    public async Task Scan_MissingTargetFailsBeforeAnyTransmission()
-    {
-        await using var harness = new InProcessBlockBrokerHarness();
-        var transmitted = false;
-        var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
-            harness.Client.ArmScanAndCatchUpAsync(["C", "D"], new BrokerScanOptions
-            {
-                BlockTargets = new Dictionary<string, BlockScanTarget>
-                {
-                    ["C"] = new(harness.Request.BlockPath, 123, true)
-                }
-            }, () => transmitted = true, harness.CancellationToken));
-        StringAssert.Contains(exception.Message, "D");
-        Assert.IsFalse(transmitted);
-        Assert.IsNull(harness.CreatedBlock);
-    }
-
-    [TestMethod]
-    public async Task Scan_DuplicateSectionNameReleasesBothFactoryResults()
-    {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        await using var server = serverSide;
-        var blocks = new List<BlockFile>();
-        var lifetimes = new List<CountingLifetime>();
-        await using var client = new JournalBrokerClient(clientSide,
-            (_, options) =>
-            {
-                blocks.Add(BlockFile.Create(options));
-                lifetimes.Add(new CountingLifetime());
-                return ("duplicate-section", blocks[^1], lifetimes[^1]);
-            });
-        var response = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteError(response, "C", BrokerFrame.NoArmEpoch, "query failed");
-        BrokerProtocol.WriteError(response, "D", BrokerFrame.NoArmEpoch, "query failed");
-        await server.WriteAsync(response.WrittenMemory);
-        try
-        {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.ArmScanAndCatchUpAsync(["C", "D"],
-                new BrokerScanOptions
-                {
-                    BlockTargets = new Dictionary<string, BlockScanTarget>
-                    {
-                        ["C"] = CreateTemporaryTarget(),
-                        ["D"] = CreateTemporaryTarget()
-                    }
-                }));
-            CollectionAssert.AreEqual(new[] { 1, 1 }, lifetimes.Select(lifetime => lifetime.DisposeCount).ToArray());
-            blocks.ForEach(BlockFileAssertions.IsDisposed);
-        }
-        finally
-        {
-            blocks.ForEach(block => block.Dispose());
-        }
     }
 
     [TestMethod]
     public async Task Produce_PreservesRequestedCacheTagThroughHostCompletion()
     {
-        await using var harness = new InProcessBlockBrokerHarness();
+        await using var broker = new InProcessBroker(CreateHost());
         var tag = new CacheTag("GITW", 7);
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync).CreateProducer();
-        var result = await producer(harness.Request with { CacheTag = tag }, harness.CancellationToken);
+
+        var result = await ProduceAsync(broker.Process, Request(Target()) with { CacheTag = tag }).WaitAsync(HangGuard);
         using var block = result.Block;
+
         Assert.AreEqual(tag, block.Header.CacheTag);
         Assert.IsTrue(block.Header.IsComplete);
         Assert.AreEqual(ArmedCursor.JournalId, block.Header.UsnJournalId);
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
     }
-
-    static BlockScanTarget CreateTemporaryTarget() =>
-        new(Path.Combine(Path.GetTempPath(), $"producer-duplicate-{Guid.NewGuid():N}.bin"), 123, true);
 }

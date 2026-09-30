@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Runtime.Versioning;
 using MFTLib.Index;
 using MFTLibTestExtensions;
@@ -148,10 +147,7 @@ public class CacheDirectoryTests
 
     static string ComputeDefaultPathForTest()
     {
-        var method = typeof(CacheDirectory).GetMethod("ComputeDefaultPath",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.IsNotNull(method);
-        return (string)method.Invoke(null, null)!;
+        return new CacheDirectory.DefaultPathResolver(() => false, Environment.GetFolderPath).Resolve();
     }
 
     [TestMethod]
@@ -161,6 +157,44 @@ public class CacheDirectoryTests
         Assert.IsFalse(string.IsNullOrWhiteSpace(path));
         Assert.IsTrue(Path.IsPathFullyQualified(path));
         StringAssert.Contains(path, "MFTLib");
+    }
+
+    [TestMethod]
+    public void ResolveDefaultPath_Unforbidden_IsTheIndexFolderUnderLocalApplicationData()
+    {
+        var applicationData = Path.Combine(_root, "local");
+
+        var path = new CacheDirectory.DefaultPathResolver(() => false,
+            folder => folder == Environment.SpecialFolder.LocalApplicationData ? applicationData : "unused").Resolve();
+
+        Assert.AreEqual(Path.Combine(applicationData, "MFTLib", "index"), path);
+    }
+
+    [TestMethod]
+    public void ResolveDefaultPath_NoLocalApplicationData_FallsBackToTheCacheFolderInTheUserProfile()
+    {
+        var profile = Path.Combine(_root, "profile");
+
+        var path = new CacheDirectory.DefaultPathResolver(() => false,
+            folder => folder == Environment.SpecialFolder.UserProfile ? profile : string.Empty).Resolve();
+
+        Assert.AreEqual(Path.Combine(profile, ".cache", "MFTLib", "index"), path);
+    }
+
+    [TestMethod]
+    public void ResolveDefaultPath_Forbidden_ThrowsBeforeReadingAnyFolder()
+    {
+        var foldersRead = 0;
+
+        var resolver = new CacheDirectory.DefaultPathResolver(() => true, _ =>
+        {
+            foldersRead++;
+            return "unused";
+        });
+
+        Assert.ThrowsException<InvalidOperationException>(() => resolver.Resolve());
+
+        Assert.AreEqual(0, foldersRead);
     }
 
     [TestMethod]

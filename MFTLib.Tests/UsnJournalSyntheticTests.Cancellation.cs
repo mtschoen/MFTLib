@@ -1,6 +1,5 @@
-using System.Buffers;
-using System.Buffers.Binary;
 using MFTLib.Tests.TestSupport;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -12,7 +11,7 @@ public partial class UsnJournalSyntheticTests
     [DataRow(true, 2)]
     [DataRow(false, 1)]
     [DataRow(false, 2)]
-    public async Task EndWatch_IdleNativeRead_Acknowledges(bool cancelBeforeIssue, int readNumber)
+    public async Task CloseWatchPipe_IdleNativeRead_EndsChannel(bool cancelBeforeIssue, int readNumber)
     {
         var pipe = await IdleUsnPipe.CreateAsync(readNumber);
         try
@@ -29,18 +28,13 @@ public partial class UsnJournalSyntheticTests
                 return cancelled;
             };
 
-            var (client, server) = DuplexStream.CreatePair();
-            await using var clientLifetime = client;
-            await using var serverLifetime = server;
-            using var writer = new RecordingBlockSectionWriter();
-            using var lifetime = new CancellationTokenSource();
-            var serve = JournalBrokerHost.CreateDefault().ServeAsync(server, writer, false, lifetime.Token);
+            // The host's clock never advances, so the session can only end once the watch channel
+            // has really stopped: the grace period that would otherwise end it never passes.
+            var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault(new FakeTimeProvider()));
             try
             {
-                await WriteCancellationFrameAsync(client,
-                    buffer => BrokerProtocol.WriteStartWatch(buffer, "C:7:200:1"));
-                Assert.AreEqual(BrokerFrameKind.CaughtUp,
-                    (await ReadCancellationFrameAsync(client)).Kind);
+                var drivePipe = await harness.OpenWatchChannelAsync('C', new UsnJournalCursor(7, 200));
+                Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(drivePipe))?.Kind);
                 if (readNumber == 2)
                 {
                     await pipe.SendEmptyBatchAsync(201);
@@ -52,23 +46,21 @@ public partial class UsnJournalSyntheticTests
                     await IdleUsnPipe.AwaitSignalAsync(pipe.Issued);
                 }
 
-                await WriteCancellationFrameAsync(client, BrokerProtocol.WriteEndWatch);
+                // Closing the drive pipe is how a client stops a watch.
+                await drivePipe.DisposeAsync();
                 var foundRequest = await cancellationAttempted.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 if (cancelBeforeIssue)
                 {
                     Assert.IsFalse(foundRequest, "The regression must cancel before a request exists.");
                 }
                 pipe.ContinueIssue.Set();
-                Assert.AreEqual(BrokerFrameKind.EndWatchAck,
-                    (await ReadCancellationFrameAsync(client)).Kind);
-                await WriteCancellationFrameAsync(client, BrokerProtocol.WriteShutdown);
-                await serve.WaitAsync(TimeSpan.FromSeconds(10));
+                await harness.CloseControlAsync();
+                await harness.Serve.WaitAsync(TimeSpan.FromSeconds(10));
             }
             finally
             {
                 pipe.UnblockForCleanup();
-                await lifetime.CancelAsync();
-                await serve.WaitAsync(TimeSpan.FromSeconds(10));
+                await harness.DisposeAsync();
             }
         }
         finally
@@ -147,26 +139,5 @@ public partial class UsnJournalSyntheticTests
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
         }
-    }
-
-    static async Task WriteCancellationFrameAsync(Stream stream, Action<IBufferWriter<byte>> write)
-    {
-        var buffer = new ArrayBufferWriter<byte>();
-        write(buffer);
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await stream.WriteAsync(buffer.WrittenMemory, deadline.Token);
-        await stream.FlushAsync(deadline.Token);
-    }
-
-    static async Task<BrokerFrame> ReadCancellationFrameAsync(Stream stream)
-    {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var header = new byte[4];
-        await stream.ReadExactlyAsync(header, deadline.Token);
-        var length = BinaryPrimitives.ReadInt32LittleEndian(header);
-        var frame = new byte[4 + length];
-        header.CopyTo(frame, 0);
-        await stream.ReadExactlyAsync(frame.AsMemory(4), deadline.Token);
-        return BrokerProtocol.ReadFrame(frame, out _);
     }
 }

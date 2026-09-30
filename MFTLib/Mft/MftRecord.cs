@@ -116,11 +116,6 @@ public readonly struct MftRecord
                 return _fileName ?? string.Empty;
             }
 
-            if (_fileName != null)
-            {
-                return _fileName;
-            }
-
             if (_namePtr != IntPtr.Zero && _nameLength > 0)
             {
                 return new string((char*)_namePtr, 0, _nameLength);
@@ -157,11 +152,6 @@ public readonly struct MftRecord
         get
         {
             if (_materialized)
-            {
-                return _fullPath;
-            }
-
-            if (_fullPath != null)
             {
                 return _fullPath;
             }

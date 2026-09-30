@@ -1,5 +1,3 @@
-using System.Buffers;
-using System.Buffers.Binary;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -12,7 +10,7 @@ public class JournalBrokerHostBlockScanTests
     static readonly UsnJournalCursor ArmedCursor = new(71, 12345);
 
     [TestMethod]
-    public async Task ServeOnce_BlockFormatWritesRowsAndArmedCursorWithoutPayload()
+    public async Task ScanChannel_BlockFormatWritesRowsAndArmedCursorWithoutPayload()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
         var capturedBlockWriter = new BlockWriter(blockWriter.Block);
@@ -23,25 +21,26 @@ public class JournalBrokerHostBlockScanTests
                 cursorArmed = true;
                 return ArmedCursor;
             },
-            readJournal: (_, cursor) =>
+            readJournal: (_, cursor, maximumBufferReads) =>
             {
-                Assert.AreEqual(ArmedCursor, cursor);
                 Assert.IsTrue(capturedBlockWriter.Block.Header.IsComplete);
-                return (Array.Empty<UsnJournalEntry>(), new UsnJournalCursor(cursor.JournalId, 12500));
+                Assert.AreEqual(BrokerLiveness.CatchUpBufferReadsPerCall, maximumBufferReads);
+                return cursor == ArmedCursor
+                    ? (Array.Empty<UsnJournalEntry>(), new UsnJournalCursor(cursor.JournalId, 12500))
+                    : (Array.Empty<UsnJournalEntry>(), cursor);
             },
-            scanDrive: (driveLetter, _, _) =>
+            scanDrive: (driveLetter, _, _, _, _) =>
             {
                 Assert.IsTrue(cursorArmed);
                 Assert.AreEqual("C", driveLetter);
                 return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
             });
 
-        var frames = await ServeAsync(host, blockWriter);
+        var frames = await ScanAsync(host, blockWriter);
 
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
         Assert.AreEqual(ArmedCursor, frames[0].Cursor);
         var scanReady = frames.Single(frame => frame.Kind == BrokerFrameKind.ScanReady);
-        Assert.AreEqual("section-C", scanReady.MmfName);
         Assert.AreEqual(21L, scanReady.RowCount);
         Assert.AreEqual(18L, scanReady.NamePoolUsedBytes);
         Assert.AreEqual("section-C", blockWriter.LastSectionName);
@@ -57,20 +56,12 @@ public class JournalBrokerHostBlockScanTests
     }
 
     [TestMethod]
-    public async Task ServeOnce_BlockFormat_ForwardsDirectoryIndexProfileAndKeepNamesToSectionWriter()
+    public async Task ScanChannel_BlockFormat_ForwardsDirectoryIndexProfileAndKeepNamesToSectionWriter()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
-        var host = CreateHost((_, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]);
+        var host = CreateHost((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]);
 
-        var (client, server) = DuplexStream.CreatePair();
-        await using var clientLifetime = client;
-        await using var serverLifetime = server;
-        var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(request, "C:0:0:section-C:1", [".git"]);
-        await client.WriteAsync(request.WrittenMemory);
-        await host.ServeAsync(server, blockWriter, true, default);
-        await server.DisposeAsync();
-        var frames = await ReadFramesAsync(client);
+        var frames = await ScanAsync(host, blockWriter, BrokerScanProfile.DirectoryIndex, [".git"]);
 
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
         Assert.AreEqual(BrokerScanProfile.DirectoryIndex, blockWriter.LastFilter.Profile);
@@ -81,11 +72,11 @@ public class JournalBrokerHostBlockScanTests
     }
 
     [TestMethod]
-    public async Task ServeOnce_BlockFormatWithoutSectionWriterReportsNamedError()
+    public async Task ScanChannel_BlockFormatWithoutSectionWriterReportsNamedError()
     {
-        var host = CreateHost((_, _, _) => [[Record(5, ".", 3)]]);
+        var host = CreateHost((_, _, _, _, _) => [[Record(5, ".", 3)]]);
 
-        var frames = await ServeAsync(host, null);
+        var frames = await ScanAsync(host, null);
 
         StringAssert.Contains(frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message,
             "blockSectionWriter");
@@ -93,16 +84,17 @@ public class JournalBrokerHostBlockScanTests
     }
 
     [TestMethod]
-    public async Task ServeOnce_BlockSourceFailureLeavesIncompleteBlockAndEmitsNoScanReady()
+    public async Task ScanChannel_BlockSourceFailureLeavesIncompleteBlockAndEmitsNoScanReady()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
+
         static IEnumerable<IReadOnlyList<MftRecord>> Batches()
         {
             yield return [Record(5, ".", 3)];
             throw new IOException("record batch failed");
         }
 
-        var frames = await ServeAsync(CreateHost((_, _, _) => Batches()), blockWriter);
+        var frames = await ScanAsync(CreateHost((_, _, _, _, _) => Batches()), blockWriter);
 
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
         Assert.IsFalse(blockWriter.Block.Header.IsComplete);
@@ -111,74 +103,28 @@ public class JournalBrokerHostBlockScanTests
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanReady));
     }
 
-    static JournalBrokerHost CreateHost(MftRecordBatchSource source)
-    {
-        return new JournalBrokerHost(_ => ArmedCursor,
-            source, (_, cursor) => ([], cursor));
-    }
-
-    static async Task<List<BrokerFrame>> ServeAsync(JournalBrokerHost host, IBlockSectionWriter? blockWriter, CancellationToken cancellationToken = default)
-    {
-        var (client, server) = DuplexStream.CreatePair();
-        await using var clientLifetime = client;
-        await using var serverLifetime = server;
-        var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(request, "C:0:0:section-C:0");
-        await client.WriteAsync(request.WrittenMemory, cancellationToken);
-        await host.ServeAsync(server, blockWriter, true, cancellationToken);
-        await server.DisposeAsync();
-        return await ReadFramesAsync(client);
-    }
-
-    static async Task<List<BrokerFrame>> ReadFramesAsync(Stream client)
-    {
-        using var response = new MemoryStream();
-        await client.CopyToAsync(response);
-        var bytes = response.ToArray();
-        var frames = new List<BrokerFrame>();
-        var offset = 0;
-        while (offset < bytes.Length)
-        {
-            frames.Add(BrokerProtocol.ReadFrame(bytes.AsSpan(offset), out var consumed));
-            offset += consumed;
-        }
-
-        return frames;
-    }
-
     [TestMethod]
-    public async Task ServeOnce_BlockProgressReportsParsingThenTransferring()
+    public async Task ScanChannel_BlockProgressReportsParsingThenTransferring()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
-        var allowTransfer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var host = CreateHost((_, progress, cancellationToken) =>
+        var parsingReported = new TestGate();
+        var host = CreateHost((_, _, _, progress, _) =>
         {
-            progress?.Report(new BlockWriteProgress(100, 0, 100, null, BrokerScanPhase.Parsing));
-            allowTransfer.Task.Wait(cancellationToken);
+            progress!.Report(new BlockWriteProgress(100, 0, 100, null, BrokerScanPhase.Parsing));
+            parsingReported.MarkEntered();
+            parsingReported.WaitForRelease();
             return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
         });
-        var (client, server) = DuplexStream.CreatePair();
-        await using var clientLifetime = client;
-        await using var serverLifetime = server;
-        var request = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(request, "C:0:0:section-C:0");
-        await client.WriteAsync(request.WrittenMemory);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var serving = host.ServeAsync(server, blockWriter, true, timeout.Token);
-        try
-        {
-            var firstFrame = await ReadFrameAsync(client, timeout.Token);
-            Assert.AreEqual(BrokerScanPhase.Parsing, firstFrame.Progress?.Phase);
-            Assert.AreEqual(100L, firstFrame.Progress?.RecordsProcessed);
-        }
-        finally
-        {
-            allowTransfer.TrySetResult();
-            await serving;
-        }
+        await using var harness = new HostChannelHarness(host, blockWriter);
+        var pipe = await harness.OpenScanChannelAsync('C', "section-C");
 
-        await server.DisposeAsync();
-        var frames = await ReadFramesAsync(client);
+        await HostChannelHarness.ReadFrameAsync(pipe); // Cursor
+        var firstProgress = (await HostChannelHarness.ReadFrameAsync(pipe))!.Value;
+        Assert.AreEqual(BrokerScanPhase.Parsing, firstProgress.Progress?.Phase);
+        Assert.AreEqual(100L, firstProgress.Progress?.RecordsProcessed);
+        parsingReported.Release();
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
+
         var transfers = frames.Where(frame => frame.Kind == BrokerFrameKind.ScanProgress).ToArray();
         Assert.IsTrue(transfers.Length > 0);
         Assert.IsTrue(transfers.All(frame => frame.Progress?.Phase == BrokerScanPhase.Transferring));
@@ -187,34 +133,47 @@ public class JournalBrokerHostBlockScanTests
     }
 
     [TestMethod]
-    public async Task ServeOnce_CancelledBlockScanLeavesIncompleteBlockWithoutErrorOrScanReady()
+    public async Task ScanChannel_CancelledBlockScanLeavesIncompleteBlockWithoutErrorOrScanReady()
     {
-        using var cancellation = new CancellationTokenSource();
         using var blockWriter = new RecordingBlockSectionWriter();
+        var scanParked = new TestGate();
 
-        static IEnumerable<IReadOnlyList<MftRecord>> Batches(CancellationTokenSource cancellation)
+        // The second batch is yielded only once the session has ended, so the writer meets a
+        // cancelled token before it can write it.
+        IEnumerable<IReadOnlyList<MftRecord>> Batches(CancellationToken cancellationToken)
         {
             yield return [Record(5, ".", 3)];
-            cancellation.Cancel();
+            scanParked.MarkEntered();
+            cancellationToken.WaitHandle.WaitOne(HostChannelHarness.HangGuard);
             yield return [Record(20, "file.txt")];
         }
 
-        var batches = Batches(cancellation);
-        var frames = await ServeAsync(CreateHost((_, _, _) => batches), blockWriter, cancellation.Token);
+        var host = CreateHost((_, _, _, _, cancellationToken) => Batches(cancellationToken));
+        await using var harness = new HostChannelHarness(host, blockWriter);
+        var pipe = await harness.OpenScanChannelAsync('C', "section-C");
+        await scanParked.Entered.WaitAsync(HostChannelHarness.HangGuard);
+
+        await harness.CloseControlAsync();
+        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
+        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
         Assert.IsFalse(blockWriter.Block.Header.IsComplete);
         Assert.IsFalse(frames.Any(frame => frame.Kind is BrokerFrameKind.ScanReady or BrokerFrameKind.Error));
     }
 
-    static async Task<BrokerFrame> ReadFrameAsync(Stream stream, CancellationToken cancellationToken)
+    static JournalBrokerHost CreateHost(MftRecordBatchSource source)
     {
-        var header = new byte[sizeof(int)];
-        await stream.ReadExactlyAsync(header, cancellationToken);
-        var bytes = new byte[sizeof(int) + BinaryPrimitives.ReadInt32LittleEndian(header)];
-        header.CopyTo(bytes, 0);
-        await stream.ReadExactlyAsync(bytes.AsMemory(sizeof(int)), cancellationToken);
-        return BrokerProtocol.ReadFrame(bytes, out _);
+        return new JournalBrokerHost(_ => ArmedCursor, source, (_, cursor, _) => ([], cursor));
+    }
+
+    // Scans drive C into a section named "section-C" and returns every frame the drive pipe carried.
+    static async Task<List<BrokerFrame>> ScanAsync(JournalBrokerHost host, IBlockSectionWriter? blockWriter,
+        BrokerScanProfile profile = BrokerScanProfile.Full, IReadOnlyCollection<string>? keepFileNames = null)
+    {
+        await using var harness = new HostChannelHarness(host, blockWriter);
+        var pipe = await harness.OpenScanChannelAsync('C', "section-C", profile, keepFileNames);
+        return await HostChannelHarness.ReadToEndAsync(pipe);
     }
 
     static MftRecord Record(ulong recordNumber, string name, ushort flags = 1)

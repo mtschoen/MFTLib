@@ -85,7 +85,7 @@ public class FileIndexCheckpointLossTests
                 new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
                     ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
             writer.SetJournalCursor(CachedJournalId, CachedNextUsn);
-            writer.Complete(FixedMoment);
+            writer.Complete(FixedMoment, null);
         }
 
         return Task.FromResult(new MftBlockProduceResult(

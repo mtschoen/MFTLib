@@ -5,192 +5,110 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
-// The request/response half of the client-disconnect contract (MFTLib#199): a client that
-// closes its end of the pipe while a request is being answered ends the session normally,
-// the way the watch-path fix for MFTLib#196 already does, instead of throwing the broken
-// pipe's IOException out of ServeAsync and the elevated broker child.
+// A client that closes its end of a pipe while a request is being answered. On a drive pipe the
+// write that finds the client gone ends that channel quietly and leaves the session serving; on
+// the control pipe it ends the session normally instead of throwing the broken pipe's
+// IOException out of ServeAsync and the elevated broker child (MFTLib#199).
 public partial class JournalBrokerHostTests
 {
     [TestMethod]
-    public async Task ServeAsync_ScanReplyHitsBrokenPipeMidScan_SessionEndsNormally()
+    public async Task ScanChannelWriteHitsBrokenPipeMidScan_ChannelEndsQuietlyAndSessionContinues()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        await using var brokenServer = new BrokenPipeStream(serverSide);
-        var scanGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var host = CreateHost(
-            _ => new UsnJournalCursor(7UL, 100L),
-            (_, _, cancellationToken) => ScanBlockedOnGate(scanGate.Task, cancellationToken),
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor));
+        var scanParked = new TestGate();
+        var host = ScanHost(
+            scanDrive: (_, _, _, _, _) =>
+            {
+                scanParked.MarkEntered();
+                scanParked.WaitForRelease();
+                return [[ScanRecord(5, ".", 3)]];
+            },
+            queryVolumeInfo: _ => ControlVolume);
+        var connector = new BreakableScanPipeConnector();
+        await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter(), connector.ConnectAsync);
+        connector.Harness = harness;
+        var pipe = await harness.OpenScanChannelAsync('C');
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await WriteBrokerRequestAsync(clientSide,
-            writer => BrokerProtocol.WriteArmAndScan(writer, "C:0:0:mftlib-scan-C"), cts.Token);
+        // The scan is live over the healthy pipe: the armed cursor arrives, and the record source
+        // then parks with the rest of the scan still ahead of it.
+        Assert.AreEqual(BrokerFrameKind.Cursor, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
+        await scanParked.Entered.WaitAsync(HostChannelHarness.HangGuard);
 
-        var serveTask = host.ServeAsync(brokenServer, CreateSectionWriter(), false, cts.Token);
+        // The client goes away mid-scan. Breaking the pipe before releasing the scan keeps the
+        // disconnect deterministic: the next frame the host writes lands on the dead client end.
+        var hostEnd = await connector.Connected.WaitAsync(HostChannelHarness.HangGuard);
+        hostEnd.BreakPipe();
+        scanParked.Release();
+        await hostEnd.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
 
-        // The scan is live over the healthy pipe: the armed cursor arrives, and the record
-        // source then parks with the rest of the scan still ahead of it.
-        var cursor = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.Cursor, cursor.Kind);
-
-        // The client goes away mid-scan, the way a consumer closing its UI does. Breaking the
-        // pipe before releasing the scan keeps the disconnect deterministic: the next frame
-        // the host writes, a progress report or a completion frame, is the one that lands on
-        // the dead client end.
-        brokenServer.BreakPipe();
-        scanGate.SetResult();
-        await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
-        await clientSide.DisposeAsync();
-
-        // ServeAsync completes rather than faulting with the broken pipe's IOException, which
-        // is what killed the elevated broker child.
-        await serveTask.WaitAsync(cts.Token);
+        await AssertControlStillAnswersAsync(harness);
+        Assert.IsFalse(harness.Serve.IsCompleted, "One channel's dead pipe must not end the session.");
     }
 
     [TestMethod]
     public async Task ServeAsync_VolumeQueryReplyHitsBrokenPipe_SessionEndsNormally()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
+        var host = ScanHost(queryVolumeInfo: _ => ControlVolume);
+        await using var harness = new HostChannelHarness(host, breakableControl: true);
         // The client is already gone when its request arrives, so the VolumeInfo reply is the
         // first frame to land on the dead pipe.
-        await using var brokenServer = new BrokenPipeStream(serverSide);
-        brokenServer.BreakPipe();
-        var host = new JournalBrokerHost(
-            _ => default,
-            (_, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            queryVolumeInfo: _ => new NtfsVolumeInformation(1024, 1024, 512, 4096, 1, 1));
+        harness.BreakableControl!.BreakPipe();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await WriteBrokerRequestAsync(clientSide,
-            writer => BrokerProtocol.WriteQueryVolumes(writer, "C:0:0"), cts.Token);
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 1, "C"));
+        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
 
-        var serveTask = host.ServeAsync(brokenServer, CreateSectionWriter(), false, cts.Token);
-
-        await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
-        await clientSide.DisposeAsync();
-
-        await serveTask.WaitAsync(cts.Token);
+        // ServeAsync completes rather than faulting with the broken pipe's IOException, which is
+        // what killed the elevated broker child.
+        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
     }
 
     [TestMethod]
     public async Task ServeAsync_GrowUsnJournalReplyHitsBrokenPipe_SessionEndsNormally()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        await using var brokenServer = new BrokenPipeStream(serverSide);
-        brokenServer.BreakPipe();
-        var host = new JournalBrokerHost(
-            _ => default,
-            (_, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            growUsnJournal: (_, maximumSize, allocationDelta) => new UsnJournalSettings
-            {
-                MaximumSize = maximumSize,
-                AllocationDelta = allocationDelta
-            });
+        var host = ScanHost(growUsnJournal: (_, maximumSize, allocationDelta) => new UsnJournalSettings
+        {
+            MaximumSize = maximumSize,
+            AllocationDelta = allocationDelta
+        });
+        await using var harness = new HostChannelHarness(host, breakableControl: true);
+        harness.BreakableControl!.BreakPipe();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await WriteBrokerRequestAsync(clientSide,
-            writer => BrokerProtocol.WriteGrowUsnJournal(writer, "C", 0x08000000, 0x01000000), cts.Token);
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteGrowUsnJournal(writer, 1, "C", 0x08000000, 0x01000000));
+        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
 
-        var serveTask = host.ServeAsync(brokenServer, CreateSectionWriter(), false, cts.Token);
-
-        await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
-        await clientSide.DisposeAsync();
-
-        await serveTask.WaitAsync(cts.Token);
+        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
     }
 
     [TestMethod]
-    public async Task ServeAsync_EndWatchAckHitsBrokenPipe_SessionEndsNormally()
+    public async Task ServeAsync_ControlReplyHitsBrokenPipeWhileWatchIsLive_StopsTheWatchChannel()
     {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        await using var brokenServer = new BrokenPipeStream(serverSide);
-        var host = CreateHost(
-            _ => new UsnJournalCursor(7UL, 100L),
-            (_, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            (_, _, cancellationToken) => FakeWatch([([SampleEntry()], new UsnJournalCursor(7UL, 110L))],
-                cancellationToken));
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await WriteStartWatchAsync(clientSide, "C:7:100:1", cts.Token);
-
-        var serveTask = host.ServeAsync(brokenServer, CreateSectionWriter(), false, cts.Token);
-
-        // The watch is live over the healthy pipe: the leading CaughtUp (the armed cursor
-        // sits at the journal tip) and one batch arrive, and the watch then parks.
-        var caughtUp = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp.Kind);
-        var batch = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
-
-        // The client goes away and its EndWatch is the request still in flight: the watch
-        // generation stops without writing, so the ack is the frame that lands on the dead
-        // pipe.
-        brokenServer.BreakPipe();
-        await WriteBrokerRequestAsync(clientSide, BrokerProtocol.WriteEndWatch, cts.Token);
-
-        await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
-        await clientSide.DisposeAsync();
-
-        await serveTask.WaitAsync(cts.Token);
-    }
-
-    [TestMethod]
-    public async Task ServeAsync_ReplyHitsBrokenPipeWhileWatchIsLive_StopsTheWatchGeneration()
-    {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        await using var brokenServer = new BrokenPipeStream(serverSide);
         var watchStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var host = new JournalBrokerHost(
-            _ => new UsnJournalCursor(7UL, 100L),
-            (_, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
-            (_, cursor) => (Array.Empty<UsnJournalEntry>(), cursor),
-            watchDrive: (_, _, cancellationToken) => ParkedWatch(watchStopped, cancellationToken),
-            queryVolumeInfo: _ => new NtfsVolumeInformation(1024, 1024, 512, 4096, 1, 1));
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await WriteStartWatchAsync(clientSide, "C:7:100:1", cts.Token);
-
-        var serveTask = host.ServeAsync(brokenServer, CreateSectionWriter(), false, cts.Token);
+        var host = ScanHost(
+            watchDrive: (_, _, _, cancellationToken) => ParkedUntilStopped(watchStopped, cancellationToken),
+            queryVolumeInfo: _ => ControlVolume);
+        await using var harness = new HostChannelHarness(host, breakableControl: true);
 
         // The watch is armed and parked: the leading CaughtUp arrived over the healthy pipe
-        // and no batch follows it.
-        var caughtUp = await ReadOneFrameAsync(clientSide).WaitAsync(cts.Token);
-        Assert.AreEqual(BrokerFrameKind.CaughtUp, caughtUp.Kind);
+        // (the cursor sits at the journal tip) and no batch follows it.
+        var watch = await harness.OpenWatchChannelAsync('C', ScanArmedCursor);
+        Assert.AreEqual(BrokerFrameKind.CaughtUp, (await HostChannelHarness.ReadFrameAsync(watch))?.Kind);
 
-        // A foreground request answers while the watch is still live, and its reply is what
-        // finds the client gone.
-        brokenServer.BreakPipe();
-        await WriteBrokerRequestAsync(clientSide,
-            writer => BrokerProtocol.WriteQueryVolumes(writer, "C:0:0"), cts.Token);
+        // A control request answers while the watch is still live, and its reply is what finds
+        // the client gone.
+        harness.BreakableControl!.BreakPipe();
+        await harness.SendControlAsync(writer => BrokerProtocol.WriteQueryVolume(writer, 9, "C"));
+        await harness.BreakableControl.WriteFailureObserved.WaitAsync(HostChannelHarness.HangGuard);
 
-        await brokenServer.WriteFailureObserved.WaitAsync(cts.Token);
-        await clientSide.DisposeAsync();
-
-        await serveTask.WaitAsync(cts.Token);
+        await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
 
         // Ending the session on a disconnect must not leave the armed watch behind: it was
         // cancelled on the way out, not merely awaited.
-        await watchStopped.Task.WaitAsync(cts.Token);
+        await watchStopped.Task.WaitAsync(HostChannelHarness.HangGuard);
     }
 
-    // Yields one batch, then parks until the test releases the gate, so a disconnect can be
-    // ordered into the middle of a scan instead of racing it.
-    static IEnumerable<IReadOnlyList<MftRecord>> ScanBlockedOnGate(Task scanGate,
-        CancellationToken cancellationToken)
-    {
-        yield return [SampleRecord()];
-        scanGate.Wait(cancellationToken);
-        yield return [SampleRecord()];
-    }
-
-    // A watch that yields nothing: it parks until the session stops it and reports that stop,
-    // so a test can see the generation was cancelled on the way out.
-    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> ParkedWatch(
-        TaskCompletionSource watchStopped,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+    // A watch that yields nothing: it parks until the session stops it and reports that stop, so
+    // a test can see the channel was cancelled on the way out.
+    static async IAsyncEnumerable<(UsnJournalEntry[], UsnJournalCursor)> ParkedUntilStopped(
+        TaskCompletionSource watchStopped, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         try
         {
@@ -202,5 +120,24 @@ public partial class JournalBrokerHostTests
         }
 
         yield break;
+    }
+
+    // Connects the named in-memory pipe through a BrokenPipeStream on the host's end, so a test
+    // can make one channel's writes fail while the control pipe stays healthy.
+    sealed class BreakableScanPipeConnector
+    {
+        readonly TaskCompletionSource<BrokenPipeStream> _connected =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public HostChannelHarness? Harness { get; set; }
+
+        public Task<BrokenPipeStream> Connected => _connected.Task;
+
+        public async Task<Stream> ConnectAsync(string pipeName, CancellationToken cancellationToken)
+        {
+            var broken = new BrokenPipeStream(await Harness!.ConnectInMemoryAsync(pipeName, cancellationToken));
+            _connected.TrySetResult(broken);
+            return broken;
+        }
     }
 }

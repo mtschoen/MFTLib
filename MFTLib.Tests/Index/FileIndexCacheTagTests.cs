@@ -59,7 +59,7 @@ public class FileIndexCacheTagTests
             Assert.IsTrue(writer.TryWriteRow(5, ".",
                 new RowColumns(5, RowFlags.InUse | RowFlags.Directory, 0, 0, Moment.Ticks, 1)));
             writer.SetJournalCursor(7, 4096);
-            writer.Complete(Moment);
+            writer.Complete(Moment, null);
             return block;
         }
         catch
@@ -209,7 +209,7 @@ public class FileIndexCacheTagTests
         {
             Assert.IsNotNull(block);
             block.Header.FormatVersion = 2;
-            block.Flush();
+            block.Flush(null);
         }
         await using (var index = await FileIndex.OpenAsync(Options(OriginalTag), CancellationToken.None))
         {

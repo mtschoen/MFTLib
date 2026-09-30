@@ -94,7 +94,7 @@ public class FileIndexProducerSelectionTests
                 new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
                     ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
             writer.SetJournalCursor(journalId, nextUsn);
-            writer.Complete(FixedMoment);
+            writer.Complete(FixedMoment, null);
         }
 
         return BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
@@ -287,7 +287,8 @@ public class FileIndexProducerSelectionTests
         var options = Options(ProducerPolicy.Mft, Produce);
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
-            await index.RescanAsync('T', CancellationToken.None);
+            await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+                () => index.RescanAsync('T', CancellationToken.None));
 
             Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
             Assert.AreEqual("elevation declined during rescan", index.Drives.Single().MftProducerFailureMessage);
@@ -318,7 +319,8 @@ public class FileIndexProducerSelectionTests
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, Produce),
             CancellationToken.None);
-        await index.RescanAsync('T', CancellationToken.None);
+        await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+            () => index.RescanAsync('T', CancellationToken.None));
         Assert.AreEqual("elevation declined during rescan", index.Drives.Single().MftProducerFailureMessage);
 
         await index.RescanAsync('T', CancellationToken.None);
@@ -550,7 +552,8 @@ public class FileIndexProducerSelectionTests
         }, TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, index.Drives.Single().FailureKind);
 
-        await index.RescanAsync('T', TestContext.CancellationTokenSource.Token);
+        await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+            () => index.RescanAsync('T', TestContext.CancellationTokenSource.Token));
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, status.State);

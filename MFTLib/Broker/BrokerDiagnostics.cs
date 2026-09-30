@@ -44,26 +44,25 @@ public static class BrokerDiagnostics
     ///     elevated child as <c>--diag-log</c> so the broker can filter the log file's own
     ///     journal entries out of the watch stream.
     /// </summary>
-    internal static string LogPath
+    internal static string LogPath =>
+        ResolveLogPath(Path.Combine(LogDirectory, LogFileName), OperatingSystem.IsWindows());
+
+    internal static string ResolveLogPath(string combined, bool isWindows)
     {
-        get
+        if (isWindows)
         {
-            var combined = Path.Combine(LogDirectory, LogFileName);
-            if (OperatingSystem.IsWindows())
-            {
-                return Path.GetFullPath(combined);
-            }
-
-            // On non-Windows platforms (e.g. Linux unit tests / probes), preserve Windows
-            // drive or extended roots (e.g. "C:\..." or "\\?\C:\...") without prepending
-            // the Unix working directory. If relative, resolve against the current directory.
-            if (BrokerDiagnosticsLogFilter.TryGetDriveLetter(combined, out _))
-            {
-                return combined;
-            }
-
             return Path.GetFullPath(combined);
         }
+
+        // On non-Windows platforms (e.g. Linux unit tests / probes), preserve Windows
+        // drive or extended roots (e.g. "C:\..." or "\\?\C:\...") without prepending
+        // the Unix working directory. If relative, resolve against the current directory.
+        if (BrokerDiagnosticsLogFilter.TryGetDriveLetter(combined, isWindows, out _))
+        {
+            return combined;
+        }
+
+        return Path.GetFullPath(combined);
     }
 
     /// <summary>
@@ -121,27 +120,50 @@ public static class BrokerDiagnostics
         _role = "client";
         ClientLogPath = null;
         _includeSelfEntries = false;
+        Interlocked.Exchange(ref _writer, null)?.Complete();
     }
 
-    public static void Log(string message)
+    /// <summary>The channel tag of the control pipe's lines.</summary>
+    internal const string ControlChannel = "control";
+
+    /// <summary>The channel tag of one drive's pipe, for example <c>C#3</c> for drive C's third pipe.</summary>
+    internal static string DriveChannel(char driveLetter, int sequence)
+    {
+        return FormattableString.Invariant($"{driveLetter}#{sequence}");
+    }
+
+    static BrokerDiagnosticsWriter? _writer;
+
+    static BrokerDiagnosticsWriter Writer =>
+        LazyInitializer.EnsureInitialized(ref _writer, () => new BrokerDiagnosticsWriter(
+            line => File.AppendAllText(LogPath, line + Environment.NewLine),
+            () => _role));
+
+    // Test seam: route this process's diagnostics into a writer with a controllable sink.
+    internal static void ReplaceWriterForTest(BrokerDiagnosticsWriter writer)
+    {
+        Interlocked.Exchange(ref _writer, writer)?.Complete();
+    }
+
+    /// <summary>Completes once every line logged before this call has been appended or dropped.</summary>
+    internal static Task FlushAsync(CancellationToken cancellationToken)
+    {
+        return _writer?.FlushAsync(cancellationToken) ?? Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     Queue one line for the log. The caller never waits for the file: the line is
+    ///     formatted here (so its timestamp is the call's) and a background task appends it.
+    /// </summary>
+    public static void Log(string channel, string message)
     {
         if (!Enabled)
         {
             return;
         }
 
-        try
-        {
-            var path = LogPath;
-            File.AppendAllText(path,
-                $"{DateTime.UtcNow:O}  [{_role}:{Environment.ProcessId}]  {message}{Environment.NewLine}");
-        }
-        catch (Exception exception)
-        {
-            // Best-effort only: diagnostics must never disturb the run. Swallowing is
-            // intentional and scoped to this opt-in logging path.
-            _ = exception;
-        }
+        Writer.TryEnqueue(
+            $"{DateTime.UtcNow:O}  [{_role}:{Environment.ProcessId}:{channel}]  {message}");
     }
 
     /// <summary>
@@ -149,8 +171,8 @@ public static class BrokerDiagnostics
     ///     A read that records an unexpected kind, preceded by a frame whose length does not
     ///     match its real content, pinpoints which writer desynced the stream.
     /// </summary>
-    public static void LogFrame(string direction, byte kind, int length)
+    internal static void LogFrame(string channel, string direction, byte kind, int length)
     {
-        Log($"frame {direction} kind={kind} len={length} t={Environment.CurrentManagedThreadId}");
+        Log(channel, $"frame {direction} kind={kind} len={length} t={Environment.CurrentManagedThreadId}");
     }
 }

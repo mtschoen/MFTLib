@@ -42,9 +42,9 @@ public class CacheDirectoryInspectionTests
         {
             Assert.IsTrue(writer.TryWriteRow(5, "not-the-drive-root", columns));
         }
-        writer.Complete(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        writer.Complete(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), null);
         mutate?.Invoke(block);
-        block.Flush();
+        block.Flush(null);
         return path;
     }
 

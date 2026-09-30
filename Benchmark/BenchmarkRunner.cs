@@ -95,7 +95,7 @@ public partial class BenchmarkRunner
         using (lifetime)
         {
             new RealBlockSectionWriter().Write(sectionName, default, result.MaterializeBatches(batchSize),
-                MftBlockRowFilter.Full, null, CancellationToken.None);
+                MftBlockRowFilter.Full, default, CancellationToken.None);
             var count = 0;
             for (var row = 0; row < block.Header.RowCount; row++)
             {

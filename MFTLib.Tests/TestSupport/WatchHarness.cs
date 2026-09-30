@@ -1,60 +1,59 @@
-using System.Reflection;
+using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.Index;
 
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
-///     Stands one <see cref="FileIndex" /> up over synthetic MFT-shaped blocks and tears it down
-///     again. Every source-facing member forwards to the <see cref="FakeIndexWatchSource" /> this
-///     harness owns, so a test drives the seam through the harness without knowing which object
-///     holds the per-drive state.
+///     Stands one <see cref="FileIndex" /> up over synthetic MFT-shaped blocks, one per drive
+///     letter (<c>T</c>, <c>U</c> and <c>V</c> unless told otherwise), with a scripted producer
+///     and a <see cref="FakeIndexWatchSource" />, and tears it down again. It collects every
+///     <see cref="FileIndex.Changed" /> change and every <see cref="FileIndex.WatchFaulted" /> fault.
 /// </summary>
 internal sealed class WatchHarness : IDisposable
 {
+    public const ulong JournalId = 7;
+    public const long NextUsn = 100;
+
     static readonly DateTime ChangeMoment = new(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
 
     readonly Dictionary<char, SyntheticBlockBuilder> _blockBuilders;
     readonly Dictionary<char, IndexWatchTarget> _cursorsByDrive;
-    readonly Dictionary<char, BlockFile> _producedBlocks = [];
-    readonly Dictionary<char, TaskCompletionSource<BlockFile>> _productionObserversByDrive = [];
-    readonly Dictionary<char, Exception> _productionFailuresByDrive = [];
-    readonly Dictionary<char, TestGate> _productionHoldsByDrive = [];
+    readonly ConcurrentDictionary<char, BlockFile> _producedBlocks = [];
+    readonly ConcurrentDictionary<char, Exception> _productionFailuresByDrive = [];
+    readonly ConcurrentDictionary<char, TestGate> _productionHoldsByDrive = [];
+    readonly ConcurrentDictionary<char, ConcurrentQueue<ScriptedScan>> _scriptedScansByDrive = [];
+    readonly ConcurrentDictionary<char, int> _productionCountsByDrive = [];
     readonly List<TestGate> _gates = [];
+    readonly ConcurrentQueue<FileChange> _changes = [];
+    readonly List<WatchFault> _faults = [];
+    readonly Dictionary<char, List<Task>> _recoveriesByDrive = [];
+    readonly List<(Func<WatchFault, bool> Match, TaskCompletionSource<WatchFault> Completion)> _faultWaiters = [];
+    readonly HashSet<char> _blocklessDrives;
     readonly string _cacheDirectory;
-    readonly char _firstDriveLetter;
-    readonly FakeIndexWatchSource? _source;
-    TestGate? _sourceEndingHold;
 
-    public WatchHarness(ulong journalId = 7, long nextUsn = 100)
-        : this(useDefaultWatchSource: true, watchSource: null,
-            [new IndexWatchTarget('T', journalId, nextUsn)])
+    public WatchHarness(params char[] driveLetters)
+        : this(null, driveLetters)
     {
     }
 
-    public WatchHarness(IIndexWatchSource? watchSource, ulong journalId = 7, long nextUsn = 100)
-        : this(useDefaultWatchSource: false, watchSource,
-            [new IndexWatchTarget('T', journalId, nextUsn)])
+    /// <summary>Stands the index up over <paramref name="watchSource" />, which is null for the harness's own <see cref="Source" />.</summary>
+    public WatchHarness(IIndexWatchSource? watchSource, params char[] driveLetters)
+        : this(watchSource, [], driveLetters)
     {
     }
 
-    public WatchHarness(IReadOnlyList<IndexWatchTarget> driveCursors)
-        : this(useDefaultWatchSource: true, watchSource: null, driveCursors)
+    WatchHarness(IIndexWatchSource? watchSource, HashSet<char> blocklessDrives, char[] driveLetters)
     {
-    }
-
-    WatchHarness(bool useDefaultWatchSource, IIndexWatchSource? watchSource,
-        IReadOnlyList<IndexWatchTarget> driveCursors)
-    {
-        _blockBuilders = driveCursors.ToDictionary(
-            cursor => char.ToUpperInvariant(cursor.DriveLetter), CreateMftBlock);
-        _cursorsByDrive = driveCursors.ToDictionary(cursor => char.ToUpperInvariant(cursor.DriveLetter));
-        _firstDriveLetter = char.ToUpperInvariant(driveCursors[0].DriveLetter);
-        if (useDefaultWatchSource)
+        _blocklessDrives = blocklessDrives;
+        if (driveLetters.Length == 0)
         {
-            _source = new FakeIndexWatchSource { SourceEnding = RecordSourceEnding };
+            driveLetters = ['T', 'U', 'V'];
         }
 
+        _cursorsByDrive = driveLetters.Select(char.ToUpperInvariant)
+            .ToDictionary(letter => letter, letter => new IndexWatchTarget(letter, JournalId, NextUsn));
+        _blockBuilders = _cursorsByDrive.ToDictionary(pair => pair.Key, pair => CreateMftBlock(pair.Value));
         _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-watch-cache-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_cacheDirectory);
 
@@ -65,33 +64,60 @@ internal sealed class WatchHarness : IDisposable
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
             MftProducer = Produce,
-            WatchSource = useDefaultWatchSource ? _source : watchSource
+            WatchSource = watchSource ?? Source
         }, CancellationToken.None).GetAwaiter().GetResult();
+        Index.Changed += _changes.Enqueue;
+        Index.WatchFaulted += RecordFault;
     }
 
+    /// <summary>
+    ///     Stands the index up with the producer failing every scan of <paramref name="blocklessDrives" />,
+    ///     so those drives open <see cref="DriveState.Failed" /> with no MFT-backed block.
+    /// </summary>
+    public static WatchHarness WithBlocklessDrives(char[] blocklessDrives, params char[] driveLetters) =>
+        new(null, [.. blocklessDrives.Select(char.ToUpperInvariant)], driveLetters);
+
     public FileIndex Index { get; }
+
+    /// <summary>The owned temporary directory this harness gives the index as its cache directory.</summary>
     public string CacheDirectory => _cacheDirectory;
 
-    public IReadOnlyDictionary<char, BlockFile> ProducedBlocks => _producedBlocks;
+    public FakeIndexWatchSource Source { get; } = new();
 
-    public bool SourceStoppedBeforeBlockDisposed { get; private set; }
+    public IReadOnlyCollection<FileChange> Changes => _changes;
 
-    public int SourceInvocationCount => Source.SourceInvocationCount;
-
-    public int LiveSourceCount => Source.LiveSourceCount;
-
-    public bool SourceCancelled => Source.SourceCancelled;
-
-    public IReadOnlyList<char> DisarmedDrives => Source.DisarmedDrives;
-
-    public IReadOnlyList<IndexWatchTarget> ArmedDrives => Source.ArmedDrives;
-
-    public IReadOnlyList<string> WatchOperations => Source.WatchOperations;
-
-    FakeIndexWatchSource Source => _source ?? throw new InvalidOperationException(
-        "This harness was built with a caller-supplied watch source and owns no fake.");
+    public IReadOnlyList<WatchFault> Faults
+    {
+        get
+        {
+            lock (_faults)
+            {
+                return [.. _faults];
+            }
+        }
+    }
 
     public BlockFile BlockFor(char driveLetter) => _producedBlocks[char.ToUpperInvariant(driveLetter)];
+
+    public DriveStatus DriveFor(char driveLetter) =>
+        Index.Drives.Single(drive => drive.DriveLetter == char.ToUpperInvariant(driveLetter));
+
+    /// <summary>Completes with the first fault of <paramref name="kind" /> on the drive, recorded or future.</summary>
+    public Task<WatchFault> WaitForFaultAsync(WatchFaultKind kind, char driveLetter)
+    {
+        bool Match(WatchFault fault) => fault.Kind == kind && fault.DriveLetter == char.ToUpperInvariant(driveLetter);
+        lock (_faults)
+        {
+            if (_faults.FirstOrDefault(Match) is { } recorded)
+            {
+                return Task.FromResult(recorded);
+            }
+
+            var completion = new TaskCompletionSource<WatchFault>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _faultWaiters.Add((Match, completion));
+            return completion.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+        }
+    }
 
     /// <summary>The cursor the producer stamps into the block it hands back on the next scan.</summary>
     public void SetNextProducedCursor(char driveLetter, ulong journalId, long nextUsn)
@@ -105,132 +131,55 @@ internal sealed class WatchHarness : IDisposable
         });
     }
 
-    public Task PublishAsync(WatchStreamItem item) => Source.PublishAsync(item);
-
-    public Task Queue(WatchStreamItem item) => Source.Queue(item);
-
-    public void HoldItemsUnread() => Source.HoldItemsUnread();
-
-    public void ReleaseHeldItems() => Source.ReleaseHeldItems();
-
-    public void IgnoreSourceCancellation() => Source.IgnoreCancellation();
-
-    public void ReleaseWedgedSource() => Source.ReleaseWedgedSource();
-
-    public void FailNextArm(Exception failure) => Source.FailNextArm(failure);
-
-    public void FailNextDisarm(Exception failure) => Source.FailNextDisarm(failure);
-
-    /// <summary>Makes the producer throw on this drive's next scan, so a rescan fails mid-swap.</summary>
+    /// <summary>Makes the producer throw on this drive's next scan.</summary>
     public void FailNextProduction(char driveLetter, Exception failure)
     {
         _productionFailuresByDrive[char.ToUpperInvariant(driveLetter)] = failure;
     }
 
     /// <summary>
+    ///     Scripts this drive's next scans, one entry per scan in order. Scans past the script
+    ///     return a block whose catch-up held.
+    /// </summary>
+    public void ScriptScans(char driveLetter, params ScriptedScan[] scans)
+    {
+        var queue = _scriptedScansByDrive.GetOrAdd(char.ToUpperInvariant(driveLetter), _ => []);
+        foreach (var scan in scans)
+        {
+            queue.Enqueue(scan);
+        }
+    }
+
+    /// <summary>How many times the producer has been called for this drive, the open's scan included.</summary>
+    public int ProductionCount(char driveLetter) =>
+        _productionCountsByDrive.GetValueOrDefault(char.ToUpperInvariant(driveLetter));
+
+    /// <summary>
     ///     Parks this drive's next scan inside the producer until the returned gate is released.
-    ///     The gate's <see cref="TestGate.Entered" /> completes once the scan has started, which for
-    ///     a rescan means the drive has already been taken off the watch.
+    ///     The gate's <see cref="TestGate.Entered" /> completes once the scan has started.
     /// </summary>
     public TestGate HoldNextProduction(char driveLetter)
     {
         var gate = TrackGate();
-        lock (_productionHoldsByDrive)
+        _productionHoldsByDrive[char.ToUpperInvariant(driveLetter)] = gate;
+        return gate;
+    }
+
+    /// <summary>A gate the harness releases on teardown, so a failing test never wedges disposal.</summary>
+    public TestGate TrackGate()
+    {
+        var gate = new TestGate();
+        lock (_gates)
         {
-            _productionHoldsByDrive[char.ToUpperInvariant(driveLetter)] = gate;
+            _gates.Add(gate);
         }
 
         return gate;
     }
 
-    public Task<BlockFile> ObserveNextProducedBlock(char driveLetter)
+    public static JournalBatch Batch(uint recordNumber, string fileName, long nextUsn = NextUsn + 100)
     {
-        var completion = new TaskCompletionSource<BlockFile>(TaskCreationOptions.RunContinuationsAsynchronously);
-        lock (_productionObserversByDrive)
-        {
-            _productionObserversByDrive.Add(char.ToUpperInvariant(driveLetter), completion);
-        }
-
-        return completion.Task;
-    }
-
-    /// <summary>
-    ///     Parks the next source stream inside its <c>finally</c>, after it has stopped answering
-    ///     arm and disarm calls but before the pump that reads it can complete. The gate's
-    ///     <see cref="TestGate.Entered" /> completes once the stream is parked there.
-    /// </summary>
-    public TestGate HoldSourceEnding()
-    {
-        var gate = TrackGate();
-        Volatile.Write(ref _sourceEndingHold, gate);
-        return gate;
-    }
-
-    public Task<IReadOnlyList<IndexWatchTarget>> SourceStartedAsync() => Source.SourceStartedAsync();
-
-    public Task SourceEndedAsync() => Source.SourceEndedAsync();
-
-    /// <summary>Completes the first time the source rejects an arm or disarm for want of a stream.</summary>
-    public Task SourceRejectedAsync() => Source.RejectionObservedAsync();
-
-    public Task CompleteSourceAsync() => Source.CompleteSourceAsync();
-
-    /// <summary>
-    ///     Polls until the watch session's pump task has completed, so a caller that goes on to
-    ///     rescan takes the reclaim path deterministically instead of racing the pump's final
-    ///     unwind. <see cref="SourceEndedAsync" /> only signals that the source's own iterator
-    ///     reached its <c>finally</c>; <see cref="FakeIndexWatchSource" /> stops answering source
-    ///     calls (such as a disarm) right there, but the pump that owns the pipeline still has
-    ///     fault handling and bookkeeping to run after that point before its own task completes.
-    ///     A rescan that starts in that window can still see an active session and try to disarm a
-    ///     drive against a source whose stream has already ended. The session and its pump are
-    ///     internal state, so this reaches them by reflection.
-    /// </summary>
-    public async Task WaitForPumpToCompleteAsync()
-    {
-        var sessionField = typeof(FileIndex).GetField("_watchSession",
-            BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var deadline = DateTime.UtcNow + FakeIndexWatchSource.HangGuard;
-        while (DateTime.UtcNow < deadline)
-        {
-            if (sessionField.GetValue(Index) is { } session &&
-                session.GetType().GetProperty("Pump")!.GetValue(session) is Task { IsCompleted: true })
-            {
-                return;
-            }
-
-            await Task.Delay(20);
-        }
-
-        throw new TimeoutException("The watch pump did not complete in time.");
-    }
-
-    public async Task FaultSourceAsync(Exception exception)
-    {
-        var announced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void ObserveSourceFault(WatchFault fault)
-        {
-            if (fault.Kind == WatchFaultKind.Source)
-            {
-                announced.TrySetResult();
-            }
-        }
-
-        Index.WatchFaulted += ObserveSourceFault;
-        try
-        {
-            await Source.FaultSourceAsync(exception);
-            await announced.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
-        }
-        finally
-        {
-            Index.WatchFaulted -= ObserveSourceFault;
-        }
-    }
-
-    public static JournalBatch Batch(char driveLetter, uint recordNumber, string fileName)
-    {
-        return new JournalBatch(driveLetter, [Create(recordNumber, fileName)], JournalId: 7, NextUsn: 100);
+        return new JournalBatch([Create(recordNumber, fileName)], JournalId, nextUsn);
     }
 
     public static UsnJournalEntry Create(uint recordNumber, string fileName, ulong parentRecordNumber = 5)
@@ -251,8 +200,7 @@ internal sealed class WatchHarness : IDisposable
     public void Dispose()
     {
         // Teardown must never be the thing that wedges: a test that failed before releasing a
-        // deliberately unresponsive source would otherwise hang here instead of reporting.
-        _source?.ReleaseWedgedSource();
+        // gate would otherwise hang here instead of reporting.
         lock (_gates)
         {
             foreach (var gate in _gates)
@@ -261,8 +209,7 @@ internal sealed class WatchHarness : IDisposable
             }
         }
 
-        Index.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        _source?.Dispose();
+        Index.DisposeAsync().AsTask().WaitAsync(FakeIndexWatchSource.HangGuard).GetAwaiter().GetResult();
         foreach (var blockBuilder in _blockBuilders.Values)
         {
             blockBuilder.Dispose();
@@ -271,75 +218,125 @@ internal sealed class WatchHarness : IDisposable
         Directory.Delete(_cacheDirectory, recursive: true);
     }
 
-    TestGate TrackGate()
+    /// <summary>
+    ///     Completes when the drive's latest recovery has ended. The recovery is the one whose ticket
+    ///     existed when a fault on the drive was raised, which is how the index publishes it.
+    /// </summary>
+    public Task WaitForRecoveryAsync(char driveLetter)
     {
-        var gate = new TestGate();
-        lock (_gates)
+        lock (_faults)
         {
-            _gates.Add(gate);
+            return _recoveriesByDrive.TryGetValue(char.ToUpperInvariant(driveLetter), out var recoveries)
+                ? recoveries[^1].WaitAsync(FakeIndexWatchSource.HangGuard)
+                : throw new InvalidOperationException($"No recovery of drive {driveLetter} was queued.");
+        }
+    }
+
+    /// <summary>
+    ///     The drive's latest recovery's own completion, the task the index's disposal waits for,
+    ///     unwrapped. <see cref="WaitForRecoveryAsync" /> returns a task derived from it, which
+    ///     completes in a continuation queued after it, so only this one is complete as soon as
+    ///     disposal returns.
+    /// </summary>
+    public Task RecoveryCompletion(char driveLetter)
+    {
+        lock (_faults)
+        {
+            return _recoveriesByDrive.TryGetValue(char.ToUpperInvariant(driveLetter), out var recoveries)
+                ? recoveries[^1]
+                : throw new InvalidOperationException($"No recovery of drive {driveLetter} was queued.");
+        }
+    }
+
+    /// <summary>How many distinct recoveries of the drive were queued when one of its faults was raised.</summary>
+    public int RecoveryCount(char driveLetter)
+    {
+        lock (_faults)
+        {
+            return _recoveriesByDrive.TryGetValue(char.ToUpperInvariant(driveLetter), out var recoveries)
+                ? recoveries.Count
+                : 0;
+        }
+    }
+
+    void RecordFault(WatchFault fault)
+    {
+        List<TaskCompletionSource<WatchFault>> matched = [];
+        _ = Index.TryGetRecoveryCompletionForTest(fault.DriveLetter, out var recovery);
+        lock (_faults)
+        {
+            _faults.Add(fault);
+            if (recovery is not null)
+            {
+                var recoveries = _recoveriesByDrive.GetValueOrDefault(fault.DriveLetter) ?? [];
+                _recoveriesByDrive[fault.DriveLetter] = recoveries;
+                if (!recoveries.Contains(recovery))
+                {
+                    recoveries.Add(recovery);
+                }
+            }
+
+            for (var index = _faultWaiters.Count - 1; index >= 0; index--)
+            {
+                if (_faultWaiters[index].Match(fault))
+                {
+                    matched.Add(_faultWaiters[index].Completion);
+                    _faultWaiters.RemoveAt(index);
+                }
+            }
         }
 
-        return gate;
+        foreach (var completion in matched)
+        {
+            completion.TrySetResult(fault);
+        }
     }
 
     async Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var driveLetter = char.ToUpperInvariant(request.DriveLetter);
-        TestGate? hold;
-        lock (_productionHoldsByDrive)
+        _productionCountsByDrive.AddOrUpdate(driveLetter, 1, (_, count) => count + 1);
+        if (_blocklessDrives.Contains(driveLetter))
         {
-            _productionHoldsByDrive.Remove(driveLetter, out hold);
+            throw new IOException($"Drive {driveLetter} cannot be scanned.");
         }
 
-        if (hold is not null)
+        if (_productionHoldsByDrive.TryRemove(driveLetter, out var hold))
         {
             hold.MarkEntered();
             await hold.WaitForReleaseAsync(cancellationToken);
         }
 
-        if (_productionFailuresByDrive.Remove(driveLetter, out var productionFailure))
+        if (_productionFailuresByDrive.TryRemove(driveLetter, out var productionFailure))
         {
             throw productionFailure;
+        }
+
+        var scripted = _scriptedScansByDrive.TryGetValue(driveLetter, out var scans) &&
+                       scans.TryDequeue(out var scan)
+            ? scan
+            : new ScriptedScan();
+        if (scripted.Hold is { } scriptedHold)
+        {
+            scriptedHold.MarkEntered();
+            await scriptedHold.WaitForReleaseAsync(cancellationToken);
+        }
+
+        if (scripted.Failure is { } scriptedFailure)
+        {
+            throw scriptedFailure;
         }
 
         var cursor = _cursorsByDrive[driveLetter];
         var block = _blockBuilders[driveLetter].OpenForReading(out var validation) ??
                     throw new InvalidOperationException($"Synthetic watch block was invalid: {validation}.");
         _producedBlocks[driveLetter] = block;
-        lock (_productionObserversByDrive)
-        {
-            if (_productionObserversByDrive.Remove(driveLetter, out var completion))
-            {
-                completion.TrySetResult(block);
-            }
-        }
-
         return new MftBlockProduceResult(block, cursor.JournalId, cursor.NextUsn,
-            SkippedRecordCount: 0, CompactionNeeded: false);
-    }
-
-    /// <summary>
-    ///     Any single block answers the question this flag asks, since one
-    ///     <see cref="FileIndex.DisposeAsync" /> releases every block's mapping together.
-    /// </summary>
-    void RecordSourceEnding()
-    {
-        if (Interlocked.Exchange(ref _sourceEndingHold, null) is { } hold)
+            SkippedRecordCount: 0, CompactionNeeded: false)
         {
-            hold.MarkEntered();
-            hold.WaitForRelease();
-        }
-
-        try
-        {
-            _ = BlockFor(_firstDriveLetter).Header.Generation;
-            SourceStoppedBeforeBlockDisposed = true;
-        }
-        catch (ObjectDisposedException)
-        {
-            SourceStoppedBeforeBlockDisposed = false;
-        }
+            CatchUpLoss = scripted.CatchUpLoss
+        };
     }
 
     static SyntheticBlockBuilder CreateMftBlock(IndexWatchTarget cursor)
@@ -353,3 +350,14 @@ internal sealed class WatchHarness : IDisposable
         return builder;
     }
 }
+
+/// <summary>
+///     One scripted scan of a <see cref="WatchHarness" /> drive: parked on <paramref name="Hold" />
+///     when set, then throwing <paramref name="Failure" /> when set, and otherwise returning a block
+///     whose catch-up <paramref name="CatchUpLoss" /> says was lost, or held when it is null. A
+///     hold gate should come from <see cref="WatchHarness.TrackGate" />, so teardown releases it.
+/// </summary>
+internal sealed record ScriptedScan(
+    JournalCheckpointLoss? CatchUpLoss = null,
+    Exception? Failure = null,
+    TestGate? Hold = null);

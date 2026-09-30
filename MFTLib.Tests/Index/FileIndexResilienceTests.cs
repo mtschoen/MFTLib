@@ -79,11 +79,13 @@ public partial class FileIndexResilienceTests
         }
     }
 
+    static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(30);
+
     static async Task AssertThrowsCancellation(Func<Task> action)
     {
         try
         {
-            await action();
+            await action().WaitAsync(HangGuard);
         }
         catch (OperationCanceledException)
         {
@@ -121,33 +123,60 @@ public partial class FileIndexResilienceTests
     {
         var secondTreeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree2-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(secondTreeRoot, "Documents"));
-        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "Documents", "readme2.md"), "hello2");
+        await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "Documents", "readme2.md"), "hello2").WaitAsync(HangGuard);
+
+        // Drives settle concurrently, so nothing but the first drive's own settle can say it has
+        // been adopted. It warm-starts from a cache a first open leaves behind. The open is
+        // cancelled only once that drive has reported settling and the second drive's scan is
+        // parked inside its first progress report, so the unwind always has an adopted block to
+        // release and the second drive is always cancelled mid-scan.
+        var firstDrive = new IndexedDrive('T', _treeRoot, 0x0BADF00D);
+        var warmingOpen = await FileIndex.OpenAsync(
+            new FileIndexOptions
+            {
+                Drives = [firstDrive],
+                CacheDirectory = _cacheDirectory,
+                ProducerPolicy = ProducerPolicy.Enumeration
+            }, CancellationToken.None).WaitAsync(HangGuard);
+        await warmingOpen.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
         using var cancellationTokenSource = new CancellationTokenSource();
+        var firstSettled = new DriveSettledSignal('T');
+        var secondParked = new ParkUntilCancelled('U', cancellationTokenSource.Token);
         var options = new FileIndexOptions
         {
-            Drives =
-            [
-                new IndexedDrive('T', _treeRoot, 0x0BADF00D),
-                new IndexedDrive('U', secondTreeRoot, 0x0BADF00E)
-            ],
+            Drives = [firstDrive, new IndexedDrive('U', secondTreeRoot, 0x0BADF00E)],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Enumeration,
-            // Only the second drive's own scan reports progress under 'U', so the first
-            // drive is guaranteed to have already been added to _driveBlocks by the time
-            // this cancels, exercising the unwind loop with a non-empty list to release.
-            Progress = new CancelOnDriveReport(cancellationTokenSource, 'U')
+            OpenProgress = firstSettled,
+            Progress = secondParked
         };
 
         try
         {
-            await AssertThrowsCancellation(() => FileIndex.OpenAsync(options, cancellationTokenSource.Token));
+            await AssertThrowsCancellation(async () =>
+            {
+                var opening = FileIndex.OpenAsync(options, cancellationTokenSource.Token);
+                await Task.WhenAll(firstSettled.Reported, secondParked.Parked).WaitAsync(HangGuard);
+                Assert.IsFalse(opening.IsCompleted, "the second drive is still mid-scan when the open is cancelled");
+                await cancellationTokenSource.CancelAsync().WaitAsync(HangGuard);
+                await opening.WaitAsync(HangGuard);
+            });
 
             var firstBlockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D));
 
             // If the first drive's already-open mapping were not unwound, this exclusive
             // reopen would fail with a sharing violation instead of succeeding.
             using var exclusive = new FileStream(firstBlockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+            // The second drive's partly written canonical file may remain (a canonical target is
+            // not delete-on-close); it must never be adoptable, so a later open cold-scans it.
+            var secondBlockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 0x0BADF00E));
+            if (File.Exists(secondBlockPath))
+            {
+                Assert.IsNull(BlockFile.Open(secondBlockPath, 0x0BADF00E, out _),
+                    "a scan cancelled mid-write leaves nothing a later open could adopt");
+            }
         }
         finally
         {
@@ -155,14 +184,44 @@ public partial class FileIndexResilienceTests
         }
     }
 
-    sealed class CancelOnDriveReport(CancellationTokenSource cancellationTokenSource, char driveLetter)
+    /// <summary>Completes <see cref="Reported" /> when the named drive reports that it settled.</summary>
+    sealed class DriveSettledSignal(char driveLetter) : IProgress<IndexDriveOpened>
+    {
+        readonly TaskCompletionSource _reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Reported => _reported.Task;
+
+        public void Report(IndexDriveOpened value)
+        {
+            if (value.DriveLetter == driveLetter)
+            {
+                _reported.TrySetResult();
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Holds the named drive's scan in its first progress report, after completing
+    ///     <see cref="Parked" />, until the token is cancelled.
+    /// </summary>
+    sealed class ParkUntilCancelled(char driveLetter, CancellationToken cancellationToken)
         : IProgress<IndexScanProgress>
     {
+        readonly TaskCompletionSource _parked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Parked => _parked.Task;
+
         public void Report(IndexScanProgress value)
         {
-            if (char.ToUpperInvariant(value.DriveLetter) == char.ToUpperInvariant(driveLetter))
+            if (char.ToUpperInvariant(value.DriveLetter) != driveLetter)
             {
-                cancellationTokenSource.Cancel();
+                return;
+            }
+
+            _parked.TrySetResult();
+            if (!cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(30)))
+            {
+                throw new TimeoutException("The open was never cancelled.");
             }
         }
     }
