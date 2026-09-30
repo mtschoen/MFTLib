@@ -1,0 +1,119 @@
+66bdb6d Channel tests' scripted watch reports cancellation even when its own read ends it first
+729e396 First-request timeout tests hold the connection until the host's connect bound exists
+c913c3f Disposal gate comment describes admitted operations as cancelled at their checkpoint
+4da66e5 A rescan whose disposal begins after its publish, before its restart decision, is cancelled
+80d8475 Disposal checkpoint tests close over no variable their using scope disposes
+facdae2 An operation admitted before disposal is cancelled by it, never refused
+8dd64bf The platform-taking settings query reads only its arguments
+9066b25 CacheDirectory's default path moves to its own partial file; tests capture locals
+bc00c3a New watch tests bound every await with the hang guard
+530b6ce Default cache path and journal read resolve through instances
+a69ef7a The retired-sibling listing seam comes in through the options
+4df6884 BlockFile.Open reports a path it cannot describe as no usable block
+25285cf msync failure test captures the exception without a closure over the block
+dbdc4ba A rescan that meets a still-retiring watch is tested deterministically
+bca53ee Platform guards in the index take the host as input
+ebb70f5 BlockFile's msync flush takes its platform as input behind an instance seam
+4baed2c Restart decision test reads the index outside the harness's disposal scope
+a4ba229 Rescan restart decision gets a seam, and its stop-wins window a test
+5598a1d Index code drops branches no input reaches
+b8ee228 FileIndex.Drives checks disposal under the state lock
+77c3a04 Default cache path and journal read take the guard state as an argument
+4c924a0 BlockFile drops handlers that no failure reaches
+a97e46a Bound the control-pipe close await in the cancel-after-lock test
+68e89e5 Flat MFTLib namespace reaches 100 percent non-elevated line coverage
+03139d7 Continuation-inline tests assert on the observed flag each helper returns
+bf9c50c ChannelFault_NoRecovery reads its own handler's result instead of racing it
+f1a53db Wrong-reply test records Ended reasons in a queue instead of a captured counter
+7017542 Three test comments describe the behavior their tests assert
+66fff70 ParseThreadAllowance documents that it serves one running parse at a time
+28594be Protocol rejection tests assert the message names the rejected kind and cause
+d60a6ba Launch timeout and cancelled rescan tests are bounded by a hang guard
+eb5c36e Tests and analyzer settings name only the current broker API
+202ee01 MftParseControl is naturally aligned on both sides of the interop boundary
+2cfe27f A known control reply of the wrong kind ends the broker process
+50f245e Diagnostics writer counts a record only once it is queued, so a flush always completes
+38fbca3 FileIndex enumerates the caller's drive list once, pinned by a test
+b1ecbfa FileIndex builds its drive runtimes from its own drive list
+c21e7d4 FileIndex keeps its own copy of the configured drives
+ae15cb5 Index code reachable without elevation is covered by tests
+3c41c61 CHANGELOG matches the watch start, block format and batch reader at HEAD
+f2af7f4 AGENTS.md and CHANGELOG describe the per-drive watch channels
+1091478 Broker docs state the open-time refusal, fault disposition and harness fault surface
+7f0ca66 Broker docs describe BrokerProcess and per-drive channels
+4019e8c README states restart, fault disposition and catch-up read rules
+bbdc525 README and index format describe per-drive watching and recovery
+2889deb DisposeDuringRecovery_CancelsIt asserts on the recovery's own completion
+4752850 The no-list catch-up wait inside a handler never reports disposal ahead of the guard
+6944e86 The no-list catch-up wait checks the handler guard first
+b828a93 Each handler invocation carries its own delivery marker and every active index is guarded
+d558d68 FileIndex rejects a lifecycle call made from inside one of its own handlers
+9bb0a6a Broker coverage tests drive races deterministically and poll nothing
+6773512 Broker and volume code reachable without elevation is covered by tests
+2a8b517 The mid-scan cancellation test bounds every await
+dcd12e8 The mid-scan cancellation test bounds its cancel
+b9dfe6a The mid-scan open cancellation test cancels only once both drives are in position
+588d88a The mid-scan open cancellation test adopts its first drive before it cancels
+ca649bb Disposing the index cancels a pending batched catch-up wait
+4e37d20 Batched catch-up wait owns an asynchronous completion and a cancelled batch always throws
+0d49112 Batched FileIndex operations fan out per drive and return one result each
+bf14f02 Tranche accounting: the control queue row is a drop
+4d4da2a Tranche accounting: reversed contracts are drops and lifecycle cases are ported
+298f615 Account for every base test method the per-drive redesign removed
+3b21d6b Cross-drive scenario cleanup runs every step after an open failure
+df99a39 Cross-drive scenario cleanup is bounded
+2718fbe Cross-drive liveness scenarios over the broker
+d1a20a9 Concurrent open tests bound every await
+834f0b8 A cancelled drive settles nothing and open progress docs say which drives report
+bc12eff An opening drive claims its settle count when it is adopted and reports without a lock
+9250cc8 FileIndex open settles drives in one order and a cancelled open always reports its cancellation
+ff20d5e FileIndex opens its drives concurrently and reports each as it settles
+5060ed6 A stop that wins over a recovery's restart rethrows the fault it stopped
+3d6a983 A stop that lands while recovery restarts a watch wins
+9062537 A drive whose watch faults recovers by rescanning itself
+966b0c1 Broker watch tests prove a timed-out stop and observe faults without polling
+a022623 Each drive watch runs on its own broker pipe
+9725d0b Host-side scan steps helper is ScriptedScanSteps
+a094ad4 Liveness test timer disposal is bounded
+c31350e Control reader drains its stall timer before the process ends
+4fe5d65 BrokerFrameReader settles each read exactly once and drains its stall timer on dispose
+9ace375 BrokerProcess closes any pipe that goes silent past the stall limit
+64458de Scan catch-up fails loudly when a read returns entries without advancing its cursor
+95abf8d FileIndex open retries a lost catch-up and a rescan re-judges its restart after the attempts
+de72583 Split FileIndex gates per drive, publish snapshots under the state lock and retry a drive three times after a lost catch-up
+23709f6 C4 test ports pass the bounded read count and default block write reporting
+1ed645f Host revalidates a pipe's progress before writing Stalled and heartbeats a progressing operation
+25c45fa Host heartbeats idle pipes and reports a wedged operation as Stalled
+df30adc BrokerProcess releases a scan's section lifetime exactly once
+f608588 Port producer, block contract and control-request client tests at full strength
+e9e1005 Port producer, block contract and control-request client tests to BrokerProcess
+566718b Ranged flush stops before spinning on a new error and refuses unknown platforms
+985254e Ranged flush retries lock violations, chooses the msync flag per platform
+37d5c39 Block flush runs in 64 MB ranges and reports each range
+e44243c A scan keeps its result after its own close only between frames
+0ad7a29 A scan tolerates only its own channel close after the terminal frame
+1ec8d5a A disposed scan channel ends its own pending read, proven with the host end held open
+05117e4 Harness disposal finishes teardown before reporting a host fault, and client limits are tested on the injected clock
+bb0d6ca BrokerProcess owns the control pipe and scans each drive on its own channel
+29b8a6a Host test class attributes live on the main partial only
+4a839ea Every runner test leaves the exit seam faked until its runner has left
+c5dfe2b Port the host control-loop and scan-progress cases from the watch partials
+e6cf342 Port host scan, control, protocol and entry-point tests
+419218a Ported rescan tests assert that a stop after the scenario has nothing to rethrow
+da92fa4 Port FileIndex rescan-while-watching tests
+6b6aa35 Port FileIndex watch, pump, fault and catch-up tests to per-drive watches
+f7c432d Port host watch tests to one channel per watch
+e9cc17c Port FileIndex checkpoint-loss and journal isolation tests to per-drive watches
+cb13c86 Diagnostics flush test proves ordering by signal and reads the injected clock
+d583c56 Host answers malformed and cancelled requests with Error frames and carries no unread members
+db36129 Broker host serves a control pipe and one pipe per drive operation
+df50af9 Stop on an idle drive throws, a cancelled rescan keeps its watch, and cancelled waits never run inline
+e6de200 FileIndex watches each drive through its own handle and pump
+6426f6e Journal reads take a buffer bound
+305fab2 Cover the post-parse and mid-slice cancel exits of the native parse
+8962362 Native parse rebalances its thread count at every chunk and stops promptly when cancelled
+a416b44 Remove references and test support orphaned by the broker watch source deletion
+27c3a37 Delete the broker watch source
+9d3dac3 Delete JournalBrokerScanSession and ScanSessionTestHarness
+9ebd895 Broker diagnostics tag every line and write through a bounded background queue
+e65902c Add the per-drive watch channels implementation plan
