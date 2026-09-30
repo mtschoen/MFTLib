@@ -73,7 +73,7 @@ if ($aislopAvailable) {
     Write-Host "  aislop              $aislopVersion"
 }
 else {
-    $missingPrerequisites.Add('aislop - see the quality gate section of AGENTS.md for the pinned install command')
+    $missingPrerequisites.Add('aislop - see docs/quality-gates.md for the pinned install command')
     Write-Host '  aislop              MISSING' -ForegroundColor Yellow
 }
 

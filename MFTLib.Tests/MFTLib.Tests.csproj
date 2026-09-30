@@ -27,6 +27,13 @@
     <ProjectReference Include="..\MFTLibTestExtensions\MFTLibTestExtensions.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\AGENTS.md" Link="repository-docs\AGENTS.md"
+          CopyToOutputDirectory="Always" />
+    <None Include="..\docs\*.md" Link="repository-docs\docs\%(Filename)%(Extension)"
+          CopyToOutputDirectory="Always" />
+  </ItemGroup>
+
   <!-- Windows: pull in the native vcxproj plus TestProgram and Benchmark consumers. -->
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <ProjectReference Include="..\MFTLibNative\MFTLibNative.vcxproj" />

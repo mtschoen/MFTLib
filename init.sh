@@ -62,7 +62,7 @@ if have aislop; then
     aislop_available=1
 else
     printf '  %-20s %s\n' "aislop" "missing"
-    missing+=("aislop - see the quality gate section of AGENTS.md for the pinned install command")
+    missing+=("aislop - see docs/quality-gates.md for the pinned install command")
     aislop_available=0
 fi
 
