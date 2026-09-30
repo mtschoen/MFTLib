@@ -9,7 +9,11 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed partial class FileIndex
 {
-    /// <summary>Starts the watch of each listed drive; see <see cref="StartWatchingAsync(char, CancellationToken)" />.</summary>
+    /// <summary>
+    ///     Starts the watch of each listed drive; see <see cref="StartWatchingAsync(char, CancellationToken)" />.
+    ///     A drive with no MFT-backed block is <see cref="DriveOperationOutcome.NotApplicable" /> and
+    ///     records no watch request, so a later rescan does not start it.
+    /// </summary>
     public Task<IReadOnlyList<DriveOperationResult>> StartWatchingAsync(IReadOnlyList<char> driveLetters,
         CancellationToken cancellationToken)
     {

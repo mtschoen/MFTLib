@@ -98,15 +98,19 @@ public sealed record DriveStatus
 
     /// <summary>
     ///     Where this drive's live watch stands in draining the journal backlog that was present
-    ///     when its current watch started. <see cref="WatchCatchUpState.NotStarted" /> whenever the
-    ///     drive has no current watch (before its first <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" />
-    ///     and again after <see cref="FileIndex.StopWatchingAsync(char, CancellationToken)" />),
+    ///     when its current watch started. <see cref="WatchCatchUpState.NotStarted" /> while the
+    ///     drive's watch is not requested (<see cref="WatchRequested" /> is false) and no start of
+    ///     it failed: before its first <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" />
+    ///     and again after <see cref="FileIndex.StopWatchingAsync(char, CancellationToken)" />.
     ///     <see cref="WatchCatchUpState.CatchingUp" /> while the watch applies its backlog,
     ///     <see cref="WatchCatchUpState.CaughtUp" /> once that backlog has been applied and the
     ///     drive is on live entries, and <see cref="WatchCatchUpState.Faulted" /> when the drive's
-    ///     watch fails or its start is refused, with detail in <see cref="WatchFailureMessage" />.
-    ///     A <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> that restarts the drive's watch resets it to
-    ///     <see cref="WatchCatchUpState.CatchingUp" />. Always
+    ///     watch fails, its start or automatic restart fails, or its start is refused, with detail
+    ///     in <see cref="WatchFailureMessage" />: a drive whose automatic recovery failed reads
+    ///     <see cref="WatchCatchUpState.Faulted" />, not <see cref="WatchCatchUpState.NotStarted" />,
+    ///     although no watch is running. A <see cref="FileIndex.RescanAsync(char, CancellationToken)" />
+    ///     of a drive whose watch is requested reads <see cref="WatchCatchUpState.CatchingUp" />
+    ///     from the moment it retires the old watch until the replacement catches up. Always
     ///     <see cref="WatchCatchUpState.NotStarted" /> for a drive that cannot be watched at all
     ///     (an enumeration-backed block). A drive a cache-only open adopted despite a lost journal
     ///     checkpoint reads <see cref="WatchCatchUpState.Faulted" /> instead once
@@ -119,6 +123,18 @@ public sealed record DriveStatus
     ///     fault, or a scan of a watched drive retries after a lost catch-up.
     /// </summary>
     public WatchCatchUpState WatchCatchUp { get; init; }
+
+    /// <summary>
+    ///     True while this drive's watch is requested: from a
+    ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" />, including one whose
+    ///     source threw or that was refused over an unresumable block, until
+    ///     <see cref="FileIndex.StopWatchingAsync(char, CancellationToken)" />, a start its own caller
+    ///     cancelled, or disposal. A <see cref="FileIndex.RescanAsync(char, CancellationToken)" />
+    ///     starts the drive's watch on the replacement block only while this is true; a rescan never
+    ///     starts a drive whose watch was not requested. A drive a batched start answered
+    ///     <see cref="DriveOperationOutcome.NotApplicable" /> is not requested.
+    /// </summary>
+    public bool WatchRequested { get; init; }
 
     /// <summary>
     ///     How many scans of this drive in a row lost their journal catch-up. A scan whose

@@ -23,6 +23,7 @@ public sealed partial class FileIndex
             {
                 runtime.WatchRequested = false;
                 runtime.RefusedStartFault = null;
+                CancelRestartPendingWaiterLocked(runtime);
                 ClearRecoveryLocked(runtime);
                 if (runtime.Retiring is { } alreadyRetiring)
                 {

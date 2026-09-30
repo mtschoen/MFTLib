@@ -107,10 +107,11 @@ public sealed partial class FileIndex
     ///     lost its journal catch-up. Resuming from that cursor would read a position the journal no
     ///     longer holds. Reported the way any other start failure is, through
     ///     <see cref="DriveStatus.WatchFailureMessage" /> and a faulted
-    ///     <see cref="DriveStatus.WatchCatchUp" />, and returned for the start to throw. A rescan
-    ///     whose catch-up holds writes a fresh cursor, which clears the drive's entry in
-    ///     <see cref="_unresumableCheckpointsByOrdinal" /> and this refusal. The caller holds
-    ///     <see cref="_stateLock" />.
+    ///     <see cref="DriveStatus.WatchCatchUp" />, and returned for the start to throw. Like a
+    ///     start whose source threw, the refusal records the watch as requested and faults any
+    ///     restart-pending wait. A rescan whose catch-up holds writes a fresh cursor, which clears
+    ///     the drive's entry in <see cref="_unresumableCheckpointsByOrdinal" /> and this refusal,
+    ///     and then starts the requested watch. The caller holds <see cref="_stateLock" />.
     /// </summary>
     InvalidOperationException RecordUnresumableCheckpointWatchFailureLocked(DriveRuntime runtime,
         DriveBlock driveBlock, UnresumableCheckpointReason reason)
@@ -124,7 +125,44 @@ public sealed partial class FileIndex
             $"Drive {driveBlock.DriveLetter} cannot be watched: {because} Call FileIndex.RescanAsync " +
             "for this drive before watching it.");
         _watchFailureMessagesByOrdinal[driveBlock.DriveOrdinal] = failure.Message;
+        runtime.WatchRequested = true;
         runtime.RefusedStartFault = failure;
+        FaultRestartPendingWaiterLocked(runtime, failure);
+        return failure;
+    }
+
+    /// <summary>
+    ///     The failure of a start over a drive with no MFT-backed block. A restart whose rescan
+    ///     replaced the block with one that cannot be watched withdraws the watch request, since
+    ///     the drive can no longer be watched at all, and faults any restart-pending wait. A
+    ///     faulted watch the rescan retained is superseded with its status, so the drive reads
+    ///     <see cref="WatchCatchUpState.NotStarted" /> whether its old watch was healthy or
+    ///     faulted. That fault was already raised through <see cref="WatchFaulted" />, and no stop
+    ///     remains to rethrow it. The caller holds <see cref="_stateLock" />.
+    /// </summary>
+    InvalidOperationException RefuseStartWithoutWatchableBlockLocked(DriveRuntime runtime, bool restart)
+    {
+        var failure = new InvalidOperationException(
+            $"Drive {runtime.DriveLetter} has no MFT-backed block, so there is no journal cursor to watch from.");
+        if (!restart)
+        {
+            return failure;
+        }
+
+        runtime.WatchRequested = false;
+        runtime.RefusedStartFault = null;
+        runtime.RescanHandoffFault = null;
+        FaultRestartPendingWaiterLocked(runtime, failure);
+        if (RetireCurrentLocked(runtime) is { } superseded)
+        {
+            superseded.OutstandingFault = null;
+        }
+
+        if (TryGetDriveOrdinalLocked(runtime.DriveLetter, out var driveOrdinal))
+        {
+            _watchFailureMessagesByOrdinal.Remove(driveOrdinal);
+        }
+
         return failure;
     }
 

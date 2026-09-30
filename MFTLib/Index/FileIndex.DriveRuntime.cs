@@ -119,10 +119,19 @@ public sealed partial class FileIndex
         public Exception? RescanHandoffFault;
 
         /// <summary>
-        ///     Set by a start and cleared by a stop or by disposal. A rescan restarts the drive's
-        ///     watch only while it is set.
+        ///     Set by a start, including one whose source threw or that was refused over an
+        ///     unresumable block, and cleared by a stop, by disposal, or by a start its own caller
+        ///     cancelled. A rescan restarts the drive's watch only while it is set.
         /// </summary>
         public bool WatchRequested;
+
+        /// <summary>
+        ///     A catch-up wait issued while the watch is requested and no instance is current, the
+        ///     window between a rescan retiring the old watch and registering its replacement. The
+        ///     replacement instance adopts it as its own catch-up waiter; a refusal or lost catch-up
+        ///     faults it, and a stop or disposal cancels it.
+        /// </summary>
+        public TaskCompletionSource? RestartPendingWaiter;
 
         public long NextGeneration;
 
@@ -147,11 +156,13 @@ public sealed partial class FileIndex
         readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
         readonly CancellationTokenRegistration _disposalLink;
 
-        public WatchInstance(char driveLetter, long generation, DriveBlock armedBlock, CancellationToken disposalToken)
+        public WatchInstance(char driveLetter, long generation, DriveBlock armedBlock,
+            TaskCompletionSource? catchUpWaiter, CancellationToken disposalToken)
         {
             DriveLetter = driveLetter;
             Generation = generation;
             ArmedBlock = armedBlock;
+            CatchUp = new WatchCatchUpSlot(catchUpWaiter);
 
             // Linked by hand rather than through CreateLinkedTokenSource, so the link can be
             // removed when the instance drains without disposing the source: a stop that decided
@@ -181,7 +192,7 @@ public sealed partial class FileIndex
         /// <summary>Rethrown once by the stop that retires this instance.</summary>
         public Exception? OutstandingFault;
 
-        public WatchCatchUpSlot CatchUp { get; } = new();
+        public WatchCatchUpSlot CatchUp { get; }
 
         /// <summary>
         ///     Completes when teardown has finished: the source's start has returned, any handle

@@ -195,6 +195,7 @@ public sealed partial class FileIndex
         {
             runtime.RetryingLostCatchUp = !recoveryStopped && runtime.WatchRequested;
             runtime.RetriedLostCatchUp = runtime.RetryingLostCatchUp ? lost : null;
+            FaultRestartPendingWaiterLocked(runtime, lost);
             if (recoveryStopped)
             {
                 runtime.RefusedStartFault = lost;

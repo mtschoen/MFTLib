@@ -363,9 +363,11 @@ public sealed partial class FileIndex : IAsyncDisposable
             _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             GetWatchCatchUpStateLocked(driveBlock.DriveLetter),
             _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal));
+        var runtime = GetDriveRuntime(driveBlock.DriveLetter);
         return DescribeDrive(driveBlock, in annotations) with
         {
-            ConsecutiveLostCatchUps = GetDriveRuntime(driveBlock.DriveLetter).ConsecutiveLostCatchUps
+            ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,
+            WatchRequested = runtime.WatchRequested
         };
     }
 

@@ -8,15 +8,24 @@
       `WatchCatchUpState.CatchingUp`; journal batches through the tip captured at start are applied
       before `DriveCaughtUp` moves X to `CaughtUp`. `WaitForCatchUpAsync(X)` follows that instance:
       it completes when X catches up, faults with X's watch fault, and is cancelled when stop,
-      rescan, or disposal retires the instance. The list and all-drive overloads fan out to the
+      rescan, or disposal retires the instance. A pump fault settles the wait last: the fault,
+      its `LiveWatch` checkpoint loss and its recovery ticket (`Recovering`) are recorded first,
+      then the wait faults, then `WatchFaulted` is raised, so a consumer reading `Drives` from
+      the wait's fault path sees the same state a `WatchFaulted` handler sees. A stop in that
+      window faults the wait with the watch's fault rather than cancelling it. The list and all-drive overloads fan out to the
       requested drives concurrently and return one `DriveOperationResult` per drive. A `Drive` or
       `Apply` fault publishes `Recovering`, raises `WatchFaulted`, and automatically rescans and
       restarts only X. A second fault before the restarted watch reaches `CaughtUp`, or a failed
       recovery scan, raises `WatchFaulted(Recovery, X)` and leaves X `Faulted` until a consumer
-      calls `RescanAsync(X)` or `StartWatchingAsync(X)`. `Channel` faults never recover.
+      calls `RescanAsync(X)` or `StartWatchingAsync(X)`; a failed automatic restart likewise
+      reads `Faulted`, never `NotStarted`. `Channel` faults never recover.
       A rescan keeps a healthy watch and its pending catch-up waits attached throughout
       production. Failed or cancelled production leaves them untouched; retirement cancels
-      pending waits when the replacement commits. Changes applied before that commit can be
+      pending waits when the replacement commits. From that commit until the replacement
+      registers, a drive whose watch is requested reads `CatchingUp`, and a
+      `WaitForCatchUpAsync(X)` issued then attaches to a restart-pending waiter on the drive's
+      runtime: the replacement instance adopts it as its own catch-up waiter, a refusal over an
+      unresumable block or a lost catch-up faults it, and stop or disposal cancels it. Changes applied before that commit can be
       delivered after it and repeated by replacement catch-up. Queries can lag until the new
       watch reports `CaughtUp`. A successful manual scan whose replacement watch cannot start
       returns normally and raises `RescanRestart` once, with the start failure as its inner
@@ -24,6 +33,17 @@
       replacement and the failed watch start. The drive stays `Faulted` without automatic
       recovery until a consumer starts or rescans it; stop rethrows that fault once.
       A failed automatic recovery, including its restart, reports `Recovery`.
+    - **Watch request**: `DriveStatus.WatchRequested` exposes `DriveRuntime.WatchRequested`. A
+      consumer start sets it before invoking the source, and it stays set when the source throws
+      or when the start is refused because the block's journal cursor cannot be resumed; stop,
+      disposal and a start its own caller cancelled clear it. A rescan restarts the watch only
+      while it is set, so the rescan a refusal asks for restarts the refused drive, and a rescan
+      never starts a drive nobody asked to watch. A batched start answering `NotApplicable`
+      records no request. A restart whose rescan replaced the block with one that cannot be
+      watched withdraws the request and supersedes any retained faulted watch with its failure
+      message, so the drive reads `NotStarted` either way. `WatchCatchUp` derives, in order: `Recovering`; the current instance's
+      state; `Faulted` for a failed or refused start; `CatchingUp` while requested with no
+      instance; otherwise `NotStarted`.
     - **Per-drive state machine**: each configured drive has a `DriveRuntime`; each start creates
       a distinct `WatchInstance` with its own generation, cancellation sources, handle, pump,
       catch-up slot, armed block, fault, and `Drained` task. `Current` holds at most one instance,

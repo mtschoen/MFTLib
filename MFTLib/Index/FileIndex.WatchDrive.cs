@@ -19,6 +19,9 @@ public sealed partial class FileIndex
     ///         fails this task with that exception, sets the drive's
     ///         <see cref="DriveStatus.WatchFailureMessage" />, and leaves its
     ///         <see cref="DriveStatus.WatchCatchUp" /> at <see cref="WatchCatchUpState.Faulted" />.
+    ///         That failure, and a refusal over an unresumable block, still record the watch as
+    ///         requested (<see cref="DriveStatus.WatchRequested" />), so the rescan that replaces
+    ///         the block starts it.
     ///     </para>
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
@@ -50,8 +53,9 @@ public sealed partial class FileIndex
     ///     The drive's <see cref="DriveStatus.WatchCatchUp" /> reads
     ///     <see cref="WatchCatchUpState.NotStarted" /> afterwards and any pending catch-up wait is
     ///     cancelled. A drive counts as watching while its watch is requested or it has a watch
-    ///     instance, current or still retiring; a start that failed at its source leaves the watch
-    ///     requested, so stopping that drive clears the request and its faulted state.
+    ///     instance, current or still retiring; a start that failed at its source or was refused
+    ///     over an unresumable block leaves the watch requested, so stopping that drive clears the
+    ///     request and its faulted state.
     ///     <paramref name="cancellationToken" /> bounds only the wait for the teardown: cancelling
     ///     it throws while the teardown continues, and a later start waits for that teardown.
     /// </summary>
@@ -79,6 +83,7 @@ public sealed partial class FileIndex
 
             runtime.WatchRequested = false;
             runtime.RefusedStartFault = null;
+            CancelRestartPendingWaiterLocked(runtime);
             ClearRecoveryLocked(runtime);
             previousDrain = runtime.Retiring?.Drained;
             retired = RetireCurrentLocked(runtime);
@@ -203,8 +208,11 @@ public sealed partial class FileIndex
                 ClearRecoveryLocked(runtime);
             }
 
-            var armedBlock = FindWatchableDriveBlockLocked(driveLetter) ?? throw new InvalidOperationException(
-                $"Drive {driveLetter} has no MFT-backed block, so there is no journal cursor to watch from.");
+            if (FindWatchableDriveBlockLocked(driveLetter) is not { } armedBlock)
+            {
+                throw RefuseStartWithoutWatchableBlockLocked(runtime, restart);
+            }
+
             if (_unresumableCheckpointsByOrdinal.TryGetValue(armedBlock.DriveOrdinal, out var unresumable))
             {
                 throw RecordUnresumableCheckpointWatchFailureLocked(runtime, armedBlock, unresumable);
@@ -306,7 +314,8 @@ public sealed partial class FileIndex
                 _ = RetireCurrentLocked(runtime);
             }
 
-            var instance = new WatchInstance(runtime.DriveLetter, runtime.NextGeneration++, armedBlock, DisposalToken);
+            var instance = new WatchInstance(runtime.DriveLetter, runtime.NextGeneration++, armedBlock,
+                TakeRestartPendingWaiterLocked(runtime), DisposalToken);
             runtime.Current = instance;
             if (!restart)
             {

@@ -313,9 +313,11 @@ the same handle.
 `FileIndex.WaitForCatchUpAsync(char, CancellationToken)` follows that drive's current
 handle. It completes immediately when the drive is already caught up, faults with the
 drive's exception when the watch failed or its last start was refused, and throws
-`InvalidOperationException` when the drive has no current watch. Stop and index disposal
-cancel a pending wait when they retire that handle. A rescan keeps it attached during
-production and cancels it only when the replacement commits and retires the old handle.
+`InvalidOperationException` when the drive's watch is not requested and it has no current
+watch. Stop and index disposal cancel a pending wait when they retire that handle. A rescan
+keeps it attached during production and cancels it only when the replacement commits and
+retires the old handle; a wait issued after that commit and before the replacement registers
+follows the replacement handle.
 Failed or cancelled production leaves the watch and its waits untouched. Cancelling the wait's own
 token cancels only the wait, not the drive's watch.
 

@@ -10,8 +10,9 @@ namespace MFTLib.Tests.Index;
 ///     open never watches and the block is still a correct snapshot as of its age. But starting a
 ///     live watch from that block's cursor would resume from a position the journal no longer
 ///     holds, so <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> refuses such
-///     a drive, says why, and requests no watch. A successful <see cref="FileIndex.RescanAsync(char, CancellationToken)" />
-///     writes a fresh cursor and clears the refusal, leaving the drive ready to start. The journal
+///     a drive and says why, recording the watch as requested the way a start whose source threw
+///     does. A successful <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> writes a
+///     fresh cursor, clears the refusal, and starts the requested watch. The journal
 ///     read is swapped out through <c>JournalCheckpointCheck.OverrideJournalForTest</c>, so these
 ///     run on every platform and never touch a real volume.
 /// </summary>
@@ -114,7 +115,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
 
     /// <summary>
     ///     Starts a drive whose block is unresumable and returns the refusal the consumer sees.
-    ///     A refusal requests no watch, so the drive is not watching afterwards.
+    ///     The refusal leaves the watch requested, so a stop or a rescan applies afterwards.
     /// </summary>
     static async Task<InvalidOperationException> RefuseStartAsync(FileIndex index, char driveLetter,
         CancellationToken token)
@@ -166,11 +167,12 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     }
 
     /// <summary>
-    ///     A refusal requests no watch, so the rescan that replaces the block clears the
-    ///     refusal and leaves the drive ready to start; it does not start the drive itself.
+    ///     A refusal leaves the watch requested, so the rescan that replaces the block clears the
+    ///     refusal and starts the watch from the fresh cursor, exactly as it would after a start
+    ///     whose source threw.
     /// </summary>
     [TestMethod]
-    public async Task RescanAsync_OnTheUnresumableDrive_ClearsTheRefusalAndLeavesTheDriveReadyToStart()
+    public async Task RescanAsync_OnTheUnresumableDrive_ClearsTheRefusalAndStartsTheRequestedWatch()
     {
         var driveT = Drive('T', _firstTreeRoot);
         var driveU = Drive('U', _secondTreeRoot);
@@ -182,20 +184,18 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT, driveU), Token);
         await index.StartWatchingAsync('U', Token);
         await RefuseStartAsync(index, 'T', Token);
+        Assert.IsTrue(index.Drives.Single(drive => drive.DriveLetter == 'T').WatchRequested,
+            "a refused start records the request, as a start whose source threw does");
 
         await index.RescanAsync('T', Token);
 
-        Assert.AreEqual(0, source.StartsFor('T').Count,
-            "a refused drive requested no watch, so the rescan starts none");
+        Assert.AreEqual(new IndexWatchTarget('T', CachedJournalId, CachedNextUsn), source.StartsFor('T').Single(),
+            "the rescan starts the requested watch from the fresh cursor");
         var recovered = index.Drives.Single(drive => drive.DriveLetter == 'T');
         Assert.AreEqual(BlockSource.ProducedByScan, recovered.BlockSource);
         Assert.IsNull(recovered.CheckpointLoss, "the rescan replaced the block the report described");
         Assert.IsNull(recovered.WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, recovered.WatchCatchUp);
-
-        await index.StartWatchingAsync('T', Token);
-
-        Assert.AreEqual(new IndexWatchTarget('T', CachedJournalId, CachedNextUsn), source.StartsFor('T').Single());
+        Assert.IsTrue(recovered.WatchRequested);
         Assert.AreEqual(WatchCatchUpState.CatchingUp,
             index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUp);
         await source.HandleFor('T').Publish(new JournalBatch(
@@ -263,6 +263,97 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await index.StopWatchingAsync('U', Token);
     }
 
+    /// <summary>
+    ///     An enumeration policy warm-starts a cached MFT block, which can be watched, but its
+    ///     rescan produces an enumeration block, which cannot. The restart withdraws the request
+    ///     and faults a wait issued between the retired watch and that restart.
+    /// </summary>
+    [TestMethod]
+    public async Task RescanAsync_ThatReplacesAWatchedBlockWithAnUnwatchableOne_WithdrawsTheRequestAndFaultsTheWait()
+    {
+        var driveT = Drive('T', _firstTreeRoot);
+        await SeedCacheAsync(driveT);
+        var source = new FakeIndexWatchSource();
+        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Healthy });
+        var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [driveT],
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration,
+            WatchSource = source
+        }, Token);
+        try
+        {
+            Assert.AreEqual(ProducerKind.Mft, index.Drives.Single().ProducerKind, "the cached MFT block warm-started");
+            await index.StartWatchingAsync('T', Token);
+            Task? wait = null;
+            index.BeforeRestartDecisionForTest = _ => wait ??= index.WaitForCatchUpAsync('T', CancellationToken.None);
+
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.RescanAsync('T', Token));
+
+            Assert.IsNotNull(wait);
+            var failure = await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+                () => wait.WaitAsync(FakeIndexWatchSource.HangGuard));
+            StringAssert.Contains(failure.Message, "no MFT-backed block");
+            var status = index.Drives.Single();
+            Assert.AreEqual(ProducerKind.Enumeration, status.ProducerKind);
+            Assert.IsFalse(status.WatchRequested);
+            Assert.AreEqual(WatchCatchUpState.NotStarted, status.WatchCatchUp);
+            Assert.AreEqual(1, source.StartsFor('T').Count);
+        }
+        finally
+        {
+            // Disposed explicitly, after the restart seam that captures the index can no longer run.
+            await index.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    ///     The same rescan over a watch that had already faulted on its channel, which the rescan
+    ///     retains until the restart: the restart supersedes that faulted watch with its failure,
+    ///     so the drive reads exactly as it does after a healthy watch.
+    /// </summary>
+    [TestMethod]
+    public async Task RescanAsync_ThatReplacesAChannelFaultedWatchsBlockWithAnUnwatchableOne_ReadsNotStarted()
+    {
+        var driveT = Drive('T', _firstTreeRoot);
+        await SeedCacheAsync(driveT);
+        var source = new FakeIndexWatchSource();
+        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Healthy });
+        await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+        {
+            Drives = [driveT],
+            CacheDirectory = _cacheDirectory,
+            ProducerPolicy = ProducerPolicy.Enumeration,
+            WatchSource = source
+        }, Token);
+        var channelFaulted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        index.WatchFaulted += fault =>
+        {
+            if (fault.Kind == WatchFaultKind.Channel)
+            {
+                channelFaulted.TrySetResult();
+            }
+        };
+        await index.StartWatchingAsync('T', Token);
+        source.HandleFor('T').LoseChannel(new IOException("the channel went away"));
+        await channelFaulted.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+        Assert.AreEqual(WatchCatchUpState.Faulted, index.Drives.Single().WatchCatchUp);
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.RescanAsync('T', Token));
+
+        var status = index.Drives.Single();
+        Assert.AreEqual(ProducerKind.Enumeration, status.ProducerKind);
+        Assert.IsFalse(status.WatchRequested);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, status.WatchCatchUp);
+        Assert.IsNull(status.WatchFailureMessage, "the superseded watch's channel failure no longer describes the drive");
+        var notWatched = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => index.WaitForCatchUpAsync('T', Token));
+        StringAssert.Contains(notWatched.Message, "is not being watched");
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.StopWatchingAsync('T', Token));
+        Assert.AreEqual(1, source.StartsFor('T').Count);
+    }
+
     [TestMethod]
     public async Task StartWatchingAsync_WhenTheOnlyMftDriveIsUnresumable_RefusesItAndReportsIt()
     {
@@ -286,7 +377,13 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             () => index.WaitForCatchUpAsync('T', Token));
         StringAssert.Contains(waitFailure.Message, "RescanAsync");
 
-        // A refusal requests no watch, so there is nothing to stop.
+        // The refusal records the request, so a stop withdraws it without rethrowing the refusal,
+        // which the start already threw; after that there is nothing left to stop.
+        Assert.IsTrue(status.WatchRequested);
+        await index.StopWatchingAsync('T', Token);
+        var stopped = index.Drives.Single();
+        Assert.IsFalse(stopped.WatchRequested);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, stopped.WatchCatchUp);
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => index.StopWatchingAsync('T', Token));
     }

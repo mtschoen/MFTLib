@@ -4,9 +4,9 @@ public sealed partial class FileIndex
 {
     /// <summary>
     ///     A test seam: when set, the pump calls it as <c>wrapper(settleFault)</c> around exactly
-    ///     the step that records a drive's fault and faults that drive's catch-up slot, before
-    ///     <see cref="WatchFaulted" /> is raised, so a test can observe what runs on the settling
-    ///     stack.
+    ///     the step that records a drive's fault and marks that drive's catch-up slot faulted,
+    ///     before its catch-up waiter is faulted and <see cref="WatchFaulted" /> is raised, so a
+    ///     test can observe what runs on the settling stack.
     /// </summary>
     internal Action<Action>? PumpFaultSettlementWrapperForTest { get; set; }
 
@@ -174,8 +174,9 @@ public sealed partial class FileIndex
     ///     fault, the faulted slot, and the faulted state. Then the checkpoint-loss check, then,
     ///     for a <see cref="WatchFaultKind.Drive" /> or <see cref="WatchFaultKind.Apply" /> fault,
     ///     the recovery ticket that makes the drive read <see cref="WatchCatchUpState.Recovering" />,
-    ///     then <see cref="WatchFaulted" />, so a handler that reads <see cref="Drives" /> already
-    ///     sees why the drive stopped and that it is recovering, and only then the recovery itself.
+    ///     then the catch-up waiter's fault, then <see cref="WatchFaulted" />, so a waiter or a
+    ///     handler that reads <see cref="Drives" /> already sees why the drive stopped and that it
+    ///     is recovering, and only then the recovery itself.
     ///     A <see cref="WatchFaultKind.Channel" /> fault never recovers. A watch a recovery
     ///     restarted that faults before it first catches up queues no further recovery: its
     ///     <see cref="WatchFaultKind.Drive" /> or <see cref="WatchFaultKind.Apply" /> fault is
@@ -183,8 +184,8 @@ public sealed partial class FileIndex
     /// </summary>
     void RecordPumpFault(DriveRuntime runtime, WatchInstance instance, WatchFault fault)
     {
-        var recorded = false;
         var recoveryFailed = false;
+        TaskCompletionSource? faultedWaiter = null;
 
         void Settle()
         {
@@ -199,14 +200,12 @@ public sealed partial class FileIndex
                 instance.State = WatchInstanceState.Faulted;
                 instance.OutstandingFault ??= fault.Exception;
                 _watchFailureMessagesByOrdinal[instance.ArmedBlock.DriveOrdinal] = fault.Exception.Message;
-                instance.CatchUp.Fault(fault.Exception);
+                faultedWaiter = instance.CatchUp.MarkFaulted(fault.Exception);
                 recoveryFailed = runtime.RecoveryState == RecoveryState.RecoveredAwaitingCatchUp;
                 if (recoveryFailed)
                 {
                     runtime.RecoveryState = RecoveryState.None;
                 }
-
-                recorded = true;
             }
         }
 
@@ -219,14 +218,23 @@ public sealed partial class FileIndex
             Settle();
         }
 
-        if (!recorded)
+        if (faultedWaiter is null)
         {
             return;
         }
 
-        RecordCheckpointLossForFaultedDrive(runtime, instance);
         var recovers = fault.Kind is WatchFaultKind.Drive or WatchFaultKind.Apply;
-        var recovery = recovers && !recoveryFailed ? QueueRecovery(runtime, instance) : null;
+        RecoveryTicket? recovery;
+        try
+        {
+            RecordCheckpointLossForFaultedDrive(runtime, instance);
+            recovery = recovers && !recoveryFailed ? QueueRecovery(runtime, instance) : null;
+        }
+        finally
+        {
+            WatchCatchUpSlot.ReleaseFault(faultedWaiter, fault.Exception);
+        }
+
         RaiseWatchFaulted(recovers && recoveryFailed ? fault with { Kind = WatchFaultKind.Recovery } : fault);
         if (recovery is not null)
         {
