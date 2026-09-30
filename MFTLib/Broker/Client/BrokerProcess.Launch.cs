@@ -10,13 +10,14 @@ public sealed partial class BrokerProcess
     /// <summary>How long <see cref="LaunchAsync(Func{string, bool}, CancellationToken)" /> waits for the broker to connect.</summary>
     public static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromSeconds(30);
 
-    // How long the one-argument LaunchAsync waits. Internal and mutable so tests can shrink the
-    // window instead of waiting for the real production timeout.
+    // Internal launch seams let tests drive the connection deadline with fake time.
     internal static TimeSpan _connectTimeout = DefaultConnectTimeout;
+    internal static TimeProvider _connectTimeProvider = TimeProvider.System;
 
     internal static void ResetToDefaults()
     {
         _connectTimeout = DefaultConnectTimeout;
+        _connectTimeProvider = TimeProvider.System;
     }
 
     /// <summary>
@@ -66,7 +67,8 @@ public sealed partial class BrokerProcess
                     "Failed to launch the elevated broker (the UAC prompt was declined?)");
             }
 
-            await WaitForBrokerAsync(server, pipeName, connectTimeout, cancellationToken).ConfigureAwait(false);
+            await WaitForBrokerAsync(server, pipeName, connectTimeout, _connectTimeProvider, cancellationToken)
+                .ConfigureAwait(false);
             var process = new BrokerProcess(server, new NamedPipeBrokerPipeFactory(), CreateRealDriveBlockSection,
                 TimeProvider.System, pipeName);
             server = null;
@@ -94,9 +96,9 @@ public sealed partial class BrokerProcess
     }
 
     static async Task WaitForBrokerAsync(NamedPipeServerStream server, string pipeName, TimeSpan connectTimeout,
-        CancellationToken cancellationToken)
+        TimeProvider timeProvider, CancellationToken cancellationToken)
     {
-        using var timeout = new CancellationTokenSource(connectTimeout);
+        using var timeout = new CancellationTokenSource(connectTimeout, timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, cancellationToken);
         try
         {

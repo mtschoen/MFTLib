@@ -301,17 +301,6 @@ public partial class BrokerProcessTests
         StringAssert.Contains(exception.Message, "declined");
     }
 
-    [TestMethod]
-    [SupportedOSPlatform("windows")]
-    public async Task LaunchAsync_NeverConnects_TimesOut()
-    {
-        var exception = await Assert.ThrowsExceptionAsync<TimeoutException>(() =>
-            BrokerProcess.LaunchAsync(_ => true, TimeSpan.FromMilliseconds(50), CancellationToken.None));
-
-        StringAssert.Contains(exception.Message, "Timed out waiting 50ms");
-        StringAssert.Contains(exception.Message, "mftlib-broker-");
-        StringAssert.Contains(exception.Message, "launched, but never connected");
-    }
 
     // Whatever ends the control pipe's reader ends the process: a pending request fails with the
     // reason and Ended fires once.

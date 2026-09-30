@@ -5,8 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
-// The tests change process-wide state: diagnostics environment variables, BrokerDiagnostics
-// settings and BrokerProcess's connect timeout.
+// The tests change process-wide diagnostics settings and broker connection timeout seams.
 [TestClass]
 [DoNotParallelize]
 [SupportedOSPlatform("windows")]
@@ -184,20 +183,47 @@ public class BrokerProcessLaunchTests
             BrokerProcess.LaunchAsync(_ => true, TimeSpan.FromSeconds(-5), CancellationToken.None));
     }
 
-    [TestMethod]
-    public async Task LaunchAsync_DefaultTimeoutOverridden_TimesOut()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task LaunchAsync_NeverConnects_TimesOut(bool explicitTimeout)
     {
-        BrokerProcess._connectTimeout = TimeSpan.FromMilliseconds(50);
+        var clock = new TimerSignalingClock();
+        var duration = TimeSpan.FromMilliseconds(50);
+        using var cancellation = new CancellationTokenSource();
+        if (!explicitTimeout)
+        {
+            BrokerProcess._connectTimeout = duration;
+        }
 
-        // LaunchAsync takes no clock: its connect timeout is a CancellationTokenSource on the system
-        // timer, so the 50 ms wait is real. The hang guard bounds it, so a timer that never fires
-        // fails the test instead of running into the runner's global timeout.
-        var exception = await Assert.ThrowsExceptionAsync<TimeoutException>(() =>
-            BrokerProcess.LaunchAsync(_ => true, CancellationToken.None).WaitAsync(HostChannelHarness.HangGuard));
+        BrokerProcess._connectTimeProvider = clock;
+        try
+        {
+            var launch = explicitTimeout
+                ? BrokerProcess.LaunchAsync(_ => true, duration, cancellation.Token)
+                : BrokerProcess.LaunchAsync(_ => true, cancellation.Token);
+            var registration = clock.TimerCreated(duration);
+            Assert.IsTrue(registration.IsCompletedSuccessfully,
+                "The connection deadline must be registered on the injected clock.");
+            var timer = await registration;
 
-        StringAssert.Contains(exception.Message, "Timed out waiting 50ms");
-        StringAssert.Contains(exception.Message, "mftlib-broker-");
-        StringAssert.Contains(exception.Message, "launched, but never connected");
+            clock.Advance(duration - TimeSpan.FromTicks(1));
+            Assert.IsFalse(timer.Fired);
+            Assert.IsFalse(launch.IsCompleted);
+
+            clock.Advance(TimeSpan.FromTicks(1));
+            Assert.IsTrue(timer.Fired);
+            var exception = await Assert.ThrowsExceptionAsync<TimeoutException>(() => launch);
+
+            StringAssert.Contains(exception.Message, "Timed out waiting 50ms");
+            StringAssert.Contains(exception.Message, "mftlib-broker-");
+            StringAssert.Contains(exception.Message, "launched, but never connected");
+        }
+        finally
+        {
+            await cancellation.CancelAsync();
+            BrokerProcess.ResetToDefaults();
+        }
     }
 
     [TestMethod]
