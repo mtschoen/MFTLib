@@ -12,27 +12,33 @@ public class FileIndexWatchRescanFaultHandoffTests
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     [DataTestMethod]
-    [DataRow("production", false)]
-    [DataRow("drain", false)]
-    [DataRow("restart decision", false)]
-    [DataRow("registration", false)]
-    [DataRow("starting", false)]
-    [DataRow("starting", true)]
-    public async Task StopDuringHandoff_RethrowsSubscriberFaultOnce(string stage, bool faultDuringProduction)
+    [DataRow("production", false, false)]
+    [DataRow("drain", false, false)]
+    [DataRow("restart decision", false, false)]
+    [DataRow("registration", false, false)]
+    [DataRow("registration", false, true)]
+    [DataRow("starting", false, false)]
+    [DataRow("starting", true, false)]
+    public async Task StopDuringHandoff_RethrowsSubscriberFaultOnce(string stage, bool faultDuringProduction,
+        bool faultAfterRetirement = false)
     {
         using var harness = new WatchHarness('T');
         var index = harness.Index;
         await index.StartWatchingAsync('T', Token);
         var handle = harness.Source.HandleFor('T');
-        var failure = new IOException("subscriber failed before rescan");
+        var failure = new IOException(faultAfterRetirement ? "delayed subscriber failed" : "subscriber failed before rescan");
         void FailSubscriber(FileChange _) => throw failure;
-        index.Changed += FailSubscriber;
-        await handle.Publish(WatchHarness.Batch(9, "before.txt"));
-        index.Changed -= FailSubscriber;
-        Assert.AreSame(failure, (await harness.WaitForFaultAsync(WatchFaultKind.Subscriber, 'T')).Exception);
+        if (!faultAfterRetirement)
+        {
+            index.Changed += FailSubscriber;
+            await handle.Publish(WatchHarness.Batch(9, "before.txt"));
+            index.Changed -= FailSubscriber;
+            Assert.AreSame(failure, (await harness.WaitForFaultAsync(WatchFaultKind.Subscriber, 'T')).Exception);
+        }
 
         var held = stage == "production" ? harness.HoldNextProduction('T') : harness.TrackGate();
         var production = faultDuringProduction ? harness.HoldNextProduction('T') : null;
+        var delivery = faultAfterRetirement ? harness.TrackGate() : null;
         Task rescan;
         if (stage == "drain")
         {
@@ -48,6 +54,17 @@ public class FileIndexWatchRescanFaultHandoffTests
         }
         else
         {
+            var published = faultAfterRetirement ? harness.TrackGate() : null;
+            var original = index.Root('T').DriveBlock;
+            if (faultAfterRetirement)
+            {
+                index.BeforeWatchChangedForTest = _ => HoldSynchronously(delivery!);
+                index.Changed += FailSubscriber;
+                _ = handle.Queue(WatchHarness.Batch(10, "during.txt"));
+                await delivery!.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+                index.PublishInsideWriteGateForTest = _ => published!.MarkEntered();
+            }
+
             harness.SetNextProducedCursor('T', 13, 9000);
             switch (stage)
             {
@@ -73,6 +90,18 @@ public class FileIndexWatchRescanFaultHandoffTests
                 handle.LoseChannel(new IOException("channel failed during production"));
                 await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
                 production.Release();
+            }
+
+            if (faultAfterRetirement)
+            {
+                await published!.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+                while (ReferenceEquals(original, index.Root('T').DriveBlock))
+                {
+                    await Task.Yield();
+                }
+
+                delivery!.Release();
+                Assert.AreSame(failure, (await harness.WaitForFaultAsync(WatchFaultKind.Subscriber, 'T')).Exception);
             }
 
             await held.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);

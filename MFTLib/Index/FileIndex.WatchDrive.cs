@@ -80,6 +80,7 @@ public sealed partial class FileIndex
             runtime.WatchRequested = false;
             runtime.RefusedStartFault = null;
             ClearRecoveryLocked(runtime);
+            previousDrain = runtime.Retiring?.Drained;
             retired = RetireCurrentLocked(runtime);
             outstandingFault = retired?.OutstandingFault ?? runtime.RescanHandoffFault;
             runtime.RescanHandoffFault = null;
@@ -87,15 +88,25 @@ public sealed partial class FileIndex
             {
                 retired.OutstandingFault = null;
             }
-
-            previousDrain = runtime.Retiring?.Drained;
         }
 
         retired?.RequestStop();
-        var drain = retired?.Drained ?? previousDrain;
+        var drain = retired?.Drained is { } retiredDrain && previousDrain is not null
+            ? Task.WhenAll(retiredDrain, previousDrain)
+            : retired?.Drained ?? previousDrain;
         if (drain is not null)
         {
             await AwaitQueuedAsync(drain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        lock (_stateLock)
+        {
+            outstandingFault ??= retired?.OutstandingFault ?? runtime.RescanHandoffFault;
+            runtime.RescanHandoffFault = null;
+            if (retired is not null)
+            {
+                retired.OutstandingFault = null;
+            }
         }
 
         if (outstandingFault is not null)

@@ -125,18 +125,25 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Announces a subscriber fault once per instance and keeps the first as the instance's
-    ///     outstanding fault, unless one is already held. The drive keeps watching.
+    ///     outstanding fault, unless one is already held. The drive keeps watching. A delayed fault
+    ///     from a watch retired during rescan publication is also retained for stop handoff.
     /// </summary>
     void AnnounceSubscriberFault(DriveRuntime runtime, WatchInstance instance, Exception exception)
     {
         bool first;
         lock (_stateLock)
         {
-            first = ReferenceEquals(runtime.Current, instance) && !instance.SubscriberFaultAnnounced;
+            first = !instance.SubscriberFaultAnnounced &&
+                    (ReferenceEquals(runtime.Current, instance) || ReferenceEquals(runtime.Retiring, instance) ||
+                     instance.State == WatchInstanceState.Retiring);
             if (first)
             {
                 instance.SubscriberFaultAnnounced = true;
                 instance.OutstandingFault ??= exception;
+                if (!ReferenceEquals(runtime.Current, instance))
+                {
+                    runtime.RescanHandoffFault ??= exception;
+                }
             }
         }
 
