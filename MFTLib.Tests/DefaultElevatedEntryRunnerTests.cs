@@ -13,9 +13,12 @@ namespace MFTLib.Tests;
 [DoNotParallelize] // replaces the process-wide DefaultElevatedEntryRunner._exitProcess seam and the MFTLibNative/FileUtilities delegate seams
 public class DefaultElevatedEntryRunnerTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     // Set when a runner thread was still serving after its pipes closed. Restoring the real
     // Environment.Exit then would let that thread kill the test host, so the fake stays.
     bool _runnerStillServing;
+    Func<Task, Task> _waitForRunnerExit = left => left.WaitAsync(HangGuard);
 
     [TestCleanup]
     public void Cleanup()
@@ -63,16 +66,15 @@ public class DefaultElevatedEntryRunnerTests
         var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         var runTask = Task.Run(() => new DefaultElevatedEntryRunner().RunBroker(pipeName));
-        try
+        await TestBodyCleanup.RunAsync(async () =>
         {
             await server.WaitForConnectionAsync(cts.Token);
             await server.DisposeAsync();
             await runTask.WaitAsync(cts.Token);
-        }
-        finally
+        }, async () =>
         {
             await EnsureRunnerLeavesAsync(runTask, server);
-        }
+        }, message => TestContext.WriteLine(message));
 
         Assert.AreEqual(0, exitCode);
     }
@@ -116,7 +118,7 @@ public class DefaultElevatedEntryRunnerTests
         using var timeoutRelease = cts.Token.Register(() => releaseWatch.TrySetResult()); // never leak the blocked mock
 
         var (control, drive, runTask) = StartRunnerWithDrivePipe();
-        try
+        await TestBodyCleanup.RunAsync(async () =>
         {
             await AcceptDriveChannelAsync(control, drive, cts.Token);
 
@@ -139,12 +141,11 @@ public class DefaultElevatedEntryRunnerTests
             releaseWatch.TrySetResult();
 
             await runTask.WaitAsync(cts.Token);
-        }
-        finally
+        }, async () =>
         {
             releaseWatch.TrySetResult();
             await EnsureRunnerLeavesAsync(runTask, drive, control);
-        }
+        }, message => TestContext.WriteLine(message));
 
         Assert.AreEqual(0, exitCode);
     }
@@ -178,7 +179,7 @@ public class DefaultElevatedEntryRunnerTests
         using var timeoutRelease = cts.Token.Register(() => releaseCursorQuery.TrySetResult());
 
         var (control, drive, runTask) = StartRunnerWithDrivePipe();
-        try
+        await TestBodyCleanup.RunAsync(async () =>
         {
             await AcceptDriveChannelAsync(control, drive, cts.Token);
             await HostChannelHarness.WriteFrameAsync(drive,
@@ -198,12 +199,11 @@ public class DefaultElevatedEntryRunnerTests
             releaseCursorQuery.TrySetResult();
 
             await runTask.WaitAsync(cts.Token);
-        }
-        finally
+        }, async () =>
         {
             releaseCursorQuery.TrySetResult();
             await EnsureRunnerLeavesAsync(runTask, drive, control);
-        }
+        }, message => TestContext.WriteLine(message));
 
         Assert.AreEqual(0, exitCode);
     }
@@ -237,7 +237,7 @@ public class DefaultElevatedEntryRunnerTests
         await using var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         var runTask = Task.Run(() => new DefaultElevatedEntryRunner(clock).RunBroker(pipeName));
-        try
+        await TestBodyCleanup.RunAsync(async () =>
         {
             await server.WaitForConnectionAsync(cts.Token);
 
@@ -256,13 +256,12 @@ public class DefaultElevatedEntryRunnerTests
                 Assert.IsTrue(appended.Any(line => line.Contains("frame read kind=200", StringComparison.Ordinal)),
                     "The line logged as the session failed must reach the log before the runner leaves.");
             }
-        }
-        finally
+        }, async () =>
         {
-            // On every exit the sink is released, so a runner blocked in the flush can finish.
+            // Release the sink on every exit before draining the runner.
             sink.Release();
             await EnsureRunnerLeavesAsync(runTask, server);
-        }
+        }, message => TestContext.WriteLine(message));
     }
 
     static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(10);
@@ -298,9 +297,10 @@ public class DefaultElevatedEntryRunnerTests
         Assert.AreEqual(BrokerFrameKind.ChannelOpened, opened?.Kind);
     }
 
-    // Closes the caller's ends, which is what ends a session still being served, and waits for
-    // the runner thread to leave. A runner that does not leave in time is remembered, so cleanup
-    // keeps the fake exit seam in place instead of letting that thread kill the test host.
+    // Close the caller's pipe ends and drain runner completion before seam reset.
+    // A timed-out drain retains the fake exit seam. TestBodyCleanup keeps a body
+    // exception primary and reports this cleanup failure as a secondary diagnostic;
+    // without a body failure, the cleanup exception fails the test directly.
     async Task EnsureRunnerLeavesAsync(Task runTask, params IAsyncDisposable[] pipes)
     {
         foreach (var pipe in pipes)
@@ -312,7 +312,7 @@ public class DefaultElevatedEntryRunnerTests
         var left = runTask.ContinueWith(static _ => { }, TaskScheduler.Default);
         try
         {
-            await left.WaitAsync(HangGuard);
+            await _waitForRunnerExit(left);
         }
         catch (TimeoutException)
         {
@@ -348,6 +348,83 @@ public class DefaultElevatedEntryRunnerTests
         {
             _flushBoundStarted.TrySetResult();
             return base.CreateTimer(callback, state, dueTime, period);
+        }
+    }
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task CleanupTimeout_PreservesFailureAndProtectsExit(bool bodyFails)
+    {
+        var runner = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var drive = new RecordingCleanupPipe();
+        var control = new RecordingCleanupPipe();
+        var timeout = new TimeoutException("injected runner drain timeout");
+        var bodyFailure = new InvalidOperationException("injected body failure");
+        var diagnostics = new List<string>();
+        _waitForRunnerExit = _ =>
+        {
+            Assert.IsTrue(drive.Disposed);
+            Assert.IsTrue(control.Disposed);
+            return Task.FromException(timeout);
+        };
+
+        try
+        {
+            if (bodyFails)
+            {
+                var observed = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+                    TestBodyCleanup.RunAsync(() => Task.FromException(bodyFailure),
+                        () => EnsureRunnerLeavesAsync(runner.Task, drive, control), diagnostics.Add));
+                Assert.AreSame(bodyFailure, observed);
+                Assert.AreEqual("Secondary test cleanup failure: " + timeout, diagnostics.Single());
+            }
+            else
+            {
+                var observed = await Assert.ThrowsExceptionAsync<TimeoutException>(() =>
+                    TestBodyCleanup.RunAsync(() => Task.CompletedTask,
+                        () => EnsureRunnerLeavesAsync(runner.Task, drive, control), diagnostics.Add));
+                Assert.AreSame(timeout, observed);
+                Assert.AreEqual(0, diagnostics.Count);
+            }
+
+            Assert.IsTrue(_runnerStillServing);
+            Cleanup();
+            Assert.AreNotEqual((Action<int>)Environment.Exit, DefaultElevatedEntryRunner._exitProcess);
+        }
+        finally
+        {
+            // There is no real runner. Complete the synthetic task before normal seam reset.
+            runner.TrySetResult();
+            _runnerStillServing = false;
+        }
+    }
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task EnsureRunnerLeavesAsync_CompletedRunnerIsNotCleanupFailure(bool runnerFaulted)
+    {
+        var pipe = new RecordingCleanupPipe();
+        var runner = runnerFaulted
+            ? Task.FromException(new TimeoutException("runner body fault, not drain timeout"))
+            : Task.CompletedTask;
+        _waitForRunnerExit = left => left;
+
+        await EnsureRunnerLeavesAsync(runner, pipe);
+
+        Assert.IsTrue(pipe.Disposed);
+        Assert.IsFalse(_runnerStillServing);
+    }
+
+    sealed class RecordingCleanupPipe : IAsyncDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public ValueTask DisposeAsync()
+        {
+            Disposed = true;
+            return ValueTask.CompletedTask;
         }
     }
 }
