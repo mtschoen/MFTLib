@@ -14,7 +14,21 @@ public partial class NativeParserCoverageTests
     const int ImageRecordCount = 1024;
     const int ImageChunkCount = ImageRecordCount / 64;
 
-    static uint Processors => (uint)Environment.ProcessorCount;
+    static uint NativeHardwareThreadCount => MFTLibNative.NativeGetNativeHardwareThreadCount();
+
+    [TestMethod]
+    public void NativeHardwareThreadCount_IsIndependentOfMaximumThreadCap()
+    {
+        var nativeHardwareThreadCount = MFTLibNative.NativeGetNativeHardwareThreadCount();
+        Console.WriteLine($"Native hardware threads: {nativeHardwareThreadCount}; managed processors: {Environment.ProcessorCount}");
+        Assert.IsTrue(nativeHardwareThreadCount >= 1);
+
+        MFTLibNative.NativeSetMaxThreads(1);
+        Assert.AreEqual(nativeHardwareThreadCount, MFTLibNative.NativeGetNativeHardwareThreadCount());
+
+        MFTLibNative.NativeResetTestState();
+        Assert.AreEqual(nativeHardwareThreadCount, MFTLibNative.NativeGetNativeHardwareThreadCount());
+    }
 
     [TestMethod]
     public void ParseMFTRecordsWithProgress_AllowanceNull_EveryChunkUsesEveryCore()
@@ -24,26 +38,26 @@ public partial class NativeParserCoverageTests
             var result = ParseImageWithoutControl(path);
 
             Assert.AreEqual(0u, result.Cancelled);
-            AssertEveryChunkUsed(Processors);
+            AssertEveryChunkUsed(NativeHardwareThreadCount);
         });
     }
 
     [TestMethod]
     public void ParseMFTRecordsWithProgress_AllowanceTwo_EveryChunkUsesAtMostTwoThreads()
     {
-        AssertAllowanceGivesEveryChunk(2, Math.Min(2u, Processors));
+        AssertAllowanceGivesEveryChunk(2, Math.Min(2u, NativeHardwareThreadCount));
     }
 
     [TestMethod]
     public void ParseMFTRecordsWithProgress_AllowanceAboveCores_ClampsToCores()
     {
-        AssertAllowanceGivesEveryChunk((int)Processors + 5, Processors);
+        AssertAllowanceGivesEveryChunk((int)NativeHardwareThreadCount + 5, NativeHardwareThreadCount);
     }
 
     [TestMethod]
     public void ParseMFTRecordsWithProgress_AllowanceZero_MeansEveryCore()
     {
-        AssertAllowanceGivesEveryChunk(0, Processors);
+        AssertAllowanceGivesEveryChunk(0, NativeHardwareThreadCount);
     }
 
     [TestMethod]
@@ -56,13 +70,13 @@ public partial class NativeParserCoverageTests
     [TestMethod]
     public void ParseMFTRecordsWithProgress_AllowanceLoweredFromProgressCallback_LaterChunksUseTheNewCount()
     {
-        AssertAllowanceChangedAfterFirstChunk((int)Processors, 1);
+        AssertAllowanceChangedAfterFirstChunk((int)NativeHardwareThreadCount, 1);
     }
 
     [TestMethod]
     public void ParseMFTRecordsWithProgress_AllowanceRaisedFromProgressCallback_LaterChunksUseTheNewCount()
     {
-        AssertAllowanceChangedAfterFirstChunk(1, (int)Processors);
+        AssertAllowanceChangedAfterFirstChunk(1, (int)NativeHardwareThreadCount);
     }
 
     [TestMethod]
@@ -70,7 +84,7 @@ public partial class NativeParserCoverageTests
     {
         WithImage(ImageRecordCount, path =>
         {
-            using var control = new ParseControlBlock((int)Processors);
+            using var control = new ParseControlBlock((int)NativeHardwareThreadCount);
             var result = ParseImage(path, MatchFlags.ResolvePaths, control, (block, phase, scanned, total) =>
             {
                 if (phase == MftScanPhase.Parsing && scanned == total)
@@ -81,7 +95,7 @@ public partial class NativeParserCoverageTests
 
             Assert.AreEqual(0u, result.Cancelled);
             Assert.AreNotEqual(IntPtr.Zero, result.PathEntries, "Path resolution must have run");
-            Assert.AreEqual(Processors, ParseControlBlock.ChunkThreadCounts()[^1]);
+            Assert.AreEqual(NativeHardwareThreadCount, ParseControlBlock.ChunkThreadCounts()[^1]);
             Assert.AreEqual(1u, MFTLibNative.NativeGetResolveThreadCount());
         });
     }
@@ -177,7 +191,7 @@ public partial class NativeParserCoverageTests
     [TestMethod]
     public void ParseMFTRecordsWithProgress_CancelledBetweenWorkerSubSlices_StopsTheChunk()
     {
-        if (Processors < 2)
+        if (NativeHardwareThreadCount < 2)
         {
             Assert.Inconclusive("Needs two parse workers");
         }

@@ -132,6 +132,9 @@ static class MFTLibNative
     [DllImport(LibraryName, EntryPoint = "SetCancelCheckCountdown", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetCancelCheckCountdown(int countdown);
 
+    [DllImport(LibraryName, EntryPoint = "GetNativeHardwareThreadCount", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern uint NativeGetNativeHardwareThreadCount();
+
     [DllImport(LibraryName, EntryPoint = "GetChunkThreadCounts", CallingConvention = CallingConvention.Cdecl)]
     internal static extern unsafe uint NativeGetChunkThreadCounts(uint* counts, uint capacity);
 

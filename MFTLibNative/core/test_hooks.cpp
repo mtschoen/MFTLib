@@ -19,8 +19,10 @@ int g_failPathConversion = 0;
 int g_failPlatformReadCountdown = 0;
 int g_failPlatformWrite = 0;
 uint32_t g_volumeRecordSizeOverride = 0;
-// What the most recent parse used per chunk and for path resolution. Chunks past the
-// array's capacity are not recorded; a parse only resets and appends, so it never blocks.
+// Process-global observations of the most recent parse, including the production parse path.
+// Every chunk records under the mutex; reset, path-resolution recording, and getters also lock.
+// Chunks past the array's capacity are not recorded. The mutex protects access, not test ownership:
+// tests using these hooks must not run concurrently with other parses or tests touching the hooks.
 std::mutex g_parseThreadCountsMutex;
 std::array<unsigned, 1024> g_chunkThreadCounts = {};
 unsigned g_chunkThreadCountLength = 0;
@@ -190,6 +192,11 @@ EXPORT void SetVolumeRecordSizeOverride(uint32_t recordSize) { g_volumeRecordSiz
 EXPORT void SetCancelCheckCountdown(int countdown) {
     g_cancelCheckCountdown = countdown;
     g_cancelCheckCountdownArmed = countdown > 0;
+}
+
+// Native hardware observation only; independent of parse allowances and test thread caps.
+EXPORT unsigned GetNativeHardwareThreadCount() {
+    return std::max<unsigned int>(std::thread::hardware_concurrency(), 1);
 }
 
 // Copies the thread count each chunk of the most recent parse used, in order, into counts

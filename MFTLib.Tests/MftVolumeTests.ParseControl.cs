@@ -12,7 +12,8 @@ public partial class MftVolumeTests
     {
         WithImageVolume(volume =>
         {
-            var allowance = new ParseThreadAllowance(Environment.ProcessorCount);
+            var nativeHardwareThreadCount = MFTLibNative.NativeGetNativeHardwareThreadCount();
+            var allowance = new ParseThreadAllowance((int)nativeHardwareThreadCount);
             var progress = new SynchronousProgress<MftScanProgress>(_ => allowance.Count = 1);
 
             var batches = volume.ReadRecordBatches(false, 4096, progress, allowance, CancellationToken.None).ToList();
@@ -20,7 +21,7 @@ public partial class MftVolumeTests
             Assert.IsTrue(batches.Count > 0);
             var counts = ParseControlBlock.ChunkThreadCounts();
             Assert.AreEqual(16, counts.Length);
-            Assert.AreEqual((uint)Environment.ProcessorCount, counts[0]);
+            Assert.AreEqual(nativeHardwareThreadCount, counts[0]);
             CollectionAssert.AreEqual(Enumerable.Repeat(1u, 15).ToArray(), counts[1..]);
         });
     }
