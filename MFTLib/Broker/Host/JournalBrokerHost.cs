@@ -114,7 +114,7 @@ public sealed partial class JournalBrokerHost
                 var filtered = logFilter?.Filter(drive, entries) ?? entries;
                 if (filtered.Length > 0)
                 {
-                    await WriteChannelFrameAsync(channel,
+                    await channel.Pipe.WriteFrameAsync(
                         writer => BrokerProtocol.WriteJournalBatch(writer, cursor, filtered),
                         cancellationToken).ConfigureAwait(false);
                 }
@@ -122,7 +122,7 @@ public sealed partial class JournalBrokerHost
                 if (!caughtUpReported && cursor.JournalId == arm.Tip.JournalId &&
                     cursor.NextUsn >= arm.Tip.NextUsn)
                 {
-                    await WriteChannelFrameAsync(channel, BrokerProtocol.WriteCaughtUp, cancellationToken)
+                    await channel.Pipe.WriteFrameAsync(BrokerProtocol.WriteCaughtUp, cancellationToken)
                         .ConfigureAwait(false);
                     caughtUpReported = true;
                 }
@@ -160,7 +160,7 @@ public sealed partial class JournalBrokerHost
                                effectiveSince.NextUsn >= tip.NextUsn;
         if (caughtUpReported)
         {
-            await WriteChannelFrameAsync(channel, BrokerProtocol.WriteCaughtUp, cancellationToken)
+            await channel.Pipe.WriteFrameAsync(BrokerProtocol.WriteCaughtUp, cancellationToken)
                 .ConfigureAwait(false);
         }
 

@@ -89,18 +89,19 @@ public class BrokerDiagnosticsLogFilterTests
         Assert.AreSame(entries, filter.Filter("C", entries));
     }
 
-    [TestMethod]
-    public void Filter_ExtendedDriveRootPath_ResolvesAndFiltersMatchingEntries()
+    [DataTestMethod]
+    [DataRow(@"\\?\C:\broker-diag\broker-diagnostics.log", DisplayName = "extended drive root")]
+    [DataRow(@"\\.\C:\broker-diag\broker-diagnostics.log", DisplayName = "device drive root")]
+    public void Filter_PrefixedDriveRootPath_ResolvesAndFiltersMatchingEntries(string prefixedPath)
     {
-        const string extendedPath = @"\\?\C:\broker-diag\broker-diagnostics.log";
         var resolvedPath = string.Empty;
         BrokerDiagnosticsLogFilter._resolveFileReference = path =>
         {
             resolvedPath = path;
-            return path == extendedPath ? OwnLogReference : null;
+            return path == prefixedPath ? OwnLogReference : null;
         };
 
-        var filter = new BrokerDiagnosticsLogFilter(extendedPath, null);
+        var filter = new BrokerDiagnosticsLogFilter(prefixedPath, null);
         var entries = new[]
         {
             Entry(OwnLogReference, "broker-diagnostics.log"),
@@ -109,32 +110,7 @@ public class BrokerDiagnosticsLogFilterTests
 
         var kept = filter.Filter("C", entries);
 
-        Assert.AreEqual(extendedPath, resolvedPath);
-        Assert.AreEqual(1, kept.Length);
-        Assert.AreEqual("unrelated.txt", kept[0].FileName);
-    }
-
-    [TestMethod]
-    public void Filter_DeviceDriveRootPath_ResolvesAndFiltersMatchingEntries()
-    {
-        const string devicePath = @"\\.\C:\broker-diag\broker-diagnostics.log";
-        var resolvedPath = string.Empty;
-        BrokerDiagnosticsLogFilter._resolveFileReference = path =>
-        {
-            resolvedPath = path;
-            return path == devicePath ? OwnLogReference : null;
-        };
-
-        var filter = new BrokerDiagnosticsLogFilter(devicePath, null);
-        var entries = new[]
-        {
-            Entry(OwnLogReference, "broker-diagnostics.log"),
-            Entry(4242, "unrelated.txt")
-        };
-
-        var kept = filter.Filter("C", entries);
-
-        Assert.AreEqual(devicePath, resolvedPath);
+        Assert.AreEqual(prefixedPath, resolvedPath);
         Assert.AreEqual(1, kept.Length);
         Assert.AreEqual("unrelated.txt", kept[0].FileName);
     }
@@ -385,26 +361,15 @@ public class BrokerDiagnosticsLogFilterTests
         Assert.AreEqual(string.Empty, driveLetter);
     }
 
-    [TestMethod]
-    public void Filter_WithAWhitespaceOwnLogPath_KeepsItVerbatimAndFiltersNothing()
+    [DataTestMethod]
+    [DataRow("   ", DisplayName = "whitespace path")]
+    [DataRow("bad\0path.log", DisplayName = "path GetFullPath rejects")]
+    public void Filter_WithAnUnresolvableOwnLogPath_KeepsTheRawPathAndFiltersNothing(string ownLogPath)
     {
-        // A whitespace log path is kept as-is (nothing to normalize) and can never
-        // resolve to a drive's file reference, so the filter stays inert.
-        var filter = new BrokerDiagnosticsLogFilter("   ", null);
-        var entries = new[] { Entry(4242, "unrelated.txt") };
-
-        var kept = filter.Filter("C", entries);
-
-        Assert.AreEqual(1, kept.Length);
-        Assert.AreEqual("unrelated.txt", kept[0].FileName);
-    }
-
-    [TestMethod]
-    public void Filter_WithAnOwnLogPathGetFullPathRejects_KeepsTheRawPathAndFiltersNothing()
-    {
-        // Same contract as the whitespace case, through the GetFullPath catch: the raw
-        // path is kept and the filter stays inert rather than throwing from its ctor.
-        var filter = new BrokerDiagnosticsLogFilter("bad\0path.log", null);
+        // A whitespace path is kept as-is (nothing to normalize); an embedded NUL makes
+        // Path.GetFullPath throw and the raw path is kept rather than throwing from the ctor.
+        // Neither can resolve to a drive's file reference, so the filter stays inert.
+        var filter = new BrokerDiagnosticsLogFilter(ownLogPath, null);
         var entries = new[] { Entry(4242, "unrelated.txt") };
 
         var kept = filter.Filter("C", entries);

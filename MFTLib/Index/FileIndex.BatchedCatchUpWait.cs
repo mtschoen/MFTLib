@@ -93,14 +93,12 @@ public sealed partial class FileIndex
 
         void Settle(int index, DriveOperationOutcome outcome, Exception? failure)
         {
-            var result = new DriveOperationResult(_driveLetters[index], outcome, failure);
             if (Interlocked.Exchange(ref _settled[index], 1) != 0)
             {
                 return;
             }
 
-            _results[index] = result;
-
+            _results[index] = new DriveOperationResult(_driveLetters[index], outcome, failure);
             if (Interlocked.Decrement(ref _pending) == 0)
             {
                 Complete();

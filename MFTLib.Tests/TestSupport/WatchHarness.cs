@@ -177,6 +177,25 @@ internal sealed class WatchHarness : IDisposable
         return gate;
     }
 
+    /// <summary>
+    ///     Parks the first pump apply on <paramref name="driveLetter" /> inside the apply, before
+    ///     its gate, until the returned gate is released. Later applies pass straight through.
+    /// </summary>
+    public TestGate HoldFirstApply(char driveLetter)
+    {
+        var gate = TrackGate();
+        var held = 0;
+        Index.ApplyJournalEntriesEnteredForTest = letter =>
+        {
+            if (letter == driveLetter && Interlocked.Exchange(ref held, 1) == 0)
+            {
+                gate.MarkEntered();
+                gate.WaitForRelease();
+            }
+        };
+        return gate;
+    }
+
     public static JournalBatch Batch(uint recordNumber, string fileName, long nextUsn = NextUsn + 100)
     {
         return new JournalBatch([Create(recordNumber, fileName)], JournalId, nextUsn);

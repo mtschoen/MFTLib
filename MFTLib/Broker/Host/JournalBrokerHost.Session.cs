@@ -35,7 +35,8 @@ public sealed partial class JournalBrokerHost
             HeartbeatVisitedForTest, cancellationToken);
         try
         {
-            while (await ReadFrameAsync(control, BrokerDiagnostics.ControlChannel, session.Token)
+            // A malformed control frame throws InvalidDataException and ends the session.
+            while (await BrokerFrameStream.ReadFrameAsync(control, BrokerDiagnostics.ControlChannel, session.Token)
                        .ConfigureAwait(false) is { } request)
             {
                 session.Tasks.Track(HandleControlRequestAsync(session, request));

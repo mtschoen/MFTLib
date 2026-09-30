@@ -95,7 +95,7 @@ public sealed partial class JournalBrokerHost
             // Armed before the scan starts, so every change the scan misses is replayed by catch-up.
             channel.Pipe.WaitingOnVolume();
             var cursor = _queryCursor(channel.Drive);
-            await WriteChannelFrameAsync(channel, writer => BrokerProtocol.WriteCursor(writer, cursor),
+            await channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteCursor(writer, cursor),
                 cancellationToken).ConfigureAwait(false);
 
             var batches = PublishEachBatch(
@@ -144,7 +144,7 @@ public sealed partial class JournalBrokerHost
                         lastEmit = now;
                         throttled = null;
                         var progressToEmit = progress;
-                        await WriteChannelFrameAsync(channel,
+                        await channel.Pipe.WriteFrameAsync(
                             writer => BrokerProtocol.WriteScanProgress(writer, progressToEmit),
                             cancellationToken).ConfigureAwait(false);
                     }
@@ -161,7 +161,7 @@ public sealed partial class JournalBrokerHost
             // not reach this flush - a cancelled scan emits no partial final frame.
             if (throttled is { } pending)
             {
-                await WriteChannelFrameAsync(channel,
+                await channel.Pipe.WriteFrameAsync(
                     writer => BrokerProtocol.WriteScanProgress(writer, pending),
                     cancellationToken).ConfigureAwait(false);
             }
@@ -198,11 +198,11 @@ public sealed partial class JournalBrokerHost
             Elapsed = output.Elapsed
         };
 
-        await WriteChannelFrameAsync(channel,
+        await channel.Pipe.WriteFrameAsync(
             writer => BrokerProtocol.WriteScanProgress(writer, finalProgress),
             cancellationToken).ConfigureAwait(false);
 
-        await WriteChannelFrameAsync(channel,
+        await channel.Pipe.WriteFrameAsync(
             writer => BrokerProtocol.WriteScanReady(writer, output.WriteResult.RowCount,
                 output.WriteResult.NamePoolUsedBytes, output.WriteResult.SkippedRecordCount),
             cancellationToken).ConfigureAwait(false);
@@ -229,7 +229,7 @@ public sealed partial class JournalBrokerHost
             entries = logFilter.Filter(channel.Drive, entries);
         }
 
-        await WriteChannelFrameAsync(channel,
+        await channel.Pipe.WriteFrameAsync(
             writer => BrokerProtocol.WriteJournalBatch(writer, updated, entries),
             cancellationToken).ConfigureAwait(false);
     }
@@ -280,7 +280,7 @@ public sealed partial class JournalBrokerHost
             return;
         }
 
-        await WriteChannelFrameAsync(channel,
+        await channel.Pipe.WriteFrameAsync(
             writer => BrokerProtocol.WriteCatchUpLost(writer, loss, exception.Message),
             cancellationToken).ConfigureAwait(false);
     }

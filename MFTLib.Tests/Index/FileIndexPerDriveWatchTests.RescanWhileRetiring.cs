@@ -1,5 +1,6 @@
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
 
 namespace MFTLib.Tests.Index;
 
@@ -17,7 +18,7 @@ public partial class FileIndexPerDriveWatchTests
         var index = harness.Index;
         await index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
         var oldHandle = harness.Source.HandleFor('T');
-        var applying = HoldFirstApply(harness, 'T');
+        var applying = harness.HoldFirstApply('T');
         _ = oldHandle.Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
         await applying.Entered.WaitAsync(HangGuard);
         using var alreadyCancelled = new CancellationTokenSource();

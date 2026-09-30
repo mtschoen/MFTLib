@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Buffers.Binary;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -120,38 +121,23 @@ public partial class BrokerProtocolTests
         Assert.IsNull(frame.Progress.Value.TotalBytes);
     }
 
-    [TestMethod]
-    public void ReadFrame_ScanProgress_InvalidPhase_ThrowsInvalidDataException()
+    [DataTestMethod]
+    [DataRow(99, DisplayName = "an undefined phase")]
+    [DataRow(256, DisplayName = "a phase outside the byte range")]
+    public void ReadFrame_ScanProgress_InvalidPhase_ThrowsInvalidDataException(int phase)
     {
         byte[] payload =
         [
             0x2D, 0x00, 0x00, 0x00, // totalLength = 45
             0x0C, // kind = ScanProgress
-            0x63, 0x00, 0x00, 0x00, // phase = 99 (invalid)
+            0x00, 0x00, 0x00, 0x00, // phase, written below
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // recordsProcessed = 1
             0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesProcessed = 2
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalRecords = -1
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // totalBytes = -1
             0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // elapsedTicks = 3
         ];
-
-        Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(payload, out _));
-    }
-
-    [TestMethod]
-    public void ReadFrame_ScanProgress_PhaseOutsideByteRange_ThrowsInvalidDataException()
-    {
-        byte[] payload =
-        [
-            0x2D, 0x00, 0x00, 0x00,
-            0x0C,
-            0x00, 0x01, 0x00, 0x00, // phase = 256
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        ];
+        BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(5), phase);
 
         Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(payload, out _));
     }

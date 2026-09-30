@@ -1,6 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
 
 namespace MFTLib.Tests.Index;
 
@@ -348,23 +349,5 @@ public partial class FileIndexPerDriveWatchTests
         Assert.AreEqual(thrown.Message, drive.WatchFailureMessage);
         Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUp);
         Assert.AreEqual(0, fixture.Source.Starts.Count, "the source is never asked to start the drive");
-    }
-
-    /// <summary>
-    ///     MSTest 3.1's <c>ThrowsExceptionAsync</c> demands the exact type; a cancellation surfaces
-    ///     as <see cref="TaskCanceledException" /> or its base depending on where it was observed.
-    /// </summary>
-    static async Task<TException> ThrowsAsync<TException>(Func<Task> action) where TException : Exception
-    {
-        try
-        {
-            await action();
-        }
-        catch (TException exception)
-        {
-            return exception;
-        }
-
-        throw new AssertFailedException($"Expected {typeof(TException).Name} to be thrown.");
     }
 }

@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 // Exceeds ~500 lines to keep cohesive MFT producer selection and rescan recovery tests together.
@@ -60,46 +61,6 @@ public class FileIndexProducerSelectionTests
         };
     }
 
-    /// <summary>
-    ///     Writes a small, valid MFT-shaped block directly at <paramref name="request" />'s block
-    ///     path (root row 5, matching <see cref="SyntheticBlockBuilder.MftShaped" />'s convention)
-    ///     using the production <see cref="BlockWriter" /> rather than a copy of its logic, then
-    ///     reopens it as a fresh handle, mirroring how a real producer's caller adopts the block
-    ///     it wrote. The journal cursor is stamped through
-    ///     <see cref="BlockWriter.SetJournalCursor" /> before <see cref="BlockWriter.Complete" />,
-    ///     the same flush-safe order a real MFT producer follows, so the returned block's header
-    ///     already carries the same cursor this fake reports back in its
-    ///     <see cref="MftBlockProduceResult" />.
-    /// </summary>
-    static BlockFile BuildMftShapedBlock(MftBlockProduceRequest request, ulong journalId, long nextUsn)
-    {
-        var createOptions = new BlockFileCreateOptions
-        {
-            Path = request.BlockPath,
-            VolumeSerial = request.VolumeSerial,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(8),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(256),
-            DeleteOnClose = request.DeleteOnClose
-        };
-
-        using (var block = BlockFile.Create(createOptions))
-        {
-            var writer = new BlockWriter(block);
-            writer.TryWriteRow(0, "$MFT",
-                new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0,
-                    ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-            writer.TryWriteRow(5, ".",
-                new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
-                    ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-            writer.SetJournalCursor(journalId, nextUsn);
-            writer.Complete(FixedMoment, null);
-        }
-
-        return BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
-    }
-
     [TestMethod]
     public async Task Mft_MarksTheFailedDriveAndKeepsTheOthers()
     {
@@ -118,7 +79,7 @@ public class FileIndexProducerSelectionTests
             ProducerPolicy = ProducerPolicy.Mft,
             MftProducer = (request, _) => request.DriveLetter == 'T'
                 ? throw new UnauthorizedAccessException("elevation declined")
-                : Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, 7, 4096),
+                : Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, 7, 4096, FixedMoment),
                     7, 4096, 0, false))
         }, TestContext.CancellationTokenSource.Token);
 
@@ -140,12 +101,12 @@ public class FileIndexProducerSelectionTests
         Directory.CreateDirectory(firstRoot);
         Directory.CreateDirectory(secondRoot);
         Directory.CreateDirectory(_cacheDirectory);
-        using (BuildMftShapedBlock(new MftBlockProduceRequest
+        using (MftBlockFixture.WriteAndOpen(new MftBlockProduceRequest
         {
             DriveLetter = 'U',
             VolumeSerial = 2,
             BlockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 2))
-        }, 7, 4096))
+        }, 7, 4096, FixedMoment))
         {
         }
 
@@ -194,7 +155,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> CountingProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             invocationCount++;
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
         }
 
@@ -280,7 +241,7 @@ public class FileIndexProducerSelectionTests
                 throw new UnauthorizedAccessException("elevation declined during rescan");
             }
 
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, 7, 4096),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, 7, 4096, FixedMoment),
                 7, 4096, 0, false));
         }
 
@@ -313,7 +274,7 @@ public class FileIndexProducerSelectionTests
             }
 
             var nextUsn = 4096L * invocationCount;
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, 7, nextUsn),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, 7, nextUsn, FixedMoment),
                 7, nextUsn, 0, false));
         }
 
@@ -336,7 +297,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
         {
             var nextUsn = 4096L * ++invocationCount;
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, 7, nextUsn),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, 7, nextUsn, FixedMoment),
                 7, nextUsn, 0, false));
         }
 
@@ -359,7 +320,7 @@ public class FileIndexProducerSelectionTests
     {
         Task<MftBlockProduceResult> FakeProducer(MftBlockProduceRequest request, CancellationToken _)
         {
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
         }
 
@@ -376,7 +337,7 @@ public class FileIndexProducerSelectionTests
     {
         Task<MftBlockProduceResult> MismatchedProducer(MftBlockProduceRequest request, CancellationToken _)
         {
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalId: 99, NextUsn: 12345, SkippedRecordCount: 0, CompactionNeeded: false));
         }
 
@@ -396,7 +357,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> CountingProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             invocationCount++;
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
         }
 
@@ -416,7 +377,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> FakeProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             invocationCount++;
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
         }
 
@@ -439,7 +400,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
         {
             var nextUsn = 4096L * ++invocationCount;
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, 7, nextUsn),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, 7, nextUsn, FixedMoment),
                 7, nextUsn, 0, false));
         }
 
@@ -510,7 +471,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> Producer(MftBlockProduceRequest request, CancellationToken _)
         {
             invocationCount++;
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
         }
 
@@ -572,7 +533,7 @@ public class FileIndexProducerSelectionTests
                 throw new UnauthorizedAccessException("elevation declined");
             }
 
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
         }
 
@@ -601,7 +562,7 @@ public class FileIndexProducerSelectionTests
     {
         Task<MftBlockProduceResult> MismatchedProducer(MftBlockProduceRequest request, CancellationToken _)
         {
-            return Task.FromResult(new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalId: 99, NextUsn: 12345, SkippedRecordCount: 0, CompactionNeeded: false));
         }
 

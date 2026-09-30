@@ -120,11 +120,11 @@ public sealed partial class FileIndex
             ApplyJournalEntriesEnteredForTest?.Invoke(upperDriveLetter);
         }
 
-        // ApplyJournalEntries is a synchronous seam by design (the brief's public signature
-        // returns IReadOnlyList<FileChange> directly, not a Task), so this blocks on the
-        // SemaphoreSlim itself, not on a Task: it is the synchronous counterpart to the
-        // commit's WaitAsync, not sync-over-async. An automated scanner can mistake any
-        // ".Wait()" call for blocking on a Task; this one is not.
+        // ApplyJournalEntries is synchronous by its public contract (it returns
+        // IReadOnlyList<FileChange>, not a Task), so this blocks on the SemaphoreSlim itself,
+        // not on a Task: it is the synchronous counterpart to the commit's WaitAsync, not
+        // sync-over-async. An automated scanner can mistake any ".Wait()" call for blocking on
+        // a Task; this one is not.
         var writeGate = GetDriveRuntime(upperDriveLetter).WriteGate;
         writeGate.Wait();
         try

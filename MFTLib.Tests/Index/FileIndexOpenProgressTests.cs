@@ -15,8 +15,6 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class FileIndexOpenProgressTests
 {
-    static readonly DateTime FixedMoment = new(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
-
     string _treeRoot = null!;
     string _cacheDirectory = null!;
 
@@ -70,41 +68,6 @@ public class FileIndexOpenProgressTests
             MftProducer = mftProducer,
             OpenProgress = openProgress
         };
-    }
-
-    /// <summary>
-    ///     The same fake MFT producer block <see cref="FileIndexProducerSelectionTests" /> uses:
-    ///     a small MFT-shaped block written at the request's path with the cursor stamped before
-    ///     completion, reopened as a fresh handle. Kept as a local copy, matching how
-    ///     FileIndexBlockSourceTests carries its own, so a failure points at one component.
-    /// </summary>
-    static BlockFile BuildMftShapedBlock(MftBlockProduceRequest request, ulong journalId, long nextUsn)
-    {
-        var createOptions = new BlockFileCreateOptions
-        {
-            Path = request.BlockPath,
-            VolumeSerial = request.VolumeSerial,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(8),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(256),
-            DeleteOnClose = request.DeleteOnClose
-        };
-
-        using (var block = BlockFile.Create(createOptions))
-        {
-            var writer = new BlockWriter(block);
-            writer.TryWriteRow(0, "$MFT",
-                new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0,
-                    ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-            writer.TryWriteRow(5, ".",
-                new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
-                    ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-            writer.SetJournalCursor(journalId, nextUsn);
-            writer.Complete(FixedMoment, null);
-        }
-
-        return BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
     }
 
     static void AssertReport(IndexDriveOpened report, char driveLetter, int total,
@@ -182,7 +145,7 @@ public class FileIndexOpenProgressTests
 
         Task<MftBlockProduceResult> FakeProducer(MftBlockProduceRequest request, CancellationToken _)
         {
-            var result = new MftBlockProduceResult(BuildMftShapedBlock(request, journalId: 7, nextUsn: 4096),
+            var result = new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment),
                 JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false);
             reportCountAtProduceTime = reports.Count;
             return Task.FromResult(result);

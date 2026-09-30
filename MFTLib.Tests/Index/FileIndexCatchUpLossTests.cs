@@ -1,6 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
 
 namespace MFTLib.Tests.Index;
 
@@ -46,9 +47,6 @@ public partial class FileIndexCatchUpLossTests
 
     /// <summary>A scan whose catch-up held.</summary>
     static ScriptedScan Held => new();
-
-    static Task<TException> ThrowsAsync<TException>(Func<Task> action) where TException : Exception =>
-        FileIndexWatchRescanTests.ThrowsAsync<TException>(action);
 
     static JournalCatchUpLostException[] CatchUpLosses(WatchHarness harness, char driveLetter) =>
         harness.Faults.Where(fault => fault.Kind == WatchFaultKind.CatchUpLost && fault.DriveLetter == driveLetter)

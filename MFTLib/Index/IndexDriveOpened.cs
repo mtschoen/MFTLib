@@ -4,12 +4,10 @@ namespace MFTLib.Index;
 ///     One open-time notification from <see cref="FileIndex.OpenAsync" />: the named drive has
 ///     settled, whatever the outcome. Each drive that settles reports once, from the thread that
 ///     settled it; a drive whose settle is cancelled reports nothing, so a cancelled or failed open
-///     may have reported only some of the configured drives. Drives settle concurrently and no lock is held while a handler runs, so
-///     reports can overlap and arrive out of order: <see cref="SettledCount" /> gives the order,
-///     and a consumer rendering "3 of 9 drives settled" keeps the report with the largest count
-///     rather than the last one received. The initial watch catch-up MFTLib#139 describes is a
-///     later moment in the same per-drive lifecycle; its notification can follow this record's
-///     shape as a sibling rather than introducing a second vocabulary.
+///     may have reported only some of the configured drives. Drives settle concurrently and no
+///     lock is held while a handler runs, so reports can overlap and arrive out of order:
+///     <see cref="SettledCount" /> gives the order, and a consumer rendering "3 of 9 drives
+///     settled" keeps the report with the largest count rather than the last one received.
 /// </summary>
 public sealed record IndexDriveOpened
 {

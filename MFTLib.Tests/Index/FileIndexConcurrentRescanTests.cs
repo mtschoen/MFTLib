@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
 
 namespace MFTLib.Tests.Index;
 
@@ -47,9 +48,6 @@ public class FileIndexConcurrentRescanTests
             }
         }
     }
-
-    static Task<TException> ThrowsAsync<TException>(Func<Task> action) where TException : Exception =>
-        FileIndexWatchRescanTests.ThrowsAsync<TException>(action);
 
     [TestMethod]
     public async Task ConcurrentRescans_BothProducersInsideAtOnce_BothCommit_SnapshotHoldsBoth()
@@ -279,8 +277,8 @@ public class FileIndexConcurrentRescanTests
                 throw failure;
             }
 
-            FileIndexWatchRescanTests.WriteMftShapedBlock(request.BlockPath, request.VolumeSerial,
-                journalId: 7, nextUsn: 4096);
+            MftBlockFixture.Write(request.BlockPath, request.VolumeSerial,
+                journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
             return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                 JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false);
         }

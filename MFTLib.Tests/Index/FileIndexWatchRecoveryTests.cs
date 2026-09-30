@@ -1,6 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
 
 namespace MFTLib.Tests.Index;
 
@@ -23,9 +24,6 @@ public partial class FileIndexWatchRecoveryTests
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
-
-    static Task<TException> ThrowsAsync<TException>(Func<Task> action) where TException : Exception =>
-        FileIndexWatchRescanTests.ThrowsAsync<TException>(action);
 
     static WatchFaultKind[] FaultKinds(WatchHarness harness, char driveLetter) =>
         harness.Faults.Where(fault => fault.DriveLetter == driveLetter).Select(fault => fault.Kind).ToArray();

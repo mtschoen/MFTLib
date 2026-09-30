@@ -60,7 +60,7 @@ public class FileIndexRescanCleanupTests
             ProducerPolicy = ProducerPolicy.Mft,
             MftProducer = (request, _cancellationToken) =>
             {
-                WriteBlock(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096);
+                MftBlockFixture.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
                 var block = BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
                 producedBlocks.Add(block);
                 if (producedBlocks.Count == 2)
@@ -134,7 +134,7 @@ public class FileIndexRescanCleanupTests
                     throw producerFailure;
                 }
 
-                WriteBlock(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096);
+                MftBlockFixture.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
                 return Task.FromResult(new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
@@ -179,7 +179,7 @@ public class FileIndexRescanCleanupTests
             {
                 producerEntered.TrySetResult();
                 await producerMayReturn.Task;
-                WriteBlock(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096);
+                MftBlockFixture.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
                 return new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false);
@@ -255,31 +255,5 @@ public class FileIndexRescanCleanupTests
             "the rescan replaced the faulted watch with one started from the fresh cursor");
         Assert.IsNull(drive.WatchFailureMessage);
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.StartsFor('T')[^1]);
-    }
-
-    internal static void WriteBlock(string path, uint volumeSerial, ulong journalId, long nextUsn)
-    {
-        var moment = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
-        var createOptions = new BlockFileCreateOptions
-        {
-            Path = path,
-            VolumeSerial = volumeSerial,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(8),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(256)
-        };
-        using (var block = BlockFile.Create(createOptions))
-        {
-            var writer = new BlockWriter(block);
-            writer.TryWriteRow(0, "$MFT",
-                new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0,
-                    ModifiedTicks: moment.Ticks, SequenceNumber: 0));
-            writer.TryWriteRow(5, ".",
-                new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
-                    ModifiedTicks: moment.Ticks, SequenceNumber: 0));
-            writer.SetJournalCursor(journalId, nextUsn);
-            writer.Complete(moment, null);
-        }
     }
 }

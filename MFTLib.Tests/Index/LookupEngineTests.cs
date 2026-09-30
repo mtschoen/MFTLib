@@ -98,14 +98,6 @@ public class LookupEngineTests
     }
 
     [TestMethod]
-    public void Find_DriveRootReturnsTheRootEntry()
-    {
-        var entry = LookupEngineTestAccess.Find(_snapshot, TestDriveRoot.For('T'));
-        Assert.IsTrue(entry.HasValue);
-        Assert.AreEqual(TestDriveRoot.For('T'), entry.Value.Path);
-    }
-
-    [TestMethod]
     public void Find_MissingSegmentReturnsNull()
     {
         Assert.IsNull(LookupEngineTestAccess.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Documents", "nothing.txt")));

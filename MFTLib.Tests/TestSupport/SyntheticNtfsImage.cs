@@ -109,4 +109,51 @@ static class SyntheticNtfsImage
         data[offset + 2] = 0xFF;
         data[offset + 3] = 0xFF;
     }
+
+    /// <summary>
+    ///     Points the $FILE_NAME parent reference of record <paramref name="recordNumber" /> in a raw
+    ///     1024-byte-record MFT at <paramref name="parentRecord" />. Returns false, changing nothing, when
+    ///     the record is not an in-use base FILE record or carries no resident $FILE_NAME.
+    /// </summary>
+    public static bool TrySetParentRecord(byte[] data, int recordNumber, ulong parentRecord, out int nameLength)
+    {
+        const int recordSize = 1024;
+        var recordOffset = recordNumber * recordSize;
+        nameLength = 0;
+        if (BitConverter.ToUInt32(data, recordOffset) != 0x454C4946 ||
+            (BitConverter.ToUInt16(data, recordOffset + 0x16) & 1) == 0 ||
+            (BitConverter.ToUInt64(data, recordOffset + 0x20) & 0x0000FFFFFFFFFFFFUL) != 0)
+        {
+            return false;
+        }
+
+        var attributeOffset = recordOffset + BitConverter.ToUInt16(data, recordOffset + 0x14);
+        while (attributeOffset + 24 < recordOffset + recordSize)
+        {
+            var attributeType = BitConverter.ToUInt32(data, attributeOffset);
+            if (attributeType == uint.MaxValue)
+            {
+                return false;
+            }
+
+            var attributeLength = BitConverter.ToUInt32(data, attributeOffset + 4);
+            if (attributeLength == 0)
+            {
+                return false;
+            }
+
+            if (attributeType == 0x30 && data[attributeOffset + 8] == 0)
+            {
+                var valueOffset = BitConverter.ToUInt16(data, attributeOffset + 0x14);
+                var value = attributeOffset + valueOffset;
+                nameLength = data[value + 64];
+                BitConverter.GetBytes(parentRecord).CopyTo(data, value);
+                return true;
+            }
+
+            attributeOffset += checked((int)attributeLength);
+        }
+
+        return false;
+    }
 }

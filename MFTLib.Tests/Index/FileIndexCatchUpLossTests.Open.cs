@@ -1,6 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
 
 namespace MFTLib.Tests.Index;
 
@@ -138,8 +139,8 @@ public partial class FileIndexCatchUpLossTests
                 throw new IOException("the retry scan failed");
             }
 
-            FileIndexWatchRescanTests.WriteMftShapedBlock(request.BlockPath, request.VolumeSerial,
-                journalId: 7, nextUsn: 4096);
+            MftBlockFixture.Write(request.BlockPath, request.VolumeSerial,
+                journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
             var loss = Losses.Count > 0 ? Losses.Dequeue() : null;
             return Task.FromResult(new MftBlockProduceResult(
                 BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,

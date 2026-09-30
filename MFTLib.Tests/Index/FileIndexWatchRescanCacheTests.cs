@@ -36,7 +36,7 @@ public class FileIndexWatchRescanCacheTests
                         throw new IOException("production failed after rename");
                     }
 
-                    FileIndexWatchRescanTests.WriteMftShapedBlock(request.BlockPath, 1, WatchHarness.JournalId, 100);
+                    MftBlockFixture.Write(request.BlockPath, 1, WatchHarness.JournalId, 100, moment: MftBlockFixture.SeededMoment);
                     return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, 1, out _)!,
                         WatchHarness.JournalId, 100, 0, false);
                 }

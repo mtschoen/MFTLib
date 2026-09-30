@@ -161,8 +161,8 @@ internal sealed class OpenScenario : IDisposable
                 throw failure;
             }
 
-            FileIndexWatchRescanTests.WriteMftShapedBlock(request.BlockPath, request.VolumeSerial,
-                journalId: 7, nextUsn: 4096);
+            MftBlockFixture.Write(request.BlockPath, request.VolumeSerial,
+                journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
             var loss = _losses.TryGetValue(driveLetter, out var queue) && queue.TryDequeue(out var scripted)
                 ? scripted
                 : null;

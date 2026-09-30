@@ -139,7 +139,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     public async Task BlockSession_ReplacesParkedWatchCursorAndIndexRescanPreservesOldHandles()
     {
         // The watch a drive runs is armed from its published block's cursor, not from the cursor
-        // catch-up advanced to (FileIndex.WatchTargets.cs, BuildWatchTarget). A rescan publishes a
+        // catch-up advanced to (FileIndex.WatchCheckpointLoss.cs, BuildWatchTarget). A rescan publishes a
         // block with a fresh armed cursor, and the restarted watch follows it.
         var rearmed = new StrongBox<int>();
         var scanCount = new StrongBox<int>();

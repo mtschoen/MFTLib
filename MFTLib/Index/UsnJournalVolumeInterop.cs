@@ -23,7 +23,7 @@ delegate bool VolumeIoControl(
 
 /// <summary>
 ///     The unelevated volume-root handle recipe shared by the index's USN journal queries,
-///     and the two IOCTLs they issue against it. The handle is the one
+///     and the journal query IOCTL they issue against it. The handle is the one
 ///     <see cref="WindowsFileById" /> documents - backup semantics, attributes-only access -
 ///     which is also what <c>fsutil usn queryjournal</c> uses unelevated. Declared inside
 ///     the index (rather than reusing <c>MFTLib.Interop</c>) because the packed index is
@@ -39,16 +39,6 @@ static class UsnJournalVolumeInterop
 
     /// <summary>CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 61, METHOD_BUFFERED, FILE_ANY_ACCESS).</summary>
     internal const uint FsctlQueryUsnJournal = 0x000900F4;
-
-    /// <summary>
-    ///     <c>FSCTL_READ_UNPRIVILEGED_USN_JOURNAL</c>:
-    ///     CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 234, METHOD_NEITHER, FILE_ANY_ACCESS). The
-    ///     privileged <c>FSCTL_READ_USN_JOURNAL</c> fails with ERROR_ACCESS_DENIED on this
-    ///     unelevated handle; this variant succeeds and blanks the file names of records the
-    ///     caller cannot otherwise see, which costs nothing here because only each record's
-    ///     timestamp is read.
-    /// </summary>
-    internal const uint FsctlReadUnprivilegedUsnJournal = 0x000903AB;
 
     /// <summary>
     ///     A test seam with no synchronization, which is safe only while the test host runs

@@ -88,12 +88,8 @@ public sealed partial class FileIndex
         }
 
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!_driveConfigurations.TryGetValue(char.ToUpperInvariant(driveLetter), out var drive))
-        {
-            throw new ArgumentException($"Drive {driveLetter} is not part of this index.", nameof(driveLetter));
-        }
-
         var runtime = GetDriveRuntime(driveLetter);
+        var drive = _driveConfigurations[runtime.DriveLetter];
         using var rescanCancellation =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, DisposalToken);
         await runtime.LifecycleGate.WaitAsync(rescanCancellation.Token).ConfigureAwait(false);

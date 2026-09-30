@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -66,7 +67,7 @@ public class FileIndexPartialCanonicalBlockTests
 
     static MftBlockProduceResult CompleteBlock(MftBlockProduceRequest request)
     {
-        FileIndexRescanCleanupTests.WriteBlock(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096);
+        MftBlockFixture.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
         return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
             JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false);
     }

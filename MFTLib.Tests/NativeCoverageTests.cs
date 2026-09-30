@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
 namespace MFTLib.Tests;
 
@@ -960,7 +961,7 @@ public class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
             data[4096 + 0x38] = 0x10;
             File.WriteAllBytes(path, data);
@@ -1050,7 +1051,7 @@ public class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
             var a1 = 4096 + 0x38;
@@ -1213,7 +1214,7 @@ public class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
             // Attribute 1: Data (non-resident) → clusters 1..256 (1MB)
@@ -1277,7 +1278,7 @@ public class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
             var dataAttribute = 4096 + 0x38;
             var dataLength = WriteNonResidentDataAttribute(
@@ -1314,7 +1315,7 @@ public class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
             var dataAttribute = 4096 + 0x38;
             var dataLength = WriteNonResidentDataAttribute(
@@ -1364,7 +1365,7 @@ public class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
 
             // --- Record 0 at offset 4096 ---
             WriteFileRecord(data, 4096);
@@ -1424,7 +1425,7 @@ public class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
             var a1 = 4096 + 0x38;
@@ -1471,7 +1472,7 @@ public class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
             var a1 = 4096 + 0x38;
@@ -1521,7 +1522,7 @@ public class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
             // Just a Data attribute, no AttributeList → straight to VolumeReadChunk
@@ -1565,7 +1566,7 @@ public class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
 
             // Attribute 1: Data (non-resident) → clusters 1..256
@@ -1689,117 +1690,6 @@ public class NativeCoverageTests
 
     // --- Helpers for building synthetic NTFS data ---
 
-    static bool TrySetParentRecord(byte[] data, int recordNumber, ulong parentRecord, out int nameLength)
-    {
-        const int recordSize = 1024;
-        var recordOffset = recordNumber * recordSize;
-        nameLength = 0;
-        if (BitConverter.ToUInt32(data, recordOffset) != 0x454C4946 ||
-            (BitConverter.ToUInt16(data, recordOffset + 0x16) & 1) == 0 ||
-            (BitConverter.ToUInt64(data, recordOffset + 0x20) & 0x0000FFFFFFFFFFFFUL) != 0)
-        {
-            return false;
-        }
-
-        var attributeOffset = recordOffset + BitConverter.ToUInt16(data, recordOffset + 0x14);
-        while (attributeOffset + 24 < recordOffset + recordSize)
-        {
-            var attributeType = BitConverter.ToUInt32(data, attributeOffset);
-            if (attributeType == uint.MaxValue)
-            {
-                return false;
-            }
-
-            var attributeLength = BitConverter.ToUInt32(data, attributeOffset + 4);
-            if (attributeLength == 0)
-            {
-                return false;
-            }
-
-            if (attributeType == 0x30 && data[attributeOffset + 8] == 0)
-            {
-                var valueOffset = BitConverter.ToUInt16(data, attributeOffset + 0x14);
-                var value = attributeOffset + valueOffset;
-                nameLength = data[value + 64];
-                BitConverter.GetBytes(parentRecord).CopyTo(data, value);
-                return true;
-            }
-
-            attributeOffset += checked((int)attributeLength);
-        }
-
-        return false;
-    }
-
-    static byte[] BuildSyntheticNtfs(int fileSize = 2 * 1024 * 1024)
-    {
-        var data = new byte[fileSize];
-        data[3] = (byte)'N';
-        data[4] = (byte)'T';
-        data[5] = (byte)'F';
-        data[6] = (byte)'S';
-        data[0x0B] = 0x00;
-        data[0x0C] = 0x02; // bytesPerSector = 512
-        data[0x0D] = 0x08; // sectorsPerCluster = 8 (4096 bytes/cluster)
-        data[0x30] = 0x01; // mftStart = cluster 1 (offset 4096)
-        return data;
-    }
-
-    static void WriteFileRecord(byte[] data, int offset, ushort usn = 0x0001, uint recordSize = 1024)
-    {
-        // Magic "FILE"
-        data[offset] = 0x46;
-        data[offset + 1] = 0x49;
-        data[offset + 2] = 0x4C;
-        data[offset + 3] = 0x45;
-        // USA offset = 48, USA size = (recordSize / 512) + 1
-        var usaSize = (ushort)(recordSize / 512 + 1);
-        data[offset + 4] = 0x30;
-        data[offset + 5] = 0x00;
-        data[offset + 6] = (byte)(usaSize & 0xFF);
-        data[offset + 7] = (byte)(usaSize >> 8);
-        // First attribute offset = 48 + usaSize * 2, 8-byte aligned
-        var firstAttrOffset = (ushort)((48 + usaSize * 2 + 7) & ~7);
-        data[offset + 0x14] = (byte)(firstAttrOffset & 0xFF);
-        data[offset + 0x15] = (byte)(firstAttrOffset >> 8);
-        // Flags = in use
-        data[offset + 0x16] = 0x01;
-        // BytesAllocated (record size) at 0x1C
-        BitConverter.GetBytes(recordSize).CopyTo(data, offset + 0x1C);
-        // USA entries
-        data[offset + 48] = (byte)(usn & 0xFF);
-        data[offset + 49] = (byte)(usn >> 8);
-        var sectorCount = (int)(recordSize / 512);
-        for (var i = 0; i < sectorCount; i++)
-        {
-            data[offset + 50 + i * 2] = 0x00;
-            data[offset + 51 + i * 2] = 0x00;
-            var sectorEnd = (i + 1) * 512 - 2;
-            data[offset + sectorEnd] = (byte)(usn & 0xFF);
-            data[offset + sectorEnd + 1] = (byte)(usn >> 8);
-        }
-    }
-
-    static int WriteNonResidentDataAttribute(byte[] data, int offset, long fileSize, int clusterOffset,
-        int clusterCount)
-    {
-        data[offset] = 0x80; // TypeCode = Data
-        data[offset + 4] = 0x48; // RecordLength = 72
-        data[offset + 8] = 0x01; // FormCode = non-resident
-        data[offset + 0x20] = 0x40; // MappingPairsOffset
-        var sizeBytes = BitConverter.GetBytes(fileSize);
-        Array.Copy(sizeBytes, 0, data, offset + 0x28, 8); // AllocatedLength
-        Array.Copy(sizeBytes, 0, data, offset + 0x30, 8); // FileSize
-        Array.Copy(sizeBytes, 0, data, offset + 0x38, 8); // ValidDataLength
-        // Data run: 0x12 = 2-byte length, 1-byte offset
-        data[offset + 0x40] = 0x12;
-        data[offset + 0x41] = (byte)(clusterCount & 0xFF);
-        data[offset + 0x42] = (byte)((clusterCount >> 8) & 0xFF);
-        data[offset + 0x43] = (byte)(clusterOffset & 0xFF);
-        data[offset + 0x44] = 0x00; // terminator
-        return 0x48;
-    }
-
     static int WriteResidentAttributeList(byte[] data, int offset, params uint[] segmentNumbers)
     {
         const int entrySize = 28;
@@ -1826,14 +1716,6 @@ public class NativeCoverageTests
         data[offset + 4] = (byte)(totalLength & 0xFF);
         data[offset + 5] = (byte)((totalLength >> 8) & 0xFF);
         return totalLength;
-    }
-
-    static void WriteEndMarker(byte[] data, int offset)
-    {
-        data[offset] = 0xFF;
-        data[offset + 1] = 0xFF;
-        data[offset + 2] = 0xFF;
-        data[offset + 3] = 0xFF;
     }
 
     // --- Variable record size and geometry validation tests ---
@@ -1958,7 +1840,7 @@ public class NativeCoverageTests
             // Override with unsupported record size 1536
             MFTLibNative.NativeSetVolumeRecordSizeOverride(1536);
 
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096);
             File.WriteAllBytes(path, data);
 
@@ -1994,7 +1876,7 @@ public class NativeCoverageTests
         {
             MFTLibNative.NativeSetVolumeRecordSizeOverride(1024);
 
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096, recordSize: 1024);
             var dataAttribute = 4096 + 0x38;
             var dataLength = WriteNonResidentDataAttribute(
@@ -2035,7 +1917,7 @@ public class NativeCoverageTests
         {
             MFTLibNative.NativeSetVolumeRecordSizeOverride(4096);
 
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096, 0x0001, 4096);
             var dataAttribute = 4096 + 0x48;
             var dataLength = WriteNonResidentDataAttribute(
@@ -2077,7 +1959,7 @@ public class NativeCoverageTests
             MFTLibNative.NativeSetVolumeRecordSizeOverride(1536);
             MFTLibNative.NativeResetTestState();
 
-            var data = BuildSyntheticNtfs();
+            var data = BuildBootSector();
             WriteFileRecord(data, 4096, recordSize: 1024);
             var dataAttribute = 4096 + 0x38;
             var dataLength = WriteNonResidentDataAttribute(

@@ -27,7 +27,7 @@ public class FileIndexWatchRescanHandoffTests
                 WatchSource = source,
                 MftProducer = (request, cancellationToken) =>
                 {
-                    FileIndexWatchRescanTests.WriteMftShapedBlock(request.BlockPath, 1, WatchHarness.JournalId, 100);
+                    MftBlockFixture.Write(request.BlockPath, 1, WatchHarness.JournalId, 100, moment: MftBlockFixture.SeededMoment);
                     var block = BlockFile.Open(request.BlockPath, 1, out _)!;
                     return Task.FromResult(new MftBlockProduceResult(block, WatchHarness.JournalId, 100, 0, false));
                 }

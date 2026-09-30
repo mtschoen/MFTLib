@@ -165,7 +165,7 @@ public partial class FileIndexWatchRescanTests
     {
         using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync('T', Token);
-        var applying = HoldFirstApply(harness, 'T');
+        var applying = harness.HoldFirstApply('T');
         var queued = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "stale.txt", nextUsn: 5000));
         await applying.Entered.WaitAsync(HangGuard);
 
@@ -291,8 +291,8 @@ public partial class FileIndexWatchRescanTests
     /// </summary>
     FileIndexOptions CacheOnlyWatchOptions(FakeIndexWatchSource source, bool failDriveT)
     {
-        WriteMftShapedBlock(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 2)),
-            volumeSerial: 2, journalId: 22, nextUsn: 8484);
+        MftBlockFixture.Write(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 2)),
+            volumeSerial: 2, journalId: 22, nextUsn: 8484, moment: MftBlockFixture.SeededMoment);
         return new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1), new IndexedDrive('U', _treeRoot, 2)],
@@ -305,7 +305,7 @@ public partial class FileIndexWatchRescanTests
                     throw new UnauthorizedAccessException("elevation declined");
                 }
 
-                WriteMftShapedBlock(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096);
+                MftBlockFixture.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
                 return Task.FromResult(new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
@@ -475,25 +475,6 @@ public partial class FileIndexWatchRescanTests
         return harness.BlockFor(driveLetter);
     }
 
-    /// <summary>
-    ///     Parks the first pump apply on <paramref name="driveLetter" /> inside the apply, before
-    ///     its gate, until the returned gate is released. Later applies pass straight through.
-    /// </summary>
-    static TestGate HoldFirstApply(WatchHarness harness, char driveLetter)
-    {
-        var gate = harness.TrackGate();
-        var held = 0;
-        harness.Index.ApplyJournalEntriesEnteredForTest = letter =>
-        {
-            if (letter == driveLetter && Interlocked.Exchange(ref held, 1) == 0)
-            {
-                gate.MarkEntered();
-                gate.WaitForRelease();
-            }
-        };
-        return gate;
-    }
-
     /// <summary>Completes with the first fault the index raises for the drive after this call.</summary>
     static Task<WatchFault> NextFaultOf(FileIndex index, char driveLetter)
     {
@@ -524,36 +505,5 @@ public partial class FileIndexWatchRescanTests
         }
 
         throw new AssertFailedException($"Expected {typeof(TException).Name} to be thrown.");
-    }
-
-    /// <summary>
-    ///     A small valid MFT-shaped block written at <paramref name="path" /> with the journal
-    ///     cursor stamped before completion. Pre-seeds 'U''s cache so a cache-only open warm-starts
-    ///     it while 'T' is declined, and builds the block a rescan of 'T' adopts.
-    /// </summary>
-    internal static void WriteMftShapedBlock(string path, uint volumeSerial, ulong journalId, long nextUsn)
-    {
-        var moment = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
-        var createOptions = new BlockFileCreateOptions
-        {
-            Path = path,
-            VolumeSerial = volumeSerial,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(8),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(256)
-        };
-        using (var block = BlockFile.Create(createOptions))
-        {
-            var writer = new BlockWriter(block);
-            writer.TryWriteRow(0, "$MFT",
-                new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0,
-                    ModifiedTicks: moment.Ticks, SequenceNumber: 0));
-            writer.TryWriteRow(5, ".",
-                new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
-                    ModifiedTicks: moment.Ticks, SequenceNumber: 0));
-            writer.SetJournalCursor(journalId, nextUsn);
-            writer.Complete(moment, null);
-        }
     }
 }

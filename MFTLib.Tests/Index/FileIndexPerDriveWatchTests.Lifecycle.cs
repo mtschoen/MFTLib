@@ -2,6 +2,7 @@ using System.Reflection;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
 
 namespace MFTLib.Tests.Index;
 
@@ -15,7 +16,7 @@ public partial class FileIndexPerDriveWatchTests
         using var harness = new WatchHarness();
         await harness.Index.StartWatchingAsync('T', Token);
         var oldHandle = harness.Source.HandleFor('T');
-        var applying = HoldFirstApply(harness, 'T');
+        var applying = harness.HoldFirstApply('T');
         _ = oldHandle.Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
         await applying.Entered.WaitAsync(HangGuard);
         using var alreadyCancelled = new CancellationTokenSource();
@@ -39,7 +40,7 @@ public partial class FileIndexPerDriveWatchTests
         using var harness = new WatchHarness();
         await harness.Index.StartWatchingAsync('T', Token);
         var generationBefore = harness.BlockFor('T').Header.Generation;
-        var applying = HoldFirstApply(harness, 'T');
+        var applying = harness.HoldFirstApply('T');
         _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
         await applying.Entered.WaitAsync(HangGuard);
         using var alreadyCancelled = new CancellationTokenSource();
@@ -98,7 +99,7 @@ public partial class FileIndexPerDriveWatchTests
     {
         using var harness = new WatchHarness();
         await harness.Index.StartWatchingAsync('T', Token);
-        var applying = HoldFirstApply(harness, 'T');
+        var applying = harness.HoldFirstApply('T');
         _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
         await applying.Entered.WaitAsync(HangGuard);
         using var rescanCancellation = new CancellationTokenSource();
@@ -121,7 +122,7 @@ public partial class FileIndexPerDriveWatchTests
         await harness.Index.StartWatchingAsync('T', Token);
         await harness.Index.StartWatchingAsync('U', Token);
         await harness.Index.StartWatchingAsync('V', Token);
-        var draining = HoldFirstApply(harness, 'U');
+        var draining = harness.HoldFirstApply('U');
         _ = harness.Source.HandleFor('U').Queue(WatchHarness.Batch(10, "u.txt"));
         await draining.Entered.WaitAsync(HangGuard);
         using var waitCancellation = new CancellationTokenSource();
@@ -424,25 +425,6 @@ public partial class FileIndexPerDriveWatchTests
             await index.StopWatchingAsync('U', Token);
             return observedWhileSettling;
         }
-    }
-
-    /// <summary>
-    ///     Parks the first pump apply on <paramref name="driveLetter" /> inside the apply, before
-    ///     its gate, until the returned gate is released. Later applies pass straight through.
-    /// </summary>
-    static TestGate HoldFirstApply(WatchHarness harness, char driveLetter)
-    {
-        var gate = harness.TrackGate();
-        var held = 0;
-        harness.Index.ApplyJournalEntriesEnteredForTest = letter =>
-        {
-            if (letter == driveLetter && Interlocked.Exchange(ref held, 1) == 0)
-            {
-                gate.MarkEntered();
-                gate.WaitForRelease();
-            }
-        };
-        return gate;
     }
 
     async Task AssertSlotStillCatchesUpAsync(WatchHarness harness)

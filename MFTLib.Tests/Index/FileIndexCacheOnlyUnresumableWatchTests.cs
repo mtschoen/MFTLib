@@ -85,36 +85,8 @@ public class FileIndexCacheOnlyUnresumableWatchTests
 
     /// <summary>An MFT-kind block carrying the checkpoint a warm start would resume from.</summary>
     static Task<MftBlockProduceResult> ProduceMftShapedBlock(
-        MftBlockProduceRequest request, CancellationToken cancellationToken)
-    {
-        var createOptions = new BlockFileCreateOptions
-        {
-            Path = request.BlockPath,
-            VolumeSerial = request.VolumeSerial,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(8),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity(256),
-            DeleteOnClose = request.DeleteOnClose
-        };
-
-        using (var block = BlockFile.Create(createOptions))
-        {
-            var writer = new BlockWriter(block);
-            writer.TryWriteRow(0, "$MFT",
-                new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0,
-                    ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-            writer.TryWriteRow(5, ".",
-                new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0, Size: 0,
-                    ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-            writer.SetJournalCursor(CachedJournalId, CachedNextUsn);
-            writer.Complete(FixedMoment, null);
-        }
-
-        return Task.FromResult(new MftBlockProduceResult(
-            BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
-            CachedJournalId, CachedNextUsn, SkippedRecordCount: 0, CompactionNeeded: false));
-    }
+        MftBlockProduceRequest request, CancellationToken cancellationToken) =>
+        MftBlockFixture.Produce(request, CachedJournalId, CachedNextUsn, FixedMoment);
 
     /// <summary>Answers each drive with its own journal, so one can be lost and another kept.</summary>
     static IDisposable Journals(Dictionary<char, JournalWindow> byDrive)
@@ -139,7 +111,6 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
         }
     }
-
 
     /// <summary>
     ///     Starts a drive whose block is unresumable and returns the refusal the consumer sees.

@@ -5,6 +5,23 @@ namespace MFTLib;
 /// <summary>Opens one drive pipe and serves its one operation.</summary>
 public sealed partial class JournalBrokerHost
 {
+    // One drive pipe and what its operation needs to write to it. The pipe writer's lock keeps a
+    // scan's progress pump, its operation and the heartbeat sender from interleaving frames on
+    // this pipe only; the pipe writer is also the operation state the channel's source reports to.
+    sealed class DriveChannel(Stream stream, string drive, HostPipeWriter pipe)
+    {
+        public Stream Stream { get; } = stream;
+        public string Drive { get; } = drive;
+        public string Tag => Pipe.Tag;
+        public HostPipeWriter Pipe { get; } = pipe;
+    }
+
+    static Task WriteChannelErrorAsync(DriveChannel channel, string message, CancellationToken cancellationToken)
+    {
+        return channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteError(writer, 0, message),
+            cancellationToken);
+    }
+
     // Connects the pipe the client named, bounded by ChannelConnectTimeout on the host's clock.
     // On success the reply is ChannelOpened and the channel is served on its own tracked task; on
     // failure or timeout the reply is Error with the request id, and a connection that arrives
@@ -44,9 +61,9 @@ public sealed partial class JournalBrokerHost
     async Task<Stream?> ConnectChannelAsync(ControlSession session, uint requestId, string drive, string pipeName)
     {
         using var connectCancellation = CancellationTokenSource.CreateLinkedTokenSource(session.Token);
+        var connectToken = connectCancellation.Token;
         // Task.Run turns a connector that throws before returning its task into a faulted
         // connection, the same failure as one that faults its task.
-        var connectToken = connectCancellation.Token;
         var connection = Task.Run(() => session.ConnectChannel(pipeName, connectToken), CancellationToken.None);
         try
         {
@@ -161,7 +178,7 @@ public sealed partial class JournalBrokerHost
     async Task<BrokerFrame?> ReadFirstRequestAsync(DriveChannel channel, CancellationToken cancellationToken)
     {
         using var readCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var read = ReadFrameAsync(channel.Stream, channel.Tag, readCancellation.Token);
+        var read = BrokerFrameStream.ReadFrameAsync(channel.Stream, channel.Tag, readCancellation.Token);
         try
         {
             // The read observes the channel's token itself; this wait bounds only the time.

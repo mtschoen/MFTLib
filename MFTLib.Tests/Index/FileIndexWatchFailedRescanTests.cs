@@ -1,6 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
 
 namespace MFTLib.Tests.Index;
 
@@ -18,9 +19,6 @@ public class FileIndexWatchFailedRescanTests
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
-
-    static Task<TException> ThrowsAsync<TException>(Func<Task> action) where TException : Exception =>
-        FileIndexWatchRescanTests.ThrowsAsync<TException>(action);
 
     /// <summary>T's cursor has been trimmed out of its journal.</summary>
     static IDisposable LostCheckpointForT() =>
