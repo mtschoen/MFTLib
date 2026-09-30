@@ -43,8 +43,7 @@ internal sealed class BrokerDiagnosticsWriter
         });
         _appendLine = appendLine;
         _roleProvider = roleProvider ?? (() => "client");
-        _ = Task.Factory.StartNew(DrainAsync, CancellationToken.None, TaskCreationOptions.LongRunning,
-            TaskScheduler.Default).Unwrap();
+        _ = Task.Run(DrainAsync);
     }
 
     /// <summary>
