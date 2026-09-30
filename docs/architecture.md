@@ -26,8 +26,8 @@
 - **Benchmark** (C# Console App) - Performance benchmark using synthetic MFT generation.
 - **MFTLib.Tests** (C# MSTest) - Unit tests for record mapping and path resolution.
 - **MFTLibTestExtensions** (C# Library) - Public, consumer-facing `BrokerTestHarness` that runs a
-  `JournalBrokerHost` in process over in-memory control and drive pipes and returns the production
-  `BrokerProcess` connected to it. `BrokerTestHarnessOptions` supplies the client clock, per-pipe
+  `JournalBrokerHost` in process over in-memory control and drive pipes and returns an `InProcessBrokerHandle`
+  holding the production `BrokerProcess` connected to it, with `Crash()` to simulate broker death. `BrokerTestHarnessOptions` supplies the client clock, per-pipe
   connection failures, and held host writes. Host faults surface only through production behavior:
   the `BrokerProcess.Ended` task, `BrokerChannelLostException` on pending operations, and
   `Error` frames; disposing the process never throws a host fault. Ships as the separate

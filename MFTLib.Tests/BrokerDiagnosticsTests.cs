@@ -1,4 +1,5 @@
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -37,6 +38,17 @@ public class BrokerDiagnosticsTests
         catch (UnauthorizedAccessException)
         {
         }
+    }
+
+    [TestMethod]
+    public void IsolationReset_RestoresTheDefaultDiagnosticsState()
+    {
+        BrokerDiagnostics.Enable("test");
+        Assert.IsTrue(BrokerDiagnostics.Enabled);
+
+        BrokerDiagnosticsIsolation.Reset();
+
+        Assert.IsFalse(BrokerDiagnostics.Enabled);
     }
 
     [TestMethod]

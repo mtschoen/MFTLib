@@ -7,7 +7,8 @@ real per-user cache or a real volume's USN journal.
 ## BrokerTestHarness
 
 `BrokerTestHarness.StartInProcess` runs a real `JournalBrokerHost` on a
-background task and returns a real `BrokerProcess` connected through in-memory
+background task and returns an `InProcessBrokerHandle` whose `Process` is a real
+`BrokerProcess` connected through in-memory
 control and drive pipes. It needs no elevation and launches no child process.
 Consumer tests therefore exercise the same request routing, per-drive channels,
 frame decoding, timeouts, producer, and watch source used in production.
@@ -21,8 +22,15 @@ The required arguments are:
 - a `BrokerBlockSectionFactory` that creates the client side's block and section
   lifetime.
 
-The returned process owns the harness session from the client side. Disposing
-it closes the control pipe, ends the host, closes the drive pipes, and waits for
+`StartInProcess(host)` and `StartInProcess(host, options)` take no writer or
+section factory, for tests that exercise only control operations. A
+`JournalBrokerHost` built without `scanDrive` and `readJournal` refuses every
+scan with the channel error "Broker has no scan source", and a harness started
+without a section factory makes `ScanDriveAsync` throw `InvalidOperationException`
+before it opens a channel.
+
+The handle owns the harness session from the client side. Disposing the handle
+disposes the process: it closes the control pipe, ends the host, closes the drive pipes, and waits for
 the session task. The harness has no separate fault event or stored host
 exception. A host failure reaches the test through the production surfaces:
 
@@ -32,6 +40,17 @@ exception. A host failure reaches the test through the production surfaces:
 
 Host exception detail is written only to broker diagnostics. Disposing the
 process does not throw the host fault again.
+
+`InProcessBrokerHandle.Crash()` simulates the broker process dying: it closes every
+host pipe end at once, without the client's cooperation, so the client reads EOF on
+the control pipe and every drive channel, `Ended` reports the loss, and pending and
+later requests fail with `BrokerChannelLostException`. It differs from disposing the
+process, which ends with the reason "The broker process was disposed.". The handle
+still disposes normally after a crash.
+
+A test that enables `BrokerDiagnostics` awaits `BrokerDiagnostics.FlushAsync` to read
+the log file deterministically, and calls `BrokerDiagnosticsIsolation.Reset()` in
+cleanup to restore the default diagnostics state.
 
 `BrokerTestHarnessOptions` adds deterministic transport seams:
 

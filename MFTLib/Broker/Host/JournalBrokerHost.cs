@@ -26,8 +26,7 @@ public sealed partial class JournalBrokerHost
     const string JournalBatchStep = "journal batch";
 
     readonly UsnJournalCursorQuery _queryCursor;
-    readonly MftRecordBatchSource _scanDrive;
-    readonly UsnJournalCatchUpSource _readJournal;
+    readonly ScanSources? _scanSources;
     readonly JournalBatchSource? _watchDrive;
     readonly NtfsVolumeInformationQuery? _queryVolumeInfo;
     readonly GrowUsnJournalQuery? _growUsnJournal;
@@ -36,8 +35,8 @@ public sealed partial class JournalBrokerHost
 
     /// <summary>Builds a host over injected volume access, so it runs without real elevation in tests.</summary>
     /// <param name="queryCursor">Arms a drive's journal cursor before its scan, and bounds a watch's backlog.</param>
-    /// <param name="scanDrive">Streams one drive's MFT records for a scan.</param>
-    /// <param name="readJournal">Replays the journal from a scan's armed cursor after the scan.</param>
+    /// <param name="scanDrive">Streams one drive's MFT records for a scan; null refuses every scan.</param>
+    /// <param name="readJournal">Replays the journal from a scan's armed cursor after the scan; null refuses every scan.</param>
     /// <param name="watchDrive">Streams a drive's journal for a watch; null refuses every watch.</param>
     /// <param name="queryVolumeInfo">Answers volume sizing queries; null refuses every query.</param>
     /// <param name="growUsnJournal">Grows a drive's journal; null refuses every grow request.</param>
@@ -45,8 +44,8 @@ public sealed partial class JournalBrokerHost
     /// <param name="timeProvider">The clock of every host timeout; null is <see cref="TimeProvider.System" />.</param>
     public JournalBrokerHost(
         UsnJournalCursorQuery queryCursor,
-        MftRecordBatchSource scanDrive,
-        UsnJournalCatchUpSource readJournal,
+        MftRecordBatchSource? scanDrive = null,
+        UsnJournalCatchUpSource? readJournal = null,
         JournalBatchSource? watchDrive = null,
         NtfsVolumeInformationQuery? queryVolumeInfo = null,
         GrowUsnJournalQuery? growUsnJournal = null,
@@ -54,14 +53,19 @@ public sealed partial class JournalBrokerHost
         TimeProvider? timeProvider = null)
     {
         _queryCursor = queryCursor;
-        _scanDrive = scanDrive;
-        _readJournal = readJournal;
+        _scanSources = scanDrive != null && readJournal != null ? new ScanSources(scanDrive, readJournal) : null;
         _watchDrive = watchDrive;
         _queryVolumeInfo = queryVolumeInfo;
         _growUsnJournal = growUsnJournal;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _parseThreads = new ParseThreadAllocator(processorCount ?? Environment.ProcessorCount);
     }
+
+    // A scan needs both sources; a host missing either refuses every scan.
+    readonly record struct ScanSources(MftRecordBatchSource ScanDrive, UsnJournalCatchUpSource JournalReader);
+
+    // What one scan's block write needs: where the records go and where they come from.
+    readonly record struct ScanStage(IBlockSectionWriter Writer, MftRecordBatchSource ScanDrive);
 
     /// <summary>The parse-thread budget every scan on this host is admitted to.</summary>
     internal ParseThreadAllocator ParseThreads => _parseThreads;

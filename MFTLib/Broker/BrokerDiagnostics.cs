@@ -159,7 +159,7 @@ public static class BrokerDiagnostics
     }
 
     /// <summary>Completes once every line logged before this call has been appended or dropped.</summary>
-    internal static Task FlushAsync(CancellationToken cancellationToken)
+    public static Task FlushAsync(CancellationToken cancellationToken)
     {
         return _writer?.FlushAsync(cancellationToken) ?? Task.CompletedTask;
     }

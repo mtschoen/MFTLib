@@ -17,11 +17,13 @@ internal sealed class InProcessBroker : IAsyncDisposable
         Func<BrokerChannelConnector, BrokerChannelConnector>? wrapConnector = null)
     {
         Writer = new RecordingBlockSectionWriter(Sections.Resolve);
-        Process = BrokerTestHarness.Start(host, Writer, Sections.Create, options ?? new BrokerTestHarnessOptions(),
+        Handle = BrokerTestHarness.Start(host, Writer, Sections.Create, options ?? new BrokerTestHarnessOptions(),
             wrapClientStream, wrapConnector);
     }
 
-    public BrokerProcess Process { get; }
+    public InProcessBrokerHandle Handle { get; }
+
+    public BrokerProcess Process => Handle.Process;
 
     public TestBlockSections Sections { get; } = new();
 

@@ -177,10 +177,10 @@ public partial class BrokerProcessTests
     {
         var sections = new ThrowingLifetimeSections();
         using var writer = new RecordingBlockSectionWriter(sections.Inner.Resolve);
-        await using var process = BrokerTestHarness.Start(CreateHost(), writer, sections.Create,
+        await using var handle = BrokerTestHarness.Start(CreateHost(), writer, sections.Create,
             new BrokerTestHarnessOptions(), null, null);
 
-        var exception = await Assert.ThrowsExceptionAsync<IOException>(() => process.ScanDriveAsync('C',
+        var exception = await Assert.ThrowsExceptionAsync<IOException>(() => handle.Process.ScanDriveAsync('C',
             TestBlockSections.Target(), new BrokerScanOptions(), CancellationToken.None).WaitAsync(HangGuard));
 
         Assert.AreEqual("release failed", exception.Message);
