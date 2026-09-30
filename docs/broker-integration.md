@@ -26,7 +26,7 @@ The separation is important:
 - a watch reader that stops consuming holds back only its own pipe;
 - closing a watch pipe stops only that drive;
 - a drive pipe failure names that drive in `BrokerChannelLostException`; and
-- losing the control pipe ends the process, fires `BrokerProcess.Ended` once, and
+- losing the control pipe ends the process, completes the `BrokerProcess.Ended` task with the reason, and
   causes every open drive channel to fail.
 
 The host sends heartbeats on an idle control pipe, a watch pipe waiting on its
@@ -69,8 +69,9 @@ await using var broker = await BrokerProcess.LaunchAsync(
     BrokerLauncher.Launch,
     cancellationToken);
 
-broker.Ended += reason =>
-    Console.Error.WriteLine($"MFT broker ended: {reason}");
+_ = broker.Ended.ContinueWith(
+    ended => Console.Error.WriteLine($"MFT broker ended: {ended.Result}"),
+    TaskScheduler.Default);
 ```
 
 `LaunchAsync` creates the control pipe, invokes `BrokerLauncher.Launch`, and
@@ -79,8 +80,10 @@ overload taking a `TimeSpan` lets a host choose a different connection timeout.
 A declined UAC prompt throws `InvalidOperationException`; a child that does not
 connect in time throws `TimeoutException`.
 
-`HasEnded` becomes true when the control pipe is lost or the process is disposed.
-`Ended` reports the reason once. Pending control operations fail with
+`Ended` is a `Task<string>` that completes when the control pipe is lost or the
+process is disposed, with the reason. It never faults, and a caller that looks
+after the end still receives the reason; `Ended.IsCompleted` tells whether the
+process has ended. Pending control operations fail with
 `BrokerChannelLostException`, and open drive pipes then fail independently as
 they observe the process exit. `DisposeAsync` closes the control pipe and every
 open drive channel. The reason the host ended is reported through `Ended` and
@@ -245,7 +248,7 @@ concurrently. The status has already been updated when the event runs.
 
 | Signal | Meaning and consumer action |
 | --- | --- |
-| `BrokerProcess.Ended` or `HasEnded` | The control connection and elevated process are gone. Stop using the process, close its indexes, and create a new process and new indexes. |
+| Completed `BrokerProcess.Ended` task | The control connection and elevated process are gone. Stop using the process, close its indexes, and create a new process and new indexes. |
 | `BrokerChannelLostException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. `DriveLetter` names a drive pipe; null names the control pipe. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
 | `DriveWatchFaultException` | The host reported an `Error` on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
 | `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan and start the drive again. |
@@ -356,5 +359,5 @@ while debugging diagnostics themselves.
 - Launch one `BrokerProcess` for the consumer session and retain ownership of it.
 - Give `BrokerMftBlockProducer` and `BrokerIndexWatchSource` access to that same
   process.
-- Handle `Ended`, per-drive start results, watch faults, and lost catch-up.
+- Observe `Ended`, per-drive start results, watch faults, and lost catch-up.
 - Dispose indexes before disposing the process during application shutdown.

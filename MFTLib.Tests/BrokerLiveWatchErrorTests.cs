@@ -167,7 +167,7 @@ public class BrokerLiveWatchErrorTests
         var lost = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
         Assert.AreEqual('C', lost.DriveLetter);
         StringAssert.Contains(lost.Message, "Truncated broker frame");
-        Assert.IsFalse(process.HasEnded, "a broken drive pipe loses that drive's channel, not the process");
+        Assert.IsFalse(process.Ended.IsCompleted, "a broken drive pipe loses that drive's channel, not the process");
     }
 
     // Starts a watch on the scripted broker and returns its handle with the host's end of its pipe,

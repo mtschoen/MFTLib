@@ -67,9 +67,8 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task Dispose_ControlCloseThrows_CompletesTeardownWithoutThrowing()
     {
-        var ended = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var broker = new ScriptedBroker(wrapClientControl: stream => new ThrowOnAsyncDisposeStream(stream));
-        broker.Process.Ended += reason => ended.TrySetResult(reason);
+        var ended = broker.Process.Ended;
         var open = broker.Process.OpenChannelAsync('C', writer => BrokerProtocol.WriteStartWatch(writer, Armed),
             CancellationToken.None);
         await using var hostEnd = await broker.AcceptChannelAsync();
@@ -78,7 +77,7 @@ public partial class BrokerProcessTests
 
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
-        Assert.IsTrue(ended.Task.IsCompleted, "The control reader was joined.");
+        Assert.IsTrue(ended.IsCompleted, "The control reader was joined.");
         Assert.IsNull(await HostChannelHarness.ReadFrameAsync(hostEnd), "The drive channel was closed first.");
     }
 
@@ -198,7 +197,7 @@ public partial class BrokerProcessTests
             Assert.IsNull(lost.DriveLetter);
         }
 
-        Assert.IsTrue(broker.Process.HasEnded);
+        await broker.Process.Ended.WaitAsync(HangGuard);
         await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
             broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
     }

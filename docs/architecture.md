@@ -29,7 +29,7 @@
   `JournalBrokerHost` in process over in-memory control and drive pipes and returns the production
   `BrokerProcess` connected to it. `BrokerTestHarnessOptions` supplies the client clock, per-pipe
   connection failures, and held host writes. Host faults surface only through production behavior:
-  `BrokerProcess.Ended` and `HasEnded`, `BrokerChannelLostException` on pending operations, and
+  the `BrokerProcess.Ended` task, `BrokerChannelLostException` on pending operations, and
   `Error` frames; disposing the process never throws a host fault. Ships as the separate
   `MFTLib.TestExtensions` NuGet package at publish time; never folded into the `MFTLib` package.
 

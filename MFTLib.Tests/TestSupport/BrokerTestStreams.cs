@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
@@ -109,6 +110,36 @@ internal sealed class ThrowOnAsyncDisposeStream(Stream inner) : DelegatingStream
     {
         await base.DisposeAsync();
         throw new IOException("control close failed");
+    }
+}
+
+/// <summary>Closes its inner stream, then throws from <see cref="Dispose(bool)" />, as a synchronous close that reports a failure does.</summary>
+internal sealed class ThrowOnDisposeStream(Stream inner) : DelegatingStream(inner)
+{
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        throw new IOException("control close failed");
+    }
+}
+
+/// <summary>A clock whose timers fail when disposed, as a stall timer that cannot drain does.</summary>
+internal sealed class ThrowOnTimerDisposeClock : FakeTimeProvider
+{
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
+        new ThrowOnDisposeTimer(base.CreateTimer(callback, state, dueTime, period));
+
+    sealed class ThrowOnDisposeTimer(ITimer inner) : ITimer
+    {
+        public bool Change(TimeSpan dueTime, TimeSpan period) => inner.Change(dueTime, period);
+
+        public void Dispose() => inner.Dispose();
+
+        public async ValueTask DisposeAsync()
+        {
+            await inner.DisposeAsync();
+            throw new IOException("timer drain failed");
+        }
     }
 }
 

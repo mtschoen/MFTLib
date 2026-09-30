@@ -71,7 +71,7 @@ public class BrokerIndexWatchSourceTests
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(secondReader));
         secondRun.Push(2, "after.txt", 120);
         Assert.AreEqual("after.txt", (await WatchReads.NextBatchAsync(secondReader)).Entries.Single().FileName);
-        Assert.IsFalse(harness.Process.HasEnded);
+        Assert.IsFalse(harness.Process.Ended.IsCompleted);
     }
 
     [TestMethod]
@@ -257,7 +257,7 @@ public class BrokerIndexWatchSourceTests
             harness.Changes.Select(change => change.Entry.Name).ToArray());
         Assert.AreEqual(0, harness.Faults.Count, string.Join("; ", harness.Faults.Select(fault => fault.Exception.Message)));
         Assert.AreEqual(500L, harness.BlockFor('T').Header.UsnNextUsn);
-        Assert.IsFalse(broker.Process.HasEnded);
+        Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
 
     // Hands out the inner source's handles, and holds the disposal of the first one on a gate.

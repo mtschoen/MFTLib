@@ -83,7 +83,7 @@ public partial class BrokerProcessTests
         var second = await broker.Process.QueryVolumeAsync('D', CancellationToken.None).WaitAsync(HangGuard);
 
         Assert.AreEqual(2048L * 1000, second.MftValidDataLength, "The late reply to C must not answer D.");
-        Assert.IsFalse(broker.Process.HasEnded);
+        Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
 
     [TestMethod]
@@ -163,7 +163,7 @@ public partial class BrokerProcessTests
         Assert.AreEqual(2u, fifthRequest.RequestId);
         Assert.AreEqual(500L, (await fifth.WaitAsync(HangGuard)).MftRecordCount);
         Assert.IsFalse(requests[0].IsCompleted || requests[2].IsCompleted, "The other requests stay pending.");
-        Assert.IsFalse(broker.Process.HasEnded);
+        Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
 
     [TestMethod]
@@ -202,7 +202,7 @@ public partial class BrokerProcessTests
         var next = await broker.Process.QueryVolumeAsync('D', CancellationToken.None).WaitAsync(HangGuard);
 
         Assert.AreEqual(Volume.MftRecordCount, next.MftRecordCount);
-        Assert.IsFalse(broker.Process.HasEnded, "A frame finished after its caller cancelled leaves the pipe usable.");
+        Assert.IsFalse(broker.Process.Ended.IsCompleted, "A frame finished after its caller cancelled leaves the pipe usable.");
     }
 
     [TestMethod]
@@ -217,8 +217,6 @@ public partial class BrokerProcessTests
                 return Volume;
             }),
             wrapClientStream: (name, stream) => name == "control" ? control.Wrap(stream) : stream);
-        var ended = new List<string>();
-        broker.Process.Ended += ended.Add;
         try
         {
             var pending = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
@@ -228,9 +226,8 @@ public partial class BrokerProcessTests
             await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => failing.WaitAsync(HangGuard));
             await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
             Assert.IsTrue(control.Gate.Entered.IsCompleted);
-            Assert.IsTrue(broker.Process.HasEnded);
-            Assert.AreEqual(1, ended.Count);
-            StringAssert.Contains(ended[0], "could not be written");
+            await broker.Process.Ended.WaitAsync(HangGuard);
+            StringAssert.Contains(await broker.Process.Ended.WaitAsync(HangGuard), "could not be written");
         }
         finally
         {
@@ -243,11 +240,9 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task HostEnds_EveryPendingRequestFailsWithChannelLost_EndedFiresOnce()
+    public async Task HostEnds_EveryPendingRequestFailsWithChannelLost_EndedCompletes()
     {
         await using var broker = new ScriptedBroker();
-        var ended = new List<string>();
-        broker.Process.Ended += ended.Add;
         var first = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
         var second = broker.Process.GrowUsnJournalAsync('D', 1, 1, CancellationToken.None);
         await broker.ReadRequestAsync();
@@ -261,9 +256,8 @@ public partial class BrokerProcessTests
             Assert.IsNull(lost.DriveLetter);
         }
 
-        Assert.IsTrue(broker.Process.HasEnded);
+        await broker.Process.Ended.WaitAsync(HangGuard);
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-        Assert.AreEqual(1, ended.Count, "Ended fires once, however the process then ends.");
         await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
             broker.Process.QueryVolumeAsync('C', CancellationToken.None));
     }
@@ -288,7 +282,7 @@ public partial class BrokerProcessTests
         }
 
         Assert.IsTrue(watchCancelled.Task.IsCompleted, "Disposal returns only after the host ended its channels.");
-        Assert.IsTrue(broker.Process.HasEnded);
+        await broker.Process.Ended.WaitAsync(HangGuard);
     }
 
     [TestMethod]
@@ -311,8 +305,7 @@ public partial class BrokerProcessTests
     public async Task ControlExchange_DemuxExit_CompletesPendingQuery(string ending, string expectedReason)
     {
         await using var broker = new ScriptedBroker();
-        var ended = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        broker.Process.Ended += reason => ended.TrySetResult(reason);
+        var ended = broker.Process.Ended;
         var query = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
         Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
 
@@ -337,8 +330,8 @@ public partial class BrokerProcessTests
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => query.WaitAsync(HangGuard));
         Assert.IsNull(lost.DriveLetter);
-        StringAssert.Contains(await ended.Task.WaitAsync(HangGuard), expectedReason);
-        Assert.IsTrue(broker.Process.HasEnded);
+        StringAssert.Contains(await ended.WaitAsync(HangGuard), expectedReason);
+        await broker.Process.Ended.WaitAsync(HangGuard);
     }
 
     // A cancelled wait may surface as OperationCanceledException or its TaskCanceledException subtype.

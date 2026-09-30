@@ -35,8 +35,7 @@ public partial class BrokerProcessTests
         var control = new SplitFrameWrite(splitWriteNumber: 1);
         var controlReads = new ReadCounter();
         await using var broker = new ScriptedBroker(clock, stream => controlReads.Wrap(control.Wrap(stream)));
-        var ended = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        broker.Process.Ended += reason => ended.TrySetResult(reason);
+        var ended = broker.Process.Ended;
         // The control reader's stall limit is the first timer due after 30 seconds; the request's
         // write bound is the second.
         await clock.TimerCreated(BrokerLiveness.StallLimit).WaitAsync(HangGuard);
@@ -49,13 +48,13 @@ public partial class BrokerProcessTests
 
         clock.Advance(BrokerLiveness.ControlReplyTimeout - HeartbeatAfter - OneTick);
         Assert.IsFalse(writeBound.Fired, "The write bound must not fire before the limit.");
-        Assert.IsFalse(ended.Task.IsCompleted);
+        Assert.IsFalse(ended.IsCompleted);
         clock.Advance(OneTick);
 
         Assert.IsTrue(writeBound.Fired);
-        StringAssert.Contains(await ended.Task.WaitAsync(HangGuard), "did not finish writing within 30 seconds");
+        StringAssert.Contains(await ended.WaitAsync(HangGuard), "did not finish writing within 30 seconds");
         await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => held.WaitAsync(HangGuard));
-        Assert.IsTrue(broker.Process.HasEnded);
+        await broker.Process.Ended.WaitAsync(HangGuard);
     }
 
     [TestMethod]
@@ -88,6 +87,6 @@ public partial class BrokerProcessTests
         StringAssert.Contains(lost.Message, "did not connect within 30 seconds");
         await Assert.ThrowsExceptionAsync<IOException>(() =>
             broker.Pipes.ConnectAsync(request.RequirePipeName(), CancellationToken.None));
-        Assert.IsFalse(broker.Process.HasEnded, "Only the channel failed.");
+        Assert.IsFalse(broker.Process.Ended.IsCompleted, "Only the channel failed.");
     }
 }

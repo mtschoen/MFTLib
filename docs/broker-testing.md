@@ -26,7 +26,7 @@ it closes the control pipe, ends the host, closes the drive pipes, and waits for
 the session task. The harness has no separate fault event or stored host
 exception. A host failure reaches the test through the production surfaces:
 
-- `BrokerProcess.Ended` and `HasEnded`;
+- the `BrokerProcess.Ended` task;
 - `BrokerChannelLostException` on pending control or drive operations; or
 - a host `Error` frame translated by the operation reading that channel.
 

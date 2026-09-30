@@ -105,7 +105,7 @@ public class BrokerIndexWatchSourceFaultTests
         Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
         Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('U').WatchCatchUp);
         Assert.IsNull(harness.DriveFor('U').WatchFailureMessage);
-        Assert.IsFalse(broker.Process.HasEnded, "one lost drive channel does not end the process");
+        Assert.IsFalse(broker.Process.Ended.IsCompleted, "one lost drive channel does not end the process");
     }
 
     [TestMethod]

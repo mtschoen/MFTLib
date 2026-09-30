@@ -271,7 +271,7 @@ public partial class BrokerProcessTests
 
         Assert.AreEqual('D', other.DriveLetter);
         Assert.IsTrue(block.Header.RowCount > 0);
-        Assert.IsFalse(broker.Process.HasEnded);
+        Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
 
     [TestMethod]

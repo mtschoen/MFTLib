@@ -6,7 +6,7 @@ namespace MFTLib;
 ///     under request ids; each drive operation runs on a drive pipe of its own, so a slow or lost
 ///     drive never delays another. When the control pipe is lost the process has ended: every
 ///     pending request fails with <see cref="BrokerChannelLostException" /> and <see cref="Ended" />
-///     fires once.
+///     completes with the reason.
 /// </summary>
 public sealed partial class BrokerProcess : IAsyncDisposable
 {
@@ -37,6 +37,8 @@ public sealed partial class BrokerProcess : IAsyncDisposable
     // ends it with that reason; null while it runs.
     string? _endRequestedReason;
 
+    readonly TaskCompletionSource<string> _ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     /// <summary>Builds a process over a connected control pipe. Tests reach it through the harness.</summary>
     /// <param name="control">The connected control pipe.</param>
     /// <param name="pipes">Creates each drive pipe the process opens.</param>
@@ -59,37 +61,22 @@ public sealed partial class BrokerProcess : IAsyncDisposable
         _controlReader = Task.Run(ReadControlAsync, CancellationToken.None);
     }
 
-    /// <summary>True once the control pipe has been lost or the process disposed.</summary>
-    public bool HasEnded
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _endReason != null;
-            }
-        }
-    }
-
     /// <summary>
-    ///     Fires once, from the control pipe's reader, when the process ends for any reason
+    ///     Completes once, from the control pipe's reader, when the process ends for any reason
     ///     (the broker exited or crashed, the control pipe failed, or this process was disposed),
-    ///     with the reason. Every drive channel then reads EOF. Subscribers run in registration
-    ///     order outside the process lock, after pending requests have been failed. Exceptions
-    ///     thrown synchronously by a subscriber are caught and reported through the existing
-    ///     opt-in, best-effort <see cref="BrokerDiagnostics" /> logging; later subscribers still run.
+    ///     with the reason. Pending requests have been failed by then and every drive channel reads
+    ///     EOF. A caller that looks after the end still gets the reason. The task never faults and
+    ///     never stays uncompleted past disposal; its continuations run asynchronously.
     /// </summary>
-    public event Action<string>? Ended;
+    public Task<string> Ended => _ended.Task;
 
     /// <summary>
     ///     Closes the control pipe, which ends every channel on the host, then closes every drive
-    ///     channel still open here and waits for the control reader. Idempotent. How the broker ended
-    ///     never makes it throw: the client has already reported that through <see cref="Ended" />
-    ///     and its failed requests and channels, and a control pipe that fails to close is only
-    ///     logged. Exceptions thrown synchronously by <see cref="Ended" /> handlers are caught and
-    ///     reported through the existing opt-in, best-effort <see cref="BrokerDiagnostics" /> logging;
-    ///     they do not propagate from disposal. An exception from closing a drive channel still
-    ///     propagates.
+    ///     channel still open here and waits for the control reader, so <see cref="Ended" /> is
+    ///     complete when it returns. Idempotent. How the broker ended never makes it throw: the
+    ///     client has already reported that through <see cref="Ended" /> and its failed requests and
+    ///     channels, and a control pipe that fails to close is only logged. An exception from
+    ///     closing a drive channel still propagates.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
@@ -128,7 +115,7 @@ public sealed partial class BrokerProcess : IAsyncDisposable
     }
 
     // Starts ending the process: the control reader stops at once, fails every pending request
-    // with this reason and raises Ended.
+    // with this reason and completes Ended.
     void RequestEnd(string reason)
     {
         lock (_gate)

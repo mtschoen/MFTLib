@@ -471,7 +471,9 @@ await using var broker = await BrokerProcess.LaunchAsync(
     BrokerLauncher.Launch,
     cancellationToken);
 
-broker.Ended += reason => Console.Error.WriteLine($"Broker ended: {reason}");
+_ = broker.Ended.ContinueWith(
+    ended => Console.Error.WriteLine($"Broker ended: {ended.Result}"),
+    TaskScheduler.Default);
 
 Task<BrokerProcess> ConnectBrokerAsync(CancellationToken _) =>
     Task.FromResult(broker);
@@ -513,7 +515,7 @@ UsnJournalSettings grown = await broker.GrowUsnJournalAsync(
 ```
 
 Journal growth is an explicit user action; the broker refuses a requested maximum at or
-below the current value. `HasEnded` and `Ended` report loss of the control pipe. See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
+below the current value. `Ended` completes with the reason when the control pipe is lost. See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
 for startup dispatch, direct scans, watch channels, recovery, and diagnostics.
 
 ## Build a live index with FileIndex
@@ -750,7 +752,7 @@ fail immediately with `InvalidOperationException`. Queue the operation, for exam
 catch-up waits are allowed.
 
 A broker `Error` frame fails only its pending operation with the host's message. Losing
-the control pipe sets `BrokerProcess.HasEnded`, raises `BrokerProcess.Ended` once, and
+the control pipe completes the `BrokerProcess.Ended` task with the reason and
 fails pending operations with `BrokerChannelLostException`. Losing a drive pipe faults
 only that drive. Idle control and watch pipes, queued scans, and processing operations
 that recently reported progress receive heartbeats. A processing operation with no

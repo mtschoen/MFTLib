@@ -256,8 +256,15 @@ public sealed partial class BrokerProcess
         }
 
         // The stall timer drains before the process is reported ended, so no callback outlives it.
-        await reader.DisposeAsync().ConfigureAwait(false);
-        End(reason);
+        // A reader that fails to drain must still end the process, or Ended would never complete.
+        try
+        {
+            await reader.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            End(reason);
+        }
     }
 
     // Routes replies to their requests until the pipe ends or carries a frame the control pipe
@@ -300,7 +307,7 @@ public sealed partial class BrokerProcess
     }
 
     // Ends the process once: closes the control pipe, fails and releases every pending request,
-    // then raises Ended. A reason recorded by RequestEnd wins over what the reader saw, because
+    // then completes Ended. A reason recorded by RequestEnd wins over what the reader saw, because
     // the reader's failure is only the consequence of that request.
     void End(string observed)
     {
@@ -315,45 +322,22 @@ public sealed partial class BrokerProcess
         }
 
         _lifetime.Cancel();
-        _control.Dispose();
+        try
+        {
+            _control.Dispose();
+        }
+        catch (Exception exception)
+        {
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel,
+                $"Closing the control pipe failed: {exception}");
+        }
+
         foreach (var reply in failed)
         {
             reply.TrySetException(new BrokerChannelLostException(null, reason));
         }
 
-        var handlers = Ended;
-        if (handlers is null)
-        {
-            return;
-        }
-
-        foreach (var item in handlers.GetInvocationList())
-        {
-            if (item is not Action<string> handler)
-            {
-                continue;
-            }
-
-            try
-            {
-                handler(reason);
-            }
-            catch (Exception exception)
-            {
-                try
-                {
-                    if (BrokerDiagnostics.Enabled)
-                    {
-                        BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel,
-                            $"Ended handler notification failed: {exception}");
-                    }
-                }
-                catch
-                {
-                    // Best-effort reporting: formatting or diagnostic emission failure must not escape containment.
-                }
-            }
-        }
+        _ended.TrySetResult(reason);
     }
 
     static string Seconds(TimeSpan duration)

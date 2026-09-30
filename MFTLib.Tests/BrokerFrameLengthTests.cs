@@ -52,8 +52,7 @@ public class BrokerFrameLengthTests
     public async Task Client_ControlFrameLengthBeyondMaximum_EndsProcessWithChannelLost()
     {
         await using var broker = new ScriptedBroker();
-        var ended = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        broker.Process.Ended += reason => ended.TrySetResult(reason);
+        var ended = broker.Process.Ended;
         var pending = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
         await broker.ReadRequestAsync();
 
@@ -61,7 +60,7 @@ public class BrokerFrameLengthTests
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
         Assert.IsNull(lost.DriveLetter);
-        StringAssert.Contains(await ended.Task.WaitAsync(HangGuard), "2147483647");
+        StringAssert.Contains(await ended.WaitAsync(HangGuard), "2147483647");
     }
 
     [TestMethod]

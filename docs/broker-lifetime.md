@@ -8,7 +8,7 @@
       on the control pipe, waits for both the host connection and `ChannelOpened`, and writes one
       request. Each scan or watch then owns that drive channel, so closing or faulting it cancels
       only that operation. Control EOF ends the process and every channel;
-      `BrokerProcess.Ended` and `HasEnded` report that lifecycle, and pending work fails with
+      the `BrokerProcess.Ended` task completes with the reason, and pending work fails with
       `BrokerChannelLostException`. The host admits concurrent scans under one processor-sized
       parse-thread budget and rebalances each `ParseThreadAllowance` when scans enter or leave;
       native parsing reads the allowance at each chunk and before path resolution. A scan writes

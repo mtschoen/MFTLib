@@ -40,7 +40,7 @@ public partial class BrokerProcessTests
             "The pipe the client released has nothing listening.");
         await broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard);
         Assert.AreEqual(0, watchStarts, "No channel ran on the host.");
-        Assert.IsFalse(broker.Process.HasEnded);
+        Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
 
     [TestMethod]
@@ -80,7 +80,7 @@ public partial class BrokerProcessTests
                 CancellationToken.None).WaitAsync(HangGuard));
 
         StringAssert.Contains(exception.Message, "no pipe for drive C");
-        Assert.IsFalse(broker.Process.HasEnded);
+        Assert.IsFalse(broker.Process.Ended.IsCompleted);
     }
 
     [TestMethod]
@@ -100,6 +100,6 @@ public partial class BrokerProcessTests
         Assert.AreEqual('C', lost.DriveLetter);
         await clientEnd.Disposed.WaitAsync(HangGuard);
         await (await hostEnd.Task.WaitAsync(HangGuard)).Disposed.WaitAsync(HangGuard);
-        Assert.IsFalse(broker.Process.HasEnded, "A lost drive channel leaves the process running.");
+        Assert.IsFalse(broker.Process.Ended.IsCompleted, "A lost drive channel leaves the process running.");
     }
 }

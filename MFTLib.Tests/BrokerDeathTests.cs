@@ -17,10 +17,9 @@ public class BrokerDeathTests
     static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
 
     [TestMethod]
-    public async Task WatchChannel_ProcessDeath_FiresEndedOnce_AndReadThrowsChannelLost()
+    public async Task WatchChannel_ProcessDeath_CompletesEnded_AndReadThrowsChannelLost()
     {
         await using var broker = new ScriptedBroker();
-        var deaths = new EndedRecorder(broker.Process);
         var process = broker.Process;
         var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
         var (handle, host) = await StartAsync(source, broker, 'C');
@@ -33,24 +32,22 @@ public class BrokerDeathTests
 
         var lost = await WatchReads.ThrowsAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.DriveLetter);
-        await deaths.First.WaitAsync(HangGuard);
-        Assert.AreEqual(1, deaths.Count);
+        await broker.Process.Ended.WaitAsync(HangGuard);
     }
 
     [TestMethod]
-    public async Task WatchChannel_DeathBeforeRead_LateReadsThrow_EndedFiresOnce()
+    public async Task WatchChannel_DeathBeforeRead_LateReadsThrow_EndedCompletes()
     {
         // The host ends while nothing reads: a read that starts afterwards still fails, for the
         // drive it was watching, and so does a watch that starts after the death.
         await using var broker = new ScriptedBroker();
-        var deaths = new EndedRecorder(broker.Process);
         var process = broker.Process;
         var source = new BrokerIndexWatchSource(_ => Task.FromResult(process));
         var (handle, host) = await StartAsync(source, broker, 'C');
         await using var _ = handle.ConfigureAwait(false);
 
         await EndHostAsync(broker, host);
-        await deaths.First.WaitAsync(HangGuard);
+        await broker.Process.Ended.WaitAsync(HangGuard);
 
         var reader = handle.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
         await using var __ = reader.ConfigureAwait(false);
@@ -59,31 +56,27 @@ public class BrokerDeathTests
         var restart = await WatchReads.ThrowsAsync<BrokerChannelLostException>(() =>
             source.StartAsync(new IndexWatchTarget('D', 7, 100), CancellationToken.None));
         Assert.AreEqual('D', restart.DriveLetter);
-        Assert.AreEqual(1, deaths.Count);
     }
 
     [TestMethod]
     public async Task ControlOperation_AfterProcessDeath_ThrowsChannelLost()
     {
         await using var broker = new ScriptedBroker();
-        var deaths = new EndedRecorder(broker.Process);
         await broker.CloseControlAsync();
-        await deaths.First.WaitAsync(HangGuard);
+        await broker.Process.Ended.WaitAsync(HangGuard);
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
             broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
 
         Assert.IsNull(lost.DriveLetter, "the control pipe is what was lost");
-        Assert.IsTrue(broker.Process.HasEnded);
-        Assert.AreEqual(1, deaths.Count);
+        await broker.Process.Ended.WaitAsync(HangGuard);
     }
 
     [TestMethod]
-    public async Task ProcessDeath_FaultsEveryDriveByName_EndedFiresOnce()
+    public async Task ProcessDeath_FaultsEveryDriveByName_EndedCompletes()
     {
         await using var broker = new ScriptedWatchBrokerHarness();
         var token = broker.CancellationToken;
-        var deaths = new EndedRecorder(broker.Process);
         var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateWatchSource();
         using var harness = new WatchHarness(source, 'T', 'U');
         await harness.Index.StartWatchingAsync('T', token);
@@ -95,7 +88,7 @@ public class BrokerDeathTests
 
         var faultT = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
         var faultU = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'U');
-        await deaths.First.WaitAsync(HangGuard);
+        await broker.Process.Ended.WaitAsync(HangGuard);
         Assert.AreEqual('T', ((BrokerChannelLostException)faultT.Exception).DriveLetter);
         Assert.AreEqual('U', ((BrokerChannelLostException)faultU.Exception).DriveLetter);
         CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, harness.Faults.Select(fault => fault.DriveLetter).ToArray());
@@ -104,7 +97,6 @@ public class BrokerDeathTests
         Assert.IsNotNull(harness.DriveFor('U').WatchFailureMessage);
         Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
         Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('U').WatchCatchUp);
-        Assert.AreEqual(1, deaths.Count);
     }
 
     // The scripted host ends the way a process does: its control pipe and every drive pipe close.
@@ -121,24 +113,5 @@ public class BrokerDeathTests
         var host = await broker.AcceptChannelAsync();
         Assert.AreEqual(BrokerFrameKind.StartWatch, (await HostChannelHarness.ReadFrameAsync(host))?.Kind);
         return (await starting.WaitAsync(HangGuard), host);
-    }
-
-    sealed class EndedRecorder
-    {
-        readonly TaskCompletionSource _first = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        int _count;
-
-        public EndedRecorder(BrokerProcess process)
-        {
-            process.Ended += _ =>
-            {
-                Interlocked.Increment(ref _count);
-                _first.TrySetResult();
-            };
-        }
-
-        public Task First => _first.Task;
-
-        public int Count => Volatile.Read(ref _count);
     }
 }

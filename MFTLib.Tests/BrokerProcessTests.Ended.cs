@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -7,139 +6,89 @@ namespace MFTLib.Tests;
 public partial class BrokerProcessTests
 {
     [DataTestMethod]
-    [DataRow("dispose", "The broker process was disposed.", false)]
-    [DataRow("eof", "The broker closed its control pipe.", false)]
-    [DataRow("unroutable", "The broker sent CaughtUp on the control pipe.", false)]
-    [DataRow("dispose", "The broker process was disposed.", true)]
-    public async Task Ended_ThrowingSubscriber_DoesNotBreakTeardownOrLaterDelivery(
-        string ending, string expectedReason, bool faultFormatter = false)
+    [DataRow("dispose", "The broker process was disposed.")]
+    [DataRow("eof", "The broker closed its control pipe.")]
+    [DataRow("unroutable", "The broker sent CaughtUp on the control pipe.")]
+    public async Task Ended_CompletesOnceWithReason_AfterPendingRequestsFailed(string ending, string expectedReason)
     {
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-        BrokerDiagnostics.ResetToDefaults();
-        var lines = new ConcurrentQueue<string>();
-        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Enqueue));
-        BrokerDiagnostics.Enable("client");
-        try
+        await using var broker = new ScriptedBroker();
+        var beforeEnd = broker.Process.Ended;
+        Assert.IsFalse(beforeEnd.IsCompleted);
+        var first = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
+        Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
+        var second = broker.Process.QueryVolumeAsync('D', CancellationToken.None);
+        Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
+
+        if (ending == "eof")
         {
-            await using var broker = new ScriptedBroker();
-            var firstEntered = new TaskCompletionSource<string>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            var notifications = new List<string>();
-            var throwingCalls = 0;
-            var secondThrowingCalls = 0;
-            var endedAtNotification = false;
-            var pendingAtNotification = -1;
-            var process = broker.Process;
-            process.Ended += reason =>
-            {
-                throwingCalls++;
-                endedAtNotification = process.HasEnded;
-                pendingAtNotification = process.PendingRequestCountForTest;
-                firstEntered.TrySetResult(reason);
-                if (faultFormatter)
-                {
-                    throw new ThrowingFormattedException();
-                }
-
-                throw new InvalidOperationException("ended subscriber regression");
-            };
-            process.Ended += _ =>
-            {
-                secondThrowingCalls++;
-                throw new InvalidOperationException("second ended subscriber regression");
-            };
-            process.Ended += notifications.Add;
-
-            var first = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
-            Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
-            var second = broker.Process.QueryVolumeAsync('D', CancellationToken.None);
-            Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
-
-            if (ending == "eof")
-            {
-                await broker.CloseControlAsync();
-            }
-            else if (ending == "unroutable")
-            {
-                await broker.WriteControlAsync(BrokerProtocol.WriteCaughtUp);
-            }
-
-            if (ending != "dispose")
-            {
-                Assert.AreEqual(expectedReason, await firstEntered.Task.WaitAsync(HangGuard));
-            }
-
-            await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-            await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-
-            Assert.AreEqual(expectedReason, await firstEntered.Task.WaitAsync(HangGuard));
-            Assert.IsTrue(broker.Process.HasEnded);
-            Assert.IsTrue(endedAtNotification);
-            Assert.AreEqual(0, pendingAtNotification);
-            Assert.AreEqual(1, throwingCalls);
-            Assert.AreEqual(1, secondThrowingCalls);
-            CollectionAssert.AreEqual(new[] { expectedReason }, notifications);
-            foreach (var request in new Task[] { first, second })
-            {
-                var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(
-                    () => request.WaitAsync(HangGuard));
-                Assert.IsNull(lost.DriveLetter);
-                Assert.AreEqual(expectedReason, lost.Message);
-            }
-
-            var rejected = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(
-                () => broker.Process.QueryVolumeAsync('E', CancellationToken.None).WaitAsync(HangGuard));
-            Assert.IsNull(rejected.DriveLetter);
-            Assert.AreEqual(expectedReason, rejected.Message);
-
-            await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-            var failures = lines.Where(line => line.Contains("Ended handler notification failed:",
-                StringComparison.Ordinal)).ToArray();
-            if (faultFormatter)
-            {
-                Assert.AreEqual(1, failures.Length);
-                StringAssert.Contains(failures[0], ":control]");
-                StringAssert.Contains(failures[0], "System.InvalidOperationException");
-                StringAssert.Contains(failures[0], "second ended subscriber regression");
-            }
-            else
-            {
-                Assert.AreEqual(2, failures.Length);
-                StringAssert.Contains(failures[0], ":control]");
-                StringAssert.Contains(failures[0], "System.InvalidOperationException");
-                StringAssert.Contains(failures[0], "ended subscriber regression");
-                StringAssert.Contains(failures[1], ":control]");
-                StringAssert.Contains(failures[1], "System.InvalidOperationException");
-                StringAssert.Contains(failures[1], "second ended subscriber regression");
-            }
+            await broker.CloseControlAsync();
         }
-        finally
+        else if (ending == "unroutable")
         {
-            try
-            {
-                await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(HangGuard);
-            }
-            finally
-            {
-                BrokerDiagnostics.ResetToDefaults();
-            }
+            await broker.WriteControlAsync(BrokerProtocol.WriteCaughtUp);
         }
+        else
+        {
+            await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        }
+
+        Assert.AreEqual(expectedReason, await beforeEnd.WaitAsync(HangGuard));
+        Assert.AreEqual(0, broker.Process.PendingRequestCountForTest, "pending requests were failed before Ended completed");
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+
+        Assert.AreSame(beforeEnd, broker.Process.Ended, "the same task is returned each time");
+        Assert.AreEqual(expectedReason, await broker.Process.Ended.WaitAsync(HangGuard),
+            "a caller that looks after the end still gets the reason");
+        foreach (var request in new Task[] { first, second })
+        {
+            var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(
+                () => request.WaitAsync(HangGuard));
+            Assert.IsNull(lost.DriveLetter);
+            Assert.AreEqual(expectedReason, lost.Message);
+        }
+
+        var rejected = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(
+            () => broker.Process.QueryVolumeAsync('E', CancellationToken.None).WaitAsync(HangGuard));
+        Assert.AreEqual(expectedReason, rejected.Message);
     }
 
-    internal sealed class ThrowingFormattedException : Exception
+    [TestMethod]
+    public async Task Ended_ControlPipeFailsToClose_StillCompletesWithoutFaulting()
     {
-        public ThrowingFormattedException()
-        {
-        }
+        await using var broker = new ScriptedBroker(wrapClientControl: stream => new ThrowOnAsyncDisposeStream(stream));
 
-        public ThrowingFormattedException(string? message) : base(message)
-        {
-        }
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
-        public ThrowingFormattedException(string? message, Exception? innerException) : base(message, innerException)
-        {
-        }
+        Assert.IsTrue(broker.Process.Ended.IsCompletedSuccessfully);
+        Assert.AreEqual("The broker process was disposed.", await broker.Process.Ended);
+    }
 
-        public override string ToString() => throw new InvalidOperationException("exception formatter failed");
+    [TestMethod]
+    public async Task Ended_ControlPipeThrowsOnSynchronousClose_StillFailsPendingRequestsAndCompletes()
+    {
+        await using var broker = new ScriptedBroker(wrapClientControl: stream => new ThrowOnDisposeStream(stream));
+        var pending = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
+        await broker.ReadRequestAsync();
+
+        await broker.CloseControlAsync();
+
+        Assert.AreEqual("The broker closed its control pipe.", await broker.Process.Ended.WaitAsync(HangGuard));
+        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
+    }
+
+    [TestMethod]
+    public async Task Ended_StallTimerFailsToDrain_StillCompletesWithoutFaulting()
+    {
+        await using var broker = new ScriptedBroker(new ThrowOnTimerDisposeClock());
+        var pending = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
+        await broker.ReadRequestAsync();
+
+        await broker.CloseControlAsync();
+
+        Assert.AreEqual("The broker closed its control pipe.", await broker.Process.Ended.WaitAsync(HangGuard));
+        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+        await Assert.ThrowsExceptionAsync<IOException>(() => broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard));
     }
 }

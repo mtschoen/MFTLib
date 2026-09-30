@@ -28,7 +28,7 @@ public partial class BrokerProcessTests
             Assert.AreEqual(Volume.BytesPerFileRecordSegment, volume.BytesPerFileRecordSegment);
             Assert.AreEqual(Volume.MftRecordCount, volume.MftRecordCount);
             await process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-            Assert.IsTrue(process.HasEnded);
+            await process.Ended.WaitAsync(HangGuard);
         }
         finally
         {
@@ -86,7 +86,7 @@ public partial class BrokerProcessTests
             await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
                 process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
             await process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-            Assert.IsTrue(process.HasEnded);
+            await process.Ended.WaitAsync(HangGuard);
         }
         finally
         {

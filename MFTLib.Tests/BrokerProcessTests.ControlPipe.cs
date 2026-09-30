@@ -53,30 +53,23 @@ public partial class BrokerProcessTests
     public async Task ControlPipe_StalledFrame_EndsProcessWithHostMessage()
     {
         await using var broker = new ScriptedBroker();
-        var ended = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        broker.Process.Ended += reason => ended.TrySetResult(reason);
+        var ended = broker.Process.Ended;
         var pending = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
         await broker.ReadRequestAsync();
 
         await broker.WriteControlAsync(writer => BrokerProtocol.WriteStalled(writer, "the broker stopped answering"));
 
-        Assert.AreEqual("the broker stopped answering", await ended.Task.WaitAsync(HangGuard));
+        Assert.AreEqual("the broker stopped answering", await ended.WaitAsync(HangGuard));
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
         Assert.AreEqual("the broker stopped answering", lost.Message);
-        Assert.IsTrue(broker.Process.HasEnded);
+        await broker.Process.Ended.WaitAsync(HangGuard);
     }
 
     [TestMethod]
     public async Task ControlPipe_KnownReplyOfTheWrongKind_EndsProcessAndFailsEveryRequest()
     {
         await using var broker = new ScriptedBroker();
-        var endReasons = new System.Collections.Concurrent.ConcurrentQueue<string>();
-        var ended = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        broker.Process.Ended += reason =>
-        {
-            endReasons.Enqueue(reason);
-            ended.TrySetResult(reason);
-        };
+        var ended = broker.Process.Ended;
         var answered = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
         var request = await broker.ReadRequestAsync();
         var pending = broker.Process.QueryVolumeAsync('D', CancellationToken.None);
@@ -89,15 +82,14 @@ public partial class BrokerProcessTests
             answered.WaitAsync(HangGuard));
         Assert.IsNull(wrongReply.DriveLetter);
         StringAssert.Contains(wrongReply.Message, "UsnJournalSettings instead of VolumeInfo");
-        Assert.AreEqual(wrongReply.Message, await ended.Task.WaitAsync(HangGuard),
+        Assert.AreEqual(wrongReply.Message, await ended.WaitAsync(HangGuard),
             "The process ends with the mismatch as its reason.");
-        Assert.IsTrue(broker.Process.HasEnded);
+        await broker.Process.Ended.WaitAsync(HangGuard);
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
         Assert.AreEqual(wrongReply.Message, lost.Message);
         await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
             broker.Process.QueryVolumeAsync('E', CancellationToken.None).WaitAsync(HangGuard));
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-        Assert.AreEqual(1, endReasons.Count, "Ended fires once.");
     }
 
     [TestMethod]

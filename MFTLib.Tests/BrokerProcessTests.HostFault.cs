@@ -12,25 +12,13 @@ public partial class BrokerProcessTests
     {
         var corrupt = new CorruptFrameWrite(corruptWriteNumber: 1);
         var broker = new InProcessBroker(CreateHost(), wrapClientStream: ControlOnly(corrupt));
-        var ended = new List<string>();
-        broker.Process.Ended += reason =>
-        {
-            lock (ended)
-            {
-                ended.Add(reason);
-            }
-        };
 
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
             broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
 
         Assert.IsNull(lost.DriveLetter);
-        Assert.IsTrue(broker.Process.HasEnded);
+        await broker.Process.Ended.WaitAsync(HangGuard);
         await broker.DisposeAsync();
-        lock (ended)
-        {
-            Assert.AreEqual(1, ended.Count);
-        }
     }
 
     [TestMethod]
@@ -53,7 +41,7 @@ public partial class BrokerProcessTests
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.DriveLetter);
         await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => query.WaitAsync(HangGuard));
-        Assert.IsTrue(broker.Process.HasEnded);
+        await broker.Process.Ended.WaitAsync(HangGuard);
         AssertSectionReleased(broker.Sections.Single());
         await broker.DisposeAsync();
     }

@@ -87,7 +87,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(WatchCatchUpState.CaughtUp, scenario.DriveOf('U').WatchCatchUp);
         Assert.IsFalse(runOfU.Cancelled.IsCompleted, "U's host watch was never cancelled");
         Assert.AreEqual(1, scenario.Broker.Watch('U').StartedCount);
-        Assert.IsFalse(scenario.Broker.Process.HasEnded, "only T's channel was lost");
+        Assert.IsFalse(scenario.Broker.Process.Ended.IsCompleted, "only T's channel was lost");
         await runOfT.Cancelled.WaitAsync(HangGuard);
     }
 
@@ -149,7 +149,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
             await applied;
             Assert.AreEqual(0, scenario.FaultsOf('U').Count);
             Assert.IsFalse(runOfU.Cancelled.IsCompleted);
-            Assert.IsFalse(scenario.Broker.Process.HasEnded);
+            Assert.IsFalse(scenario.Broker.Process.Ended.IsCompleted);
         }
         finally
         {
@@ -181,7 +181,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         }
 
         Assert.AreEqual(0, scenario.Faults.Count);
-        Assert.IsFalse(scenario.Broker.Process.HasEnded);
+        Assert.IsFalse(scenario.Broker.Process.Ended.IsCompleted);
         Assert.IsTrue(index.Drives.All(drive => drive.WatchCatchUp == WatchCatchUpState.CaughtUp));
         var applied = ChangeSignal.WhenApplied(index, "late.txt");
         runOfT.Push(40, "late.txt", ScriptedWatchBrokerHarness.DefaultTip.NextUsn + 100);
@@ -198,8 +198,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
     public async Task IdleSessionOverBroker_NoRequestsNoChannels_KeepsProcessAlivePastStallLimit()
     {
         await using var scenario = await CrossDriveScenario.OpenAsync();
-        var ended = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        scenario.Broker.Process.Ended += reason => ended.TrySetResult(reason);
+        var ended = scenario.Broker.Process.Ended;
         scenario.BeginCadence();
 
         for (var interval = 0; interval < 10 * IntervalsToStallLimit; interval++)
@@ -207,8 +206,8 @@ public sealed partial class BrokerCrossDriveLivenessTests
             await scenario.AdvanceIntervalAsync();
         }
 
-        Assert.IsFalse(scenario.Broker.Process.HasEnded);
-        Assert.IsFalse(ended.Task.IsCompleted, "Ended is never raised");
+        Assert.IsFalse(scenario.Broker.Process.Ended.IsCompleted);
+        Assert.IsFalse(ended.IsCompleted, "Ended is never raised");
         var volume = await scenario.Broker.Process.QueryVolumeAsync('C', CancellationToken.None)
             .WaitAsync(HangGuard);
         Assert.AreEqual(1024L * 100, volume.MftValidDataLength);
