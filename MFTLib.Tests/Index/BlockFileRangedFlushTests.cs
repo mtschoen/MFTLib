@@ -236,15 +236,15 @@ public class BlockFileRangedFlushTests
     [TestMethod]
     public void SelectSynchronousFlag_ChoosesThePlatformValueAndRefusesOthers()
     {
-        Assert.AreEqual(4, Libc.SelectSynchronousFlag(OSPlatform.Linux));
-        Assert.AreEqual(0x10, Libc.SelectSynchronousFlag(OSPlatform.OSX));
+        Assert.AreEqual(6, Libc.SelectSynchronousFlag(OSPlatform.Linux));
+        Assert.AreEqual(0x12, Libc.SelectSynchronousFlag(OSPlatform.OSX));
         Assert.ThrowsException<PlatformNotSupportedException>(() => Libc.SelectSynchronousFlag(OSPlatform.Windows));
         Assert.ThrowsException<PlatformNotSupportedException>(() => Libc.SelectSynchronousFlag(OSPlatform.FreeBSD));
     }
 
     [TestMethod]
-    [DataRow("LINUX", 4)]
-    [DataRow("OSX", 0x10)]
+    [DataRow("LINUX", 6)]
+    [DataRow("OSX", 0x12)]
     public void SynchronizeRange_UnalignedStart_SynchronizesFromItsPageBoundaryWithThePlatformFlag(
         string platform, int expectedFlag)
     {

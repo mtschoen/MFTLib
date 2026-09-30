@@ -6,20 +6,20 @@ namespace MFTLib.Index;
 static class Libc
 {
     /// <summary>
-    ///     The <c>MS_SYNC</c> flag for <see cref="msync" />, whose value differs by platform (Linux 4,
-    ///     macOS 0x10; 4 is <c>MS_KILLPAGES</c> on macOS). Any other platform is refused rather than
-    ///     passed a guessed value.
+    ///     The native <c>MS_SYNC | MS_INVALIDATE</c> flags for <see cref="msync" />:
+    ///     Linux 6 (4 | 2), macOS 0x12 (0x10 | 0x02). On macOS, 4 is
+    ///     <c>MS_KILLPAGES</c>. Any other platform is refused rather than passed guessed flags.
     /// </summary>
     internal static int SelectSynchronousFlag(OSPlatform platform)
     {
         if (platform == OSPlatform.Linux)
         {
-            return 4;
+            return 4 | 2;
         }
 
         if (platform == OSPlatform.OSX)
         {
-            return 0x10;
+            return 0x10 | 0x02;
         }
 
         throw new PlatformNotSupportedException($"No msync flag is known for platform {platform}.");

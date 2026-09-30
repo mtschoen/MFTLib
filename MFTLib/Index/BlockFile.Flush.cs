@@ -20,7 +20,7 @@ public sealed unsafe partial class BlockFile
 
     /// <summary>
     ///     The Unix test seam, per instance: synchronizes one page-aligned range of the view with the
-    ///     given msync flag and returns the errno (0 on success). The default calls msync.
+    ///     given native msync flags and returns the errno (0 on success). The default calls msync.
     /// </summary>
     internal Func<long, long, int, int> _synchronizeViewRange;
 
@@ -83,12 +83,14 @@ public sealed unsafe partial class BlockFile
     }
 
     /// <summary>
-    ///     Flushes one range through <c>msync</c> with <paramref name="platform" />'s synchronous
-    ///     flag. msync needs a page-aligned address, so the range start moves down to its page
-    ///     boundary. A failed call throws with its errno.
+    ///     Flushes one range through <c>msync</c> with <paramref name="platform" />'s native
+    ///     <c>MS_SYNC | MS_INVALIDATE</c> flags. msync needs a page-aligned address, so the range
+    ///     start moves down to its page boundary. A failed call throws with its errno.
     /// </summary>
     internal void SynchronizeRange(long start, long end, OSPlatform platform)
     {
+        // Match .NET 10's Unix view flush; libc needs native flags, not the runtime's PAL values.
+        // https://github.com/dotnet/runtime/blob/v10.0.0/src/libraries/System.IO.MemoryMappedFiles/src/System/IO/MemoryMappedFiles/MemoryMappedView.Unix.cs
         var flag = Libc.SelectSynchronousFlag(platform);
         var pageBytes = Environment.SystemPageSize;
         var alignedStart = start - (start % pageBytes);
