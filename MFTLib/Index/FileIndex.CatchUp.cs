@@ -123,7 +123,7 @@ public sealed partial class FileIndex
             }
             catch
             {
-                RestoreRetiredFile(retired);
+                DiscardUnproducedTarget(drive, target, retired);
                 throw;
             }
 
@@ -135,7 +135,7 @@ public sealed partial class FileIndex
             };
             if (settled.Block is not { } block)
             {
-                RestoreRetiredFile(retired);
+                DiscardUnproducedTarget(drive, target, retired);
                 RecordOpenProducerFailure(runtime.DriveLetter, settled, lostBlockInPlace: adopted is not null);
                 return;
             }

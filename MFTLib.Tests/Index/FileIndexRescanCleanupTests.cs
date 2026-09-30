@@ -257,7 +257,7 @@ public class FileIndexRescanCleanupTests
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.StartsFor('T')[^1]);
     }
 
-    static void WriteBlock(string path, uint volumeSerial, ulong journalId, long nextUsn)
+    internal static void WriteBlock(string path, uint volumeSerial, ulong journalId, long nextUsn)
     {
         var moment = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc);
         var createOptions = new BlockFileCreateOptions

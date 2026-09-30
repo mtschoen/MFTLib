@@ -65,6 +65,11 @@ slot while that scan runs does not relabel the old private block. A failed
 or cancelled scan which retains the old block retains its backing status.
 During a canonical rescan the old file may be temporarily renamed aside;
 the backing classification describes its slot, not a path-existence guarantee.
+A scan into the canonical slot that fails or is cancelled without producing a block
+deletes its partial file before it returns, while its index still holds the slot's owner lock, and reports the
+delete (or a failure to delete) through `FileIndexOptions.Diagnostics`; a file that sat in the slot before the
+scan stays only while it still opens as a complete, valid block; a rescan's previous block
+file is restored.
 
 The value contains no PID, process name, or user, and PrivateFallback does
 not assert that another owner is still alive. It adds observability only:

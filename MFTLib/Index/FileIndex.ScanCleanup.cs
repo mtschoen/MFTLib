@@ -95,7 +95,8 @@ public sealed partial class FileIndex
     ///     canonical file belongs to another live index and is never validated, renamed, or
     ///     deleted, and the scan goes to a private delete-on-close temp file instead.
     /// </summary>
-    readonly record struct ScanBlockTarget(string Path, bool DeleteOnClose, bool OwnsCanonicalSlot);
+    readonly record struct ScanBlockTarget(string Path, bool DeleteOnClose, bool OwnsCanonicalSlot,
+        bool ExistedBeforeScan = false);
 
     ScanBlockTarget ComputeScanTarget(IndexedDrive drive, bool ownsCanonicalSlot)
     {
@@ -108,8 +109,9 @@ public sealed partial class FileIndex
 
         if (ownsCanonicalSlot)
         {
-            return new ScanBlockTarget(CanonicalBlockPath(drive), DeleteOnClose: false,
-                OwnsCanonicalSlot: true);
+            var canonicalPath = CanonicalBlockPath(drive);
+            return new ScanBlockTarget(canonicalPath, DeleteOnClose: false, OwnsCanonicalSlot: true,
+                ExistedBeforeScan: File.Exists(canonicalPath));
         }
 
         return new ScanBlockTarget(Path.Combine(Path.GetTempPath(),
@@ -221,6 +223,76 @@ public sealed partial class FileIndex
         File.Move(target.Path, retiredPath);
         superseded.ScheduleDeleteAt(retiredPath, _options.Diagnostics);
         return new RetiredCanonicalFile(retiredPath, target.Path, superseded);
+    }
+
+    /// <summary>
+    ///     Cleans up after production into <paramref name="target" /> ended without a block (failed
+    ///     or cancelled). A renamed-aside file is restored, which also deletes the partial
+    ///     replacement. With nothing renamed, a canonical target's file is deleted here, while
+    ///     this index still holds the slot's owner lock; a private target deletes itself on close.
+    ///     A file that sat in the slot before the scan (a complete block whose checkpoint the journal
+    ///     no longer holds) is judged by what is there now, not by who wrote it: it stays only while
+    ///     it is still a complete, valid block, and a truncated or half-written replacement goes.
+    /// </summary>
+    void DiscardUnproducedTarget(IndexedDrive drive, ScanBlockTarget target, RetiredCanonicalFile? retired)
+    {
+        if (retired is not null)
+        {
+            RestoreRetiredFile(retired);
+        }
+        else if (target.OwnsCanonicalSlot &&
+                 !(target.ExistedBeforeScan && HoldsCompleteBlock(target.Path, drive.VolumeSerial)))
+        {
+            DeletePartialCanonicalBlock(target.Path);
+        }
+    }
+
+    /// <summary>
+    ///     True when the file at <paramref name="path" /> still opens as a complete block for the
+    ///     volume, the same validation the open path applies before it adopts a cached block.
+    /// </summary>
+    static bool HoldsCompleteBlock(string path, uint volumeSerial)
+    {
+        // Open reports an unreadable or invalid file as null rather than throwing.
+        using var block = BlockFile.Open(path, volumeSerial, out _);
+        return block is not null;
+    }
+
+    /// <summary>
+    ///     Deletes the partial block a failed or cancelled scan left at the canonical path and reports
+    ///     the delete, or the failure to delete, through <see cref="FileIndexOptions.Diagnostics" />.
+    ///     A failure here never replaces the scan's own exception: the next open rejects whatever
+    ///     is left as incomplete.
+    /// </summary>
+    void DeletePartialCanonicalBlock(string path)
+    {
+        string report;
+        try
+        {
+            var existed = File.Exists(path);
+            File.Delete(path);
+            if (!existed)
+            {
+                return;
+            }
+
+            report =
+                $"Deleted block file '{path}': removing the partial block a failed or cancelled scan left in the canonical cache slot.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            report =
+                $"Could not delete block file '{path}': the partial block a failed or cancelled scan left in the canonical cache slot ({exception.Message}).";
+        }
+
+        try
+        {
+            _options.Diagnostics?.Invoke(report);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // The callback is the consumer's; its failure must not replace the scan's own exception.
+        }
     }
 
     /// <summary>

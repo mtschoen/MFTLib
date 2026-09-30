@@ -31,6 +31,13 @@
       selections; callback exceptions propagate before canonical work. Rejected files are never opened, locked,
       or deleted. The deletion success logger remains separate. Consumers can collect these reports to
       preserve their own corruption diagnostics without globbing the cache directory themselves.
+      A scan into the canonical slot that fails or is cancelled without producing a block deletes its
+      partial file itself, while this index still holds the owner lock, and logs the delete (or the
+      failure to delete) through `Diagnostics`; a throwing callback never replaces the scan's own exception.
+      A file that already sat in the slot before the scan, such as a complete block rejected only for an
+      unresumable checkpoint, is judged by what is there after the failure: it stays only while it still
+      opens as a complete, valid block, and a truncated or half-written replacement is deleted. A rescan
+      restores its renamed-aside previous block instead.
       `DriveStatus.CacheSlot` reports the current published block's backing:
       `CacheSlotState.OwnedCanonical` for the canonical slot held by this index,
       `PrivateFallback` for a private fallback block, and `NotApplicable` for

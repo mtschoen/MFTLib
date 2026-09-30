@@ -149,13 +149,13 @@ public sealed partial class FileIndex
         }
         catch
         {
-            RestoreRetiredFile(retired);
+            DiscardUnproducedTarget(drive, target, retired);
             throw;
         }
 
         if (produced.Block is not { } block)
         {
-            RestoreRetiredFile(retired);
+            DiscardUnproducedTarget(drive, target, retired);
             RecordRescanProducerFailure(runtime.DriveLetter, produced.ProducerFailureMessage);
             return new ScanAttempt(Published: false, produced.ProducerFailure, produced.ProducerFailureMessage);
         }
