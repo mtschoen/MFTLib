@@ -196,6 +196,28 @@ IEnumerable<string> directories = volume.FindDirectories("node_modules");
 IEnumerable<string> files = volume.FindFiles("desktop.ini");
 ```
 
+`MatchFlags.IncludeFreed` opts a scan into returning freed base records whose
+attributes still validate. These rows have `InUse == false` and retain the stored
+`SequenceNumber`; extension records are skipped. The default scan returns only
+in-use records.
+
+Combine it with `MatchFlags.ResolvePaths` to resolve freed records' paths. Every
+parent reference, including the root, must name a directory record and match its
+stored sequence. A freed parent also accepts a reference one sequence behind, with
+16-bit wraparound. Missing or non-directory parents, reused records, cycles, and
+chains longer than 128 components leave `FullPath` null and preserve the bare
+`FileName`. Live records
+keep their existing path behavior. Name filters work with `IncludeFreed`.
+
+```csharp
+var records = MftVolume.ParseMFTFromFile(mftFilePath, null,
+    MatchFlags.IncludeFreed | MatchFlags.ResolvePaths, out var timings);
+```
+
+The flag is available through the existing `StreamRecords`, `FindByName`,
+`ParseMFTFromFile`, and `StreamMFTFromFile` scan APIs. `MFTLib.Index` and the broker
+block scan remain a live-files index.
+
 ### Stream to reduce managed allocations
 
 ```csharp

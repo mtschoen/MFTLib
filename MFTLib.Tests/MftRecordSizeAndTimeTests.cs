@@ -7,9 +7,9 @@ namespace MFTLib.Tests;
 public class MftRecordSizeAndTimeTests
 {
     [TestMethod]
-    public void ExpectedAbiVersion_IsTwo()
+    public void ExpectedAbiVersion_IsThree()
     {
-        Assert.AreEqual(2u, MFTLibNative.ExpectedMftNativeAbiVersion);
+        Assert.AreEqual(3u, MFTLibNative.ExpectedMftNativeAbiVersion);
     }
 
     [TestMethod]
@@ -19,14 +19,14 @@ public class MftRecordSizeAndTimeTests
     }
 
     [TestMethod]
-    public void NativeLibrary_ReportsAbiVersionTwo()
+    public void NativeLibrary_ReportsAbiVersionThree()
     {
         if (MftFixtureTests.SkipOnNonWindows())
         {
             return;
         }
 
-        Assert.AreEqual(2u, MFTLibNative._getMftNativeAbiVersion());
+        Assert.AreEqual(3u, MFTLibNative._getMftNativeAbiVersion());
     }
 
     [TestMethod]

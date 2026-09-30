@@ -169,7 +169,7 @@ bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geom
     return true;
 }
 
-// Scan one file record. If it is an in-use, non-extension record with a non-DOS
+// Scan one eligible base record. If it has a validated non-DOS
 // FileName that passes the filter, fill *outEntry and return true. Side effect:
 // stores the name into the path-lookup table when one is provided.
 bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext& scan, ParsedEntry* outEntry) {
@@ -178,13 +178,18 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
     if (rec->MultiSectorHeader.Magic != 0x454C4946) {
         return false;
     }
-    if ((rec->Flags & 0x0001) == 0) {
+    if ((rec->Flags & 0x0001) == 0 && (scan.filter.flags & MATCH_FLAG_INCLUDE_FREED) == 0) {
         return false;
     }
 
     uint64_t baseRef = static_cast<uint64_t>(rec->BaseFileRecordSegment.SegmentNumberLowPart) |
                        (static_cast<uint64_t>(rec->BaseFileRecordSegment.SegmentNumberHighPart) << 32);
     if (baseRef != 0) {
+        return false;
+    }
+    // A freed extension record can still carry its base reference; a base record's
+    // whole reference, sequence included, is zero.
+    if ((rec->Flags & 0x0001) == 0 && rec->BaseFileRecordSegment.SequenceNumber != 0) {
         return false;
     }
 
@@ -209,7 +214,7 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
                       (static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberHighPart) << 32);
 
     if ((scan.lookup != nullptr) && recordIndex < scan.totalRecords) {
-        scan.lookup->storeName(recordIndex, parent, nameAttr->FileName, nameAttr->FileNameLength);
+        scan.lookup->storeName(recordIndex, *rec, *nameAttr);
     }
 
     if ((scan.filter.text != nullptr) && !FileNameMatches(nameAttr->FileName, nameAttr->FileNameLength, scan.filter)) {
@@ -228,6 +233,30 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
     return true;
 }
 
+// A freed record's path is trusted one hop at a time: the parent must be a validated
+// directory whose stored sequence matches the child's reference, or, when the parent
+// was freed too, is one higher, since NTFS bumps the sequence when it frees a record.
+bool TrustsParentHop(const PathLookup& lookup, uint64_t child, uint64_t parent, uint64_t totalRecords) {
+    if (parent >= totalRecords) {
+        return false;
+    }
+    const uint8_t parentFlags = lookup.recordFlags[parent];
+    if (parentFlags == PathLookup::kMissingRecord || (parentFlags & PathLookup::kDirectory) == 0) {
+        return false;
+    }
+    const uint16_t referencedSequence = lookup.parentSequenceNumbers[child];
+    const uint16_t storedSequence = lookup.sequenceNumbers[parent];
+    if (storedSequence == referencedSequence) {
+        return true;
+    }
+    return (parentFlags & PathLookup::kInUse) == 0 && storedSequence == static_cast<uint16_t>(referencedSequence + 1U);
+}
+
+bool IsValidatedInUse(const PathLookup& lookup, uint64_t recordIndex) {
+    const uint8_t flags = lookup.recordFlags[recordIndex];
+    return flags != PathLookup::kMissingRecord && (flags & PathLookup::kInUse) != 0;
+}
+
 }  // namespace
 
 bool ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalRecords, std::vector<uint16_t>& path) {
@@ -241,6 +270,7 @@ bool ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalR
     uint64_t current = recordIndex;
     std::array<uint64_t, 128> visited = {};
     int visitCount = 0;
+    const bool freedOrigin = recordIndex < totalRecords && lookup.isValidatedFreed(recordIndex);
 
     while (current != 5 && current < totalRecords && depth < 128) {
         if (std::find(visited.begin(), visited.begin() + visitCount, current) != visited.begin() + visitCount) {
@@ -248,13 +278,21 @@ bool ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalR
         }
         visited[visitCount++] = current;
 
-        if (lookup.nameLens[current] == 0) {
+        if (lookup.nameLens[current] == 0 || (!freedOrigin && !IsValidatedInUse(lookup, current))) {
             break;
         }
         stack[depth].nameUnits = reinterpret_cast<const uint16_t*>(lookup.namePool + lookup.nameOffsets[current]);
         stack[depth].len = lookup.nameLens[current];
         depth++;
-        current = lookup.parents[current];
+        const uint64_t parent = lookup.parents[current];
+        if (freedOrigin && !TrustsParentHop(lookup, current, parent, totalRecords)) {
+            return false;
+        }
+        current = parent;
+    }
+
+    if (freedOrigin && current != 5) {
+        return false;
     }
 
     if (depth == 0) {

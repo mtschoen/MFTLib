@@ -46,7 +46,7 @@ bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uin
 struct FilterSpec {
     const wchar_t* text;  // null = no filter (accept every named record)
     uint16_t length;      // wchar_t units in text
-    uint32_t flags;       // match bitfield: 1=exact, 2=substring, 4=resolve paths
+    uint32_t flags;       // match bitfield: 1=exact, 2=substring, 4=resolve paths, 8=include freed
 };
 
 // Half-open record range [start, end) within a chunk buffer.
@@ -56,9 +56,17 @@ struct SliceRange {
 };
 
 struct PathLookup {
+    // recordFlags holds the header's in-use (0x01) and directory (0x02) bits of each
+    // validated record; kMissingRecord marks a slot with no validated record.
+    static constexpr uint8_t kMissingRecord = 0xFF;
+    static constexpr uint8_t kInUse = 0x01;
+    static constexpr uint8_t kDirectory = 0x02;
     uint64_t* parents = nullptr;
     uint8_t* nameLens = nullptr;
     uint32_t* nameOffsets = nullptr;
+    uint16_t* sequenceNumbers = nullptr;
+    uint16_t* parentSequenceNumbers = nullptr;
+    uint8_t* recordFlags = nullptr;
     // namePool stores raw NTFS UTF-16 bytes (2 bytes per WCHAR unit).
     // On Windows wchar_t==WCHAR so this is a direct match.
     // On Linux wchar_t is 32-bit, so we use a byte pool and keep sizes in code units.
@@ -73,6 +81,13 @@ struct PathLookup {
         parents = static_cast<uint64_t*>(calloc(totalRecords, sizeof(uint64_t)));
         nameLens = static_cast<uint8_t*>(calloc(totalRecords, sizeof(uint8_t)));
         nameOffsets = static_cast<uint32_t*>(calloc(totalRecords, sizeof(uint32_t)));
+        sequenceNumbers = ShouldFailAlloc() ? nullptr : static_cast<uint16_t*>(calloc(totalRecords, sizeof(uint16_t)));
+        parentSequenceNumbers =
+            ShouldFailAlloc() ? nullptr : static_cast<uint16_t*>(calloc(totalRecords, sizeof(uint16_t)));
+        recordFlags = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(calloc(totalRecords, sizeof(uint8_t)));
+        if (recordFlags != nullptr) {
+            memset(recordFlags, kMissingRecord, totalRecords);
+        }
         // Each name entry can be up to 255 WCHAR units = 510 bytes; use 32 bytes avg * 2 for bytes.
         // A test hook can shrink the pool to exercise the exhaustion path.
         uint64_t capacityOverride = NamePoolCapacityOverride();
@@ -80,27 +95,39 @@ struct PathLookup {
         namePool = static_cast<uint8_t*>(malloc(namePoolCapacity));
         namePoolUsed = 0;
         namesDropped = 0;
-        return (parents != nullptr) && (nameLens != nullptr) && (nameOffsets != nullptr) && (namePool != nullptr);
+        return (parents != nullptr) && (nameLens != nullptr) && (nameOffsets != nullptr) && (namePool != nullptr) &&
+               (sequenceNumbers != nullptr) && (parentSequenceNumbers != nullptr) && (recordFlags != nullptr);
     }
 
-    // Store a name from an NTFS FileName attribute (WCHAR* = char16_t*, nameLen in WCHAR units)
-    void storeName(uint64_t recordIndex, uint64_t parent, const WCHAR* name, uint8_t nameLen) {
-        parents[recordIndex] = parent;
-        uint64_t byteCount = static_cast<uint64_t>(nameLen) * sizeof(WCHAR);
+    // Store the validated name and reference identity, even when the name pool is exhausted.
+    void storeName(uint64_t recordIndex, const FILE_RECORD_SEGMENT_HEADER& record, const FILE_NAME& name) {
+        parents[recordIndex] = static_cast<uint64_t>(name.ParentDirectory.SegmentNumberLowPart) |
+                               (static_cast<uint64_t>(name.ParentDirectory.SegmentNumberHighPart) << 32);
+        sequenceNumbers[recordIndex] = record.SequenceNumber;
+        parentSequenceNumbers[recordIndex] = name.ParentDirectory.SequenceNumber;
+        recordFlags[recordIndex] = static_cast<uint8_t>(record.Flags & (kInUse | kDirectory));
+        uint64_t byteCount = static_cast<uint64_t>(name.FileNameLength) * sizeof(WCHAR);
         uint64_t offset = namePoolUsed.fetch_add(byteCount, std::memory_order_relaxed);
         if (offset + byteCount > namePoolCapacity) {
             namesDropped.fetch_add(1, std::memory_order_relaxed);
             return;
         }
         nameOffsets[recordIndex] = static_cast<uint32_t>(offset);
-        memcpy(namePool + offset, name, byteCount);
-        nameLens[recordIndex] = nameLen;
+        memcpy(namePool + offset, name.FileName, byteCount);
+        nameLens[recordIndex] = name.FileNameLength;
+    }
+
+    bool isValidatedFreed(uint64_t recordIndex) const {
+        return recordFlags[recordIndex] != kMissingRecord && (recordFlags[recordIndex] & kInUse) == 0;
     }
 
     void cleanup() const {
         free(parents);
         free(nameLens);
         free(nameOffsets);
+        free(sequenceNumbers);
+        free(parentSequenceNumbers);
+        free(recordFlags);
         free(namePool);
     }
 };

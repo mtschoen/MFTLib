@@ -52,6 +52,7 @@ public readonly struct MftRecord
     readonly ushort _sequenceNumber;
 
     const ushort SizeUnknownFlag = 0x8000;
+    const ushort PathUnresolvedFlag = 0x4000;
 
     // DateTime.MaxValue as a FILETIME. Anything past it makes FromFileTimeUtc throw.
     static readonly long MaximumFileTime = DateTime.MaxValue.ToFileTimeUtc();
@@ -76,6 +77,10 @@ public readonly struct MftRecord
 
     public ushort SequenceNumber => _sequenceNumber;
 
+    /// <summary>
+    ///     Whether the record is allocated. Freed base records returned with
+    ///     <see cref="MatchFlags.IncludeFreed" /> have this value set to false.
+    /// </summary>
     public bool InUse => (_flags & 1) != 0;
     public bool IsDirectory => (_flags & 2) != 0;
     public FileAttributes FileAttributes { get; }
@@ -124,6 +129,11 @@ public readonly struct MftRecord
             if (_pathPtr != IntPtr.Zero && _pathLength > 0)
             {
                 var pathChars = (char*)_pathPtr;
+                if ((_flags & PathUnresolvedFlag) != 0)
+                {
+                    return new string(pathChars, 0, _pathLength);
+                }
+
                 var lastSep = -1;
                 for (var i = _pathLength - 1; i >= 0; i--)
                 {
@@ -147,6 +157,11 @@ public readonly struct MftRecord
         }
     }
 
+    /// <summary>
+    ///     The resolved path, or null when paths were not requested or could not be resolved.
+    ///     A freed record requires a trusted sequence match at every parent, including the root;
+    ///     a freed parent's sequence may also be one higher than its reference, with ushort wraparound.
+    /// </summary>
     public unsafe string? FullPath
     {
         get
@@ -156,7 +171,7 @@ public readonly struct MftRecord
                 return _fullPath;
             }
 
-            if (_pathPtr == IntPtr.Zero)
+            if (_pathPtr == IntPtr.Zero || (_flags & PathUnresolvedFlag) != 0)
             {
                 return null;
             }

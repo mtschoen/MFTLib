@@ -102,7 +102,7 @@ GCOVR_ARGS=(
     -r "$ROOT/MFTLibNative"
     --object-directory "$BUILD_DIR"
     --filter "MFTLibNative/"
-    --exclude '.*/test/linux_smoke_test\.cpp'
+    --exclude '.*/test/linux_smoke_test(\.[^/]*)?\.cpp'
     --gcov-ignore-parse-errors=negative_hits.warn_once_per_file
 )
 

@@ -10,19 +10,24 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 2;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 3;
 
 // Parser-synthesized, not an on-disk NTFS record flag. The flags field carries the
-// raw FILE_RECORD_SEGMENT_HEADER flags, whose defined bits are 0x0001 (in use) and
-// 0x0002 (directory); the parser sets this top bit when a non-directory record has
+// raw FILE_RECORD_SEGMENT_HEADER flags in the low bits; the parser sets this top
+// bit when a non-directory record has
 // no unnamed $DATA attribute in its base segment, so the size column holds zero
 // because the size is unknown rather than because the file is empty.
 constexpr uint16_t MFT_ENTRY_FLAG_SIZE_UNKNOWN = 0x8000;
+
+// Parser-synthesized, not an on-disk NTFS record flag. Set only on path-table
+// rows whose string is a bare name because the parent chain could not be trusted.
+constexpr uint16_t MFT_ENTRY_FLAG_PATH_UNRESOLVED = 0x4000;
 
 constexpr uint32_t MATCH_FLAG_NONE = 0;
 constexpr uint32_t MATCH_FLAG_EXACT_MATCH = 1;
 constexpr uint32_t MATCH_FLAG_CONTAINS = 2;
 constexpr uint32_t MATCH_FLAG_RESOLVE_PATHS = 4;
+constexpr uint32_t MATCH_FLAG_INCLUDE_FREED = 8;
 
 enum class MftScanPhase : uint8_t {
     Parsing = 0,

@@ -21,6 +21,9 @@ struct FixtureRecordSpec {
     bool attributeListPresent = false;
     FixtureDataSpec firstData{};
     FixtureDataSpec secondData{};
+    uint16_t headerSequenceNumber = static_cast<uint16_t>(recordIndex + 1ULL);
+    uint16_t parentSequenceNumber = 0;
+    uint64_t baseRecord = 0;
 };
 
 // Writes one $DATA attribute in the requested form. Resident carries the size in
@@ -108,19 +111,13 @@ void BuildFixtureRecord(uint8_t* record, const FixtureRecordSpec& spec) {
     header->MultiSectorHeader.Magic = 0x454C4946;
     header->MultiSectorHeader.UpdateSequenceArrayOffset = 0x30;
     header->MultiSectorHeader.UpdateSequenceArraySize = static_cast<uint16_t>((kFixtureRecordSize / 512U) + 1U);
-    header->SequenceNumber = static_cast<uint16_t>(spec.recordIndex + 1ULL);
+    header->SequenceNumber = spec.headerSequenceNumber;
+    header->BaseFileRecordSegment.SegmentNumberLowPart = static_cast<ULONG>(spec.baseRecord);
+    header->BaseFileRecordSegment.SegmentNumberHighPart = static_cast<USHORT>(spec.baseRecord >> 32);
     header->Flags = spec.headerFlags;
     header->FirstAttributeOffset = static_cast<uint16_t>(
         (0x30 + (header->MultiSectorHeader.UpdateSequenceArraySize * sizeof(uint16_t)) + 7U) & ~7U);
     memcpy(record + 0x1C, &kFixtureRecordSize, sizeof(kFixtureRecordSize));
-
-    if ((spec.headerFlags & 0x0001U) == 0U) {
-        auto* endAttribute = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(record + header->FirstAttributeOffset);
-        endAttribute->TypeCode = EndMarker;
-        ApplyUSAProtection(record, ParseGeometry{kFixtureRecordSize},
-                           static_cast<uint16_t>(spec.recordIndex & 0xFFFFU));
-        return;
-    }
 
     uint64_t modifiedTime = kFixtureModifiedBase + (spec.recordIndex * kFixtureModifiedStep);
     bool useFirstDataAttribute = true;
@@ -150,8 +147,9 @@ void BuildFixtureRecord(uint8_t* record, const FixtureRecordSpec& spec) {
 
     uint16_t offset = header->FirstAttributeOffset;
     offset = WriteStandardInformationAttribute(record, offset, meta);
-    auto writeSpec = SyntheticRecordSpec{
-        spec.recordIndex, spec.parentRecord, spec.headerFlags, spec.name, computedNameLength, 0, kFixtureRecordSize};
+    auto writeSpec = SyntheticRecordSpec{spec.recordIndex,   spec.parentRecord,        spec.headerFlags,
+                                         spec.name,          computedNameLength,       0,
+                                         kFixtureRecordSize, spec.parentSequenceNumber};
     offset = WriteFileNameAttribute(record, offset, writeSpec, meta);
     if (spec.attributeListPresent) {
         offset = WriteFixtureAttributeListAttribute(record, offset);
@@ -162,6 +160,44 @@ void BuildFixtureRecord(uint8_t* record, const FixtureRecordSpec& spec) {
     auto* endAttribute = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(record + offset);
     endAttribute->TypeCode = EndMarker;
     ApplyUSAProtection(record, ParseGeometry{kFixtureRecordSize}, static_cast<uint16_t>(spec.recordIndex & 0xFFFFU));
+}
+
+void BuildFreedFixtureRecords(uint8_t* buffer) {
+    BuildFixtureRecord(buffer + (12 * kFixtureRecordSize),
+                       {12, 0x0002, 5, L"deleted-dir", 0, 0x10, false, {}, {}, 14, 6});
+    BuildFixtureRecord(buffer + (13 * kFixtureRecordSize),
+                       {13, 0, 12, L"deleted-before.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 14, 13});
+    BuildFixtureRecord(buffer + (14 * kFixtureRecordSize),
+                       {14, 0, 12, L"deleted-current.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 15, 14});
+    BuildFixtureRecord(buffer + (15 * kFixtureRecordSize),
+                       {15, 0, 8, L"deleted-live.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 16, 9});
+    BuildFixtureRecord(buffer + (16 * kFixtureRecordSize),
+                       {16, 0, 8, L"deleted-reused.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 17, 8});
+    BuildFixtureRecord(buffer + (17 * kFixtureRecordSize),
+                       {17, 0, 12, L"deleted-stale.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 18, 12});
+    BuildFixtureRecord(buffer + (18 * kFixtureRecordSize),
+                       {18, 0, 12, L"deleted-extension.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 19, 13, 13});
+    BuildFixtureRecord(buffer + (19 * kFixtureRecordSize),
+                       {19, 0, 5, L"deleted-malformed.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 20, 6});
+    auto* malformedRecord = buffer + (19 * kFixtureRecordSize);
+    const auto* header = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(malformedRecord);
+    const auto* standard = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(malformedRecord + header->FirstAttributeOffset);
+    auto* fileName = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(malformedRecord + header->FirstAttributeOffset +
+                                                                standard->RecordLength);
+    auto* name =
+        reinterpret_cast<PFILE_NAME>(reinterpret_cast<uint8_t*>(fileName) + fileName->Form.Resident.ValueOffset);
+    name->FileNameLength = 255;
+    BuildFixtureRecord(buffer + (20 * kFixtureRecordSize),
+                       {20, 0, 5, L"deleted-offset.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 21, 6});
+    reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(buffer + (20 * kFixtureRecordSize))->FirstAttributeOffset = 1023;
+    BuildFixtureRecord(buffer + (21 * kFixtureRecordSize),
+                       {21, 0, 13, L"deleted-under-freed-file.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 22, 13});
+    BuildFixtureRecord(buffer + (22 * kFixtureRecordSize),
+                       {22, 0, 6, L"deleted-under-live-file.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 23, 7});
+    BuildFixtureRecord(buffer + (23 * kFixtureRecordSize),
+                       {23, 0, 5, L"deleted-extension-zero.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 24, 6});
+    reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(buffer + (23 * kFixtureRecordSize))
+        ->BaseFileRecordSegment.SequenceNumber = 1;
 }
 
 bool GenerateFixtureMFTImpl(const char* filePath) {
@@ -179,13 +215,14 @@ bool GenerateFixtureMFTImpl(const char* filePath) {
                        {6, 0x0001, 5, L"resident.txt", 0, 0x20, false, {true, true, 0, 37ULL}, {}});
     BuildFixtureRecord(buffer + (7 * kFixtureRecordSize),
                        {7, 0x0001, 5, L"big.bin", 0, 0x20, false, {true, false, 0, 1234567ULL}, {}});
-    BuildFixtureRecord(buffer + (8 * kFixtureRecordSize), {8, 0x0003, 5, L"sub", 0, 0x10, false, {}, {}});
+    BuildFixtureRecord(buffer + (8 * kFixtureRecordSize), {8, 0x0003, 5, L"sub", 0, 0x10, false, {}, {}, 9, 6});
     BuildFixtureRecord(buffer + (9 * kFixtureRecordSize), {9, 0x0001, 8, L"nodata.dat", 0, 0x20, true, {}, {}});
     BuildFixtureRecord(
         buffer + (10 * kFixtureRecordSize),
         {10, 0x0001, 8, L"split.bin", 0, 0x20, false, {true, false, 8, 999ULL}, {true, false, 0, 4096ULL}});
     BuildFixtureRecord(buffer + (11 * kFixtureRecordSize),
                        {11, 0x0001, 8, L"negative-size.bin", 0, 0x20, false, {true, false, 0, -1}, {}});
+    BuildFreedFixtureRecords(buffer);
 
     auto* file = mftlib::platform::open_write(filePath);
     if (file == nullptr) {

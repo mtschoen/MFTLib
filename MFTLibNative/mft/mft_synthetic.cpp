@@ -41,6 +41,7 @@ struct SyntheticRecordSpec {
     uint8_t nameLen = 0;
     uint64_t baseRef = 0;
     uint32_t recordSize = 0;
+    uint16_t parentSequenceNumber = 0;
 };
 
 // Work assignment for one buffer batch.
@@ -165,6 +166,7 @@ uint16_t WriteFileNameAttribute(uint8_t* record, uint16_t offset, const Syntheti
     auto* nameAttr = reinterpret_cast<PFILE_NAME>(record + offset + 0x18);
     nameAttr->ParentDirectory.SegmentNumberLowPart = static_cast<ULONG>(spec.parentRecord & 0xFFFFFFFF);
     nameAttr->ParentDirectory.SegmentNumberHighPart = static_cast<USHORT>(spec.parentRecord >> 32);
+    nameAttr->ParentDirectory.SequenceNumber = spec.parentSequenceNumber;
     nameAttr->CreationTime = meta.createTime;
     nameAttr->ModificationTime = meta.modTime;
     nameAttr->MftModificationTime = meta.mftModTime;
