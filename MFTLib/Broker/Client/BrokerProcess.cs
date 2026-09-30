@@ -74,7 +74,10 @@ public sealed partial class BrokerProcess : IAsyncDisposable
     /// <summary>
     ///     Fires once, from the control pipe's reader, when the process ends for any reason
     ///     (the broker exited or crashed, the control pipe failed, or this process was disposed),
-    ///     with the reason. Every drive channel then reads EOF.
+    ///     with the reason. Every drive channel then reads EOF. Subscribers run in registration
+    ///     order outside the process lock, after pending requests have been failed. Exceptions
+    ///     thrown synchronously by a subscriber are caught and reported through the existing
+    ///     opt-in, best-effort <see cref="BrokerDiagnostics" /> logging; later subscribers still run.
     /// </summary>
     public event Action<string>? Ended;
 
@@ -83,8 +86,10 @@ public sealed partial class BrokerProcess : IAsyncDisposable
     ///     channel still open here and waits for the control reader. Idempotent. How the broker ended
     ///     never makes it throw: the client has already reported that through <see cref="Ended" />
     ///     and its failed requests and channels, and a control pipe that fails to close is only
-    ///     logged. An exception thrown by an <see cref="Ended" /> handler, or by closing a drive
-    ///     channel, does propagate out of it.
+    ///     logged. Exceptions thrown synchronously by <see cref="Ended" /> handlers are caught and
+    ///     reported through the existing opt-in, best-effort <see cref="BrokerDiagnostics" /> logging;
+    ///     they do not propagate from disposal. An exception from closing a drive channel still
+    ///     propagates.
     /// </summary>
     public async ValueTask DisposeAsync()
     {

@@ -321,7 +321,29 @@ public sealed partial class BrokerProcess
             reply.TrySetException(new BrokerChannelLostException(null, reason));
         }
 
-        Ended?.Invoke(reason);
+        var handlers = Ended;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (var item in handlers.GetInvocationList())
+        {
+            if (item is not Action<string> handler)
+            {
+                continue;
+            }
+
+            try
+            {
+                handler(reason);
+            }
+            catch (Exception exception)
+            {
+                BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel,
+                    $"Ended handler notification failed: {exception}");
+            }
+        }
     }
 
     static string Seconds(TimeSpan duration)
