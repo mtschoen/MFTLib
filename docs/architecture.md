@@ -17,6 +17,12 @@
 
     - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory.
 
+    - **Watch state events**: `FileIndex.WatchStateChanged` reports every change of a drive's
+      derived `WatchCatchUp` with a per-drive `WatchStateVersion`, noted by one helper inside the
+      state-lock section that made the change and delivered with neither `_stateLock` nor a write
+      gate held, one drive at a time in version order, before the `WatchFaulted` of the fault
+      that caused it. Handlers follow the `Changed`/`WatchFaulted` reentrancy rules. The full
+      contract is in `docs/watch-lifetime.md`.
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
     - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`; `MaterializeBatches`/`ReadRecordBatches` provide bounded-memory batch materialization over the same result.

@@ -82,7 +82,7 @@ public sealed partial class FileIndex
     ///     instance is no longer the drive's current faulted watch, its watch is no longer
     ///     requested, or the index is being disposed.
     /// </summary>
-    RecoveryTicket? QueueRecovery(DriveRuntime runtime, WatchInstance instance)
+    RecoveryTicket? QueueRecovery(DriveRuntime runtime, WatchInstance instance, WatchFault fault)
     {
         lock (_stateLock)
         {
@@ -96,6 +96,7 @@ public sealed partial class FileIndex
             runtime.Recovery = ticket;
             runtime.RecoveryState = RecoveryState.Recovering;
             _recoveryCompletions.Add(ticket.Completion);
+            NoteWatchStateLocked(runtime, fault);
             return ticket;
         }
     }
@@ -203,7 +204,7 @@ public sealed partial class FileIndex
     /// </summary>
     void EndRecovery(DriveRuntime runtime, RecoveryTicket ticket, Exception? failure)
     {
-        Exception? reported = null;
+        WatchFault? reported = null;
         lock (_stateLock)
         {
             if (ReferenceEquals(runtime.Recovery, ticket))
@@ -214,15 +215,17 @@ public sealed partial class FileIndex
                     runtime.RecoveryState = RecoveryState.None;
                 }
 
-                reported = failure;
+                reported = failure is null ? null : new WatchFault(WatchFaultKind.Recovery, runtime.DriveLetter, failure);
+                NoteWatchStateLocked(runtime, reported);
             }
         }
 
         try
         {
+            RaiseWatchStateChanged(runtime);
             if (reported is not null)
             {
-                RaiseWatchFaulted(new WatchFault(WatchFaultKind.Recovery, runtime.DriveLetter, reported));
+                RaiseWatchFaulted(reported);
             }
         }
         finally

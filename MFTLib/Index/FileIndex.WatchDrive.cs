@@ -1,5 +1,3 @@
-using System.Runtime.ExceptionServices;
-
 namespace MFTLib.Index;
 
 public sealed partial class FileIndex
@@ -40,74 +38,6 @@ public sealed partial class FileIndex
 
         ObjectDisposedException.ThrowIf(_disposed, this);
         return StartWatchingCoreAsync(GetDriveRuntime(driveLetter), gateHeld: false, recovery: null, cancellationToken);
-    }
-
-    /// <summary>
-    ///     Stops one drive's watch and waits for its teardown, then rethrows, once, the fault that
-    ///     ended the watch or the first subscriber fault it announced, if either is outstanding.
-    ///     Takes no lifecycle gate, so it never waits for a rescan: a stop during a rescan of the
-    ///     same drive completes while the scan runs, and the rescan then leaves the watch stopped.
-    ///     The same holds for an automatic recovery, and a queued one ends without scanning.
-    ///     A manual rescan retains the retired watch's fault through its drain and replacement
-    ///     start, so a stop before the replacement handle is published still takes that fault.
-    ///     The drive's <see cref="DriveStatus.WatchCatchUp" /> reads
-    ///     <see cref="WatchCatchUpState.NotStarted" /> afterwards and any pending catch-up wait is
-    ///     cancelled. A drive counts as watching while its watch is requested or it has a watch
-    ///     instance, current or still retiring; a start that failed at its source or was refused
-    ///     over an unresumable block leaves the watch requested, so stopping that drive clears the
-    ///     request and its faulted state.
-    ///     <paramref name="cancellationToken" /> bounds only the wait for the teardown: cancelling
-    ///     it throws while the teardown continues, and a later start waits for that teardown.
-    /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
-    /// <exception cref="InvalidOperationException">The drive is not watching.</exception>
-    public async Task StopWatchingAsync(char driveLetter, CancellationToken cancellationToken)
-    {
-        if (RejectInsideHandler(nameof(StopWatchingAsync)) is { } rejection)
-        {
-            throw rejection;
-        }
-
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var runtime = GetDriveRuntime(driveLetter);
-        WatchInstance? retired;
-        Task? previousDrain;
-        Exception? outstandingFault;
-        lock (_stateLock)
-        {
-            if (!IsWatchingLocked(runtime))
-            {
-                throw new InvalidOperationException(
-                    $"Drive {runtime.DriveLetter} is not watching, so there is no watch to stop.");
-            }
-
-            runtime.WatchRequested = false;
-            runtime.RefusedStartFault = null;
-            CancelRestartPendingWaiterLocked(runtime);
-            ClearRecoveryLocked(runtime);
-            previousDrain = runtime.Retiring?.Drained;
-            retired = RetireCurrentLocked(runtime);
-            outstandingFault = TakeOutstandingFaultLocked(runtime, retired);
-        }
-
-        retired?.RequestStop();
-        var drain = retired?.Drained is { } retiredDrain && previousDrain is not null
-            ? Task.WhenAll(retiredDrain, previousDrain)
-            : retired?.Drained ?? previousDrain;
-        if (drain is not null)
-        {
-            await AwaitQueuedAsync(drain, cancellationToken, CancellationToken.None).ConfigureAwait(false);
-        }
-
-        lock (_stateLock)
-        {
-            outstandingFault ??= TakeOutstandingFaultLocked(runtime, retired);
-        }
-
-        if (outstandingFault is not null)
-        {
-            ExceptionDispatchInfo.Capture(outstandingFault).Throw();
-        }
     }
 
     /// <summary>
@@ -156,7 +86,17 @@ public sealed partial class FileIndex
             $"Drive {driveLetter} supports a live watch but " +
             $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.WatchSource)} is not set.");
 
-        if (PrepareStart(runtime, restart, recovery) is not { } prepared)
+        (DriveBlock ArmedBlock, Task? PreviousDrain)? preparation;
+        try
+        {
+            preparation = PrepareStart(runtime, restart, recovery);
+        }
+        finally
+        {
+            RaiseWatchStateChanged(runtime);
+        }
+
+        if (preparation is not { } prepared)
         {
             return;
         }
@@ -174,14 +114,16 @@ public sealed partial class FileIndex
             await beforeRegistration(driveLetter).ConfigureAwait(false);
         }
 
-        if (RegisterStartingInstance(runtime, armedBlock, restart, recovery) is not { } registered)
+        var registration = RegisterStartingInstance(runtime, armedBlock, restart, recovery);
+        RaiseWatchStateChanged(runtime);
+        if (registration is not { } registered)
         {
             return;
         }
 
         var (instance, target) = registered;
-        await RunRegisteredStartAsync(runtime, source, instance, target, rescanRestart: restart && recovery is null,
-            cancellationToken).ConfigureAwait(false);
+        await RunRegisteredStartAsync(runtime, source, instance, target, restart, recovery, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -198,35 +140,43 @@ public sealed partial class FileIndex
         var driveLetter = runtime.DriveLetter;
         lock (_stateLock)
         {
-            if (restart && !IsRestartStillRequestedLocked(runtime, recovery))
+            try
             {
-                return null;
-            }
+                if (restart && !IsRestartStillRequestedLocked(runtime, recovery))
+                {
+                    return null;
+                }
 
-            if (recovery is null && runtime.Recovery is not null)
+                if (recovery is null && runtime.Recovery is not null)
+                {
+                    ClearRecoveryLocked(runtime);
+                }
+
+                if (FindWatchableDriveBlockLocked(driveLetter) is not { } armedBlock)
+                {
+                    throw RefuseStartWithoutWatchableBlockLocked(runtime, restart);
+                }
+
+                if (_unresumableCheckpointsByOrdinal.TryGetValue(armedBlock.DriveOrdinal, out var unresumable))
+                {
+                    throw RecordUnresumableCheckpointWatchFailureLocked(runtime, armedBlock, unresumable);
+                }
+
+                if (runtime.Current is { State: WatchInstanceState.Running })
+                {
+                    return null;
+                }
+
+                var previousDrain = runtime.Current is { State: WatchInstanceState.Faulted } faulted
+                    ? faulted.Drained
+                    : runtime.Retiring?.Drained;
+                return (armedBlock, previousDrain);
+            }
+            finally
             {
-                ClearRecoveryLocked(runtime);
+                // Clearing a recovery and every refusal above change the drive's state.
+                NoteWatchStateLocked(runtime);
             }
-
-            if (FindWatchableDriveBlockLocked(driveLetter) is not { } armedBlock)
-            {
-                throw RefuseStartWithoutWatchableBlockLocked(runtime, restart);
-            }
-
-            if (_unresumableCheckpointsByOrdinal.TryGetValue(armedBlock.DriveOrdinal, out var unresumable))
-            {
-                throw RecordUnresumableCheckpointWatchFailureLocked(runtime, armedBlock, unresumable);
-            }
-
-            if (runtime.Current is { State: WatchInstanceState.Running })
-            {
-                return null;
-            }
-
-            var previousDrain = runtime.Current is { State: WatchInstanceState.Faulted } faulted
-                ? faulted.Drained
-                : runtime.Retiring?.Drained;
-            return (armedBlock, previousDrain);
         }
     }
 
@@ -236,7 +186,7 @@ public sealed partial class FileIndex
     ///     while the source ran.
     /// </summary>
     async Task RunRegisteredStartAsync(DriveRuntime runtime, IIndexWatchSource source, WatchInstance instance,
-        IndexWatchTarget target, bool rescanRestart, CancellationToken cancellationToken)
+        IndexWatchTarget target, bool restart, RecoveryTicket? recovery, CancellationToken cancellationToken)
     {
         var driveLetter = runtime.DriveLetter;
         IIndexDriveWatch handle;
@@ -250,16 +200,18 @@ public sealed partial class FileIndex
         }
         catch (Exception exception)
         {
-            if (rescanRestart && RecordRescanRestartFailure(runtime, instance, exception))
+            if (restart && recovery is null && RecordRescanRestartFailure(runtime, instance, exception))
             {
                 return;
             }
 
-            AbandonFailedStart(runtime, instance, exception, cancellationToken);
+            AbandonFailedStart(runtime, instance, exception, recovery, cancellationToken);
             throw;
         }
 
-        if (TryPublishHandle(runtime, instance, handle))
+        var published = TryPublishHandle(runtime, instance, handle);
+        RaiseWatchStateChanged(runtime);
+        if (published)
         {
             return;
         }
@@ -327,6 +279,7 @@ public sealed partial class FileIndex
                 ? RecoveryState.RecoveredAwaitingCatchUp
                 : RecoveryState.None;
             _watchFailureMessagesByOrdinal.Remove(armedBlock.DriveOrdinal);
+            NoteWatchStateLocked(runtime);
             return (instance, BuildWatchTarget(armedBlock));
         }
     }
@@ -341,16 +294,20 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Settles a start whose source threw. A start that is no longer current was stopped or
     ///     disposed, which already retired it; a start its own caller cancelled leaves the drive
-    ///     not watching; any other failure is recorded against the drive.
+    ///     not watching; any other failure is recorded against the drive. A failed restart of an
+    ///     automatic <paramref name="recovery" /> is the failure that
+    ///     recovery then reports as <see cref="WatchFaultKind.Recovery" />, so the drive's move to
+    ///     <see cref="WatchCatchUpState.Faulted" /> carries that fault.
     /// </summary>
     void AbandonFailedStart(DriveRuntime runtime, WatchInstance instance, Exception exception,
-        CancellationToken cancellationToken)
+        RecoveryTicket? recovery, CancellationToken cancellationToken)
     {
         lock (_stateLock)
         {
             if (ReferenceEquals(runtime.Current, instance))
             {
                 runtime.Current = null;
+                WatchFault? cause = null;
                 if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
                 {
                     runtime.WatchRequested = false;
@@ -361,10 +318,19 @@ public sealed partial class FileIndex
                     runtime.RefusedStartFault = exception;
                     instance.CatchUp.Fault(exception);
                     _watchFailureMessagesByOrdinal[instance.ArmedBlock.DriveOrdinal] = exception.Message;
+                    // A stop, a consumer start or disposal that cleared the recovery's ticket also
+                    // retired this instance, so a recovery restart still current is still ticketed.
+                    if (recovery is not null)
+                    {
+                        cause = new WatchFault(WatchFaultKind.Recovery, runtime.DriveLetter, exception);
+                    }
                 }
+
+                NoteWatchStateLocked(runtime, cause);
             }
         }
 
+        RaiseWatchStateChanged(runtime);
         CompleteInstanceDrain(runtime, instance);
     }
 
@@ -382,6 +348,7 @@ public sealed partial class FileIndex
             }
 
             instance.State = WatchInstanceState.Running;
+            NoteWatchStateLocked(runtime);
             runtime.RescanHandoffFault = null;
             if (runtime.Retiring is not null)
             {
@@ -394,31 +361,5 @@ public sealed partial class FileIndex
             _ = Task.Run(() => PumpAsync(runtime, instance, handle));
             return true;
         }
-    }
-
-    /// <summary>
-    ///     Consumes any pending subscriber or handoff fault atomically across the instance being
-    ///     stopped, any concurrent retiring predecessor, and the runtime handoff slot.
-    /// </summary>
-    static Exception? TakeOutstandingFaultLocked(DriveRuntime runtime, WatchInstance? retired)
-    {
-        var fault = retired?.OutstandingFault ?? runtime.Retiring?.OutstandingFault ?? runtime.RescanHandoffFault;
-        if (fault is null)
-        {
-            return null;
-        }
-
-        if (retired is not null)
-        {
-            retired.OutstandingFault = null;
-        }
-
-        if (runtime.Retiring is not null)
-        {
-            runtime.Retiring.OutstandingFault = null;
-        }
-
-        runtime.RescanHandoffFault = null;
-        return fault;
     }
 }

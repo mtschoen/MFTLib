@@ -164,8 +164,12 @@ public sealed partial class FileIndex
                 {
                     runtime.RecoveryState = RecoveryState.None;
                 }
+
+                NoteWatchStateLocked(runtime);
             }
         }
+
+        RaiseWatchStateChanged(runtime);
     }
 
     /// <summary>
@@ -184,7 +188,9 @@ public sealed partial class FileIndex
     /// </summary>
     void RecordPumpFault(DriveRuntime runtime, WatchInstance instance, WatchFault fault)
     {
+        var recovers = fault.Kind is WatchFaultKind.Drive or WatchFaultKind.Apply;
         var recoveryFailed = false;
+        var reported = fault;
         TaskCompletionSource? faultedWaiter = null;
 
         void Settle()
@@ -205,7 +211,13 @@ public sealed partial class FileIndex
                 if (recoveryFailed)
                 {
                     runtime.RecoveryState = RecoveryState.None;
+                    if (recovers)
+                    {
+                        reported = fault with { Kind = WatchFaultKind.Recovery };
+                    }
                 }
+
+                NoteWatchStateLocked(runtime, reported);
             }
         }
 
@@ -223,19 +235,21 @@ public sealed partial class FileIndex
             return;
         }
 
-        var recovers = fault.Kind is WatchFaultKind.Drive or WatchFaultKind.Apply;
         RecoveryTicket? recovery;
         try
         {
             RecordCheckpointLossForFaultedDrive(runtime, instance);
-            recovery = recovers && !recoveryFailed ? QueueRecovery(runtime, instance) : null;
+            recovery = recovers && !recoveryFailed ? QueueRecovery(runtime, instance, fault) : null;
         }
         finally
         {
             WatchCatchUpSlot.ReleaseFault(faultedWaiter, fault.Exception);
+
+            // Delivers what the settlement noted even when the checkpoint check threw.
+            RaiseWatchStateChanged(runtime);
         }
 
-        RaiseWatchFaulted(recovers && recoveryFailed ? fault with { Kind = WatchFaultKind.Recovery } : fault);
+        RaiseWatchFaulted(reported);
         if (recovery is not null)
         {
             StartRecovery(runtime, recovery);
@@ -244,6 +258,7 @@ public sealed partial class FileIndex
 
     void RaiseWatchFaulted(WatchFault fault)
     {
+        RaiseWatchStateChanged(GetDriveRuntime(fault.DriveLetter));
         try
         {
             if (WatchFaulted is { } subscribers)

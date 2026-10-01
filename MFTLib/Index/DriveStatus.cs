@@ -137,6 +137,19 @@ public sealed record DriveStatus
     public bool WatchRequested { get; init; }
 
     /// <summary>
+    ///     How many times this drive's <see cref="WatchCatchUp" /> has changed since the index
+    ///     opened: zero while it has never changed (a cold open whose scans reach the catch-up-loss
+    ///     limit opens in <see cref="WatchCatchUpState.Faulted" /> with version 1), and one more
+    ///     with every change, each of which <see cref="FileIndex.WatchStateChanged" /> delivers with
+    ///     this same number. Read together with <see cref="WatchCatchUp" /> from one
+    ///     <see cref="FileIndex.Drives" /> snapshot, it seeds a subscriber that joins late: an event
+    ///     whose <see cref="DriveWatchState.Version" /> is not larger than the one already applied
+    ///     for the drive is older news and is dropped. Versions of different drives are
+    ///     independent.
+    /// </summary>
+    public long WatchStateVersion { get; init; }
+
+    /// <summary>
     ///     How many scans of this drive in a row lost their journal catch-up. A scan whose
     ///     catch-up holds sets it back to zero; a scan that produced no block leaves it as it was.
     ///     It spans every scan of the drive for the life of the index, and a scan operation stops

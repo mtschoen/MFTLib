@@ -645,9 +645,9 @@ public class FileIndexCallbackReentrancyTests
     {
         Assert.IsInstanceOfType<InvalidOperationException>(failure, $"{operation} was not rejected: {failure}");
         Assert.AreEqual(
-            $"FileIndex.{operation} was called from inside a Changed or WatchFaulted handler; it can wait for a " +
-            "watch pump that is blocked in a handler. Queue the call to run after the handler returns, for " +
-            "example with Task.Run.",
+            $"FileIndex.{operation} was called from inside a Changed, WatchFaulted or WatchStateChanged handler; it " +
+            "can wait for a watch pump that is blocked in a handler. Queue the call to run after the handler " +
+            "returns, for example with Task.Run.",
             failure.Message);
     }
 

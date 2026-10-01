@@ -83,7 +83,10 @@ public sealed partial class FileIndex
             {
                 runtime.RetryingLostCatchUp = false;
                 runtime.RetriedLostCatchUp = null;
+                NoteWatchStateLocked(runtime);
             }
+
+            RaiseWatchStateChanged(runtime);
         }
     }
 
@@ -198,14 +201,25 @@ public sealed partial class FileIndex
             FaultRestartPendingWaiterLocked(runtime, lost);
             if (recoveryStopped)
             {
+                // A recovery that reaches the limit ends here, so the drive reads Faulted with
+                // this loss as its cause now, before the loss is reported, rather than when the
+                // recovery returns.
+                if (runtime.RecoveryState == RecoveryState.Recovering)
+                {
+                    runtime.RecoveryState = RecoveryState.None;
+                }
+
                 runtime.RefusedStartFault = lost;
                 if (TryGetDriveOrdinalLocked(driveLetter, out var driveOrdinal))
                 {
                     _watchFailureMessagesByOrdinal[driveOrdinal] = lost.Message;
                 }
             }
+
+            NoteWatchStateLocked(runtime, new WatchFault(WatchFaultKind.CatchUpLost, driveLetter, lost));
         }
 
+        RaiseWatchStateChanged(runtime);
         return lost;
     }
 

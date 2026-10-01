@@ -162,12 +162,14 @@ public sealed partial class FileIndex
 
                 RecordPendingResultLocked(runtime, driveOrdinal, produced, clearsCheckpointLoss);
                 RetireCurrentSnapshotLocked(snapshot);
+                NoteWatchStateLocked(runtime);
                 return (runtime.ConsecutiveLostCatchUps, handoff);
             }
         }
         finally
         {
             runtime.WriteGate.Release();
+            RaiseWatchStateChanged(runtime);
         }
     }
 }

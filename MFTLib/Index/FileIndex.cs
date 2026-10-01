@@ -367,7 +367,8 @@ public sealed partial class FileIndex : IAsyncDisposable
         return DescribeDrive(driveBlock, in annotations) with
         {
             ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,
-            WatchRequested = runtime.WatchRequested
+            WatchRequested = runtime.WatchRequested,
+            WatchStateVersion = runtime.WatchStateVersion
         };
     }
 

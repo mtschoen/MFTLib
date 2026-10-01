@@ -276,10 +276,44 @@ A stop that races a recovery or rescan wins. It prevents that operation from
 restarting the watch and reports the stopped watch instance's outstanding fault
 once.
 
+To follow a drive's state without polling `Drives`, subscribe to
+`WatchStateChanged`. It delivers every change of a drive's `WatchCatchUp` once,
+with that drive's next `WatchStateVersion`, before the `WatchFaulted` of the
+fault that caused it (`DriveWatchState.Fault`). A finished automatic recovery is
+`Recovering`, then `CatchingUp` when the restarted watch registers, then
+`CaughtUp`. One drive's changes arrive in version order, but a read of `Drives`
+can be newer than an event still being delivered, so keep the last version
+applied per drive, seed it from `Drives` (which reads the state and the version
+together), and drop older events:
+
+```csharp
+var gate = new Lock();
+var applied = new Dictionary<char, long>();
+index.WatchStateChanged += state =>
+{
+    // The check and the publication share one lock, so an older event
+    // delivered concurrently can never publish after a newer one.
+    lock (gate)
+    {
+        if (applied.GetValueOrDefault(state.DriveLetter) >= state.Version)
+        {
+            return;
+        }
+
+        applied[state.DriveLetter] = state.Version;
+        Publish(state.DriveLetter, state.State);
+    }
+};
+```
+
+A decision a consumer tags with the version it read, such as "this drive is
+ready", is superseded by any later event of that drive, including a fault that
+lands just after the read.
+
 ### Callback reentrancy
 
-Do not call an index lifecycle method synchronously from that index's `Changed`
-or `WatchFaulted` handler. Start, stop, rescan, dispose, their batched forms, and
+Do not call an index lifecycle method synchronously from that index's `Changed`,
+`WatchFaulted` or `WatchStateChanged` handler. Start, stop, rescan, dispose, their batched forms, and
 an unsettled catch-up wait fail immediately with `InvalidOperationException`.
 Queue the work so it begins after the handler returns. Queries, `Drives`,
 `QueryUsnJournalSettings`, and already settled catch-up waits are allowed.

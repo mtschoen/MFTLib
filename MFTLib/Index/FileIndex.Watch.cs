@@ -34,7 +34,8 @@ public sealed partial class FileIndex
     ///     wait for, a rescan or start of that drive. Exceptions thrown by fault handlers are
     ///     discarded.
     ///     <para>
-    ///         Inside any <see cref="Changed" /> or <see cref="WatchFaulted" /> handler of this index,
+    ///         Inside any <see cref="Changed" />, <see cref="WatchFaulted" /> or
+    ///         <see cref="WatchStateChanged" /> handler of this index,
     ///         whichever drive it concerns, <c>StartWatchingAsync</c>, <c>StopWatchingAsync</c>,
     ///         <c>RescanAsync</c>, <c>DisposeAsync</c>, their batched forms and a
     ///         <c>WaitForCatchUpAsync</c> that has not yet settled fail at once with

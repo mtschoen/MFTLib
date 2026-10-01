@@ -35,9 +35,16 @@ public sealed partial class FileIndex
                     retired.Add(instance);
                     drains.Add(instance.Drained);
                 }
+
+                NoteWatchStateLocked(runtime);
             }
 
             drains.AddRange(_recoveryCompletions);
+        }
+
+        foreach (var runtime in _driveRuntimes.Values)
+        {
+            RaiseWatchStateChanged(runtime);
         }
 
         foreach (var instance in retired)

@@ -17,7 +17,10 @@ public sealed partial class FileIndex
             lock (_stateLock)
             {
                 ClearRecoveryLocked(runtime);
+                NoteWatchStateLocked(runtime);
             }
+
+            RaiseWatchStateChanged(runtime);
         }
 
         ScanAttempt outcome;
@@ -49,20 +52,28 @@ public sealed partial class FileIndex
     /// </summary>
     bool RefuseWatchOverUnresumableBlock(DriveRuntime runtime)
     {
-        lock (_stateLock)
+        try
         {
-            if (FindWatchableDriveBlockLocked(runtime.DriveLetter) is not { } driveBlock ||
-                !_unresumableCheckpointsByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var reason))
+            lock (_stateLock)
             {
-                return false;
-            }
+                if (FindWatchableDriveBlockLocked(runtime.DriveLetter) is not { } driveBlock ||
+                    !_unresumableCheckpointsByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var reason))
+                {
+                    return false;
+                }
 
-            if (runtime.WatchRequested)
-            {
-                _ = RecordUnresumableCheckpointWatchFailureLocked(runtime, driveBlock, reason);
-            }
+                if (runtime.WatchRequested)
+                {
+                    _ = RecordUnresumableCheckpointWatchFailureLocked(runtime, driveBlock, reason);
+                    NoteWatchStateLocked(runtime);
+                }
 
-            return true;
+                return true;
+            }
+        }
+        finally
+        {
+            RaiseWatchStateChanged(runtime);
         }
     }
 
@@ -117,7 +128,11 @@ public sealed partial class FileIndex
             {
                 _watchFailureMessagesByOrdinal.Remove(driveOrdinal);
             }
+
+            NoteWatchStateLocked(runtime);
         }
+
+        RaiseWatchStateChanged(runtime);
     }
 
     /// <summary>
@@ -170,6 +185,7 @@ public sealed partial class FileIndex
         var failure = new InvalidOperationException(
             $"A rescan replaced drive {runtime.DriveLetter}'s block and the watch could not be started on it.",
             startFailure);
+        var fault = new WatchFault(WatchFaultKind.RescanRestart, runtime.DriveLetter, failure);
         lock (_stateLock)
         {
             if (_disposed || !ReferenceEquals(runtime.Current, instance))
@@ -182,10 +198,11 @@ public sealed partial class FileIndex
             instance.OutstandingFault = failure;
             instance.CatchUp.Fault(failure);
             _watchFailureMessagesByOrdinal[instance.ArmedBlock.DriveOrdinal] = failure.Message;
+            NoteWatchStateLocked(runtime, fault);
         }
 
         CompleteInstanceDrain(runtime, instance);
-        RaiseWatchFaulted(new WatchFault(WatchFaultKind.RescanRestart, runtime.DriveLetter, failure));
+        RaiseWatchFaulted(fault);
         return true;
     }
 }

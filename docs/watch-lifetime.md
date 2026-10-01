@@ -44,6 +44,36 @@
       message, so the drive reads `NotStarted` either way. `WatchCatchUp` derives, in order: `Recovering`; the current instance's
       state; `Faulted` for a failed or refused start; `CatchingUp` while requested with no
       instance; otherwise `NotStarted`.
+    - **Watch state events**: `FileIndex.WatchStateChanged` delivers a `DriveWatchState`
+      (`DriveLetter`, `State`, `Version`, `Fault`) for every change of a drive's derived
+      `WatchCatchUp`, and `DriveStatus.WatchStateVersion` carries the same per-drive counter: zero
+      at open unless open-time scans exhausted catch-up retries (which leaves the drive `Faulted`
+      with version 1), one more per change, independent across drives. Every section that changes an
+      input of `GetWatchCatchUpStateLocked` (start registration, a start whose source threw or its
+      caller cancelled, a refused start, catch-up, pump fault settlement, recovery queued and
+      ended, lost-catch-up retry and its end, rescan commit and recovery clear, a replacement's
+      refusal or failed restart, stop, disposal) calls `NoteWatchStateLocked` before releasing
+      `_stateLock`; it rederives the state, and only when it differs from the last noted one bumps
+      the version and queues the change on the drive's runtime. `RaiseWatchStateChanged` runs after
+      every such section, and at the start of `RaiseWatchFaulted` and in the pump's fault
+      settlement `finally`, with neither `_stateLock` nor a write gate held. It holds the drive's
+      `DeliveryLock` (taken before `_stateLock`, never under it) from taking the queue until the last
+      handler returns, so one drive's changes are delivered one at a time in version order, and a
+      caller that finds the queue empty waits for a delivery another thread is making. That is
+      what keeps a fault's `WatchFaulted` behind the state change it caused (`Fault` set) when a
+      concurrent stop took that change from the queue. A `Drive` or `Apply` fault moves the drive to `Faulted` and then, once
+      its recovery is queued, to `Recovering`; both carry the fault. A finished recovery is
+      `CatchingUp` when the restarted watch registers and `CaughtUp` when it catches up, so no
+      consumer polls for it. Delivery uses `Deliver`, so the reentrancy rules below apply, and a
+      throwing handler is discarded without starving the others. A handler must not block waiting
+      for another change of its drive. A start, rescan or recovery delivers while holding the
+      drive's lifecycle gate. A consumer that also reads `Drives`, where state and version are
+      read together, applies an event only when its version is newer than the last it applied
+      for that drive, because its read can be newer than an event still being delivered. A
+      readiness decision tagged with the version it read is therefore superseded by any later
+      fault, which is how a consumer orders its own publication against the library's fault
+      settlement without a callback under the lock. Disposal delivers each drive's final change
+      before `DisposeAsync` returns; `Drives` already throws `ObjectDisposedException` then.
     - **Per-drive state machine**: each configured drive has a `DriveRuntime`; each start creates
       a distinct `WatchInstance` with its own generation, cancellation sources, handle, pump,
       catch-up slot, armed block, fault, and `Drained` task. `Current` holds at most one instance,
@@ -89,9 +119,10 @@
       the write gate nor `_stateLock`; publication takes the write gate and commits the block,
       snapshot, and pending result under `_stateLock`, retiring a healthy watch in that same
       section. After releasing both `_stateLock` and the write gate, it requests stop and awaits
-      the old pump's `Drained` and any predecessor's, holding only the lifecycle gate. `Changed`
-      and `WatchFaulted` run with no
-      write gate and no `_stateLock`; pumps hold no gate when raising either event. The scan path
+      the old pump's `Drained` and any predecessor's, holding only the lifecycle gate. `Changed`,
+      `WatchFaulted` and `WatchStateChanged` run with no
+      write gate and no `_stateLock`; pumps hold no gate when raising any of them. The scan path
       may raise `WatchFaulted(CatchUpLost, X)` or `WatchFaulted(RescanRestart, X)` while
-      holding X's lifecycle gate, after draining the old pump.
-    - **Callback reentrancy**: a `Changed` or `WatchFaulted` handler runs on a drive's pump (or, for `WatchFaultKind.CatchUpLost` and `WatchFaultKind.RescanRestart`, on the scan operation that holds the drive's lifecycle gate), so a lifecycle call that waits for a pump can deadlock across drives (X's handler stops Y while Y's handler stops X). `FileIndex.Reentrancy.cs` sets an `AsyncLocal` delivery marker around every handler invocation (`Deliver`, used by `RaiseChanged` and `RaiseWatchFaulted`); `StartWatchingAsync`, `StopWatchingAsync`, `RescanAsync`, `DisposeAsync`, their batched forms and an unsettled `WaitForCatchUpAsync` check it synchronously at entry and return an already faulted task carrying `InvalidOperationException`, whichever drive they name. The marker flows into awaits and work the handler starts; its `Active` flag is cleared when the invocation returns, so work queued from a handler that runs afterwards is allowed. Queries, `Drives`, `QueryUsnJournalSettings` and a settled catch-up wait are never rejected. The recovery's restart and a rescan's restart use internal helpers that carry no check. Every waiter a handler can settle or cancel completes its continuations asynchronously (`RunContinuationsAsynchronously`, `AwaitQueuedAsync` for token cancellation), so a continuation never runs on the handler's stack.
+      holding X's lifecycle gate, after draining the old pump, and starts, rescans and recoveries
+      raise `WatchStateChanged` for X while holding X's lifecycle gate.
+    - **Callback reentrancy**: a `Changed`, `WatchFaulted` or `WatchStateChanged` handler runs on a drive's pump (or, for `WatchFaultKind.CatchUpLost` and `WatchFaultKind.RescanRestart`, on the scan operation that holds the drive's lifecycle gate, and for a state change on whichever start, stop, rescan or recovery made it), so a lifecycle call that waits for a pump can deadlock across drives (X's handler stops Y while Y's handler stops X). `FileIndex.Reentrancy.cs` sets an `AsyncLocal` delivery marker around every handler invocation (`Deliver`, used by `RaiseChanged`, `RaiseWatchFaulted` and `RaiseWatchStateChanged`); `StartWatchingAsync`, `StopWatchingAsync`, `RescanAsync`, `DisposeAsync`, their batched forms and an unsettled `WaitForCatchUpAsync` check it synchronously at entry and return an already faulted task carrying `InvalidOperationException`, whichever drive they name. The marker flows into awaits and work the handler starts; its `Active` flag is cleared when the invocation returns, so work queued from a handler that runs afterwards is allowed. Queries, `Drives`, `QueryUsnJournalSettings` and a settled catch-up wait are never rejected. The recovery's restart and a rescan's restart use internal helpers that carry no check. Every waiter a handler can settle or cancel completes its continuations asynchronously (`RunContinuationsAsynchronously`, `AwaitQueuedAsync` for token cancellation), so a continuation never runs on the handler's stack.

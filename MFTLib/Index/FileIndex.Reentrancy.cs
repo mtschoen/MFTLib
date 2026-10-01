@@ -1,10 +1,10 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     The guard against a lifecycle call made from inside a <see cref="Changed" /> or
-///     <see cref="WatchFaulted" /> handler. A handler runs on a drive's pump, or on the scan
-///     operation that raised a lost catch-up, and a lifecycle call can wait for a pump that is
-///     itself blocked in a handler, so two handlers stopping each other's drives deadlock. Every
+///     The guard against a lifecycle call made from inside a <see cref="Changed" />,
+///     <see cref="WatchFaulted" /> or <see cref="WatchStateChanged" /> handler. A handler runs on
+///     a drive's pump, or on a scan or lifecycle call that holds a drive's lifecycle gate, and a
+///     lifecycle call can wait for a pump that is itself blocked in a handler, so two handlers stopping each other's drives deadlock. Every
 ///     raise site delivers through <see cref="Deliver{TArgument}" />, which sets an
 ///     <see cref="AsyncLocal{T}" /> marker naming this index for exactly the handler invocation;
 ///     the marker flows with the handler's execution context, into its awaits and any work it
@@ -53,9 +53,9 @@ public sealed partial class FileIndex
     {
         return IsInsideHandlerOfThisIndex()
             ? new InvalidOperationException(
-                $"FileIndex.{operation} was called from inside a Changed or WatchFaulted handler; it can wait " +
-                "for a watch pump that is blocked in a handler. Queue the call to run after the handler " +
-                "returns, for example with Task.Run.")
+                $"FileIndex.{operation} was called from inside a Changed, WatchFaulted or WatchStateChanged " +
+                "handler; it can wait for a watch pump that is blocked in a handler. Queue the call to run " +
+                "after the handler returns, for example with Task.Run.")
             : null;
     }
 

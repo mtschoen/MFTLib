@@ -105,7 +105,8 @@ public sealed partial class FileIndex
     ///     its last start failed or was refused, faults at once while the drive reads
     ///     <see cref="WatchCatchUpState.Recovering" /> (with the fault that ended its watch, or
     ///     the lost catch-up a scan is retrying; a consumer that wants the recovered watch waits
-    ///     again once the drive reads <see cref="WatchCatchUpState.CatchingUp" />), and is
+    ///     again once the drive reads <see cref="WatchCatchUpState.CatchingUp" />, which
+    ///     <see cref="WatchStateChanged" /> reports), and is
     ///     cancelled when that watch is stopped, retired by a
     ///     rescan, or the index is disposed. A wait issued after a rescan retired the drive's
     ///     requested watch and before its replacement registered follows the replacement: it

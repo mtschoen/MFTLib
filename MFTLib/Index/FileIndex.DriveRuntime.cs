@@ -143,6 +143,28 @@ public sealed partial class FileIndex
         ///     it; the drive's next start, a stop, or a rescan that replaces the block clears it.
         /// </summary>
         public Exception? RefusedStartFault;
+
+        /// <summary>
+        ///     The <see cref="WatchCatchUpState" /> last noted for the drive, which
+        ///     <see cref="FileIndex.NoteWatchStateLocked" /> compares the derived state against.
+        /// </summary>
+        public WatchCatchUpState NotedWatchState;
+
+        /// <summary>The drive's <see cref="DriveStatus.WatchStateVersion" />.</summary>
+        public long WatchStateVersion;
+
+        /// <summary>
+        ///     Noted changes not yet delivered through <see cref="FileIndex.WatchStateChanged" />, in
+        ///     version order.
+        /// </summary>
+        public List<DriveWatchState>? PendingWatchStates;
+
+        /// <summary>
+        ///     Serializes delivery of this drive's <see cref="FileIndex.WatchStateChanged" />, held from
+        ///     taking <see cref="PendingWatchStates" /> until the last handler returns. Taken before
+        ///     the state lock, never under it or under a write gate.
+        /// </summary>
+        public Lock DeliveryLock { get; } = new();
     }
 
     /// <summary>

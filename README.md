@@ -731,8 +731,12 @@ requested. An old `Changed` event can arrive after the swap and can repeat durin
 catch-up. Queries can lag until the new watch reports `CaughtUp`.
 
 During automatic recovery, a catch-up wait faults immediately with the fault that started
-the recovery. Wait again after `DriveStatus.WatchCatchUp` returns to `CatchingUp` if the
-consumer needs to observe the replacement watch reaching `CaughtUp`. When a lost catch-up
+the recovery. To observe the replacement watch reaching `CaughtUp`, subscribe to
+`FileIndex.WatchStateChanged`: it reports every change of a drive's `WatchCatchUp` with the
+drive's next `DriveStatus.WatchStateVersion`, before the `WatchFaulted` of the fault that
+caused it, so a recovery reads `Recovering`, then `CatchingUp`, then `CaughtUp` with no
+polling. One drive's events arrive in version order; a consumer that also reads `Drives`
+applies an event only when its version is newer than the last it applied for that drive. When a lost catch-up
 reaches the retry limit, `JournalCatchUpLostException.RecoveryStopped` is true, the drive
 keeps its last queryable block, and its watch is refused until a manual rescan succeeds.
 
@@ -745,8 +749,8 @@ a recovery or rescan is restarting the watch wins, leaves the drive stopped, and
 the stopped instance's outstanding fault once. `DisposeAsync` does not rethrow watch or
 broker-host faults.
 
-Do not call a lifecycle method from inside that index's `Changed` or `WatchFaulted`
-handler. Start, stop, rescan, an unsettled catch-up wait, disposal, and their batched forms
+Do not call a lifecycle method from inside that index's `Changed`, `WatchFaulted` or
+`WatchStateChanged` handler. Start, stop, rescan, an unsettled catch-up wait, disposal, and their batched forms
 fail immediately with `InvalidOperationException`. Queue the operation, for example with
 `Task.Run`, so it begins after the handler returns. Queries, `Drives`, and already-settled
 catch-up waits are allowed.
