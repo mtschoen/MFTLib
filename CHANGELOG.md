@@ -2,6 +2,14 @@
 
 ## 0.3.0
 
+### Public API cleanup
+
+- Remove legacy progress constructors and explicit deconstruction overloads. Use phase-bearing `MftScanProgress` construction, `BrokerScanProgress` property initialization, and the current `BlockWriteProgress` shape.
+- Keep broker wire types, snapshot and mutation machinery, matching and file-open helpers, capacity planning, row writing, shared-memory implementations, and synthetic MFT generators internal. `MftPathUtilities` lives in test support; `ElevationUtilities.GetProcessPath` is internal.
+- Remove `DriveState.Scanning`, `MftBlockProduceResult.CompactionNeeded`, and the raw-volume `FindDirectories`, `FindFiles`, and `FindRecords` wrappers. Compaction status comes from the block header.
+- `WatchUsnJournal` yields `(Entries, Cursor)` batches. Remove `WatchUsnJournalWithCursor`. Consumer tests inject journal batches through `MFTLibTestExtensions.FileIndexTestAccess.ApplyJournalEntries`; the production entry point is internal.
+- Separate `DriveStatus.SkippedRecordCount` for MFT omissions from `AccessDeniedSubtreeCount` for enumeration subtrees that could not be entered.
+
 Everything since 0.2.0, the latest published release: the packed index and its MFT
 producer ([MFTLib#131](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/131))
 and the live watch bridge and consumer-gap closures tracked as
@@ -13,7 +21,7 @@ per-drive watch channels tracked by [MFTLib#265](https://gitea.fleet.sticktoitiv
 Plain migration work for a consumer moving from `0.2.0`, or from a 0.3.0 preview built before the per-drive watch channels change, to this release. Consumers are file-wizard and git-wizard; each item is the call shape to edit.
 
 - Target net10.0 and compile against the `0.3.0` assemblies. Managed and native binaries must match (native ABI version 3), and every call site is recompiled because optional parameters were added to public methods.
-- `volume.StreamRecords(filter, matchFlags)` -> `volume.StreamRecords(filter, matchFlags, progress: null, parseThreads: null, CancellationToken.None)`. `ReadRecordBatches(resolvePaths, batchSize)` -> `ReadRecordBatches(resolvePaths, batchSize, null, null, CancellationToken.None)`. `ReadAllRecords`, `FindByName`, and the other 0.2.0 members keep their signatures.
+- `volume.StreamRecords(filter, matchFlags)` -> `volume.StreamRecords(filter, matchFlags, progress: null, parseThreads: null, CancellationToken.None)`. `ReadRecordBatches(resolvePaths, batchSize)` -> `ReadRecordBatches(resolvePaths, batchSize, null, null, CancellationToken.None)`. `ReadAllRecords` and `FindByName` keep their signatures.
 - `BrokerTestHarness.StartInProcess(...)` callers read the client from `.Process` and dispose the handle. file-wizard `FileWizardTests/TestSupport/BrokerProcessFixture.cs`: delete the throwing scan lambdas and `RefusedSectionWriter`, use `StartInProcess(host)`. file-wizard `FileWizardTests/CliProgramCoverageTests.cs`: replace log polling with `await BrokerDiagnostics.FlushAsync(...)` and the reflection into `ResetToDefaults` with `BrokerDiagnosticsIsolation.Reset()`. git-wizard `GitWizardTests/TestSupport/BlockBrokerFixture.cs`: replace the dispose-from-inside-the-scan crash simulation with `handle.Crash()`.
 - `block.Flush()` -> `block.Flush(rangeFlushed: null)`; `writer.Complete(timestamp)` -> `writer.Complete(timestamp, null)`.
 - `BrokerDiagnostics.Log(message)` -> `BrokerDiagnostics.Log(channel, message)`; remove any caller of `LogFrame`.
@@ -95,8 +103,7 @@ Plain migration work for a consumer moving from `0.2.0`, or from a 0.3.0 preview
 - **USN journal support** on `MftVolume`:
   - `QueryUsnJournal()` - get the current journal cursor (`UsnJournalCursor`) to baseline incremental updates after a full scan
   - `ReadUsnJournal(cursor)` - batch catch-up read; returns `(UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor)`. Throws `InvalidOperationException` if the journal was recreated or entries were overwritten (caller should fall back to a full rescan)
-  - `WatchUsnJournal(cursor, cancellationToken)` - live `IAsyncEnumerable<UsnJournalEntry[]>` event stream; blocks on the kernel (zero CPU) until changes arrive, unblocks via `CancelIoEx` on cancellation
-  - `WatchUsnJournalWithCursor(cursor, cancellationToken)` - same as above but yields `(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)` so callers can persist progress without a separate `QueryUsnJournal` IOCTL
+  - `WatchUsnJournal(cursor, cancellationToken)` - live `(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)` batches; blocks on the kernel (zero CPU) until changes arrive, unblocks via `CancelIoEx` on cancellation, and supplies the post-batch cursor for persistence
 - `UsnJournalEntry` exposes `RecordNumber` / `ParentRecordNumber` (48-bit Master File Table (MFT) segment indices matching `MftRecord`), `Usn`, `Timestamp`, `Reason`, `FileAttributes`, `FileName`, plus `IsCreate` / `IsDelete` / `IsRename` / `IsClose` reason helpers
 - `UsnJournalEntry.Create(UsnJournalEntryOptions)` - public factory with a property-based value carrier for reconstructing an entry from already-decoded values (e.g. journal data serialized to disk and rebuilt in another process)
 - `MftRecord.FileAttributes` now sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback

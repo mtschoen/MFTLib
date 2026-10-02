@@ -8,7 +8,7 @@ namespace MFTLib;
 ///     keeps no state per drive, so a drive that stops, faults or is restarted never reaches
 ///     another drive's watch. The caller keeps ownership of the process.
 /// </summary>
-public sealed class BrokerIndexWatchSource : IIndexWatchSource
+internal sealed class BrokerIndexWatchSource : IIndexWatchSource
 {
     readonly Func<CancellationToken, Task<BrokerProcess>> _connectAsync;
 

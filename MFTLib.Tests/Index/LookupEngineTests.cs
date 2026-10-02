@@ -50,7 +50,7 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_AcceptsANativePathRootedAtTheBlockRoot()
     {
-        var entry = LookupEngineTestAccess.Find(_snapshot,
+        var entry = LookupEngine.Find(_snapshot,
             Path.Combine(TestDriveRoot.For('T'), "Documents", "report.pdf"));
 
         Assert.IsTrue(entry.HasValue);
@@ -60,10 +60,10 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_RoundTripsWhateverPathEmits()
     {
-        var report = LookupEngineTestAccess.Find(_snapshot,
+        var report = LookupEngine.Find(_snapshot,
             Path.Combine(TestDriveRoot.For('T'), "Documents", "report.pdf"))!.Value;
 
-        var roundTripped = LookupEngineTestAccess.Find(_snapshot, report.Path);
+        var roundTripped = LookupEngine.Find(_snapshot, report.Path);
 
         Assert.IsTrue(roundTripped.HasValue);
         Assert.AreEqual(report.Path, roundTripped.Value.Path);
@@ -73,16 +73,16 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_APathUnderNoIndexedRootReturnsNull()
     {
-        Assert.IsNull(LookupEngineTestAccess.Find(_snapshot,
+        Assert.IsNull(LookupEngine.Find(_snapshot,
             Path.Combine(TestDriveRoot.For('Z'), "Documents", "report.pdf")));
-        Assert.IsNull(LookupEngineTestAccess.Find(_snapshot, "not-a-path"));
-        Assert.IsNull(LookupEngineTestAccess.Find(_snapshot, ""));
+        Assert.IsNull(LookupEngine.Find(_snapshot, "not-a-path"));
+        Assert.IsNull(LookupEngine.Find(_snapshot, ""));
     }
 
     [TestMethod]
     public void Find_TheRootDirectoryItselfReturnsTheRootRow()
     {
-        var entry = LookupEngineTestAccess.Find(_snapshot, TestDriveRoot.For('T'));
+        var entry = LookupEngine.Find(_snapshot, TestDriveRoot.For('T'));
 
         Assert.IsTrue(entry.HasValue);
         Assert.AreEqual(TestDriveRoot.For('T'), entry.Value.Path);
@@ -91,7 +91,7 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_ResolvesAFullPathToItsEntry()
     {
-        var entry = LookupEngineTestAccess.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Documents", "report.pdf"));
+        var entry = LookupEngine.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Documents", "report.pdf"));
         Assert.IsTrue(entry.HasValue);
         Assert.AreEqual("report.pdf", entry.Value.Name);
         Assert.AreEqual(4096L, entry.Value.Size);
@@ -100,27 +100,27 @@ public class LookupEngineTests
     [TestMethod]
     public void Find_MissingSegmentReturnsNull()
     {
-        Assert.IsNull(LookupEngineTestAccess.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Documents", "nothing.txt")));
-        Assert.IsNull(LookupEngineTestAccess.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Nowhere", "report.pdf")));
+        Assert.IsNull(LookupEngine.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Documents", "nothing.txt")));
+        Assert.IsNull(LookupEngine.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Nowhere", "report.pdf")));
     }
 
     [TestMethod]
     public void Find_UnknownDriveReturnsNull()
     {
-        Assert.IsNull(LookupEngineTestAccess.Find(_snapshot, Path.Combine(TestDriveRoot.For('Z'), "Documents", "report.pdf")));
+        Assert.IsNull(LookupEngine.Find(_snapshot, Path.Combine(TestDriveRoot.For('Z'), "Documents", "report.pdf")));
     }
 
     [TestMethod]
     public void Find_MalformedPathReturnsNull()
     {
-        Assert.IsNull(LookupEngineTestAccess.Find(_snapshot, "not-a-path"));
-        Assert.IsNull(LookupEngineTestAccess.Find(_snapshot, ""));
+        Assert.IsNull(LookupEngine.Find(_snapshot, "not-a-path"));
+        Assert.IsNull(LookupEngine.Find(_snapshot, ""));
     }
 
     [TestMethod]
     public void FindByName_SpansEveryDriveInTheSnapshot()
     {
-        var results = LookupEngineTestAccess.FindByName(_snapshot, "readme.md", caseSensitive: false);
+        var results = LookupEngine.FindByName(_snapshot, "readme.md", caseSensitive: false);
         Assert.AreEqual(2, results.Count);
         CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, results.Select(entry => entry.Id.DriveLetter).ToArray());
     }
@@ -128,22 +128,22 @@ public class LookupEngineTests
     [TestMethod]
     public void FindByName_IsAnExactNameMatchNotASubstring()
     {
-        Assert.AreEqual(0, LookupEngineTestAccess.FindByName(_snapshot, "readme", caseSensitive: false).Count);
-        Assert.AreEqual(2, LookupEngineTestAccess.FindByName(_snapshot, "README.MD", caseSensitive: false).Count);
-        Assert.AreEqual(0, LookupEngineTestAccess.FindByName(_snapshot, "README.MD", caseSensitive: true).Count);
+        Assert.AreEqual(0, LookupEngine.FindByName(_snapshot, "readme", caseSensitive: false).Count);
+        Assert.AreEqual(2, LookupEngine.FindByName(_snapshot, "README.MD", caseSensitive: false).Count);
+        Assert.AreEqual(0, LookupEngine.FindByName(_snapshot, "README.MD", caseSensitive: true).Count);
     }
 
     [TestMethod]
     public void Root_ReturnsTheDriveRootForEachDrive()
     {
-        Assert.AreEqual(TestDriveRoot.For('T'), LookupEngineTestAccess.Root(_snapshot, 'T').Path);
-        Assert.AreEqual(TestDriveRoot.For('U'), LookupEngineTestAccess.Root(_snapshot, 'u').Path);
+        Assert.AreEqual(TestDriveRoot.For('T'), LookupEngine.Root(_snapshot, 'T').Path);
+        Assert.AreEqual(TestDriveRoot.For('U'), LookupEngine.Root(_snapshot, 'u').Path);
     }
 
     [TestMethod]
     public void Root_UnknownDriveThrows()
     {
-        Assert.ThrowsException<ArgumentException>(() => LookupEngineTestAccess.Root(_snapshot, 'Z'));
+        Assert.ThrowsException<ArgumentException>(() => LookupEngine.Root(_snapshot, 'Z'));
     }
 
     [TestMethod]
@@ -167,8 +167,8 @@ public class LookupEngineTests
         var snapshot = Snapshot.Create([new DriveBlock('V', 0, block, rootDirectoryPath: TestDriveRoot.For('V'))]);
         try
         {
-            Assert.AreEqual(rootRow, LookupEngineTestAccess.Root(snapshot, 'V').RowIndexForTest());
-            var entry = LookupEngineTestAccess.Find(snapshot, Path.Combine(TestDriveRoot.For('V'), "Documents", "report.pdf"));
+            Assert.AreEqual(rootRow, LookupEngine.Root(snapshot, 'V').RowIndex);
+            var entry = LookupEngine.Find(snapshot, Path.Combine(TestDriveRoot.For('V'), "Documents", "report.pdf"));
             Assert.IsTrue(entry.HasValue);
             Assert.AreEqual("report.pdf", entry.Value.Name);
         }
@@ -274,7 +274,7 @@ public class LookupEngineTests
         ]);
         try
         {
-            var partitioned = LookupEngineTestAccess.FindByName(snapshot, "needle.txt",
+            var partitioned = LookupEngine.FindByName(snapshot, "needle.txt",
                 caseSensitive: false);
             var reference = SequentialFindByName(snapshot, "needle.txt", caseSensitive: false);
 
@@ -321,7 +321,7 @@ public class LookupEngineTests
         try
         {
             Assert.ThrowsException<OperationCanceledException>(
-                () => LookupEngineTestAccess.FindByName(snapshot, "needle.txt",
+                () => LookupEngine.FindByName(snapshot, "needle.txt",
                     caseSensitive: false, token));
         }
         finally
@@ -344,30 +344,11 @@ public class LookupEngineTests
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
             Assert.AreEqual(0,
-                LookupEngineTestAccess.FindByName(snapshot, "needle.txt", caseSensitive: false).Count);
+                LookupEngine.FindByName(snapshot, "needle.txt", caseSensitive: false).Count);
         }
         finally
         {
             await snapshot.ReleaseNowAsync();
         }
-    }
-}
-
-static class LookupEngineTestAccess
-{
-    public static FileEntry? Find(Snapshot snapshot, string fullPath)
-    {
-        return LookupEngine.Find(snapshot, fullPath);
-    }
-
-    public static List<FileEntry> FindByName(Snapshot snapshot, string name, bool caseSensitive,
-        CancellationToken cancellationToken = default)
-    {
-        return LookupEngine.FindByName(snapshot, name, caseSensitive, cancellationToken);
-    }
-
-    public static FileEntry Root(Snapshot snapshot, char driveLetter)
-    {
-        return LookupEngine.Root(snapshot, driveLetter);
     }
 }

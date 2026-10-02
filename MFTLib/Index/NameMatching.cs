@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     folds with invariant upper-casing, which is what NTFS does for the ASCII range and is
 ///     stable across cultures, unlike the current culture's casing rules.
 /// </summary>
-public static class NameMatching
+internal static class NameMatching
 {
     public static bool EqualsName(ReadOnlySpan<char> left, ReadOnlySpan<char> right, bool caseSensitive)
     {

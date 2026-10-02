@@ -22,6 +22,8 @@ public sealed partial class FileIndex
 
         public int AccessDeniedSubtreeCount { get; init; }
 
+        public int SkippedRecordCount { get; init; }
+
         /// <summary>The MFT producer's failure when it produced no block.</summary>
         public Exception? ProducerFailure { get; init; }
 
@@ -64,6 +66,7 @@ public sealed partial class FileIndex
         _blockSourcesByOrdinal[driveOrdinal] = published.BlockSource;
         _cacheSlotsByOrdinal[driveOrdinal] = published.CacheSlot;
         _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = published.AccessDeniedSubtreeCount;
+        _skippedRecordCountByOrdinal[driveOrdinal] = published.SkippedRecordCount;
         _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
         if (published.DiscardedBlock is { } discardedBlock)
         {

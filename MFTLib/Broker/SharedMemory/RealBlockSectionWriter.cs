@@ -5,7 +5,7 @@ namespace MFTLib;
 
 /// <summary>Opens a client-created named block section and completes the broker's cold scan in it.</summary>
 [SupportedOSPlatform("windows")]
-public sealed class RealBlockSectionWriter : IBlockSectionWriter
+internal sealed class RealBlockSectionWriter : IBlockSectionWriter
 {
     // The processing step each flushed range of the completed block publishes.
     internal const string FlushStep = "block flush";

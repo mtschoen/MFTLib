@@ -107,8 +107,7 @@ public sealed class EnumerationProducer
             }
         }
 
-        return new EnumerationResult(writer.RowCount, writer.Block.Header.NamePoolUsed,
-            state.AccessDeniedSubtreeCount, writer.CompactionNeeded);
+        return new EnumerationResult(writer.RowCount, state.AccessDeniedSubtreeCount, writer.CompactionNeeded);
     }
 
     internal static EnumerationOptions CreateDirectoryEnumerationOptions()

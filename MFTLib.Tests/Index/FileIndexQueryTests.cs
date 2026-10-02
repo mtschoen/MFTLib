@@ -144,21 +144,6 @@ public class FileIndexQueryTests
     }
 
     [TestMethod]
-    public void Scan_ReturnsAWorkingScannerOverTheDrive()
-    {
-        Assert.IsTrue(_index.TryGetDriveOrdinal('T', out var driveOrdinal));
-
-        var rowCount = 0;
-        using var borrow = _index.BorrowCurrentSnapshot();
-        foreach (var _ in _index.Scan(borrow, driveOrdinal))
-        {
-            rowCount++;
-        }
-
-        Assert.IsTrue(rowCount > 0);
-    }
-
-    [TestMethod]
     public void HandleFromAnOldSnapshot_StaysReadableAcrossARescan()
     {
         var before = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;

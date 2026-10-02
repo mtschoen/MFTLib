@@ -152,21 +152,6 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     The ref-struct escape hatch over one drive's mapped rows, for hot paths that cannot
-    ///     afford a materialized list. Internal by design (MFTLib#122): <see cref="Enumerate" />
-    ///     is the public streaming surface. The scanner outlives this call, so the caller passes
-    ///     in the borrow that keeps those rows mapped for as long as it reads them, rather than
-    ///     this method taking one it cannot hold.
-    /// </summary>
-    internal RowScanner Scan(SnapshotBorrow borrow, ushort driveOrdinal,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(borrow);
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return new RowScanner(borrow.Snapshot, driveOrdinal, cancellationToken);
-    }
-
-    /// <summary>
     ///     Takes a reader's claim on the current snapshot. Taken under <see cref="_stateLock" />,
     ///     the same lock a snapshot swap and index disposal publish through, so a borrow is
     ///     either counted before the snapshot leaves the index (and waited for when it is

@@ -155,7 +155,7 @@ public partial class MftResultTests
         var token = cancellation.Token;
 
         var exception = Assert.ThrowsException<OperationCanceledException>(() =>
-            new MftResult(resultPtr, "C", 0, token));
+            new MftResult(resultPtr, "C", token));
 
         Assert.AreEqual(token, exception.CancellationToken);
         Assert.AreEqual(resultPtr, freed, "A cancelled result must be freed before the throw");
@@ -176,7 +176,7 @@ public partial class MftResultTests
         MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
         var ex = Assert.ThrowsException<InvalidOperationException>(() =>
-            new MftResult(resultPtr, "C", 0));
+            new MftResult(resultPtr, "C"));
         Assert.IsTrue(ex.Message.Contains("ABI mismatch"));
     }
 
@@ -195,7 +195,7 @@ public partial class MftResultTests
         MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
         var ex = Assert.ThrowsException<InvalidOperationException>(() =>
-            new MftResult(resultPtr, "C", 0));
+            new MftResult(resultPtr, "C"));
         Assert.IsTrue(ex.Message.Contains("stride"));
     }
 
@@ -228,7 +228,7 @@ public partial class MftResultTests
             Marshal.StructureToPtr(result, resultPtr, false);
             MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
-            using var mftResult = new MftResult(resultPtr, "C", 0);
+            using var mftResult = new MftResult(resultPtr, "C");
             var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToArray);
             Assert.AreEqual("Native MFT string offset is outside its pool", ex.Message);
         }
@@ -268,7 +268,7 @@ public partial class MftResultTests
             Marshal.StructureToPtr(result, resultPtr, false);
             MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
-            using var mftResult = new MftResult(resultPtr, "C", 0);
+            using var mftResult = new MftResult(resultPtr, "C");
             var ex = Assert.ThrowsException<InvalidDataException>(mftResult.ToArray);
             Assert.AreEqual("Native MFT string offset is outside its pool", ex.Message);
         }
@@ -308,7 +308,7 @@ public partial class MftResultTests
             Marshal.StructureToPtr(result, resultPtr, false);
             MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
-            using var mftResult = new MftResult(resultPtr, "C", 0);
+            using var mftResult = new MftResult(resultPtr, "C");
             var records = mftResult.ToArray();
             Assert.AreEqual(1, records.Length);
             Assert.AreEqual(string.Empty, records[0].FileName);
@@ -352,7 +352,7 @@ public partial class MftResultTests
             Marshal.StructureToPtr(result, resultPtr, false);
             MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
-            using var mftResult = new MftResult(resultPtr, "C", 0);
+            using var mftResult = new MftResult(resultPtr, "C");
             var records = mftResult.ToArray();
             Assert.AreEqual(1, records.Length);
             Assert.AreEqual($"C:\\{longPath}", records[0].FullPath);
@@ -401,7 +401,7 @@ public partial class MftResultTests
             Marshal.StructureToPtr(result, resultPtr, false);
             MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
 
-            using var mftResult = new MftResult(resultPtr, "C", 0);
+            using var mftResult = new MftResult(resultPtr, "C");
             var records = mftResult.ToArray();
             Assert.AreEqual(1, records.Length);
             Assert.AreEqual(fileName, records[0].FileName);

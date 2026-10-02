@@ -185,38 +185,4 @@ public class CacheDirectoryRejectionTests
         }, messages);
         Assert.AreEqual("foreign content", File.ReadAllText(foreign));
     }
-
-    [TestMethod]
-    public void BaseSignatures_AreRetainedForBinaryCompatibility()
-    {
-        var enumerateMethod = typeof(CacheDirectory).GetMethod(
-            nameof(CacheDirectory.EnumerateCached),
-            new[] { typeof(string) });
-        Assert.IsNotNull(enumerateMethod, "EnumerateCached(string) must exist for compiled consumers.");
-
-        var enumerateCallbackMethod = typeof(CacheDirectory).GetMethod(
-            nameof(CacheDirectory.EnumerateCached),
-            new[] { typeof(string), typeof(Action<CachedBlockRejection>) });
-        Assert.IsNotNull(enumerateCallbackMethod, "EnumerateCached(string, Action<CachedBlockRejection>) must exist.");
-
-        var inspectMethod = typeof(CacheDirectory).GetMethod(
-            nameof(CacheDirectory.InspectCached),
-            new[] { typeof(string), typeof(IReadOnlySet<char>) });
-        Assert.IsNotNull(inspectMethod, "InspectCached(string, IReadOnlySet<char>) must exist for compiled consumers.");
-
-        var inspectCallbackMethod = typeof(CacheDirectory).GetMethod(
-            nameof(CacheDirectory.InspectCached),
-            new[] { typeof(string), typeof(IReadOnlySet<char>), typeof(Action<CachedBlockRejection>) });
-        Assert.IsNotNull(inspectCallbackMethod, "InspectCached(string, IReadOnlySet<char>, Action<CachedBlockRejection>) must exist.");
-
-        var deleteMethod = typeof(CacheDirectory).GetMethod(
-            nameof(CacheDirectory.DeleteCached),
-            new[] { typeof(string), typeof(IReadOnlySet<char>), typeof(Action<string>) });
-        Assert.IsNotNull(deleteMethod, "DeleteCached(string, IReadOnlySet<char>, Action<string>) must exist for compiled consumers.");
-
-        var deleteCallbackMethod = typeof(CacheDirectory).GetMethod(
-            nameof(CacheDirectory.DeleteCached),
-            new[] { typeof(string), typeof(IReadOnlySet<char>), typeof(Action<string>), typeof(Action<CachedBlockRejection>) });
-        Assert.IsNotNull(deleteCallbackMethod, "DeleteCached(string, IReadOnlySet<char>, Action<string>, Action<CachedBlockRejection>) must exist.");
-    }
 }

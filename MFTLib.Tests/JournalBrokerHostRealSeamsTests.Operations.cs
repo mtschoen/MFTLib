@@ -124,7 +124,7 @@ public partial class JournalBrokerHostRealSeamsTests
         MockWatchJournalTip();
 
         // The kernel wait comes back only when the watch is cancelled, with an empty batch while
-        // already cancelled. MftVolume.WatchUsnJournalWithCursor treats that as a clean end, distinct
+        // already cancelled. MftVolume.WatchUsnJournal treats that as a clean end, distinct
         // from a cancelled Task.Run throwing OperationCanceledException.
         var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var watchEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

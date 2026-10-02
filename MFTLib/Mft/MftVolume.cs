@@ -140,7 +140,7 @@ public sealed partial class MftVolume : IDisposable
             throw new InvalidOperationException("ParseMFTRecords returned null");
         }
 
-        return new MftResult(resultPtr, _driveLetter, 0, cancellationToken);
+        return new MftResult(resultPtr, _driveLetter, cancellationToken);
     }
 
     // Runs the native parse against a control block that stays at one address for the whole call:
@@ -199,34 +199,7 @@ public sealed partial class MftVolume : IDisposable
         : null;
     }
 
-
-    public IEnumerable<string> FindDirectories(string name)
-    {
-        return FindRecords(name, true);
-    }
-
-    public IEnumerable<string> FindFiles(string name)
-    {
-        return FindRecords(name, false);
-    }
-
-    public IEnumerable<string> FindRecords(string name, bool? isDirectory = null)
-    {
-        using var result = StreamRecords(
-            name, MatchFlags.ExactMatch | MatchFlags.ResolvePaths, null, null, CancellationToken.None);
-
-        foreach (var record in result)
-        {
-            if (isDirectory.HasValue && record.IsDirectory != isDirectory.Value)
-            {
-                continue;
-            }
-
-            yield return record.FullPath ?? record.FileName;
-        }
-    }
-
-    public static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords = 262144)
+    internal static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords = 262144)
     {
         if (!MFTLibNative._generateSyntheticMft(filePath, recordCount, bufferSizeRecords))
         {
@@ -234,7 +207,7 @@ public sealed partial class MftVolume : IDisposable
         }
     }
 
-    public static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords,
+    internal static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords,
         uint recordSize)
     {
         if (!MFTLibNative._generateSyntheticMftSized(filePath, recordCount, bufferSizeRecords, recordSize))
@@ -250,7 +223,7 @@ public sealed partial class MftVolume : IDisposable
     ///     record, and a non-resident record whose first data attribute has a nonzero lowest
     ///     virtual cluster number. Test support, not a production entry point.
     /// </summary>
-    public static void GenerateFixtureMFT(string filePath)
+    internal static void GenerateFixtureMFT(string filePath)
     {
         if (!MFTLibNative._generateFixtureMft(filePath))
         {
@@ -282,7 +255,7 @@ public sealed partial class MftVolume : IDisposable
             throw new InvalidOperationException("ParseMFTFromFile returned null");
         }
 
-        return new MftResult(resultPtr, string.Empty, 0);
+        return new MftResult(resultPtr, string.Empty);
     }
 
     static MftRecord[] MaterializeWithTimings(MftResult result, out MftParseTimings timings)

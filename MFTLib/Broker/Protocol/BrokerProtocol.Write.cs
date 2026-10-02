@@ -5,7 +5,7 @@ namespace MFTLib;
 
 // Frame write methods for BrokerProtocol, in BrokerFrameKind order. See BrokerProtocol.cs for
 // the entry codec and ReadFrame dispatch, and BrokerProtocol.Payload.cs for the primitives.
-public static partial class BrokerProtocol
+internal static partial class BrokerProtocol
 {
     // Control pipe
 

@@ -17,7 +17,7 @@ namespace MFTLib;
 ///     When queried directly on Windows via <see cref="Query(string)" /> with administrator
 ///     elevation, all cluster and sector geometry fields are populated from the live volume.
 ///     When reconstructed on a non-elevated client from a broker query
-///     (a <see cref="BrokerFrameKind.QueryVolume" /> request), only
+///     through <see cref="BrokerProcess.QueryVolumeAsync" />, only
 ///     <see cref="MftValidDataLength" /> and <see cref="BytesPerFileRecordSegment" /> (and
 ///     derived <see cref="MftRecordCount" />) are transmitted; <see cref="BytesPerSector" />,
 ///     <see cref="BytesPerCluster" />, <see cref="TotalClusters" />, and

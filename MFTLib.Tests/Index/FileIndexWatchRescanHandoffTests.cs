@@ -29,7 +29,7 @@ public class FileIndexWatchRescanHandoffTests
                 {
                     MftBlockFixture.Write(request.BlockPath, 1, WatchHarness.JournalId, 100, moment: MftBlockFixture.SeededMoment);
                     var block = BlockFile.Open(request.BlockPath, 1, out _)!;
-                    return Task.FromResult(new MftBlockProduceResult(block, WatchHarness.JournalId, 100, 0, false));
+                    return Task.FromResult(new MftBlockProduceResult(block, WatchHarness.JournalId, 100, 0));
                 }
             }, Token);
             var changes = new System.Collections.Concurrent.ConcurrentQueue<FileChange>();

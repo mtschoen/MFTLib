@@ -1,6 +1,6 @@
-namespace MFTLib;
+namespace MFTLib.Tests.TestSupport;
 
-public static class MftPathUtilities
+internal static class MftPathUtilities
 {
     public static string ResolvePath(ulong recordNumber, IReadOnlyDictionary<ulong, MftRecord> lookup,
         string driveLetter)

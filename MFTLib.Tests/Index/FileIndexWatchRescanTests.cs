@@ -308,7 +308,7 @@ public partial class FileIndexWatchRescanTests
                 MftBlockFixture.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
                 return Task.FromResult(new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
-                    JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+                    JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
             },
             WatchSource = source,
             InitialOpenCacheOnly = true

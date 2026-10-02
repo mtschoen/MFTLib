@@ -25,7 +25,7 @@ public partial class MftResultTests
 
         Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
         {
-            using var result = new MftResult(resultPtr, string.Empty, 0);
+            using var result = new MftResult(resultPtr, string.Empty);
             _ = result.MaterializeBatches(batchSize).ToList();
         });
     }
@@ -36,7 +36,7 @@ public partial class MftResultTests
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
         var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
-        var result = new MftResult(resultPtr, string.Empty, 0);
+        var result = new MftResult(resultPtr, string.Empty);
         result.Dispose();
 
         Assert.ThrowsException<ObjectDisposedException>(() =>
@@ -49,7 +49,7 @@ public partial class MftResultTests
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
         var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
-        using var result = new MftResult(resultPtr, string.Empty, 0);
+        using var result = new MftResult(resultPtr, string.Empty);
 
         var expectedRecordNumbers = result.Select(r => r.RecordNumber).ToArray();
         var batches = result.MaterializeBatches().ToList();
@@ -69,7 +69,7 @@ public partial class MftResultTests
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
         var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
-        using var result = new MftResult(resultPtr, string.Empty, 0);
+        using var result = new MftResult(resultPtr, string.Empty);
 
         const int batchSize = 64;
         var batches = result.MaterializeBatches(batchSize).ToList();
@@ -93,7 +93,7 @@ public partial class MftResultTests
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
         var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, 256);
-        using var result = new MftResult(resultPtr, "C", 0);
+        using var result = new MftResult(resultPtr, "C");
 
         var batches = result.MaterializeBatches(50).ToList();
         var withPaths = batches.SelectMany(b => b).Where(r => r.FullPath != null).ToArray();
@@ -106,7 +106,7 @@ public partial class MftResultTests
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
         var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
-        using var result = new MftResult(resultPtr, string.Empty, 0);
+        using var result = new MftResult(resultPtr, string.Empty);
 
         using var enumerator = result.MaterializeBatches(10).GetEnumerator();
         Assert.IsTrue(enumerator.MoveNext());
@@ -129,7 +129,7 @@ public partial class MftResultTests
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
         var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
-        using var result = new MftResult(resultPtr, string.Empty, 0);
+        using var result = new MftResult(resultPtr, string.Empty);
         var expectedRecords = result.ToArray();
 
         var batches = result.MaterializeBatches(128).ToList();

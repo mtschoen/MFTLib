@@ -116,7 +116,7 @@ public class FileIndexBlockSourceTests
         {
             invocationCount++;
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         static async Task RebuildWarmStartedDrivesAsync(FileIndex index)

@@ -7,7 +7,6 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Platforms>x64;x86</Platforms>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <RunPostBuildEvent>Always</RunPostBuildEvent>
 
     <!-- NuGet package metadata -->
     <PackageId>MFTLib</PackageId>
@@ -37,6 +36,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="MFTLib.Tests" />
     <InternalsVisibleTo Include="MFTLibTestExtensions" />
+    <InternalsVisibleTo Include="Benchmark" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">

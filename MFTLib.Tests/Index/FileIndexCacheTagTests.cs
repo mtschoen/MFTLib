@@ -72,7 +72,7 @@ public class FileIndexCacheTagTests
     static Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(new MftBlockProduceResult(Build(request), 7, 4096, 0, false));
+        return Task.FromResult(new MftBlockProduceResult(Build(request), 7, 4096, 0));
     }
 
     void Seed(CacheTag tag)

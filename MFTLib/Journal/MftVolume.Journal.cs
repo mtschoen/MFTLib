@@ -150,75 +150,12 @@ public sealed partial class MftVolume
     }
 
     /// <summary>
-    ///     Yields batches of USN journal entries as filesystem changes arrive.
+    ///     Yields batches of USN journal entries and their post-batch cursors as filesystem changes arrive.
     ///     Blocks on the kernel (zero CPU) until new entries appear.
     ///     Cancellation remains observable across read issuance and interrupts an idle kernel wait.
     ///     The pending read completes before its native buffers and cancellation event are released.
     /// </summary>
-    public async IAsyncEnumerable<UsnJournalEntry[]> WatchUsnJournal(
-        UsnJournalCursor since,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var nextUsn = since.NextUsn;
-        var journalId = since.JournalId;
-
-        using var session = new UsnWatchSession(FileUtilities._getWatchVolumeHandle(_volumePath));
-        await using var registration = cancellationToken.Register(session.Cancel);
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-
-            var currentUsn = nextUsn;
-            var resultPtr = await session.ReadBatchAsync(currentUsn, journalId, cancellationToken)
-                .ConfigureAwait(false);
-
-            if (resultPtr == IntPtr.Zero)
-            {
-                throw new InvalidOperationException("WatchUsnJournalBatch returned null");
-            }
-
-            UsnJournalEntry[] entries;
-            try
-            {
-                var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
-                if (!string.IsNullOrEmpty(result.ErrorMessage))
-                {
-                    throw new InvalidOperationException(result.ErrorMessage);
-                }
-
-                entries = MarshalUsnEntries(result);
-                nextUsn = result.NextUsn;
-            }
-            finally
-            {
-                MFTLibNative._freeUsnJournalResult(resultPtr);
-            }
-
-            if (entries.Length == 0)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    yield break;
-                }
-
-                // If ERROR_OPERATION_ABORTED (995) arrives without a requested cancellation,
-                // the loop silently retries instead of surfacing an error; acceptable today
-                // because CancelIoEx is only invoked from this token's registration.
-                continue;
-            }
-
-            yield return entries;
-        }
-    }
-
-    /// <summary>
-    ///     Like <see cref="WatchUsnJournal" /> but yields the post-batch cursor
-    ///     alongside each batch, so callers can persist progress without a
-    ///     separate <see cref="QueryUsnJournal" /> IOCTL.
-    /// </summary>
-    public async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchUsnJournalWithCursor(
+    public async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> WatchUsnJournal(
         UsnJournalCursor since,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {

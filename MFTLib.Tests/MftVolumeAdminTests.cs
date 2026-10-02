@@ -193,30 +193,6 @@ public class MftVolumeAdminTests
     }
 
     [TestMethod]
-    public void FindFiles_ReturnsOnlyFiles()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        var paths = volume.FindFiles("explorer.exe").ToList();
-
-        Assert.IsTrue(paths.Count > 0, "Expected to find explorer.exe");
-        foreach (var path in paths)
-        {
-            Assert.IsTrue(path.Contains("explorer.exe", StringComparison.OrdinalIgnoreCase));
-        }
-    }
-
-    [TestMethod]
-    public void FindDirectories_ReturnsOnlyDirectories()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        var paths = volume.FindDirectories("Windows").ToList();
-
-        Assert.IsTrue(paths.Count > 0, "Expected to find Windows directory");
-    }
-
-    [TestMethod]
     public void StreamRecords_CanEnumerate()
     {
         RequireElevation();
@@ -380,16 +356,6 @@ public class MftVolumeAdminTests
         Assert.IsTrue(ElevationUtilities.IsElevated());
     }
 
-
-    [TestMethod]
-    public void FindRecords_NoDirectoryFilter_ReturnsBothTypes()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        // isDirectory: null means return both files and directories
-        var results = volume.FindRecords("Windows").ToList();
-        Assert.IsTrue(results.Count > 0, "Expected to find records named 'Windows'");
-    }
 
     [TestMethod]
     public void MftResult_NonGenericEnumerator_Works()

@@ -1,7 +1,3 @@
-using System.Runtime.CompilerServices;
-
-[assembly: InternalsVisibleTo("MFTLib.Tests")]
-
 namespace MFTLib;
 
 readonly struct NativeStrings(IntPtr namePtr, ushort nameLength, IntPtr pathPtr, ushort pathLength)
