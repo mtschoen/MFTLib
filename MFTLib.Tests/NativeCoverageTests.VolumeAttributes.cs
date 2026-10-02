@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
@@ -36,7 +37,7 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -120,7 +121,7 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -157,7 +158,7 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -208,8 +209,8 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            MFTLibNative.NativeSetReadFailCountdown(2); // fail 2nd Read
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            NativeTestHooks.NativeSetReadFailCountdown(2); // fail 2nd Read
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -260,7 +261,7 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -293,11 +294,11 @@ public partial class NativeCoverageTests
             File.Delete(path);
             // 5000 records with initial capacity 1024 → realloc triggers around record ~1024
             MftVolume.GenerateSyntheticMFT(path, 5000, 256);
-            MFTLibNative.NativeSetMaxThreads(1);
+            NativeTestHooks.NativeSetMaxThreads(1);
 
             // Alloc countdown: 1=result calloc, 2=VirtualAlloc buf0, 3=VirtualAlloc buf1,
             // 4=entries malloc, 5=strings malloc, 6=realloc when capacity exceeded
-            MFTLibNative.NativeSetAllocFailCountdown(6);
+            NativeTestHooks.NativeSetAllocFailCountdown(6);
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);

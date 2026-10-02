@@ -22,7 +22,7 @@ public partial class JournalBrokerHostRealSeamsTests
         MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
 
         var parsePtr = BuildThreeNameRecordsResult();
-        MFTLibNative._parseMftRecords = (_, _, _, _) => parsePtr;
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => parsePtr;
         MockFreeMftResult();
 
         using var writer = new RecordingBlockSectionWriter();
@@ -203,7 +203,7 @@ public partial class JournalBrokerHostRealSeamsTests
             var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(parseResult, parsePtr, false);
 
-            MFTLibNative._parseMftRecords = (_, _, _, _) => parsePtr;
+            MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => parsePtr;
             MockFreeMftResult();
         }
 

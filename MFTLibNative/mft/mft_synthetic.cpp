@@ -395,10 +395,6 @@ EXPORT bool GenerateSyntheticMFTSized(const wchar_t* filePath, uint64_t recordCo
     return GenerateSyntheticMFTImpl(utf8.c_str(), RecordCount{recordCount}, bufferSizeRecords, recordSize);
 }
 
-EXPORT bool GenerateSyntheticMFT(const wchar_t* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
-    return GenerateSyntheticMFTSized(filePath, recordCount, bufferSizeRecords, DEFAULT_FILE_RECORD_SIZE);
-}
-
 EXPORT bool GenerateFixtureMFT(const wchar_t* filePath) {
     if (ShouldFailPathConversion()) {
         return false;
@@ -420,10 +416,6 @@ EXPORT bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordC
         return false;
     }
     return GenerateSyntheticMFTImpl(filePath, RecordCount{recordCount}, bufferSizeRecords, recordSize);
-}
-
-EXPORT bool GenerateSyntheticMFTUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords) {
-    return GenerateSyntheticMFTSizedUtf8(filePath, recordCount, bufferSizeRecords, DEFAULT_FILE_RECORD_SIZE);
 }
 
 EXPORT bool GenerateFixtureMFTUtf8(const char* filePath) { return GenerateFixtureMFTImpl(filePath); }

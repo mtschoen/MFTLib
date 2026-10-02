@@ -1,3 +1,4 @@
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -98,3 +99,13 @@ internal static class ExternalIteratorHelperSeamReferenceFixture
     }
 }
 
+internal static class NativeHookReferenceFixture
+{
+    public static void Reference() => NativeTestHooks.NativeSetAllocFailCountdown(1);
+}
+
+[DoNotParallelize]
+internal static class IsolatedNativeHookReferenceFixture
+{
+    public static void Reference() => NativeTestHooks.NativeSetAllocFailCountdown(1);
+}

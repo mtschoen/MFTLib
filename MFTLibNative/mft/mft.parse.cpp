@@ -368,11 +368,6 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wc
                         *geometry, control, callback, context);
 }
 
-EXPORT MftParseResult* ParseMFTRecords(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags,
-                                       uint32_t bufferSizeRecords) {
-    return ParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, nullptr, nullptr, nullptr);
-}
-
 // C-ABI export; (filePath, filter) order is fixed by the C# P/Invoke signature.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* filter, uint32_t matchFlags,
@@ -398,11 +393,6 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(void* /*volumeHandle*/, const
                                                    const MftParseControl* /*control*/, MftProgressCallback /*callback*/,
                                                    void* /*context*/) {
     return CreateErrorResult(L"Direct volume parsing is not supported on Linux");
-}
-
-EXPORT MftParseResult* ParseMFTRecords(void* volumeHandle, const wchar_t* filter, uint32_t matchFlags,
-                                       uint32_t bufferSizeRecords) {
-    return ParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, nullptr, nullptr, nullptr);
 }
 
 EXPORT MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,

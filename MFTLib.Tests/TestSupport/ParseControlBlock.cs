@@ -41,7 +41,7 @@ sealed unsafe class ParseControlBlock : IDisposable
         var counts = new uint[4096];
         fixed (uint* first = counts)
         {
-            var recorded = MFTLibNative.NativeGetChunkThreadCounts(first, (uint)counts.Length);
+            var recorded = NativeTestHooks.NativeGetChunkThreadCounts(first, (uint)counts.Length);
             return counts[..(int)recorded];
         }
     }

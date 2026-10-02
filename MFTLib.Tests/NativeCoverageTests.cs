@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
@@ -16,7 +17,7 @@ public partial class NativeCoverageTests
     [TestCleanup]
     public void Cleanup()
     {
-        MFTLibNative.NativeResetTestState();
+        NativeTestHooks.NativeResetTestState();
     }
 
     // --- Single-threaded path (ProcessRecordBatch + fallback) ---
@@ -30,7 +31,7 @@ public partial class NativeCoverageTests
             File.Delete(path);
             // Use 5000 records to exceed initial capacity (1024) and trigger realloc
             MftVolume.GenerateSyntheticMFT(path, 5000, 256);
-            MFTLibNative.NativeSetMaxThreads(1);
+            NativeTestHooks.NativeSetMaxThreads(1);
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -62,7 +63,7 @@ public partial class NativeCoverageTests
         {
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 5000, 256);
-            MFTLibNative.NativeSetMaxThreads(1);
+            NativeTestHooks.NativeSetMaxThreads(1);
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, ".git", MatchFlags.ExactMatch, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -93,7 +94,7 @@ public partial class NativeCoverageTests
         {
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 5000, 256);
-            MFTLibNative.NativeSetMaxThreads(1);
+            NativeTestHooks.NativeSetMaxThreads(1);
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -203,7 +204,7 @@ public partial class NativeCoverageTests
         {
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 5000, 256);
-            MFTLibNative.NativeSetNamePoolCapacityOverride(16);
+            NativeTestHooks.NativeSetNamePoolCapacityOverride(16);
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -235,7 +236,7 @@ public partial class NativeCoverageTests
         {
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 100, 256);
-            MFTLibNative.NativeSetAllocFailCountdown(10);
+            NativeTestHooks.NativeSetAllocFailCountdown(10);
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -268,7 +269,7 @@ public partial class NativeCoverageTests
         {
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
-            MFTLibNative.NativeSetFailFileSize(1);
+            NativeTestHooks.NativeSetFailFileSize(1);
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -297,7 +298,7 @@ public partial class NativeCoverageTests
     {
         // WideCharToMultiByte returning <= 0  -  defensive error path. The conversion
         // fails before the file is touched, so the path need not exist.
-        MFTLibNative.NativeSetFailPathConversion(1);
+        NativeTestHooks.NativeSetFailPathConversion(1);
         var resultPointer = MFTLibNative._parseMftFromFile(@"C:\does_not_matter.mft", null, MatchFlags.None, 256);
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try

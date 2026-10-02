@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -17,7 +18,7 @@ public partial class NativeParserCoverageTests
         try
         {
             MftVolume.GenerateFixtureMFT(path);
-            MFTLibNative.NativeSetAllocFailCountdown(allocation);
+            NativeTestHooks.NativeSetAllocFailCountdown(allocation);
             var pointer = MFTLibNative._parseMftFromFile(path, null,
                 MatchFlags.IncludeFreed | MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, pointer);
@@ -33,7 +34,7 @@ public partial class NativeParserCoverageTests
                 MFTLibNative._freeMftResult(pointer);
             }
 
-            MFTLibNative.NativeResetTestState();
+            NativeTestHooks.NativeResetTestState();
             var records = MftVolume.ParseMFTFromFile(path, null,
                 MatchFlags.IncludeFreed | MatchFlags.ResolvePaths, out _);
             Assert.AreEqual(16, records.Length);
@@ -100,8 +101,8 @@ public partial class NativeParserCoverageTests
         try
         {
             MftVolume.GenerateFixtureMFT(path);
-            MFTLibNative.NativeSetMaxThreads(1);
-            MFTLibNative.NativeSetNamePoolCapacityOverride(1);
+            NativeTestHooks.NativeSetMaxThreads(1);
+            NativeTestHooks.NativeSetNamePoolCapacityOverride(1);
             var pointer = MFTLibNative._parseMftFromFile(path, null,
                 MatchFlags.IncludeFreed | MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, pointer);

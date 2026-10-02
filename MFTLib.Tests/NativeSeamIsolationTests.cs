@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -38,6 +39,7 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(InheritedSeamReferenceFixture), "MFTLibNative.ResetToDefaults")]
     [DataRow(typeof(ExternalAsyncHelperSeamReferenceFixture), "MFTLibNative.ResetToDefaults")]
     [DataRow(typeof(ExternalIteratorHelperSeamReferenceFixture), "MFTLibNative.ResetToDefaults")]
+    [DataRow(typeof(NativeHookReferenceFixture), "NativeTestHooks.NativeSetAllocFailCountdown")]
     public void Detector_ReportsUnmarkedReferences(Type fixture, string member)
     {
         var violations = FindViolations([fixture]);
@@ -51,6 +53,7 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(IsolatedSeamReferenceFixture))]
     [DataRow(typeof(IsolatedExternalAsyncHelperSeamReferenceFixture))]
     [DataRow(typeof(HarmlessReferenceFixture))]
+    [DataRow(typeof(IsolatedNativeHookReferenceFixture))]
     public void Detector_AcceptsIsolatedAndUnrelatedTypes(Type fixture)
     {
         Assert.AreEqual(0, FindViolations([fixture]).Length);
@@ -136,6 +139,11 @@ public class NativeSeamIsolationTests
 
     static bool IsNativeSeam(MemberInfo member)
     {
+        if (member.DeclaringType == typeof(NativeTestHooks))
+        {
+            return member is MethodInfo { IsStatic: true };
+        }
+
         if (member.DeclaringType != typeof(MFTLibNative) &&
             member.DeclaringType != typeof(FileUtilities))
         {

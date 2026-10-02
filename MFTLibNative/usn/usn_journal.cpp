@@ -317,12 +317,9 @@ EXPORT void FreeUsnJournalResult(const UsnJournalResult* result) {
     }
 }
 
-}  // extern "C"
-
-namespace {
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): internal counterpart of the fixed C-ABI signatures
-UsnJournalResult* WatchUsnJournalBatchCore(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId,
-                                           HANDLE cancellationEvent) {
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
+EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId,
+                                                        HANDLE cancellationEvent) {
     auto* result = new UsnJournalResult{};
     result->journalId = journalId;
     result->nextUsn = startUsn;
@@ -369,20 +366,6 @@ UsnJournalResult* WatchUsnJournalBatchCore(HANDLE volumeHandle, int64_t startUsn
     PopulateWatchEntries(result, readBuffer, bytesReturned);
     VirtualFree(readBuffer, 0, MEM_RELEASE);
     return result;
-}
-
-}  // namespace
-
-extern "C" {
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
-EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId) {
-    return WatchUsnJournalBatchCore(volumeHandle, startUsn, journalId, nullptr);
-}
-
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
-EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId,
-                                                        HANDLE cancellationEvent) {
-    return WatchUsnJournalBatchCore(volumeHandle, startUsn, journalId, cancellationEvent);
 }
 
 EXPORT BOOL CancelUsnJournalWatch(HANDLE volumeHandle) { return CancelIoEx(volumeHandle, nullptr); }

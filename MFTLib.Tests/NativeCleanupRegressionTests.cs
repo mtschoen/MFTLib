@@ -19,7 +19,7 @@ public class NativeCleanupRegressionTests
             Assert.Inconclusive("Native volume and journal seams require Windows.");
         }
 
-        MFTLibNative.NativeResetTestState();
+        NativeTestHooks.NativeResetTestState();
     }
 
     [TestCleanup]
@@ -27,7 +27,7 @@ public class NativeCleanupRegressionTests
     {
         if (OperatingSystem.IsWindows())
         {
-            MFTLibNative.NativeResetTestState();
+            NativeTestHooks.NativeResetTestState();
         }
     }
 
@@ -49,10 +49,10 @@ public class NativeCleanupRegressionTests
             image[attributeOffset + 0x40] = 0; // Empty mapping-pairs array.
             SyntheticNtfsImage.WriteEndMarker(image, attributeOffset + attributeLength);
             File.WriteAllBytes(path, image);
-            MFTLibNative.NativeSetVolumeRecordSizeOverride(1024);
+            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
 
             using var stream = File.OpenRead(path);
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 stream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -105,10 +105,10 @@ public class NativeCleanupRegressionTests
 
         fixed (byte* data = buffer)
         {
-            MFTLibNative.NativeSetUsnIoSuccess(data, (uint)buffer.Length);
+            NativeTestHooks.NativeSetUsnIoSuccess(data, (uint)buffer.Length);
             using var handle = new SafeFileHandle(new IntPtr(1), false);
             var resultPointer = watch
-                ? MFTLibNative._watchUsnJournalBatch(handle, 500, 0xABCD)
+                ? UncancelableUsnWatch.Read(handle, 500, 0xABCD)
                 : MFTLibNative._readUsnJournal(handle, 500, 0xABCD, 1);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try

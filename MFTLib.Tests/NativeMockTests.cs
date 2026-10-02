@@ -48,7 +48,7 @@ public class NativeMockTests
     [TestMethod]
     public void GenerateSyntheticMFT_ReturnsFalse_ThrowsInvalidOperation()
     {
-        MFTLibNative._generateSyntheticMft = (_, _, _) => false;
+        MFTLibNative._generateSyntheticMftSized = (_, _, _, _) => false;
 
         Assert.ThrowsException<InvalidOperationException>(() =>
             MftVolume.GenerateSyntheticMFT("fake.bin", 100));
@@ -69,7 +69,7 @@ public class NativeMockTests
     public void StreamRecords_NullReturn_ThrowsInvalidOperation()
     {
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        MFTLibNative._parseMftRecords = (_, _, _, _) => IntPtr.Zero;
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => IntPtr.Zero;
 
         using var volume = MftVolume.Open("C");
         // ReSharper disable once AccessToDisposedClosure
@@ -79,12 +79,9 @@ public class NativeMockTests
     [TestMethod]
     public void ParseMftRecordsWithProgressDefault_NoOverrideConfigured_CallsRealNativeExport()
     {
-        // Leave both _parseMftRecords and _parseMftRecordsWithProgress at their native
-        // P/Invoke defaults (guaranteed by TestCleanup running after every test in this
-        // class). NativeParseMFTRecordsWithProgressDefault's
-        // `_parseMftRecords != NativeParseMFTRecords` check is then false, so it falls
-        // through to the real ParseMFTRecordsWithProgress export instead of the
-        // ParseMFTRecords fallback other tests exercise by mocking _parseMftRecords.
+        // Leave _parseMftRecordsWithProgress at its native P/Invoke default (guaranteed by
+        // TestCleanup running after every test in this class) so the call reaches the real
+        // ParseMFTRecordsWithProgress export.
         // INVALID_HANDLE_VALUE (-1) lets the native side fail gracefully with an error
         // result instead of needing a real, elevated volume handle.
         using var handle = new SafeFileHandle(new IntPtr(-1), false);

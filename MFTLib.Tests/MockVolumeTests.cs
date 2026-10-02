@@ -88,7 +88,7 @@ public class MockVolumeTests
     {
         FileUtilities._getVolumeHandle = _ => FakeHandle();
         var resultPtr = BuildResult(usedRecords, withPaths);
-        MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => resultPtr;
         MFTLibNative._freeMftResult = ptr =>
         {
             var parseResult = Marshal.PtrToStructure<MftParseResult>(ptr);
@@ -265,7 +265,7 @@ public class MockVolumeTests
         string? capturedFilter = null;
 
         FileUtilities._getVolumeHandle = _ => FakeHandle();
-        MFTLibNative._parseMftRecords = (_, filter, flags, _) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, filter, flags, _, _, _) =>
         {
             capturedFilter = filter;
             capturedFlags = flags;
@@ -794,7 +794,7 @@ public class MockVolumeTests
         var freed = false;
         FileUtilities._getVolumeHandle = _ => FakeHandle();
         var resultPtr = BuildResult(10);
-        MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => resultPtr;
         MFTLibNative._freeMftResult = ptr =>
         {
             var parseResult = Marshal.PtrToStructure<MftParseResult>(ptr);
@@ -860,7 +860,7 @@ public class MockVolumeTests
             Marshal.StructureToPtr(result, resultPtr, false);
 
             FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-            MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+            MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => resultPtr;
             MFTLibNative._freeMftResult = _ => { };
 
             using var volume = MftVolume.Open("T");
@@ -908,7 +908,7 @@ public class MockVolumeTests
             Marshal.StructureToPtr(result, resultPtr, false);
 
             FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-            MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+            MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => resultPtr;
             MFTLibNative._freeMftResult = _ => { };
 
             using var volume = MftVolume.Open("C");
@@ -958,7 +958,7 @@ public class MockVolumeTests
             Marshal.StructureToPtr(result, resultPtr, false);
 
             FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-            MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+            MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => resultPtr;
             MFTLibNative._freeMftResult = _ => { };
 
             using var volume = MftVolume.Open("C");
