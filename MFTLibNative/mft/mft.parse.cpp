@@ -129,7 +129,7 @@ std::vector<uint64_t> CollectExtensionRecordNumbers(uint8_t* attrListData, uint6
 // Append the $DATA runs of one already-read extension record to mftRuns.
 void AppendRecordDataRuns(uint8_t* extRecord, std::vector<DataRun>& mftRuns) {
     const auto* extHdr = reinterpret_cast<const PFILE_RECORD_SEGMENT_HEADER>(extRecord);
-    if (extHdr->MultiSectorHeader.Magic != 0x454C4946) {
+    if (extHdr->MultiSectorHeader.Magic != kFileRecordMagic) {
         return;
     }
     auto* extAttr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(extRecord + extHdr->FirstAttributeOffset);
@@ -328,7 +328,7 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wc
     ApplyFixup(record0.data(), geometry->recordSize);
 
     const auto* fileRecord0 = reinterpret_cast<const PFILE_RECORD_SEGMENT_HEADER>(record0.data());
-    if (fileRecord0->MultiSectorHeader.Magic != 0x454C4946) {
+    if (fileRecord0->MultiSectorHeader.Magic != kFileRecordMagic) {
         SetErrorMessage(result->errorMessage, L"Invalid MFT record 0 magic");
         return result;
     }
@@ -339,6 +339,10 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wc
         return result;
     }
     auto mftRuns = ParseDataRuns(dataAttr);
+    if (mftRuns.empty()) {
+        SetErrorMessage(result->errorMessage, L"MFT record 0 has no data runs");
+        return result;
+    }
 
     auto* attrListAttr = FindAttribute(record0.data(), AttributeList);
     if (attrListAttr != nullptr) {
@@ -355,9 +359,7 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wc
     ctx.volumeHandle = volumeHandle;
     ctx.mftRuns = &mftRuns;
     ctx.bytesPerCluster = bytesPerCluster;
-    ctx.runIndex = 0;
     ctx.filesRemaining = mftRuns[0].clusterCount * bytesPerCluster / geometry->recordSize;
-    ctx.positionInBlock = 0;
     ctx.bufferSizeRecords = bufferSizeRecords;
     ctx.geometry = *geometry;
 

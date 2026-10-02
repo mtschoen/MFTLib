@@ -35,8 +35,6 @@ void print_usage(const char* prog) {
                  prog, static_cast<unsigned long long>(kDumpSampleCount), prog);
 }
 
-namespace {
-
 void append_utf8_codepoint(std::string& out, uint32_t codePoint) {
     if (codePoint < 0x80) {
         out.push_back(static_cast<char>(codePoint));
@@ -57,8 +55,6 @@ void append_utf8_codepoint(std::string& out, uint32_t codePoint) {
     }
 }
 
-}  // namespace
-
 std::string utf16_to_utf8(const uint16_t* utf16Units, size_t unitCount) {
     std::string out;
     out.reserve(unitCount);
@@ -76,31 +72,15 @@ std::string utf16_to_utf8(const uint16_t* utf16Units, size_t unitCount) {
     return out;
 }
 
-std::string wide_to_utf8(const wchar_t* wideStr, size_t maxLen) {
+std::string wide_to_utf8(const wchar_t* wideStr, size_t maximumLength) {
     std::string out;
-    out.reserve(maxLen);
-    for (size_t i = 0; i < maxLen; i++) {
+    out.reserve(maximumLength);
+    for (size_t i = 0; i < maximumLength; i++) {
         auto codePoint = static_cast<uint32_t>(static_cast<std::make_unsigned_t<wchar_t>>(wideStr[i]));
         if (codePoint == 0) {
             break;
         }
-        if (codePoint < 0x80) {
-            out.push_back(static_cast<char>(codePoint));
-        } else if (codePoint < 0x800) {
-            out.push_back(static_cast<char>(0xC0 | (codePoint >> 6)));
-            out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
-        } else if (codePoint < 0x10000) {
-            out.push_back(static_cast<char>(0xE0 | (codePoint >> 12)));
-            out.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
-            out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
-        } else if (codePoint <= 0x10FFFF) {
-            out.push_back(static_cast<char>(0xF0 | (codePoint >> 18)));
-            out.push_back(static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F)));
-            out.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
-            out.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
-        } else {
-            out.push_back('?');
-        }
+        append_utf8_codepoint(out, codePoint);
     }
     return out;
 }
@@ -124,38 +104,34 @@ void print_entry(const MftCompactEntry& entry, const std::string& name) {
                 static_cast<unsigned>(entry.fileAttributes), name.c_str(), type_marker(entry.flags));
 }
 
-int do_dump(const MftParseResult* parseResult) {
+template <typename Predicate>
+uint64_t print_entries(const MftParseResult* parseResult, uint64_t maximumCount, const Predicate& matches) {
     uint64_t shown = 0;
-    std::printf("First %llu filenames:\n", static_cast<unsigned long long>(kDumpSampleCount));
     const auto* pool = parseResult->pathStrings != nullptr ? parseResult->pathStrings : parseResult->entryStrings;
     const auto* entries = parseResult->pathEntries != nullptr ? parseResult->pathEntries : parseResult->entries;
-    for (uint64_t i = 0; i < parseResult->usedRecords && shown < kDumpSampleCount; i++) {
+    for (uint64_t i = 0; i < parseResult->usedRecords && shown < maximumCount; i++) {
         const auto& entry = entries[i];
         if (entry.stringLength == 0 || pool == nullptr) {
             continue;
         }
         std::string name = utf16_to_utf8(pool + entry.stringOffset, entry.stringLength);
-        print_entry(entry, name);
-        shown++;
+        if (matches(name)) {
+            print_entry(entry, name);
+            shown++;
+        }
     }
+    return shown;
+}
+
+int do_dump(const MftParseResult* parseResult) {
+    std::printf("First %llu filenames:\n", static_cast<unsigned long long>(kDumpSampleCount));
+    print_entries(parseResult, kDumpSampleCount, [](const std::string&) { return true; });
     return 0;
 }
 
 int do_search(const MftParseResult* parseResult, const std::string& pattern) {
-    uint64_t hits = 0;
-    const auto* pool = parseResult->pathStrings != nullptr ? parseResult->pathStrings : parseResult->entryStrings;
-    const auto* entries = parseResult->pathEntries != nullptr ? parseResult->pathEntries : parseResult->entries;
-    for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
-        const auto& entry = entries[i];
-        if (entry.stringLength == 0 || pool == nullptr) {
-            continue;
-        }
-        std::string name = utf16_to_utf8(pool + entry.stringOffset, entry.stringLength);
-        if (icontains_ascii(name, pattern)) {
-            print_entry(entry, name);
-            hits++;
-        }
-    }
+    uint64_t hits = print_entries(parseResult, parseResult->usedRecords,
+                                  [&pattern](const std::string& name) { return icontains_ascii(name, pattern); });
     std::printf("\n%llu match(es) for \"%s\"\n", static_cast<unsigned long long>(hits), pattern.c_str());
     return 0;
 }

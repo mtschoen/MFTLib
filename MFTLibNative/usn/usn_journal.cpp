@@ -3,12 +3,41 @@
 #ifdef _WIN32
 
     #include <array>
+    #include <iterator>
 
     #include "../framework.h"
     #include "../mft_api.h"
     #include "../internal.h"
 
 namespace {
+uint8_t* AllocatePages(size_t byteCount) {
+    return ShouldFailAlloc()
+               ? nullptr
+               : static_cast<uint8_t*>(VirtualAlloc(nullptr, byteCount, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+}
+
+READ_USN_JOURNAL_DATA_V1 MakeReadRequest(int64_t startUsn, uint64_t journalId, DWORD bytesToWaitFor) {
+    READ_USN_JOURNAL_DATA_V1 request{};
+    request.StartUsn = startUsn;
+    request.ReasonMask = 0xFFFFFFFF;
+    request.BytesToWaitFor = bytesToWaitFor;
+    request.UsnJournalID = journalId;
+    request.MinMajorVersion = 2;
+    request.MaxMajorVersion = 2;
+    return request;
+}
+
+const wchar_t* DescribeJournalError(DWORD error) {
+    switch (error) {
+        case ERROR_JOURNAL_NOT_ACTIVE:
+            return L"USN journal is not active";
+        case ERROR_JOURNAL_DELETE_IN_PROGRESS:
+            return L"USN journal deletion is in progress";
+        default:
+            return nullptr;
+    }
+}
+
 // A caller-owned buffer view (pointer + byte size) for the IOCTL wrapper, so the
 // input and output buffers each travel as one argument instead of a loose
 // pointer/size pair that could be transposed.
@@ -81,10 +110,8 @@ void ApplyUsnReadError(UsnJournalResult* result, DWORD error, const wchar_t* fai
     if (error == ERROR_HANDLE_EOF || error == ERROR_WRITE_PROTECT) {
         return;
     }
-    if (error == ERROR_JOURNAL_NOT_ACTIVE) {
-        SetErrorMessage(result->errorMessage, L"USN journal is not active");
-    } else if (error == ERROR_JOURNAL_DELETE_IN_PROGRESS) {
-        SetErrorMessage(result->errorMessage, L"USN journal deletion is in progress");
+    if (const wchar_t* message = DescribeJournalError(error)) {
+        SetErrorMessage(result->errorMessage, message);
     } else if (error == ERROR_JOURNAL_ENTRY_DELETED) {
         SetErrorMessage(result->errorMessage, L"USN journal entries have been deleted; full rescan needed");
     } else {
@@ -93,10 +120,7 @@ void ApplyUsnReadError(UsnJournalResult* result, DWORD error, const wchar_t* fai
 }
 
 // Copies the fixed fields and (clamped) filename of a USN_RECORD_V2 into entry.
-// Returns the unclamped name length in WCHAR units; the caller stores the length it
-// wants in entry.fileNameLength (ReadUsnJournal keeps the full length, the watch path
-// stores the clamped copy length).
-uint16_t CopyUsnRecordToEntry(UsnJournalEntry& entry, const USN_RECORD_V2* usnRecord) {
+void CopyUsnRecordToEntry(UsnJournalEntry& entry, const USN_RECORD_V2* usnRecord) {
     constexpr uint64_t fileRefMask = 0x0000FFFFFFFFFFFF;
     memset(&entry, 0, sizeof(UsnJournalEntry));
     entry.recordNumber = usnRecord->FileReferenceNumber & fileRefMask;
@@ -106,22 +130,18 @@ uint16_t CopyUsnRecordToEntry(UsnJournalEntry& entry, const USN_RECORD_V2* usnRe
     entry.timestamp = usnRecord->TimeStamp.QuadPart;
     entry.reason = usnRecord->Reason;
     entry.fileAttributes = usnRecord->FileAttributes;
-    uint16_t nameLenChars = usnRecord->FileNameLength / sizeof(WCHAR);
-    uint16_t copyLen = min(nameLenChars, static_cast<uint16_t>(259));
-    wmemcpy_s(entry.fileName, 260,
+    uint16_t nameLength = usnRecord->FileNameLength / sizeof(WCHAR);
+    entry.fileNameLength = (std::min)(nameLength, static_cast<uint16_t>(std::size(entry.fileName) - 1));
+    wmemcpy_s(entry.fileName, std::size(entry.fileName),
               reinterpret_cast<const wchar_t*>(reinterpret_cast<const uint8_t*>(usnRecord) + usnRecord->FileNameOffset),
-              copyLen);
-    return nameLenChars;
+              entry.fileNameLength);
 }
 
 // Doubles result's entry array (copying existing entries). On allocation failure sets
 // errorMessage and returns false; the caller must release its read buffer and bail.
 bool GrowUsnEntries(UsnJournalResult* result, uint64_t& capacity) {
     uint64_t newCapacity = capacity * 2;
-    auto* grown = ShouldFailAlloc()
-                      ? nullptr
-                      : static_cast<UsnJournalEntry*>(VirtualAlloc(nullptr, newCapacity * sizeof(UsnJournalEntry),
-                                                                   MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    auto* grown = reinterpret_cast<UsnJournalEntry*>(AllocatePages(newCapacity * sizeof(UsnJournalEntry)));
     if (grown == nullptr) {
         SetErrorMessage(result->errorMessage, L"Failed to grow entry array");
         return false;
@@ -163,10 +183,7 @@ void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, D
     if (count == 0) {
         return;
     }
-    result->entries = ShouldFailAlloc()
-                          ? nullptr
-                          : static_cast<UsnJournalEntry*>(VirtualAlloc(nullptr, count * sizeof(UsnJournalEntry),
-                                                                       MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    result->entries = reinterpret_cast<UsnJournalEntry*>(AllocatePages(count * sizeof(UsnJournalEntry)));
     if (result->entries == nullptr) {
         return;
     }
@@ -176,8 +193,7 @@ void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, D
     for (uint64_t i = 0; i < count && recordPtr + sizeof(USN_RECORD_V2) <= endPtr; i++) {
         const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPtr);
         auto& entry = result->entries[i];
-        uint16_t nameLenChars = CopyUsnRecordToEntry(entry, usnRecord);
-        entry.fileNameLength = min(nameLenChars, static_cast<uint16_t>(259));
+        CopyUsnRecordToEntry(entry, usnRecord);
         result->entryCount++;
         recordPtr += usnRecord->RecordLength;
     }
@@ -194,10 +210,8 @@ EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
                            IoBuffer{&journalData, static_cast<DWORD>(sizeof(journalData))}, &bytesReturned,
                            nullptr) == 0) {
         DWORD error = GetLastError();
-        if (error == ERROR_JOURNAL_NOT_ACTIVE) {
-            SetErrorMessage(info->errorMessage, L"USN journal is not active");
-        } else if (error == ERROR_JOURNAL_DELETE_IN_PROGRESS) {
-            SetErrorMessage(info->errorMessage, L"USN journal deletion is in progress");
+        if (const wchar_t* message = DescribeJournalError(error)) {
+            SetErrorMessage(info->errorMessage, message);
         } else {
             SetErrorMessage(info->errorMessage, L"FSCTL_QUERY_USN_JOURNAL failed. Error: %lu", error);
         }
@@ -223,10 +237,7 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
     result->journalId = journalId;
 
     constexpr size_t readBufferSize = 64ULL * 1024;
-    auto* readBuffer =
-        ShouldFailAlloc()
-            ? nullptr
-            : static_cast<uint8_t*>(VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    auto* readBuffer = AllocatePages(readBufferSize);
     if (readBuffer == nullptr) {
         SetErrorMessage(result->errorMessage, L"Failed to allocate read buffer");
         return result;
@@ -234,25 +245,14 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
 
     constexpr uint64_t initialCapacity = 1024;
     uint64_t capacity = initialCapacity;
-    result->entries = ShouldFailAlloc()
-                          ? nullptr
-                          : static_cast<UsnJournalEntry*>(VirtualAlloc(nullptr, capacity * sizeof(UsnJournalEntry),
-                                                                       MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    result->entries = reinterpret_cast<UsnJournalEntry*>(AllocatePages(capacity * sizeof(UsnJournalEntry)));
     if (result->entries == nullptr) {
         VirtualFree(readBuffer, 0, MEM_RELEASE);
         SetErrorMessage(result->errorMessage, L"Failed to allocate entry array");
         return result;
     }
 
-    READ_USN_JOURNAL_DATA_V1 readData;
-    readData.StartUsn = startUsn;
-    readData.ReasonMask = 0xFFFFFFFF;
-    readData.ReturnOnlyOnClose = 0;
-    readData.Timeout = 0;
-    readData.BytesToWaitFor = 0;
-    readData.UsnJournalID = journalId;
-    readData.MinMajorVersion = 2;
-    readData.MaxMajorVersion = 2;
+    auto readData = MakeReadRequest(startUsn, journalId, 0);
 
     int64_t nextUsn = startUsn;
 
@@ -298,7 +298,7 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
             }
 
             auto& entry = result->entries[result->entryCount];
-            entry.fileNameLength = CopyUsnRecordToEntry(entry, usnRecord);
+            CopyUsnRecordToEntry(entry, usnRecord);
 
             result->entryCount++;
             recordPtr += usnRecord->RecordLength;
@@ -317,6 +317,9 @@ EXPORT void FreeUsnJournalResult(const UsnJournalResult* result) {
     }
 }
 
+}  // extern "C"
+
+namespace {
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): internal counterpart of the fixed C-ABI signatures
 UsnJournalResult* WatchUsnJournalBatchCore(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId,
                                            HANDLE cancellationEvent) {
@@ -325,24 +328,13 @@ UsnJournalResult* WatchUsnJournalBatchCore(HANDLE volumeHandle, int64_t startUsn
     result->nextUsn = startUsn;
 
     constexpr size_t readBufferSize = 64ULL * 1024;
-    auto* readBuffer =
-        ShouldFailAlloc()
-            ? nullptr
-            : static_cast<uint8_t*>(VirtualAlloc(nullptr, readBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    auto* readBuffer = AllocatePages(readBufferSize);
     if (readBuffer == nullptr) {
         SetErrorMessage(result->errorMessage, L"Failed to allocate read buffer");
         return result;
     }
 
-    READ_USN_JOURNAL_DATA_V1 readData;
-    readData.StartUsn = startUsn;
-    readData.ReasonMask = 0xFFFFFFFF;
-    readData.ReturnOnlyOnClose = 0;
-    readData.Timeout = 0;
-    readData.BytesToWaitFor = 1;
-    readData.UsnJournalID = journalId;
-    readData.MinMajorVersion = 2;
-    readData.MaxMajorVersion = 2;
+    auto readData = MakeReadRequest(startUsn, journalId, 1);
 
     OVERLAPPED overlapped{};
     overlapped.hEvent = ShouldFailAlloc() ? nullptr : CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -379,6 +371,9 @@ UsnJournalResult* WatchUsnJournalBatchCore(HANDLE volumeHandle, int64_t startUsn
     return result;
 }
 
+}  // namespace
+
+extern "C" {
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
 EXPORT UsnJournalResult* WatchUsnJournalBatch(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId) {
     return WatchUsnJournalBatchCore(volumeHandle, startUsn, journalId, nullptr);

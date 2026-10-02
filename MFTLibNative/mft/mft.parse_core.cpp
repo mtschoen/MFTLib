@@ -108,7 +108,7 @@ void FixupRange(uint8_t* buffer, SliceRange range, ParseGeometry geometry) {
     for (uint64_t i = range.start; i < range.end; i++) {
         auto* recPtr = buffer + (static_cast<size_t>(geometry.recordSize) * i);
         const auto* rec = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(recPtr);
-        if (rec->MultiSectorHeader.Magic == 0x454C4946) {
+        if (rec->MultiSectorHeader.Magic == kFileRecordMagic) {
             ApplyFixup(recPtr, geometry.recordSize);
         }
     }
@@ -151,31 +151,15 @@ bool ParseChunkSerial(uint8_t* buffer, ChunkSpan chunk, const ScanContext& scan,
 bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, const ScanContext& scan,
                         ParseState& state, MftParseResult* result) {
     auto fixupStart = SteadyClock::now();
-    uint64_t perThread = (chunk.chunkSize + numThreads - 1) / numThreads;
     std::vector<SliceResult> slices(numThreads);
-    std::vector<std::thread> workers;
     std::vector<double> threadFixupMs(numThreads, 0.0);
-    unsigned actualThreads = 0;
-
-    for (unsigned ti = 0; ti < numThreads; ti++) {
-        uint64_t tStart = ti * perThread;
-        uint64_t tEnd = tStart + perThread < chunk.chunkSize ? tStart + perThread : chunk.chunkSize;
-        if (tStart >= chunk.chunkSize) {
-            break;
-        }
-        actualThreads++;
-        uint64_t initCap = (scan.filter.text != nullptr) ? 64 : (tEnd - tStart) / 4;
-        initCap = std::max<uint64_t>(initCap, 64);
-        slices[ti].entries.reserve(initCap);
-        slices[ti].strings.reserve(initCap * 32);
-        uint64_t recordIndex = chunk.recordIndex;
-        workers.emplace_back([buffer, tStart, tEnd, ti, &slices, &threadFixupMs, scan, recordIndex]() {
-            threadFixupMs[ti] = FixupAndParseSlice(buffer, SliceRange{tStart, tEnd}, recordIndex, slices[ti], scan);
-        });
-    }
-    for (auto& worker : workers) {
-        worker.join();
-    }
+    unsigned actualThreads = ForEachRange(chunk.chunkSize, numThreads, [&](unsigned index, SliceRange range) {
+        uint64_t initialCapacity = (scan.filter.text != nullptr) ? 64 : (range.end - range.start) / 4;
+        initialCapacity = std::max<uint64_t>(initialCapacity, 64);
+        slices[index].entries.reserve(initialCapacity);
+        slices[index].strings.reserve(initialCapacity * 32);
+        threadFixupMs[index] = FixupAndParseSlice(buffer, range, chunk.recordIndex, slices[index], scan);
+    });
 
     double totalElapsed = ElapsedMs(fixupStart, SteadyClock::now());
     double maxFixup =
@@ -327,7 +311,7 @@ MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t 
     result->entryStride = sizeof(MftCompactEntry);
 
     filter.length = (filter.text != nullptr) ? static_cast<uint16_t>(wcslen(filter.text)) : 0;
-    bool resolvePaths = (filter.flags & 4) != 0;
+    bool resolvePaths = (filter.flags & MATCH_FLAG_RESOLVE_PATHS) != 0;
 
     PathLookup lookup = {};
     if (resolvePaths) {
