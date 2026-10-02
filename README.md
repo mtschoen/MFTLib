@@ -223,7 +223,8 @@ block scan remain a live-files index.
 ```csharp
 using var result = volume.StreamRecords(
     filter: ".git",
-    MatchFlags.ExactMatch | MatchFlags.ResolvePaths);
+    MatchFlags.ExactMatch | MatchFlags.ResolvePaths,
+    progress: null, parseThreads: null, CancellationToken.None);
 
 foreach (var record in result)
 {
@@ -311,8 +312,8 @@ are overwritten before the watch reads them, the watch faults, and the drive
 needs a rescan. Windows sizes a new journal at 32 MB, which a busy system
 drive can wrap in minutes.
 
-`FileIndex.QueryUsnJournalSettings(driveLetter)` reports a volume's configured
-sizing, `MaximumSize` and `AllocationDelta`, without elevation.
+On an open index, `index.QueryUsnJournalSettings(driveLetter)` reports a configured
+volume's sizing, `MaximumSize` and `AllocationDelta`, without elevation.
 
 ### When a rescan happened because the journal moved on
 
@@ -370,8 +371,8 @@ explains is in place. A `FileIndexOptions.InitialOpenCacheOnly` open adopts a
 usable cached block even when its checkpoint is gone: the drive is `Ready`, the
 report explains why its cursor cannot be resumed, and a watch start is refused
 until `RescanAsync` supplies a fresh cursor. A successful manual rescan clears
-the report. Because the refused start retains no watch request, call
-`StartWatchingAsync` again after the rescan succeeds.
+the report and the refusal. The refused start retains the watch request, so the
+successful rescan starts the watch from the fresh cursor.
 
 A loss found mid-session sits alongside `WatchFailureMessage` and
 `WatchCatchUp`. It answers the question those two cannot: the watch did not
@@ -611,8 +612,8 @@ with its last block unresumable if every attempt lost it. `OpenAsync` raises no
 `WatchFaulted` event because the caller cannot subscribe before it returns; inspect
 `DriveStatus.ConsecutiveLostCatchUps`, `CheckpointLoss`, `WatchFailureMessage`, and
 `WatchCatchUp` instead. The drive's watch is refused until a manual `RescanAsync`
-produces a resumable block. Call `StartWatchingAsync` again after that rescan succeeds;
-the refused start retained no watch request for the rescan to restart.
+produces a resumable block. The refusal retains the watch request, so a successful
+rescan clears the refusal and starts the watch.
 
 `FileEntry.Path` is a real filesystem path: the drive block's root directory joined
 with the entry's name chain using the host separator. It can be opened, and

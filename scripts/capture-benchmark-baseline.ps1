@@ -45,9 +45,6 @@ if (-not (Test-Path $benchmarkExe)) {
     exit 1
 }
 
-$baselineFile = Join-Path $repoRoot "Benchmark\baseline.txt"
-$baselineBytes = if (Test-Path $baselineFile) { [System.IO.File]::ReadAllBytes($baselineFile) } else { $null }
-
 $tempStdout = [System.IO.Path]::GetTempFileName()
 $tempStderr = [System.IO.Path]::GetTempFileName()
 
@@ -136,12 +133,6 @@ try {
     [System.IO.File]::WriteAllText($OutputPath, $fullReport)
     Write-Host "Benchmark baseline captured to $OutputPath" -ForegroundColor Green
 } finally {
-    if ($null -ne $baselineBytes) {
-        [System.IO.File]::WriteAllBytes($baselineFile, $baselineBytes)
-    } elseif (Test-Path $baselineFile) {
-        Remove-Item $baselineFile -Force -ErrorAction SilentlyContinue
-    }
-
     if (Test-Path $tempStdout) {
         Remove-Item $tempStdout -Force -ErrorAction SilentlyContinue
     }

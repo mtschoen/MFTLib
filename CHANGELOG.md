@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 Everything since 0.2.0, the latest published release: the packed index and its MFT
 producer ([MFTLib#131](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/131))
@@ -26,7 +26,10 @@ Plain migration work for a consumer moving from `0.2.0`, or from a 0.3.0 preview
 - Scan progress: count a drive finished on `IndexScanPhase.Finished` (one per drive scan, with `IndexScanProgress.Outcome`), not on its first `Transferring` sample; enumeration-backed drives now report it too.
 - Code that constructs `FileChange` passes the new `Timestamp`; code that constructs `IndexScanProgress` passes `DriveLetter`, `Phase`, and `RowsWritten`; `ProducerPolicy` has only `Mft` and `Enumeration`. Delete uses of the removed types listed under Removed.
 - A drive whose watch start was refused over an unresumable journal cursor now reports `DriveStatus.WatchRequested == true`, and the rescan the refusal asks for restarts it. file-wizard `FileWizardMaui/MainPage.DriveRescan.cs` (`StartRescannedDriveWatchAsync`): key on `WatchSupported && !WatchRequested` instead of `WatchCatchUp == NotStarted`.
-- Replace polling `Drives` for watch state with `FileIndex.WatchStateChanged`, applying an event only when its `Version` is newer than the last one applied for its drive and seeding that from `DriveStatus.WatchStateVersion`. git-wizard `GitWizard/Watch/IndexVolumeChangeSource.RecoveryObserver.cs` deletes its 500 ms recovery poll, `RecoveryPollInterval`, its `TimeProvider` seam and fault-generation map, and the double re-read in `TryFinishCaughtUp`, publishing `CaughtUp` from the recovered drive's `CaughtUp` event with that event's version; file-wizard `FileWizardMaui/MainPage.LiveUpdates.cs` reconciles drive health from the event instead of its 250 ms timer.
+- Replace polling `Drives` for watch state with `FileIndex.WatchStateChanged`, applying an event only when its `Version` is newer than the last one applied for its drive and seeding that from `DriveStatus.WatchStateVersion`. git-wizard's watch-state handling deletes its 500 ms recovery poll, `RecoveryPollInterval`, its `TimeProvider` seam and fault-generation map, and the double re-read in `TryFinishCaughtUp`, publishing `CaughtUp` from the recovered drive's `CaughtUp` event with that event's version; file-wizard `FileWizardMaui/MainPage.LiveUpdates.cs` reconciles drive health from the event instead of its 250 ms timer.
+
+- Targets net10.0; net8.0 consumers must upgrade.
+- Replaced the pre-release seven-argument `UsnJournalEntry.Create(...)` signature with `Create(UsnJournalEntryOptions)`; callers building against 0.3.0 previews must migrate to an object initializer
 
 ### Added
 
@@ -89,6 +92,22 @@ Plain migration work for a consumer moving from `0.2.0`, or from a 0.3.0 preview
 - `DriveStatus.WatchRequested` reports whether a drive's watch is requested, which is what decides whether a rescan restarts it. A start whose source threw or that was refused over an unresumable block leaves it set; stop clears it ([MFTLib#330](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/330)).
 - `FileIndex.WatchStateChanged` raises a `DriveWatchState` (`DriveLetter`, `State`, `Version`, `Fault`) for every change of a drive's `WatchCatchUp`, and `DriveStatus.WatchStateVersion` carries the same per-drive version, so a consumer observes an automatic recovery finishing (`Recovering`, then `CatchingUp`, then `CaughtUp`) without polling, and orders its own readiness against a fault that lands after it read the drive: a decision tagged with version v is superseded by any later event of that drive. Each change is delivered once, with neither the state lock nor a write gate held, one drive's changes in version order, before the `WatchFaulted` of the fault that caused it; disposal delivers each drive's final change before `DisposeAsync` returns. A consumer that also reads `Drives` applies only versions newer than the last it applied ([MFTLib#330](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/330)).
 
+- **USN journal support** on `MftVolume`:
+  - `QueryUsnJournal()` - get the current journal cursor (`UsnJournalCursor`) to baseline incremental updates after a full scan
+  - `ReadUsnJournal(cursor)` - batch catch-up read; returns `(UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor)`. Throws `InvalidOperationException` if the journal was recreated or entries were overwritten (caller should fall back to a full rescan)
+  - `WatchUsnJournal(cursor, cancellationToken)` - live `IAsyncEnumerable<UsnJournalEntry[]>` event stream; blocks on the kernel (zero CPU) until changes arrive, unblocks via `CancelIoEx` on cancellation
+  - `WatchUsnJournalWithCursor(cursor, cancellationToken)` - same as above but yields `(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)` so callers can persist progress without a separate `QueryUsnJournal` IOCTL
+- `UsnJournalEntry` exposes `RecordNumber` / `ParentRecordNumber` (48-bit Master File Table (MFT) segment indices matching `MftRecord`), `Usn`, `Timestamp`, `Reason`, `FileAttributes`, `FileName`, plus `IsCreate` / `IsDelete` / `IsRename` / `IsClose` reason helpers
+- `UsnJournalEntry.Create(UsnJournalEntryOptions)` - public factory with a property-based value carrier for reconstructing an entry from already-decoded values (e.g. journal data serialized to disk and rebuilt in another process)
+- `MftRecord.FileAttributes` now sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback
+- Added public `IElevationProvider` interface (with `ElevationUtilities.DefaultProvider`) so consumers can substitute elevation behavior in their own tests
+- **Bounded materialization API**:
+  - `MftResult.MaterializeBatches(int batchSize = 4096)` - yields materialized batches of records with bounded memory footprint over the existing result lifetime
+  - `MftVolume.ReadRecordBatches(bool resolvePaths = false, int batchSize = 4096)` - owning iterator that streams and materializes record batches, releasing the native result upon completion or early disposal
+  - Unified `ToArray()` row decoding over `MaterializeBatches()` while maintaining full source compatibility
+- **VolumeBroker subsystem** - `BrokerProcess` owns one elevated process and control pipe; `JournalBrokerHost` handles concurrent control requests and one scan or watch on each drive pipe. `BrokerProtocol`, `BrokerFrameKind`, and `BrokerFrame` carry request-id-routed control messages plus drive-scoped operation frames. `BrokerScanProgress` and `BrokerScanOptions` report one scan's progress, `NtfsVolumeInformation` supplies its capacity inputs, and `BrokerDiagnostics` traces tagged channels through a bounded background writer. `ElevatedEntryPoint.TryHandle` dispatches `--broker --pipe NAME`, and `BrokerLauncher.Launch` starts the child through `runas`.
+- **`MFTLibTestExtensions` test-harness assembly** - public `BrokerTestHarness` and `BrokerTestHarnessOptions` connect the production `BrokerProcess` and `JournalBrokerHost` over in-memory control and drive pipes. Consumer tests exercise the production lifecycle and fault surfaces without elevation or friend assembly access. The assembly ships as the separate `MFTLib.TestExtensions` NuGet package.
+
 ### Changed
 
 Signature changes are written as `before -> after`. Baselines: `0.2.0` is the last published release (tag `v0.2.0`); "0.3.0 preview" is the API just before the per-drive watch channels change ([MFTLib#265](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/265), commit `3597586`), which file-wizard and git-wizard built against.
@@ -139,6 +158,22 @@ Signature changes are written as `before -> after`. Baselines: `0.2.0` is the la
 - `BrokerMftBlockProducer`'s `scanCompleted` callback receives a validated `BrokerDriveScanResult` and does not run for a failed scan or rejected block
 - `StartWatchingAsync` refused over an unresumable journal cursor (a cache-only adoption past a lost checkpoint, or lost catch-ups at `LostCatchUpRecoveryLimit`) now records the watch request, as a source failure always did: the `RescanAsync` the refusal asks for restarts the watch, and `StopWatchingAsync` on the refused drive withdraws the request instead of throwing. A drive whose watch was never requested is still never started by a rescan ([MFTLib#330](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/330)). Consumer migration: file-wizard `FileWizardMaui/MainPage.DriveRescan.cs` (`StartRescannedDriveWatchAsync`) keys on `WatchSupported && !WatchRequested` instead of `WatchCatchUp == NotStarted` and drops the refused-drive half of its comment; file-wizard `FileWizard/JournalWatcher.cs` corrects its comment that `NotStarted` covers a refused start.
 
+- MFT file record geometry is now detected at runtime instead of assumed to be 1024 bytes: native volume parsing queries the volume's actual record size (`FSCTL_GET_NTFS_VOLUME_DATA`) at parse time, and parsing an exported MFT file reads the record size out of record 0's header. Both 1024-byte and 4096-byte record sizes are supported
+- Versioned Compact Native ABI (version 2): compact entries carry size, modification time, and sequence number, while the parse result reports cancellation and native progress reports `MftScanPhase`
+- Native path resolution reports live `MftScanPhase.ResolvingPaths` progress across worker threads
+- Native path resolution now supports variable-length paths up to 32767 UTF-16 units without truncation at 1024-character boundaries
+- Graceful allocation-failure fallback in path resolution: out-of-memory during path resolution preserves raw parsed file entries and filenames without raising errors
+- Added native and managed ABI compatibility checks via `GetMftNativeAbiVersion()` and `EnsureCompatibleNativeAbi()`
+- Native path resolution now parallelizes across worker threads (same fan-out as fixup+parse) when `numThreads > 1`, with a serial fallback
+- Path name-pool exhaustion is now surfaced via the native `errorMessage` ("Path name pool exhausted; N names dropped, some paths truncated") instead of silently truncating
+- Self-elevation now returns `false` without attempting UAC when no interactive desktop is available (for example, CI or a Session 0 service)
+- Reorganized managed sources by MFT, journal, broker, elevation, interop, and internal responsibilities; split scan, journal, broker connection, transport, and session behavior into focused partials without changing the public API
+- Reworked the README and added a broker integration guide covering installation, API selection, memory lifetime, race-free scan/catch-up, live watch, rescans, recovery, and deployment
+- Fixed native `bool` marshaling for synthetic generation so conversion failures reliably propagate to managed callers
+- Fixed synthetic generator teardown after an asynchronous write failure so the completed writer is joined exactly once
+- `BrokerProcess.LaunchAsync` has a bounded, configurable connection timeout (`DefaultConnectTimeout`, default 30 seconds) that throws a descriptive `TimeoutException` if the elevated child does not connect to the control pipe
+- The root directory record (MFT record 5) survives a path-resolved scan: `MftRecord.FullPath` returns the drive root (`C:\`, or `\` without a drive letter) and `FileName` returns `.`, so `ReadAllRecords`, `ReadRecordBatches`, and broker-written blocks keep the record and journal entries created directly under the root resolve their parent. A scan without `MatchFlags.ResolvePaths` yields a null `FullPath` for record 5
+
 ### Removed
 
 - Removed `BlockFile.DeleteOnClose` and the public `BrokerDiagnostics.LogFrame(string direction, byte kind, int length)`; frame logging is internal and takes a channel tag.
@@ -186,49 +221,7 @@ Signature changes are written as `before -> after`. Baselines: `0.2.0` is the la
 - `WaitForCatchUpAsync` faulted when a drive's watch failed before the drive read `Recovering` and before its `LiveWatch` checkpoint loss was recorded, so a consumer reading `Drives` from the wait's fault path saw `Faulted`. The wait now faults after both are recorded, just before `WatchFaulted` is raised ([MFTLib#330](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/330)).
 - During a rescan of a drive whose watch is requested, between the commit that retires the old watch and the replacement registering, the drive read `NotStarted` and `WaitForCatchUpAsync` threw "is not being watched". It now reads `CatchingUp`, and a wait issued then follows the replacement watch, faulting if the replacement cannot start or the scan's catch-up is lost ([MFTLib#330](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/330)).
 - The `WatchCatchUpState` and `DriveStatus.WatchCatchUp` documentation said a drive with no current watch reads `NotStarted`; a drive whose start or automatic recovery failed reads `Faulted`, which is what the code has always done ([MFTLib#330](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/330)).
-
-## 0.3.0
-
-### Breaking Changes
-
-- Targets net10.0; net8.0 consumers must upgrade.
-- Replaced the pre-release seven-argument `UsnJournalEntry.Create(...)` signature with `Create(UsnJournalEntryOptions)`; callers building against 0.3.0 previews must migrate to an object initializer
-
-### Features
-
-- **USN journal support** on `MftVolume`:
-  - `QueryUsnJournal()` - get the current journal cursor (`UsnJournalCursor`) to baseline incremental updates after a full scan
-  - `ReadUsnJournal(cursor)` - batch catch-up read; returns `(UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor)`. Throws `InvalidOperationException` if the journal was recreated or entries were overwritten (caller should fall back to a full rescan)
-  - `WatchUsnJournal(cursor, cancellationToken)` - live `IAsyncEnumerable<UsnJournalEntry[]>` event stream; blocks on the kernel (zero CPU) until changes arrive, unblocks via `CancelIoEx` on cancellation
-  - `WatchUsnJournalWithCursor(cursor, cancellationToken)` - same as above but yields `(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)` so callers can persist progress without a separate `QueryUsnJournal` IOCTL
-- `UsnJournalEntry` exposes `RecordNumber` / `ParentRecordNumber` (48-bit Master File Table (MFT) segment indices matching `MftRecord`), `Usn`, `Timestamp`, `Reason`, `FileAttributes`, `FileName`, plus `IsCreate` / `IsDelete` / `IsRename` / `IsClose` reason helpers
-- `UsnJournalEntry.Create(UsnJournalEntryOptions)` - public factory with a property-based value carrier for reconstructing an entry from already-decoded values (e.g. journal data serialized to disk and rebuilt in another process)
-- `MftRecord.FileAttributes` now sourced from `$STANDARD_INFORMATION` (preferred) with `$FILE_NAME` fallback
-- Added public `IElevationProvider` interface (with `ElevationUtilities.DefaultProvider`) so consumers can substitute elevation behavior in their own tests
-- **Bounded materialization API**:
-  - `MftResult.MaterializeBatches(int batchSize = 4096)` - yields materialized batches of records with bounded memory footprint over the existing result lifetime
-  - `MftVolume.ReadRecordBatches(bool resolvePaths = false, int batchSize = 4096)` - owning iterator that streams and materializes record batches, releasing the native result upon completion or early disposal
-  - Unified `ToArray()` row decoding over `MaterializeBatches()` while maintaining full source compatibility
-- **VolumeBroker subsystem** - `BrokerProcess` owns one elevated process and control pipe; `JournalBrokerHost` handles concurrent control requests and one scan or watch on each drive pipe. `BrokerProtocol`, `BrokerFrameKind`, and `BrokerFrame` carry request-id-routed control messages plus drive-scoped operation frames. `BrokerScanProgress` and `BrokerScanOptions` report one scan's progress, `NtfsVolumeInformation` supplies its capacity inputs, and `BrokerDiagnostics` traces tagged channels through a bounded background writer. `ElevatedEntryPoint.TryHandle` dispatches `--broker --pipe NAME`, and `BrokerLauncher.Launch` starts the child through `runas`.
-- **`MFTLibTestExtensions` test-harness assembly** - public `BrokerTestHarness` and `BrokerTestHarnessOptions` connect the production `BrokerProcess` and `JournalBrokerHost` over in-memory control and drive pipes. Consumer tests exercise the production lifecycle and fault surfaces without elevation or friend assembly access. The assembly ships as the separate `MFTLib.TestExtensions` NuGet package.
-
-### Improvements
-
-- MFT file record geometry is now detected at runtime instead of assumed to be 1024 bytes: native volume parsing queries the volume's actual record size (`FSCTL_GET_NTFS_VOLUME_DATA`) at parse time, and parsing an exported MFT file reads the record size out of record 0's header. Both 1024-byte and 4096-byte record sizes are supported
-- Versioned Compact Native ABI (version 2): compact entries carry size, modification time, and sequence number, while the parse result reports cancellation and native progress reports `MftScanPhase`
-- Native path resolution reports live `MftScanPhase.ResolvingPaths` progress across worker threads
-- Native path resolution now supports variable-length paths up to 32767 UTF-16 units without truncation at 1024-character boundaries
-- Graceful allocation-failure fallback in path resolution: out-of-memory during path resolution preserves raw parsed file entries and filenames without raising errors
-- Added native and managed ABI compatibility checks via `GetMftNativeAbiVersion()` and `EnsureCompatibleNativeAbi()`
-- Native path resolution now parallelizes across worker threads (same fan-out as fixup+parse) when `numThreads > 1`, with a serial fallback
-- Path name-pool exhaustion is now surfaced via the native `errorMessage` ("Path name pool exhausted; N names dropped, some paths truncated") instead of silently truncating
-- Self-elevation now returns `false` without attempting UAC when no interactive desktop is available (for example, CI or a Session 0 service)
-- Reorganized managed sources by MFT, journal, broker, elevation, interop, and internal responsibilities; split scan, journal, broker connection, transport, and session behavior into focused partials without changing the public API
-- Reworked the README and added a broker integration guide covering installation, API selection, memory lifetime, race-free scan/catch-up, live watch, rescans, recovery, and deployment
-- Fixed native `bool` marshaling for synthetic generation so conversion failures reliably propagate to managed callers
-- Fixed synthetic generator teardown after an asynchronous write failure so the completed writer is joined exactly once
-- `BrokerProcess.LaunchAsync` has a bounded, configurable connection timeout (`DefaultConnectTimeout`, default 30 seconds) that throws a descriptive `TimeoutException` if the elevated child does not connect to the control pipe
-- The root directory record (MFT record 5) survives a path-resolved scan: `MftRecord.FullPath` returns the drive root (`C:\`, or `\` without a drive letter) and `FileName` returns `.`, so `ReadAllRecords`, `ReadRecordBatches`, and broker-written blocks keep the record and journal entries created directly under the root resolve their parent. A scan without `MatchFlags.ResolvePaths` yields a null `FullPath` for record 5
+- `JournalMutator` treats a data write inside the create cycle as part of the creation, so a create-write-close followed by one append reports `Created` plus one `Modified` ([MFTLib#310](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/310)).
 
 ### Tests
 

@@ -6,7 +6,7 @@ namespace MFTLib.Tests;
 /// <summary>
 ///     Tests that require admin elevation to open a raw volume handle for
 ///     <see cref="NtfsVolumeInformation.Query" />.
-///     Run via: scripts/run-admin-tests.ps1
+///     Run via: scripts/run-coverage.ps1
 /// </summary>
 [TestClass]
 [TestCategory("RequiresAdmin")]
@@ -16,7 +16,7 @@ public class NtfsVolumeInformationAdminTests
     {
         if (!ElevationUtilities.IsElevated())
         {
-            Assert.Inconclusive("Requires admin elevation. Run scripts/run-admin-tests.ps1");
+            Assert.Inconclusive("Requires admin elevation. Run scripts/run-coverage.ps1");
         }
     }
 

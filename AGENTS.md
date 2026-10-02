@@ -19,21 +19,21 @@ MFTLib has never shipped to an external consumer. file-wizard and git-wizard are
 **Use MSBuild with `-p:Platform=x64` for the native C++ DLL**, and `dotnet build` for managed projects:
 
 ```bash
-# Build native C++ DLL
-MSBuild.exe MFTLibNative\MFTLibNative.vcxproj -p:Configuration=Release -p:Platform=x64
+# Build native and managed Release|x64 projects
+.\init.ps1 -Build
 
 # Build managed projects (or test program)
 dotnet build -c Release -p:Platform=x64
 dotnet build TestProgram\TestProgram.csproj -c Release -p:Platform=x64
 ```
 
-`dotnet build` cannot build the native C++ project (`MFTLibNative.vcxproj`), which must be compiled with MSBuild.
+`dotnet build` cannot build `.vcxproj`. `init.ps1 -Build` passes MSBuild an absolute `SolutionDir` with a trailing backslash so the native DLL lands in root `x64\Release`, where managed builds copy it.
 
 ### NuGet packaging
 
 ```bash
 # Build Release and pack the NuGet packages
-MSBuild.exe MFTLibNative\MFTLibNative.vcxproj -p:Configuration=Release -p:Platform=x64
+.\init.ps1 -Build
 dotnet pack MFTLib\MFTLib.csproj -c Release -p:Platform=x64
 dotnet pack MFTLibTestExtensions\MFTLibTestExtensions.csproj -c Release -p:Platform=x64
 
@@ -94,7 +94,7 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 
 [Cache identity](docs/architecture.md) and [block format](docs/index-format.md): CacheTag compares exactly, including zero; initialize before completion and copy `request.CacheTag` in custom producers. Consumers bump versions for profile/keep-list changes. Preserve the documented mismatch, cache-only failure and diagnostic contracts.
 
-[Checkpoint loss](docs/checkpoint-loss.md): classify journal observations, never exception wording. Preserve `JournalCheckpointLoss.DetectedDuring` labels and existing reports on unrelated faults; automatic recovery retains LiveWatch reports. Cache-only unresumable blocks refuse watches until rescan and explicit restart. A failed rescan must never arm a cursor the journal cannot resume. Preserve bounded catch-up recovery, refusal after three consecutive losses, progress checks and journal-size arithmetic in the linked contract.
+[Checkpoint loss](docs/checkpoint-loss.md): classify journal observations, never exception wording. Preserve `JournalCheckpointLoss.DetectedDuring` labels and existing reports on unrelated faults; automatic recovery retains LiveWatch reports. An unresumable block's refused start retains the watch request; a successful rescan clears the refusal and starts the watch. A failed rescan must never arm a cursor the journal cannot resume. Preserve bounded catch-up recovery, refusal after three consecutive losses, progress checks and journal-size arithmetic in the linked contract.
 
 [Query and writer lifetime](docs/query-lifetime.md): all eight row-scanning APIs borrow snapshots throughout scanning and observe cancellation before the first row and every 4096 rows; Children uses only caller cancellation. DisposeAsync cancels linked work and drains current/retired borrows before unmapping. Suspended enumerators retain borrows: dispose promptly. Preserve per-access IsReleased checks and BlockWriter scopes; BlockFile.Dispose refuses new scopes and drains existing ones before unmapping. Raw property reads lack that serialization.
 
@@ -106,7 +106,7 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 
 ### Native error messages
 
-[Native error helper](docs/architecture.md): use `SetErrorMessage` in `MFTLibNative/internal.h` for native result `wchar_t errorMessage[256]` buffers. It truncates through `_vsnwprintf_s(_TRUNCATE)` and asserts overflow in Debug. Avoid direct `swprintf_s` / `snprintf_s` calls at error-write sites.
+[Native error helper](docs/architecture.md): use `SetErrorMessage` in `MFTLibNative/internal.h` for native result `wchar_t errorMessage[256]` buffers. Windows truncation uses `_snwprintf_s(..., _TRUNCATE, ...)`; Debug asserts overflow. Avoid direct `swprintf_s` / `snprintf_s` calls at error-write sites.
 
 ## Roadmap
 
