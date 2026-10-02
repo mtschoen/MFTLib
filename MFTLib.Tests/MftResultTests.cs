@@ -22,7 +22,7 @@ public partial class MftResultTests
     [TestCleanup]
     public void Cleanup()
     {
-        MFTLibNative.NativeResetTestState();
+        NativeTestHooks.NativeResetTestState();
         MFTLibNative.ResetToDefaults();
         if (_tempMftPath != null && File.Exists(_tempMftPath))
         {
@@ -111,7 +111,7 @@ public partial class MftResultTests
         try
         {
             SyntheticNtfsImage.Write(imagePath, 64);
-            MFTLibNative.NativeSetVolumeRecordSizeOverride(1024);
+            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
             using var control = new ParseControlBlock();
             control.RequestCancel();
             using var image = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read);

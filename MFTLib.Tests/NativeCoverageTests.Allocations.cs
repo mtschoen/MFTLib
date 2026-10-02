@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -18,7 +19,7 @@ public partial class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
             // Fail the first calloc (result allocation)
-            MFTLibNative.NativeSetAllocFailCountdown(1);
+            NativeTestHooks.NativeSetAllocFailCountdown(1);
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreEqual(IntPtr.Zero, resultPointer);
         }
@@ -41,7 +42,7 @@ public partial class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
             // Fail the second alloc (lookup.init when resolving paths)
-            MFTLibNative.NativeSetAllocFailCountdown(2);
+            NativeTestHooks.NativeSetAllocFailCountdown(2);
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -75,7 +76,7 @@ public partial class NativeCoverageTests
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
-            MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
+            NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -109,7 +110,7 @@ public partial class NativeCoverageTests
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
-            MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
+            NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -143,7 +144,7 @@ public partial class NativeCoverageTests
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
-            MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
+            NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -181,7 +182,7 @@ public partial class NativeCoverageTests
             // the multi-threaded merge path, exercising its realloc-failure handler.
             MftVolume.GenerateSyntheticMFT(path, 4000, 8192);
 
-            MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
+            NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 8192);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -213,8 +214,8 @@ public partial class NativeCoverageTests
         try
         {
             File.Delete(path);
-            MFTLibNative.NativeSetAllocFailCountdown(allocationToFail);
-            var success = MFTLibNative._generateSyntheticMft(path, 10, 256);
+            NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
+            var success = MFTLibNative._generateSyntheticMftSized(path, 10, 256, 1024);
             Assert.IsFalse(success);
         }
         finally
@@ -237,7 +238,7 @@ public partial class NativeCoverageTests
     public void GenerateSyntheticMFT_InvalidDirectory_ReturnsFalse()
     {
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "missing", "fixture.mft");
-        Assert.IsFalse(MFTLibNative._generateSyntheticMft(path, 10, 256));
+        Assert.IsFalse(MFTLibNative._generateSyntheticMftSized(path, 10, 256, 1024));
     }
 
     [TestMethod]
@@ -247,8 +248,8 @@ public partial class NativeCoverageTests
         try
         {
             File.Delete(path);
-            MFTLibNative.NativeSetFailPathConversion(1);
-            Assert.IsFalse(MFTLibNative._generateSyntheticMft(path, 10, 256));
+            NativeTestHooks.NativeSetFailPathConversion(1);
+            Assert.IsFalse(MFTLibNative._generateSyntheticMftSized(path, 10, 256, 1024));
         }
         finally
         {
@@ -272,7 +273,7 @@ public partial class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 100, 256);
 
             // Fail the first ReadFile in FileReadChunk
-            MFTLibNative.NativeSetReadFailCountdown(1);
+            NativeTestHooks.NativeSetReadFailCountdown(1);
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try

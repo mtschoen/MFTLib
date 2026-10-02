@@ -14,20 +14,20 @@ public partial class NativeParserCoverageTests
     const int ImageRecordCount = 1024;
     const int ImageChunkCount = ImageRecordCount / 64;
 
-    static uint NativeHardwareThreadCount => MFTLibNative.NativeGetNativeHardwareThreadCount();
+    static uint NativeHardwareThreadCount => NativeTestHooks.NativeGetNativeHardwareThreadCount();
 
     [TestMethod]
     public void NativeHardwareThreadCount_IsIndependentOfMaximumThreadCap()
     {
-        var nativeHardwareThreadCount = MFTLibNative.NativeGetNativeHardwareThreadCount();
+        var nativeHardwareThreadCount = NativeTestHooks.NativeGetNativeHardwareThreadCount();
         Console.WriteLine($"Native hardware threads: {nativeHardwareThreadCount}; managed processors: {Environment.ProcessorCount}");
         Assert.IsTrue(nativeHardwareThreadCount >= 1);
 
-        MFTLibNative.NativeSetMaxThreads(1);
-        Assert.AreEqual(nativeHardwareThreadCount, MFTLibNative.NativeGetNativeHardwareThreadCount());
+        NativeTestHooks.NativeSetMaxThreads(1);
+        Assert.AreEqual(nativeHardwareThreadCount, NativeTestHooks.NativeGetNativeHardwareThreadCount());
 
-        MFTLibNative.NativeResetTestState();
-        Assert.AreEqual(nativeHardwareThreadCount, MFTLibNative.NativeGetNativeHardwareThreadCount());
+        NativeTestHooks.NativeResetTestState();
+        Assert.AreEqual(nativeHardwareThreadCount, NativeTestHooks.NativeGetNativeHardwareThreadCount());
     }
 
     [TestMethod]
@@ -63,7 +63,7 @@ public partial class NativeParserCoverageTests
     [TestMethod]
     public void ParseMFTRecordsWithProgress_SetMaxThreadsStillCaps()
     {
-        MFTLibNative.NativeSetMaxThreads(1);
+        NativeTestHooks.NativeSetMaxThreads(1);
         AssertAllowanceGivesEveryChunk(4, 1);
     }
 
@@ -96,7 +96,7 @@ public partial class NativeParserCoverageTests
             Assert.AreEqual(0u, result.Cancelled);
             Assert.AreNotEqual(IntPtr.Zero, result.PathEntries, "Path resolution must have run");
             Assert.AreEqual(NativeHardwareThreadCount, ParseControlBlock.ChunkThreadCounts()[^1]);
-            Assert.AreEqual(1u, MFTLibNative.NativeGetResolveThreadCount());
+            Assert.AreEqual(1u, NativeTestHooks.NativeGetResolveThreadCount());
         });
     }
 
@@ -119,7 +119,7 @@ public partial class NativeParserCoverageTests
 
             AssertCancelled(result);
             Assert.AreEqual(1, resolvingReports, "Resolution must stop at the slice after the cancelling report");
-            Assert.AreEqual(1u, MFTLibNative.NativeGetResolveThreadCount());
+            Assert.AreEqual(1u, NativeTestHooks.NativeGetResolveThreadCount());
         });
     }
 
@@ -132,7 +132,7 @@ public partial class NativeParserCoverageTests
             control.RequestCancel();
             var progressCalls = 0;
             // Reads 1 and 2 are the boot sector and record 0; read 3 would be the first chunk.
-            MFTLibNative.NativeSetReadFailCountdown(3);
+            NativeTestHooks.NativeSetReadFailCountdown(3);
 
             var result = ParseImage(path, MatchFlags.None, control, (_, _, _, _) => progressCalls++);
 
@@ -164,7 +164,7 @@ public partial class NativeParserCoverageTests
             AssertCancelled(result);
             Assert.AreEqual(1, parsingCalls);
             Assert.AreEqual(1, ParseControlBlock.ChunkThreadCounts().Length);
-            Assert.AreEqual(0u, MFTLibNative.NativeGetResolveThreadCount(), "Path resolution must not run");
+            Assert.AreEqual(0u, NativeTestHooks.NativeGetResolveThreadCount(), "Path resolution must not run");
         });
     }
 
@@ -178,7 +178,7 @@ public partial class NativeParserCoverageTests
         {
             using var control = new ParseControlBlock(1);
             var progressCalls = 0;
-            MFTLibNative.NativeSetCancelCheckCountdown(4);
+            NativeTestHooks.NativeSetCancelCheckCountdown(4);
 
             var result = ParseImage(path, MatchFlags.None, control, (_, _, _, _) => progressCalls++);
 
@@ -204,7 +204,7 @@ public partial class NativeParserCoverageTests
         {
             using var control = new ParseControlBlock(2);
             var progressCalls = 0;
-            MFTLibNative.NativeSetCancelCheckCountdown(6);
+            NativeTestHooks.NativeSetCancelCheckCountdown(6);
 
             var result = ParseImage(path, MatchFlags.None, control, (_, _, _, _) => progressCalls++, 16384);
 
@@ -297,7 +297,7 @@ public partial class NativeParserCoverageTests
     static MftParseResult ParseVolumeExport(string path, MatchFlags matchFlags, IntPtr control,
         MFTLibNative.NativeMftProgressCallback? callback, uint bufferSizeRecords)
     {
-        MFTLibNative.NativeSetVolumeRecordSizeOverride(1024);
+        NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
         using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
             fileStream.SafeFileHandle, null, matchFlags, bufferSizeRecords, control, callback);

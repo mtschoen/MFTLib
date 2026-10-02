@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
@@ -34,8 +35,8 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            MFTLibNative.NativeSetReadFailCountdown(3); // Fail 3rd read = ReadMFTRecord
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            NativeTestHooks.NativeSetReadFailCountdown(3); // Fail 3rd read = ReadMFTRecord
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -78,8 +79,8 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            MFTLibNative.NativeSetReadFailCountdown(3); // Fail 3rd read = VolumeReadChunk
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            NativeTestHooks.NativeSetReadFailCountdown(3); // Fail 3rd read = VolumeReadChunk
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -144,8 +145,8 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            MFTLibNative.NativeSetReadFailCountdown(3); // Fail 3rd read = ReadNonResidentData
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            NativeTestHooks.NativeSetReadFailCountdown(3); // Fail 3rd read = ReadNonResidentData
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -188,7 +189,7 @@ public partial class NativeCoverageTests
         {
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 100, 256);
-            MFTLibNative.NativeSetFailPlatformRead(1); // fail the first positioned read
+            NativeTestHooks.NativeSetFailPlatformRead(1); // fail the first positioned read
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -220,8 +221,8 @@ public partial class NativeCoverageTests
         try
         {
             File.Delete(path);
-            MFTLibNative.NativeSetFailPlatformWrite(1);
-            var success = MFTLibNative._generateSyntheticMft(path, 600, 256);
+            NativeTestHooks.NativeSetFailPlatformWrite(1);
+            var success = MFTLibNative._generateSyntheticMftSized(path, 600, 256, 1024);
             Assert.IsFalse(success, "Generation should report failure when the write fails");
         }
         finally

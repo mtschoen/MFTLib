@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
@@ -20,7 +21,7 @@ public partial class NativeParserCoverageTests
     [TestCleanup]
     public void Cleanup()
     {
-        MFTLibNative.NativeResetTestState();
+        NativeTestHooks.NativeResetTestState();
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
     }
@@ -88,7 +89,7 @@ public partial class NativeParserCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -129,7 +130,7 @@ public partial class NativeParserCoverageTests
             // pread_at (0x20 bytes, used for record-size detection) and must
             // succeed; the 2nd is FileReadChunk's first positioned read, which
             // this countdown fails.
-            MFTLibNative.NativeSetFailPlatformRead(2);
+            NativeTestHooks.NativeSetFailPlatformRead(2);
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -202,7 +203,7 @@ public partial class NativeParserCoverageTests
 
             // 1=result, 2=lookup gate, 3-5=lookup metadata, 6-7=buffers,
             // 8=entries, 9=strings, 10=path entries, 11=path strings.
-            MFTLibNative.NativeSetAllocFailCountdown(11);
+            NativeTestHooks.NativeSetAllocFailCountdown(11);
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -261,12 +262,12 @@ public partial class NativeParserCoverageTests
             Assert.IsTrue(chain.Count > 32, "Need a meaningfully deep chain to overflow the paths string pool");
             File.WriteAllBytes(path, data);
 
-            MFTLibNative.NativeSetMaxThreads(1);
+            NativeTestHooks.NativeSetMaxThreads(1);
             // Single-threaded, single-chunk (400 < 512 buffer), ResolvePaths ordinal:
             // 1=result, 2=lookup gate, 3-5=lookup metadata, 6-7=buffers,
             // 8=entries, 9=strings, 10=path entries, 11=path strings,
             // 12=path string-pool growth (the initial merge fits).
-            MFTLibNative.NativeSetAllocFailCountdown(12);
+            NativeTestHooks.NativeSetAllocFailCountdown(12);
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 512);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -371,7 +372,7 @@ public partial class NativeParserCoverageTests
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             // Fail the 3rd Read: 1=boot sector, 2=record 0, 3=VolumeReadChunk's
             // first read, so the chunk loop body never executes.
-            MFTLibNative.NativeSetReadFailCountdown(3);
+            NativeTestHooks.NativeSetReadFailCountdown(3);
             var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
                 fileStream.SafeFileHandle, null, MatchFlags.None, 64, IntPtr.Zero, callback);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);

@@ -35,7 +35,7 @@ internal sealed class IdleUsnPipe : IDisposable
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
             await connected.WaitAsync(TimeSpan.FromSeconds(10));
-            MFTLibNative.NativeSetUsnWatchPipe(pipe.Handle, pipe.BeforeIssue.SafeWaitHandle,
+            NativeTestHooks.NativeSetUsnWatchPipe(pipe.Handle, pipe.BeforeIssue.SafeWaitHandle,
                 pipe.ContinueIssue.SafeWaitHandle, pipe.Issued.SafeWaitHandle, gateReadNumber);
             FileUtilities._getWatchVolumeHandle = pipe.BorrowHandle;
             return pipe;

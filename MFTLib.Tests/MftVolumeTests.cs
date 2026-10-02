@@ -24,7 +24,7 @@ public partial class MftVolumeTests
     [TestCleanup]
     public void Cleanup()
     {
-        MFTLibNative.NativeResetTestState();
+        NativeTestHooks.NativeResetTestState();
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
 

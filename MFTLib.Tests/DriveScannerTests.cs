@@ -211,7 +211,7 @@ public class DriveScannerTests
     {
         var (resultPtr, cleanupAction) = BuildMftParseResult(0);
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => resultPtr;
         MFTLibNative._freeMftResult = cleanupAction;
 
         var lines = new List<string>();
@@ -231,7 +231,7 @@ public class DriveScannerTests
     {
         var (resultPtr, cleanupAction) = BuildMftParseResult(1, true);
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        MFTLibNative._parseMftRecords = (_, _, _, _) => resultPtr;
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => resultPtr;
         MFTLibNative._freeMftResult = cleanupAction;
 
         var lines = new List<string>();

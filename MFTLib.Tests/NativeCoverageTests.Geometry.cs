@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
@@ -127,14 +128,14 @@ public partial class NativeCoverageTests
         try
         {
             // Override with unsupported record size 1536
-            MFTLibNative.NativeSetVolumeRecordSizeOverride(1536);
+            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1536);
 
             var data = BuildBootSector();
             WriteFileRecord(data, 4096);
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -149,7 +150,7 @@ public partial class NativeCoverageTests
         }
         finally
         {
-            MFTLibNative.NativeResetTestState();
+            NativeTestHooks.NativeResetTestState();
             if (File.Exists(path))
             {
                 File.Delete(path);
@@ -163,7 +164,7 @@ public partial class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            MFTLibNative.NativeSetVolumeRecordSizeOverride(1024);
+            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
 
             var data = BuildBootSector();
             WriteFileRecord(data, 4096, recordSize: 1024);
@@ -174,7 +175,7 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -190,7 +191,7 @@ public partial class NativeCoverageTests
         }
         finally
         {
-            MFTLibNative.NativeResetTestState();
+            NativeTestHooks.NativeResetTestState();
             if (File.Exists(path))
             {
                 File.Delete(path);
@@ -204,7 +205,7 @@ public partial class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            MFTLibNative.NativeSetVolumeRecordSizeOverride(4096);
+            NativeTestHooks.NativeSetVolumeRecordSizeOverride(4096);
 
             var data = BuildBootSector();
             WriteFileRecord(data, 4096, 0x0001, 4096);
@@ -215,7 +216,7 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -231,7 +232,7 @@ public partial class NativeCoverageTests
         }
         finally
         {
-            MFTLibNative.NativeResetTestState();
+            NativeTestHooks.NativeResetTestState();
             if (File.Exists(path))
             {
                 File.Delete(path);
@@ -245,8 +246,8 @@ public partial class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            MFTLibNative.NativeSetVolumeRecordSizeOverride(1536);
-            MFTLibNative.NativeResetTestState();
+            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1536);
+            NativeTestHooks.NativeResetTestState();
 
             var data = BuildBootSector();
             WriteFileRecord(data, 4096, recordSize: 1024);
@@ -257,7 +258,7 @@ public partial class NativeCoverageTests
             File.WriteAllBytes(path, data);
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var resultPointer = MFTLibNative.NativeParseMFTRecordsRaw(
+            var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
                 fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
@@ -272,7 +273,7 @@ public partial class NativeCoverageTests
         }
         finally
         {
-            MFTLibNative.NativeResetTestState();
+            NativeTestHooks.NativeResetTestState();
             if (File.Exists(path))
             {
                 File.Delete(path);

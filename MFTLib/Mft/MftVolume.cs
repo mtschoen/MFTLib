@@ -199,12 +199,11 @@ public sealed partial class MftVolume : IDisposable
         : null;
     }
 
+    const uint DefaultSyntheticRecordSize = 1024;
+
     internal static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords = 262144)
     {
-        if (!MFTLibNative._generateSyntheticMft(filePath, recordCount, bufferSizeRecords))
-        {
-            throw new InvalidOperationException("Failed to generate synthetic MFT file");
-        }
+        GenerateSyntheticMFT(filePath, recordCount, bufferSizeRecords, DefaultSyntheticRecordSize);
     }
 
     internal static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords,

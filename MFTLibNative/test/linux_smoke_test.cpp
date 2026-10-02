@@ -15,7 +15,6 @@
 #include "mft_api.h"
 #include "ntfs.h"
 
-extern "C" bool GenerateSyntheticMFTUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords);
 extern "C" bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
                                               uint32_t recordSize);
 extern "C" bool GenerateFixtureMFTUtf8(const char* filePath);
@@ -36,7 +35,9 @@ constexpr uint64_t kDefaultRecordCount = 1024;
 constexpr uint32_t kDefaultBufferRecords = 4096;
 constexpr const char* kFixturePath = "/tmp/mftlib_synthetic.mft";
 
-bool generate_fixture() { return GenerateSyntheticMFTUtf8(kFixturePath, kDefaultRecordCount, kDefaultBufferRecords); }
+bool generate_fixture() {
+    return GenerateSyntheticMFTSizedUtf8(kFixturePath, kDefaultRecordCount, kDefaultBufferRecords, 1024);
+}
 
 void remove_fixture() { std::remove(kFixturePath); }
 
@@ -54,7 +55,7 @@ bool test_abi_version() {
 
 bool test_round_trip() {
     if (!generate_fixture()) {
-        std::fprintf(stderr, "  setup FAIL: GenerateSyntheticMFTUtf8 returned false\n");
+        std::fprintf(stderr, "  setup FAIL: GenerateSyntheticMFTSizedUtf8 returned false\n");
         return false;
     }
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
@@ -335,8 +336,8 @@ bool test_read_failure_path() {
 }
 
 bool test_generate_unwritable_path() {
-    bool result = GenerateSyntheticMFTUtf8("/tmp/this_dir_does_not_exist_abc123/output.mft", kDefaultRecordCount,
-                                           kDefaultBufferRecords);
+    bool result = GenerateSyntheticMFTSizedUtf8("/tmp/this_dir_does_not_exist_abc123/output.mft", kDefaultRecordCount,
+                                                kDefaultBufferRecords, 1024);
     bool testPassed = !result;
     if (!testPassed) {
         std::fprintf(stderr, "  FAIL: generate to unwritable path returned true\n");

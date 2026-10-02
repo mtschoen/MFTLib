@@ -12,7 +12,7 @@ public partial class MftVolumeTests
     {
         WithImageVolume(volume =>
         {
-            var nativeHardwareThreadCount = MFTLibNative.NativeGetNativeHardwareThreadCount();
+            var nativeHardwareThreadCount = NativeTestHooks.NativeGetNativeHardwareThreadCount();
             var allowance = new ParseThreadAllowance((int)nativeHardwareThreadCount);
             var progress = new SynchronousProgress<MftScanProgress>(_ => allowance.Count = 1);
 
@@ -70,7 +70,7 @@ public partial class MftVolumeTests
         try
         {
             SyntheticNtfsImage.Write(path, 1024);
-            MFTLibNative.NativeSetVolumeRecordSizeOverride(1024);
+            NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
             FileUtilities._getVolumeHandle = _ => File.OpenHandle(path);
             using (var volume = MftVolume.Open("C", 64))
             {

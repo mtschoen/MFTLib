@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.SyntheticNtfsImage;
 
@@ -159,7 +160,7 @@ public partial class NativeParserCoverageTests
             // Countdown 7 fails the second entry-array grow during slice merge
             // (after the initial 1024 -> 2048 realloc at ordinal 6 succeeds),
             // leaving partial records in the result.
-            MFTLibNative.NativeSetAllocFailCountdown(7);
+            NativeTestHooks.NativeSetAllocFailCountdown(7);
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 8192);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -200,7 +201,7 @@ public partial class NativeParserCoverageTests
 
             var everyCore = MftVolume.ParseMFTFromFile(path, null, MatchFlags.None, out _, 64)
                 .Select(record => record.RecordNumber).ToArray();
-            MFTLibNative.NativeSetMaxThreads(1);
+            NativeTestHooks.NativeSetMaxThreads(1);
             var singleThread = MftVolume.ParseMFTFromFile(path, null, MatchFlags.None, out _, 64)
                 .Select(record => record.RecordNumber).ToArray();
 

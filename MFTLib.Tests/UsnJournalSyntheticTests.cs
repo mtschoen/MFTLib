@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
 using MFTLib.Interop;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 
@@ -32,7 +33,7 @@ public partial class UsnJournalSyntheticTests
     [TestCleanup]
     public void Cleanup()
     {
-        MFTLibNative.NativeResetTestState();
+        NativeTestHooks.NativeResetTestState();
         MFTLibNative.ResetToDefaults();
         FileUtilities.ResetToDefaults();
         Kernel32.ResetToDefaults();
@@ -60,7 +61,7 @@ public partial class UsnJournalSyntheticTests
         var ptr = Marshal.AllocHGlobal(data.Length);
         Marshal.Copy(data, 0, ptr, data.Length);
         _buffers.Add(ptr);
-        MFTLibNative.NativeSetUsnIoSuccess((byte*)ptr, (uint)data.Length);
+        NativeTestHooks.NativeSetUsnIoSuccess((byte*)ptr, (uint)data.Length);
     }
 
     // A FSCTL_QUERY_USN_JOURNAL output buffer (USN_JOURNAL_DATA_V0: 8 fields × 8 bytes).
@@ -146,7 +147,7 @@ public partial class UsnJournalSyntheticTests
     public void QueryUsnJournal_JournalNotActive_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
@@ -170,7 +171,7 @@ public partial class UsnJournalSyntheticTests
     public void QueryUsnJournal_DeleteInProgress_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
@@ -183,7 +184,7 @@ public partial class UsnJournalSyntheticTests
     public void QueryUsnJournal_GenericError_ReturnsErrorCode()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(5, 1); // ERROR_ACCESS_DENIED
+        NativeTestHooks.NativeSetUsnIoFailError(5, 1); // ERROR_ACCESS_DENIED
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
@@ -284,7 +285,7 @@ public partial class UsnJournalSyntheticTests
     public void ReadUsnJournal_AllocFailOnReadBuffer_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetAllocFailCountdown(1); // fail read buffer alloc (before any IOCTL)
+        NativeTestHooks.NativeSetAllocFailCountdown(1); // fail read buffer alloc (before any IOCTL)
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
@@ -297,7 +298,7 @@ public partial class UsnJournalSyntheticTests
     public void ReadUsnJournal_AllocFailOnEntryArray_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetAllocFailCountdown(2); // skip read buffer, fail entry array
+        NativeTestHooks.NativeSetAllocFailCountdown(2); // skip read buffer, fail entry array
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
@@ -313,7 +314,7 @@ public partial class UsnJournalSyntheticTests
         // Provide >1024 records so the grow path is reached, then fail the grow alloc.
         QueueSuccess(BuildManyRecords(1000, 2000, 700));
         QueueSuccess(BuildManyRecords(2000, 3000, 700));
-        MFTLibNative.NativeSetAllocFailCountdown(3); // readBuffer, entryArray, then grow → fail
+        NativeTestHooks.NativeSetAllocFailCountdown(3); // readBuffer, entryArray, then grow → fail
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
@@ -326,7 +327,7 @@ public partial class UsnJournalSyntheticTests
     public void ReadUsnJournal_JournalNotActive_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
@@ -339,7 +340,7 @@ public partial class UsnJournalSyntheticTests
     public void ReadUsnJournal_DeleteInProgress_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
@@ -352,7 +353,7 @@ public partial class UsnJournalSyntheticTests
     public void ReadUsnJournal_EntryDeleted_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
@@ -365,7 +366,7 @@ public partial class UsnJournalSyntheticTests
     public void ReadUsnJournal_GenericError_ReturnsErrorCode()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(5, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(5, 1);
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
@@ -400,7 +401,7 @@ public partial class UsnJournalSyntheticTests
     public void ReadUsnJournal_HandleEof_ReturnsEmpty()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 1);
         using var volume = MftVolume.Open("C");
         var (entries, _) = volume.ReadUsnJournal(Cursor);
         Assert.AreEqual(0, entries.Length);
@@ -413,7 +414,7 @@ public partial class UsnJournalSyntheticTests
         // branch: first IOCTL passes through (decrement 2→1, returns false), then
         // the second fires EOF to break the read loop cleanly.
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 2);
+        NativeTestHooks.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 2);
         QueueSuccess(BuildReadBuffer(2000, (100, 5, 1000, 0x00000100u, "passed.txt")));
         using var volume = MftVolume.Open("C");
         var (entries, _) = volume.ReadUsnJournal(Cursor);
@@ -431,7 +432,7 @@ public partial class UsnJournalSyntheticTests
         QueueSuccess(BuildReadBuffer(2500, (300, 5, 2400, 0x00000100u, "watched.txt")));
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            UncancelableUsnWatch.Read(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.AreEqual(1UL, result.EntryCount);
@@ -445,10 +446,10 @@ public partial class UsnJournalSyntheticTests
         // path (on the fake handle it then fails, yielding a generic error). Covers
         // the non-abort branch of UsnGetOverlappedResult.
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(997 /*ERROR_IO_PENDING*/, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(997 /*ERROR_IO_PENDING*/, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            UncancelableUsnWatch.Read(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         Assert.AreNotEqual(IntPtr.Zero, resultPtr);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative._freeUsnJournalResult(resultPtr);
@@ -485,14 +486,14 @@ public partial class UsnJournalSyntheticTests
     public void WatchUsnJournal_OperationAborted_ReturnsEmptyAtOriginalCursor(bool pending)
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(pending ? 997U : 995U, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(pending ? 997U : 995U, 1);
         if (pending)
         {
-            MFTLibNative.NativeSetUsnOverlappedAbort();
+            NativeTestHooks.NativeSetUsnOverlappedAbort();
         }
 
         using var volume = MftVolume.Open("C");
-        var resultPointer = MFTLibNative._watchUsnJournalBatch(
+        var resultPointer = UncancelableUsnWatch.Read(
             volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
@@ -515,7 +516,7 @@ public partial class UsnJournalSyntheticTests
         UseFakeHandle();
         QueueSuccess(BuildZeroLengthRecordBuffer(2500));
         using var volume = MftVolume.Open("C");
-        var resultPointer = MFTLibNative._watchUsnJournalBatch(
+        var resultPointer = UncancelableUsnWatch.Read(
             volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPointer);
         MFTLibNative._freeUsnJournalResult(resultPointer);
@@ -527,10 +528,10 @@ public partial class UsnJournalSyntheticTests
     public void WatchUsnJournal_AllocFailOnReadBuffer_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetAllocFailCountdown(1); // fail read buffer alloc
+        NativeTestHooks.NativeSetAllocFailCountdown(1); // fail read buffer alloc
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            UncancelableUsnWatch.Read(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("allocate"));
@@ -540,10 +541,10 @@ public partial class UsnJournalSyntheticTests
     public void WatchUsnJournal_AllocFailOnEvent_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetAllocFailCountdown(2); // skip read buffer, fail CreateEvent
+        NativeTestHooks.NativeSetAllocFailCountdown(2); // skip read buffer, fail CreateEvent
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            UncancelableUsnWatch.Read(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("event") || result.ErrorMessage.Contains("Error"));
@@ -554,9 +555,9 @@ public partial class UsnJournalSyntheticTests
     {
         UseFakeHandle();
         QueueSuccess(BuildReadBuffer(2500, (300, 5, 2400, 0x00000100u, "watched.txt")));
-        MFTLibNative.NativeSetAllocFailCountdown(3);
+        NativeTestHooks.NativeSetAllocFailCountdown(3);
         using var volume = MftVolume.Open("C");
-        var resultPointer = MFTLibNative._watchUsnJournalBatch(
+        var resultPointer = UncancelableUsnWatch.Read(
             volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPointer);
         MFTLibNative._freeUsnJournalResult(resultPointer);
@@ -568,10 +569,10 @@ public partial class UsnJournalSyntheticTests
     public void WatchUsnJournal_JournalNotActive_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_NOT_ACTIVE, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            UncancelableUsnWatch.Read(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("not active"));
@@ -581,10 +582,10 @@ public partial class UsnJournalSyntheticTests
     public void WatchUsnJournal_DeleteInProgress_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_DELETE_IN_PROGRESS, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            UncancelableUsnWatch.Read(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("deletion"));
@@ -594,10 +595,10 @@ public partial class UsnJournalSyntheticTests
     public void WatchUsnJournal_EntryDeleted_ReturnsError()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(ERROR_JOURNAL_ENTRY_DELETED, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            UncancelableUsnWatch.Read(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("rescan"));
@@ -607,10 +608,10 @@ public partial class UsnJournalSyntheticTests
     public void WatchUsnJournal_HandleEof_ReturnsEmpty()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(ERROR_HANDLE_EOF, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            UncancelableUsnWatch.Read(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.AreEqual(0UL, result.EntryCount);
@@ -621,10 +622,10 @@ public partial class UsnJournalSyntheticTests
     public void WatchUsnJournal_GenericError_ReturnsErrorCode()
     {
         UseFakeHandle();
-        MFTLibNative.NativeSetUsnIoFailError(5, 1);
+        NativeTestHooks.NativeSetUsnIoFailError(5, 1);
         using var volume = MftVolume.Open("C");
         var resultPtr =
-            MFTLibNative._watchUsnJournalBatch(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
+            UncancelableUsnWatch.Read(volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalId);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPtr);
         MFTLibNative._freeUsnJournalResult(resultPtr);
         Assert.IsTrue(result.ErrorMessage.Contains("Error: 5"));
