@@ -30,7 +30,7 @@ public class BrokerDeathTests
 
         await EndHostAsync(broker, host);
 
-        var lost = await WatchReads.ThrowsAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
+        var lost = await WatchDeduplicationTestSupport.ThrowsAsync<BrokerChannelLostException>(() => pending.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.DriveLetter);
         await broker.Process.Ended.WaitAsync(HangGuard);
     }
@@ -53,7 +53,7 @@ public class BrokerDeathTests
         await using var __ = reader.ConfigureAwait(false);
         var late = await WatchReads.ThrowsNextAsync<BrokerChannelLostException>(reader);
         Assert.AreEqual('C', late.DriveLetter);
-        var restart = await WatchReads.ThrowsAsync<BrokerChannelLostException>(() =>
+        var restart = await WatchDeduplicationTestSupport.ThrowsAsync<BrokerChannelLostException>(() =>
             source.StartAsync(new IndexWatchTarget('D', 7, 100), CancellationToken.None));
         Assert.AreEqual('D', restart.DriveLetter);
     }

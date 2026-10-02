@@ -1,7 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
+using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -180,6 +180,7 @@ public partial class FileIndexWatchRecoveryTests
         using var harness = new WatchHarness('T');
         var index = harness.Index;
         await index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
+        var producedBefore = harness.ProductionCount('T');
         var wait = index.WaitForCatchUpAsync('T', Token);
         var stop = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
         index.PumpFaultSettlementWrapperForTest = settle =>
@@ -196,6 +197,8 @@ public partial class FileIndexWatchRecoveryTests
         var stopTask = await stop.Task.WaitAsync(HangGuard);
         var stopFault = await ThrowsAsync<DriveWatchFaultException>(() => stopTask.WaitAsync(HangGuard));
         Assert.AreSame(waitFault, stopFault, "the wait and the stop report the same watch fault");
+        Assert.AreEqual(0, harness.RecoveryCount('T'));
+        Assert.AreEqual(0, harness.ProductionCount('T') - producedBefore);
         Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
     }
 
@@ -239,21 +242,6 @@ public partial class FileIndexWatchRecoveryTests
         Assert.AreEqual(1, lost.ConsecutiveLostCatchUps);
         Assert.AreEqual(2, harness.Source.StartsFor('T').Count, "the retry's block restarts the watch");
         await index.StopWatchingAsync('T', Token);
-    }
-
-    [TestMethod]
-    public async Task RescanOfADriveNeverWatched_StartsNoWatchAndReportsNoRequest()
-    {
-        using var harness = new WatchHarness('T');
-
-        await harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard);
-
-        Assert.AreEqual(0, harness.Source.StartsFor('T').Count);
-        var drive = harness.DriveFor('T');
-        Assert.IsFalse(drive.WatchRequested);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUp);
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => harness.Index.WaitForCatchUpAsync('T', Token));
     }
 
     /// <summary>Polls a condition another thread makes true, bounded by the hang guard.</summary>

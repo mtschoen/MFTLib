@@ -88,7 +88,7 @@ public class WatchFailureObservationTests
 
             if (requestLateWaits)
             {
-                var late = await WatchReads.ThrowsAsync<BrokerChannelLostException>(
+                var late = await WatchDeduplicationTestSupport.ThrowsAsync<BrokerChannelLostException>(
                     () => index.WaitForCatchUpAsync('T', token));
                 Assert.AreSame(fault.Exception, late);
                 var lateBatch = (await index.WaitForCatchUpAsync(token)).Single();
@@ -96,7 +96,7 @@ public class WatchFailureObservationTests
                 Assert.AreSame(fault.Exception, lateBatch.Failure);
             }
 
-            var stopped = await WatchReads.ThrowsAsync<BrokerChannelLostException>(
+            var stopped = await WatchDeduplicationTestSupport.ThrowsAsync<BrokerChannelLostException>(
                 () => index.StopWatchingAsync('T', token));
             Assert.AreSame(fault.Exception, stopped);
             return [new WeakReference(index), new WeakReference(source)];
@@ -127,7 +127,7 @@ public class WatchFailureObservationTests
         var first = reader.MoveNextAsync().AsTask();
         await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteError(writer, 0, marker));
 
-        var failure = await WatchReads.ThrowsAsync<DriveWatchFaultException>(
+        var failure = await WatchDeduplicationTestSupport.ThrowsAsync<DriveWatchFaultException>(
             () => first.WaitAsync(HostChannelHarness.HangGuard));
         Assert.AreEqual('T', failure.DriveLetter);
         Assert.AreEqual(marker, failure.Message);

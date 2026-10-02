@@ -1,6 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -20,10 +21,6 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class FileIndexCacheOnlyUnresumableWatchTests
 {
-    const ulong CachedJournalId = 0xABCD;
-    const long CachedNextUsn = 1_000_000;
-    static readonly DateTime FixedMoment = new(2026, 9, 21, 0, 0, 0, DateTimeKind.Utc);
-
     public TestContext TestContext { get; set; } = null!;
 
     string _firstTreeRoot = null!;
@@ -84,27 +81,10 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         };
     }
 
-    /// <summary>An MFT-kind block carrying the checkpoint a warm start would resume from.</summary>
-    static Task<MftBlockProduceResult> ProduceMftShapedBlock(
-        MftBlockProduceRequest request, CancellationToken cancellationToken) =>
-        MftBlockFixture.Produce(request, CachedJournalId, CachedNextUsn, FixedMoment);
-
-    /// <summary>Answers each drive with its own journal, so one can be lost and another kept.</summary>
-    static IDisposable Journals(Dictionary<char, JournalWindow> byDrive)
-    {
-        return JournalCheckpointCheck.OverrideJournalForTest(
-            drive => byDrive.TryGetValue(char.ToUpperInvariant(drive), out var window) ? window : null);
-    }
-
-    static JournalWindow Healthy => new(CachedJournalId, 0, CachedNextUsn, 64, 128L * 1024 * 1024);
-
-    static JournalWindow Trimmed =>
-        new(CachedJournalId, CachedNextUsn + 500, CachedNextUsn + 4_000, 64, 128L * 1024 * 1024);
-
     /// <summary>Writes the drives' cache blocks while the journal still holds every checkpoint.</summary>
     async Task SeedCacheAsync(params IndexedDrive[] drives)
     {
-        using var journals = Journals(drives.ToDictionary(drive => drive.DriveLetter, _ => Healthy));
+        using var journals = OverrideJournals(drives.ToDictionary(drive => drive.DriveLetter, _ => HealthyWindow));
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, watchSource: null, cacheOnly: false, drives), Token);
         foreach (var drive in index.Drives)
@@ -134,7 +114,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await SeedCacheAsync(driveT, driveU);
 
         var source = new FakeIndexWatchSource();
-        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Trimmed, ['U'] = Healthy });
+        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT, driveU), Token);
 
@@ -179,7 +159,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await SeedCacheAsync(driveT, driveU);
 
         var source = new FakeIndexWatchSource();
-        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Trimmed, ['U'] = Healthy });
+        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT, driveU), Token);
         await index.StartWatchingAsync('U', Token);
@@ -229,7 +209,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         }
 
         var source = new FakeIndexWatchSource();
-        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Trimmed, ['U'] = Healthy });
+        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(Producer, source, cacheOnly: true, driveT, driveU), Token);
         await index.StartWatchingAsync('U', Token);
@@ -240,7 +220,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.AreEqual(WatchCatchUpState.Faulted, before.WatchCatchUp);
         Assert.IsNotNull(before.CheckpointLoss);
 
-        var thrown = await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
             () => index.RescanAsync('T', Token));
 
         Assert.AreSame(scanFailure, thrown.InnerException);
@@ -274,7 +254,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var driveT = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(driveT);
         var source = new FakeIndexWatchSource();
-        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Healthy });
+        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [driveT],
@@ -292,7 +272,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.RescanAsync('T', Token));
 
             Assert.IsNotNull(wait);
-            var failure = await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+            var failure = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
                 () => wait.WaitAsync(FakeIndexWatchSource.HangGuard));
             StringAssert.Contains(failure.Message, "no MFT-backed block");
             var status = index.Drives.Single();
@@ -319,7 +299,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var driveT = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(driveT);
         var source = new FakeIndexWatchSource();
-        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Healthy });
+        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
             Drives = [driveT],
@@ -361,7 +341,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await SeedCacheAsync(driveT);
 
         var source = new FakeIndexWatchSource();
-        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Trimmed });
+        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT), Token);
 

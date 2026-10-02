@@ -233,7 +233,7 @@ public class FileIndexCallbackReentrancyTests
     {
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
-        harness.ScriptScans('T', new ScriptedScan(CatchUpLoss: StandardLoss('T')));
+        harness.ScriptScans('T', new ScriptedScan(CatchUpLoss: WatchDeduplicationTestSupport.StandardCatchUpLoss('T')));
         var outcome = NewSignal<Exception?>();
         index.WatchFaulted += fault =>
         {
@@ -445,30 +445,6 @@ public class FileIndexCallbackReentrancyTests
     }
 
     [TestMethod]
-    public async Task ChangedHandler_CallsNoListWaitWhileTheIndexIsDisposing_GetsTheGuardException()
-    {
-        using var harness = new WatchHarness('T', 'U');
-        var index = harness.Index;
-        var gate = harness.TrackGate();
-        var outcome = NewSignal<Exception?>();
-        OnChanged(harness, "t.txt", () =>
-        {
-            gate.MarkEntered();
-            gate.WaitForRelease();
-            outcome.TrySetResult(BlockOn(() => index.WaitForCatchUpAsync(CancellationToken.None)));
-        });
-        await StartBothAsync(harness).WaitAsync(HangGuard);
-        _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
-        await gate.Entered.WaitAsync(HangGuard);
-        var disposal = index.DisposeAsync().AsTask();
-
-        gate.Release();
-
-        AssertRejected(await outcome.Task.WaitAsync(HangGuard), "WaitForCatchUpAsync");
-        await disposal.WaitAsync(HangGuard);
-    }
-
-    [TestMethod]
     public async Task ChangedHandler_CallsNoListWaitWhileDisposalBeginsBeforeTheDriveListResolves_GetsTheGuardException()
     {
         using var harness = new WatchHarness('T', 'U');
@@ -528,6 +504,7 @@ public class FileIndexCallbackReentrancyTests
             gate.MarkEntered();
             gate.WaitForRelease();
             outcome.TrySetResult([
+                BlockOn(() => index.WaitForCatchUpAsync(CancellationToken.None)),
                 BlockOn(() => index.StartWatchingAsync(CancellationToken.None)),
                 BlockOn(() => index.StopWatchingAsync(CancellationToken.None)),
                 BlockOn(() => index.RescanAsync(CancellationToken.None))
@@ -541,9 +518,10 @@ public class FileIndexCallbackReentrancyTests
         gate.Release();
 
         var failures = await outcome.Task.WaitAsync(HangGuard);
-        AssertRejected(failures[0], "StartWatchingAsync");
-        AssertRejected(failures[1], "StopWatchingAsync");
-        AssertRejected(failures[2], "RescanAsync");
+        AssertRejected(failures[0], "WaitForCatchUpAsync");
+        AssertRejected(failures[1], "StartWatchingAsync");
+        AssertRejected(failures[2], "StopWatchingAsync");
+        AssertRejected(failures[3], "RescanAsync");
         await disposal.WaitAsync(HangGuard);
     }
 
@@ -651,17 +629,4 @@ public class FileIndexCallbackReentrancyTests
             failure.Message);
     }
 
-    static JournalCheckpointLoss StandardLoss(char driveLetter) => new()
-    {
-        DriveLetter = driveLetter,
-        DetectedDuring = JournalCheckpointLossDetection.ScanCatchUp,
-        Cause = JournalCheckpointLossCause.CheckpointTrimmed,
-        CheckpointUsn = 1000,
-        FirstUsn = 5000,
-        NextUsn = 9000,
-        AllocationDelta = 4096,
-        MaximumSize = 32768,
-        BytesBehind = 4000,
-        SizeThatWouldHaveRetained = 12288
-    };
 }

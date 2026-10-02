@@ -1,6 +1,6 @@
 using MFTLib.Index;
-using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -15,10 +15,6 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class FileIndexCheckpointLossTests
 {
-    const ulong CachedJournalId = 0xABCD;
-    const long CachedNextUsn = 1_000_000;
-    static readonly DateTime FixedMoment = new(2026, 9, 21, 0, 0, 0, DateTimeKind.Utc);
-
     string _treeRoot = null!;
     string _cacheDirectory = null!;
 
@@ -60,11 +56,6 @@ public class FileIndexCheckpointLossTests
             MftProducer = ProduceMftShapedBlock
         };
     }
-
-    /// <summary>An MFT-kind block carrying the checkpoint a warm start would resume from.</summary>
-    static Task<MftBlockProduceResult> ProduceMftShapedBlock(
-        MftBlockProduceRequest request, CancellationToken cancellationToken) =>
-        MftBlockFixture.Produce(request, CachedJournalId, CachedNextUsn, FixedMoment);
 
     static IDisposable Journal(ulong journalId, long firstUsn, long nextUsn, long allocationDelta = 64)
     {

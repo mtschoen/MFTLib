@@ -88,7 +88,9 @@ public class FileIndexWatchFaultTests
 
         Assert.AreEqual(1, harness.Faults.Count);
         Assert.AreEqual('T', fault.DriveLetter);
+        Assert.AreSame(lost, fault.Exception);
         Assert.AreEqual("the broker died", harness.DriveFor('T').WatchFailureMessage);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
         Assert.IsNull(harness.DriveFor('U').WatchFailureMessage);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').WatchCatchUp);
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
@@ -171,7 +173,7 @@ public class FileIndexWatchFaultTests
 
         await callerCancellation.CancelAsync();
 
-        await ThrowsAsync<OperationCanceledException>(() => start);
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => start);
         Assert.AreEqual(0, harness.Faults.Count);
         Assert.AreEqual(0, harness.Source.Handles.Count);
         Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
@@ -215,8 +217,8 @@ public class FileIndexWatchFaultTests
 
         using var cancelledStop = new CancellationTokenSource();
         await cancelledStop.CancelAsync();
-        var abandoned = await CatchAsync(() => harness.Index.StopWatchingAsync('T', cancelledStop.Token));
-        Assert.IsInstanceOfType<OperationCanceledException>(abandoned);
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
+            () => harness.Index.StopWatchingAsync('T', cancelledStop.Token));
 
         applying.Release();
         await harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
@@ -256,33 +258,4 @@ public class FileIndexWatchFaultTests
         }
     }
 
-    /// <summary>
-    ///     Catches by assignability rather than by exact type, which is what separates the
-    ///     abandoned wait's contract (any <see cref="OperationCanceledException" />) from the
-    ///     particular subclass a given await happens to raise.
-    /// </summary>
-    static async Task<Exception?> CatchAsync(Func<Task> action)
-    {
-        try
-        {
-            await action();
-            return null;
-        }
-        catch (Exception exception)
-        {
-            return exception;
-        }
-    }
-
-    /// <summary>
-    ///     MSTest 3.1's <c>ThrowsExceptionAsync</c> demands the exact type; a cancellation surfaces
-    ///     as <see cref="TaskCanceledException" /> or its base depending on where it was observed.
-    /// </summary>
-    static async Task ThrowsAsync<TException>(Func<Task> action) where TException : Exception
-    {
-        if (await CatchAsync(action) is not TException)
-        {
-            throw new AssertFailedException($"Expected {typeof(TException).Name} to be thrown.");
-        }
-    }
 }

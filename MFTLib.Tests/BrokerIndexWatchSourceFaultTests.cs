@@ -71,7 +71,7 @@ public class BrokerIndexWatchSourceFaultTests
         var connectFailure = new IOException("the broker never launched");
         var source = new BrokerIndexWatchSource(_ => throw connectFailure);
 
-        var thrown = await WatchReads.ThrowsAsync<IOException>(() =>
+        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<IOException>(() =>
             source.StartAsync(new IndexWatchTarget('C', 7, 100), CancellationToken.None));
 
         Assert.AreSame(connectFailure, thrown);

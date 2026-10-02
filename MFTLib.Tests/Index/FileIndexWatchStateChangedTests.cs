@@ -1,7 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
+using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -24,20 +24,6 @@ public partial class FileIndexWatchStateChangedTests
     public TestContext TestContext { get; set; } = null!;
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
-
-    static JournalCheckpointLoss Loss(char driveLetter) => new()
-    {
-        DriveLetter = driveLetter,
-        DetectedDuring = JournalCheckpointLossDetection.ScanCatchUp,
-        Cause = JournalCheckpointLossCause.CheckpointTrimmed,
-        CheckpointUsn = 1000,
-        FirstUsn = 5000,
-        NextUsn = 9000,
-        AllocationDelta = 4096,
-        MaximumSize = 32768,
-        BytesBehind = 4000,
-        SizeThatWouldHaveRetained = 12288
-    };
 
     /// <summary>
     ///     The drive's recorded history in one line per event: a state as
@@ -269,7 +255,7 @@ public partial class FileIndexWatchStateChangedTests
         var recorder = new WatchStateRecorder(harness.Index);
         await harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
         await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
-        harness.ScriptScans('T', new ScriptedScan(Loss('T')), new ScriptedScan());
+        harness.ScriptScans('T', new ScriptedScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')), new ScriptedScan());
 
         await harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard);
         await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
@@ -304,8 +290,9 @@ public partial class FileIndexWatchStateChangedTests
 
         var after = opening.Length;
         string At(string state, int stepsAfterOpening) => $"{state}:{after + stepsAfterOpening}";
-        harness.ScriptScans('T', new ScriptedScan(Loss('T')), new ScriptedScan(Loss('T')),
-            new ScriptedScan(Loss('T')));
+        harness.ScriptScans('T', new ScriptedScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')),
+            new ScriptedScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')),
+            new ScriptedScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')));
 
         JournalCatchUpLostException stopped;
         if (automaticRecovery)

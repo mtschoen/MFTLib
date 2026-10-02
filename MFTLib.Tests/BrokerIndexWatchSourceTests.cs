@@ -88,7 +88,7 @@ public class BrokerIndexWatchSourceTests
 
         await cancellation.CancelAsync();
 
-        await WatchReads.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
     }
 
     [TestMethod]
@@ -103,7 +103,7 @@ public class BrokerIndexWatchSourceTests
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(cancelledReader));
         var pending = cancelledReader.MoveNextAsync().AsTask();
         await cancellation.CancelAsync();
-        await WatchReads.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
         await cancelledReader.DisposeAsync();
         await cancelled.DisposeAsync();
 
@@ -167,7 +167,7 @@ public class BrokerIndexWatchSourceTests
         await cancellation.CancelAsync();
         var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
 
-        await WatchReads.ThrowsAsync<OperationCanceledException>(() =>
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() =>
             source.StartAsync(new IndexWatchTarget('C', 7, 100), cancellation.Token));
 
         Assert.AreEqual(0, harness.ConnectionCount);
@@ -201,7 +201,7 @@ public class BrokerIndexWatchSourceTests
 
         // The index's pump cancels its read first and disposes the handle only afterwards.
         await pumpStop.CancelAsync();
-        await WatchReads.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => pending.WaitAsync(HangGuard));
         await reader.DisposeAsync();
 
         Assert.IsFalse(run.Cancelled.IsCompleted, "cancelling a read must leave the drive's pipe open");
@@ -232,7 +232,7 @@ public class BrokerIndexWatchSourceTests
         await teardown.Entered.WaitAsync(HangGuard);
         Assert.IsFalse(stop.IsCompleted, "the stop waits for the held teardown");
         await stopTimeout.CancelAsync();
-        await WatchReads.ThrowsAsync<OperationCanceledException>(() => stop.WaitAsync(HangGuard));
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => stop.WaitAsync(HangGuard));
         Assert.IsFalse(first.Cancelled.IsCompleted, "the held teardown has not closed the pipe yet");
 
         // The teardown carries on after the stop gave up, and closes the pipe.

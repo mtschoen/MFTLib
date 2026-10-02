@@ -1,7 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
+using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -315,35 +315,6 @@ public partial class FileIndexWatchRecoveryTests
         Assert.AreEqual(2, harness.Source.StartsFor('T').Count);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
         CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
-    }
-
-    /// <summary>
-    ///     A stop that lands between the pump recording its fault and queuing the recovery leaves
-    ///     nothing to recover: the stop runs from the pump's own fault-settlement step, after the
-    ///     fault is recorded.
-    /// </summary>
-    [TestMethod]
-    public async Task StopBetweenFaultAndQueue_QueuesNoRecovery()
-    {
-        using var harness = new WatchHarness('T');
-        await harness.Index.StartWatchingAsync('T', Token);
-        var producedBefore = harness.ProductionCount('T');
-        var index = harness.Index;
-        var stop = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
-        index.PumpFaultSettlementWrapperForTest = settle =>
-        {
-            settle();
-            stop.TrySetResult(index.StopWatchingAsync('T', Token));
-        };
-
-        harness.Source.HandleFor('T').FailDrive(new IOException("T's journal wrapped"));
-        await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
-
-        var stopTask = await stop.Task.WaitAsync(HangGuard);
-        await ThrowsAsync<DriveWatchFaultException>(() => stopTask.WaitAsync(HangGuard));
-        Assert.AreEqual(0, harness.RecoveryCount('T'));
-        Assert.AreEqual(0, harness.ProductionCount('T') - producedBefore);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
     }
 
     [TestMethod]

@@ -2,7 +2,7 @@ using System.Reflection;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
+using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -176,24 +176,6 @@ public partial class FileIndexPerDriveWatchTests
     }
 
     [TestMethod]
-    public async Task Rescan_HoldsLifecycleGateThroughProduction()
-    {
-        using var harness = new WatchHarness();
-        var producing = harness.HoldNextProduction('T');
-        var rescan = harness.Index.RescanAsync('T', Token);
-        await producing.Entered.WaitAsync(HangGuard);
-
-        var start = harness.Index.StartWatchingAsync('T', Token);
-
-        Assert.IsFalse(start.IsCompleted, "the start waits for the rescan's lifecycle gate");
-        Assert.AreEqual(0, harness.Source.Starts.Count);
-        producing.Release();
-        await rescan.WaitAsync(HangGuard);
-        await start.WaitAsync(HangGuard);
-        Assert.AreEqual(1, harness.Source.Starts.Count);
-    }
-
-    [TestMethod]
     public async Task RescanAsync_CancelledWhileTheWatchIsStarting_LeavesTheDriveUntouched()
     {
         using var harness = new WatchHarness();
@@ -230,12 +212,13 @@ public partial class FileIndexPerDriveWatchTests
         await producing.Entered.WaitAsync(HangGuard);
 
         var start = harness.Index.StartWatchingAsync('T', Token);
+        Assert.IsFalse(start.IsCompleted, "the start waits for the rescan's lifecycle gate");
+        Assert.AreEqual(0, harness.Source.Starts.Count);
         producing.Release();
         await rescan.WaitAsync(HangGuard);
         await start.WaitAsync(HangGuard);
 
-        CollectionAssert.AreEqual(new[] { new IndexWatchTarget('T', 13, 9000) },
-            harness.Source.StartsFor('T').ToArray());
+        CollectionAssert.AreEqual(new[] { new IndexWatchTarget('T', 13, 9000) }, harness.Source.Starts.ToArray());
         Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
         await harness.Index.StopWatchingAsync('T', Token);
@@ -304,7 +287,6 @@ public partial class FileIndexPerDriveWatchTests
         await harness.Index.StopWatchingAsync('T', Token);
         await harness.Index.DisposeAsync();
 
-        Assert.IsTrue(handle.ThrowOnSecondDispose);
         Assert.AreEqual(1, handle.DisposeCount);
     }
 
@@ -322,27 +304,6 @@ public partial class FileIndexPerDriveWatchTests
         await ThrowsAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync('T', Token));
         await harness.Index.DisposeAsync();
 
-        Assert.IsTrue(handle.ThrowOnSecondDispose);
-        Assert.AreEqual(1, handle.DisposeCount);
-    }
-
-    [TestMethod]
-    public async Task HandleDisposedExactlyOnce_WhenStartReturnsAfterStop()
-    {
-        using var harness = new WatchHarness();
-        var held = harness.TrackGate();
-        harness.Source.HoldStart(held, observeToken: false);
-        var start = harness.Index.StartWatchingAsync('T', Token);
-        await held.Entered.WaitAsync(HangGuard);
-        var stop = harness.Index.StopWatchingAsync('T', Token);
-        held.Release();
-        await stop.WaitAsync(HangGuard);
-        await ThrowsAsync<OperationCanceledException>(() => start);
-
-        await harness.Index.DisposeAsync();
-
-        var handle = harness.Source.Handles.Single();
-        Assert.IsTrue(handle.ThrowOnSecondDispose);
         Assert.AreEqual(1, handle.DisposeCount);
     }
 
@@ -355,22 +316,7 @@ public partial class FileIndexPerDriveWatchTests
 
         await harness.Index.DisposeAsync();
 
-        Assert.IsTrue(handle.ThrowOnSecondDispose);
         Assert.AreEqual(1, handle.DisposeCount);
-    }
-
-    [TestMethod]
-    public async Task WaitForCatchUp_CallerTokenCancelled_ThrowsOperationCanceled()
-    {
-        using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
-        using var waitCancellation = new CancellationTokenSource();
-        var wait = harness.Index.WaitForCatchUpAsync('T', waitCancellation.Token);
-
-        await waitCancellation.CancelAsync();
-
-        await ThrowsAsync<OperationCanceledException>(() => wait);
-        await AssertSlotStillCatchesUpAsync(harness);
     }
 
     [TestMethod]
@@ -427,11 +373,4 @@ public partial class FileIndexPerDriveWatchTests
         }
     }
 
-    async Task AssertSlotStillCatchesUpAsync(WatchHarness harness)
-    {
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
-        var wait = harness.Index.WaitForCatchUpAsync('T', Token);
-        await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
-        await wait.WaitAsync(HangGuard);
-    }
 }

@@ -1,7 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
+using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -58,8 +58,8 @@ public partial class FileIndexCatchUpLossTests
     {
         using var cache = new LossScriptedCache();
         await using var index = await FileIndex.OpenAsync(cache.Options(), Token);
-        cache.Losses.Enqueue(Loss('T'));
-        cache.Losses.Enqueue(Loss('T'));
+        cache.Losses.Enqueue(StandardCatchUpLoss('T'));
+        cache.Losses.Enqueue(StandardCatchUpLoss('T'));
 
         await index.RescanAsync('T', Token).WaitAsync(HangGuard);
         Assert.AreEqual(4, cache.Productions, "the open's scan, then two lost catch-ups and the scan that held");

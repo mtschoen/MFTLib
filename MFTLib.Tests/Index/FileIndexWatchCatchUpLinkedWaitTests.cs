@@ -45,15 +45,8 @@ public class FileIndexWatchCatchUpLinkedWaitTests
 
             await harness.Index.DisposeAsync();
 
-            try
-            {
-                await wait.WaitAsync(FakeIndexWatchSource.HangGuard);
-                Assert.Fail("Expected an OperationCanceledException");
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected: the disposal token cancelled the linked wait.
-            }
+            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
+                () => wait.WaitAsync(FakeIndexWatchSource.HangGuard));
         }
         finally
         {

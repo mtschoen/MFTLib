@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.JournalMutatorDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -12,12 +13,12 @@ public partial class JournalMutatorTests
     {
         UsnJournalEntry[] records =
         [
-            Entry(5, 1, "notes.txt", UsnReason.FileCreate, ChangeMoment),
-            Entry(5, 1, "notes.txt", UsnReason.DataExtend | UsnReason.FileCreate, ChangeMoment),
-            Entry(5, 1, "notes.txt", UsnReason.DataExtend | UsnReason.FileCreate | UsnReason.Close, ChangeMoment),
-            Entry(5, 1, "notes.txt", UsnReason.DataExtend, ChangeMoment),
-            Entry(5, 1, "notes.txt", UsnReason.DataExtend | UsnReason.Close, ChangeMoment),
-            Entry(5, 1, "notes.txt", UsnReason.FileDelete | UsnReason.Close, ChangeMoment)
+            CreateEntry(5, 1, "notes.txt", UsnReason.FileCreate, ChangeMoment),
+            CreateEntry(5, 1, "notes.txt", UsnReason.DataExtend | UsnReason.FileCreate, ChangeMoment),
+            CreateEntry(5, 1, "notes.txt", UsnReason.DataExtend | UsnReason.FileCreate | UsnReason.Close, ChangeMoment),
+            CreateEntry(5, 1, "notes.txt", UsnReason.DataExtend, ChangeMoment),
+            CreateEntry(5, 1, "notes.txt", UsnReason.DataExtend | UsnReason.Close, ChangeMoment),
+            CreateEntry(5, 1, "notes.txt", UsnReason.FileDelete | UsnReason.Close, ChangeMoment)
         ];
         var mutator = new JournalMutator(_writer);
         var changes = new List<FileChange>();

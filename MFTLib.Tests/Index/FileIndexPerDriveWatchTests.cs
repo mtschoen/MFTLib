@@ -1,7 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
+using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -29,6 +29,8 @@ public partial class FileIndexPerDriveWatchTests
     public async Task StartWatching_OneDrive_StartsOnlyThatDrive()
     {
         using var harness = new WatchHarness();
+
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
 
         await harness.Index.StartWatchingAsync('T', Token);
 
@@ -63,22 +65,6 @@ public partial class FileIndexPerDriveWatchTests
         var drive = harness.DriveFor('T');
         Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUp);
         Assert.AreEqual("the broker is gone", drive.WatchFailureMessage);
-    }
-
-    [TestMethod]
-    public async Task StopDuringStart_CancelsTheSourceStart()
-    {
-        using var harness = new WatchHarness();
-        var held = harness.TrackGate();
-        harness.Source.HoldStart(held);
-        var start = harness.Index.StartWatchingAsync('T', Token);
-        await held.Entered.WaitAsync(HangGuard);
-
-        await harness.Index.StopWatchingAsync('T', Token).WaitAsync(HangGuard);
-
-        await ThrowsAsync<OperationCanceledException>(() => start);
-        Assert.AreEqual(0, harness.Source.Handles.Count, "the cancelled start returned no handle, so no pump ran");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
     }
 
     [TestMethod]
@@ -130,6 +116,8 @@ public partial class FileIndexPerDriveWatchTests
         await held.Entered.WaitAsync(HangGuard);
         await harness.Index.StopWatchingAsync('T', Token).WaitAsync(HangGuard);
         await ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
+        Assert.AreEqual(0, harness.Source.Handles.Count, "the cancelled start returned no handle, so no pump ran");
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
 
         await harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
 
@@ -170,6 +158,8 @@ public partial class FileIndexPerDriveWatchTests
         var handle = harness.Source.Handles.Single();
         Assert.AreEqual(1, handle.DisposeCount);
         Assert.IsFalse(handle.ReadStarted, "an unpublished handle is never read");
+        await harness.Index.DisposeAsync();
+        Assert.AreEqual(1, handle.DisposeCount);
     }
 
     [TestMethod]
@@ -180,9 +170,11 @@ public partial class FileIndexPerDriveWatchTests
 
         await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(9, "fresh.txt", nextUsn: 555));
 
-        Assert.AreEqual(1, harness.Changes.Count);
-        Assert.AreEqual("fresh.txt", harness.Changes.Single().Entry.Name);
         Assert.AreEqual(555L, harness.BlockFor('T').Header.UsnNextUsn);
+        await harness.Index.StopWatchingAsync('T', Token);
+        Assert.AreEqual(1, harness.Changes.Count);
+        Assert.AreEqual(FileChangeKind.Created, harness.Changes.Single().Kind);
+        Assert.AreEqual("fresh.txt", harness.Changes.Single().Entry.Name);
     }
 
     [TestMethod]
@@ -233,36 +225,6 @@ public partial class FileIndexPerDriveWatchTests
         Assert.IsInstanceOfType<ArgumentNullException>(fault.Exception);
         Assert.AreEqual(cursorBefore, harness.BlockFor('T').Header.UsnNextUsn, "a rejected batch advances nothing");
         Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
-    }
-
-    [TestMethod]
-    public async Task ChannelLoss_RaisesChannelKind()
-    {
-        using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
-        var lost = new IOException("the pipe broke");
-
-        harness.Source.HandleFor('T').LoseChannel(lost);
-        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
-
-        Assert.AreSame(lost, fault.Exception);
-        var drive = harness.DriveFor('T');
-        Assert.AreEqual("the pipe broke", drive.WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUp);
-    }
-
-    [TestMethod]
-    public async Task NormalEndBeforeStop_IsChannelFault()
-    {
-        using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
-
-        harness.Source.HandleFor('T').End();
-        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
-
-        Assert.IsInstanceOfType<InvalidOperationException>(fault.Exception);
-        Assert.AreEqual("The watch for drive T ended without being stopped.", fault.Exception.Message);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
     }
 
     [TestMethod]

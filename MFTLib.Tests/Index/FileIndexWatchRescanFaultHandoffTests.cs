@@ -149,14 +149,14 @@ public class FileIndexWatchRescanFaultHandoffTests
             stopping = index.StopWatchingAsync('T', Token);
             overlappingStop = stage == "drain" ? index.StopWatchingAsync('T', Token) : Task.CompletedTask;
             held.Release();
-            var thrown = await FileIndexWatchRescanTests.ThrowsAsync<IOException>(() => stopping);
+            var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<IOException>(() => stopping);
             Assert.AreSame(failure, thrown);
             await overlappingStop.WaitAsync(FakeIndexWatchSource.HangGuard);
         }
 
         if (stage == "starting")
         {
-            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => rescan);
+            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan);
         }
         else
         {
@@ -165,7 +165,7 @@ public class FileIndexWatchRescanFaultHandoffTests
 
         Assert.AreEqual(1, handle.DisposeCount);
         Assert.AreEqual(WatchCatchUpState.NotStarted, index.Drives.Single().WatchCatchUp);
-        await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
             () => index.StopWatchingAsync('T', Token));
     }
 
@@ -195,7 +195,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         {
             var fault = harness.Faults.Single(item => item.Kind == WatchFaultKind.RescanRestart);
             Assert.AreSame(startFailure, fault.Exception.InnerException);
-            var thrown = await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+            var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
                 () => index.StopWatchingAsync('T', Token));
             Assert.AreSame(fault.Exception, thrown);
         }

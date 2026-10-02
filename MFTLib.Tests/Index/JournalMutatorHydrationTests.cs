@@ -74,54 +74,20 @@ public class JournalMutatorHydrationTests
         Assert.IsNull(change.PreviousPath);
     }
 
-    [TestMethod]
-    public async Task Hydration_RefusesAnOutOfRangeParentAndMarksCompactionNeeded()
+    [DataTestMethod]
+    [DataRow(22ul, "orphan.cs", UsnReason.DataOverwrite)]
+    [DataRow(25ul, "orphan-delete.cs", UsnReason.FileDelete)]
+    [DataRow(26ul, "orphan-rename.cs", UsnReason.RenameNewName)]
+    public async Task Hydration_RefusesAnOutOfRangeParentAndMarksCompactionNeeded(
+        ulong recordNumber, string fileName, UsnReason reason)
     {
         await using var fixture = new MutatorFixture();
         var bad = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
-            RecordNumber = 22,
+            RecordNumber = recordNumber,
             ParentRecordNumber = (ulong)uint.MaxValue + 1,
-            FileName = "orphan.cs",
-            Reason = UsnReason.DataOverwrite,
-            FileAttributes = FileAttributes.Archive,
-            Usn = 1000,
-            Timestamp = fixture.Timestamp
-        });
-
-        Assert.AreEqual(0, fixture.Apply([bad]).Count);
-        Assert.IsTrue(fixture.Block.Header.IsCompactionNeeded);
-    }
-
-    [TestMethod]
-    public async Task Delete_HydrationFailsForOutOfRangeParent_ReturnsNoChangeAndMarksCompactionNeeded()
-    {
-        await using var fixture = new MutatorFixture();
-        var bad = UsnJournalEntry.Create(new UsnJournalEntryOptions
-        {
-            RecordNumber = 25,
-            ParentRecordNumber = (ulong)uint.MaxValue + 1,
-            FileName = "orphan-delete.cs",
-            Reason = UsnReason.FileDelete,
-            FileAttributes = FileAttributes.Archive,
-            Usn = 1000,
-            Timestamp = fixture.Timestamp
-        });
-
-        Assert.AreEqual(0, fixture.Apply([bad]).Count);
-        Assert.IsTrue(fixture.Block.Header.IsCompactionNeeded);
-    }
-
-    [TestMethod]
-    public async Task Rename_HydrationFailsForOutOfRangeParent_ReturnsNoChangeAndMarksCompactionNeeded()
-    {
-        await using var fixture = new MutatorFixture();
-        var bad = UsnJournalEntry.Create(new UsnJournalEntryOptions
-        {
-            RecordNumber = 26,
-            ParentRecordNumber = (ulong)uint.MaxValue + 1,
-            FileName = "orphan-rename.cs",
-            Reason = UsnReason.RenameNewName,
+            FileName = fileName,
+            Reason = reason,
             FileAttributes = FileAttributes.Archive,
             Usn = 1000,
             Timestamp = fixture.Timestamp

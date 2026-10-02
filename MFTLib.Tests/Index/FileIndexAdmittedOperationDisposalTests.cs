@@ -50,8 +50,8 @@ public class FileIndexAdmittedOperationDisposalTests
         var disposal = index.DisposeAsync().AsTask();
 
         Assert.IsTrue(settledInTheWindow, "the rescan and the start settled before disposal cancelled its token");
-        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => gateHolder).WaitAsync(HangGuard);
-        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => start).WaitAsync(HangGuard);
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => gateHolder).WaitAsync(HangGuard);
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => start).WaitAsync(HangGuard);
         await disposal.WaitAsync(HangGuard);
         Assert.AreEqual(0, harness.Source.StartsFor('T').Count, "the cancelled start never invoked the source");
     }
@@ -98,7 +98,7 @@ public class FileIndexAdmittedOperationDisposalTests
 
         var disposal = index.DisposeAsync().AsTask();
 
-        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard);
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard);
         await disposal.WaitAsync(HangGuard);
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the retry never scanned");
     }
@@ -127,7 +127,7 @@ public class FileIndexAdmittedOperationDisposalTests
 
         await index.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
-        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard);
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard);
         Assert.AreEqual(1, harness.Source.StartsFor('T').Count, "the restart never invoked the source");
     }
 
@@ -173,7 +173,7 @@ public class FileIndexAdmittedOperationDisposalTests
         Task? disposal = null;
         index.RestartRequestedForTest = _ => disposal ??= index.DisposeAsync().AsTask();
 
-        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
             () => index.RescanAsync('T', Token)).WaitAsync(HangGuard);
 
         Assert.IsNotNull(disposal, "the restart decided to start the watch again");
@@ -194,7 +194,7 @@ public class FileIndexAdmittedOperationDisposalTests
             return Task.CompletedTask;
         };
 
-        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
             () => index.RescanAsync('T', Token)).WaitAsync(HangGuard);
 
         Assert.IsNotNull(disposal, "the restart reached its registration");

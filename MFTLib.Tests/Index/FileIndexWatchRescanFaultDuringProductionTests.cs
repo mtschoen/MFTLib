@@ -51,7 +51,7 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         production.Release();
         if (scanFails)
         {
-            await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(() => rescan);
+            await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() => rescan);
         }
         else
         {

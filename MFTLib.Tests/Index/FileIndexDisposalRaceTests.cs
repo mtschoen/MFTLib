@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -123,8 +124,8 @@ public class FileIndexDisposalRaceTests
             var disposal = index.DisposeAsync();
 
             progress.Release();
-            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => gateHolder);
-            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => queuedRescan);
+            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => gateHolder);
+            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => queuedRescan);
             await disposal;
             Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");
         }
@@ -174,9 +175,9 @@ public class FileIndexDisposalRaceTests
             var disposal = index.DisposeAsync().AsTask();
 
             Assert.IsTrue(settledInTheWindow, "both rescans settled before disposal cancelled its token");
-            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => gateHolder)
+            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => gateHolder)
                 .WaitAsync(HandoffTimeout);
-            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => queuedRescan)
+            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => queuedRescan)
                 .WaitAsync(HandoffTimeout);
             await disposal.WaitAsync(HandoffTimeout);
             Assert.IsTrue(original.IsReleased, "the block neither rescan replaced was released by the disposal");

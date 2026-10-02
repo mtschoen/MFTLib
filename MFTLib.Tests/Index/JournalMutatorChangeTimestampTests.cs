@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.JournalMutatorDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -14,22 +15,6 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class JournalMutatorChangeTimestampTests
 {
-    static UsnJournalEntry Entry(ulong recordNumber, ulong parentRecordNumber, string fileName,
-        UsnReason reason, DateTime timestamp)
-    {
-        return UsnJournalEntry.Create(new UsnJournalEntryOptions
-        {
-            RecordNumber = recordNumber,
-            ParentRecordNumber = parentRecordNumber,
-            SequenceNumber = 1,
-            Usn = 1000,
-            Timestamp = timestamp,
-            Reason = reason,
-            FileAttributes = FileAttributes.Archive,
-            FileName = fileName
-        });
-    }
-
     [TestMethod]
     public async Task OneBatch_EachChangeCarriesItsOriginatingRecordTimestamp()
     {
@@ -45,11 +30,11 @@ public class JournalMutatorChangeTimestampTests
         // reported reasons and so emits no change but still restamps the row.
         var changes = fixture.Apply(
         [
-            Entry(7, 6, "notes.txt", UsnReason.DataExtend, extendMoment),
-            Entry(7, 6, "notes.txt", UsnReason.BasicInfoChange, infoMoment),
-            Entry(9, 6, "doomed.txt", UsnReason.FileDelete, deleteMoment),
-            Entry(7, 6, "notes.txt", UsnReason.DataExtend | UsnReason.BasicInfoChange | UsnReason.Close,
-                closeMoment)
+            CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend, extendMoment, sequenceNumber: 1),
+            CreateEntry(7, 6, "notes.txt", UsnReason.BasicInfoChange, infoMoment, sequenceNumber: 1),
+            CreateEntry(9, 6, "doomed.txt", UsnReason.FileDelete, deleteMoment, sequenceNumber: 1),
+            CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend | UsnReason.BasicInfoChange | UsnReason.Close,
+                closeMoment, sequenceNumber: 1)
         ]);
 
         Assert.AreEqual(3, changes.Count, "The suppressed close record emits no change.");
@@ -79,8 +64,8 @@ public class JournalMutatorChangeTimestampTests
 
         var changes = fixture.Apply(
         [
-            Entry(9, 6, "fresh.txt", UsnReason.FileCreate, createMoment),
-            Entry(9, 6, "renamed.txt", UsnReason.RenameNewName, renameMoment)
+            CreateEntry(9, 6, "fresh.txt", UsnReason.FileCreate, createMoment, sequenceNumber: 1),
+            CreateEntry(9, 6, "renamed.txt", UsnReason.RenameNewName, renameMoment, sequenceNumber: 1)
         ]);
 
         Assert.AreEqual(2, changes.Count);

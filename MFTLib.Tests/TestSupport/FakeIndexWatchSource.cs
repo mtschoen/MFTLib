@@ -20,12 +20,6 @@ internal sealed class FakeIndexWatchSource : IIndexWatchSource
     HeldStart? _nextHold;
     Exception? _nextFailure;
 
-    /// <summary>
-    ///     Applied to every handle created after it is set. On by default, so a test that never
-    ///     mentions it still fails on a double dispose.
-    /// </summary>
-    public bool ThrowOnSecondDispose { get; set; } = true;
-
     /// <summary>Every target <see cref="StartAsync" /> was called with, in order.</summary>
     public IReadOnlyList<IndexWatchTarget> Starts
     {
@@ -132,7 +126,7 @@ internal sealed class FakeIndexWatchSource : IIndexWatchSource
             throw failure;
         }
 
-        var handle = new ScriptedDriveWatch(target, ThrowOnSecondDispose);
+        var handle = new ScriptedDriveWatch(target);
         lock (_stateLock)
         {
             _handles.Add(handle);

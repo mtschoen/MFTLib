@@ -57,12 +57,12 @@ public class FileIndexWatchRescanCacheTests
                 if (cancel)
                 {
                     await cancellation.CancelAsync();
-                    await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => rescan);
+                    await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan);
                 }
                 else
                 {
                     production.Release();
-                    await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(() => rescan);
+                    await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() => rescan);
                 }
 
                 Assert.AreSame(original, index.Root('T').DriveBlock);

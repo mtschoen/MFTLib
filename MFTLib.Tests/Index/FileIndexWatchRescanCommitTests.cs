@@ -52,7 +52,7 @@ public class FileIndexWatchRescanCommitTests
             ? harness.Index.DisposeAsync().AsTask()
             : harness.Index.StopWatchingAsync('T', Token);
 
-        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => rescan);
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan);
         await stopping.WaitAsync(FakeIndexWatchSource.HangGuard);
         Assert.AreEqual(0, harness.Faults.Count);
     }
@@ -83,12 +83,12 @@ public class FileIndexWatchRescanCommitTests
         if (cancel)
         {
             await cancellation.CancelAsync();
-            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => rescan);
+            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan);
         }
         else
         {
             production.Release();
-            await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(() => rescan);
+            await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() => rescan);
         }
 
         Assert.AreSame(original, harness.Index.Root('T').DriveBlock);
@@ -129,10 +129,10 @@ public class FileIndexWatchRescanCommitTests
         Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
         Assert.AreEqual(0, harness.RecoveryCount('T'));
         Assert.AreEqual(2, harness.ProductionCount('T'));
-        var stopped = await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+        var stopped = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
             () => harness.Index.StopWatchingAsync('T', Token));
         Assert.AreSame(fault.Exception, stopped);
-        var secondStop = await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+        var secondStop = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
             () => harness.Index.StopWatchingAsync('T', Token));
         Assert.AreNotSame(fault.Exception, secondStop);
         await harness.Source.HandleFor('U').Publish(WatchHarness.Batch(9, "sibling.txt"));
@@ -164,7 +164,7 @@ public class FileIndexWatchRescanCommitTests
         production.Release();
         if (scanFails)
         {
-            await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(() => rescan);
+            await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() => rescan);
         }
         else
         {

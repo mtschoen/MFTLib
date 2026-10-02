@@ -145,7 +145,7 @@ public class FileIndexRescanCleanupTests
         Assert.IsTrue(File.Exists(canonicalPath));
 
         failTheScan.Value = true;
-        var thrown = await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
             () => index.RescanAsync('T', Token));
 
         try
@@ -202,16 +202,7 @@ public class FileIndexRescanCleanupTests
             await rescanCancellation.CancelAsync();
             producerMayReturn.TrySetResult();
 
-            try
-            {
-                await rescan;
-                Assert.Fail("Expected an OperationCanceledException");
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected: the commit's write-gate wait observes the cancellation. The
-                // concrete subtype differs between a pre-cancelled and a parked wait.
-            }
+            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan);
 
             var drive = index.Drives.Single();
             Assert.AreEqual(DriveState.Failed, drive.State);

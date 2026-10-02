@@ -100,7 +100,7 @@ public class FileIndexWatchRescanHandoffTests
 
         Assert.AreNotSame(original, index.Root('T').DriveBlock, "publication precedes the pump drain");
         Assert.IsFalse(rescan.IsCompleted);
-        await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => catchUp);
+        await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => catchUp);
         await index.WaitForDriveWriteGateForTest('T').WaitAsync(FakeIndexWatchSource.HangGuard);
         index.ReleaseDriveWriteGateForTest('T');
         applying.Release();
@@ -126,7 +126,7 @@ public class FileIndexWatchRescanHandoffTests
         if (dispose)
         {
             var disposal = harness.Index.DisposeAsync().AsTask();
-            await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(() => rescan);
+            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan);
             await disposal.WaitAsync(FakeIndexWatchSource.HangGuard);
         }
         else
@@ -162,7 +162,7 @@ public class FileIndexWatchRescanHandoffTests
 
         var failure = new OperationCanceledException("production failed");
         harness.FailNextProduction('T', failure);
-        var thrown = await FileIndexWatchRescanTests.ThrowsAsync<OperationCanceledException>(
+        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
             () => harness.Index.RescanAsync('T', Token));
         Assert.AreSame(failure, thrown);
         Assert.IsNull(disposal, "a failed scan never enters a restart checkpoint");

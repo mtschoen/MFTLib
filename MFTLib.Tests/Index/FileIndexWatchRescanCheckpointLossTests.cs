@@ -60,7 +60,7 @@ public class FileIndexWatchRescanCheckpointLossTests
         Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
 
         // U's own fault is still outstanding, so its stop reports it.
-        var thrown = await FileIndexWatchRescanTests.ThrowsAsync<DriveWatchFaultException>(
+        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<DriveWatchFaultException>(
             () => harness.Index.StopWatchingAsync('U', Token));
         Assert.AreSame(uFault.Exception, thrown);
         await harness.Index.StopWatchingAsync('T', Token);

@@ -1,6 +1,6 @@
 using MFTLib.Index;
-using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -15,10 +15,6 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class FileIndexCheckpointLossLifetimeTests
 {
-    const ulong CachedJournalId = 0xABCD;
-    const long CachedNextUsn = 1_000_000;
-    static readonly DateTime FixedMoment = new(2026, 9, 21, 0, 0, 0, DateTimeKind.Utc);
-
     readonly List<string> _directories = [];
     string _firstTreeRoot = null!;
     string _secondTreeRoot = null!;
@@ -80,28 +76,11 @@ public class FileIndexCheckpointLossLifetimeTests
         };
     }
 
-    /// <summary>An MFT-kind block carrying the checkpoint a warm start would resume from.</summary>
-    static Task<MftBlockProduceResult> ProduceMftShapedBlock(
-        MftBlockProduceRequest request, CancellationToken cancellationToken) =>
-        MftBlockFixture.Produce(request, CachedJournalId, CachedNextUsn, FixedMoment);
-
-    /// <summary>Answers each drive with its own journal, so one can be lost and another kept.</summary>
-    static IDisposable Journals(Dictionary<char, JournalWindow> byDrive)
-    {
-        return JournalCheckpointCheck.OverrideJournalForTest(
-            drive => byDrive.TryGetValue(char.ToUpperInvariant(drive), out var window) ? window : null);
-    }
-
-    static JournalWindow Healthy => new(CachedJournalId, 0, CachedNextUsn, 64, 128L * 1024 * 1024);
-
-    static JournalWindow Trimmed =>
-        new(CachedJournalId, CachedNextUsn + 500, CachedNextUsn + 4_000, 64, 128L * 1024 * 1024);
-
     static JournalWindow Recreated => new(0xFEED, 0, 200, 64, 128L * 1024 * 1024);
 
     async Task SeedCacheAsync(params IndexedDrive[] drives)
     {
-        using var journals = Journals(drives.ToDictionary(drive => drive.DriveLetter, _ => Healthy));
+        using var journals = OverrideJournals(drives.ToDictionary(drive => drive.DriveLetter, _ => HealthyWindow));
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, drives: drives), CancellationToken.None);
         foreach (var drive in index.Drives)
@@ -124,10 +103,10 @@ public class FileIndexCheckpointLossLifetimeTests
         var second = Drive('U', _secondTreeRoot);
         await SeedCacheAsync(first, second);
 
-        using var journals = Journals(new Dictionary<char, JournalWindow>
+        using var journals = OverrideJournals(new Dictionary<char, JournalWindow>
         {
-            ['T'] = Trimmed,   // T loses its checkpoint
-            ['U'] = Healthy    // U can still resume
+            ['T'] = TrimmedWindow,   // T loses its checkpoint
+            ['U'] = HealthyWindow    // U can still resume
         });
 
         // T's cold scan then fails, so T never occupies an ordinal and U reuses it.
@@ -166,7 +145,7 @@ public class FileIndexCheckpointLossLifetimeTests
         var drive = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(drive);
 
-        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Trimmed });
+        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, cacheOnly: true, drives: drive), CancellationToken.None);
 
@@ -190,7 +169,7 @@ public class FileIndexCheckpointLossLifetimeTests
         var drive = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(drive);
 
-        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Recreated });
+        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = Recreated });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, cacheOnly: true, drives: drive), CancellationToken.None);
 
@@ -211,7 +190,7 @@ public class FileIndexCheckpointLossLifetimeTests
         var drive = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(drive);
 
-        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Healthy });
+        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, cacheOnly: true, drives: drive), CancellationToken.None);
 
@@ -233,7 +212,7 @@ public class FileIndexCheckpointLossLifetimeTests
         var drive = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(drive);
 
-        using var journals = Journals(new Dictionary<char, JournalWindow> { ['T'] = Trimmed });
+        using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, drives: drive), CancellationToken.None);
         Assert.IsNotNull(index.Drives.Single().CheckpointLoss);

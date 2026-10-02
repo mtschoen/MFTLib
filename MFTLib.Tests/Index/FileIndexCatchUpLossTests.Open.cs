@@ -1,7 +1,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using static MFTLib.Tests.Index.FileIndexWatchRescanTests;
+using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -17,7 +17,7 @@ public partial class FileIndexCatchUpLossTests
     public async Task Open_CatchUpLostOnce_RetriesAndSettlesReady()
     {
         using var cache = new LossScriptedCache();
-        cache.Losses.Enqueue(Loss('T'));
+        cache.Losses.Enqueue(StandardCatchUpLoss('T'));
 
         await using var index = await FileIndex.OpenAsync(cache.Options(), Token);
 
@@ -26,7 +26,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
         Assert.AreEqual(0, drive.ConsecutiveLostCatchUps);
-        Assert.AreEqual(Loss('T'), drive.CheckpointLoss, "the retry keeps the report the loss produced");
+        Assert.AreEqual(StandardCatchUpLoss('T'), drive.CheckpointLoss, "the retry keeps the report the loss produced");
         Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUp);
         CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
         await index.StartWatchingAsync('T', Token);
@@ -37,9 +37,9 @@ public partial class FileIndexCatchUpLossTests
     public async Task OpenAsync_ThreeLostCatchUps_SettlesReadyAndRefusesTheWatch()
     {
         using var cache = new LossScriptedCache();
-        cache.Losses.Enqueue(Loss('T'));
-        cache.Losses.Enqueue(Loss('T'));
-        cache.Losses.Enqueue(Loss('T'));
+        cache.Losses.Enqueue(StandardCatchUpLoss('T'));
+        cache.Losses.Enqueue(StandardCatchUpLoss('T'));
+        cache.Losses.Enqueue(StandardCatchUpLoss('T'));
 
         await using var index = await FileIndex.OpenAsync(cache.Options(), Token);
 
@@ -47,7 +47,7 @@ public partial class FileIndexCatchUpLossTests
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(3, drive.ConsecutiveLostCatchUps);
-        Assert.AreEqual(Loss('T'), drive.CheckpointLoss);
+        Assert.AreEqual(StandardCatchUpLoss('T'), drive.CheckpointLoss);
         Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUp);
         StringAssert.Contains(drive.WatchFailureMessage, "12288");
         CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
@@ -59,7 +59,7 @@ public partial class FileIndexCatchUpLossTests
     public async Task Open_CatchUpLostThenTheRetryScanFails_SettlesReadyWithTheLostBlockAndTheFailure()
     {
         using var cache = new LossScriptedCache();
-        cache.Losses.Enqueue(Loss('T'));
+        cache.Losses.Enqueue(StandardCatchUpLoss('T'));
         cache.FailProductionNumber = 2;
 
         await using var index = await FileIndex.OpenAsync(cache.Options(), Token);
@@ -68,7 +68,7 @@ public partial class FileIndexCatchUpLossTests
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State, "the lost block stays in place");
         Assert.AreEqual(1, drive.ConsecutiveLostCatchUps);
-        Assert.AreEqual(Loss('T'), drive.CheckpointLoss);
+        Assert.AreEqual(StandardCatchUpLoss('T'), drive.CheckpointLoss);
         Assert.AreEqual("the retry scan failed", drive.MftProducerFailureMessage);
         CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
         var refusal = await ThrowsAsync<InvalidOperationException>(() => index.StartWatchingAsync('T', Token));

@@ -120,7 +120,7 @@ public sealed class BrokerFileIndexRescanTests
             : connect(connectToken));
         await using var index = await scenario.OpenIndexAsync(producer.CreateProducer(), source, token);
 
-        var thrown = await WatchReads.ThrowsAsync<IOException>(() => index.StartWatchingAsync('T', token));
+        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<IOException>(() => index.StartWatchingAsync('T', token));
 
         Assert.AreSame(connectionFailure, thrown);
         Assert.AreEqual(WatchCatchUpState.Faulted, index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUp);
@@ -160,7 +160,7 @@ public sealed class BrokerFileIndexRescanTests
             await connectGate.Entered.WaitAsync(HangGuard);
             await startCancellation.CancelAsync();
 
-            await WatchReads.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
+            await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
             await index.StartWatchingAsync('T', token);
             await index.RescanAsync('T', token);
             Assert.IsTrue(index.Drives.All(drive => drive.WatchFailureMessage == null));

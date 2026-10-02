@@ -18,19 +18,15 @@ internal sealed class ScriptedDriveWatch : IIndexDriveWatch
     Exception? _cancellationFailure;
     int _disposeCount;
 
-    public ScriptedDriveWatch(IndexWatchTarget target, bool throwOnSecondDispose)
+    public ScriptedDriveWatch(IndexWatchTarget target)
     {
         Target = target;
-        ThrowOnSecondDispose = throwOnSecondDispose;
     }
 
     public char DriveLetter => Target.DriveLetter;
 
     /// <summary>The cursor the index started this watch from.</summary>
     public IndexWatchTarget Target { get; }
-
-    /// <summary>A second <see cref="DisposeAsync" /> throws, so a double dispose cannot pass unnoticed.</summary>
-    public bool ThrowOnSecondDispose { get; }
 
     public int DisposeCount => Volatile.Read(ref _disposeCount);
 
@@ -113,7 +109,7 @@ internal sealed class ScriptedDriveWatch : IIndexDriveWatch
         var count = Interlocked.Increment(ref _disposeCount);
         _items.Writer.TryComplete();
         _disposed.TrySetResult();
-        if (count > 1 && ThrowOnSecondDispose)
+        if (count > 1)
         {
             throw new InvalidOperationException($"The watch handle for drive {DriveLetter} was disposed twice.");
         }

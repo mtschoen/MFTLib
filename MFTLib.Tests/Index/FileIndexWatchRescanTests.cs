@@ -2,6 +2,7 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -225,13 +226,16 @@ public partial class FileIndexWatchRescanTests
         await harness.Index.RescanAsync('T', Token);
 
         Assert.AreEqual(0, harness.Source.Starts.Count);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
+        var drive = harness.DriveFor('T');
+        Assert.IsFalse(drive.WatchRequested);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUp);
         Assert.AreEqual(13ul, harness.BlockFor('T').Header.UsnJournalId);
         Assert.AreEqual(9000L, harness.BlockFor('T').Header.UsnNextUsn);
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => harness.Index.WaitForCatchUpAsync('T', Token));
     }
 
     [TestMethod]
-    public async Task RescanAsync_WhoseSwapFails_KeepsTheDriveWatchingAndRethrows()
+    public async Task RescanAsync_WhoseProducerThrowsCancellation_KeepsTheDriveWatchingAndRethrows()
     {
         using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync('T', Token);
@@ -489,21 +493,4 @@ public partial class FileIndexWatchRescanTests
         return completion.Task;
     }
 
-    /// <summary>
-    ///     MSTest 3.1's <c>ThrowsExceptionAsync</c> demands the exact type; a cancellation surfaces
-    ///     as <see cref="TaskCanceledException" /> or its base depending on where it was observed.
-    /// </summary>
-    internal static async Task<TException> ThrowsAsync<TException>(Func<Task> action) where TException : Exception
-    {
-        try
-        {
-            await action();
-        }
-        catch (TException exception)
-        {
-            return exception;
-        }
-
-        throw new AssertFailedException($"Expected {typeof(TException).Name} to be thrown.");
-    }
 }

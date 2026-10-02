@@ -12,38 +12,6 @@ public class FileIndexWatchPumpTests
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     [TestMethod]
-    public async Task StartWatchingAsync_PumpsBatchesIntoTheIndexAndRaisesChanged()
-    {
-        using var harness = new WatchHarness();
-        var changes = new List<FileChange>();
-        harness.Index.Changed += change => changes.Add(change);
-
-        await harness.Index.StartWatchingAsync('T', Token);
-        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(recordNumber: 9, "new.txt"));
-        await harness.Index.StopWatchingAsync('T', Token);
-
-        Assert.AreEqual(1, changes.Count);
-        Assert.AreEqual(FileChangeKind.Created, changes[0].Kind);
-        Assert.AreEqual("new.txt", changes[0].Entry.Name);
-    }
-
-    [TestMethod]
-    public async Task StartWatchingAsync_ResumesEachDriveFromItsHeaderCursor()
-    {
-        using var harness = new WatchHarness();
-        harness.SetNextProducedCursor('T', journalId: 11, nextUsn: 4242);
-        await harness.Index.RescanAsync('T', Token);
-        await harness.Index.StartWatchingAsync('T', Token);
-
-        var target = harness.Source.Starts.Single();
-        Assert.AreEqual('T', target.DriveLetter);
-        Assert.AreEqual(11ul, target.JournalId);
-        Assert.AreEqual(4242L, target.NextUsn);
-
-        await harness.Index.StopWatchingAsync('T', Token);
-    }
-
-    [TestMethod]
     public async Task StartWatchingAsync_EachDriveStartsFromItsOwnHeaderCursor()
     {
         using var harness = new WatchHarness('T', 'U');
@@ -55,10 +23,11 @@ public class FileIndexWatchPumpTests
         await harness.Index.StartWatchingAsync('T', Token);
         await harness.Index.StartWatchingAsync('U', Token);
 
-        CollectionAssert.AreEqual(new[] { new IndexWatchTarget('T', 11, 4242) },
-            harness.Source.StartsFor('T').ToArray());
-        CollectionAssert.AreEqual(new[] { new IndexWatchTarget('U', 22, 8484) },
-            harness.Source.StartsFor('U').ToArray());
+        CollectionAssert.AreEqual(
+            new[] { new IndexWatchTarget('T', 11, 4242), new IndexWatchTarget('U', 22, 8484) },
+            harness.Source.Starts.ToArray());
+        await harness.Index.StopWatchingAsync('T', Token);
+        await harness.Index.StopWatchingAsync('U', Token);
     }
 
     [TestMethod]
@@ -101,23 +70,6 @@ public class FileIndexWatchPumpTests
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => harness.Index.StopWatchingAsync('T', Token));
-    }
-
-    [TestMethod]
-    public async Task WatchFaulted_AnnouncesAChannelFaultNamingTheDrive()
-    {
-        using var harness = new WatchHarness();
-        await harness.Index.StartWatchingAsync('T', Token);
-
-        harness.Source.HandleFor('T').LoseChannel(new IOException("the broker died"));
-        var fault = await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
-
-        var thrown = await Assert.ThrowsExceptionAsync<IOException>(
-            () => harness.Index.StopWatchingAsync('T', Token));
-        Assert.AreEqual("the broker died", thrown.Message);
-        Assert.AreSame(fault.Exception, thrown);
-        Assert.AreEqual(1, harness.Faults.Count);
-        Assert.AreEqual('T', fault.DriveLetter);
     }
 
     [TestMethod]
@@ -238,6 +190,7 @@ public class FileIndexWatchPumpTests
 
         Assert.AreEqual(1, harness.Faults.Count);
         Assert.IsInstanceOfType<InvalidOperationException>(fault.Exception);
+        Assert.AreEqual("The watch for drive T ended without being stopped.", fault.Exception.Message);
         Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
         Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
         Assert.AreEqual(1, ended.DisposeCount);
@@ -312,9 +265,6 @@ public class FileIndexWatchPumpTests
         var producedBlock = harness.BlockFor('T');
 
         await harness.Index.DisposeAsync();
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
 
         Assert.AreEqual(1, harness.Source.HandleFor('T').DisposeCount);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = producedBlock.Header.Generation);

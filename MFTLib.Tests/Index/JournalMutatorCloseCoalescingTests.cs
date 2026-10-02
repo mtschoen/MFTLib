@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static MFTLib.Tests.TestSupport.JournalMutatorDeduplicationTestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -14,34 +15,17 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class JournalMutatorCloseCoalescingTests
 {
-    static UsnJournalEntry Entry(ulong recordNumber, ulong parentRecordNumber, string fileName,
-        UsnReason reason, DateTime timestamp, ushort sequenceNumber,
-        FileAttributes fileAttributes = FileAttributes.Archive)
-    {
-        return UsnJournalEntry.Create(new UsnJournalEntryOptions
-        {
-            RecordNumber = recordNumber,
-            ParentRecordNumber = parentRecordNumber,
-            SequenceNumber = sequenceNumber,
-            Usn = 1000,
-            Timestamp = timestamp,
-            Reason = reason,
-            FileAttributes = fileAttributes,
-            FileName = fileName
-        });
-    }
-
     [TestMethod]
     public async Task CreateThenCreateClose_AcrossBatches_ReportsOneCreatedAndAppliesCloseMetadata()
     {
         await using var fixture = new MutatorFixture();
         var closeMoment = fixture.Timestamp.AddMinutes(1);
 
-        var first = fixture.Apply([Entry(9, 6, "fresh.txt", UsnReason.FileCreate,
+        var first = fixture.Apply([CreateEntry(9, 6, "fresh.txt", UsnReason.FileCreate,
             fixture.Timestamp, sequenceNumber: 3)]);
         var generationAfterCreate = fixture.Block.Header.Generation;
 
-        var second = fixture.Apply([Entry(9, 6, "fresh.txt", UsnReason.FileCreate | UsnReason.Close,
+        var second = fixture.Apply([CreateEntry(9, 6, "fresh.txt", UsnReason.FileCreate | UsnReason.Close,
             closeMoment, sequenceNumber: 3, FileAttributes.Archive | FileAttributes.ReadOnly)]);
 
         Assert.AreEqual(1, first.Count);
@@ -61,9 +45,9 @@ public class JournalMutatorCloseCoalescingTests
         await using var fixture = new MutatorFixture();
         var closeMoment = fixture.Timestamp.AddMinutes(1);
 
-        var first = fixture.Apply([Entry(7, 6, "notes.txt", UsnReason.DataExtend,
+        var first = fixture.Apply([CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend,
             fixture.Timestamp, sequenceNumber: 1)]);
-        var second = fixture.Apply([Entry(7, 6, "notes.txt", UsnReason.DataExtend | UsnReason.Close,
+        var second = fixture.Apply([CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend | UsnReason.Close,
             closeMoment, sequenceNumber: 1)]);
 
         Assert.AreEqual(1, first.Count);
@@ -77,10 +61,10 @@ public class JournalMutatorCloseCoalescingTests
     public async Task CloseCarryingAnUnreportedReason_StillReportsOneChange()
     {
         await using var fixture = new MutatorFixture();
-        fixture.Apply([Entry(7, 6, "notes.txt", UsnReason.DataExtend,
+        fixture.Apply([CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend,
             fixture.Timestamp, sequenceNumber: 1)]);
 
-        var second = fixture.Apply([Entry(7, 6, "notes.txt",
+        var second = fixture.Apply([CreateEntry(7, 6, "notes.txt",
             UsnReason.DataExtend | UsnReason.DataTruncation | UsnReason.Close,
             fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)]);
 
@@ -96,9 +80,9 @@ public class JournalMutatorCloseCoalescingTests
 
         var changes = fixture.Apply(
         [
-            Entry(9, 6, "fresh.txt", UsnReason.FileCreate, fixture.Timestamp, sequenceNumber: 3),
-            Entry(9, 6, "fresh.txt", UsnReason.FileCreate | UsnReason.DataExtend, fixture.Timestamp, sequenceNumber: 3),
-            Entry(9, 6, "fresh.txt", UsnReason.FileCreate | UsnReason.DataExtend | UsnReason.Close,
+            CreateEntry(9, 6, "fresh.txt", UsnReason.FileCreate, fixture.Timestamp, sequenceNumber: 3),
+            CreateEntry(9, 6, "fresh.txt", UsnReason.FileCreate | UsnReason.DataExtend, fixture.Timestamp, sequenceNumber: 3),
+            CreateEntry(9, 6, "fresh.txt", UsnReason.FileCreate | UsnReason.DataExtend | UsnReason.Close,
                 closeMoment, sequenceNumber: 3)
         ]);
 
@@ -117,7 +101,7 @@ public class JournalMutatorCloseCoalescingTests
         var closeMoment = fixture.Timestamp.AddMinutes(1);
 
         // Batch 1: FileCreate (file handle opened and file created)
-        var first = fixture.Apply([Entry(9, 6, "fresh.txt", UsnReason.FileCreate,
+        var first = fixture.Apply([CreateEntry(9, 6, "fresh.txt", UsnReason.FileCreate,
             createMoment, sequenceNumber: 3)]);
         Assert.AreEqual(1, first.Count);
         Assert.AreEqual(FileChangeKind.Created, first[0].Kind);
@@ -125,13 +109,13 @@ public class JournalMutatorCloseCoalescingTests
         Assert.IsTrue(generationAfterCreate > initialGeneration);
 
         // Batch 2: FileCreate | DataExtend (data write inside create cycle is part of creation)
-        var second = fixture.Apply([Entry(9, 6, "fresh.txt",
+        var second = fixture.Apply([CreateEntry(9, 6, "fresh.txt",
             UsnReason.FileCreate | UsnReason.DataExtend, extendMoment, sequenceNumber: 3)]);
         Assert.AreEqual(0, second.Count,
             "Intermediate write inside create cycle must raise nothing extra.");
 
         // Batch 3: FileCreate | DataExtend | Close (close record repeating all accumulated reasons)
-        var third = fixture.Apply([Entry(9, 6, "fresh.txt",
+        var third = fixture.Apply([CreateEntry(9, 6, "fresh.txt",
             UsnReason.FileCreate | UsnReason.DataExtend | UsnReason.Close,
             closeMoment, sequenceNumber: 3, FileAttributes.Archive | FileAttributes.ReadOnly)]);
         Assert.AreEqual(0, third.Count, "Close record must not emit duplicate change.");
@@ -143,7 +127,7 @@ public class JournalMutatorCloseCoalescingTests
             "Close-only batch mutating metadata must advance Generation.");
 
         // Batch 4: Redundant close or batch with identical metadata produces no generation bump
-        var fourth = fixture.Apply([Entry(9, 6, "fresh.txt",
+        var fourth = fixture.Apply([CreateEntry(9, 6, "fresh.txt",
             UsnReason.Close, closeMoment, sequenceNumber: 3, FileAttributes.Archive | FileAttributes.ReadOnly)]);
         Assert.AreEqual(0, fourth.Count);
         Assert.AreEqual(generationAfterClose, fixture.Block.Header.Generation,
@@ -154,10 +138,10 @@ public class JournalMutatorCloseCoalescingTests
     public async Task CloseOnly_AfterAReportedChange_ProducesNoChangeAndNoMutation()
     {
         await using var fixture = new MutatorFixture();
-        var first = fixture.Apply([Entry(7, 6, "notes.txt", UsnReason.DataExtend,
+        var first = fixture.Apply([CreateEntry(7, 6, "notes.txt", UsnReason.DataExtend,
             fixture.Timestamp, sequenceNumber: 1)]);
 
-        var second = fixture.Apply([Entry(7, 6, "notes.txt", UsnReason.Close,
+        var second = fixture.Apply([CreateEntry(7, 6, "notes.txt", UsnReason.Close,
             fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)]);
 
         Assert.AreEqual(1, first.Count);
@@ -170,9 +154,9 @@ public class JournalMutatorCloseCoalescingTests
     {
         await using var fixture = new MutatorFixture();
 
-        var first = fixture.Apply([Entry(7, 6, "notes.txt", UsnReason.FileDelete,
+        var first = fixture.Apply([CreateEntry(7, 6, "notes.txt", UsnReason.FileDelete,
             fixture.Timestamp, sequenceNumber: 1)]);
-        var second = fixture.Apply([Entry(7, 6, "notes.txt", UsnReason.FileDelete | UsnReason.Close,
+        var second = fixture.Apply([CreateEntry(7, 6, "notes.txt", UsnReason.FileDelete | UsnReason.Close,
             fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)]);
 
         Assert.AreEqual(1, first.Count);
@@ -186,9 +170,9 @@ public class JournalMutatorCloseCoalescingTests
     {
         await using var fixture = new MutatorFixture();
 
-        var first = fixture.Apply([Entry(7, 6, "renamed.txt", UsnReason.RenameNewName,
+        var first = fixture.Apply([CreateEntry(7, 6, "renamed.txt", UsnReason.RenameNewName,
             fixture.Timestamp, sequenceNumber: 1)]);
-        var second = fixture.Apply([Entry(7, 6, "renamed.txt", UsnReason.RenameNewName | UsnReason.Close,
+        var second = fixture.Apply([CreateEntry(7, 6, "renamed.txt", UsnReason.RenameNewName | UsnReason.Close,
             fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)]);
 
         Assert.AreEqual(1, first.Count);
@@ -207,17 +191,17 @@ public class JournalMutatorCloseCoalescingTests
         // moves and renames it to second.txt at the root, all before the handle closes.
         var firstPair = fixture.Apply(
         [
-            Entry(7, 6, "notes.txt", UsnReason.RenameOldName, fixture.Timestamp, sequenceNumber: 1),
-            Entry(7, 6, "first.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
+            CreateEntry(7, 6, "notes.txt", UsnReason.RenameOldName, fixture.Timestamp, sequenceNumber: 1),
+            CreateEntry(7, 6, "first.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
         ]);
         var secondPair = fixture.Apply(
         [
-            Entry(7, 6, "first.txt", UsnReason.RenameOldName, fixture.Timestamp, sequenceNumber: 1),
-            Entry(7, 5, "second.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
+            CreateEntry(7, 6, "first.txt", UsnReason.RenameOldName, fixture.Timestamp, sequenceNumber: 1),
+            CreateEntry(7, 5, "second.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
         ]);
         var close = fixture.Apply(
         [
-            Entry(7, 5, "second.txt", UsnReason.RenameOldName | UsnReason.RenameNewName | UsnReason.Close,
+            CreateEntry(7, 5, "second.txt", UsnReason.RenameOldName | UsnReason.RenameNewName | UsnReason.Close,
                 closeMoment, sequenceNumber: 1)
         ]);
 
@@ -245,15 +229,15 @@ public class JournalMutatorCloseCoalescingTests
         // parent changes. The echo key includes the parent, so this second pair classifies.
         fixture.Apply(
         [
-            Entry(7, 6, "first.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
+            CreateEntry(7, 6, "first.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
         ]);
         var move = fixture.Apply(
         [
-            Entry(7, 5, "first.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
+            CreateEntry(7, 5, "first.txt", UsnReason.RenameNewName, fixture.Timestamp, sequenceNumber: 1)
         ]);
         var close = fixture.Apply(
         [
-            Entry(7, 5, "first.txt", UsnReason.RenameNewName | UsnReason.Close,
+            CreateEntry(7, 5, "first.txt", UsnReason.RenameNewName | UsnReason.Close,
                 fixture.Timestamp.AddMinutes(1), sequenceNumber: 1)
         ]);
 
@@ -269,12 +253,12 @@ public class JournalMutatorCloseCoalescingTests
     public async Task SequenceNumberChange_ResetsTheOpenCycleAndReportsTheNewIncarnation()
     {
         await using var fixture = new MutatorFixture();
-        fixture.Apply([Entry(9, 6, "fresh.txt", UsnReason.FileCreate,
+        fixture.Apply([CreateEntry(9, 6, "fresh.txt", UsnReason.FileCreate,
             fixture.Timestamp, sequenceNumber: 3)]);
 
         // The MFT segment was reused (sequence number moved on), so this close record
         // belongs to a new file, not to the reported cycle of the old one.
-        var second = fixture.Apply([Entry(9, 6, "reused.txt", UsnReason.FileCreate | UsnReason.Close,
+        var second = fixture.Apply([CreateEntry(9, 6, "reused.txt", UsnReason.FileCreate | UsnReason.Close,
             fixture.Timestamp.AddMinutes(1), sequenceNumber: 4)]);
 
         Assert.AreEqual(1, second.Count);

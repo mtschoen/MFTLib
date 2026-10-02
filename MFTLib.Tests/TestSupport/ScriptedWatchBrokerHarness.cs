@@ -330,23 +330,6 @@ internal static class WatchReads
     /// <summary>The read that throws <typeparamref name="TException" />, or a type derived from it.</summary>
     public static Task<TException> ThrowsNextAsync<TException>(IAsyncEnumerator<WatchStreamItem> reader)
         where TException : Exception =>
-        ThrowsAsync<TException>(async () => await reader.MoveNextAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard));
-
-    /// <summary>
-    ///     Unlike MSTest's <c>ThrowsExceptionAsync</c>, accepts a derived type: a cancellation surfaces
-    ///     as <see cref="TaskCanceledException" /> or its base depending on where it was observed.
-    /// </summary>
-    public static async Task<TException> ThrowsAsync<TException>(Func<Task> action) where TException : Exception
-    {
-        try
-        {
-            await action();
-        }
-        catch (TException exception)
-        {
-            return exception;
-        }
-
-        throw new AssertFailedException($"Expected {typeof(TException).Name} to be thrown.");
-    }
+        WatchDeduplicationTestSupport.ThrowsAsync<TException>(
+            async () => await reader.MoveNextAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard));
 }

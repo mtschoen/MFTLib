@@ -41,7 +41,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var rescanOfT = index.RescanAsync('T', token);
         var rescanOfU = index.RescanAsync('U', token);
         await rescanOfU.WaitAsync(HangGuard);
-        var thrown = await WatchReads.ThrowsAsync<JournalCatchUpLostException>(() => rescanOfT.WaitAsync(HangGuard));
+        var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<JournalCatchUpLostException>(() => rescanOfT.WaitAsync(HangGuard));
 
         Assert.AreEqual(3, scenario.ChannelsOpenedFor('T') - channelsBefore, "T opens exactly three scan channels");
         Assert.AreEqual(4, scenario.ScansOf('T'), "the open's scan and three lost ones");
@@ -65,7 +65,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(JournalSizeArithmetic.SizeThatWouldHaveRetained(ArmedCursor.NextUsn, TrimmedWindow.NextUsn,
             TrimmedWindow.AllocationDelta), report.SizeThatWouldHaveRetained);
         Assert.AreEqual(report, thrown.CheckpointLoss);
-        await WatchReads.ThrowsAsync<InvalidOperationException>(() => index.StartWatchingAsync('T', token));
+        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() => index.StartWatchingAsync('T', token));
 
         // U completed normally in the same run.
         Assert.AreEqual(2, scenario.ScansOf('U'));
@@ -136,7 +136,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var channelsBefore = scenario.ChannelsOpenedFor('T');
         journal.FailEveryRead();
 
-        var failure = await WatchReads.ThrowsAsync<InvalidOperationException>(
+        var failure = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
             () => index.RescanAsync('T', token).WaitAsync(HangGuard));
 
         StringAssert.Contains(failure.Message, ScriptedCatchUp.FailureMessage);

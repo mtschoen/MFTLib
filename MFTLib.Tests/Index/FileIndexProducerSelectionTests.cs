@@ -270,7 +270,7 @@ public class FileIndexProducerSelectionTests
         var options = Options(ProducerPolicy.Mft, Produce);
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
-            await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+            await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
                 () => index.RescanAsync('T', CancellationToken.None));
 
             Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
@@ -306,7 +306,7 @@ public class FileIndexProducerSelectionTests
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, Produce),
             CancellationToken.None);
-        await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
             () => index.RescanAsync('T', CancellationToken.None));
         Assert.AreEqual("elevation declined during rescan", index.Drives.Single().MftProducerFailureMessage);
 
@@ -539,7 +539,7 @@ public class FileIndexProducerSelectionTests
         }, TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, index.Drives.Single().FailureKind);
 
-        await FileIndexWatchRescanTests.ThrowsAsync<InvalidOperationException>(
+        await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
             () => index.RescanAsync('T', TestContext.CancellationTokenSource.Token));
 
         var status = index.Drives.Single();
