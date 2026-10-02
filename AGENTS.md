@@ -66,7 +66,7 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 
 ### Test isolation
 
-[Native delegate isolation](docs/test-isolation.md): every test class referencing process-global seams in `MFTLibNative` or `FileUtilities`, including either `ResetToDefaults`, must have class-level `[DoNotParallelize]`. Keep cleanup resets; they do not isolate concurrent classes. Run `NativeSeamIsolationTests` on Windows and Linux. Stress with 32 ClassLevel MSTest workers and the existing `scripts/coverage-linux.sh` platform exclusions; never add exclusions to hide seam races.
+[Native delegate isolation](docs/test-isolation.md): every test class referencing process-global seams in `MFTLibNative` or `FileUtilities`, either `ResetToDefaults`, or any `NativeTestHooks` member must have class-level `[DoNotParallelize]`. Keep cleanup resets; they do not isolate. Run `NativeSeamIsolationTests` on Windows and Linux. Stress with 32 ClassLevel MSTest workers and the existing `scripts/coverage-linux.sh` platform exclusions; never add exclusions.
 
 [Default-cache isolation](docs/test-isolation.md): MFTLib.Tests enables the guard from a module initializer. Consumer tests must call `MFTLibTestExtensions.CacheDirectoryIsolation.ForbidDefaultCacheDirectory()` from `[ModuleInitializer]` before opening indexes; an assembly reference alone does not activate it. Activation is one-way/idempotent, has no reset, is not inherited by children and is not a native seam. `CacheDirectory.ResolveDefaultPath()` then throws `InvalidOperationException`; tests must set `FileIndexOptions.CacheDirectory` to an owned temporary directory, including empty-drive and `NoCache` opens. Explicit arbitrary paths are not blocked; non-opted-in production retains default behavior.
 

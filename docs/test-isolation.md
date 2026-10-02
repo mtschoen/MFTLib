@@ -3,7 +3,9 @@
 Tests that reference the process-wide native delegate seams in `MFTLibNative`
 or `FileUtilities`, including calls to either `ResetToDefaults`, must carry
 class-level `[DoNotParallelize]`. Keep cleanup resets, but do not rely on them
-for isolation from concurrently running test classes. `NativeSeamIsolationTests`
+for isolation from concurrently running test classes. The same rule applies to
+any member of `NativeTestHooks` (the native failure-injection and observation
+hooks), whose calls mutate process-global native state. `NativeSeamIsolationTests`
 checks compiled IL references, including nested generated methods and local
 test helpers, and includes non-executed violation controls. Run this guard on
 Windows as well as Linux: Linux compilation excludes several Windows-only test

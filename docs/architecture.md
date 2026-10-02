@@ -51,8 +51,8 @@ Native exports write failure reasons into fixed-size `wchar_t errorMessage[256]`
 `MFTLibNative.dll` that the NuGet package ships, deliberately. The exports are test-only and
 unsupported: they are not part of the managed public API, and they may change or disappear in
 any release. Their managed `DllImport` declarations live in `MFTLib.Tests`
-(`TestSupport/NativeTestHooks.cs`), not in `MFTLib`; every native export the managed library
-declares has a production caller.
+(`TestSupport/NativeTestHooks.cs`), not in `MFTLib`; the only native test-support export
+MFTLib itself declares is `GenerateFixtureMFT`, reached from `MftVolume.GenerateFixtureMFT`.
 
 Why they stay:
 
