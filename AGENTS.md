@@ -44,7 +44,7 @@ dotnet nuget push "MFTLibTestExtensions\bin\x64\Release\MFTLib.TestExtensions.*.
 
 ### Running the test program
 
-The test program requires admin elevation (raw volume access). It now includes **self-elevation logic** via `ElevationUtilities`.
+The test program requires admin elevation (raw volume access). It includes **self-elevation logic** via `ElevationUtilities`.
 
 For the most reliable experience (proper UAC prompt handling), **run the compiled .exe directly**:
 
@@ -110,4 +110,4 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 
 ## Roadmap
 
-See `.plan` for details. Current release is **0.3.0** with USN journal support (`QueryUsnJournal`, `ReadUsnJournal`, `WatchUsnJournal`). Primary consumer is [file-wizard](C:\Users\mtsch\file-wizard).
+See `.plan` for details. Current release is **0.3.0** with USN journal support (`QueryUsnJournal`, `ReadUsnJournal`, and `WatchUsnJournal`, which yields `(Entries, Cursor)` batches). Primary consumer is [file-wizard](C:\Users\mtsch\file-wizard).

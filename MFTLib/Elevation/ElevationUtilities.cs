@@ -43,7 +43,7 @@ public static class ElevationUtilities
         return principal.IsInRole(WindowsBuiltInRole.Administrator);
     }
 
-    public static string? GetProcessPath()
+    internal static string? GetProcessPath()
     {
         return _getProcessPathFunc();
     }

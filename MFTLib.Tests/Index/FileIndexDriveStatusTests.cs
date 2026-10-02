@@ -155,6 +155,7 @@ public class FileIndexDriveStatusTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         Assert.AreEqual(1, index.Drives[0].AccessDeniedSubtreeCount);
+        Assert.AreEqual(0, index.Drives[0].SkippedRecordCount);
     }
 
     [TestMethod]
@@ -166,12 +167,14 @@ public class FileIndexDriveStatusTests
 
         await using var index = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None);
         Assert.AreEqual(0, index.Drives[0].AccessDeniedSubtreeCount);
+        Assert.AreEqual(0, index.Drives[0].SkippedRecordCount);
 
         Directory.CreateDirectory(vanishingPath);
         await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon");
         await index.RescanAsync('T', CancellationToken.None);
 
         Assert.AreEqual(1, index.Drives[0].AccessDeniedSubtreeCount);
+        Assert.AreEqual(0, index.Drives[0].SkippedRecordCount);
     }
 
     [TestMethod]

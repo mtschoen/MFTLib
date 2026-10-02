@@ -13,7 +13,7 @@ public sealed partial class BrokerProcess : IAsyncDisposable
     /// <summary>
     ///     Bounds a control request frame once it has started writing, a control request's reply once
     ///     the request is written, and a drive pipe's connection once its
-    ///     <see cref="BrokerFrameKind.ChannelOpened" /> reply has arrived.
+    ///     channel-open reply has arrived.
     /// </summary>
     internal static readonly TimeSpan ControlReplyTimeout = BrokerLiveness.ControlReplyTimeout;
 

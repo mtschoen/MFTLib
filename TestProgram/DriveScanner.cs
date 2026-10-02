@@ -8,7 +8,7 @@ class DriveScanner
 {
     internal Func<uint, IntPtr> _acrtIobFunc = AcrtIobFuncNative;
     internal Func<bool> _canSelfElevate = ElevationUtilities.CanSelfElevate;
-    internal Func<string?> _getProcessPath = ElevationUtilities.GetProcessPath;
+    internal Func<string?> _getProcessPath = () => Environment.ProcessPath;
     internal Func<bool> _isElevated = ElevationUtilities.IsElevated;
     internal Func<string, MftVolume> _openVolume = letter => MftVolume.Open(letter);
     internal Func<string, bool> _tryRunElevated = arguments => ElevationUtilities.TryRunElevated(arguments);

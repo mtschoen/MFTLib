@@ -92,17 +92,17 @@ public partial class IndexNavigationTests
     public void Children_DoesNotReturnTheRootAsItsOwnChild()
     {
         var children = Entry(_rootRow).Children();
-        Assert.IsFalse(children.Any(child => child.RowIndexForTest() == _rootRow));
+        Assert.IsFalse(children.Any(child => child.RowIndex == _rootRow));
         Assert.AreEqual(1, children.Count);
     }
 
     [TestMethod]
     public void IsUnder_MatchesTransitiveContainmentAndExcludesSiblings()
     {
-        Assert.IsTrue(IndexNavigationTestAccess.IsUnder(Entry(_reportRow), Entry(_documentsRow)));
-        Assert.IsTrue(IndexNavigationTestAccess.IsUnder(Entry(_reportRow), Entry(_projectsRow)));
-        Assert.IsFalse(IndexNavigationTestAccess.IsUnder(Entry(_notesRow), Entry(_projectsRow)));
-        Assert.IsTrue(IndexNavigationTestAccess.IsUnder(Entry(_projectsRow), Entry(_projectsRow)));
+        Assert.IsTrue(IndexNavigation.IsUnder(Entry(_reportRow), Entry(_documentsRow)));
+        Assert.IsTrue(IndexNavigation.IsUnder(Entry(_reportRow), Entry(_projectsRow)));
+        Assert.IsFalse(IndexNavigation.IsUnder(Entry(_notesRow), Entry(_projectsRow)));
+        Assert.IsTrue(IndexNavigation.IsUnder(Entry(_projectsRow), Entry(_projectsRow)));
     }
 
     [TestMethod]
@@ -120,10 +120,10 @@ public partial class IndexNavigationTests
 
             // Different drives are never under one another, and a default handle is
             // never under anything (nor is anything under it).
-            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(report, foreignRoot));
-            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(foreignRoot, report));
-            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(default, report));
-            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(report, default));
+            Assert.IsFalse(IndexNavigation.IsUnder(report, foreignRoot));
+            Assert.IsFalse(IndexNavigation.IsUnder(foreignRoot, report));
+            Assert.IsFalse(IndexNavigation.IsUnder(default, report));
+            Assert.IsFalse(IndexNavigation.IsUnder(report, default));
         }
         finally
         {
@@ -155,7 +155,7 @@ public partial class IndexNavigationTests
         {
             // The candidate sits exactly MaximumPathDepth hops below the root; the target
             // is a real row that is not on that chain.
-            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(
+            Assert.IsFalse(IndexNavigation.IsUnder(
                 FileEntry.Create(snapshot, 0, candidate),
                 FileEntry.Create(snapshot, 0, unrelated)));
         }
@@ -205,7 +205,7 @@ public partial class IndexNavigationTests
             var deletedDirectory = FileEntry.Create(snapshot, 0, deletedDirectoryRow);
 
             Assert.AreEqual(Path.Combine(TestDriveRoot.For('V'), "Old", "survivor.txt"), liveFile.Path);
-            Assert.IsTrue(IndexNavigationTestAccess.IsUnder(liveFile, deletedDirectory));
+            Assert.IsTrue(IndexNavigation.IsUnder(liveFile, deletedDirectory));
         }
         finally
         {
@@ -229,7 +229,7 @@ public partial class IndexNavigationTests
             var children = FileEntry.Create(snapshot, 0, root).Children();
             Assert.AreEqual(1, children.Count);
             Assert.AreEqual("live.txt", children[0].Name);
-            Assert.AreEqual(liveRow, children[0].RowIndexForTest());
+            Assert.AreEqual(liveRow, children[0].RowIndex);
         }
         finally
         {
@@ -331,7 +331,7 @@ public partial class IndexNavigationTests
         var snapshot = Snapshot.Create([new DriveBlock('Z', 0, block, rootDirectoryPath: TestDriveRoot.For('Z'))]);
         try
         {
-            Assert.IsTrue(IndexNavigationTestAccess.IsUnder(
+            Assert.IsTrue(IndexNavigation.IsUnder(
                 FileEntry.Create(snapshot, 0, candidate),
                 FileEntry.Create(snapshot, 0, root)));
         }
@@ -356,24 +356,24 @@ public partial class IndexNavigationTests
         try
         {
             // Rows 1 and 2 point at each other. None of these reach root.
-            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(
+            Assert.IsFalse(IndexNavigation.IsUnder(
                 FileEntry.Create(snapshot, 0, second),
                 FileEntry.Create(snapshot, 0, root)));
-            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(
+            Assert.IsFalse(IndexNavigation.IsUnder(
                 FileEntry.Create(snapshot, 0, first),
                 FileEntry.Create(snapshot, 0, root)));
-            Assert.IsFalse(IndexNavigationTestAccess.IsUnder(
+            Assert.IsFalse(IndexNavigation.IsUnder(
                 FileEntry.Create(snapshot, 0, child),
                 FileEntry.Create(snapshot, 0, root)));
 
             // But rows in the cycle or under the cycle are under cycle members.
-            Assert.IsTrue(IndexNavigationTestAccess.IsUnder(
+            Assert.IsTrue(IndexNavigation.IsUnder(
                 FileEntry.Create(snapshot, 0, second),
                 FileEntry.Create(snapshot, 0, first)));
-            Assert.IsTrue(IndexNavigationTestAccess.IsUnder(
+            Assert.IsTrue(IndexNavigation.IsUnder(
                 FileEntry.Create(snapshot, 0, first),
                 FileEntry.Create(snapshot, 0, second)));
-            Assert.IsTrue(IndexNavigationTestAccess.IsUnder(
+            Assert.IsTrue(IndexNavigation.IsUnder(
                 FileEntry.Create(snapshot, 0, child),
                 FileEntry.Create(snapshot, 0, first)));
         }
@@ -381,21 +381,5 @@ public partial class IndexNavigationTests
         {
             await snapshot.ReleaseNowAsync();
         }
-    }
-}
-
-static class IndexNavigationTestAccess
-{
-    public static bool IsUnder(FileEntry candidate, FileEntry ancestor)
-    {
-        return IndexNavigationBridge.IsUnder(candidate, ancestor);
-    }
-}
-
-static class FileEntryTestExtensions
-{
-    public static uint RowIndexForTest(this FileEntry entry)
-    {
-        return IndexNavigationBridge.RowIndexOf(entry);
     }
 }

@@ -107,7 +107,7 @@ public class UsnJournalLiveTests
             using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             // ReSharper disable once AccessToDisposedClosure
             // volume is captured from outer scope; watchTask is awaited before volume's using exits.
-            await foreach (var batch in volume.WatchUsnJournal(cursor, cancellationTokenSource.Token))
+            await foreach (var (batch, _) in volume.WatchUsnJournal(cursor, cancellationTokenSource.Token))
             {
                 batches.Add(batch);
                 if (batch.Any(e => e.FileName.Equals(tempFileName, StringComparison.OrdinalIgnoreCase)))

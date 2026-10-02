@@ -21,12 +21,6 @@ public class MftBlockCapacityTests
     }
 
     [TestMethod]
-    public void EstimateRowCount_NullVolumeInformation_FallsBackToTheMinimum()
-    {
-        Assert.AreEqual(MftBlockCapacity.MinimumEstimatedRowCount, MftBlockCapacity.EstimateRowCount(null));
-    }
-
-    [TestMethod]
     public void EstimateRowCount_UnqueriedSegmentSize_FallsBackToTheMinimum()
     {
         // BytesPerFileRecordSegment zero is the type's documented unqueried case, so
@@ -34,14 +28,6 @@ public class MftBlockCapacityTests
         var volumeInformation = new NtfsVolumeInformation(1024, 0, 0, 0, 0, 0);
         Assert.AreEqual(MftBlockCapacity.MinimumEstimatedRowCount,
             MftBlockCapacity.EstimateRowCount(volumeInformation));
-    }
-
-    [TestMethod]
-    public void Plan_HonorsACallerSuppliedAverageNameLength()
-    {
-        var volumeInformation = new NtfsVolumeInformation(1_000_000L * 1024, 1024, 0, 0, 0, 0);
-        var (slotCapacity, namePoolCapacity) = MftBlockCapacity.Plan(volumeInformation, 96);
-        Assert.AreEqual(BlockLayout.ComputeNamePoolCapacity(slotCapacity * 96u), namePoolCapacity);
     }
 
     [TestMethod]
@@ -63,18 +49,11 @@ public class MftBlockCapacityTests
     }
 
     [TestMethod]
-    public void Plan_ZeroAverageNameBytesPerRow_ThrowsArgumentOutOfRangeException()
-    {
-        var volumeInformation = new NtfsVolumeInformation(1_000_000L * 1024, 1024, 0, 0, 0, 0);
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => MftBlockCapacity.Plan(volumeInformation, 0));
-    }
-
-    [TestMethod]
     public void Plan_HugeNamePoolEstimate_ClampsToPreventOverflow()
     {
-        // Large volume with high average name bytes per row that would exceed uint.MaxValue / 2
+        // The estimated names for this volume exceed uint.MaxValue / 2.
         var volumeInformation = new NtfsVolumeInformation(100_000_000L * 1024, 1024, 0, 0, 0, 0);
-        var (_, namePoolCapacity) = MftBlockCapacity.Plan(volumeInformation, 1000);
+        var (_, namePoolCapacity) = MftBlockCapacity.Plan(volumeInformation);
         Assert.AreEqual(BlockLayout.ComputeNamePoolCapacity(uint.MaxValue / 2), namePoolCapacity);
     }
 }

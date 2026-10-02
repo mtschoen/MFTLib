@@ -17,7 +17,7 @@ public class NameHashTableTests
     [TestMethod]
     public void MayRepeat_IsFalseAfterOneIncrementAndTrueAfterTwo()
     {
-        var table = new NameHashTable(expectedRowCount: 1000);
+        var table = NameHashTable.ForBucketCount(NameHashTable.ComputeBucketCount(1000));
         var hash = 12345;
 
         Assert.IsFalse(table.MayRepeat(hash));
@@ -32,7 +32,7 @@ public class NameHashTableTests
     [TestMethod]
     public void MayRepeat_ReturnsFalseForAHashNeverIncremented()
     {
-        var table = new NameHashTable(expectedRowCount: 8);
+        var table = NameHashTable.ForBucketCount(NameHashTable.ComputeBucketCount(8));
         Assert.IsFalse(table.MayRepeat(999));
     }
 
@@ -45,7 +45,7 @@ public class NameHashTableTests
         // different hashes once each". DuplicateNameFinder relies on later refinement passes,
         // seeded differently, to shrink that false-positive set; a single pass alone never drops
         // a real duplicate.
-        var table = new NameHashTable(expectedRowCount: 1);
+        var table = NameHashTable.ForBucketCount(NameHashTable.ComputeBucketCount(1));
         var firstHash = 1;
         var firstBucket = table.BucketIndexFor(firstHash);
 
@@ -134,7 +134,7 @@ public class NameHashTableTests
     [TestMethod]
     public void ByteCount_AtTheMaximumBucketCountIsThirtyTwoMebibytes()
     {
-        var table = new NameHashTable(expectedRowCount: long.MaxValue);
+        var table = NameHashTable.ForBucketCount(NameHashTable.ComputeBucketCount(long.MaxValue));
         Assert.AreEqual(NameHashTable.MaximumBucketCount, table.BucketCount);
         Assert.AreEqual(32L * 1024 * 1024, table.ByteCount);
     }
@@ -142,7 +142,7 @@ public class NameHashTableTests
     [TestMethod]
     public void ByteCount_AtTheDefaultBucketCountIsFourMebibytes()
     {
-        var table = new NameHashTable();
+        var table = NameHashTable.ForBucketCount(NameHashTable.ComputeBucketCount(0));
         Assert.AreEqual(1 << 24, table.BucketCount);
         Assert.AreEqual(4L * 1024 * 1024, table.ByteCount);
     }

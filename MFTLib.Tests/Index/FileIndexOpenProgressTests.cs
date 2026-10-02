@@ -146,7 +146,7 @@ public class FileIndexOpenProgressTests
         Task<MftBlockProduceResult> FakeProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             var result = new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false);
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0);
             reportCountAtProduceTime = reports.Count;
             return Task.FromResult(result);
         }

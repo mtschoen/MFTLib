@@ -117,7 +117,7 @@ public sealed partial class FileIndex
 
         try
         {
-            RetiredSnapshot[] retiredSnapshots;
+            SnapshotRelease[] retiredSnapshots;
             lock (_stateLock)
             {
                 retiredSnapshots = [.. _retiredSnapshots];
@@ -126,7 +126,7 @@ public sealed partial class FileIndex
 
             foreach (var retired in retiredSnapshots)
             {
-                await retired.Release.ReleaseAsync().ConfigureAwait(false);
+                await retired.ReleaseAsync().ConfigureAwait(false);
             }
 
             Snapshot? current;

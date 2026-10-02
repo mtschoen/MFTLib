@@ -260,7 +260,7 @@ public class FileIndexEnumerateTests
             ProducerPolicy = ProducerPolicy.Mft,
             MftProducer = (request, _) => Task.FromResult(
                 new MftBlockProduceResult(BuildSyntheticBlock(request, rowCount), JournalId: 7,
-                    NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false))
+                    NextUsn: 4096, SkippedRecordCount: 0))
         }, CancellationToken.None);
     }
 
@@ -375,7 +375,7 @@ public class FileIndexEnumerateTests
             ProducerPolicy = ProducerPolicy.Mft,
             MftProducer = (request, _) => Task.FromResult(
                 new MftBlockProduceResult(BuildSyntheticBlockWithDeepCandidate(request), JournalId: 7,
-                    NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false))
+                    NextUsn: 4096, SkippedRecordCount: 0))
         }, CancellationToken.None);
     }
 

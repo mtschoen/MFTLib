@@ -126,9 +126,9 @@ public class CapacityExhaustionTests
             mutator.Apply(snapshot, 0, [Create(1, "survivor.txt"), Create(900, "lost.txt")],
                 journalId: 1, nextUsn: 30);
 
-            var results = SearchEngineTestAccess.Search(snapshot, new SearchQuery("survivor"));
+            var results = SearchEngine.Search(snapshot, new SearchQuery("survivor"));
             Assert.AreEqual(1, results.Count);
-            Assert.AreEqual(0, SearchEngineTestAccess.Search(snapshot, new SearchQuery("lost")).Count);
+            Assert.AreEqual(0, SearchEngine.Search(snapshot, new SearchQuery("lost")).Count);
         }
         finally
         {

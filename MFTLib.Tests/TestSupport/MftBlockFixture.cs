@@ -58,6 +58,6 @@ internal static class MftBlockFixture
     {
         return Task.FromResult(new MftBlockProduceResult(
             WriteAndOpen(request, journalId, nextUsn, moment),
-            journalId, nextUsn, SkippedRecordCount: 0, CompactionNeeded: false));
+            journalId, nextUsn, SkippedRecordCount: 0));
     }
 }

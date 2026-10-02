@@ -77,7 +77,7 @@ public class ConsumerJournalIsolationTests
         return Task.FromResult(new MftBlockProduceResult(
             BlockFile.Open(request.BlockPath, request.VolumeSerial, out _) ?? throw new InvalidOperationException("Failed to reopen produced block"),
             7, 1_000,
-            SkippedRecordCount: 0, CompactionNeeded: false));
+            SkippedRecordCount: 0));
     }
 
     async Task SeedAsync()

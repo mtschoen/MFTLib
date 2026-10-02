@@ -59,8 +59,7 @@ public sealed class BrokerMftBlockProducer
             ValidateBlock(block, request.VolumeSerial, result.ArmedCursor, request.CacheTag);
             _scanCompleted?.Invoke(result);
             return new MftBlockProduceResult(block, result.ArmedCursor.JournalId, result.ArmedCursor.NextUsn,
-                SkippedRecordCount: checked((int)result.Block.SkippedRecordCount),
-                CompactionNeeded: block.Header.IsCompactionNeeded)
+                SkippedRecordCount: checked((int)result.Block.SkippedRecordCount))
             {
                 CatchUpLoss = result.CatchUpLoss
             };

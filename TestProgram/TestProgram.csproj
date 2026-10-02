@@ -7,7 +7,6 @@
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64;x86</Platforms>
-    <RunPostBuildEvent>Always</RunPostBuildEvent>
   </PropertyGroup>
 
   <!-- Windows: build native DLL via MSBuild vcxproj -->

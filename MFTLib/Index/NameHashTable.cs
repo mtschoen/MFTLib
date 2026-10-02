@@ -40,11 +40,6 @@ internal sealed class NameHashTable
     readonly ulong[] _seenOnce;
     readonly ulong[] _seenAgain;
 
-    internal NameHashTable(long expectedRowCount = 0, int seed = 0)
-        : this(ComputeBucketCount(expectedRowCount), seed)
-    {
-    }
-
     NameHashTable(int bucketCount, int seed)
     {
         _bucketCount = bucketCount;

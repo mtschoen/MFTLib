@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>Maps MFT records to sparse block rows without resolving paths or retaining batches.</summary>
-public static class MftBlockRowWriter
+internal static class MftBlockRowWriter
 {
     /// <summary>Writes each batch and reports transfer progress; the caller stamps and completes the block.</summary>
     public static BlockWriteResult WriteBatches(
@@ -48,7 +48,7 @@ public static class MftBlockRowWriter
             }
 
             progress?.Report(new BlockWriteProgress(recordsWritten, writer.Block.Header.NamePoolUsed,
-                null, null, BrokerScanPhase.Transferring));
+                null, null));
             cancellationToken.ThrowIfCancellationRequested();
         }
 

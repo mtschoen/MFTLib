@@ -393,7 +393,7 @@ public class UsnJournalTests
         using var cancellationTokenSource = new CancellationTokenSource();
         var batches = new List<UsnJournalEntry[]>();
 
-        await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500),
+        await foreach (var (batch, _) in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500),
                            cancellationTokenSource.Token))
         {
             batches.Add(batch);
@@ -481,7 +481,7 @@ public class UsnJournalTests
         using var volume = MftVolume.Open("C");
         var batches = new List<UsnJournalEntry[]>();
 
-        await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500),
+        await foreach (var (batch, _) in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500),
                            cancellationTokenSource.Token))
         {
             batches.Add(batch);
@@ -490,71 +490,8 @@ public class UsnJournalTests
         Assert.AreEqual(0, batches.Count);
     }
 
-    // --- WatchUsnJournalWithCursor ---
-
     [TestMethod]
-    public async Task WatchUsnJournalWithCursor_Disposed_Throws()
-    {
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
-        var volume = MftVolume.Open("C");
-        volume.Dispose();
-        await Assert.ThrowsExceptionAsync<ObjectDisposedException>(async () =>
-        {
-            await foreach (var _ in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(1, 0)))
-            {
-            }
-        });
-    }
-
-    [TestMethod]
-    public async Task WatchUsnJournalWithCursor_NullPointer_Throws()
-    {
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, _, _) => IntPtr.Zero;
-        MFTLibNative._cancelUsnJournalWatch = _ => true;
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
-        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
-
-        using var volume = MftVolume.Open("C");
-        using var cancellationTokenSource = new CancellationTokenSource();
-
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
-        {
-            await foreach (var _ in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500),
-                               cancellationTokenSource.Token))
-            {
-            }
-        });
-    }
-
-    [TestMethod]
-    public async Task WatchUsnJournalWithCursor_ErrorInBatch_Throws()
-    {
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, _, _) =>
-        {
-            var nativeResult = new UsnJournalResultNative { ErrorMessage = "USN journal is not active" };
-            var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
-            Marshal.StructureToPtr(nativeResult, resultPtr, false);
-            return resultPtr;
-        };
-        MFTLibNative._cancelUsnJournalWatch = _ => true;
-        MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
-        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
-
-        using var volume = MftVolume.Open("C");
-        using var cancellationTokenSource = new CancellationTokenSource();
-
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
-        {
-            await foreach (var _ in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500),
-                               cancellationTokenSource.Token))
-            {
-            }
-        });
-    }
-
-    [TestMethod]
-    public async Task WatchUsnJournalWithCursor_EmptyThenEntry_YieldsBatchWithCursor()
+    public async Task WatchUsnJournal_EmptyThenEntry_YieldsBatchWithCursor()
     {
         // Call 1 returns empty (not cancelled) → continue; call 2 returns an entry → yield (entries, cursor).
         var callCount = 0;
@@ -574,7 +511,7 @@ public class UsnJournalTests
         using var cancellationTokenSource = new CancellationTokenSource();
         var batches = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
 
-        await foreach (var batch in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500),
+        await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(0xABCD, 500),
                            cancellationTokenSource.Token))
         {
             batches.Add(batch);
@@ -586,36 +523,6 @@ public class UsnJournalTests
         Assert.IsTrue(batches[0].Entries[0].IsCreate);
         Assert.AreEqual(0xABCDUL, batches[0].Cursor.JournalId);
         Assert.AreEqual(600L, batches[0].Cursor.NextUsn);
-    }
-
-    [TestMethod]
-    public async Task WatchUsnJournalWithCursor_EmptyBatchWithCancellation_YieldsBreak()
-    {
-        using var cancellationTokenSource = new CancellationTokenSource();
-
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
-        {
-            // Simulate CancelIoEx race: cancel token then return empty result.
-            // ReSharper disable once AccessToDisposedClosure
-            cancellationTokenSource.Cancel();
-            return BuildEmptyWatchResult(journalId, startUsn);
-        };
-        MFTLibNative._cancelUsnJournalWatch = _ => true;
-        MFTLibNative._freeUsnJournalResult = _ => { };
-        FileUtilities._getVolumeHandle = _ => FakeHandle();
-        FileUtilities._getWatchVolumeHandle = _ => FakeHandle();
-
-        // ReSharper disable once AccessToDisposedClosure
-        using var volume = MftVolume.Open("C");
-        var batches = new List<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)>();
-
-        await foreach (var batch in volume.WatchUsnJournalWithCursor(new UsnJournalCursor(0xABCD, 500),
-                           cancellationTokenSource.Token))
-        {
-            batches.Add(batch);
-        }
-
-        Assert.AreEqual(0, batches.Count);
     }
 
     // --- Watch test helpers ---

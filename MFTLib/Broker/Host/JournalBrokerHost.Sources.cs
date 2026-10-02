@@ -80,7 +80,7 @@ public sealed partial class JournalBrokerHost
     {
         operation.WaitingOnVolume();
         using var volume = MftVolume.Open(Bare(drive));
-        var batches = volume.WatchUsnJournalWithCursor(since, cancellationToken).GetAsyncEnumerator(cancellationToken);
+        var batches = volume.WatchUsnJournal(since, cancellationToken).GetAsyncEnumerator(cancellationToken);
         try
         {
             while (true)
