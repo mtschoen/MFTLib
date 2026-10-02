@@ -23,7 +23,7 @@ BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD by
 }
 #endif  // _WIN32
 
-bool ApplyFixupInternal(uint8_t* record, uint32_t recordSize) {
+bool ApplyFixup(uint8_t* record, uint32_t recordSize) {
     auto* header = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
     uint16_t usaOffset = header->MultiSectorHeader.UpdateSequenceArrayOffset;
     uint16_t usaSize = header->MultiSectorHeader.UpdateSequenceArraySize;
@@ -44,15 +44,12 @@ bool ApplyFixupInternal(uint8_t* record, uint32_t recordSize) {
 
         auto* sectorLastWord = reinterpret_cast<uint16_t*>(record + sectorEnd);
         if (*sectorLastWord != usn) {
-            printf("Fixup mismatch at sector %u: expected 0x%04X, got 0x%04X\n", i, usn, *sectorLastWord);
             return false;
         }
         *sectorLastWord = usa[i + 1];
     }
     return true;
 }
-
-bool ApplyFixup(uint8_t* record, uint32_t recordSize) { return ApplyFixupInternal(record, recordSize); }
 
 std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr) {
     std::vector<DataRun> runs;
@@ -158,9 +155,6 @@ bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uin
         currentOffset += runBytes;
     }
 
-    printf("Error: MFT record %llu not found in data runs (covered %llu bytes, needed offset %llu)\n",
-           static_cast<unsigned long long>(recordNumber), static_cast<unsigned long long>(currentOffset),
-           static_cast<unsigned long long>(byteOffset));
     return false;
 }
 #endif  // _WIN32

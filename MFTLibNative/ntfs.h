@@ -22,7 +22,6 @@ union LARGE_INTEGER {
         int32_t HighPart;
     };
 };
-using PVOID = void*;
 using BOOL = int;
 using DWORD = uint32_t;
 using HANDLE = void*;
@@ -33,15 +32,16 @@ using WCHAR = char16_t;
 
 #pragma pack(push, 1)
 using VCN = LARGE_INTEGER;
-using PVCN = VCN*;
 using UPDATE_SEQUENCE_NUMBER = USHORT;
-using PUPDATE_SEQUENCE_NUMBER = UPDATE_SEQUENCE_NUMBER*;
 // NOLINTNEXTLINE(modernize-avoid-c-arrays): on-disk NTFS update-sequence-array layout type
 using UPDATE_SEQUENCE_ARRAY = UPDATE_SEQUENCE_NUMBER[1];
 
 constexpr uint32_t DEFAULT_FILE_RECORD_SIZE = 1024;
 constexpr uint32_t MIN_FILE_RECORD_SIZE = 512;
 constexpr uint32_t MAX_FILE_RECORD_SIZE = 65536;
+constexpr uint32_t kFileRecordMagic = 0x454C4946;
+constexpr uint16_t kRecordInUse = 0x0001;
+constexpr uint16_t kRecordDirectory = 0x0002;
 
 struct ParseGeometry {
     uint32_t recordSize = 0;
@@ -78,10 +78,8 @@ using MFT_SEGMENT_REFERENCE = struct MftSegmentReferenceLayout {
     USHORT SegmentNumberHighPart = 0;
     USHORT SequenceNumber = 0;
 };
-using PMFT_SEGMENT_REFERENCE = MFT_SEGMENT_REFERENCE*;
 
 using FILE_REFERENCE = MftSegmentReferenceLayout;
-using PFILE_REFERENCE = FILE_REFERENCE*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/attribute-record-header
 using ATTRIBUTE_RECORD_HEADER = struct AttributeRecordHeaderLayout {
@@ -154,7 +152,6 @@ using MULTI_SECTOR_HEADER = struct MultiSectorHeaderLayout {
     USHORT UpdateSequenceArrayOffset = 0;
     USHORT UpdateSequenceArraySize = 0;
 };
-using PMULTI_SECTOR_HEADER = MULTI_SECTOR_HEADER*;
 
 // from https://learn.microsoft.com/en-us/windows/win32/devnotes/file-record-segment-header
 using FILE_RECORD_SEGMENT_HEADER = struct FileRecordSegmentHeaderLayout {

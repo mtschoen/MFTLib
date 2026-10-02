@@ -5,12 +5,12 @@
 #include <cstring>
 #include <string>
 #include <thread>
-#include <vector>
 
 #include "../framework.h"
 #include "../ntfs.h"
 #include "../internal.h"
 #include "../core/platform.h"
+#include "mft.internal.h"
 // aislop-ignore-next-line CppUnusedIncludeDirective -- constants consumed by the included fixture fragment
 #include "mft_fixture.h"
 
@@ -116,7 +116,7 @@ SyntheticMeta RollSyntheticMeta(uint16_t flags, uint64_t* rng) {
     uint64_t mftModTime = modTime + (nextRng() % 100000000ULL);
     uint64_t readTime = modTime + (nextRng() % (tenYearsTicks / 5));
 
-    bool isDir = (flags & 0x0002) != 0;
+    bool isDir = (flags & kRecordDirectory) != 0;
     uint64_t fileSize = isDir ? 0 : (nextRng() % (256ULL * 1024 * 1024));
     uint64_t allocSize = (fileSize + 4095) & ~4095ULL;
     uint32_t fileAttrs = isDir ? 0x10 : 0x20;
@@ -212,7 +212,7 @@ void BuildSyntheticRecord(uint8_t* record, const SyntheticRecordSpec& spec, uint
     memset(record, 0, spec.recordSize);
 
     auto* hdr = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
-    hdr->MultiSectorHeader.Magic = 0x454C4946;
+    hdr->MultiSectorHeader.Magic = kFileRecordMagic;
     hdr->MultiSectorHeader.UpdateSequenceArrayOffset = 0x30;
     auto usaSize = static_cast<uint16_t>((spec.recordSize / 512U) + 1U);
     hdr->MultiSectorHeader.UpdateSequenceArraySize = usaSize;
@@ -224,7 +224,7 @@ void BuildSyntheticRecord(uint8_t* record, const SyntheticRecordSpec& spec, uint
     hdr->BaseFileRecordSegment.SegmentNumberLowPart = static_cast<ULONG>(spec.baseRef & 0xFFFFFFFF);
     hdr->BaseFileRecordSegment.SegmentNumberHighPart = static_cast<USHORT>(spec.baseRef >> 32);
 
-    if (spec.baseRef != 0 || ((spec.flags & 0x0001) == 0)) {
+    if (spec.baseRef != 0 || ((spec.flags & kRecordInUse) == 0)) {
         auto* endAttr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(record + hdr->FirstAttributeOffset);
         endAttr->TypeCode = EndMarker;
         ApplyUSAProtection(record, ParseGeometry{spec.recordSize}, static_cast<uint16_t>(spec.recordIndex & 0xFFFF));
@@ -262,45 +262,36 @@ void BuildRecordForIndex(uint8_t* record, uint32_t recordSize, uint64_t recordIn
     uint32_t randomValue = nextRng();
 
     if (recordIndex < 5) {
-        BuildSyntheticRecord(record, {recordIndex, 0, 0x0001, L"$MFT", 4, 0, recordSize}, &rng);
+        BuildSyntheticRecord(record, {recordIndex, 0, kRecordInUse, L"$MFT", 4, 0, recordSize}, &rng);
     } else if (recordIndex == 5) {
-        BuildSyntheticRecord(record, {recordIndex, 5, 0x0003, L".", 1, 0, recordSize}, &rng);
+        BuildSyntheticRecord(record, {recordIndex, 5, kRecordInUse | kRecordDirectory, L".", 1, 0, recordSize}, &rng);
     } else if (randomValue % 100 < 10) {
         memset(record, 0, recordSize);
     } else if (randomValue % 100 < 25) {
         uint64_t baseRec = (nextRng() % recordIndex) + 1;
-        BuildSyntheticRecord(record, {recordIndex, 0, 0x0001, L"ext", 3, baseRec, recordSize}, &rng);
+        BuildSyntheticRecord(record, {recordIndex, 0, kRecordInUse, L"ext", 3, baseRec, recordSize}, &rng);
     } else if (randomValue % 100 < 40) {
         uint64_t parent = (recordIndex < 100) ? 5 : (nextRng() % (recordIndex / 2)) + 5;
         const wchar_t* name = dirNames[nextRng() % numDirNames];
-        BuildSyntheticRecord(
-            record, {recordIndex, parent, 0x0003, name, static_cast<uint8_t>(wcslen(name)), 0, recordSize}, &rng);
+        BuildSyntheticRecord(record,
+                             {recordIndex, parent, kRecordInUse | kRecordDirectory, name,
+                              static_cast<uint8_t>(wcslen(name)), 0, recordSize},
+                             &rng);
     } else {
         uint64_t parent = (recordIndex < 100) ? 5 : (nextRng() % (recordIndex / 2)) + 5;
         const wchar_t* name = fileNames[nextRng() % numFileNames];
         BuildSyntheticRecord(
-            record, {recordIndex, parent, 0x0001, name, static_cast<uint8_t>(wcslen(name)), 0, recordSize}, &rng);
+            record, {recordIndex, parent, kRecordInUse, name, static_cast<uint8_t>(wcslen(name)), 0, recordSize}, &rng);
     }
 }
 
 void GenerateBatch(uint8_t* buffer, const BatchParams& params) {
-    uint64_t perThread = (params.batchSize + params.threadCount - 1) / params.threadCount;
-    std::vector<std::thread> workers;
-    for (unsigned ti = 0; ti < params.threadCount; ti++) {
-        uint64_t tStart = ti * perThread;
-        uint64_t tEnd = tStart + perThread < params.batchSize ? tStart + perThread : params.batchSize;
-        if (tStart >= params.batchSize) {
-            break;
+    ForEachRange(params.batchSize, params.threadCount, [&](unsigned, SliceRange range) {
+        for (uint64_t i = range.start; i < range.end; i++) {
+            BuildRecordForIndex(buffer + (static_cast<size_t>(params.recordSize) * i), params.recordSize,
+                                params.baseIndex + i);
         }
-        workers.emplace_back([buffer, tStart, tEnd, baseIndex = params.baseIndex, recordSize = params.recordSize]() {
-            for (uint64_t i = tStart; i < tEnd; i++) {
-                BuildRecordForIndex(buffer + (static_cast<size_t>(recordSize) * i), recordSize, baseIndex + i);
-            }
-        });
-    }
-    for (auto& worker : workers) {
-        worker.join();
-    }
+    });
 }
 
 bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uint32_t bufferSizeRecords,

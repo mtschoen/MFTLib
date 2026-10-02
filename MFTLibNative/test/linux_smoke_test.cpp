@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cwchar>
 #include <string_view>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -299,10 +300,11 @@ bool test_string_pool_alloc_failure() {
     if (!generate_fixture()) {
         return false;
     }
-    // Fail allocation on string pool allocation (countdown = 4 in AllocateParseBuffers)
-    SetAllocFailCountdown(4);
+    // Result, two read buffers, entry array, then string pool.
+    SetAllocFailCountdown(5);
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
-    bool testPassed = (parseResult != nullptr) && parseResult->errorMessage[0] != L'\0';
+    bool testPassed =
+        (parseResult != nullptr) && std::wcscmp(parseResult->errorMessage, L"Failed to allocate string pool") == 0;
     if (parseResult != nullptr) {
         FreeMftResult(parseResult);
     }

@@ -108,7 +108,7 @@ void BuildFixtureRecord(uint8_t* record, const FixtureRecordSpec& spec) {
     memset(record, 0, kFixtureRecordSize);
 
     auto* header = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
-    header->MultiSectorHeader.Magic = 0x454C4946;
+    header->MultiSectorHeader.Magic = kFileRecordMagic;
     header->MultiSectorHeader.UpdateSequenceArrayOffset = 0x30;
     header->MultiSectorHeader.UpdateSequenceArraySize = static_cast<uint16_t>((kFixtureRecordSize / 512U) + 1U);
     header->SequenceNumber = spec.headerSequenceNumber;
@@ -140,7 +140,7 @@ void BuildFixtureRecord(uint8_t* record, const FixtureRecordSpec& spec) {
     }
     const SyntheticMeta meta = {
         modifiedTime, modifiedTime, modifiedTime,        modifiedTime,
-        fileSize,     allocSize,    spec.fileAttributes, (spec.headerFlags & 0x0002U) != 0U,
+        fileSize,     allocSize,    spec.fileAttributes, (spec.headerFlags & kRecordDirectory) != 0U,
     };
 
     uint8_t computedNameLength = (spec.name != nullptr) ? static_cast<uint8_t>(wcslen(spec.name)) : 0;
@@ -164,7 +164,7 @@ void BuildFixtureRecord(uint8_t* record, const FixtureRecordSpec& spec) {
 
 void BuildFreedFixtureRecords(uint8_t* buffer) {
     BuildFixtureRecord(buffer + (12 * kFixtureRecordSize),
-                       {12, 0x0002, 5, L"deleted-dir", 0, 0x10, false, {}, {}, 14, 6});
+                       {12, kRecordDirectory, 5, L"deleted-dir", 0, 0x10, false, {}, {}, 14, 6});
     BuildFixtureRecord(buffer + (13 * kFixtureRecordSize),
                        {13, 0, 12, L"deleted-before.txt", 0, 0x20, false, {true, true, 0, 37}, {}, 14, 13});
     BuildFixtureRecord(buffer + (14 * kFixtureRecordSize),
@@ -209,19 +209,21 @@ bool GenerateFixtureMFTImpl(const char* filePath) {
 
     memset(buffer, 0, fileSize);
     BuildFixtureRecord(buffer + (0 * kFixtureRecordSize),
-                       {0, 0x0001, 5, L"$MFT", 0, 0x06, false, {true, false, 0, 65536ULL}, {}});
-    BuildFixtureRecord(buffer + (5 * kFixtureRecordSize), {5, 0x0003, 5, L".", 0, 0x10, false, {}, {}});
+                       {0, kRecordInUse, 5, L"$MFT", 0, 0x06, false, {true, false, 0, 65536ULL}, {}});
+    BuildFixtureRecord(buffer + (5 * kFixtureRecordSize),
+                       {5, kRecordInUse | kRecordDirectory, 5, L".", 0, 0x10, false, {}, {}});
     BuildFixtureRecord(buffer + (6 * kFixtureRecordSize),
-                       {6, 0x0001, 5, L"resident.txt", 0, 0x20, false, {true, true, 0, 37ULL}, {}});
+                       {6, kRecordInUse, 5, L"resident.txt", 0, 0x20, false, {true, true, 0, 37ULL}, {}});
     BuildFixtureRecord(buffer + (7 * kFixtureRecordSize),
-                       {7, 0x0001, 5, L"big.bin", 0, 0x20, false, {true, false, 0, 1234567ULL}, {}});
-    BuildFixtureRecord(buffer + (8 * kFixtureRecordSize), {8, 0x0003, 5, L"sub", 0, 0x10, false, {}, {}, 9, 6});
-    BuildFixtureRecord(buffer + (9 * kFixtureRecordSize), {9, 0x0001, 8, L"nodata.dat", 0, 0x20, true, {}, {}});
+                       {7, kRecordInUse, 5, L"big.bin", 0, 0x20, false, {true, false, 0, 1234567ULL}, {}});
+    BuildFixtureRecord(buffer + (8 * kFixtureRecordSize),
+                       {8, kRecordInUse | kRecordDirectory, 5, L"sub", 0, 0x10, false, {}, {}, 9, 6});
+    BuildFixtureRecord(buffer + (9 * kFixtureRecordSize), {9, kRecordInUse, 8, L"nodata.dat", 0, 0x20, true, {}, {}});
     BuildFixtureRecord(
         buffer + (10 * kFixtureRecordSize),
-        {10, 0x0001, 8, L"split.bin", 0, 0x20, false, {true, false, 8, 999ULL}, {true, false, 0, 4096ULL}});
+        {10, kRecordInUse, 8, L"split.bin", 0, 0x20, false, {true, false, 8, 999ULL}, {true, false, 0, 4096ULL}});
     BuildFixtureRecord(buffer + (11 * kFixtureRecordSize),
-                       {11, 0x0001, 8, L"negative-size.bin", 0, 0x20, false, {true, false, 0, -1}, {}});
+                       {11, kRecordInUse, 8, L"negative-size.bin", 0, 0x20, false, {true, false, 0, -1}, {}});
     BuildFreedFixtureRecords(buffer);
 
     auto* file = mftlib::platform::open_write(filePath);

@@ -1,10 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
 // aislop-ignore-next-line CppUnusedIncludeDirective -- memcpy below needs this on GCC/Clang
 #include <cstring>
+#include <thread>
 #include <vector>
 
 #include "../framework.h"
@@ -46,7 +48,7 @@ bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uin
 struct FilterSpec {
     const wchar_t* text;  // null = no filter (accept every named record)
     uint16_t length;      // wchar_t units in text
-    uint32_t flags;       // match bitfield: 1=exact, 2=substring, 4=resolve paths, 8=include freed
+    uint32_t flags;       // MATCH_FLAG_* bitfield
 };
 
 // Half-open record range [start, end) within a chunk buffer.
@@ -55,12 +57,38 @@ struct SliceRange {
     uint64_t end;
 };
 
+// Partition records into ordered, nonempty ranges and wait for all workers.
+template <typename Function>
+unsigned ForEachRange(uint64_t total, unsigned threadCount, Function body) {
+    if (total == 0) {
+        return 0;
+    }
+    if (threadCount == 1) {
+        body(0, SliceRange{0, total});
+        return 1;
+    }
+    uint64_t perThread = (total + threadCount - 1) / threadCount;
+    std::vector<std::thread> workers;
+    for (unsigned index = 0; index < threadCount; index++) {
+        uint64_t start = static_cast<uint64_t>(index) * perThread;
+        if (start >= total) {
+            break;
+        }
+        uint64_t end = (std::min)(start + perThread, total);
+        workers.emplace_back([&body, index, start, end]() { body(index, SliceRange{start, end}); });
+    }
+    for (auto& worker : workers) {
+        worker.join();
+    }
+    return static_cast<unsigned>(workers.size());
+}
+
 struct PathLookup {
     // recordFlags holds the header's in-use (0x01) and directory (0x02) bits of each
     // validated record; kMissingRecord marks a slot with no validated record.
     static constexpr uint8_t kMissingRecord = 0xFF;
-    static constexpr uint8_t kInUse = 0x01;
-    static constexpr uint8_t kDirectory = 0x02;
+    static constexpr uint8_t kInUse = kRecordInUse;
+    static constexpr uint8_t kDirectory = kRecordDirectory;
     uint64_t* parents = nullptr;
     uint8_t* nameLens = nullptr;
     uint32_t* nameOffsets = nullptr;
@@ -88,7 +116,7 @@ struct PathLookup {
         if (recordFlags != nullptr) {
             memset(recordFlags, kMissingRecord, totalRecords);
         }
-        // Each name entry can be up to 255 WCHAR units = 510 bytes; use 32 bytes avg * 2 for bytes.
+        // Each name can be up to 255 WCHAR units; reserve an average of 32 units (64 bytes) per record.
         // A test hook can shrink the pool to exercise the exhaustion path.
         uint64_t capacityOverride = NamePoolCapacityOverride();
         namePoolCapacity = (capacityOverride != 0U) ? capacityOverride : totalRecords * 64;  // bytes
@@ -200,4 +228,4 @@ using ReadChunkFn = uint64_t (*)(void* context, uint8_t* targetBuffer, double& i
 // errorMessage "Parse cancelled".
 MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
                              uint32_t bufferSizeRecords, ParseGeometry geometry, const MftParseControl* control,
-                             MftProgressCallback callback = nullptr, void* progressContext = nullptr);
+                             MftProgressCallback callback, void* progressContext);
