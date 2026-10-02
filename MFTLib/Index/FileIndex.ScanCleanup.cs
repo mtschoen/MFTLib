@@ -347,8 +347,8 @@ public sealed partial class FileIndex
     {
         var previous = _snapshot ?? throw new ObjectDisposedException(nameof(FileIndex));
         _snapshot = replacement;
-        _retiredSnapshots.RemoveAll(retired => retired.Release.IsReleaseComplete);
-        _retiredSnapshots.Add(new RetiredSnapshot(previous));
+        _retiredSnapshots.RemoveAll(retired => retired.IsReleaseComplete);
+        _retiredSnapshots.Add(previous.ReleaseState);
     }
 
     void ValidateProducedCacheTag(MftBlockProduceResult result, string blockPath)

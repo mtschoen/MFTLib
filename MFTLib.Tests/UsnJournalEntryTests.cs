@@ -45,7 +45,7 @@ public class UsnJournalEntryTests
         FileUtilities._getWatchVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
 
         using var volume = MftVolume.Open("C");
-        await foreach (var batch in volume.WatchUsnJournal(new UsnJournalCursor(1, 0)))
+        await foreach (var (batch, _) in volume.WatchUsnJournal(new UsnJournalCursor(1, 0)))
         {
             Assert.AreEqual(1, batch.Length);
             Assert.AreEqual(0x1246A1ul, batch[0].RecordNumber);

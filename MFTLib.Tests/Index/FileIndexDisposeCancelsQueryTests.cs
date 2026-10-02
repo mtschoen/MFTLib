@@ -365,7 +365,7 @@ public class FileIndexDisposeCancelsQueryTests
             ProducerPolicy = ProducerPolicy.Mft,
             MftProducer = (request, _) => Task.FromResult(
                 new MftBlockProduceResult(BuildLargeBlock(request), JournalId: 7, NextUsn: 4096,
-                    SkippedRecordCount: 0, CompactionNeeded: false))
+                    SkippedRecordCount: 0))
         };
     }
 

@@ -135,8 +135,8 @@ public class MftBlockRowWriterTests
             new DirectProgress(reports.Add), CancellationToken.None);
 
         Assert.AreEqual(2, reports.Count);
-        Assert.AreEqual(new BlockWriteProgress(1, 2, null, null, BrokerScanPhase.Transferring), reports[0]);
-        Assert.AreEqual(new BlockWriteProgress(2, 10, null, null, BrokerScanPhase.Transferring), reports[1]);
+        Assert.AreEqual(new BlockWriteProgress(1, 2, null, null), reports[0]);
+        Assert.AreEqual(new BlockWriteProgress(2, 10, null, null), reports[1]);
     }
 
     [TestMethod]

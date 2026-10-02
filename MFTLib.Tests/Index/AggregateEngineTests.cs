@@ -46,7 +46,7 @@ public class AggregateEngineTests
     [TestMethod]
     public void Largest_ReturnsTheBiggestFilesInDescendingOrder()
     {
-        var results = AggregateEngineTestAccess.Largest(_snapshot, 3, under: null);
+        var results = AggregateEngine.Largest(_snapshot, 3, under: null);
         CollectionAssert.AreEqual(
             new[] { "huge.bin", "large.bin", "medium.bin" },
             results.Select(entry => entry.Name).ToArray());
@@ -55,7 +55,7 @@ public class AggregateEngineTests
     [TestMethod]
     public void Largest_ExcludesDirectoriesAndTombstones()
     {
-        var results = AggregateEngineTestAccess.Largest(_snapshot, 10, under: null);
+        var results = AggregateEngine.Largest(_snapshot, 10, under: null);
         Assert.IsFalse(results.Any(entry => entry.IsDirectory));
         Assert.IsFalse(results.Any(entry => entry.Name == "gone.bin"));
     }
@@ -74,7 +74,7 @@ public class AggregateEngineTests
         var snapshot = Snapshot.Create([new DriveBlock('K', 0, block)]);
         try
         {
-            var results = AggregateEngineTestAccess.Largest(snapshot, 10, under: null);
+            var results = AggregateEngine.Largest(snapshot, 10, under: null);
             CollectionAssert.AreEqual(
                 new[] { "known-big.txt", "known-small.txt" },
                 results.Select(entry => entry.Name).ToArray());
@@ -89,7 +89,7 @@ public class AggregateEngineTests
     public void Largest_RespectsTheSubtreeRestriction()
     {
         var documents = FileEntry.Create(_snapshot, 0, _documentsRow);
-        var results = AggregateEngineTestAccess.Largest(_snapshot, 5, documents);
+        var results = AggregateEngine.Largest(_snapshot, 5, documents);
         CollectionAssert.AreEqual(
             new[] { "huge.bin", "large.bin", "readme.md" },
             results.Select(entry => entry.Name).ToArray());
@@ -98,21 +98,21 @@ public class AggregateEngineTests
     [TestMethod]
     public void Largest_CountLargerThanTheDriveReturnsEverything()
     {
-        var results = AggregateEngineTestAccess.Largest(_snapshot, 1000, under: null);
+        var results = AggregateEngine.Largest(_snapshot, 1000, under: null);
         Assert.AreEqual(6, results.Count);
     }
 
     [TestMethod]
     public void Largest_ZeroCountReturnsEmpty()
     {
-        Assert.AreEqual(0, AggregateEngineTestAccess.Largest(_snapshot, 0, under: null).Count);
+        Assert.AreEqual(0, AggregateEngine.Largest(_snapshot, 0, under: null).Count);
     }
 
     [TestMethod]
     public void Largest_NegativeCountThrows()
     {
         Assert.ThrowsException<ArgumentOutOfRangeException>(
-            () => AggregateEngineTestAccess.Largest(_snapshot, -1, under: null));
+            () => AggregateEngine.Largest(_snapshot, -1, under: null));
     }
 
     [TestMethod]
@@ -123,7 +123,7 @@ public class AggregateEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(() =>
-            AggregateEngineTestAccess.Largest(_snapshot, 10, under: null, token));
+            AggregateEngine.Largest(_snapshot, 10, under: null, token));
     }
 
     [TestMethod]
@@ -135,14 +135,14 @@ public class AggregateEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(() =>
-            AggregateEngineTestAccess.Largest(_snapshot, 10, under: documents, token));
+            AggregateEngine.Largest(_snapshot, 10, under: documents, token));
     }
 
     [TestMethod]
     public void Largest_Under_InvalidAncestor_ReturnsEmpty()
     {
         var invalidAncestor = default(FileEntry);
-        var results = AggregateEngineTestAccess.Largest(_snapshot, 5, invalidAncestor);
+        var results = AggregateEngine.Largest(_snapshot, 5, invalidAncestor);
         Assert.AreEqual(0, results.Count);
     }
 
@@ -155,13 +155,13 @@ public class AggregateEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(() =>
-            AggregateEngineTestAccess.Largest(_snapshot, 10, under: invalidAncestor, token));
+            AggregateEngine.Largest(_snapshot, 10, under: invalidAncestor, token));
     }
 
     [TestMethod]
     public void DuplicateNames_GroupsRowsThatShareAName()
     {
-        var groups = AggregateEngineTestAccess.DuplicateNames(_snapshot);
+        var groups = AggregateEngine.DuplicateNames(_snapshot);
         Assert.AreEqual(1, groups.Count);
         Assert.AreEqual("readme.md", groups[0].Name);
         Assert.AreEqual(2, groups[0].Entries.Count);
@@ -170,7 +170,7 @@ public class AggregateEngineTests
     [TestMethod]
     public void DuplicateNames_IgnoresTombstonesAndSingletons()
     {
-        var groups = AggregateEngineTestAccess.DuplicateNames(_snapshot);
+        var groups = AggregateEngine.DuplicateNames(_snapshot);
         Assert.IsFalse(groups.Any(group => group.Name == "huge.bin"));
         Assert.IsFalse(groups.Any(group => group.Name == "gone.bin"));
     }
@@ -189,7 +189,7 @@ public class AggregateEngineTests
         var snapshot = Snapshot.Create([new DriveBlock('V', 0, block)]);
         try
         {
-            var groups = AggregateEngineTestAccess.DuplicateNames(snapshot);
+            var groups = AggregateEngine.DuplicateNames(snapshot);
             Assert.AreEqual(1, groups.Count);
             Assert.AreEqual(2, groups[0].Entries.Count);
         }
@@ -221,7 +221,7 @@ public class AggregateEngineTests
         var snapshot = Snapshot.Create([new DriveBlock('L', 0, block)]);
         try
         {
-            var results = AggregateEngineTestAccess.Largest(snapshot, 5, under: null);
+            var results = AggregateEngine.Largest(snapshot, 5, under: null);
             CollectionAssert.AreEqual(
                 Enumerable.Range(0, 5).Select(offset => $"file{LargeRowCount - offset}.bin").ToArray(),
                 results.Select(entry => entry.Name).ToArray());
@@ -265,7 +265,7 @@ public class AggregateEngineTests
         ]);
         try
         {
-            var groups = AggregateEngineTestAccess.DuplicateNames(snapshot);
+            var groups = AggregateEngine.DuplicateNames(snapshot);
             CollectionAssert.AreEquivalent(
                 new[] { "shared1.bin", "shared2.bin", "shared3.bin" },
                 groups.Select(group => group.Name).ToArray());
@@ -275,20 +275,5 @@ public class AggregateEngineTests
         {
             await snapshot.ReleaseNowAsync();
         }
-    }
-}
-
-static class AggregateEngineTestAccess
-{
-    public static List<FileEntry> Largest(Snapshot snapshot, int count, FileEntry? under,
-        CancellationToken cancellationToken = default)
-    {
-        return AggregateEngine.Largest(snapshot, count, under, cancellationToken);
-    }
-
-    public static List<DuplicateGroup> DuplicateNames(Snapshot snapshot,
-        CancellationToken cancellationToken = default)
-    {
-        return AggregateEngine.DuplicateNames(snapshot, cancellationToken);
     }
 }

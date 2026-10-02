@@ -14,7 +14,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 
     // cancellationToken is the token that could have stopped the parse; a cancelled result throws
     // OperationCanceledException carrying it.
-    internal MftResult(IntPtr resultPtr, string driveLetter, double marshalMs,
+    internal MftResult(IntPtr resultPtr, string driveLetter,
         CancellationToken cancellationToken = default)
     {
         _resultPtr = resultPtr;
@@ -53,7 +53,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 
         Timings = new MftParseTimings(
             _result.TotalRecords, _result.IoTimeMs, _result.FixupTimeMs, _result.ParseTimeMs,
-            _result.TotalTimeMs, marshalMs);
+            _result.TotalTimeMs, 0);
     }
 
     /// <summary>

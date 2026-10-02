@@ -456,7 +456,16 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void Factory_ScanProgress_PopulatesProgress()
     {
-        var progress = new BrokerScanProgress("E", 10, 20, 30, 40, TimeSpan.FromSeconds(1));
+        var progress = new BrokerScanProgress
+        {
+            DriveLetter = "E",
+            Phase = BrokerScanPhase.Parsing,
+            RecordsProcessed = 10,
+            BytesProcessed = 20,
+            TotalRecords = 30,
+            TotalBytes = 40,
+            Elapsed = TimeSpan.FromSeconds(1)
+        };
 
         var frame = BrokerFrame.ScanProgress(progress);
 

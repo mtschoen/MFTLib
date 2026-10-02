@@ -19,6 +19,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly List<DriveStatus> _blocklessDriveStatuses = [];
     readonly Dictionary<ushort, BlockValidationResult> _discardedBlocksByOrdinal = [];
     readonly Dictionary<ushort, int> _accessDeniedSubtreeCountByOrdinal = [];
+    readonly Dictionary<ushort, int> _skippedRecordCountByOrdinal = [];
     readonly Dictionary<ushort, string> _mftProducerFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, string> _watchFailureMessagesByOrdinal = [];
     readonly Dictionary<ushort, BlockSource> _blockSourcesByOrdinal = [];
@@ -32,7 +33,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly Dictionary<ushort, JournalCheckpointLoss> _checkpointLossesByOrdinal = [];
 
     readonly Dictionary<char, BlockOwnerLock> _canonicalLocksByLetter = [];
-    readonly List<RetiredSnapshot> _retiredSnapshots = [];
+    readonly List<SnapshotRelease> _retiredSnapshots = [];
     readonly FileIndexOptions _options;
 
     /// <summary>
@@ -50,16 +51,6 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     effective token is this one, or this one linked with the caller's own.
     /// </summary>
     internal CancellationToken DisposalToken => _disposalCancellation.Token;
-
-    sealed class RetiredSnapshot
-    {
-        internal RetiredSnapshot(Snapshot snapshot)
-        {
-            Release = snapshot.ReleaseState;
-        }
-
-        internal SnapshotRelease Release { get; }
-    }
 
     /// <summary>
     ///     Guards every drive's watch records and every ordinal-keyed record, and is the one step
@@ -354,18 +345,27 @@ public sealed partial class FileIndex : IAsyncDisposable
         var discardedBlock = _discardedBlocksByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var reason)
             ? reason
             : (BlockValidationResult?)null;
-        var annotations = new DriveStatusAnnotations(
-            discardedBlock,
-            _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            GetWatchCatchUpStateLocked(driveBlock.DriveLetter),
-            _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal));
         var runtime = GetDriveRuntime(driveBlock.DriveLetter);
-        return DescribeDrive(driveBlock, in annotations) with
+        ref readonly var header = ref driveBlock.Block.Header;
+        return new DriveStatus
         {
+            DriveLetter = driveBlock.DriveLetter,
+            ProducerKind = driveBlock.ProducerKind,
+            BlockSource = _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            CacheSlot = _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            State = header.IsCompactionNeeded ? DriveState.Stale : DriveState.Ready,
+            RowCount = header.RowCount,
+            LiveRowCount = header.LiveRowCount,
+            ScanTimestamp = header.ScanTimestampUtc,
+            CompactionNeeded = header.IsCompactionNeeded,
+            WatchSupported = driveBlock.ProducerKind == ProducerKind.Mft,
+            AccessDeniedSubtreeCount = _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            SkippedRecordCount = _skippedRecordCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            DiscardedBlock = discardedBlock,
+            MftProducerFailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            WatchFailureMessage = _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            WatchCatchUp = GetWatchCatchUpStateLocked(driveBlock.DriveLetter),
+            CheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,
             WatchRequested = runtime.WatchRequested,
             WatchStateVersion = runtime.WatchStateVersion
@@ -376,40 +376,5 @@ public sealed partial class FileIndex : IAsyncDisposable
     {
         // Every configured drive of an undisposed index is online or blockless once it settles.
         return _blocklessDriveStatuses.First(status => char.ToUpperInvariant(status.DriveLetter) == driveLetter);
-    }
-
-    /// <summary>Everything a drive's status carries that is not read off its block header.</summary>
-    readonly record struct DriveStatusAnnotations(
-        BlockValidationResult? DiscardedBlock,
-        int AccessDeniedSubtreeCount,
-        string? MftProducerFailureMessage,
-        string? WatchFailureMessage,
-        BlockSource BlockSource,
-        CacheSlotState CacheSlot,
-        WatchCatchUpState WatchCatchUp,
-        JournalCheckpointLoss? CheckpointLoss);
-
-    static DriveStatus DescribeDrive(DriveBlock driveBlock, in DriveStatusAnnotations annotations)
-    {
-        ref readonly var header = ref driveBlock.Block.Header;
-        return new DriveStatus
-        {
-            DriveLetter = driveBlock.DriveLetter,
-            ProducerKind = driveBlock.ProducerKind,
-            BlockSource = annotations.BlockSource,
-            CacheSlot = annotations.CacheSlot,
-            State = header.IsCompactionNeeded ? DriveState.Stale : DriveState.Ready,
-            RowCount = header.RowCount,
-            LiveRowCount = header.LiveRowCount,
-            ScanTimestamp = header.ScanTimestampUtc,
-            CompactionNeeded = header.IsCompactionNeeded,
-            WatchSupported = driveBlock.ProducerKind == ProducerKind.Mft,
-            AccessDeniedSubtreeCount = annotations.AccessDeniedSubtreeCount,
-            DiscardedBlock = annotations.DiscardedBlock,
-            MftProducerFailureMessage = annotations.MftProducerFailureMessage,
-            WatchFailureMessage = annotations.WatchFailureMessage,
-            WatchCatchUp = annotations.WatchCatchUp,
-            CheckpointLoss = annotations.CheckpointLoss
-        };
     }
 }

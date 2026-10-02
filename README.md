@@ -134,7 +134,7 @@ dotnet build external\MFTLib\MFTLibTestExtensions\MFTLibTestExtensions.csproj -c
 | Full in-memory index | `MftVolume.ReadAllRecords` |
 | Process records while native memory is alive | `MftVolume.StreamRecords` |
 | Resume from a persisted journal cursor | `MftVolume.ReadUsnJournal` |
-| Continuously receive changes | `WatchUsnJournalWithCursor` or broker batches |
+| Continuously receive changes | `WatchUsnJournal` or broker batches |
 | Explain a rescan the change journal forced, at open or mid-watch | `DriveStatus.CheckpointLoss` |
 
 ## Quick start: find records by name
@@ -188,13 +188,6 @@ var containing = volume.FindByName(
 
 `ExactMatch` and `Contains` are case-insensitive. Add `ResolvePaths` only when full paths
 are needed; path resolution has additional CPU and memory cost.
-
-Convenience methods are available for exact-name path searches:
-
-```csharp
-IEnumerable<string> directories = volume.FindDirectories("node_modules");
-IEnumerable<string> files = volume.FindFiles("desktop.ini");
-```
 
 `MatchFlags.IncludeFreed` opts a scan into returning freed base records whose
 attributes still validate. These rows have `InUse == false` and retain the stored
@@ -286,7 +279,7 @@ and perform another full scan/catch-up cycle.
 ### Watch live changes
 
 ```csharp
-await foreach (var (entries, cursor) in volume.WatchUsnJournalWithCursor(
+await foreach (var (entries, cursor) in volume.WatchUsnJournal(
     persistedCursor,
     cancellationToken))
 {
@@ -298,8 +291,7 @@ await foreach (var (entries, cursor) in volume.WatchUsnJournalWithCursor(
 ```
 
 The watch blocks in the kernel without polling. Cancelling the token calls `CancelIoEx`
-to release the pending read. `WatchUsnJournal` provides the same batches without the
-post-batch cursor.
+to release the pending read. Each batch includes its post-batch cursor for persistence.
 
 USN entries include record and parent IDs, USN, UTC timestamp, reason flags, file
 attributes, filename, and convenience flags such as `IsCreate`, `IsDelete`, `IsRename`,

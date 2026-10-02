@@ -167,7 +167,7 @@ internal sealed class OpenScenario : IDisposable
                 ? scripted
                 : null;
             return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false)
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0)
             {
                 CatchUpLoss = loss
             };

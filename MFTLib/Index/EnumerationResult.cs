@@ -7,6 +7,5 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed record EnumerationResult(
     uint RowCount,
-    uint NamePoolUsedBytes,
     int AccessDeniedSubtreeCount,
     bool CompactionNeeded);

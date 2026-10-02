@@ -10,7 +10,7 @@ namespace MFTLib.Index;
 ///     deterministic release path, used by index disposal and by tests that tear a snapshot down
 ///     at a point they choose; released snapshots reject subsequent handle reads.
 /// </summary>
-public sealed class Snapshot
+internal sealed class Snapshot
 {
     readonly SnapshotRelease _release;
 

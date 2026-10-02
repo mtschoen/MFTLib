@@ -222,7 +222,7 @@ public sealed partial class FileIndex
             {
                 Block = produced.Block,
                 BlockSource = BlockSource.ProducedByScan,
-                AccessDeniedSubtreeCount = produced.SkippedRecordCount,
+                SkippedRecordCount = produced.SkippedRecordCount,
                 CatchUpLoss = produced.CatchUpLoss
             };
         }
@@ -238,8 +238,7 @@ public sealed partial class FileIndex
     ///     are already durable in the returned <see cref="MftBlockProduceResult.Block" />'s header by
     ///     the time it gets here (the producer stamps them before its own <c>Complete()</c> call, the
     ///     one flush-safe place to do it), so this method does not write them again.
-    ///     <see cref="MftBlockProduceResult.CompactionNeeded" /> is not read either:
-    ///     <see cref="DescribeDrive" /> derives <see cref="DriveStatus.CompactionNeeded" /> from the
+    ///     <see cref="DescribeOnlineDriveBlock" /> derives <see cref="DriveStatus.CompactionNeeded" /> from the
     ///     header's own <see cref="BlockFlags.CompactionNeeded" /> flag, which the producer sets on
     ///     the block directly. The cursor is instead used for a consistency check: a producer that
     ///     reports one cursor but stamped a different one into the block it built violated its own

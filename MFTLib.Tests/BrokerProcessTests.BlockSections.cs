@@ -112,9 +112,27 @@ public partial class BrokerProcessTests
         broker.WriteSection(broker.Sections.Single().SectionName, Armed);
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteCursor(writer, Armed));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
-            new BrokerScanProgress("C", 50, 1000, 100, 2000, TimeSpan.FromMilliseconds(50))));
+            new BrokerScanProgress
+            {
+                DriveLetter = "C",
+                Phase = BrokerScanPhase.Parsing,
+                RecordsProcessed = 50,
+                BytesProcessed = 1000,
+                TotalRecords = 100,
+                TotalBytes = 2000,
+                Elapsed = TimeSpan.FromMilliseconds(50)
+            }));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
-            new BrokerScanProgress("C", 100, 2000, 100, 2000, TimeSpan.FromMilliseconds(100))));
+            new BrokerScanProgress
+            {
+                DriveLetter = "C",
+                Phase = BrokerScanPhase.Parsing,
+                RecordsProcessed = 100,
+                BytesProcessed = 2000,
+                TotalRecords = 100,
+                TotalBytes = 2000,
+                Elapsed = TimeSpan.FromMilliseconds(100)
+            }));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanReady(writer, 21, 18, 0));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteJournalBatch(writer, Armed, []));
         await channel.DisposeAsync();
@@ -151,7 +169,16 @@ public partial class BrokerProcessTests
         var section = broker.Sections.Single();
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteCursor(writer, Armed));
         await HostChannelHarness.WriteFrameAsync(channel, writer => BrokerProtocol.WriteScanProgress(writer,
-            new BrokerScanProgress("C", 10, 200, 100, 2000, TimeSpan.FromMilliseconds(10))));
+            new BrokerScanProgress
+            {
+                DriveLetter = "C",
+                Phase = BrokerScanPhase.Parsing,
+                RecordsProcessed = 10,
+                BytesProcessed = 200,
+                TotalRecords = 100,
+                TotalBytes = 2000,
+                Elapsed = TimeSpan.FromMilliseconds(10)
+            }));
         await progressReceived.Task.WaitAsync(HangGuard);
 
         Assert.IsFalse(scan.IsCompleted, "a ScanProgress frame must not complete the drive");

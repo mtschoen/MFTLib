@@ -131,20 +131,35 @@ public class FileIndexWatchTests
         StringAssert.Contains(exception.Message, "enumeration producer");
     }
 
-    [TestMethod]
-    public void ApplyJournalEntries_CreatesARowAndRaisesChanged()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ApplyJournalEntries_CreatesARowAndRaisesChanged(bool throughTestExtensions)
     {
         var observed = new List<FileChange>();
         _index.Changed += observed.Add;
 
-        var applied = _index.ApplyJournalEntries('T',
-            [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)],
-            journalId: 5, nextUsn: 100);
+        UsnJournalEntry[] entries = [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)];
+        var applied = throughTestExtensions
+            ? MFTLibTestExtensions.FileIndexTestAccess.ApplyJournalEntries(_index, 'T', entries, journalId: 5, nextUsn: 100)
+            : _index.ApplyJournalEntries('T', entries, journalId: 5, nextUsn: 100);
 
         Assert.AreEqual(1, applied.Count);
         Assert.AreEqual(1, observed.Count);
         Assert.AreEqual(FileChangeKind.Created, observed[0].Kind);
         Assert.AreEqual("injected.txt", observed[0].Entry.Name);
+        Assert.AreEqual(observed[0], applied[0]);
+        var root = _index.Root('T');
+        Assert.AreEqual(5UL, root.DriveBlock.Block.Header.UsnJournalId);
+        Assert.AreEqual(100L, root.DriveBlock.Block.Header.UsnNextUsn);
+        Assert.AreEqual(1, _index.Search(new SearchQuery("injected")).Count);
+    }
+
+    [TestMethod]
+    public void ApplyJournalEntries_TestExtensionRejectsNullIndex()
+    {
+        Assert.ThrowsException<ArgumentNullException>(() =>
+            MFTLibTestExtensions.FileIndexTestAccess.ApplyJournalEntries(null!, 'T', [], 5, 100));
     }
 
     [TestMethod]

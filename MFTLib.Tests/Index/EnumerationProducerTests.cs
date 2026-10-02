@@ -89,34 +89,11 @@ public class EnumerationProducerTests
     }
 
     [TestMethod]
-    public void Options_RoundTripsTheConstructorArgument()
-    {
-        var options = new EnumerationProducerOptions { RootDirectory = _treeRoot, DriveLetter = 'T' };
-        var producer = new EnumerationProducer(options);
-
-        Assert.AreEqual(_treeRoot, producer.Options.RootDirectory);
-        Assert.AreEqual('T', producer.Options.DriveLetter);
-    }
-
-    [TestMethod]
     public void CreateDirectoryEnumerationOptions_CarriesTheMeasuredFetchBufferSize()
     {
         var options = EnumerationProducer.CreateDirectoryEnumerationOptions();
 
         Assert.AreEqual(64 * 1024, options.BufferSize);
-    }
-
-    [TestMethod]
-    public void EnumerationResult_EqualityComparesEveryField()
-    {
-        var first = new EnumerationResult(7u, 128u, 2, CompactionNeeded: true);
-        var same = new EnumerationResult(7u, 128u, 2, CompactionNeeded: true);
-        var differentNamePoolUsage = new EnumerationResult(7u, 256u, 2, CompactionNeeded: true);
-
-        Assert.AreEqual(128u, first.NamePoolUsedBytes);
-        Assert.AreEqual(first, same);
-        Assert.AreEqual(first.GetHashCode(), same.GetHashCode());
-        Assert.AreNotEqual(first, differentNamePoolUsage);
     }
 
     [TestMethod]

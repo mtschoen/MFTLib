@@ -62,6 +62,28 @@ public class FileIndexProducerSelectionTests
     }
 
     [TestMethod]
+    public async Task Mft_SkippedRecordsAreSeparateFromAccessDeniedSubtreesAndResetOnRescan()
+    {
+        var skippedRecordCount = new[] { 3 };
+        Task<MftBlockProduceResult> Produce(MftBlockProduceRequest request, CancellationToken _) =>
+            Task.FromResult(new MftBlockProduceResult(
+                MftBlockFixture.WriteAndOpen(request, 7, 4096, FixedMoment), 7, 4096, skippedRecordCount[0]));
+
+        var options = Options(ProducerPolicy.Mft, Produce);
+        await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
+        {
+            Assert.AreEqual(3, index.Drives.Single().SkippedRecordCount);
+            Assert.AreEqual(0, index.Drives.Single().AccessDeniedSubtreeCount);
+
+            skippedRecordCount[0] = 0;
+            await index.RescanAsync('T', CancellationToken.None);
+
+            Assert.AreEqual(0, index.Drives.Single().SkippedRecordCount);
+            Assert.AreEqual(0, index.Drives.Single().AccessDeniedSubtreeCount);
+        }
+    }
+
+    [TestMethod]
     public async Task Mft_MarksTheFailedDriveAndKeepsTheOthers()
     {
         var firstRoot = Path.Combine(_treeRoot, "first");
@@ -80,7 +102,7 @@ public class FileIndexProducerSelectionTests
             MftProducer = (request, _) => request.DriveLetter == 'T'
                 ? throw new UnauthorizedAccessException("elevation declined")
                 : Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, 7, 4096, FixedMoment),
-                    7, 4096, 0, false))
+                    7, 4096, 0))
         }, TestContext.CancellationTokenSource.Token);
 
         var failed = index.Drives.Single(drive => drive.DriveLetter == 'T');
@@ -156,7 +178,7 @@ public class FileIndexProducerSelectionTests
         {
             invocationCount++;
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -242,7 +264,7 @@ public class FileIndexProducerSelectionTests
             }
 
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, 7, 4096, FixedMoment),
-                7, 4096, 0, false));
+                7, 4096, 2));
         }
 
         var options = Options(ProducerPolicy.Mft, Produce);
@@ -254,11 +276,15 @@ public class FileIndexProducerSelectionTests
             Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
             Assert.AreEqual("elevation declined during rescan", index.Drives.Single().MftProducerFailureMessage);
             Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().BlockSource);
+            Assert.AreEqual(2, index.Drives.Single().SkippedRecordCount);
+            Assert.AreEqual(0, index.Drives.Single().AccessDeniedSubtreeCount);
         }
 
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(4096L, reopened.Root('T').DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(DriveState.Ready, reopened.Drives.Single().State);
+        Assert.AreEqual(0, reopened.Drives.Single().SkippedRecordCount);
+        Assert.AreEqual(0, reopened.Drives.Single().AccessDeniedSubtreeCount);
     }
 
     [TestMethod]
@@ -275,7 +301,7 @@ public class FileIndexProducerSelectionTests
 
             var nextUsn = 4096L * invocationCount;
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, 7, nextUsn, FixedMoment),
-                7, nextUsn, 0, false));
+                7, nextUsn, 0));
         }
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, Produce),
@@ -298,7 +324,7 @@ public class FileIndexProducerSelectionTests
         {
             var nextUsn = 4096L * ++invocationCount;
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, 7, nextUsn, FixedMoment),
-                7, nextUsn, 0, false));
+                7, nextUsn, 0));
         }
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, Produce),
@@ -321,7 +347,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> FakeProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         var options = Options(ProducerPolicy.Mft, FakeProducer);
@@ -338,7 +364,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> MismatchedProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 99, NextUsn: 12345, SkippedRecordCount: 0, CompactionNeeded: false));
+                JournalId: 99, NextUsn: 12345, SkippedRecordCount: 0));
         }
 
         var options = Options(ProducerPolicy.Mft, MismatchedProducer);
@@ -358,7 +384,7 @@ public class FileIndexProducerSelectionTests
         {
             invocationCount++;
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         var recoveryOptions = Options(ProducerPolicy.Mft, CountingProducer);
@@ -378,7 +404,7 @@ public class FileIndexProducerSelectionTests
         {
             invocationCount++;
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         var options = Options(ProducerPolicy.Enumeration, FakeProducer);
@@ -401,7 +427,7 @@ public class FileIndexProducerSelectionTests
         {
             var nextUsn = 4096L * ++invocationCount;
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, 7, nextUsn, FixedMoment),
-                7, nextUsn, 0, false));
+                7, nextUsn, 0));
         }
 
         await using var index = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, Produce),
@@ -472,7 +498,7 @@ public class FileIndexProducerSelectionTests
         {
             invocationCount++;
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -534,7 +560,7 @@ public class FileIndexProducerSelectionTests
             }
 
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0, CompactionNeeded: false));
+                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -563,7 +589,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> MismatchedProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 99, NextUsn: 12345, SkippedRecordCount: 0, CompactionNeeded: false));
+                JournalId: 99, NextUsn: 12345, SkippedRecordCount: 0));
         }
 
         var deletions = new List<string>();

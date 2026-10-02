@@ -17,7 +17,7 @@ namespace MFTLib.Index;
 ///     close between renames) carries a new name or parent and classifies again; only the
 ///     repetition of the applied name and parent is the echo.
 /// </summary>
-public sealed class JournalMutator
+internal sealed class JournalMutator
 {
     public JournalMutator(BlockWriter writer)
     {

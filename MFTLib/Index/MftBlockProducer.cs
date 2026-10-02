@@ -39,15 +39,13 @@ public sealed record MftBlockProduceRequest
 ///     One finished block plus the journal cursor armed before the scan began, so a watch
 ///     resumes from before the scan rather than after it and nothing that changed during the
 ///     scan is lost. <paramref name="SkippedRecordCount" /> counts records the producer could
-///     not place, which becomes the drive's warning the same way an enumeration walk's
-///     access-denied subtree count does.
+///     not place, reported as <see cref="DriveStatus.SkippedRecordCount" />.
 /// </summary>
 public sealed record MftBlockProduceResult(
     BlockFile Block,
     ulong JournalId,
     long NextUsn,
-    int SkippedRecordCount,
-    bool CompactionNeeded)
+    int SkippedRecordCount)
 {
     /// <summary>
     ///     Set only when the journal proved that catch-up after the scan lost the armed cursor: the

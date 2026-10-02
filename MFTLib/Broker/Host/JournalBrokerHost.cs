@@ -14,7 +14,7 @@ public sealed partial class JournalBrokerHost
     /// <summary>How long a closed control pipe waits for every channel to end before the session returns.</summary>
     internal static readonly TimeSpan ControlClosedGracePeriod = TimeSpan.FromSeconds(5);
 
-    /// <summary>How long an <see cref="BrokerFrameKind.OpenChannel" /> request waits for its drive pipe to connect.</summary>
+    /// <summary>How long a channel-open request waits for its drive pipe to connect.</summary>
     internal static readonly TimeSpan ChannelConnectTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>How long a connected drive pipe waits for its one request frame.</summary>

@@ -6,7 +6,7 @@ namespace MFTLib.Index;
 ///     holding it is released, which is what lets a handed-out handle stay valid across a
 ///     rescan without dangling.
 /// </summary>
-public sealed class DriveBlock
+internal sealed class DriveBlock
 {
     readonly Lock _gate = new();
     int _referenceCount;

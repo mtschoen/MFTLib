@@ -110,4 +110,4 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 
 ## Roadmap
 
-See `.plan` for details. Current release is **0.3.0** with USN journal support (`QueryUsnJournal`, `ReadUsnJournal`, `WatchUsnJournal`). Primary consumer is [file-wizard](C:\Users\mtsch\file-wizard).
+See `.plan` for details. Current release is **0.3.0** with USN journal support (`QueryUsnJournal`, `ReadUsnJournal`, and `WatchUsnJournal`, which yields `(Entries, Cursor)` batches). Primary consumer is [file-wizard](C:\Users\mtsch\file-wizard).

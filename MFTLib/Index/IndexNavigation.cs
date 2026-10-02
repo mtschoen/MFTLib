@@ -184,20 +184,3 @@ internal static class IndexNavigation
             $"Parent chain for row {rowIndex} exceeds the supported depth of {BlockLayout.MaximumPathDepth} hops.");
     }
 }
-
-/// <summary>
-///     Narrow internal surface the test assembly uses to exercise navigation without making the
-///     helpers public. MFTLib.Tests is already an InternalsVisibleTo friend of MFTLib.
-/// </summary>
-internal static class IndexNavigationBridge
-{
-    internal static bool IsUnder(FileEntry candidate, FileEntry ancestor)
-    {
-        return IndexNavigation.IsUnder(candidate, ancestor);
-    }
-
-    internal static uint RowIndexOf(FileEntry entry)
-    {
-        return entry.RowIndex;
-    }
-}

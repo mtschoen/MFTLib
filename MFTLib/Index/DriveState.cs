@@ -10,7 +10,6 @@ namespace MFTLib.Index;
 public enum DriveState
 {
     Ready,
-    Scanning,
     Stale,
     Offline,
 

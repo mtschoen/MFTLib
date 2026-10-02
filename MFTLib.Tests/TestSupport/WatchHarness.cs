@@ -352,7 +352,7 @@ internal sealed class WatchHarness : IDisposable
                     throw new InvalidOperationException($"Synthetic watch block was invalid: {validation}.");
         _producedBlocks[driveLetter] = block;
         return new MftBlockProduceResult(block, cursor.JournalId, cursor.NextUsn,
-            SkippedRecordCount: 0, CompactionNeeded: false)
+            SkippedRecordCount: 0)
         {
             CatchUpLoss = scripted.CatchUpLoss
         };

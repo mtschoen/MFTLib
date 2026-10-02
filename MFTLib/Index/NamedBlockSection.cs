@@ -10,7 +10,7 @@ namespace MFTLib.Index;
 ///     are one act. Section names are unqualified and session-local.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public static class NamedBlockSection
+internal static class NamedBlockSection
 {
     /// <summary>Creates an initialized block and the lifetime of its published section name.</summary>
     /// <remarks>

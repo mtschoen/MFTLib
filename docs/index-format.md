@@ -6,6 +6,18 @@ same time. A block is rebuildable from the filesystem, so there is no migration
 code: incompatible format, identity, serial, or completeness means reject the
 cache and rescan on a normal open.
 
+## Scan diagnostics
+
+`DriveStatus.AccessDeniedSubtreeCount` counts subtrees the enumeration producer could
+not enter during the scan, including directories that vanished before entry.
+`DriveStatus.SkippedRecordCount` counts records the MFT producer could not place,
+including unsupported record identifiers, empty names and exhausted block capacity.
+Profile-filtered records contribute to neither count. These diagnostics describe the
+current block's production: successful rescans replace the counts, failed or cancelled
+rescans retain them with the block, and warm starts report zero because these counts
+are not stored in the block header. `DriveStatus.CompactionNeeded` reads the header's
+compaction flag independently of either count.
+
 ## File name
 
 `<drive letter>-<volume serial as eight uppercase hexadecimal digits>.mlix`, for

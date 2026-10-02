@@ -35,17 +35,17 @@ public class LookupEngineRootMatchingTests
         ]);
         try
         {
-            var inner = LookupEngineTestAccess.Find(snapshot, Path.Combine(innerRoot, "inner.txt"));
+            var inner = LookupEngine.Find(snapshot, Path.Combine(innerRoot, "inner.txt"));
             Assert.IsTrue(inner.HasValue);
             Assert.AreEqual('I', inner.Value.Id.DriveLetter);
 
-            var outer = LookupEngineTestAccess.Find(snapshot, Path.Combine(outerRoot, "outer.txt"));
+            var outer = LookupEngine.Find(snapshot, Path.Combine(outerRoot, "outer.txt"));
             Assert.IsTrue(outer.HasValue);
             Assert.AreEqual('O', outer.Value.Id.DriveLetter);
 
             // "inner.txt" is not a child of the outer block's root, so the longest root having
             // won is exactly what makes this resolve at all.
-            Assert.IsNull(LookupEngineTestAccess.Find(snapshot,
+            Assert.IsNull(LookupEngine.Find(snapshot,
                 Path.Combine(innerRoot, "absent.txt")));
         }
         finally
@@ -63,9 +63,9 @@ public class LookupEngineRootMatchingTests
         var snapshot = Snapshot.Create([new DriveBlock('T', 0, block, rootDirectoryPath: root)]);
         try
         {
-            Assert.IsNotNull(LookupEngineTestAccess.Find(snapshot,
+            Assert.IsNotNull(LookupEngine.Find(snapshot,
                 Path.Combine(root, "documents", "notes.txt")));
-            Assert.IsNotNull(LookupEngineTestAccess.Find(snapshot,
+            Assert.IsNotNull(LookupEngine.Find(snapshot,
                 Path.Combine(root, "DOCUMENTS", "NOTES.TXT")));
         }
         finally
@@ -84,9 +84,9 @@ public class LookupEngineRootMatchingTests
         ]);
         try
         {
-            Assert.IsNotNull(LookupEngineTestAccess.Find(snapshot, Path.Combine(root, "Readme.md")));
+            Assert.IsNotNull(LookupEngine.Find(snapshot, Path.Combine(root, "Readme.md")));
 
-            var mismatchedCase = LookupEngineTestAccess.Find(snapshot, Path.Combine(root, "README.MD"));
+            var mismatchedCase = LookupEngine.Find(snapshot, Path.Combine(root, "README.MD"));
             if (OperatingSystem.IsWindows())
             {
                 Assert.IsNotNull(mismatchedCase, "a Windows enumeration block folds case the way the host does");
@@ -118,7 +118,7 @@ public class LookupEngineRootMatchingTests
         ]);
         try
         {
-            var entry = LookupEngineTestAccess.Find(snapshot, Path.Combine(root, "visible.txt"));
+            var entry = LookupEngine.Find(snapshot, Path.Combine(root, "visible.txt"));
             Assert.IsTrue(entry.HasValue);
             Assert.AreEqual('T', entry.Value.Id.DriveLetter);
         }
@@ -139,7 +139,7 @@ public class LookupEngineRootMatchingTests
         try
         {
             var mixedPath = root.Replace('\\', '/').Replace("/Users/", @"\Users/") + @"\file.txt";
-            var entry = LookupEngineTestAccess.Find(snapshot, mixedPath);
+            var entry = LookupEngine.Find(snapshot, mixedPath);
             if (OperatingSystem.IsWindows())
             {
                 Assert.IsTrue(entry.HasValue);
@@ -180,11 +180,11 @@ public class LookupEngineRootMatchingTests
         try
         {
             var expected = FileEntry.Create(snapshot, 0, backslashFile);
-            var resolved = LookupEngineTestAccess.Find(snapshot, expected.Path);
+            var resolved = LookupEngine.Find(snapshot, expected.Path);
 
             Assert.IsTrue(resolved.HasValue);
             Assert.AreEqual(expected.Id, resolved.Value.Id);
-            Assert.AreNotEqual(nestedFile, IndexNavigationBridge.RowIndexOf(resolved.Value));
+            Assert.AreNotEqual(nestedFile, resolved.Value.RowIndex);
         }
         finally
         {
@@ -212,10 +212,10 @@ public class LookupEngineRootMatchingTests
         var outerOnly = Snapshot.Create([outerBlock]);
         try
         {
-            var entry = LookupEngineTestAccess.Find(snapshot, Path.Combine(secondRoot, "file.txt"));
+            var entry = LookupEngine.Find(snapshot, Path.Combine(secondRoot, "file.txt"));
             Assert.IsTrue(entry.HasValue);
             Assert.AreEqual('I', entry.Value.Id.DriveLetter);
-            Assert.IsNull(LookupEngineTestAccess.Find(outerOnly, Path.Combine(secondRoot, "file.txt")),
+            Assert.IsNull(LookupEngine.Find(outerOnly, Path.Combine(secondRoot, "file.txt")),
                 "a string prefix without a path boundary must not select the outer root");
         }
         finally

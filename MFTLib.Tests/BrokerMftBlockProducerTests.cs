@@ -31,7 +31,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.AreEqual(result.JournalId, block.Header.UsnJournalId);
         Assert.AreEqual(result.NextUsn, block.Header.UsnNextUsn);
         Assert.AreEqual(0, result.SkippedRecordCount);
-        Assert.IsFalse(result.CompactionNeeded);
+        Assert.IsFalse(result.Block.Header.IsCompactionNeeded);
         Assert.AreEqual("file.txt", NamePool.ReadRowName(block, 20).ToString());
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         Assert.IsNotNull(completed);
@@ -181,6 +181,20 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     }
 
     [TestMethod]
+    public async Task Produce_ReportsRecordsTheRowWriterCouldNotPlace()
+    {
+        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _) =>
+            [[Record(5, ".", 3), Record(20, "file.txt"), Record(21, ""), Record((ulong)uint.MaxValue + 1, "overflow")]]));
+
+        var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
+        using var block = result.Block;
+
+        Assert.AreEqual(2, result.SkippedRecordCount);
+        Assert.AreEqual("file.txt", NamePool.ReadRowName(block, 20).ToString());
+        Assert.IsFalse(block.Header.IsCompactionNeeded);
+    }
+
+    [TestMethod]
     public async Task Produce_ReportsCompactionFlag()
     {
         await using var broker = CreateBrokerChangingBlock(block => block.Header.Flags |= BlockFlags.CompactionNeeded);
@@ -188,7 +202,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);
         using var block = result.Block;
 
-        Assert.IsTrue(result.CompactionNeeded);
+        Assert.IsTrue(result.Block.Header.IsCompactionNeeded);
     }
 
     [TestMethod]

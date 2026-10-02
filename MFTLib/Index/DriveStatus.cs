@@ -44,8 +44,11 @@ public sealed record DriveStatus
     /// <summary>True only for an MFT-backed drive with a block and a live-watch cursor.</summary>
     public required bool WatchSupported { get; init; }
 
-    /// <summary>How many subtrees the producer skipped because it was denied access.</summary>
+    /// <summary>How many subtrees the enumeration producer could not enter during the latest scan.</summary>
     public int AccessDeniedSubtreeCount { get; init; }
+
+    /// <summary>How many records the MFT producer could not place during the latest scan.</summary>
+    public int SkippedRecordCount { get; init; }
 
     /// <summary>
     ///     Set when opening this drive found an existing block at its cache path, rejected it,

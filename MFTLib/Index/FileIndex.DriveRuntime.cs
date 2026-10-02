@@ -22,10 +22,7 @@ public sealed partial class FileIndex
         Faulted,
 
         /// <summary>Stopped or superseded; teardown is in progress.</summary>
-        Retiring,
-
-        /// <summary>Teardown has finished.</summary>
-        Drained
+        Retiring
     }
 
     /// <summary>Where a drive stands in its automatic recovery (spec 2.6.5).</summary>
@@ -294,7 +291,7 @@ public sealed partial class FileIndex
     ///     it, or returns null when the drive has none. The caller holds <see cref="_stateLock" />
     ///     and calls <see cref="WatchInstance.RequestStop" /> on the result after releasing it.
     ///     An instance whose teardown already finished (a faulted one whose pump has returned) goes
-    ///     straight to drained, since there is nothing left for a successor to wait for.
+    ///     straight out, since there is nothing left for a successor to wait for.
     /// </summary>
     static WatchInstance? RetireCurrentLocked(DriveRuntime runtime)
     {
@@ -307,7 +304,6 @@ public sealed partial class FileIndex
         instance.CatchUp.Cancel();
         if (instance.Drained.IsCompleted)
         {
-            instance.State = WatchInstanceState.Drained;
             return instance;
         }
 
@@ -319,17 +315,12 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Finishes an instance's teardown. An instance that is still current keeps its state (a
     ///     faulted instance stays faulted and current until a stop, a start, or a rescan replaces
-    ///     it); any other goes to drained and stops being its drive's retiring instance.
+    ///     it). The retiring instance is detached when its teardown completes.
     /// </summary>
     void CompleteInstanceDrain(DriveRuntime runtime, WatchInstance instance)
     {
         lock (_stateLock)
         {
-            if (!ReferenceEquals(runtime.Current, instance))
-            {
-                instance.State = WatchInstanceState.Drained;
-            }
-
             if (ReferenceEquals(runtime.Retiring, instance))
             {
                 runtime.Retiring = null;

@@ -8,15 +8,15 @@ public sealed partial class FileIndex
     ///     Raised once per applied change, in the order the journal batch delivered them, to
     ///     every subscriber, even when an earlier subscriber threw for an earlier change (or for
     ///     this one). The mutation and the USN cursor are already durable by the time any handler
-    ///     runs: <see cref="ApplyJournalEntries" /> applies the whole batch and releases its drive's
+    ///     runs: the watch applies the whole batch and releases its drive's
     ///     write gate before raising this event at all, so a throwing handler never undoes anything
     ///     and never stops another handler from seeing the rest of the batch. A close record that
     ///     repeats only reasons its open cycle already reported applies its metadata to the
     ///     block without raising this event, so within one block a transition raises one change even
-    ///     though NTFS writes at least two journal records for it. See
-    ///     <see cref="ApplyJournalEntries" /> for how a handler exception is surfaced to the
-    ///     caller. A rescan can publish before an old change is delivered, and its new watch can
-    ///     repeat that change during catch-up. Queries can lag until that watch is CaughtUp.
+    ///     though NTFS writes at least two journal records for it. A handler exception is reported
+    ///     through <see cref="WatchFaulted" /> as <see cref="WatchFaultKind.Subscriber" />. A rescan
+    ///     can publish before an old change is delivered, and its new watch can repeat that change
+    ///     during catch-up. Queries can lag until that watch is CaughtUp.
     ///     A handler must not block on a lifecycle call of this index: see
     ///     <see cref="WatchFaulted" />.
     /// </summary>
@@ -83,7 +83,7 @@ public sealed partial class FileIndex
     ///     <see cref="Changed" /> is raised, so a subscriber's handler never runs while a commit
     ///     is blocked waiting on this call.
     /// </remarks>
-    public IReadOnlyList<FileChange> ApplyJournalEntries(char driveLetter,
+    internal IReadOnlyList<FileChange> ApplyJournalEntries(char driveLetter,
         IReadOnlyList<UsnJournalEntry> entries, ulong journalId, long nextUsn)
     {
         var changes = ApplyJournalEntriesCore(driveLetter, instance: null, entries, journalId, nextUsn);

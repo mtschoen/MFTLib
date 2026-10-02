@@ -71,11 +71,9 @@ public partial class UsnJournalSyntheticTests
     }
 
     [DataTestMethod]
-    [DataRow(false, true)]
-    [DataRow(true, true)]
-    [DataRow(false, false)]
-    [DataRow(true, false)]
-    public async Task Watch_IdleNativeRead_CancellationCompletes(bool withCursor, bool beforeIssue)
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task Watch_IdleNativeRead_CancellationCompletes(bool beforeIssue)
     {
         var pipe = await IdleUsnPipe.CreateAsync(1);
         try
@@ -83,7 +81,7 @@ public partial class UsnJournalSyntheticTests
             FileUtilities._getVolumeHandle = pipe.BorrowHandle;
             using var volume = MftVolume.Open("C");
             using var cancellation = new CancellationTokenSource();
-            var watch = ConsumeIdleWatchAsync(volume, withCursor, cancellation.Token);
+            var watch = ConsumeIdleWatchAsync(volume, cancellation.Token);
             try
             {
                 await IdleUsnPipe.AwaitSignalAsync(pipe.BeforeIssue);
@@ -117,23 +115,13 @@ public partial class UsnJournalSyntheticTests
         }
     }
 
-    static async Task ConsumeIdleWatchAsync(MftVolume volume, bool withCursor, CancellationToken token)
+    static async Task ConsumeIdleWatchAsync(MftVolume volume, CancellationToken token)
     {
         try
         {
-            if (withCursor)
+            await foreach (var batch in volume.WatchUsnJournal(Cursor, token))
             {
-                await foreach (var batch in volume.WatchUsnJournalWithCursor(Cursor, token))
-                {
-                    Assert.Fail($"Unexpected idle batch with {batch.Entries.Length} entries.");
-                }
-            }
-            else
-            {
-                await foreach (var batch in volume.WatchUsnJournal(Cursor, token))
-                {
-                    Assert.Fail($"Unexpected idle batch with {batch.Length} entries.");
-                }
+                Assert.Fail($"Unexpected idle batch with {batch.Entries.Length} entries.");
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)

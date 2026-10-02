@@ -51,28 +51,28 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_SubstringIsCaseInsensitiveByDefault()
     {
-        var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery("report"));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("report"));
         CollectionAssert.AreEqual(new[] { "Report.docx", "report.pdf" }, NamesOf(results));
     }
 
     [TestMethod]
     public void Search_CaseSensitiveNarrowsTheResult()
     {
-        var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery("report", CaseSensitive: true));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("report", CaseSensitive: true));
         CollectionAssert.AreEqual(new[] { "report.pdf" }, NamesOf(results));
     }
 
     [TestMethod]
     public void Search_GlobPatternMatchesTheWholeName()
     {
-        var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery("*.pdf"));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("*.pdf"));
         CollectionAssert.AreEqual(new[] { "report.pdf" }, NamesOf(results));
     }
 
     [TestMethod]
     public void Search_NullPatternMatchesEveryLiveRow()
     {
-        var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery(null));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null));
         // Root, two directories, and three live files. The tombstoned row is excluded.
         Assert.AreEqual(6, results.Count);
     }
@@ -80,28 +80,28 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_ExcludesTombstonedRows()
     {
-        var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery("deleted"));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("deleted"));
         Assert.AreEqual(0, results.Count);
     }
 
     [TestMethod]
     public void Search_DirectoriesTrueReturnsOnlyDirectories()
     {
-        var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery(null, Directories: true));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Directories: true));
         Assert.IsTrue(results.All(entry => entry.IsDirectory));
     }
 
     [TestMethod]
     public void Search_DirectoriesFalseReturnsOnlyFiles()
     {
-        var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery(null, Directories: false));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Directories: false));
         CollectionAssert.AreEqual(new[] { "Report.docx", "holiday.jpg", "report.pdf" }, NamesOf(results));
     }
 
     [TestMethod]
     public void Search_SizeBoundsAreInclusive()
     {
-        var results = SearchEngineTestAccess.Search(_snapshot,
+        var results = SearchEngine.Search(_snapshot,
             new SearchQuery(null, Directories: false, MinimumSize: 100, MaximumSize: 4096));
         CollectionAssert.AreEqual(new[] { "Report.docx", "report.pdf" }, NamesOf(results));
     }
@@ -120,11 +120,11 @@ public class SearchEngineTests
         var snapshot = Snapshot.Create([new DriveBlock('S', 0, block)]);
         try
         {
-            var resultsMin = SearchEngineTestAccess.Search(snapshot, new SearchQuery(null, MinimumSize: 0));
+            var resultsMin = SearchEngine.Search(snapshot, new SearchQuery(null, MinimumSize: 0));
             Assert.IsTrue(resultsMin.Any(entry => entry.Name == "known-zero.txt"));
             Assert.IsFalse(resultsMin.Any(entry => entry.Name == "unknown-size.txt"));
 
-            var resultsMax = SearchEngineTestAccess.Search(snapshot, new SearchQuery(null, MaximumSize: 100));
+            var resultsMax = SearchEngine.Search(snapshot, new SearchQuery(null, MaximumSize: 100));
             Assert.IsTrue(resultsMax.Any(entry => entry.Name == "known-zero.txt"));
             Assert.IsFalse(resultsMax.Any(entry => entry.Name == "unknown-size.txt"));
         }
@@ -137,7 +137,7 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_ModifiedBoundsAreInclusive()
     {
-        var results = SearchEngineTestAccess.Search(_snapshot,
+        var results = SearchEngine.Search(_snapshot,
             new SearchQuery(null, Directories: false, ModifiedAfter: Newer));
         CollectionAssert.AreEqual(new[] { "holiday.jpg", "report.pdf" }, NamesOf(results));
     }
@@ -146,7 +146,7 @@ public class SearchEngineTests
     public void Search_UnderRestrictsToTheSubtreeInclusive()
     {
         var documents = FileEntry.Create(_snapshot, 0, _documentsRow);
-        var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery(null, Under: documents));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Under: documents));
         CollectionAssert.AreEqual(new[] { "Documents", "Report.docx", "report.pdf" }, NamesOf(results));
     }
 
@@ -154,7 +154,7 @@ public class SearchEngineTests
     public void Search_UnderADifferentSubtreeExcludesSiblings()
     {
         var pictures = FileEntry.Create(_snapshot, 0, _picturesRow);
-        var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery("report", Under: pictures));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("report", Under: pictures));
         Assert.AreEqual(0, results.Count);
     }
 
@@ -162,7 +162,7 @@ public class SearchEngineTests
     public void Search_Under_InvalidAncestor_ReturnsNoResults()
     {
         var invalidAncestor = default(FileEntry);
-        var results = SearchEngineTestAccess.Search(_snapshot, new SearchQuery(null, Under: invalidAncestor));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery(null, Under: invalidAncestor));
         Assert.AreEqual(0, results.Count);
     }
 
@@ -175,7 +175,7 @@ public class SearchEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(() =>
-            SearchEngineTestAccess.Search(_snapshot, new SearchQuery(null, Under: invalidAncestor), token));
+            SearchEngine.Search(_snapshot, new SearchQuery(null, Under: invalidAncestor), token));
     }
 
     [TestMethod]
@@ -197,7 +197,7 @@ public class SearchEngineTests
         {
             var ancestor = FileEntry.Create(snapshot, 0, root);
             var exception = Assert.ThrowsException<InvalidDataException>(() =>
-                SearchEngineTestAccess.Search(snapshot, new SearchQuery("needle.txt", Under: ancestor)));
+                SearchEngine.Search(snapshot, new SearchQuery("needle.txt", Under: ancestor)));
             StringAssert.Contains(exception.Message, BlockLayout.MaximumPathDepth.ToString(CultureInfo.InvariantCulture));
         }
         finally
@@ -224,7 +224,7 @@ public class SearchEngineTests
         try
         {
             var ancestor = FileEntry.Create(snapshot, 0, root);
-            var results = SearchEngineTestAccess.Search(snapshot, new SearchQuery("*.txt", Under: ancestor));
+            var results = SearchEngine.Search(snapshot, new SearchQuery("*.txt", Under: ancestor));
             Assert.AreEqual(1, results.Count);
             Assert.AreEqual("valid.txt", results[0].Name);
         }
@@ -251,7 +251,7 @@ public class SearchEngineTests
         var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block)]);
         try
         {
-            var results = SearchEngineTestAccess.Search(snapshot, new SearchQuery("*.dat"));
+            var results = SearchEngine.Search(snapshot, new SearchQuery("*.dat"));
             Assert.AreEqual(fileCount, results.Count);
         }
         finally
@@ -288,7 +288,7 @@ public class SearchEngineTests
         try
         {
             Assert.ThrowsException<OperationCanceledException>(
-                () => SearchEngineTestAccess.Search(snapshot, new SearchQuery("*.dat"), token));
+                () => SearchEngine.Search(snapshot, new SearchQuery("*.dat"), token));
         }
         finally
         {
@@ -305,7 +305,7 @@ public class SearchEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(() =>
-            SearchEngineTestAccess.Search(_snapshot, new SearchQuery(null, Under: documents), token));
+            SearchEngine.Search(_snapshot, new SearchQuery(null, Under: documents), token));
     }
 
     /// <summary>
@@ -320,20 +320,11 @@ public class SearchEngineTests
         try
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
-            Assert.AreEqual(0, SearchEngineTestAccess.Search(snapshot, new SearchQuery(null)).Count);
+            Assert.AreEqual(0, SearchEngine.Search(snapshot, new SearchQuery(null)).Count);
         }
         finally
         {
             await snapshot.ReleaseNowAsync();
         }
-    }
-}
-
-static class SearchEngineTestAccess
-{
-    public static List<FileEntry> Search(Snapshot snapshot, SearchQuery query,
-        CancellationToken cancellationToken = default)
-    {
-        return SearchEngine.Search(snapshot, query, cancellationToken);
     }
 }

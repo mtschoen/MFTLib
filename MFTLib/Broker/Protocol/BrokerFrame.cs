@@ -10,7 +10,7 @@ namespace MFTLib;
 ///     (<see cref="ArmAndScan" /> or <see cref="StartWatch" />) and every frame after it flows
 ///     from the host.
 /// </summary>
-public enum BrokerFrameKind : byte
+internal enum BrokerFrameKind : byte
 {
     OpenChannel = 1,
     ChannelOpened = 2,
@@ -46,7 +46,7 @@ internal readonly record struct BrokerCatchUpLoss(
     long? BytesBehind,
     long? SizeThatWouldHaveRetained);
 
-public readonly record struct BrokerFrame
+internal readonly record struct BrokerFrame
 {
     public BrokerFrameKind Kind { get; private init; }
 
