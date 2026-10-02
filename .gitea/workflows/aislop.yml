@@ -6,7 +6,7 @@ name: aislop
 # Runs on Windows (not Linux like test.yml's other jobs): MFTLib.sln includes the
 # native MFTLibNative.vcxproj, which only loads/builds under MSBuild + MSVC, and
 # both jb inspectcode and roslynator load the full solution. lint.csharp.jbProjects
-# in .aislop/config.yml scopes jb inspection to the four C# projects so the C++
+# in .aislop/config.yml scopes jb inspection to the five C# projects so the C++
 # tree stays on its own clang-tidy/cppcheck gate.
 #
 # The C# engine lives ONLY in the personal fork gitea.fleet.sticktoitive.net/
@@ -80,7 +80,7 @@ jobs:
           # scripts/run-coverage.ps1 (the test job's proven build):
           #  - dotnet restore first (VS MSBuild does not auto-restore);
           #  - 64-bit VS MSBuild builds the native C++ project (MFTLibNative.vcxproj);
-          #  - override PlatformToolset to v143 (the vcxproj pins v145, absent here);
+          #  - use the vcxproj's v143 toolset explicitly;
           #  - dotnet builds each managed project against the built native library
           #    (Directory.Build.targets drops the vcxproj ProjectReference for dotnet).
           $sln = "$env:GITHUB_WORKSPACE\MFTLib.sln"

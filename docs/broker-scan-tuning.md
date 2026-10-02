@@ -70,8 +70,8 @@ at the limit leaves the drive `WatchCatchUpState.Faulted`. During
 `FileIndex.OpenAsync`, the same retry loop settles the drive `DriveState.Ready`
 with the last block at the limit rather than failing the whole open, while its
 watch catch-up state is already `WatchCatchUpState.Faulted`. A later
-`StartWatchingAsync` is refused until `RescanAsync` succeeds. The consumer then
-calls `StartWatchingAsync` again.
+`StartWatchingAsync` is refused until `RescanAsync` succeeds. The refusal retains
+the watch request, so a successful rescan clears the refusal and starts the watch.
 
 The `JournalCatchUpLostException.CheckpointLoss` report tells the consumer what
 happened. For `JournalCheckpointLossCause.CheckpointTrimmed`, a non-null
@@ -80,5 +80,5 @@ After user consent, grow the journal through
 `BrokerProcess.GrowUsnJournalAsync`, choosing a maximum greater than the current
 `UsnJournalSettings.MaximumSize` and at least the suggested size. Then rescan the
 drive. Journal growth cannot recover records already discarded, so the rescan is
-required. If watching had been refused over the unresumable block, call
-`FileIndex.StartWatchingAsync` again after the successful rescan.
+required. If watching had been refused over the unresumable block, the successful
+rescan clears the refusal and starts the requested watch.

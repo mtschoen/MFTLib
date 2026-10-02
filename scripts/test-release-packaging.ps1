@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
+& "$PSScriptRoot\test-release-package-validation.ps1"
 . "$PSScriptRoot\Test-ReleasePackages.ps1"
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
@@ -25,6 +26,7 @@ try {
     Assert-Equal $mftLibPackages.Count 1 'MFTLib package count'
     $testExtensionsPackage = Get-SinglePackage $packageOutputDirectory 'MFTLib.TestExtensions.*.nupkg' 'MFTLib.TestExtensions package count'
     Assert-ReleasePackages -MftLibPackagePath $mftLibPackages[0].FullName -TestExtensionsPackagePath $testExtensionsPackage.FullName -ExpectedVersion $expectedVersion
+    Assert-ReleaseSymbolPackages (Join-Path $packageOutputDirectory "MFTLib.$expectedVersion.snupkg") (Join-Path $packageOutputDirectory "MFTLib.TestExtensions.$expectedVersion.snupkg")
 
     Write-Host "Release packaging check passed: MFTLib and MFTLib.TestExtensions $expectedVersion."
 }

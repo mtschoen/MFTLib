@@ -1,3 +1,6 @@
+// These hooks ship in the Release DLL on purpose: the shipped binary is the tested binary, and
+// their cost was measured as not significant. Rationale and numbers: docs/architecture.md,
+// "Native test hooks ship in the release DLL".
 #include "pch.h"
 
 #include <algorithm>

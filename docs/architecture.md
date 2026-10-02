@@ -41,4 +41,40 @@
 
 ### Native error messages
 
-Native exports write failure reasons into fixed-size `wchar_t errorMessage[256]` buffers on their result structs (`MftParseResult`, `UsnJournalInfo`, `UsnJournalResult`). Use the `SetErrorMessage` helper in `MFTLibNative/internal.h` - a variadic template that deduces buffer size, silently truncates via `_vsnwprintf_s(_TRUNCATE)`, and asserts in debug builds if a message doesn't fit. Avoid calling `swprintf_s` / `snprintf_s` directly at error-write sites; the helper keeps `cert-err33-c` silent and centralizes the truncation semantic.
+Native exports write failure reasons into fixed-size `wchar_t errorMessage[256]` buffers on their result structs (`MftParseResult`, `UsnJournalInfo`, `UsnJournalResult`). Use the `SetErrorMessage` helper in `MFTLibNative/internal.h` - a variadic template that deduces buffer size, truncates via `_snwprintf_s(..., _TRUNCATE, ...)` on Windows or `std::swprintf` with explicit NUL termination on POSIX, and asserts in debug builds if a message doesn't fit. Avoid calling `swprintf_s` / `snprintf_s` directly at error-write sites; the helper keeps `cert-err33-c` silent and centralizes the truncation semantic.
+
+### Native test hooks ship in the release DLL
+
+`MFTLibNative/core/test_hooks.cpp` exports failure-injection and observation hooks
+(`SetAllocFailCountdown`, `SetReadFailCountdown`, `SetUsnIoFailError`, `SetUsnWatchPipe`,
+`GetChunkThreadCounts`, `ResetTestState` and the rest). They are compiled into the Release
+`MFTLibNative.dll` that the NuGet package ships, deliberately. The exports are test-only and
+unsupported: they are not part of the managed public API, and they may change or disappear in
+any release.
+
+Why they stay:
+
+- The shipped DLL must be the tested DLL. Coverage and CI exercise the exact binary in the
+  package, failure paths included. Compiling the hooks out for the package would mean tests run
+  against a different binary than consumers get, and would add a second native build
+  configuration to the vcxproj, CMake, the coverage scripts and CI.
+- The checks cannot live anywhere else. They sit in front of allocations and reads inside the
+  parser and journal code, so a managed package such as `MFTLibTestExtensions` cannot provide
+  them. `MFTLibTestExtensions` does not use them.
+- They are not a privilege boundary. Only code already loaded in the same process can call the
+  exports, and such code can already do worse.
+- The cost was measured and is not significant. On 2026-10-02, at commit `d8439ab`, the Release
+  DLL was built twice with the same settings: as shipped, and with every parse-path hook
+  compiled to a constant (allocation, read and platform I/O failure, forced cancel, the
+  capacity and record-size overrides, and the per-chunk thread-count recording with its mutex).
+  `Benchmark.exe 1000000 5` ran eight times against each DLL, alternating. Median throughput
+  in records per second, with hooks and without: compat 3,243,295 and 3,312,850; bounded
+  3,374,366 and 3,451,267; broker-stream 2,408,314 and 2,410,359. The same DLL varied by 10 to
+  25 percent between runs on a machine that was also running builds, so the gap of about 2
+  percent is inside the noise; the best runs were equal (bounded 3,583,085 and 3,584,190).
+  The benchmark is bound by I/O and memory throughput, not by parser overhead. The hook-free
+  DLL was 2,048 bytes smaller (75,776 against 77,824).
+
+Revisit this only with a measurement that shows a cost: a quiet-machine benchmark where the
+hook-free build wins by more than the run-to-run spread. Do not propose removing the hooks
+from the shipping DLL on the grounds that test code is present in a release binary.

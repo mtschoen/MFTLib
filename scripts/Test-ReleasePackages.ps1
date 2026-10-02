@@ -1,7 +1,7 @@
 # Shared release-package validation, dot-sourced by release.ps1 and test-release-packaging.ps1.
 # Assert-ReleasePackages checks package identity, version, the exact [version] MFTLib
-# dependency of MFTLib.TestExtensions, and which assembly each package carries. It throws on
-# the first failed check.
+# dependency of MFTLib.TestExtensions, required package assets, and assembly separation.
+# Assert-ReleaseSymbolPackages checks the symbol files. Validation throws on the first failure.
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
@@ -91,6 +91,15 @@ function Assert-ReleasePackages {
     $mftLibArchive = [IO.Compression.ZipFile]::OpenRead($MftLibPackagePath)
     try {
         Assert-True (-not @($mftLibArchive.Entries | Where-Object { $_.FullName -like '*MFTLibTestExtensions.dll' }).Count) 'MFTLib package contains MFTLibTestExtensions.dll.'
+        foreach ($requiredEntry in @(
+            'runtimes/win-x64/native/MFTLibNative.dll',
+            'build/MFTLib.targets',
+            'buildTransitive/MFTLib.targets',
+            'LICENSE.txt',
+            'README.md'
+        )) {
+            Assert-True ($null -ne $mftLibArchive.GetEntry($requiredEntry)) "MFTLib package is missing $requiredEntry."
+        }
     }
     finally {
         $mftLibArchive.Dispose()
@@ -99,8 +108,22 @@ function Assert-ReleasePackages {
     $testExtensionsArchive = [IO.Compression.ZipFile]::OpenRead($TestExtensionsPackagePath)
     try {
         Assert-True (@($testExtensionsArchive.Entries | Where-Object { $_.FullName -like 'lib/*/MFTLibTestExtensions.dll' }).Count -eq 1) 'MFTLib.TestExtensions package does not contain MFTLibTestExtensions.dll.'
+        foreach ($requiredEntry in @('LICENSE.txt', 'README.md')) {
+            Assert-True ($null -ne $testExtensionsArchive.GetEntry($requiredEntry)) "MFTLib.TestExtensions package is missing $requiredEntry."
+        }
     }
     finally {
         $testExtensionsArchive.Dispose()
+    }
+}
+
+function Assert-ReleaseSymbolPackages {
+    param(
+        [Parameter(Mandatory)] [string] $LibrarySymbolPackagePath,
+        [Parameter(Mandatory)] [string] $TestExtensionsSymbolPackagePath
+    )
+
+    foreach ($symbolPackagePath in @($LibrarySymbolPackagePath, $TestExtensionsSymbolPackagePath)) {
+        Assert-True (Test-Path -LiteralPath $symbolPackagePath -PathType Leaf) "Expected symbol package not found: $symbolPackagePath"
     }
 }

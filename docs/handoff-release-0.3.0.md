@@ -1,12 +1,12 @@
 # Handoff: MFTLib 0.3.0 Release
 
-Updated 2026-09-30. `CHANGELOG.md` is the authoritative description of 0.3.0;
+Updated 2026-10-02. `CHANGELOG.md` is the authoritative description of 0.3.0;
 this document tracks the remaining release sequence.
 
 ## Status
 
-`gitea/main` is at `5b70e08`. The remote named `origin` in some checkouts is a
-stale GitHub mirror; Gitea `main` is canonical. Merged to `main`:
+The pre-ship base HEAD and `gitea/main` are at `d8439ab`. The remote named `origin`
+in some checkouts is a stale GitHub mirror; Gitea `main` is canonical. Merged to `main`:
 
 - Per-drive watch channels ([MFTLib issue 265, per-drive channels](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/265), merged in pull request 301):
   `BrokerProcess` owns one control pipe plus one channel per scan or watch
@@ -27,21 +27,16 @@ The 0.3.0 NuGet artifact set is:
   `BrokerTestHarness`, `BrokerTestHarnessOptions`, `CacheDirectoryIsolation`,
   `JournalIsolation`, and `SyntheticJournalWindow`.
 
-Consumers: file-wizard `gitea/main` (`2babf9a`) and git-wizard `gitea/main`
-(`9c30986`) have migrated to per-drive watch channels and pin MFTLib `6a6aa9e`.
-The pin-bump pull requests
-([file-wizard pull request 524](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/pulls/524) and
-[git-wizard pull request 277](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/pulls/277)) target `5b70e08` and are held
-until the API-gap pass (gate 1) lands. Neither consumer has been exercised at
-runtime since the migration.
+Gate 1, [MFTLib issue 330, consumer API gaps](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/330),
+landed in pull requests 333 through 338. Consumers have migrated to per-drive
+watch channels and both pin MFTLib `d8439ab`: file-wizard at `b37816f` and
+git-wizard `gitea/main` at `17b1b0f`. The attended consumer runtime smokes remain
+part of gate 2.
 
 Not yet done: 0.3.0 is not published to nuget.org and `v0.3.0` is not tagged.
 
 ### Remaining gates, in order
 
-1. [MFTLib issue 330, ten public API gaps found by the consumer migrations](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/330)
-   (no recovery-finished signal, `Ended` not replayed, harness cannot simulate a
-   crash): land the MFTLib changes, then bump the consumer pins.
 2. Rerun the attended checklists, including the consumer runtime smokes in
    step 2 below: [MFTLib issue 72, attended MFTLib checklist](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/72),
    [file-wizard issue 299, attended checklist](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/299),
@@ -132,9 +127,10 @@ on both Gitea `main` and GitHub `main` (the script verifies each with `git ls-re
 and prints the Gitea and GitHub URLs that will receive the tag).
 It resolves 64-bit MSBuild via `vswhere`,
 executes `scripts/run-coverage.ps1 -Configuration Release` (verifying full managed and elevated coverage),
-and packs `MFTLib.0.3.0.nupkg` and `.snupkg` and `MFTLib.TestExtensions.0.3.0.nupkg` with
-`ContinuousIntegrationBuild=true`, validates package identity, version and the
-exact-version dependency, and does not publish.
+and packs `MFTLib.0.3.0.nupkg`, `MFTLib.TestExtensions.0.3.0.nupkg`, and their
+`.snupkg` files with `ContinuousIntegrationBuild=true`. It validates package
+identity, version, the exact-version dependency, the native DLL and build targets,
+each package's license and readme, and the presence of both symbol files. It does not publish.
 
 ### 4. Publish (Owner only)
 
@@ -190,7 +186,7 @@ at `gitea/main` that build the submodule (native, managed or test extensions):
 
 The release notes in `CHANGELOG.md` and GitHub Release must match `CHANGELOG.md` and highlight:
 - **On-disk block format**: fixed 64KB-aligned binary block format (`MFTLib.Index`) storing path strings, file sizes, timestamps, attributes, sequence numbers, and directory hierarchies without in-memory object allocation overhead (see `docs/index-format.md`).
-- **`MFTLib.Index` namespace**: indexed query and file snapshot model (`FileIndex`, `Snapshot`, `FileEntry`, `FileChange`, `IndexQuery`) with low-latency query evaluation and direct directory traversal.
+- **`MFTLib.Index` namespace**: indexed query and file snapshot model (`FileIndex`, `Snapshot`, `FileEntry`, `FileChange`) with low-latency query evaluation and direct directory traversal.
 - **Broker block write path**: the elevated broker writes cold scan blocks directly into a client-owned file-backed block section; cold scans return packed blocks only.
 - **Per-drive watch channels**: `BrokerProcess` runs one control pipe and one channel per drive operation; `FileIndex` start, stop, rescan and catch-up are per drive with concurrent list and all-drive overloads, automatic per-drive recovery, and bounded catch-up-loss recovery.
 - **Include-freed scan**: `MatchFlags.IncludeFreed` returns validated freed MFT base records with `InUse == false`; native ABI version 3.

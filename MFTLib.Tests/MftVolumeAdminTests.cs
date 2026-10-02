@@ -5,7 +5,7 @@ namespace MFTLib.Tests;
 
 /// <summary>
 ///     Tests that require admin elevation to open raw volume handles.
-///     Run via: scripts/run-admin-tests.ps1
+///     Run via: scripts/run-coverage.ps1
 /// </summary>
 [TestClass]
 [DoNotParallelize]
@@ -16,7 +16,7 @@ public class MftVolumeAdminTests
     {
         if (!ElevationUtilities.IsElevated())
         {
-            Assert.Inconclusive("Requires admin elevation. Run scripts/run-admin-tests.ps1");
+            Assert.Inconclusive("Requires admin elevation. Run scripts/run-coverage.ps1");
         }
     }
 

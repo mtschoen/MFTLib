@@ -49,7 +49,7 @@ foreach ($path in @($jsonFile, $coberturaFile, $reportDir)) {
 # Step 1 - dotnet restore: generates project.assets.json for C# projects.
 #   (VS MSBuild doesn't auto-restore; dotnet.exe is 64-bit so no WOW64 issue.)
 # Step 2 - 64-bit VS MSBuild builds the native C++ project (MFTLibNative.vcxproj).
-#   Use the amd64 binary. Override PlatformToolset=v143 since the vcxproj has v145.
+#   Use the amd64 binary and the vcxproj's v143 toolset.
 #   Pass SolutionDir with trailing slash so post-build xcopy resolves correctly.
 # Step 3 - dotnet builds all managed projects against the built native binary.
 #   Directory.Build.targets drops the native ProjectReference during dotnet builds.

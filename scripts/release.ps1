@@ -189,9 +189,10 @@ if (!(Test-Path $testExtensionsNupkg)) {
 Write-Host "Package created: $testExtensionsNupkg" -ForegroundColor Green
 
 # --- Validate both packages before the dry run returns or anything publishes ---
-Write-Host "Validating package identity, version, and dependency..." -ForegroundColor Cyan
+Write-Host "Validating packages, required assets, and symbol files..." -ForegroundColor Cyan
 try {
     Assert-ReleasePackages -MftLibPackagePath $mftLibNupkg -TestExtensionsPackagePath $testExtensionsNupkg -ExpectedVersion $version
+    Assert-ReleaseSymbolPackages -LibrarySymbolPackagePath $mftLibSnupkg -TestExtensionsSymbolPackagePath $testExtensionsSnupkg
 }
 catch {
     Write-Host "Package validation failed: $($_.Exception.Message)" -ForegroundColor Red

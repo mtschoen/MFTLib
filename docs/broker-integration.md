@@ -234,8 +234,8 @@ state lock, the rescan starts a fresh handle from the new cursor when watching i
 requested. Other drives continue independently. `Changed` events can arrive from the old
 block after publication and repeat during replacement catch-up; queries can lag until
 the new watch reports `CaughtUp`. If a start was refused because
-the block was unresumable, the refusal leaves no watch request: after a
-successful `RescanAsync`, call `StartWatchingAsync` for that drive again.
+the block was unresumable, the refusal retains the watch request: a successful
+`RescanAsync` clears the refusal and starts the watch for that drive.
 
 ## 5. Handle faults and recovery
 
@@ -260,7 +260,7 @@ concurrently. The status has already been updated when the event runs.
 | Completed `BrokerProcess.Ended` task | The control connection and elevated process are gone. Stop using the process, close its indexes, and create a new process and new indexes. |
 | `BrokerChannelLostException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. `DriveLetter` names a drive pipe; null names the control pipe. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
 | `DriveWatchFaultException` | The host reported an `Error` on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
-| `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan and start the drive again. |
+| `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan; a successful rescan starts the watch if it is requested. |
 | `WatchFaultKind.RescanRestart` | A rescan replaced the block but could not start its watch. The scan returns success. The exception and `WatchFailureMessage` identify the rescan; the inner exception is the start failure. No automatic recovery starts. A consumer start or rescan retries it, and stop rethrows the fault once. |
 | `WatchCatchUpState.Recovering` | A drive or apply fault is being recovered, or a lost catch-up is being retried. Queries still use the current complete block, which may be behind the volume. |
 | `WatchCatchUpState.Faulted` | Recovery did not restore the watch, a channel was lost, a start was refused, or the catch-up loss limit was reached. Inspect `WatchFailureMessage` and the fault exception. Call `RescanAsync` or `StartWatchingAsync` after the triggering condition is fixed. An unresumable block must be rescanned first. |
@@ -351,8 +351,9 @@ Journal growth is an explicit, persistent system change. After user consent:
    allocationDelta, cancellationToken)`. The broker refuses a maximum at or
    below the current size and returns the settings read back after success.
 4. Call `index.RescanAsync(driveLetter, cancellationToken)`.
-5. Call `index.StartWatchingAsync(driveLetter, cancellationToken)` if the
-   earlier start was refused.
+5. The successful rescan clears the refusal and starts the watch if it is requested.
+   Call `index.StartWatchingAsync(driveLetter, cancellationToken)` only if watching
+   has not been requested.
 
 Growing the journal does not make the already lost records reappear. The rescan
 is what rebuilds current state; the larger journal reduces the chance that the

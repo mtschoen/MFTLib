@@ -20,8 +20,8 @@
       it; an unrelated watch fault does not clear it. A `LiveWatch` report is retained by its
       automatic recovery rescan, because it explains why the published replacement block exists.
       A cache-only open adopts an unresumable block as a `Ready` snapshot with its report attached,
-      but `StartWatchingAsync` refuses that drive and leaves no watch request. After `RescanAsync`
-      publishes a resumable block, the consumer calls `StartWatchingAsync` again.
+      but `StartWatchingAsync` refuses that drive and retains the watch request. After `RescanAsync`
+      publishes a resumable block, it clears the refusal and starts the requested watch.
       When catch-up after a scan fails, the host checks the armed cursor against the live journal.
       A proven loss travels through `BrokerDriveScanResult.CatchUpLoss` and
       `MftBlockProduceResult.CatchUpLoss`; the index publishes the complete block as unresumable,
@@ -29,6 +29,7 @@
       trimmed), and scans the drive again. `DriveStatus.ConsecutiveLostCatchUps` reaches
       `FileIndex.LostCatchUpRecoveryLimit` after three consecutive losses; a scan whose catch-up
       holds resets it to zero. At the limit an open settles the drive `Ready` with its last block,
-      refuses its watch, and requires a consumer `RescanAsync` before another watch start.
+      refuses its watch, and requires a consumer `RescanAsync` to publish a resumable block
+      and start the watch if it is requested.
       A catch-up failure the journal cannot prove is an ordinary failed scan and carries no report.
       A bounded catch-up read that returns entries without advancing its cursor fails the scan.

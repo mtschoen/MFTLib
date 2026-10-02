@@ -55,7 +55,7 @@
     </None>
   </ItemGroup>
 
-  <!-- Pack native DLL into the NuGet package (Windows only — Linux package not yet built) -->
+  <!-- Pack native DLL into the NuGet package (Windows only; Linux package not yet built) -->
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <None Include="..\x64\$(Configuration)\MFTLibNative.dll" Pack="true" PackagePath="runtimes/win-x64/native" Visible="false" />
   </ItemGroup>
