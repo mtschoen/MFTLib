@@ -20,13 +20,13 @@ namespace {
 
 bool FileNameMatches(const WCHAR* name, uint8_t nameLen, const FilterSpec& filter) {
 #ifdef _WIN32
-    if ((filter.flags & 1) != 0U) {
+    if ((filter.flags & MATCH_FLAG_EXACT_MATCH) != 0U) {
         if (nameLen != filter.length) {
             return false;
         }
         return _wcsnicmp(name, filter.text, nameLen) == 0;
     }
-    if ((filter.flags & 2) != 0U) {
+    if ((filter.flags & MATCH_FLAG_CONTAINS) != 0U) {
         if (filter.length > nameLen) {
             return false;
         }
@@ -175,10 +175,10 @@ bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geom
 bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext& scan, ParsedEntry* outEntry) {
     auto* rec = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recPtr);
 
-    if (rec->MultiSectorHeader.Magic != 0x454C4946) {
+    if (rec->MultiSectorHeader.Magic != kFileRecordMagic) {
         return false;
     }
-    if ((rec->Flags & 0x0001) == 0 && (scan.filter.flags & MATCH_FLAG_INCLUDE_FREED) == 0) {
+    if ((rec->Flags & kRecordInUse) == 0 && (scan.filter.flags & MATCH_FLAG_INCLUDE_FREED) == 0) {
         return false;
     }
 
@@ -189,7 +189,7 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
     }
     // A freed extension record can still carry its base reference; a base record's
     // whole reference, sequence included, is zero.
-    if ((rec->Flags & 0x0001) == 0 && rec->BaseFileRecordSegment.SequenceNumber != 0) {
+    if ((rec->Flags & kRecordInUse) == 0 && rec->BaseFileRecordSegment.SequenceNumber != 0) {
         return false;
     }
 
@@ -199,7 +199,7 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
     }
     auto* nameAttr = attributes.nameAttribute;
 
-    bool isDirectory = (rec->Flags & 0x0002) != 0;
+    bool isDirectory = (rec->Flags & kRecordDirectory) != 0;
     outEntry->flags = rec->Flags;
     if (isDirectory) {
         outEntry->size = 0;
@@ -324,60 +324,38 @@ bool ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalR
 
 namespace {
 
-bool EnsureEntryCapacity(CompactOutput& output, uint64_t sliceEntryCount, wchar_t* errorMessage) {
-    if (output.entryCount + sliceEntryCount <= output.entryCapacity) {
-        return true;
-    }
-    uint64_t newCapacity = output.entryCapacity == 0 ? 1024 : output.entryCapacity;
-    while (output.entryCount + sliceEntryCount > newCapacity) {
-        if (newCapacity > UINT64_MAX / 2) {
-            SetErrorMessageBuffer(errorMessage, 256, L"Entry array capacity overflow");
-            return false;
-        }
-        newCapacity *= 2;
-    }
-    if (newCapacity > SIZE_MAX / sizeof(MftCompactEntry)) {
-        SetErrorMessageBuffer(errorMessage, 256, L"Entry array capacity overflow");
-        return false;
-    }
-    auto* grown = ShouldFailAlloc() ? nullptr
-                                    : static_cast<MftCompactEntry*>(realloc(
-                                          output.entries, static_cast<size_t>(newCapacity) * sizeof(MftCompactEntry)));
-    if (grown == nullptr) {
-        SetErrorMessageBuffer(errorMessage, 256, L"Failed to grow entry array");
-        return false;
-    }
-    output.entries = grown;
-    output.entryCapacity = newCapacity;
-    return true;
-}
+struct CapacityMessages {
+    const wchar_t* overflow;
+    const wchar_t* allocationFailure;
+};
 
-bool EnsureStringCapacity(CompactOutput& output, uint64_t sliceStringUnits, wchar_t* errorMessage) {
-    if (output.stringUnits + sliceStringUnits <= output.stringCapacity) {
+template <typename Element>
+bool EnsureCapacity(Element*& data, uint64_t& capacity, uint64_t used, uint64_t extra, wchar_t* errorMessage,
+                    const CapacityMessages& messages) {
+    if (used + extra <= capacity) {
         return true;
     }
-    uint64_t newCapacity = output.stringCapacity == 0 ? 1024 : output.stringCapacity;
-    while (output.stringUnits + sliceStringUnits > newCapacity) {
+    uint64_t newCapacity = capacity == 0 ? 1024 : capacity;
+    while (used + extra > newCapacity) {
         if (newCapacity > UINT64_MAX / 2) {
-            SetErrorMessageBuffer(errorMessage, 256, L"String pool capacity overflow");
+            SetErrorMessageBuffer(errorMessage, 256, messages.overflow);
             return false;
         }
         newCapacity *= 2;
     }
-    if (newCapacity > SIZE_MAX / sizeof(uint16_t)) {
-        SetErrorMessageBuffer(errorMessage, 256, L"String pool capacity overflow");
+    if (newCapacity > SIZE_MAX / sizeof(Element)) {
+        SetErrorMessageBuffer(errorMessage, 256, messages.overflow);
         return false;
     }
-    auto* grown =
-        ShouldFailAlloc()
-            ? nullptr
-            : static_cast<uint16_t*>(realloc(output.strings, static_cast<size_t>(newCapacity) * sizeof(uint16_t)));
+    auto* grown = ShouldFailAlloc()
+                      ? nullptr
+                      : static_cast<Element*>(realloc(data, static_cast<size_t>(newCapacity) * sizeof(Element)));
     if (grown == nullptr) {
-        SetErrorMessageBuffer(errorMessage, 256, L"Failed to grow string pool");
+        SetErrorMessageBuffer(errorMessage, 256, messages.allocationFailure);
         return false;
     }
-    output.strings = grown;
-    output.stringCapacity = newCapacity;
+    data = grown;
+    capacity = newCapacity;
     return true;
 }
 
@@ -391,11 +369,14 @@ bool AppendSlice(CompactOutput& output, const SliceResult& slice, wchar_t* error
     uint64_t sliceEntryCount = slice.entries.size();
     uint64_t sliceStringUnits = slice.strings.size();
 
-    if (!EnsureEntryCapacity(output, sliceEntryCount, errorMessage)) {
+    if (!EnsureCapacity(output.entries, output.entryCapacity, output.entryCount, sliceEntryCount, errorMessage,
+                        {L"Entry array capacity overflow", L"Failed to grow entry array"})) {
         return false;
     }
 
-    if (sliceStringUnits > 0 && !EnsureStringCapacity(output, sliceStringUnits, errorMessage)) {
+    if (sliceStringUnits > 0 &&
+        !EnsureCapacity(output.strings, output.stringCapacity, output.stringUnits, sliceStringUnits, errorMessage,
+                        {L"String pool capacity overflow", L"Failed to grow string pool"})) {
         return false;
     }
 

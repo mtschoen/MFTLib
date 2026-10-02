@@ -26,7 +26,7 @@ void PopulatePathSlice(SliceRange range, const CompactOutput& source, const Path
         if (ResolvePath(src.recordNumber, lookup, totalRecords, pathBuffer)) {
             entry.name = reinterpret_cast<const WCHAR*>(pathBuffer.data());
             entry.nameLength = static_cast<uint16_t>(pathBuffer.size());
-        } else if ((src.flags & 1U) == 0) {
+        } else if ((src.flags & kRecordInUse) == 0) {
             entry.flags |= MFT_ENTRY_FLAG_PATH_UNRESOLVED;
             entry.name = reinterpret_cast<const WCHAR*>(source.strings + src.stringOffset);
             entry.nameLength = src.stringLength;
@@ -81,21 +81,9 @@ bool ResolveAllPaths(const ScanContext& scan, unsigned numThreads, ParseState& s
     progressState.totalEntries = usedCount;
 
     std::vector<SliceResult> pathSlices(numThreads);
-    if (numThreads > 1) {
-        uint64_t perThread = (usedCount + numThreads - 1) / numThreads;
-        std::vector<std::thread> workers;
-        for (unsigned ti = 0; ti < numThreads; ti++) {
-            uint64_t start = (std::min)(static_cast<uint64_t>(ti) * perThread, usedCount);
-            uint64_t end = (std::min)(start + perThread, usedCount);
-            workers.emplace_back(PopulatePathSlice, SliceRange{start, end}, std::cref(state.output), std::cref(lookup),
-                                 totalRecords, std::ref(pathSlices[ti]), &progressState);
-        }
-        for (auto& worker : workers) {
-            worker.join();
-        }
-    } else {
-        PopulatePathSlice(SliceRange{0, usedCount}, state.output, lookup, totalRecords, pathSlices[0], &progressState);
-    }
+    ForEachRange(usedCount, numThreads, [&](unsigned index, SliceRange range) {
+        PopulatePathSlice(range, state.output, lookup, totalRecords, pathSlices[index], &progressState);
+    });
 
     if (IsCancelRequested(scan.control)) {
         free(paths.entries);
@@ -103,10 +91,9 @@ bool ResolveAllPaths(const ScanContext& scan, unsigned numThreads, ParseState& s
         return false;
     }
 
-    std::array<wchar_t, 256> dummyError{};
     bool appendOk = true;
     for (unsigned ti = 0; ti < numThreads; ti++) {
-        if (!AppendSlice(paths, pathSlices[ti], dummyError.data())) {
+        if (!AppendSlice(paths, pathSlices[ti], nullptr)) {
             appendOk = false;
             break;
         }

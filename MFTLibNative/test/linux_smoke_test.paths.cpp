@@ -240,72 +240,80 @@ struct ProgressReport {
     double elapsedMs;
 };
 
+void CollectProgress(MftScanPhase phase, uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs,
+                     void* context) {
+    auto* reports = static_cast<std::vector<ProgressReport>*>(context);
+    reports->push_back({phase, recordsScanned, totalRecords, elapsedMs});
+}
+
+struct ProgressSummary {
+    uint64_t parsing = 0;
+    uint64_t resolving = 0;
+    uint64_t parsingReportCount = 0;
+    uint64_t resolvingReportCount = 0;
+};
+
+bool CheckMonotonicProgress(const std::vector<ProgressReport>& reports, bool strictParsing, ProgressSummary& summary) {
+    for (const auto& report : reports) {
+        if (report.phase == MftScanPhase::Parsing) {
+            summary.parsingReportCount++;
+            if (report.recordsScanned < summary.parsing ||
+                (strictParsing && report.recordsScanned == summary.parsing) ||
+                report.recordsScanned > report.totalRecords) {
+                std::fprintf(stderr, "  FAIL: parsing progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
+                             static_cast<unsigned long long>(summary.parsing),
+                             static_cast<unsigned long long>(report.recordsScanned),
+                             static_cast<unsigned long long>(report.totalRecords));
+                return false;
+            }
+            summary.parsing = report.recordsScanned;
+        } else if (report.phase == MftScanPhase::ResolvingPaths) {
+            summary.resolvingReportCount++;
+            if (report.recordsScanned < summary.resolving || report.recordsScanned > report.totalRecords) {
+                std::fprintf(stderr, "  FAIL: resolving progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
+                             static_cast<unsigned long long>(summary.resolving),
+                             static_cast<unsigned long long>(report.recordsScanned),
+                             static_cast<unsigned long long>(report.totalRecords));
+                return false;
+            }
+            summary.resolving = report.recordsScanned;
+        }
+    }
+    return true;
+}
+
 bool test_progress_callback() {
     if (!generate_fixture()) {
         return false;
     }
     std::vector<ProgressReport> reports;
-    auto callback = [](MftScanPhase phase, uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs,
-                       void* context) {
-        auto* vec = static_cast<std::vector<ProgressReport>*>(context);
-        vec->push_back({phase, recordsScanned, totalRecords, elapsedMs});
-    };
-
     MftParseResult* result =
-        ParseMFTFromFileUtf8WithProgress(kFixturePath, nullptr, MATCH_FLAG_RESOLVE_PATHS, 1, callback, &reports);
+        ParseMFTFromFileUtf8WithProgress(kFixturePath, nullptr, MATCH_FLAG_RESOLVE_PATHS, 1, CollectProgress, &reports);
     bool ok = (result != nullptr && result->usedRecords > 0);
     if (ok) {
         if (reports.empty()) {
             std::fprintf(stderr, "  FAIL: no progress reports\n");
             ok = false;
         } else {
-            bool sawParsing = false;
-            bool sawResolving = false;
-            uint64_t prevParsing = 0;
-            uint64_t prevResolving = 0;
-            for (const auto& r : reports) {
-                if (r.phase == MftScanPhase::Parsing) {
-                    sawParsing = true;
-                    if (r.recordsScanned <= prevParsing || r.recordsScanned > r.totalRecords) {
-                        std::fprintf(stderr, "  FAIL: parsing progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
-                                     static_cast<unsigned long long>(prevParsing),
-                                     static_cast<unsigned long long>(r.recordsScanned),
-                                     static_cast<unsigned long long>(r.totalRecords));
-                        ok = false;
-                        break;
-                    }
-                    prevParsing = r.recordsScanned;
-                } else if (r.phase == MftScanPhase::ResolvingPaths) {
-                    sawResolving = true;
-                    if (r.recordsScanned < prevResolving || r.recordsScanned > r.totalRecords) {
-                        std::fprintf(stderr,
-                                     "  FAIL: resolving progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
-                                     static_cast<unsigned long long>(prevResolving),
-                                     static_cast<unsigned long long>(r.recordsScanned),
-                                     static_cast<unsigned long long>(r.totalRecords));
-                        ok = false;
-                        break;
-                    }
-                    prevResolving = r.recordsScanned;
-                }
-            }
-            if (ok && !sawParsing) {
+            ProgressSummary summary;
+            ok = CheckMonotonicProgress(reports, true, summary);
+            if (ok && summary.parsingReportCount == 0) {
                 std::fprintf(stderr, "  FAIL: no Parsing phase reports seen\n");
                 ok = false;
             }
-            if (ok && !sawResolving) {
+            if (ok && summary.resolvingReportCount == 0) {
                 std::fprintf(stderr, "  FAIL: no ResolvingPaths phase reports seen\n");
                 ok = false;
             }
-            if (ok && prevParsing != result->totalRecords) {
+            if (ok && summary.parsing != result->totalRecords) {
                 std::fprintf(stderr, "  FAIL: final parsing report (%llu) != totalRecords (%llu)\n",
-                             static_cast<unsigned long long>(prevParsing),
+                             static_cast<unsigned long long>(summary.parsing),
                              static_cast<unsigned long long>(result->totalRecords));
                 ok = false;
             }
-            if (ok && prevResolving != result->usedRecords) {
+            if (ok && summary.resolving != result->usedRecords) {
                 std::fprintf(stderr, "  FAIL: final resolving report (%llu) != usedRecords (%llu)\n",
-                             static_cast<unsigned long long>(prevResolving),
+                             static_cast<unsigned long long>(summary.resolving),
                              static_cast<unsigned long long>(result->usedRecords));
                 ok = false;
             }
@@ -326,56 +334,22 @@ bool test_parallel_progress_monotonicity() {
     }
     SetMaxThreads(8);
     std::vector<ProgressReport> reports;
-    auto callback = [](MftScanPhase phase, uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs,
-                       void* context) {
-        auto* vec = static_cast<std::vector<ProgressReport>*>(context);
-        vec->push_back({phase, recordsScanned, totalRecords, elapsedMs});
-    };
-
-    MftParseResult* result =
-        ParseMFTFromFileUtf8WithProgress(kFixtureParallel, nullptr, MATCH_FLAG_RESOLVE_PATHS, 4096, callback, &reports);
+    MftParseResult* result = ParseMFTFromFileUtf8WithProgress(kFixtureParallel, nullptr, MATCH_FLAG_RESOLVE_PATHS, 4096,
+                                                              CollectProgress, &reports);
     SetMaxThreads(0);
     ResetTestState();
 
     bool ok = (result != nullptr && result->usedRecords > 0 && !reports.empty());
     if (ok) {
-        uint64_t prevParsing = 0;
-        uint64_t prevResolving = 0;
-        uint64_t resolvingReportCount = 0;
-        bool sawResolving = false;
-        for (const auto& r : reports) {
-            if (r.phase == MftScanPhase::Parsing) {
-                if (r.recordsScanned < prevParsing || r.recordsScanned > r.totalRecords) {
-                    std::fprintf(
-                        stderr, "  FAIL: parallel parsing progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
-                        static_cast<unsigned long long>(prevParsing), static_cast<unsigned long long>(r.recordsScanned),
-                        static_cast<unsigned long long>(r.totalRecords));
-                    ok = false;
-                    break;
-                }
-                prevParsing = r.recordsScanned;
-            } else if (r.phase == MftScanPhase::ResolvingPaths) {
-                sawResolving = true;
-                resolvingReportCount++;
-                if (r.recordsScanned < prevResolving || r.recordsScanned > r.totalRecords) {
-                    std::fprintf(stderr,
-                                 "  FAIL: parallel resolving progress not monotonic (prev=%llu cur=%llu total=%llu)\n",
-                                 static_cast<unsigned long long>(prevResolving),
-                                 static_cast<unsigned long long>(r.recordsScanned),
-                                 static_cast<unsigned long long>(r.totalRecords));
-                    ok = false;
-                    break;
-                }
-                prevResolving = r.recordsScanned;
-            }
-        }
-        if (ok && !sawResolving) {
+        ProgressSummary summary;
+        ok = CheckMonotonicProgress(reports, false, summary);
+        if (ok && summary.resolvingReportCount == 0) {
             std::fprintf(stderr, "  FAIL: no parallel ResolvingPaths phase reports seen\n");
             ok = false;
         }
-        if (ok && resolvingReportCount < 16) {
+        if (ok && summary.resolvingReportCount < 16) {
             std::fprintf(stderr, "  FAIL: too few parallel resolving reports (%llu, expected at least 16)\n",
-                         static_cast<unsigned long long>(resolvingReportCount));
+                         static_cast<unsigned long long>(summary.resolvingReportCount));
             ok = false;
         }
     }

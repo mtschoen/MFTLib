@@ -39,9 +39,6 @@
     <ClInclude Include="internal.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="core\ntfs_io.h">
-      <Filter>Source Files\core</Filter>
-    </ClInclude>
     <ClInclude Include="core\platform.h">
       <Filter>Source Files\core</Filter>
     </ClInclude>

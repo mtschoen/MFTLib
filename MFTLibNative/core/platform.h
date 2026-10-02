@@ -6,12 +6,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#ifdef _WIN32
-    #define MFT_EXPORT extern "C" __declspec(dllexport)
-#else
-    #define MFT_EXPORT extern "C" __attribute__((visibility("default")))
-#endif
-
 namespace mftlib::platform {
 struct File;  // opaque handle
 
