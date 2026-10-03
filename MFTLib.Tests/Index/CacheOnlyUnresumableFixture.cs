@@ -13,11 +13,14 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 internal sealed class CacheOnlyUnresumableFixture : IDisposable
 {
-    readonly string _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-    readonly string _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+    readonly OwnedIndexDirectories _directories = new();
+    readonly string _treeRoot;
+    readonly string _cacheDirectory;
 
     public CacheOnlyUnresumableFixture()
     {
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(_treeRoot);
     }
 
@@ -38,20 +41,7 @@ internal sealed class CacheOnlyUnresumableFixture : IDisposable
 
     public void Dispose()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     FileIndexOptions Options(bool cacheOnly)

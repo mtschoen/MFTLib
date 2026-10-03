@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -6,14 +7,16 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class BlockValidationMatrixTests
 {
+    OwnedIndexDirectories _directories = null!;
     string _treeRoot = null!;
     string _cacheDirectory = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _directories = new OwnedIndexDirectories();
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
         File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
     }
@@ -21,20 +24,7 @@ public class BlockValidationMatrixTests
     [TestCleanup]
     public void Cleanup()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     FileIndexOptions Options(uint volumeSerial = 0x0BADF00D)

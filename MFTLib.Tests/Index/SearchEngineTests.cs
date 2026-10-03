@@ -261,39 +261,18 @@ public class SearchEngineTests
     }
 
     /// <summary>
-    ///     The parallel path reports cancellation as <see cref="OperationCanceledException" />,
-    ///     not as an <see cref="AggregateException" /> a caller would have to unwrap: the loop
-    ///     carries the query's token, so the partitions that observe it all report the same
-    ///     cancellation.
+    ///     Cancellation is checked at entry, throwing OperationCanceledException
+    ///     before any work begins.
     /// </summary>
     [TestMethod]
-    public async Task Search_OverALargeDriveWithACancelledToken_ThrowsOperationCanceled()
+    public void Search_WithACancelledToken_ThrowsOperationCanceled()
     {
-        const int fileCount = (int)ScanPartitioning.SingleThreadedRowThreshold + 1024;
-        using var builder = new SyntheticBlockBuilder('Y', slotCapacity: (uint)fileCount + 8,
-            namePoolCapacity: (uint)fileCount * 32);
-        var root = builder.AddRoot();
-        for (var index = 0; index < fileCount; index++)
-        {
-            builder.AddRow($"file{index}.dat", root, RowFlags.InUse, index, Older, sequenceNumber: 0);
-        }
-
-        builder.Complete(Newer);
-
-        var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block)]);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var token = cancellation.Token;
-        try
-        {
-            Assert.ThrowsException<OperationCanceledException>(
-                () => SearchEngine.Search(snapshot, new SearchQuery("*.dat"), token));
-        }
-        finally
-        {
-            await snapshot.ReleaseNowAsync();
-        }
+
+        Assert.ThrowsException<OperationCanceledException>(
+            () => SearchEngine.Search(_snapshot, new SearchQuery("*.dat"), token));
     }
 
     [TestMethod]

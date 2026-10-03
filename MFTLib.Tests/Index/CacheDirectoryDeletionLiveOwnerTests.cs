@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -16,6 +17,7 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class CacheDirectoryDeletionLiveOwnerTests
 {
+    OwnedIndexDirectories _directories = null!;
     string _treeRoot = null!;
     string _cacheDirectory = null!;
     uint _volumeSerial;
@@ -24,8 +26,9 @@ public class CacheDirectoryDeletionLiveOwnerTests
     public void Initialize()
     {
         _volumeSerial = TestVolumeSerial.GetNext();
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _directories = new OwnedIndexDirectories();
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
         File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
     }
@@ -33,20 +36,7 @@ public class CacheDirectoryDeletionLiveOwnerTests
     [TestCleanup]
     public void Cleanup()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     FileIndexOptions Options(bool cacheOnly = false, IProgress<IndexScanProgress>? progress = null)
@@ -70,14 +60,6 @@ public class CacheDirectoryDeletionLiveOwnerTests
         return path;
     }
 
-    static async Task<byte[]> ReadAllBytesSharedAsync(string path)
-    {
-        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete);
-        var bytes = new byte[stream.Length];
-        await stream.ReadExactlyAsync(bytes);
-        return bytes;
-    }
 
     [TestMethod]
     public async Task DeleteCached_ClearingWhileALiveFileIndexOwnsABlock_DeletesUnownedBlocksReportsTheOwnedOneInUseAndPreservesEveryLockFile()
@@ -118,39 +100,12 @@ public class CacheDirectoryDeletionLiveOwnerTests
             "the live index keeps working after unrelated blocks are cleared out from under it");
     }
 
-    /// <summary>
-    ///     Parks the first armed progress report until the test releases it, so
-    ///     <see cref="CacheDirectory.DeleteCached(string, System.Collections.Generic.IReadOnlySet{char}, System.Action{string})" /> can run concurrently at a deterministic point
-    ///     mid-rescan: the canonical file already holds the half-written replacement and the owner
-    ///     lock is still held. Starts disarmed so the initial open rides through unblocked.
-    /// </summary>
-    sealed class BlockOnFirstArmedReport : IProgress<IndexScanProgress>
-    {
-        readonly TaskCompletionSource _reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public bool Armed { get; set; }
-        public Task Reported => _reported.Task;
-        public void Release() => _release.TrySetResult();
-
-        public void Report(IndexScanProgress value)
-        {
-            if (!Armed)
-            {
-                return;
-            }
-
-            _reported.TrySetResult();
-            _release.Task.GetAwaiter().GetResult();
-        }
-    }
-
     [TestMethod]
     public async Task DeleteCached_RacingAConcurrentRescan_ReportsInUseAndNeverDeletesTheBlockBeingWritten()
     {
         var progress = new BlockOnFirstArmedReport();
         await using var owner = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None);
-        var canonicalBytesBeforeRescan = await ReadAllBytesSharedAsync(CanonicalPath);
+        var canonicalBytesBeforeRescan = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
         progress.Armed = true;
@@ -177,7 +132,7 @@ public class CacheDirectoryDeletionLiveOwnerTests
         }
 
         Assert.AreEqual(DriveState.Ready, owner.Drives.Single().State);
-        var canonicalBytesAfterRescan = await ReadAllBytesSharedAsync(CanonicalPath);
+        var canonicalBytesAfterRescan = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
         CollectionAssert.AreNotEqual(canonicalBytesBeforeRescan, canonicalBytesAfterRescan,
             "the rescan completed normally once the clear backed off from the held lock");
     }
@@ -211,7 +166,7 @@ public class CacheDirectoryDeletionLiveOwnerTests
         {
             Assert.IsTrue(seed.Find(Path.Combine(_treeRoot, "Documents", "readme.md")) is not null);
         }
-        var canonicalBytesBeforeRace = await ReadAllBytesSharedAsync(CanonicalPath);
+        var canonicalBytesBeforeRace = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
 
         var gate = new DeleteParkGate();
         Task<IReadOnlyList<CachedBlockDeletionResult>> deleteTask;
@@ -229,7 +184,7 @@ public class CacheDirectoryDeletionLiveOwnerTests
                 Assert.AreEqual(DriveFailureKind.InUse, status.FailureKind);
                 Assert.IsTrue(File.Exists(CanonicalPath),
                     "a cache-only open racing a parked delete must not delete or adopt the slot");
-                CollectionAssert.AreEqual(canonicalBytesBeforeRace, await ReadAllBytesSharedAsync(CanonicalPath),
+                CollectionAssert.AreEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
                     "the slot must be byte-identical while the delete still holds it");
             }
 
@@ -244,7 +199,7 @@ public class CacheDirectoryDeletionLiveOwnerTests
                 StringAssert.Contains(privateBlockPath, "mftlib-private-");
                 Assert.AreNotEqual(CanonicalPath, privateBlockPath);
                 Assert.IsNotNull(fallbackOpen.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
-                CollectionAssert.AreEqual(canonicalBytesBeforeRace, await ReadAllBytesSharedAsync(CanonicalPath),
+                CollectionAssert.AreEqual(canonicalBytesBeforeRace, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
                     "a non-cache-only open racing a parked delete must fall back to a private block "
                     + "instead of touching the slot the delete still holds");
             }

@@ -88,6 +88,7 @@ public class FileIndexQueryCancellationTests
 
         Assert.ThrowsException<OperationCanceledException>(
             () => _index.FindByName("readme.md", token));
+        Assert.AreEqual(0, _index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
     }
 
     [TestMethod]
@@ -189,21 +190,6 @@ public class FileIndexQueryCancellationTests
         Assert.AreEqual(0, _index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
     }
 
-    /// <summary>
-    ///     A query that throws gives its borrow back too: the release is in a finally, not on the
-    ///     success path, or one cancelled query would stall every later disposal.
-    /// </summary>
-    [TestMethod]
-    public void AQueryThatWasCancelled_LeavesNoBorrowOutstanding()
-    {
-        using var cancellation = Cancelled();
-        var token = cancellation.Token;
-
-        Assert.ThrowsException<OperationCanceledException>(
-            () => _index.FindByName("readme.md", token));
-
-        Assert.AreEqual(0, _index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
-    }
 
     static CancellationTokenSource Cancelled()
     {

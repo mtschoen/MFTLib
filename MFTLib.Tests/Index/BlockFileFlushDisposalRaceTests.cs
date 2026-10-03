@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -31,16 +32,16 @@ public class BlockFileFlushDisposalRaceTests
         var block = builder.OpenForWriting();
         block._flushRangeBytes = Environment.SystemPageSize;
 
-        var held = new ReleaseGate();
-        var releaseFlush = new ReleaseGate();
-        var disposeStarted = new ReleaseGate();
+        var held = new TestGate();
+        var releaseFlush = new TestGate();
+        var disposeStarted = new TestGate();
         var holdOnce = 0;
         void HoldFirst()
         {
             if (Interlocked.Exchange(ref holdOnce, 1) == 0)
             {
-                held.Set();
-                releaseFlush.Wait();
+                held.MarkEntered();
+                releaseFlush.WaitForRelease();
             }
         }
 
@@ -66,7 +67,7 @@ public class BlockFileFlushDisposalRaceTests
         block._disposeStartedForTest = willWait =>
         {
             disposeWillWait = willWait;
-            disposeStarted.Set();
+            disposeStarted.MarkEntered();
         };
 
         var flushTask = Task.Run(() => block.Flush(_ =>
@@ -78,14 +79,14 @@ public class BlockFileFlushDisposalRaceTests
         }));
         try
         {
-            Assert.IsTrue(held.Wait(HandoffTimeout), "the flush never reached the hold point, so the race was never set up");
+            Assert.IsTrue(held.Entered.Wait(HandoffTimeout), "the flush never reached the hold point, so the race was never set up");
 
             var disposeTask = Task.Run(() => block.Dispose());
-            Assert.IsTrue(disposeStarted.Wait(HandoffTimeout), "dispose never began, so the race was never set up");
+            Assert.IsTrue(disposeStarted.Entered.Wait(HandoffTimeout), "dispose never began, so the race was never set up");
             Assert.IsTrue(disposeWillWait,
                 "dispose found no in-flight access to wait for, so a flush was not holding the block");
 
-            releaseFlush.Set();
+            releaseFlush.Release();
 
             Assert.IsTrue(flushTask.Wait(HandoffTimeout), "the in-flight flush never finished");
             Assert.IsTrue(disposeTask.Wait(HandoffTimeout), "dispose never finished after the flush left the block");
@@ -93,42 +94,7 @@ public class BlockFileFlushDisposalRaceTests
         }
         finally
         {
-            releaseFlush.Set();
-        }
-    }
-
-    /// <summary>A one-shot gate shared across threads; not a disposable, which the quality gate refuses in a closure.</summary>
-    sealed class ReleaseGate
-    {
-        readonly object _lock = new();
-        bool _open;
-
-        public void Set()
-        {
-            lock (_lock)
-            {
-                _open = true;
-                Monitor.PulseAll(_lock);
-            }
-        }
-
-        public void Wait()
-        {
-            lock (_lock)
-            {
-                while (!_open)
-                {
-                    Monitor.Wait(_lock);
-                }
-            }
-        }
-
-        public bool Wait(TimeSpan timeout)
-        {
-            lock (_lock)
-            {
-                return _open || (Monitor.Wait(_lock, timeout) && _open);
-            }
+            releaseFlush.Release();
         }
     }
 }

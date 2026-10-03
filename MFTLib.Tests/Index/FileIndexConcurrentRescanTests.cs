@@ -119,6 +119,7 @@ public class FileIndexConcurrentRescanTests
         Assert.AreEqual("T lost its volume", driveT.MftProducerFailureMessage);
         Assert.AreEqual(DriveState.Ready, driveU.State);
         Assert.IsNull(driveU.MftProducerFailureMessage);
+        GC.KeepAlive(index);
     }
 
     [TestMethod]

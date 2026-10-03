@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -22,33 +23,33 @@ public class BlockWriterCompleteDisposalRaceTests
         var block = builder.OpenForWriting();
         var writer = new BlockWriter(block);
 
-        var accessTaken = new ReleaseGate();
-        var releaseComplete = new ReleaseGate();
-        var disposeStarted = new ReleaseGate();
+        var accessTaken = new TestGate();
+        var releaseComplete = new TestGate();
+        var disposeStarted = new TestGate();
         var disposeWillWait = false;
         writer._completeAccessTakenForTest = () =>
         {
-            accessTaken.Set();
-            releaseComplete.Wait();
+            accessTaken.MarkEntered();
+            releaseComplete.WaitForRelease();
         };
         block._disposeStartedForTest = willWait =>
         {
             disposeWillWait = willWait;
-            disposeStarted.Set();
+            disposeStarted.MarkEntered();
         };
 
         var completeTask = Task.Run(() => writer.Complete(Moment, null));
         try
         {
-            Assert.IsTrue(accessTaken.Wait(HandoffTimeout),
+            Assert.IsTrue(accessTaken.Entered.Wait(HandoffTimeout),
                 "Complete never took its access, so the race was never set up");
 
             var disposeTask = Task.Run(() => block.Dispose());
-            Assert.IsTrue(disposeStarted.Wait(HandoffTimeout), "dispose never began, so the race was never set up");
+            Assert.IsTrue(disposeStarted.Entered.Wait(HandoffTimeout), "dispose never began, so the race was never set up");
             Assert.IsTrue(disposeWillWait,
                 "dispose found no in-flight access to wait for, so Complete was not holding the block");
 
-            releaseComplete.Set();
+            releaseComplete.Release();
 
             completeTask.Wait(HandoffTimeout);
             Assert.AreEqual(TaskStatus.RanToCompletion, completeTask.Status,
@@ -57,42 +58,7 @@ public class BlockWriterCompleteDisposalRaceTests
         }
         finally
         {
-            releaseComplete.Set();
-        }
-    }
-
-    /// <summary>A one-shot gate shared across threads; not a disposable, which the quality gate refuses in a closure.</summary>
-    sealed class ReleaseGate
-    {
-        readonly object _lock = new();
-        bool _open;
-
-        public void Set()
-        {
-            lock (_lock)
-            {
-                _open = true;
-                Monitor.PulseAll(_lock);
-            }
-        }
-
-        public void Wait()
-        {
-            lock (_lock)
-            {
-                while (!_open)
-                {
-                    Monitor.Wait(_lock);
-                }
-            }
-        }
-
-        public bool Wait(TimeSpan timeout)
-        {
-            lock (_lock)
-            {
-                return _open || (Monitor.Wait(_lock, timeout) && _open);
-            }
+            releaseComplete.Release();
         }
     }
 }

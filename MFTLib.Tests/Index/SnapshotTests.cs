@@ -176,7 +176,7 @@ public class SnapshotTests
     }
 
     [TestMethod]
-    public void Finalizer_WhenTheReleaseThrows_SwallowsItAndCompletesTheRelease()
+    public void Finalizer_WhenTheReleaseThrows_SwallowsItAndLeavesTheBlockUnreleased()
     {
         using var builder = CompletedBuilder('T');
         var driveBlock = OpenDriveBlock(builder, 0);

@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using MFTLib.Tests.TestSupport;
 
 namespace MFTLib.Tests.Index;
 
@@ -15,14 +16,16 @@ public class FileIndexEnumerateTests
 {
     static readonly DateTime FixedMoment = new(2026, 9, 16, 0, 0, 0, DateTimeKind.Utc);
 
+    OwnedIndexDirectories _directories = null!;
     string _treeRoot = null!;
     string _cacheDirectory = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _directories = new OwnedIndexDirectories();
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(_treeRoot);
         Directory.CreateDirectory(_cacheDirectory);
     }
@@ -30,20 +33,7 @@ public class FileIndexEnumerateTests
     [TestCleanup]
     public void Cleanup()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     string FirstRoot => Path.Combine(_treeRoot, "first");
@@ -259,50 +249,9 @@ public class FileIndexEnumerateTests
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
             MftProducer = (request, _) => Task.FromResult(
-                new MftBlockProduceResult(BuildSyntheticBlock(request, rowCount), JournalId: 7,
+                new MftBlockProduceResult(MftBlockFixture.Build(request, rowCount, i => $"file{i}.dat", FixedMoment), JournalId: 7,
                     NextUsn: 4096, SkippedRecordCount: 0))
         }, CancellationToken.None);
-    }
-
-    /// <summary>
-    ///     Writes an MFT-shaped block whose file rows all match the pattern "file", the same
-    ///     shape <see cref="FileIndexDisposeCancelsQueryTests" /> uses for its disposal races.
-    /// </summary>
-    static BlockFile BuildSyntheticBlock(MftBlockProduceRequest request, uint rowCount)
-    {
-        var createOptions = new BlockFileCreateOptions
-        {
-            Path = request.BlockPath,
-            VolumeSerial = request.VolumeSerial,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(rowCount + 8),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity((rowCount + 8) * 32),
-            DeleteOnClose = request.DeleteOnClose
-        };
-
-        using (var block = BlockFile.Create(createOptions))
-        {
-            var writer = new BlockWriter(block);
-            writer.TryWriteRow(0, "$MFT",
-                new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0,
-                    ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-            writer.TryWriteRow(5, ".",
-                new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0,
-                    Size: 0, ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-
-            for (var rowIndex = 6u; rowIndex < rowCount + 6; rowIndex++)
-            {
-                writer.TryWriteRow(rowIndex, $"file{rowIndex}.dat",
-                    new RowColumns(ParentRow: 5, Flags: RowFlags.InUse, Attributes: 0, Size: rowIndex,
-                        ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-            }
-
-            writer.SetJournalCursor(7, 4096);
-            writer.Complete(FixedMoment, null);
-        }
-
-        return BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
     }
 
     /// <summary>

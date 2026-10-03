@@ -18,6 +18,7 @@ public class FileIndexPartialCanonicalBlockTests
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     const uint VolumeSerial = 0x2970;
+    OwnedIndexDirectories _directories = null!;
     string _treeRoot = null!;
     string _cacheDirectory = null!;
     string _canonicalPath = null!;
@@ -25,8 +26,9 @@ public class FileIndexPartialCanonicalBlockTests
     [TestInitialize]
     public void Initialize()
     {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _directories = new OwnedIndexDirectories();
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(_treeRoot);
         Directory.CreateDirectory(_cacheDirectory);
         _canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', VolumeSerial));
@@ -35,20 +37,7 @@ public class FileIndexPartialCanonicalBlockTests
     [TestCleanup]
     public void Cleanup()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     FileIndexOptions Options(MftBlockProducer producer, List<string> diagnostics, bool cacheOnly = false) => new()

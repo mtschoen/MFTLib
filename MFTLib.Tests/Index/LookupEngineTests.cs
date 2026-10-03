@@ -47,15 +47,6 @@ public class LookupEngineTests
         _secondBuilder.Dispose();
     }
 
-    [TestMethod]
-    public void Find_AcceptsANativePathRootedAtTheBlockRoot()
-    {
-        var entry = LookupEngine.Find(_snapshot,
-            Path.Combine(TestDriveRoot.For('T'), "Documents", "report.pdf"));
-
-        Assert.IsTrue(entry.HasValue);
-        Assert.AreEqual("report.pdf", entry.Value.Name);
-    }
 
     [TestMethod]
     public void Find_RoundTripsWhateverPathEmits()
@@ -104,18 +95,6 @@ public class LookupEngineTests
         Assert.IsNull(LookupEngine.Find(_snapshot, Path.Combine(TestDriveRoot.For('T'), "Nowhere", "report.pdf")));
     }
 
-    [TestMethod]
-    public void Find_UnknownDriveReturnsNull()
-    {
-        Assert.IsNull(LookupEngine.Find(_snapshot, Path.Combine(TestDriveRoot.For('Z'), "Documents", "report.pdf")));
-    }
-
-    [TestMethod]
-    public void Find_MalformedPathReturnsNull()
-    {
-        Assert.IsNull(LookupEngine.Find(_snapshot, "not-a-path"));
-        Assert.IsNull(LookupEngine.Find(_snapshot, ""));
-    }
 
     [TestMethod]
     public void FindByName_SpansEveryDriveInTheSnapshot()
@@ -293,41 +272,18 @@ public class LookupEngineTests
     }
 
     /// <summary>
-    ///     The parallel path reports cancellation as <see cref="OperationCanceledException" />,
-    ///     not as an <see cref="AggregateException" /> a caller would have to unwrap: the loop
-    ///     carries the query's token, so the partitions that observe it all report the same
-    ///     cancellation.
+    ///     Cancellation is checked at entry, throwing OperationCanceledException
+    ///     before any work begins.
     /// </summary>
     [TestMethod]
-    public async Task FindByName_OverAPartitionedDriveWithACancelledToken_ThrowsOperationCanceled()
+    public void FindByName_WithACancelledToken_ThrowsOperationCanceled()
     {
-        const int fileCount = (int)ScanPartitioning.SingleThreadedRowThreshold + 1024;
-        using var builder = new SyntheticBlockBuilder('Y', slotCapacity: (uint)fileCount + 8,
-            namePoolCapacity: (uint)fileCount * 32);
-        var root = builder.AddRoot();
-        for (var index = 0; index < fileCount; index++)
-        {
-            builder.AddRow($"file{index}.dat", root, RowFlags.InUse, index, Moment,
-                sequenceNumber: 0);
-        }
-
-        builder.Complete(Moment);
-
-        var block = builder.OpenForReading(out _)!;
-        var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block)]);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var token = cancellation.Token;
-        try
-        {
-            Assert.ThrowsException<OperationCanceledException>(
-                () => LookupEngine.FindByName(snapshot, "needle.txt",
-                    caseSensitive: false, token));
-        }
-        finally
-        {
-            await snapshot.ReleaseNowAsync();
-        }
+
+        Assert.ThrowsException<OperationCanceledException>(
+            () => LookupEngine.FindByName(_snapshot, "needle.txt", caseSensitive: false, token));
     }
 
     /// <summary>

@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
+using MFTLib.Tests.TestSupport;
 using System.Runtime.CompilerServices;
 using MFTLib.Index;
-using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -15,6 +15,7 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class FileIndexBlockReleaseTests
 {
+    OwnedIndexDirectories _directories = null!;
     string _treeRoot = null!;
     string _cacheDirectory = null!;
     uint _volumeSerial;
@@ -24,8 +25,9 @@ public class FileIndexBlockReleaseTests
     public void Initialize()
     {
         _volumeSerial = TestVolumeSerial.GetNext();
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _directories = new OwnedIndexDirectories();
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
         File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
     }
@@ -34,20 +36,7 @@ public class FileIndexBlockReleaseTests
     [TestCleanup]
     public void Cleanup()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     FileIndexOptions Options()
@@ -171,8 +160,8 @@ public class FileIndexBlockReleaseTests
         var secondVolumeSerial = TestVolumeSerial.GetNext();
         Directory.CreateDirectory(secondTreeRoot);
         await File.WriteAllTextAsync(Path.Combine(secondTreeRoot, "unchanged.md"), "unchanged");
-        var reachedTheGate = new ReleaseGate();
-        var gate = new ReleaseGate();
+        var reachedTheGate = new TestGate();
+        var gate = new TestGate();
         try
         {
             var index = await FileIndex.OpenAsync(TwoDriveOptions(secondTreeRoot, secondVolumeSerial),
@@ -180,8 +169,8 @@ public class FileIndexBlockReleaseTests
             var retiredRelease = index.CurrentSnapshot.ReleaseState;
             retiredRelease._releaseStartedForTest = () =>
             {
-                reachedTheGate.Set();
-                gate.Wait();
+                reachedTheGate.MarkEntered();
+                gate.WaitForRelease();
             };
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
@@ -190,14 +179,14 @@ public class FileIndexBlockReleaseTests
             // Stands in for the snapshot finalizer: the same non-waiting release call, held at the
             // exact point the finalizer reaches once the flag is set and before a block is unmapped.
             var competingRelease = Task.Run(retiredRelease.Release);
-            reachedTheGate.Wait();
+            TestGate.WaitSynchronously(reachedTheGate.Entered);
 
             var disposal = index.DisposeAsync().AsTask();
 
             Assert.IsFalse(disposal.IsCompleted,
                 "DisposeAsync returned while a competing release had only started");
 
-            gate.Set();
+            gate.Release();
             Assert.IsTrue(await competingRelease);
             await disposal;
 
@@ -209,7 +198,7 @@ public class FileIndexBlockReleaseTests
         }
         finally
         {
-            gate.Set();
+            gate.Release();
             Directory.Delete(secondTreeRoot, recursive: true);
         }
     }
@@ -394,23 +383,23 @@ public class FileIndexBlockReleaseTests
     [TestMethod]
     public async Task RescanAsync_WhileARetiredReleaseIsInProgress_KeepsItForDisposalToWaitOn()
     {
-        var reachedTheGate = new ReleaseGate();
-        var gate = new ReleaseGate();
+        var reachedTheGate = new TestGate();
+        var gate = new TestGate();
         try
         {
             var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
             var retiredRelease = index.CurrentSnapshot.ReleaseState;
             retiredRelease._releaseStartedForTest = () =>
             {
-                reachedTheGate.Set();
-                gate.Wait();
+                reachedTheGate.MarkEntered();
+                gate.WaitForRelease();
             };
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
             await index.RescanAsync('T', CancellationToken.None);
 
             var competingRelease = Task.Run(retiredRelease.Release);
-            reachedTheGate.Wait();
+            TestGate.WaitSynchronously(reachedTheGate.Entered);
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "third.md"), "third");
             await index.RescanAsync('T', CancellationToken.None);
@@ -420,7 +409,7 @@ public class FileIndexBlockReleaseTests
             Assert.IsFalse(disposal.IsCompleted,
                 "a rescan pruned a retired release that had only started, so disposal had nothing to wait on");
 
-            gate.Set();
+            gate.Release();
             Assert.IsTrue(await competingRelease);
             await disposal;
 
@@ -430,7 +419,7 @@ public class FileIndexBlockReleaseTests
         }
         finally
         {
-            gate.Set();
+            gate.Release();
         }
     }
 
@@ -455,36 +444,5 @@ public class FileIndexBlockReleaseTests
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
         await index.RescanAsync('T', CancellationToken.None);
         return index;
-    }
-
-    /// <summary>
-    ///     A one-shot gate the release seam and the test share across threads. Deliberately not a
-    ///     <see cref="ManualResetEventSlim" />: that is disposable, and a disposable captured by
-    ///     the seam's closure is exactly what the quality gate refuses.
-    /// </summary>
-    sealed class ReleaseGate
-    {
-        readonly object _lock = new();
-        bool _open;
-
-        public void Set()
-        {
-            lock (_lock)
-            {
-                _open = true;
-                Monitor.PulseAll(_lock);
-            }
-        }
-
-        public void Wait()
-        {
-            lock (_lock)
-            {
-                while (!_open)
-                {
-                    Monitor.Wait(_lock);
-                }
-            }
-        }
     }
 }

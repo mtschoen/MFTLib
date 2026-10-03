@@ -1,3 +1,4 @@
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
@@ -29,6 +30,14 @@ internal sealed class TestGate
     /// </summary>
     internal void WaitForRelease()
     {
-        _released.Task.Wait(FakeIndexWatchSource.HangGuard);
+        WaitSynchronously(_released.Task);
+    }
+
+    internal static void WaitSynchronously(Task task)
+    {
+        if (!task.Wait(FakeIndexWatchSource.HangGuard))
+        {
+            throw new AssertFailedException("Synchronous wait timed out before the task completed.");
+        }
     }
 }

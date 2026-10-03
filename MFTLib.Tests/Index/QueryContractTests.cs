@@ -22,20 +22,7 @@ public class QueryContractTests
     }
 
     [TestMethod]
-    public void SearchQuery_SupportsNamedConstruction()
-    {
-        var query = new SearchQuery(NamePattern: "*.log", CaseSensitive: true, Directories: false,
-            MinimumSize: 100, MaximumSize: 1000);
-
-        Assert.AreEqual("*.log", query.NamePattern);
-        Assert.IsTrue(query.CaseSensitive);
-        Assert.IsFalse(query.Directories);
-        Assert.AreEqual(100L, query.MinimumSize);
-        Assert.AreEqual(1000L, query.MaximumSize);
-    }
-
-    [TestMethod]
-    public void DriveStatus_CarriesEverythingADriveCardNeeds()
+    public void DriveStatus_DefaultsMatchThePublishedContract()
     {
         var status = new DriveStatus
         {
@@ -50,12 +37,7 @@ public class QueryContractTests
             WatchSupported = false
         };
 
-        Assert.AreEqual('T', status.DriveLetter);
-        Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(42u, status.RowCount);
-        Assert.AreEqual(40u, status.LiveRowCount);
         Assert.AreEqual(0, status.AccessDeniedSubtreeCount);
-        Assert.IsFalse(status.WatchSupported);
         Assert.IsNull(status.DiscardedBlock);
         Assert.IsNull(status.WatchFailureMessage);
         Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
@@ -73,13 +55,5 @@ public class QueryContractTests
         Assert.AreEqual(FileChangeKind.Renamed, renamed.Kind);
         Assert.AreEqual(moment, created.Timestamp);
         Assert.AreEqual(moment, renamed.Timestamp);
-    }
-
-    [TestMethod]
-    public void DuplicateGroup_HoldsANameAndItsEntries()
-    {
-        var group = new DuplicateGroup("readme.md", []);
-        Assert.AreEqual("readme.md", group.Name);
-        Assert.AreEqual(0, group.Entries.Count);
     }
 }

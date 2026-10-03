@@ -46,42 +46,5 @@ public class SnapshotSwapTests
         }
     }
 
-    [TestMethod]
-    public async Task RescanTwice_LeavesExactlyOneBlockFileOnDisk()
-    {
-        var treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        var cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(treeRoot, "Documents"));
-        await File.WriteAllTextAsync(Path.Combine(treeRoot, "Documents", "readme.md"), "hello");
 
-        try
-        {
-            await using var index = await FileIndex.OpenAsync(new FileIndexOptions
-            {
-                Drives = [new IndexedDrive('T', treeRoot, 0x0BADF00D)],
-                CacheDirectory = cacheDirectory,
-                ProducerPolicy = ProducerPolicy.Enumeration
-            }, CancellationToken.None);
-
-            await index.RescanAsync('T', CancellationToken.None);
-            await index.RescanAsync('T', CancellationToken.None);
-
-            Assert.AreEqual(1, Directory.GetFiles(cacheDirectory, "*.mlix").Length);
-            Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
-        }
-        finally
-        {
-            foreach (var directory in new[] { treeRoot, cacheDirectory })
-            {
-                try
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-                catch (IOException)
-                {
-                    // A just-unmapped block file can stay locked briefly on Windows.
-                }
-            }
-        }
-    }
 }

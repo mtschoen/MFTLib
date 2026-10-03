@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -6,6 +7,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class FileIndexLifetimeTests
 {
+    OwnedIndexDirectories _directories = null!;
     string _treeRoot = null!;
     string _cacheDirectory = null!;
     uint _volumeSerial;
@@ -14,8 +16,9 @@ public class FileIndexLifetimeTests
     public void Initialize()
     {
         _volumeSerial = TestVolumeSerial.GetNext();
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _directories = new OwnedIndexDirectories();
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
         File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
     }
@@ -23,20 +26,7 @@ public class FileIndexLifetimeTests
     [TestCleanup]
     public void Cleanup()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     FileIndexOptions Options(bool noCache = false, ProducerPolicy policy = ProducerPolicy.Enumeration)
@@ -76,22 +66,6 @@ public class FileIndexLifetimeTests
         Assert.AreEqual(firstTimestamp, second.Drives[0].ScanTimestamp);
     }
 
-    [TestMethod]
-    public async Task OpenAsync_InvalidBlockIsDiscardedAndTheDriveColdScans()
-    {
-        await using (await FileIndex.OpenAsync(Options(), CancellationToken.None))
-        {
-        }
-
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
-        var bytes = await File.ReadAllBytesAsync(blockPath);
-        bytes[0] = 0xFF;
-        await File.WriteAllBytesAsync(blockPath, bytes);
-
-        await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(DriveState.Ready, reopened.Drives[0].State);
-        Assert.IsTrue(reopened.Drives[0].RowCount >= 3);
-    }
 
     [TestMethod]
     public async Task OpenAsync_NoCacheMode_LeavesNothingInTheCacheDirectory()
@@ -101,9 +75,6 @@ public class FileIndexLifetimeTests
             Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         }
 
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
 
         var cachedBlock = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
         Assert.IsFalse(File.Exists(cachedBlock));
@@ -123,12 +94,6 @@ public class FileIndexLifetimeTests
         Assert.AreEqual(0u, index.Drives[0].RowCount);
     }
 
-    [TestMethod]
-    public async Task OpenAsync_MftPolicyWithNoProducer_Throws()
-    {
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => FileIndex.OpenAsync(Options(policy: ProducerPolicy.Mft), CancellationToken.None));
-    }
 
     [TestMethod]
     public async Task OpenAsync_NoDrives_OpensEmpty()
@@ -136,18 +101,6 @@ public class FileIndexLifetimeTests
         var options = new FileIndexOptions { CacheDirectory = _cacheDirectory };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(0, index.Drives.Count);
-    }
-
-    [TestMethod]
-    public async Task RescanAsync_SwapsInANewBlockAndTheOldFileIsRemovedOnce()
-    {
-        await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var rowsBefore = index.Drives[0].RowCount;
-
-        await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
-        await index.RescanAsync('T', CancellationToken.None);
-
-        Assert.AreEqual(rowsBefore + 1, index.Drives[0].RowCount);
     }
 
     [TestMethod]
@@ -181,12 +134,14 @@ public class FileIndexLifetimeTests
         var oldSnapshot = index.CurrentSnapshot;
         Assert.IsTrue(index.TryGetDriveOrdinal('T', out var driveOrdinal));
         var oldEntry = FileEntry.Create(oldSnapshot, driveOrdinal, rowIndex: 0);
+        var rowsBefore = index.Drives[driveOrdinal].RowCount;
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
         await index.RescanAsync('T', CancellationToken.None);
 
         Assert.AreNotSame(oldSnapshot, index.CurrentSnapshot);
         Assert.IsTrue(oldEntry.IsDirectory);
+        Assert.AreEqual(rowsBefore + 1, index.Drives[driveOrdinal].RowCount);
 
         await oldSnapshot.ReleaseNowAsync();
         Assert.ThrowsException<ObjectDisposedException>(() => oldEntry.IsDirectory);

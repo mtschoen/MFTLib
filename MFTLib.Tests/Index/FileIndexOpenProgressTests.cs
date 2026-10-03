@@ -15,6 +15,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class FileIndexOpenProgressTests
 {
+    OwnedIndexDirectories _directories = null!;
     string _treeRoot = null!;
     string _cacheDirectory = null!;
 
@@ -23,28 +24,16 @@ public class FileIndexOpenProgressTests
     [TestInitialize]
     public void Initialize()
     {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _directories = new OwnedIndexDirectories();
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(_treeRoot);
     }
 
     [TestCleanup]
     public void Cleanup()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     string CreateDriveRoot(string name)
@@ -145,7 +134,7 @@ public class FileIndexOpenProgressTests
 
         Task<MftBlockProduceResult> FakeProducer(MftBlockProduceRequest request, CancellationToken _)
         {
-            var result = new MftBlockProduceResult(MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment),
+            var result = new MftBlockProduceResult(MftBlockFixture.Build(request, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment),
                 JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0);
             reportCountAtProduceTime = reports.Count;
             return Task.FromResult(result);
@@ -266,7 +255,7 @@ public class FileIndexOpenProgressTests
     }
 
     [TestMethod]
-    public async Task OpenAsync_ThrowingOpenProgressCallback_ReleasesUnpublishedBlocks()
+    public async Task OpenAsync_ThrowingOpenProgressCallback_Throws()
     {
         var drives = new[] { new IndexedDrive('T', CreateDriveRoot("throwing"), 1) };
         var throwingProgress = new SynchronousProgress<IndexDriveOpened>(_ =>

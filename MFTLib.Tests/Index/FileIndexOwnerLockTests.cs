@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -12,6 +13,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class FileIndexOwnerLockTests
 {
+    OwnedIndexDirectories _directories = null!;
     string _treeRoot = null!;
     string _cacheDirectory = null!;
     uint _volumeSerial;
@@ -20,8 +22,9 @@ public class FileIndexOwnerLockTests
     public void Initialize()
     {
         _volumeSerial = TestVolumeSerial.GetNext();
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _directories = new OwnedIndexDirectories();
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
         File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
     }
@@ -29,20 +32,7 @@ public class FileIndexOwnerLockTests
     [TestCleanup]
     public void Cleanup()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     FileIndexOptions Options(bool cacheOnly = false, IProgress<IndexScanProgress>? progress = null,
@@ -100,7 +90,7 @@ public class FileIndexOwnerLockTests
     public async Task OpenAsync_NonCacheOnly_SecondIndexScansAPrivateBlockAndNeverTouchesTheCanonicalCache()
     {
         await using var first = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var canonicalBytes = await ReadAllBytesSharedAsync(CanonicalPath);
+        var canonicalBytes = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
 
         string secondBlockPath;
         await using (var second = await FileIndex.OpenAsync(Options(), CancellationToken.None))
@@ -112,7 +102,7 @@ public class FileIndexOwnerLockTests
             Assert.IsTrue(second.TryGetDriveOrdinal('T', out var secondOrdinal));
             secondBlockPath = second.CurrentSnapshot.GetDriveBlock(secondOrdinal).Block.Path;
             Assert.IsTrue(File.Exists(secondBlockPath));
-            CollectionAssert.AreEqual(canonicalBytes, await ReadAllBytesSharedAsync(CanonicalPath),
+            CollectionAssert.AreEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
                 "the owning index's canonical cache is not replaced, truncated, or deleted");
             Assert.IsNotNull(second.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
         }
@@ -216,7 +206,7 @@ public class FileIndexOwnerLockTests
         var first = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         try
         {
-            var canonicalBytes = await ReadAllBytesSharedAsync(CanonicalPath);
+            var canonicalBytes = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
 
             await using var second = await FileIndex.OpenAsync(Options(), CancellationToken.None);
             var initialStatus = second.Drives.Single();
@@ -232,7 +222,7 @@ public class FileIndexOwnerLockTests
             var secondPrivatePath = second.CurrentSnapshot.GetDriveBlock(secondOrdinal).Block.Path;
             Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().CacheSlot);
             Assert.AreNotEqual(firstPrivatePath, secondPrivatePath);
-            CollectionAssert.AreEqual(canonicalBytes, await ReadAllBytesSharedAsync(CanonicalPath),
+            CollectionAssert.AreEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
                 "the canonical cache still belongs to the first index, untouched by the rescan");
             Assert.AreEqual(0, Directory.EnumerateFiles(_cacheDirectory,
                 CacheDirectory.BlockFileName('T', _volumeSerial) + ".retired-*").Count());
@@ -262,7 +252,7 @@ public class FileIndexOwnerLockTests
     public async Task RescanAsync_InUseFailedDrive_ScansIntoAPrivateBlockWhileTheOwnerStaysLive()
     {
         await using var first = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var canonicalBytes = await ReadAllBytesSharedAsync(CanonicalPath);
+        var canonicalBytes = await SharedFileReader.ReadAllBytesAsync(CanonicalPath);
 
         await using var second = await FileIndex.OpenAsync(Options(cacheOnly: true), CancellationToken.None);
         Assert.AreEqual(DriveFailureKind.InUse, second.Drives.Single().FailureKind);
@@ -274,7 +264,7 @@ public class FileIndexOwnerLockTests
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
         Assert.AreEqual(CacheSlotState.PrivateFallback, status.CacheSlot);
-        CollectionAssert.AreEqual(canonicalBytes, await ReadAllBytesSharedAsync(CanonicalPath));
+        CollectionAssert.AreEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath));
     }
 
     [TestMethod]
@@ -392,33 +382,6 @@ public class FileIndexOwnerLockTests
         }
     }
 
-    /// <summary>
-    ///     Blocks the scan thread at the first armed progress report until the test releases
-    ///     it, so a second index can open against the cache mid-rescan at a deterministic
-    ///     point: the canonical file is renamed aside and the replacement is still being
-    ///     written. Starts disarmed so the initial open rides through unblocked.
-    /// </summary>
-    sealed class BlockOnFirstArmedReport : IProgress<IndexScanProgress>
-    {
-        readonly TaskCompletionSource _reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public bool Armed { get; set; }
-        public Task Reported => _reported.Task;
-        public void Release() => _release.TrySetResult();
-
-        public void Report(IndexScanProgress value)
-        {
-            if (!Armed)
-            {
-                return;
-            }
-
-            _reported.TrySetResult();
-            _release.Task.GetAwaiter().GetResult();
-        }
-    }
-
     static async Task AssertThrowsCancellation(Func<Task> action)
     {
         try
@@ -433,11 +396,4 @@ public class FileIndexOwnerLockTests
         Assert.Fail("Expected an OperationCanceledException (or a derived type such as TaskCanceledException).");
     }
 
-    static async Task<byte[]> ReadAllBytesSharedAsync(string path)
-    {
-        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        var bytes = new byte[stream.Length];
-        await stream.ReadExactlyAsync(bytes);
-        return bytes;
-    }
 }

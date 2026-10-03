@@ -89,7 +89,7 @@ public class FileIndexAdmittedOperationDisposalTests
                 // Holds the rescan between its lost catch-up and its retry until disposal has set
                 // its flag; the retry's first checkpoint then runs after the flag is set.
                 lostRaised.TrySetResult();
-                flagSet.Task.Wait(HangGuard);
+                TestGate.WaitSynchronously(flagSet.Task);
             }
         };
         var producedBefore = harness.ProductionCount('T');
@@ -120,7 +120,7 @@ public class FileIndexAdmittedOperationDisposalTests
         index.BeforeRestartDecisionForTest = _ =>
         {
             decisionReached.TrySetResult();
-            flagSet.Task.Wait(HangGuard);
+            TestGate.WaitSynchronously(flagSet.Task);
         };
         var rescan = Task.Run(() => index.RescanAsync('T', Token));
         await decisionReached.Task.WaitAsync(HangGuard);
@@ -148,7 +148,7 @@ public class FileIndexAdmittedOperationDisposalTests
         index.BeforeRestartDecisionForTest = _ =>
         {
             decisionReached.TrySetResult();
-            flagSet.Task.Wait(HangGuard);
+            TestGate.WaitSynchronously(flagSet.Task);
         };
         var producedBefore = harness.ProductionCount('T');
         harness.Source.HandleFor('T').FailDrive(new IOException("T's journal wrapped"));

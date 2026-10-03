@@ -13,6 +13,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class FileIndexScanFinishedTests
 {
+    OwnedIndexDirectories _directories = null!;
     string _treeRoot = null!;
     string _cacheDirectory = null!;
 
@@ -21,28 +22,16 @@ public class FileIndexScanFinishedTests
     [TestInitialize]
     public void Initialize()
     {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _directories = new OwnedIndexDirectories();
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(_treeRoot);
     }
 
     [TestCleanup]
     public void Cleanup()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     string CreateDriveRoot(string name)
@@ -88,7 +77,7 @@ public class FileIndexScanFinishedTests
             RowsWritten = 1
         });
         return Task.FromResult(new MftBlockProduceResult(
-            MftBlockFixture.WriteAndOpen(request, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment),
+            MftBlockFixture.Build(request, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment),
             JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
     }
 

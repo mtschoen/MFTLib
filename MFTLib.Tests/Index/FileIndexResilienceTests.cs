@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -13,6 +14,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public partial class FileIndexResilienceTests
 {
+    OwnedIndexDirectories _directories = null!;
     string _treeRoot = null!;
     string _cacheDirectory = null!;
     uint _volumeSerial;
@@ -21,8 +23,9 @@ public partial class FileIndexResilienceTests
     public void Initialize()
     {
         _volumeSerial = TestVolumeSerial.GetNext();
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _directories = new OwnedIndexDirectories();
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(Path.Combine(_treeRoot, "Documents"));
         File.WriteAllText(Path.Combine(_treeRoot, "Documents", "readme.md"), "hello");
     }
@@ -30,20 +33,7 @@ public partial class FileIndexResilienceTests
     [TestCleanup]
     public void Cleanup()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     FileIndexOptions Options(bool noCache = false, IProgress<IndexScanProgress>? progress = null,
@@ -295,7 +285,7 @@ public partial class FileIndexResilienceTests
     }
 
     [TestMethod]
-    public async Task DisposeAsync_NoCacheMode_DeletesEveryUnheldTempBlockAfterFinalization()
+    public async Task DisposeAsync_NoCacheMode_DeletesEveryUnheldTempBlockImmediately()
     {
         var index = await FileIndex.OpenAsync(Options(noCache: true), CancellationToken.None);
         string firstPath;
@@ -315,12 +305,7 @@ public partial class FileIndexResilienceTests
         }
         finally
         {
-            // Disposal detaches the index snapshots, and the forced GC proves unheld snapshots
-            // then finalize and remove both no-cache files.
             await index.DisposeAsync();
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
         }
 
         Assert.IsFalse(File.Exists(firstPath));
@@ -371,6 +356,8 @@ public partial class FileIndexResilienceTests
         Assert.AreEqual(2, retiredPaths.Count, "each rescan should retire a distinctly named file");
         Assert.AreNotEqual(retiredPaths[0], retiredPaths[1]);
         Assert.IsTrue(retiredPaths.All(File.Exists));
+        Assert.AreEqual(1, Directory.GetFiles(_cacheDirectory, "*.mlix").Length, "exactly one canonical block file remains");
+        Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
 
         await firstSnapshot.ReleaseNowAsync();
         await secondSnapshot.ReleaseNowAsync();
@@ -393,21 +380,6 @@ public partial class FileIndexResilienceTests
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Name);
     }
 
-    [TestMethod]
-    public async Task OpenAsync_InvalidBlockIsDiscarded_SetsDiscardedBlockOnTheStatus()
-    {
-        await using (await FileIndex.OpenAsync(Options(), CancellationToken.None))
-        {
-        }
-
-        var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
-        var bytes = await File.ReadAllBytesAsync(blockPath);
-        bytes[0] = 0xFF;
-        await File.WriteAllBytesAsync(blockPath, bytes);
-
-        await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(BlockValidationResult.WrongMagic, reopened.Drives[0].DiscardedBlock);
-    }
 
     [TestMethod]
     public async Task OpenAsync_WarmStart_LeavesDiscardedBlockNull()

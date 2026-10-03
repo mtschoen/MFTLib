@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -18,29 +18,23 @@ public class FileIndexDisposeCancelsQueryTests
 {
     static readonly DateTime FixedMoment = new(2026, 9, 14, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>
-    ///     How long a handshake may take before the test calls it a failure. A bound on a poll,
-    ///     never a measurement: nothing here asserts on how long anything took.
-    /// </summary>
     static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>
-    ///     Rows enough that the scan is still running microseconds later, when disposal begins.
-    ///     Every name repeats, so the sieve keeps refining and the materialization pass has real
-    ///     work to do rather than finding nothing and returning.
-    /// </summary>
+    /// <summary>Rows enough to exercise every row-scanning query path.</summary>
     const uint RowCount = 600_000;
 
     const uint DistinctNameCount = 1000;
 
+    OwnedIndexDirectories _directories = null!;
     string _cacheDirectory = null!;
     string _treeRoot = null!;
 
     [TestInitialize]
     public void Initialize()
     {
-        _treeRoot = Path.Combine(Path.GetTempPath(), $"mftlib-tree-{Guid.NewGuid():N}");
-        _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-cache-{Guid.NewGuid():N}");
+        _directories = new OwnedIndexDirectories();
+        _treeRoot = _directories.TreeRoot;
+        _cacheDirectory = _directories.CacheDirectory;
         Directory.CreateDirectory(_treeRoot);
         Directory.CreateDirectory(_cacheDirectory);
     }
@@ -48,20 +42,7 @@ public class FileIndexDisposeCancelsQueryTests
     [TestCleanup]
     public void Cleanup()
     {
-        foreach (var directory in new[] { _treeRoot, _cacheDirectory })
-        {
-            try
-            {
-                if (Directory.Exists(directory))
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-                // A just-unmapped block file can stay locked briefly on Windows.
-            }
-        }
+        _directories.Dispose();
     }
 
     [TestMethod]
@@ -333,15 +314,6 @@ public class FileIndexDisposeCancelsQueryTests
             Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
     }
 
-    /// <summary>
-    ///     Blocks until a reader has actually taken its borrow on <paramref name="release" />,
-    ///     so the reader is provably inside the snapshot when the test disposes the index. A
-    ///     reader that merely announced it was about to start proves nothing: disposal could win
-    ///     that race and turn the query away before it read a row. Polled tightly rather than
-    ///     through <see cref="SpinWait.SpinUntil(System.Func{bool}, TimeSpan)" />, which falls
-    ///     back to millisecond sleeps and can step straight over a scan that holds its borrow for
-    ///     only a few of them. The elapsed time is a failure bound, never an assertion.
-    /// </summary>
     static void WaitUntilBorrowTaken(SnapshotRelease release, string reader)
     {
         var elapsed = Stopwatch.StartNew();
@@ -364,50 +336,9 @@ public class FileIndexDisposeCancelsQueryTests
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
             MftProducer = (request, _) => Task.FromResult(
-                new MftBlockProduceResult(BuildLargeBlock(request), JournalId: 7, NextUsn: 4096,
+                new MftBlockProduceResult(MftBlockFixture.Build(request, RowCount, i => $"file{i % DistinctNameCount}.dat", FixedMoment), JournalId: 7, NextUsn: 4096,
                     SkippedRecordCount: 0))
         };
     }
 
-    /// <summary>
-    ///     Writes an MFT-shaped block with <see cref="RowCount" /> live rows through the
-    ///     production <see cref="BlockWriter" />, then reopens it the way a real producer's caller
-    ///     adopts the block it wrote.
-    /// </summary>
-    static BlockFile BuildLargeBlock(MftBlockProduceRequest request)
-    {
-        var createOptions = new BlockFileCreateOptions
-        {
-            Path = request.BlockPath,
-            VolumeSerial = request.VolumeSerial,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = BlockLayout.ComputeSlotCapacity(RowCount + 8),
-            NamePoolCapacity = BlockLayout.ComputeNamePoolCapacity((RowCount + 8) * 32),
-            DeleteOnClose = request.DeleteOnClose
-        };
-
-        using (var block = BlockFile.Create(createOptions))
-        {
-            var writer = new BlockWriter(block);
-            writer.TryWriteRow(0, "$MFT",
-                new RowColumns(ParentRow: 0, Flags: RowFlags.InUse, Attributes: 0, Size: 0,
-                    ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-            writer.TryWriteRow(5, ".",
-                new RowColumns(ParentRow: 5, Flags: RowFlags.InUse | RowFlags.Directory, Attributes: 0,
-                    Size: 0, ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-
-            for (var rowIndex = 6u; rowIndex < RowCount + 6; rowIndex++)
-            {
-                writer.TryWriteRow(rowIndex, $"file{rowIndex % DistinctNameCount}.dat",
-                    new RowColumns(ParentRow: 5, Flags: RowFlags.InUse, Attributes: 0, Size: rowIndex,
-                        ModifiedTicks: FixedMoment.Ticks, SequenceNumber: 0));
-            }
-
-            writer.SetJournalCursor(7, 4096);
-            writer.Complete(FixedMoment, null);
-        }
-
-        return BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
-    }
 }
