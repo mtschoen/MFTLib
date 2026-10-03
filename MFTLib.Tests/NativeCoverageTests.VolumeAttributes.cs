@@ -17,22 +17,7 @@ public partial class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = new byte[1024 * 1024]; // 1MB  -  enough for boot sector + MFT area
-            // Write "NTFS" at the expected name offset (byte 3 of BPB)
-            data[3] = (byte)'N';
-            data[4] = (byte)'T';
-            data[5] = (byte)'F';
-            data[6] = (byte)'S';
-            // Set bytes per sector = 512
-            data[0x0B] = 0x00;
-            data[0x0C] = 0x02;
-            // Set sectors per cluster = 8
-            data[0x0D] = 0x08;
-            // Set MFT start cluster = 0 (just after boot sector area  -  first cluster)
-            // mftStart is at offset 0x30 (NTFS_BPB layout)
-            data[0x30] = 0x01; // MFT at cluster 1 = byte 4096
-            // Record 0 at byte 4096  -  leave magic as zeros (not "FILE")
-            // This will trigger "Invalid MFT record 0 magic" error
+            var data = BuildBootSector();
 
             File.WriteAllBytes(path, data);
 
@@ -70,53 +55,10 @@ public partial class NativeCoverageTests
         var path = Path.GetTempFileName();
         try
         {
-            var data = new byte[1024 * 1024];
-            // NTFS BPB
-            data[3] = (byte)'N';
-            data[4] = (byte)'T';
-            data[5] = (byte)'F';
-            data[6] = (byte)'S';
-            data[0x0B] = 0x00;
-            data[0x0C] = 0x02; // bytes per sector = 512
-            data[0x0D] = 0x08; // sectors per cluster = 8
-            data[0x30] = 0x01; // MFT at cluster 1 = byte 4096
-
-            // Build a minimal FILE record at offset 4096
-            var recordOffset = 4096;
-            // Magic "FILE"
-            data[recordOffset + 0] = 0x46; // F
-            data[recordOffset + 1] = 0x49; // I
-            data[recordOffset + 2] = 0x4C; // L
-            data[recordOffset + 3] = 0x45; // E
-            // USA offset (bytes 4-5) = 48
-            data[recordOffset + 4] = 0x30;
-            data[recordOffset + 5] = 0x00;
-            // USA size (bytes 6-7) = 3 (USN + 2 sector entries)
-            data[recordOffset + 6] = 0x03;
-            data[recordOffset + 7] = 0x00;
-            // First attribute offset (bytes 20-21 = offset 0x14) = 56
-            data[recordOffset + 0x14] = 0x38;
-            // Flags (bytes 22-23 = offset 0x16) = 0x0001 (in use)
-            data[recordOffset + 0x16] = 0x01;
-
-            // Place EndMarker attribute at offset 56 (no attributes before it)
-            var attrOffset = recordOffset + 0x38;
-            data[attrOffset + 0] = 0xFF;
-            data[attrOffset + 1] = 0xFF;
-            data[attrOffset + 2] = 0xFF;
-            data[attrOffset + 3] = 0xFF;
-
-            // USA: write matching USN at sector ends
-            var usn = (ushort)0x0001;
-            // USA[0] = USN at offset 48
-            data[recordOffset + 48] = (byte)(usn & 0xFF);
-            data[recordOffset + 49] = (byte)(usn >> 8);
-            // Sector 0 end (offset 510-511)
-            data[recordOffset + 510] = (byte)(usn & 0xFF);
-            data[recordOffset + 511] = (byte)(usn >> 8);
-            // USA[1] at offset 50  -  original bytes
-            data[recordOffset + 50] = 0x00;
-            data[recordOffset + 51] = 0x00;
+            var data = BuildBootSector();
+            const int recordOffset = 4096;
+            WriteFileRecord(data, recordOffset);
+            WriteEndMarker(data, recordOffset + 0x38);
 
             File.WriteAllBytes(path, data);
 
@@ -235,7 +177,7 @@ public partial class NativeCoverageTests
     // --- Resident AttributeList path ---
 
     [TestMethod]
-    public void ParseMFTRecords_ResidentAttributeList_ParsesExtensionRecords()
+    public void ParseMFTRecords_ResidentAttributeList_EmptyValueReturnsDataRecords()
     {
         // Record 0 with Data + empty resident AttributeList.
         // Exercises the resident else branch (lines 1017-1020).

@@ -13,36 +13,6 @@ public partial class MftResultTests
         Assert.IsTrue(ex.Message.Contains("ABI mismatch"));
     }
 
-    [DataTestMethod]
-    [DataRow(0)]
-    [DataRow(-1)]
-    [DataRow(-100)]
-    public void MaterializeBatches_BatchSizeZeroOrNegative_ThrowsArgumentOutOfRangeException(int batchSize)
-    {
-        Assert.IsNotNull(_tempMftPath);
-        MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
-
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() =>
-        {
-            using var result = new MftResult(resultPtr, string.Empty);
-            _ = result.MaterializeBatches(batchSize).ToList();
-        });
-    }
-
-    [TestMethod]
-    public void MaterializeBatches_Disposed_ThrowsObjectDisposedException()
-    {
-        Assert.IsNotNull(_tempMftPath);
-        MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
-        var result = new MftResult(resultPtr, string.Empty);
-        result.Dispose();
-
-        Assert.ThrowsException<ObjectDisposedException>(() =>
-            result.MaterializeBatches().ToList());
-    }
-
     [TestMethod]
     public void MaterializeBatches_DefaultBatchSize_BatchesHaveExpectedLengthsAndOrder()
     {

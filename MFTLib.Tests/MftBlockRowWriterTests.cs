@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -132,7 +133,7 @@ public class MftBlockRowWriterTests
         }
 
         MftBlockRowWriter.WriteBatches(writer, Batches(), MftBlockRowFilter.Full,
-            new DirectProgress(reports.Add), CancellationToken.None);
+            new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None);
 
         Assert.AreEqual(2, reports.Count);
         Assert.AreEqual(new BlockWriteProgress(1, 2, null, null), reports[0]);
@@ -165,9 +166,9 @@ public class MftBlockRowWriterTests
     {
         using var block = CreateBlock();
         using var cancellation = new CancellationTokenSource();
-        var progress = new CancellationProgress(cancellation);
-        var cancellationToken = cancellation.Token;
         var writer = new BlockWriter(block);
+        var progress = new CancellingProgress(cancellation);
+        var cancellationToken = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(() => MftBlockRowWriter.WriteBatches(
             writer, [[Record(5, ".")], [Record(6, "file")]], MftBlockRowFilter.Full, progress, cancellationToken));
@@ -266,7 +267,7 @@ public class MftBlockRowWriterTests
 
         var result = MftBlockRowWriter.WriteBatches(
             new BlockWriter(block), [records], new MftBlockRowFilter(BrokerScanProfile.DirectoryIndex),
-            new DirectProgress(reports.Add), CancellationToken.None);
+            new SynchronousProgress<BlockWriteProgress>(reports.Add), CancellationToken.None);
 
         Assert.AreEqual(0L, result.SkippedRecordCount);
         Assert.AreEqual(1, reports.Count);
@@ -309,13 +310,12 @@ public class MftBlockRowWriterTests
         });
     }
 
-    sealed class DirectProgress(Action<BlockWriteProgress> handler) : IProgress<BlockWriteProgress>
+    sealed class CancellingProgress(CancellationTokenSource cancellation) : IProgress<BlockWriteProgress>
     {
-        public void Report(BlockWriteProgress value) => handler(value);
+        public void Report(BlockWriteProgress value)
+        {
+            cancellation.Cancel();
+        }
     }
 
-    sealed class CancellationProgress(CancellationTokenSource cancellation) : IProgress<BlockWriteProgress>
-    {
-        public void Report(BlockWriteProgress value) => cancellation.Cancel();
-    }
 }

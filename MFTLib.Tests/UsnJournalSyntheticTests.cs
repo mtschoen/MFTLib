@@ -633,8 +633,10 @@ public partial class UsnJournalSyntheticTests
 
     // --- GrowUsnJournal (managed FSCTL_CREATE_USN_JOURNAL path; Kernel32 seam swapped) ---
 
-    [TestMethod]
-    public void GrowUsnJournal_RequestedEqualToCurrent_RefusesWithoutIoctl()
+    [DataTestMethod]
+    [DataRow(0x200000u)]
+    [DataRow(0x100000u)]
+    public void GrowUsnJournal_RequestedNotLargerThanCurrent_RefusesWithoutIoctl(uint requestedMaximumSize)
     {
         UseFakeHandle();
         QueueSuccess(BuildQueryBuffer(maxSize: 0x200000, allocDelta: 0x100000));
@@ -651,36 +653,7 @@ public partial class UsnJournalSyntheticTests
         try
         {
             using var volume = MftVolume.Open("C");
-            volume.GrowUsnJournal(0x200000, 0x100000);
-            Assert.Fail("Expected InvalidOperationException");
-        }
-        catch (InvalidOperationException exception)
-        {
-            StringAssert.Contains(exception.Message, "only growth");
-        }
-
-        Assert.IsFalse(createCalled);
-    }
-
-    [TestMethod]
-    public void GrowUsnJournal_RequestedBelowCurrent_RefusesWithoutIoctl()
-    {
-        UseFakeHandle();
-        QueueSuccess(BuildQueryBuffer(maxSize: 0x200000, allocDelta: 0x100000));
-        var createCalled = false;
-        bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
-            uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
-        {
-            createCalled = true;
-            bytesReturned = 0;
-            return true;
-        }
-
-        Kernel32._deviceIoControl = FakeDeviceIoControl;
-        try
-        {
-            using var volume = MftVolume.Open("C");
-            volume.GrowUsnJournal(0x100000, 0x100000);
+            volume.GrowUsnJournal(requestedMaximumSize, 0x100000);
             Assert.Fail("Expected InvalidOperationException");
         }
         catch (InvalidOperationException exception)

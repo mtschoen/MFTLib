@@ -68,6 +68,8 @@ public class BenchmarkRunnerTests
     public void Run_DefaultArguments_Uses8MillionRecordsAnd3Iterations()
     {
         var childCalls = new List<string[]>();
+        ulong generatedRecordCount = 0;
+        _runner._generateSynthetic = (_, recordCount, _) => generatedRecordCount = recordCount;
         _runner._runChildProcess = args =>
         {
             childCalls.Add(args);
@@ -77,6 +79,7 @@ public class BenchmarkRunnerTests
         _runner.Run([]);
 
         Assert.AreEqual(3, childCalls.Count);
+        Assert.AreEqual(8_000_000UL, generatedRecordCount);
         Assert.AreEqual("3", childCalls[0][3]);
     }
 
@@ -84,6 +87,8 @@ public class BenchmarkRunnerTests
     public void Run_CustomArguments_ParsesRecordCountAndIterations()
     {
         var childCalls = new List<string[]>();
+        ulong generatedRecordCount = 0;
+        _runner._generateSynthetic = (_, recordCount, _) => generatedRecordCount = recordCount;
         _runner._runChildProcess = args =>
         {
             childCalls.Add(args);
@@ -93,6 +98,7 @@ public class BenchmarkRunnerTests
         _runner.Run(["100000", "2"]);
 
         Assert.AreEqual(3, childCalls.Count);
+        Assert.AreEqual(100_000UL, generatedRecordCount);
         Assert.AreEqual("2", childCalls[0][3]);
     }
 
@@ -313,36 +319,6 @@ public class BenchmarkRunnerTests
             if (File.Exists(reportPath))
             {
                 File.Delete(reportPath);
-            }
-        }
-    }
-
-    [TestMethod]
-    public void Benchmark_EndToEnd_WithNativeCalls_RunsAndExits()
-    {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return;
-        }
-
-        var temporaryBaseline = Path.GetTempFileName();
-        try
-        {
-            var runner = new BenchmarkRunner
-            {
-                _writeAllText = (_, content) => File.WriteAllText(temporaryBaseline, content)
-            };
-            var exitCode = runner.Run(["10", "1", "--out", temporaryBaseline]);
-            Assert.AreEqual(0, exitCode);
-            Assert.IsTrue(File.Exists(temporaryBaseline));
-            var content = File.ReadAllText(temporaryBaseline);
-            Assert.IsTrue(content.Contains("MFT Benchmark"));
-        }
-        finally
-        {
-            if (File.Exists(temporaryBaseline))
-            {
-                File.Delete(temporaryBaseline);
             }
         }
     }
@@ -630,119 +606,28 @@ public class BenchmarkRunnerTests
         Assert.IsTrue(allOutput.Contains("Threshold check: PASSED"));
     }
 
-    [TestMethod]
-    public void Run_Compare_ThroughputRegressionExceeds10Percent_Fails_ReturnsOne()
+    [DataTestMethod]
+    [DataRow("2,000,000", "900,000,000", "600,000,000", "650,000,000", "Throughput regression")]
+    [DataRow("2,700,000", "1,500,000,000", "600,000,000", "650,000,000", "Peak private bytes reduction")]
+    [DataRow("2,700,000", "900,000,000", "1,000,000,000", "650,000,000", "Bounded <= Compat peak")]
+    [DataRow("2,700,000", "900,000,000", "600,000,000", "1,000,000,000", "Broker-stream <= Compat peak")]
+    public void Run_Compare_ThresholdFailure_ReturnsOneAndReportsFailingThreshold(
+        string compatThroughput,
+        string compatPrivateBytes,
+        string boundedPrivateBytes,
+        string brokerStreamPrivateBytes,
+        string expectedFailingThreshold)
     {
-        const string beforeContent = """
-                                     Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-                                     Peak private bytes: 1818877952
-                                     Throughput: 2,670,625 records/sec
-                                     """;
-
-        const string afterContent = """
-                                    --- Scenario: compat ---
-                                      Peak private bytes: 900,000,000 bytes
-                                      Throughput: 2,000,000 records/sec
-                                    --- Scenario: bounded ---
-                                      Peak private bytes: 600,000,000 bytes
-                                    --- Scenario: broker-stream ---
-                                      Peak private bytes: 650,000,000 bytes
-                                    """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
+        var exitCode = RunComparison(CreateScenarioReport(
+            compatThroughput,
+            compatPrivateBytes,
+            boundedPrivateBytes,
+            brokerStreamPrivateBytes));
 
         Assert.AreEqual(1, exitCode);
         var allOutput = string.Join("\n", _consoleLines);
-        Assert.IsTrue(allOutput.Contains("Threshold check: FAILED"));
-    }
-
-    [TestMethod]
-    public void Run_Compare_PeakPrivateBytesReductionBelow40Percent_Fails_ReturnsOne()
-    {
-        const string beforeContent = """
-                                     Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-                                     Peak private bytes: 1818877952
-                                     Throughput: 2,670,625 records/sec
-                                     """;
-
-        const string afterContent = """
-                                    --- Scenario: compat ---
-                                      Peak private bytes: 1,500,000,000 bytes
-                                      Throughput: 2,700,000 records/sec
-                                    --- Scenario: bounded ---
-                                      Peak private bytes: 600,000,000 bytes
-                                    --- Scenario: broker-stream ---
-                                      Peak private bytes: 650,000,000 bytes
-                                    """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
-
-        Assert.AreEqual(1, exitCode);
-        var allOutput = string.Join("\n", _consoleLines);
-        Assert.IsTrue(allOutput.Contains("Threshold check: FAILED"));
-    }
-
-    [TestMethod]
-    public void Run_Compare_BoundedPeakExceedsCompatPeak_Fails_ReturnsOne()
-    {
-        const string beforeContent = """
-                                     Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-                                     Peak private bytes: 1818877952
-                                     Throughput: 2,670,625 records/sec
-                                     """;
-
-        const string afterContent = """
-                                    --- Scenario: compat ---
-                                      Peak private bytes: 900,000,000 bytes
-                                      Throughput: 2,700,000 records/sec
-                                    --- Scenario: bounded ---
-                                      Peak private bytes: 1,000,000,000 bytes
-                                    --- Scenario: broker-stream ---
-                                      Peak private bytes: 650,000,000 bytes
-                                    """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
-
-        Assert.AreEqual(1, exitCode);
-        var allOutput = string.Join("\n", _consoleLines);
-        Assert.IsTrue(allOutput.Contains("Threshold check: FAILED"));
-    }
-
-    [TestMethod]
-    public void Run_Compare_BrokerStreamPeakExceedsCompatPeak_Fails_ReturnsOne()
-    {
-        const string beforeContent = """
-                                     Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-                                     Peak private bytes: 1818877952
-                                     Throughput: 2,670,625 records/sec
-                                     """;
-
-        const string afterContent = """
-                                    --- Scenario: compat ---
-                                      Peak private bytes: 900,000,000 bytes
-                                      Throughput: 2,700,000 records/sec
-                                    --- Scenario: bounded ---
-                                      Peak private bytes: 600,000,000 bytes
-                                    --- Scenario: broker-stream ---
-                                      Peak private bytes: 1,000,000,000 bytes
-                                    """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
-
-        Assert.AreEqual(1, exitCode);
-        var allOutput = string.Join("\n", _consoleLines);
+        var failingThresholdOutput = _consoleLines.Single(line => line.Contains(expectedFailingThreshold));
+        Assert.IsTrue(failingThresholdOutput.Contains("FAIL"));
         Assert.IsTrue(allOutput.Contains("Threshold check: FAILED"));
     }
 
@@ -956,75 +841,18 @@ public class BenchmarkRunnerTests
         Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
     }
 
-    [TestMethod]
-    public void Run_Compare_MissingBoundedScenario_Fails_ReturnsOne()
+    [DataTestMethod]
+    [DataRow("missing-bounded")]
+    [DataRow("missing-broker-stream")]
+    [DataRow("missing-compat")]
+    [DataRow("missing-compat-throughput")]
+    [DataRow("invalid-compat-throughput")]
+    [DataRow("invalid-compat-private-bytes")]
+    [DataRow("invalid-bounded-private-bytes")]
+    [DataRow("invalid-broker-stream-private-bytes")]
+    public void Run_Compare_MissingOrMalformedScenarioMeasurements_ReturnsOne(string mutation)
     {
-        const string beforeContent = """
-                                     Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-                                     Peak private bytes: 1818877952
-                                     Throughput: 2,670,625 records/sec
-                                     """;
-        const string afterMissingBounded = """
-                                           --- Scenario: compat ---
-                                             Peak private bytes: 900,000,000 bytes
-                                             Throughput: 2,700,000 records/sec
-                                           --- Scenario: broker-stream ---
-                                             Peak private bytes: 650,000,000 bytes
-                                           """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterMissingBounded;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
-
-        Assert.AreEqual(1, exitCode);
-        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
-    }
-
-    [TestMethod]
-    public void Run_Compare_MissingBrokerStreamScenario_Fails_ReturnsOne()
-    {
-        const string beforeContent = """
-                                     Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-                                     Peak private bytes: 1818877952
-                                     Throughput: 2,670,625 records/sec
-                                     """;
-        const string afterMissingBroker = """
-                                          --- Scenario: compat ---
-                                            Peak private bytes: 900,000,000 bytes
-                                            Throughput: 2,700,000 records/sec
-                                          --- Scenario: bounded ---
-                                            Peak private bytes: 600,000,000 bytes
-                                          """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterMissingBroker;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
-
-        Assert.AreEqual(1, exitCode);
-        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
-    }
-
-    [TestMethod]
-    public void Run_Compare_MissingCompatScenario_Fails_ReturnsOne()
-    {
-        const string beforeContent = """
-                                     Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-                                     Peak private bytes: 1818877952
-                                     Throughput: 2,670,625 records/sec
-                                     """;
-        const string afterMissingCompat = """
-                                          --- Scenario: bounded ---
-                                            Peak private bytes: 600,000,000 bytes
-                                          --- Scenario: broker-stream ---
-                                            Peak private bytes: 650,000,000 bytes
-                                          """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterMissingCompat;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
+        var exitCode = RunComparison(CreateMalformedScenarioReport(mutation));
 
         Assert.AreEqual(1, exitCode);
         Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
@@ -1165,153 +993,17 @@ public class BenchmarkRunnerTests
         Assert.IsFalse(allOutput.Contains("Infinity"));
     }
 
-    // --- BenchmarkRunner.Compare.cs: ExtractReportMetrics regex/parse failure branches ---
-    // Each case below leaves one scenario block matching but a single measurement either
-    // absent (regex Success = false) or present as a comma-only capture (regex Success = true,
-    // but the numeric parse fails), isolating one guard clause per test.
-
-    [TestMethod]
-    public void Run_Compare_AfterCompatBlockMissingThroughputPattern_ReturnsOne()
-    {
-        const string beforeContent = """
-        Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-        Peak private bytes: 1818877952
-        Throughput: 2,670,625 records/sec
-        """;
-        const string afterContent = """
-        --- Scenario: compat ---
-          Peak private bytes: 900,000,000 bytes
-        --- Scenario: bounded ---
-          Peak private bytes: 600,000,000 bytes
-        --- Scenario: broker-stream ---
-          Peak private bytes: 650,000,000 bytes
-        """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
-
-        Assert.AreEqual(1, exitCode);
-        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
-    }
-
-    [TestMethod]
-    public void Run_Compare_AfterCompatThroughputCommaOnly_FailsNumericParse_ReturnsOne()
-    {
-        const string beforeContent = """
-        Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-        Peak private bytes: 1818877952
-        Throughput: 2,670,625 records/sec
-        """;
-        const string afterContent = """
-        --- Scenario: compat ---
-          Peak private bytes: 900,000,000 bytes
-          Throughput: ,,, records/sec
-        --- Scenario: bounded ---
-          Peak private bytes: 600,000,000 bytes
-        --- Scenario: broker-stream ---
-          Peak private bytes: 650,000,000 bytes
-        """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
-
-        Assert.AreEqual(1, exitCode);
-        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
-    }
-
-    [TestMethod]
-    public void Run_Compare_AfterCompatPeakPrivateBytesCommaOnly_FailsNumericParse_ReturnsOne()
-    {
-        const string beforeContent = """
-        Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-        Peak private bytes: 1818877952
-        Throughput: 2,670,625 records/sec
-        """;
-        const string afterContent = """
-        --- Scenario: compat ---
-          Peak private bytes: ,,, bytes
-          Throughput: 2,700,000 records/sec
-        --- Scenario: bounded ---
-          Peak private bytes: 600,000,000 bytes
-        --- Scenario: broker-stream ---
-          Peak private bytes: 650,000,000 bytes
-        """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
-
-        Assert.AreEqual(1, exitCode);
-        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
-    }
-
-    [TestMethod]
-    public void Run_Compare_AfterBoundedPeakPrivateBytesCommaOnly_FailsNumericParse_ReturnsOne()
-    {
-        const string beforeContent = """
-        Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-        Peak private bytes: 1818877952
-        Throughput: 2,670,625 records/sec
-        """;
-        const string afterContent = """
-        --- Scenario: compat ---
-          Peak private bytes: 900,000,000 bytes
-          Throughput: 2,700,000 records/sec
-        --- Scenario: bounded ---
-          Peak private bytes: ,,, bytes
-        --- Scenario: broker-stream ---
-          Peak private bytes: 650,000,000 bytes
-        """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
-
-        Assert.AreEqual(1, exitCode);
-        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
-    }
-
-    [TestMethod]
-    public void Run_Compare_AfterBrokerStreamPeakPrivateBytesCommaOnly_FailsNumericParse_ReturnsOne()
-    {
-        const string beforeContent = """
-        Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
-        Peak private bytes: 1818877952
-        Throughput: 2,670,625 records/sec
-        """;
-        const string afterContent = """
-        --- Scenario: compat ---
-          Peak private bytes: 900,000,000 bytes
-          Throughput: 2,700,000 records/sec
-        --- Scenario: bounded ---
-          Peak private bytes: 600,000,000 bytes
-        --- Scenario: broker-stream ---
-          Peak private bytes: ,,, bytes
-        """;
-
-        _runner._fileExists = _ => true;
-        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
-
-        var exitCode = _runner.Run(["compare", "before.txt", "after.txt"]);
-
-        Assert.AreEqual(1, exitCode);
-        Assert.IsTrue(string.Join("\n", _consoleLines).Contains("missing required scenario measurements"));
-    }
-
     // --- BenchmarkRunner.Measure.cs: iterations-argument default branch ---
     // Each of these leaves the trailing iterations argument unusable in a different way
     // (absent, non-numeric, non-positive), exercising a different short-circuit of the
     // "arguments.Length > 2 && int.TryParse(...) && parsedIterations > 0" condition while
     // landing on the same observable default of 3 iterations.
 
-    [TestMethod]
-    public void Run_Measure_NoIterationsArgument_DefaultsToThreeIterations()
+    [DataTestMethod]
+    [DataRow()]
+    [DataRow("not-a-number")]
+    [DataRow("0")]
+    public void Run_Measure_UnusableIterationsArgument_DefaultsToThreeIterations(string? iterationsArgument = null)
     {
         var callCount = 0;
         _runner._fileExists = _ => true;
@@ -1321,43 +1013,10 @@ public class BenchmarkRunnerTests
             return (1000, 50000UL);
         };
 
-        var exitCode = _runner.Run(["measure", "compat", "fake.mft"]);
-
-        Assert.AreEqual(0, exitCode);
-        Assert.AreEqual(3, callCount);
-        Assert.IsTrue(_consoleWrites.Any(write => write.Contains("Iteration 3/3")));
-    }
-
-    [TestMethod]
-    public void Run_Measure_NonNumericIterationsArgument_DefaultsToThreeIterations()
-    {
-        var callCount = 0;
-        _runner._fileExists = _ => true;
-        _runner._parseCompat = _ =>
-        {
-            callCount++;
-            return (1000, 50000UL);
-        };
-
-        var exitCode = _runner.Run(["measure", "compat", "fake.mft", "not-a-number"]);
-
-        Assert.AreEqual(0, exitCode);
-        Assert.AreEqual(3, callCount);
-        Assert.IsTrue(_consoleWrites.Any(write => write.Contains("Iteration 3/3")));
-    }
-
-    [TestMethod]
-    public void Run_Measure_ZeroIterationsArgument_DefaultsToThreeIterations()
-    {
-        var callCount = 0;
-        _runner._fileExists = _ => true;
-        _runner._parseCompat = _ =>
-        {
-            callCount++;
-            return (1000, 50000UL);
-        };
-
-        var exitCode = _runner.Run(["measure", "compat", "fake.mft", "0"]);
+        var arguments = iterationsArgument is null
+            ? new[] { "measure", "compat", "fake.mft" }
+            : new[] { "measure", "compat", "fake.mft", iterationsArgument };
+        var exitCode = _runner.Run(arguments);
 
         Assert.AreEqual(0, exitCode);
         Assert.AreEqual(3, callCount);
@@ -1384,5 +1043,65 @@ public class BenchmarkRunnerTests
         var outputText = output.ToString();
         Assert.IsTrue(outputText.Contains("FAILED:"));
         Assert.IsTrue(outputText.Contains("Unknown scenario: not-a-real-scenario"));
+    }
+
+    int RunComparison(string afterContent)
+    {
+        const string beforeContent = """
+                                     Git: 9f17b3fd75215cef39788031ac1cc36dbbbed060
+                                     Peak private bytes: 1818877952
+                                     Throughput: 2,670,625 records/sec
+                                     """;
+
+        _runner._fileExists = _ => true;
+        _runner._readAllText = path => path.Contains("before") ? beforeContent : afterContent;
+
+        return _runner.Run(["compare", "before.txt", "after.txt"]);
+    }
+
+    static string CreateScenarioReport(
+        string compatThroughput = "2,700,000",
+        string compatPrivateBytes = "900,000,000",
+        string boundedPrivateBytes = "600,000,000",
+        string brokerStreamPrivateBytes = "650,000,000") => $$"""
+            --- Scenario: compat ---
+              Peak private bytes: {{compatPrivateBytes}} bytes
+              Throughput: {{compatThroughput}} records/sec
+            --- Scenario: bounded ---
+              Peak private bytes: {{boundedPrivateBytes}} bytes
+            --- Scenario: broker-stream ---
+              Peak private bytes: {{brokerStreamPrivateBytes}} bytes
+            """;
+
+    static string CreateMalformedScenarioReport(string mutation)
+    {
+        var report = CreateScenarioReport();
+        return mutation switch
+        {
+            "missing-bounded" => report.Replace("""
+                                                --- Scenario: bounded ---
+                                                  Peak private bytes: 600,000,000 bytes
+                                                """, string.Empty, StringComparison.Ordinal),
+            "missing-broker-stream" => report.Replace("""
+                                                      --- Scenario: broker-stream ---
+                                                        Peak private bytes: 650,000,000 bytes
+                                                      """, string.Empty, StringComparison.Ordinal),
+            "missing-compat" => report.Replace("""
+                                               --- Scenario: compat ---
+                                                 Peak private bytes: 900,000,000 bytes
+                                                 Throughput: 2,700,000 records/sec
+                                               """, string.Empty, StringComparison.Ordinal),
+            "missing-compat-throughput" => report.Replace(
+                "  Throughput: 2,700,000 records/sec", string.Empty, StringComparison.Ordinal),
+            "invalid-compat-throughput" => report.Replace(
+                "2,700,000 records/sec", ",,, records/sec", StringComparison.Ordinal),
+            "invalid-compat-private-bytes" => report.Replace(
+                "900,000,000 bytes", ",,, bytes", StringComparison.Ordinal),
+            "invalid-bounded-private-bytes" => report.Replace(
+                "600,000,000 bytes", ",,, bytes", StringComparison.Ordinal),
+            "invalid-broker-stream-private-bytes" => report.Replace(
+                "650,000,000 bytes", ",,, bytes", StringComparison.Ordinal),
+            _ => throw new ArgumentOutOfRangeException(nameof(mutation), mutation, "Unknown report mutation.")
+        };
     }
 }

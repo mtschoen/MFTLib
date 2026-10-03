@@ -281,8 +281,10 @@ public partial class NativeCoverageTests
         }
     }
 
-    [TestMethod]
-    public void ParseFromFile_MalformedStandardInformationValueOffset_SkipsRecord()
+    [DataTestMethod]
+    [DataRow(0x38)]
+    [DataRow(0x98)]
+    public void ParseFromFile_MalformedResidentValueOffset_SkipsRecord(int attributeOffset)
     {
         var path = Path.GetTempFileName();
         try
@@ -290,46 +292,12 @@ public partial class NativeCoverageTests
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 20, 256);
             var data = File.ReadAllBytes(path);
-            // Record 6 is at byte offset 6 * 1024 = 6144
-            // StandardInformation is at offset 0x38 in record 6; its Resident.ValueOffset is at offset 0x14
-            // Tamper ValueOffset to 60000 (0xEA60)
-            data[6 * 1024 + 0x38 + 0x14] = 0x60;
-            data[6 * 1024 + 0x38 + 0x15] = 0xEA;
+            data[6 * 1024 + attributeOffset + 0x14] = 0x60;
+            data[6 * 1024 + attributeOffset + 0x15] = 0xEA;
             File.WriteAllBytes(path, data);
 
             var records = MftVolume.ParseMFTFromFile(path, out _);
             Assert.IsTrue(records.Length > 0);
-            // Record 6 should have been skipped due to malformed attribute
-            Assert.IsFalse(records.Any(r => r.RecordNumber == 6));
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    [TestMethod]
-    public void ParseFromFile_MalformedFileNameValueOffset_SkipsRecord()
-    {
-        var path = Path.GetTempFileName();
-        try
-        {
-            File.Delete(path);
-            MftVolume.GenerateSyntheticMFT(path, 20, 256);
-            var data = File.ReadAllBytes(path);
-            // Record 6: StandardInformation length is 0x60 (ends at 0x38 + 0x60 = 0x98)
-            // FileName attribute starts at 0x98 in record 6; its Resident.ValueOffset is at offset 0x14
-            // Tamper ValueOffset to 60000 (0xEA60)
-            data[6 * 1024 + 0x98 + 0x14] = 0x60;
-            data[6 * 1024 + 0x98 + 0x15] = 0xEA;
-            File.WriteAllBytes(path, data);
-
-            var records = MftVolume.ParseMFTFromFile(path, out _);
-            Assert.IsTrue(records.Length > 0);
-            // Record 6 should have been skipped due to malformed attribute
             Assert.IsFalse(records.Any(r => r.RecordNumber == 6));
         }
         finally

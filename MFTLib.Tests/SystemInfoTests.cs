@@ -7,53 +7,6 @@ namespace MFTLib.Tests;
 [TestClass]
 public class SystemInfoTests
 {
-    // --- Func field swapping ---
-
-    [TestMethod]
-    public void GetWmiValue_FuncIsSwappable()
-    {
-        var systemInfo = new SystemInfo
-        {
-            _getWmiValue = (wmiClass, property) => $"Mock:{wmiClass}.{property}"
-        };
-
-        var result = systemInfo._getWmiValue("Win32_OperatingSystem", "Caption");
-        Assert.AreEqual("Mock:Win32_OperatingSystem.Caption", result);
-    }
-
-    [TestMethod]
-    public void GetInstalledMemoryGB_FuncIsSwappable()
-    {
-        var systemInfo = new SystemInfo
-        {
-            _getInstalledMemoryGb = () => 64
-        };
-
-        Assert.AreEqual(64, systemInfo._getInstalledMemoryGb());
-    }
-
-    [TestMethod]
-    public void GetDiskModel_FuncIsSwappable()
-    {
-        var systemInfo = new SystemInfo
-        {
-            _getDiskModel = _ => "MockDisk"
-        };
-
-        Assert.AreEqual("MockDisk", systemInfo._getDiskModel("C:\\"));
-    }
-
-    [TestMethod]
-    public void GetBuildConfiguration_FuncIsSwappable()
-    {
-        var systemInfo = new SystemInfo
-        {
-            _getBuildConfiguration = () => "TestConfig"
-        };
-
-        Assert.AreEqual("TestConfig", systemInfo._getBuildConfiguration());
-    }
-
     // --- DefaultGetBuildConfiguration ---
 
     [TestMethod]

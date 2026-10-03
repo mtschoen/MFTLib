@@ -113,29 +113,6 @@ public class MockVolumeTests
     // --- FileUtilities ---
 
     [TestMethod]
-    public void GetVolumePath_DriveLetter_ReturnsNormalizedPath()
-    {
-        Assert.AreEqual(@"\\.\C:", MFTUtilities.GetVolumePath("C"));
-        Assert.AreEqual(@"\\.\C:", MFTUtilities.GetVolumePath("C:"));
-        Assert.AreEqual(@"\\.\C:", MFTUtilities.GetVolumePath(@"C:\"));
-        Assert.AreEqual(@"\\.\C:", MFTUtilities.GetVolumePath(@"\\.\C:"));
-    }
-
-    [TestMethod]
-    public void GetVolumePath_NullOrEmpty_ThrowsArgumentException()
-    {
-        Assert.ThrowsException<ArgumentNullException>(() => MFTUtilities.GetVolumePath(null!));
-        Assert.ThrowsException<ArgumentNullException>(() => MFTUtilities.GetVolumePath(string.Empty));
-        Assert.ThrowsException<ArgumentException>(() => MFTUtilities.GetVolumePath("   "));
-    }
-
-    [TestMethod]
-    public void GetVolumePath_InvalidFormat_ThrowsArgumentException()
-    {
-        Assert.ThrowsException<ArgumentException>(() => MFTUtilities.GetVolumePath("invalid_path"));
-    }
-
-    [TestMethod]
     public void GetVolumeHandle_InvalidHandle_ThrowsIOException()
     {
         Kernel32._createFile = (_, _, _, _, _, _, _) => new SafeFileHandle(new IntPtr(-1), false);
@@ -384,20 +361,6 @@ public class MockVolumeTests
         Assert.IsNotNull(stream.Timings);
     }
 
-    // --- ExtractDriveLetter ---
-
-    [TestMethod]
-    public void ExtractDriveLetter_VariousInputs_ReturnsCorrectLetter()
-    {
-        Assert.AreEqual("C", MftVolume.ExtractDriveLetter(@"\\.\C:"));
-        Assert.AreEqual("D", MftVolume.ExtractDriveLetter(@"\\.\D:"));
-        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter("C:"));
-        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(@"\\.\Volume{123}"));
-        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(string.Empty));
-        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(@"\\.\"));
-        Assert.AreEqual(string.Empty, MftVolume.ExtractDriveLetter(@"\\.\C/"));
-    }
-
     // --- ParseMFTFromFile ---
 
     [TestMethod]
@@ -473,44 +436,6 @@ public class MockVolumeTests
             new MftResult(errorResultPtr, "C"));
 
         Assert.AreEqual("Volume read failed", ex.Message);
-    }
-
-    [TestMethod]
-    public void MftResult_AbiVersionMismatch_ThrowsInvalidOperation()
-    {
-        var result = new MftParseResult
-        {
-            TotalRecords = 1,
-            UsedRecords = 1,
-            AbiVersion = 999,
-            EntryStride = MFTLibNative.NativeCompactEntrySize
-        };
-        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
-        Marshal.StructureToPtr(result, resultPtr, false);
-        MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
-
-        var ex = Assert.ThrowsException<InvalidOperationException>(() =>
-            new MftResult(resultPtr, "C"));
-        Assert.IsTrue(ex.Message.Contains("ABI mismatch"));
-    }
-
-    [TestMethod]
-    public void MftResult_EntryStrideMismatch_ThrowsInvalidOperation()
-    {
-        var result = new MftParseResult
-        {
-            TotalRecords = 1,
-            UsedRecords = 1,
-            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
-            EntryStride = 40
-        };
-        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
-        Marshal.StructureToPtr(result, resultPtr, false);
-        MFTLibNative._freeMftResult = Marshal.FreeHGlobal;
-
-        var ex = Assert.ThrowsException<InvalidOperationException>(() =>
-            new MftResult(resultPtr, "C"));
-        Assert.IsTrue(ex.Message.Contains("stride"));
     }
 
     [TestMethod]
@@ -647,6 +572,7 @@ public class MockVolumeTests
     [DataRow(0)]
     [DataRow(-1)]
     [DataRow(-50)]
+    [DataRow(-100)]
     public void MftResult_MaterializeBatches_ZeroOrNegativeBatchSize_ThrowsArgumentOutOfRangeException(int batchSize)
     {
         SetupMocks(5);

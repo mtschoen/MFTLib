@@ -1,4 +1,3 @@
-using System.Collections;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -249,25 +248,6 @@ public class MftVolumeAdminTests
     }
 
     [TestMethod]
-    public void Dispose_PreventsSubsequentCalls()
-    {
-        RequireElevation();
-        var volume = MftVolume.Open("C");
-        volume.Dispose();
-
-        Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None));
-    }
-
-    [TestMethod]
-    public void Dispose_CanBeCalledMultipleTimes()
-    {
-        RequireElevation();
-        var volume = MftVolume.Open("C");
-        volume.Dispose();
-        volume.Dispose(); // Should not throw
-    }
-
-    [TestMethod]
     public void Open_InvalidVolume_Throws()
     {
         RequireElevation();
@@ -288,33 +268,6 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         Assert.ThrowsException<IOException>(() => FileUtilities._getVolumeHandle(@"\\.\Q:"));
-    }
-
-    [TestMethod]
-    public void MftResult_Dispose_PreventsEnumeration()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
-        result.Dispose();
-
-        Assert.ThrowsException<ObjectDisposedException>(() =>
-        {
-            foreach (var _ in result)
-            {
-            }
-        });
-    }
-
-    [TestMethod]
-    public void MftResult_Dispose_PreventsToArray()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
-        result.Dispose();
-
-        Assert.ThrowsException<ObjectDisposedException>(result.ToArray);
     }
 
     [TestMethod]
@@ -347,32 +300,6 @@ public class MftVolumeAdminTests
                     $"FileName '{record.FileName}' should match end of FullPath '{record.FullPath}'");
             }
         }
-    }
-
-    [TestMethod]
-    public void IsElevated_WhenAdmin_ReturnsTrue()
-    {
-        RequireElevation();
-        Assert.IsTrue(ElevationUtilities.IsElevated());
-    }
-
-
-    [TestMethod]
-    public void MftResult_NonGenericEnumerator_Works()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch, null, null, CancellationToken.None);
-
-        // Cast to non-generic IEnumerable to hit the explicit interface implementation
-        var count = 0;
-        foreach (var item in (IEnumerable)result)
-        {
-            Assert.IsInstanceOfType<MftRecord>(item);
-            count++;
-        }
-
-        Assert.IsTrue(count > 0, "Expected at least one record via non-generic enumerator");
     }
 
     [TestMethod]

@@ -5,68 +5,32 @@ namespace MFTLib.Tests;
 [TestClass]
 public class MFTUtilitiesTests
 {
-    [TestMethod]
-    public void GetVolumePath_SingleLetter_ReturnsVolumePath()
+    [DataTestMethod]
+    [DataRow("C", @"\\.\C:")]
+    [DataRow("D:", @"\\.\D:")]
+    [DataRow(@"E:\", @"\\.\E:")]
+    [DataRow("c", @"\\.\c:")]
+    [DataRow(@"\\.\C:", @"\\.\C:")]
+    [DataRow(@"\\?\Volume{12345678-1234-1234-1234-123456789abc}\", @"\\?\Volume{12345678-1234-1234-1234-123456789abc}")]
+    [DataRow(@"\\?\Volume{12345678-1234-1234-1234-123456789abc}", @"\\?\Volume{12345678-1234-1234-1234-123456789abc}")]
+    public void GetVolumePath_NormalizesSupportedInput(string input, string expected)
     {
-        Assert.AreEqual(@"\\.\C:", MFTUtilities.GetVolumePath("C"));
+        Assert.AreEqual(expected, MFTUtilities.GetVolumePath(input));
     }
 
     [TestMethod]
-    public void GetVolumePath_LetterWithColon_ReturnsVolumePath()
+    public void GetVolumePath_NullOrEmpty_ThrowsArgumentNullException()
     {
-        Assert.AreEqual(@"\\.\D:", MFTUtilities.GetVolumePath("D:"));
+        Assert.ThrowsException<ArgumentNullException>(() => MFTUtilities.GetVolumePath(null!));
+        Assert.ThrowsException<ArgumentNullException>(() => MFTUtilities.GetVolumePath(string.Empty));
     }
 
-    [TestMethod]
-    public void GetVolumePath_LetterWithColonBackslash_ReturnsVolumePath()
+    [DataTestMethod]
+    [DataRow("   ")]
+    [DataRow("not-a-volume")]
+    [DataRow("invalid_path")]
+    public void GetVolumePath_InvalidInput_ThrowsArgumentException(string input)
     {
-        Assert.AreEqual(@"\\.\E:", MFTUtilities.GetVolumePath(@"E:\"));
-    }
-
-    [TestMethod]
-    public void GetVolumePath_LowercaseLetter_ReturnsVolumePath()
-    {
-        Assert.AreEqual(@"\\.\c:", MFTUtilities.GetVolumePath("c"));
-    }
-
-    [TestMethod]
-    public void GetVolumePath_VolumeGuid_ReturnsWithoutTrailingSlash()
-    {
-        var guid = @"\\?\Volume{12345678-1234-1234-1234-123456789abc}\";
-        Assert.AreEqual(@"\\?\Volume{12345678-1234-1234-1234-123456789abc}", MFTUtilities.GetVolumePath(guid));
-    }
-
-    [TestMethod]
-    public void GetVolumePath_VolumeGuidNoTrailingSlash_ReturnsSame()
-    {
-        var guid = @"\\?\Volume{12345678-1234-1234-1234-123456789abc}";
-        Assert.AreEqual(guid, MFTUtilities.GetVolumePath(guid));
-    }
-
-    [TestMethod]
-    public void GetVolumePath_RawPath_ReturnsSame()
-    {
-        Assert.AreEqual(@"\\.\C:", MFTUtilities.GetVolumePath(@"\\.\C:"));
-    }
-
-    [TestMethod]
-    [ExpectedException(typeof(ArgumentNullException))]
-    public void GetVolumePath_Null_Throws()
-    {
-        MFTUtilities.GetVolumePath(null!);
-    }
-
-    [TestMethod]
-    [ExpectedException(typeof(ArgumentNullException))]
-    public void GetVolumePath_Empty_Throws()
-    {
-        MFTUtilities.GetVolumePath("");
-    }
-
-    [TestMethod]
-    [ExpectedException(typeof(ArgumentException))]
-    public void GetVolumePath_InvalidInput_Throws()
-    {
-        MFTUtilities.GetVolumePath("not-a-volume");
+        Assert.ThrowsException<ArgumentException>(() => MFTUtilities.GetVolumePath(input));
     }
 }
