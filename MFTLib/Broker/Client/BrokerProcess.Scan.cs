@@ -15,6 +15,9 @@ public sealed partial class BrokerProcess
     /// <param name="target">Where the block file is created, and the identity it carries.</param>
     /// <param name="options">Row filtering and progress for the scan.</param>
     /// <param name="cancellationToken">Closes the channel and releases the section.</param>
+    /// <exception cref="ArgumentException">
+    ///     <see cref="BrokerScanOptions.KeepFileNames" /> is too long for one request frame. Nothing is sent.
+    /// </exception>
     /// <exception cref="InvalidOperationException">The broker reported the scan failed.</exception>
     /// <exception cref="BrokerChannelLostException">The channel or the process was lost first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer the volume query or the channel open within the reply timeout.</exception>
@@ -71,6 +74,14 @@ public sealed partial class BrokerProcess
     async Task<BrokerDriveScanResult> ScanOnChannelAsync(char letter, string sectionName, BlockFile block,
         ReleaseOnce sectionLifetime, BrokerScanOptions options, CancellationToken cancellationToken)
     {
+        var frameLength = BrokerProtocol.ArmAndScanFrameLength(sectionName, options.KeepFileNames);
+        if (frameLength > BrokerFrameStream.MaximumFrameLength)
+        {
+            throw new ArgumentException(FormattableString.Invariant(
+                $"The keep list makes a {frameLength}-byte scan request, over the {BrokerFrameStream.MaximumFrameLength}-byte frame limit."),
+                nameof(options));
+        }
+
         var channel = await OpenChannelAsync(letter, writer => BrokerProtocol.WriteArmAndScan(writer, sectionName,
             options.Profile, options.KeepFileNames), cancellationToken).ConfigureAwait(false);
         await using var ownedChannel = channel.ConfigureAwait(false);
@@ -81,11 +92,10 @@ public sealed partial class BrokerProcess
         // The section is written: unpublish its name. The block's own view keeps it mapped.
         sectionLifetime.Release();
         var terminal = await collector.ReadTerminalAsync(cancellationToken).ConfigureAwait(false);
-        var outcome = new BlockScanOutcome(sectionName, block, ready.RowCount, ready.NamePoolUsedBytes,
-            ready.SkippedRecordCount);
-        return terminal.Kind == BrokerFrameKind.JournalBatch
-            ? new BrokerDriveScanResult(letter, armed, terminal.Cursor, terminal.Entries, null, outcome)
-            : new BrokerDriveScanResult(letter, armed, null, [], terminal.RequireCatchUpLoss(letter), outcome);
+        var outcome = new BlockScanOutcome(block, ready.SkippedRecordCount);
+        return terminal.Kind == BrokerFrameKind.ScanCompleted
+            ? new BrokerDriveScanResult(letter, armed, terminal.Cursor, null, outcome)
+            : new BrokerDriveScanResult(letter, armed, null, terminal.RequireCatchUpLoss(letter), outcome);
     }
 
     // The flag is set before Dispose runs, so a lifetime whose Dispose throws is not disposed a second time.
@@ -105,7 +115,7 @@ public sealed partial class BrokerProcess
         }
     }
 
-    // Reads one scan channel in its only order: Cursor, ScanProgress*, ScanReady, then JournalBatch
+    // Reads one scan channel in its only order: Cursor, ScanProgress*, ScanReady, then ScanCompleted
     // or CatchUpLost, then EOF. Heartbeats may arrive anywhere and are skipped. An Error frame fails
     // the scan with the host's message; any other frame out of order, or EOF before the terminal
     // frame, is a lost channel.
@@ -145,10 +155,10 @@ public sealed partial class BrokerProcess
 
         public async Task<BrokerFrame> ReadTerminalAsync(CancellationToken cancellationToken)
         {
-            var terminal = await ReadAsync("JournalBatch or CatchUpLost", cancellationToken).ConfigureAwait(false);
-            if (terminal.Kind is not (BrokerFrameKind.JournalBatch or BrokerFrameKind.CatchUpLost))
+            var terminal = await ReadAsync("ScanCompleted or CatchUpLost", cancellationToken).ConfigureAwait(false);
+            if (terminal.Kind is not (BrokerFrameKind.ScanCompleted or BrokerFrameKind.CatchUpLost))
             {
-                throw OutOfOrder(terminal, "JournalBatch or CatchUpLost");
+                throw OutOfOrder(terminal, "ScanCompleted or CatchUpLost");
             }
 
             // The host closes the channel after its terminal frame; a frame instead is out of order,

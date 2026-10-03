@@ -93,7 +93,7 @@ internal static partial class BrokerProtocol
             BrokerFrameKind.ChannelOpened => BrokerFrame.ChannelOpened(payload.UInt32()),
             BrokerFrameKind.QueryVolume => BrokerFrame.QueryVolume(payload.UInt32(), payload.String()),
             BrokerFrameKind.VolumeInfo => BrokerFrame.VolumeInfo(
-                payload.UInt32(), payload.Int64(), payload.UInt32(), payload.Int64()),
+                payload.UInt32(), payload.UInt32(), payload.Int64()),
             BrokerFrameKind.GrowUsnJournal => BrokerFrame.GrowUsnJournal(
                 payload.UInt32(), payload.String(), payload.Int64(), payload.Int64()),
             BrokerFrameKind.UsnJournalSettings => BrokerFrame.UsnJournalSettings(
@@ -105,10 +105,11 @@ internal static partial class BrokerProtocol
             BrokerFrameKind.Cursor => BrokerFrame.ArmedCursor(ReadCursor(ref payload)),
             BrokerFrameKind.ScanProgress => BrokerFrame.ScanProgress(ReadScanProgress(ref payload)),
             BrokerFrameKind.CatchUpLost => ReadCatchUpLostFrame(ref payload),
-            BrokerFrameKind.ScanReady => BrokerFrame.ScanReady(payload.Int64(), payload.Int64(), payload.Int64()),
+            BrokerFrameKind.ScanReady => BrokerFrame.ScanReady(payload.Int64()),
             BrokerFrameKind.JournalBatch => ReadJournalBatchFrame(ref payload),
             BrokerFrameKind.StartWatch => BrokerFrame.StartWatch(ReadCursor(ref payload)),
             BrokerFrameKind.CaughtUp => BrokerFrame.CaughtUp(),
+            BrokerFrameKind.ScanCompleted => BrokerFrame.ScanCompleted(ReadCursor(ref payload)),
             _ => throw new InvalidDataException($"Unknown frame kind: {kind}")
         };
     }
@@ -163,7 +164,7 @@ internal static partial class BrokerProtocol
 
         var loss = new BrokerCatchUpLoss(cause, payload.Int64(), payload.Int64(), payload.Int64(),
             payload.Int64(), payload.Int64(), payload.NullableInt64(), payload.NullableInt64());
-        return BrokerFrame.CatchUpLost(loss, payload.String());
+        return BrokerFrame.CatchUpLost(loss);
     }
 
     static BrokerScanProgress ReadScanProgress(ref PayloadReader payload)

@@ -41,16 +41,14 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
     }
 
     [TestMethod]
-    public void ScanReady_RoundTripsBlockCounts()
+    public void ScanReady_RoundTripsSkippedRecordCountBeyondInt32()
     {
         var writer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteScanReady(writer, 4_000_000_000L, 5_000_000_000L, 3_000_000_000L);
+        BrokerProtocol.WriteScanReady(writer, 3_000_000_000L);
 
         var actual = BrokerProtocol.ReadFrame(writer.WrittenSpan, out var consumed);
 
         Assert.AreEqual(BrokerFrameKind.ScanReady, actual.Kind);
-        Assert.AreEqual(4_000_000_000L, actual.RowCount);
-        Assert.AreEqual(5_000_000_000L, actual.NamePoolUsedBytes);
         Assert.AreEqual(3_000_000_000L, actual.SkippedRecordCount);
         Assert.AreEqual(writer.WrittenCount, consumed);
     }

@@ -37,7 +37,7 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
         var firstRequest = await broker.ReadRequestAsync();
         await broker.ReadRequestAsync();
         await broker.WriteControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, firstRequest.RequestId,
-            8_000_000, 1024, 8_192_000_000));
+            1024, 8_192_000_000));
         await broker.CloseControlAsync();
 
         var volume = await first.WaitAsync(HangGuard);

@@ -136,8 +136,8 @@ public partial class BrokerProcessTests
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);
         var frames = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteCursor(frames, Armed);
-        BrokerProtocol.WriteScanReady(frames, 1, 0, 0);
-        BrokerProtocol.WriteJournalBatch(frames, new UsnJournalCursor(7, 1500), []);
+        BrokerProtocol.WriteScanReady(frames, 0);
+        BrokerProtocol.WriteScanCompleted(frames, new UsnJournalCursor(7, 1500));
         await hostEnd.WriteAsync(frames.WrittenMemory).AsTask().WaitAsync(HangGuard);
         await hostEnd.FlushAsync().WaitAsync(HangGuard);
         await clientReads.WhenRead(frames.WrittenCount).WaitAsync(HangGuard);
@@ -165,8 +165,8 @@ public partial class BrokerProcessTests
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(hostEnd))?.Kind);
         var frames = new ArrayBufferWriter<byte>();
         BrokerProtocol.WriteCursor(frames, Armed);
-        BrokerProtocol.WriteScanReady(frames, 1, 0, 0);
-        BrokerProtocol.WriteJournalBatch(frames, new UsnJournalCursor(7, 1500), []);
+        BrokerProtocol.WriteScanReady(frames, 0);
+        BrokerProtocol.WriteScanCompleted(frames, new UsnJournalCursor(7, 1500));
         byte[] partialLengthPrefix = [10, 0];
         frames.Write(partialLengthPrefix);
         await hostEnd.WriteAsync(frames.WrittenMemory).AsTask().WaitAsync(HangGuard);

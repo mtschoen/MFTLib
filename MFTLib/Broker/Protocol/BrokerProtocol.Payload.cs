@@ -70,6 +70,12 @@ internal static partial class BrokerProtocol
         public void WriteTo(IBufferWriter<byte> writer, BrokerFrameKind kind)
         {
             var totalLength = 1 + _payload.WrittenCount;
+            if (totalLength > BrokerFrameStream.MaximumFrameLength)
+            {
+                throw new InvalidOperationException(FormattableString.Invariant(
+                    $"Broker {kind} frame is {totalLength} bytes, over the {BrokerFrameStream.MaximumFrameLength}-byte frame limit."));
+            }
+
             var span = writer.GetSpan(4 + totalLength);
             BinaryPrimitives.WriteInt32LittleEndian(span, totalLength);
             span[4] = (byte)kind;

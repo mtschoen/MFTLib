@@ -70,11 +70,10 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void VolumeInfoFrame_RoundTrips_RequestIdAndAllFields()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteVolumeInfo(writer, 9, 8_000_000, 1024, 8_192_000_000));
+        var frame = RoundTrip(writer => BrokerProtocol.WriteVolumeInfo(writer, 9, 1024, 8_192_000_000));
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
         Assert.AreEqual(9u, frame.RequestId);
-        Assert.AreEqual(8_000_000L, frame.RecordCount);
         Assert.AreEqual(1024U, frame.BytesPerFileRecordSegment);
         Assert.AreEqual(8_192_000_000L, frame.MftValidDataLength);
         Assert.IsNull(frame.Drive, "The reply is matched by its request id, not by a drive.");
@@ -160,12 +159,11 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_VolumeInfoFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteVolumeInfo(w, 5, 1, 2, 3),
+        AssertWireBytes(w => BrokerProtocol.WriteVolumeInfo(w, 5, 2, 3),
         [
-            0x19, 0x00, 0x00, 0x00, // totalLength = 25 (1 + 4 + 8 + 4 + 8)
+            0x11, 0x00, 0x00, 0x00, // totalLength = 17 (1 + 4 + 4 + 8)
             0x04, // kind = VolumeInfo
             0x05, 0x00, 0x00, 0x00, // requestId = 5
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mftRecordCount = 1
             0x02, 0x00, 0x00, 0x00, // bytesPerFileRecordSegment = 2
             0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // mftValidDataLength = 3
         ]);
@@ -210,11 +208,10 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void Factory_VolumeInfo_PopulatesAllFields()
     {
-        var frame = BrokerFrame.VolumeInfo(6, 8_000_000, 1024, 8_192_000_000);
+        var frame = BrokerFrame.VolumeInfo(6, 1024, 8_192_000_000);
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
         Assert.AreEqual(6u, frame.RequestId);
-        Assert.AreEqual(8_000_000L, frame.RecordCount);
         Assert.AreEqual(1024U, frame.BytesPerFileRecordSegment);
         Assert.AreEqual(8_192_000_000L, frame.MftValidDataLength);
         Assert.AreEqual(0, frame.Entries.Length);

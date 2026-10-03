@@ -5,15 +5,19 @@ namespace MFTLib;
 /// <summary>Reads whole frames off one broker pipe; the host and the client share it.</summary>
 internal static class BrokerFrameStream
 {
-    // The largest legitimate frame is a scan's terminal JournalBatch, which carries every journal
-    // entry from the cursor armed before the scan to the journal's tip; a watch batch is one 64 KB
-    // native read. A wire entry (46 fixed bytes plus its UTF-16 name) is smaller than the native
-    // USN_RECORD_V2 it was read from (60 fixed bytes plus the name, 8-byte aligned), so a batch is
-    // smaller than the journal bytes it covers, and NTFS trims the journal back under its
-    // MaximumSize plus one AllocationDelta. Windows creates 32 MB journals by default and servers
-    // commonly run 512 MB; 1 GiB holds a whole journal of twice that server size, and it stays far
-    // enough below Array.MaxLength that the 4-byte prefix plus the frame always fits one array.
-    internal const int MaximumFrameLength = 1 << 30;
+    // The limit on a frame's kind byte plus payload, enforced by the writer before a prefix is
+    // emitted and by the reader before a buffer is allocated. The largest frames the library
+    // itself produces are a watch JournalBatch and an ArmAndScan request. A watch batch from the
+    // native source is one 64 KiB read; a wire entry (46 fixed bytes plus its UTF-16 name) is
+    // smaller than the native USN_RECORD_V2 it was read from (60 fixed bytes plus the name, 8-byte
+    // aligned), so such a batch is under 64 KiB plus its 21-byte header. ArmAndScan carries the
+    // caller's keep list: an NTFS name is at most 255 UTF-16 units (510 bytes) plus a 4-byte
+    // length prefix, so 16 MiB holds 32,639 maximum-length names with the default section name,
+    // and far more of the short ones a keep list names. Error and Stalled text is cut to 32,768
+    // units. A keep list over the limit is refused by ScanDriveAsync before anything is sent, and
+    // a custom journal source's batch over the limit ends that watch with an Error frame. 16 MiB
+    // also bounds a garbled prefix to a modest allocation.
+    internal const int MaximumFrameLength = 1 << 24;
 
     /// <summary>
     ///     Returns the next frame, or null on a clean EOF before any byte of a frame. A pipe that

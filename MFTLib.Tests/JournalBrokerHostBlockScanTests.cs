@@ -40,9 +40,9 @@ public class JournalBrokerHostBlockScanTests
 
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
         Assert.AreEqual(ArmedCursor, frames[0].Cursor);
-        var scanReady = frames.Single(frame => frame.Kind == BrokerFrameKind.ScanReady);
-        Assert.AreEqual(21L, scanReady.RowCount);
-        Assert.AreEqual(18L, scanReady.NamePoolUsedBytes);
+        Assert.AreEqual(1, frames.Count(frame => frame.Kind == BrokerFrameKind.ScanReady));
+        Assert.AreEqual(21u, blockWriter.Block.Header.RowCount);
+        Assert.AreEqual(18u, blockWriter.Block.Header.NamePoolUsed);
         Assert.AreEqual("section-C", blockWriter.LastSectionName);
         Assert.IsTrue(blockWriter.Block.Header.IsComplete);
         Assert.AreEqual(ProducerKind.Mft, blockWriter.Block.Header.ProducerKind);
@@ -50,7 +50,7 @@ public class JournalBrokerHostBlockScanTests
         Assert.AreEqual(ArmedCursor.JournalId, blockWriter.Block.Header.UsnJournalId);
         Assert.AreEqual(ArmedCursor.NextUsn, blockWriter.Block.Header.UsnNextUsn);
         Assert.AreEqual("file.txt", NamePool.ReadRowName(blockWriter.Block, 20).ToString());
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind);
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual(12500L, frames[^1].Cursor.NextUsn);
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
     }

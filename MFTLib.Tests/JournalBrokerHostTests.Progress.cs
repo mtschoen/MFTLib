@@ -62,7 +62,7 @@ public partial class JournalBrokerHostTests
         var frames = await ScanFramesAsync(harness);
 
         Assert.IsFalse(frames.Any(f => f.Kind == BrokerFrameKind.Error), "Cancellation must not emit an Error frame.");
-        Assert.IsFalse(frames.Any(f => f.Kind is BrokerFrameKind.ScanReady or BrokerFrameKind.JournalBatch));
+        Assert.IsFalse(frames.Any(f => f.Kind is BrokerFrameKind.ScanReady or BrokerFrameKind.ScanCompleted));
     }
 
     [TestMethod]
@@ -291,7 +291,7 @@ public partial class JournalBrokerHostTests
         var finalProgressIndex = scanReadyIndex - 1;
         Assert.AreEqual(BrokerFrameKind.ScanProgress, frames[finalProgressIndex].Kind,
             "The final progress frame immediately precedes ScanReady.");
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[scanReadyIndex + 1].Kind);
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[scanReadyIndex + 1].Kind);
         var progress = frames[finalProgressIndex].Progress;
         Assert.IsNotNull(progress);
         Assert.AreEqual(string.Empty, progress.Value.DriveLetter, "The drive belongs to the channel, not the frame.");

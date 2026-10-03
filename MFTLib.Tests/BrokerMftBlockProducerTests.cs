@@ -36,13 +36,11 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         Assert.IsNotNull(completed);
         var outcome = completed.Block;
-        Assert.AreEqual(section.SectionName, outcome.SectionName);
         Assert.AreSame(block, outcome.Block);
-        Assert.AreEqual(21L, outcome.RowCount);
-        Assert.AreEqual(18L, outcome.NamePoolUsedBytes);
+        Assert.AreEqual(21u, block.Header.RowCount);
+        Assert.AreEqual(18u, block.Header.NamePoolUsed);
         Assert.AreEqual(ArmedCursor, completed.ArmedCursor);
         Assert.AreEqual(AdvancedCursor.NextUsn, completed.AdvancedCursor!.Value.NextUsn);
-        Assert.AreEqual(1, completed.CatchUpEntries.Count);
 
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
         Assert.AreEqual(1, section.Lifetime.DisposeCount);

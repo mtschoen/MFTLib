@@ -104,7 +104,7 @@ public partial class JournalBrokerHostLivenessTests
         var frames = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
 
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Stalled));
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind, "The scan completes normally.");
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind, "The scan completes normally.");
     }
 
     [TestMethod]

@@ -4,14 +4,15 @@ using MFTLib;
 
 namespace TestProgram;
 
-class DriveScanner
+partial class DriveScanner
 {
     internal Func<uint, IntPtr> _acrtIobFunc = AcrtIobFuncNative;
     internal Func<bool> _canSelfElevate = ElevationUtilities.CanSelfElevate;
     internal Func<string?> _getProcessPath = () => Environment.ProcessPath;
     internal Func<bool> _isElevated = ElevationUtilities.IsElevated;
     internal Func<string, MftVolume> _openVolume = letter => MftVolume.Open(letter);
-    internal Func<string, bool> _tryRunElevated = arguments => ElevationUtilities.TryRunElevated(arguments);
+    internal Func<string, int, bool> _tryRunElevated =
+        (arguments, timeoutMilliseconds) => ElevationUtilities.TryRunElevated(arguments, timeoutMilliseconds);
     internal Func<string, string, IntPtr, IntPtr> _wFreopen = WFreopenNative;
     internal Action<string> _writeLine = Console.WriteLine;
 
@@ -22,11 +23,24 @@ class DriveScanner
 
     internal int Run(string[] arguments)
     {
+        if (!TestProgramArguments.TryParse(arguments, out var parsed, out var error))
+        {
+            _writeLine(error);
+            _writeLine(TestProgramArguments.Usage);
+            return 2;
+        }
+
+        if (!parsed.RequiresElevation)
+        {
+            RunOnDrives(parsed);
+            return 0;
+        }
+
         if (!_isElevated())
         {
             var formattedArguments = FormatArguments(arguments);
             _writeLine("Not running as administrator. Attempting to self-elevate...");
-            if (_canSelfElevate() && _tryRunElevated(formattedArguments))
+            if (_canSelfElevate() && _tryRunElevated(formattedArguments, parsed.ElevationTimeoutMilliseconds))
             {
                 return 0;
             }
@@ -38,15 +52,44 @@ class DriveScanner
         var logPath = Path.Combine(AppContext.BaseDirectory, "output.log");
         RedirectStdout(logPath);
 
-        var driveLetters = arguments.Length > 0 ? arguments : ["G"];
+        RunOnDrives(parsed);
+        return 0;
+    }
 
-        foreach (var drive in driveLetters)
+    void RunOnDrives(TestProgramArguments parsed)
+    {
+        if (parsed.Mode == ProgramMode.ScanDrive)
         {
-            ScanDrive(drive);
+            // The console entry point has no synchronization context, so blocking here cannot deadlock.
+            ScanDrivesThroughBrokerAsync(parsed.Drives, CancellationToken.None).GetAwaiter().GetResult();
+            _writeLine($"Completed at {DateTime.Now}");
+            return;
+        }
+
+        foreach (var drive in parsed.Drives)
+        {
+            switch (parsed.Mode)
+            {
+                case ProgramMode.ReadRecords:
+                    ReadRecords(drive);
+                    break;
+                case ProgramMode.UsnQuery:
+                    QueryJournal(drive);
+                    break;
+                case ProgramMode.UsnRead:
+                    ReadJournal(drive);
+                    break;
+                case ProgramMode.UsnWatch:
+                    // The console entry point has no synchronization context, so blocking here cannot deadlock.
+                    WatchJournalAsync(drive, parsed.WatchSeconds).GetAwaiter().GetResult();
+                    break;
+                default:
+                    ScanDrive(drive);
+                    break;
+            }
         }
 
         _writeLine($"Completed at {DateTime.Now}");
-        return 0;
     }
 
     internal void ScanDrive(string drive)

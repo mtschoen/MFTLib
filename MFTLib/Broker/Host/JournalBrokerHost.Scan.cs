@@ -10,9 +10,9 @@ public sealed partial class JournalBrokerHost
     const string RecordBatchStep = "block write";
     const string CatchUpStep = "journal catch-up";
 
-    // Frames, in order: Cursor, ScanProgress*, ScanReady, then one terminal frame - JournalBatch
-    // when catch-up held, or CatchUpLost when it failed and the live journal proves the armed
-    // cursor lost - or Error at any point. A cancelled scan (its pipe closed, or the session
+    // Frames, in order: Cursor, ScanProgress*, ScanReady, then one terminal frame - ScanCompleted
+    // with the advanced cursor when catch-up held, or CatchUpLost when it failed and the live
+    // journal proves the armed cursor lost - or Error at any point. A cancelled scan (its pipe closed, or the session
     // ended) writes nothing more. The pipe publishes Queued while admission waits, WaitingOnVolume
     // around the cursor's volume open, and Processing per record batch, per flushed block range
     // and per bounded catch-up read, so a long scan keeps restarting its progress clock.
@@ -212,15 +212,13 @@ public sealed partial class JournalBrokerHost
             cancellationToken).ConfigureAwait(false);
 
         await channel.Pipe.WriteFrameAsync(
-            writer => BrokerProtocol.WriteScanReady(writer, output.WriteResult.RowCount,
-                output.WriteResult.NamePoolUsedBytes, output.WriteResult.SkippedRecordCount),
+            writer => BrokerProtocol.WriteScanReady(writer, output.WriteResult.SkippedRecordCount),
             cancellationToken).ConfigureAwait(false);
 
-        UsnJournalEntry[] entries;
-        UsnJournalCursor updated;
+        UsnJournalCursor advanced;
         try
         {
-            (entries, updated) = CatchUp(channel, output.Cursor, readJournal, cancellationToken);
+            advanced = CatchUp(channel, output.Cursor, readJournal, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -229,30 +227,22 @@ public sealed partial class JournalBrokerHost
             return;
         }
 
-        // The terminal catch-up batch always ships - the client's scan collector waits on it to
-        // complete the drive - but the diagnostics logs' own entries are still filtered out, so a
-        // scan that raced a busy diagnostics log does not replay them.
-        var logFilter = BrokerDiagnostics.CreateLogFilter();
-        if (logFilter != null)
-        {
-            entries = logFilter.Filter(channel.Drive, entries);
-        }
-
         await channel.Pipe.WriteFrameAsync(
-            writer => BrokerProtocol.WriteJournalBatch(writer, updated, entries),
+            writer => BrokerProtocol.WriteScanCompleted(writer, advanced),
             cancellationToken).ConfigureAwait(false);
     }
 
     // Reads the journal from the armed cursor in calls of at most CatchUpBufferReadsPerCall
     // buffers, republishing the catch-up step after each call that advanced the cursor, until a
-    // call returns without advancing it and without entries. A call that throws, or that returns
-    // entries without advancing, ends catch-up: it is not retried, and the caller's journal check
-    // decides between CatchUpLost and Error.
-    static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) CatchUp(DriveChannel channel, UsnJournalCursor armed,
+    // call returns without advancing it and without entries. The entries are not kept: the live
+    // watch from the armed cursor delivers them, and the returned cursor is where this read
+    // finished. A call that throws, or
+    // that returns entries without advancing, ends catch-up: it is not retried, and the caller's
+    // journal check decides between CatchUpLost and Error.
+    static UsnJournalCursor CatchUp(DriveChannel channel, UsnJournalCursor armed,
         UsnJournalCatchUpSource readJournal, CancellationToken cancellationToken)
     {
         channel.Pipe.Processing(CatchUpStep);
-        var entries = new List<UsnJournalEntry>();
         var cursor = armed;
         while (true)
         {
@@ -262,12 +252,10 @@ public sealed partial class JournalBrokerHost
             {
                 // A read at the tip returns nothing; entries here would repeat ones already read.
                 return chunk.Length == 0
-                    ? (entries.ToArray(), cursor)
+                    ? cursor
                     : throw new InvalidOperationException(FormattableString.Invariant(
                         $"Drive {channel.Drive} catch-up read returned {chunk.Length} entries without advancing its cursor {cursor.JournalId}:{cursor.NextUsn}."));
             }
-
-            entries.AddRange(chunk);
 
             cursor = updated;
             channel.Pipe.Processing(CatchUpStep);
@@ -290,7 +278,7 @@ public sealed partial class JournalBrokerHost
         }
 
         await channel.Pipe.WriteFrameAsync(
-            writer => BrokerProtocol.WriteCatchUpLost(writer, loss, exception.Message),
+            writer => BrokerProtocol.WriteCatchUpLost(writer, loss),
             cancellationToken).ConfigureAwait(false);
     }
 }

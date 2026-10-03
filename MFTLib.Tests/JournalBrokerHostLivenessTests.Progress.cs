@@ -67,11 +67,10 @@ public partial class JournalBrokerHostLivenessTests
 
         var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
 
-        var batch = frames[^1];
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, batch.Kind);
-        CollectionAssert.AreEqual(new[] { "1000.txt", "1100.txt", "1200.txt" },
-            batch.Entries.Select(entry => entry.FileName).ToArray(), "The one terminal batch holds every chunk.");
-        Assert.AreEqual(Tip with { NextUsn = 1300 }, batch.Cursor);
+        var terminal = frames[^1];
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, terminal.Kind);
+        Assert.AreEqual(0, terminal.Entries.Length, "The chunks the catch-up read stay on the host.");
+        Assert.AreEqual(Tip with { NextUsn = 1300 }, terminal.Cursor, "The terminal frame carries the cursor after every chunk.");
         CollectionAssert.AreEqual(Enumerable.Repeat(BrokerLiveness.CatchUpBufferReadsPerCall, 4).ToArray(),
             reads.ToArray(), "Each call is bounded; the fourth returns at the tip and ends catch-up.");
         Assert.AreEqual(3, liveness.Republishes(DriveTag('C', 1), "journal catch-up"),
@@ -102,8 +101,8 @@ public partial class JournalBrokerHostLivenessTests
 
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^2].Kind);
         Assert.AreEqual(BrokerFrameKind.CatchUpLost, frames[^1].Kind, "CatchUpLost is the last frame, then EOF.");
-        Assert.AreEqual("second catch-up read failed", frames[^1].Message);
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.JournalBatch));
+        Assert.IsNull(frames[^1].Message, "The failure text stays on the host.");
+        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanCompleted));
         Assert.AreEqual(2, calls, "A failed bounded read is not retried.");
         Assert.AreEqual(1, liveness.Republishes(DriveTag('C', 1), "journal catch-up"),
             "Only the call that returned a chunk restarted the progress clock.");
@@ -143,7 +142,7 @@ public partial class JournalBrokerHostLivenessTests
 
             var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C', sectionName));
 
-            Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind);
+            Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
             Assert.AreEqual(ranges, liveness.Published.Count(entry =>
                 entry.Tag == DriveTag('C', 1) && entry.State is
                 { Kind: ChannelOperationKind.Processing, Step: RealBlockSectionWriter.FlushStep }),

@@ -12,6 +12,22 @@ public class BrokerFrameLengthTests
 {
     static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
 
+    // The cap's arithmetic (BrokerFrameStream.MaximumFrameLength): the largest legitimate frame is an
+    // ArmAndScan keep list, and 32,639 maximum-length NTFS names (255 UTF-16 units) still fit.
+    [TestMethod]
+    public void MaximumFrameLength_HoldsAKeepListOfThirtyTwoThousandMaximumLengthNames()
+    {
+        var names = Enumerable.Range(0, 32_639).Select(_ => new string('n', 255)).ToArray();
+        var buffer = new ArrayBufferWriter<byte>();
+
+        BrokerProtocol.WriteArmAndScan(buffer, "section", BrokerScanProfile.DirectoryIndex, names);
+
+        var totalLength = BinaryPrimitives.ReadInt32LittleEndian(buffer.WrittenSpan);
+        Assert.IsTrue(totalLength <= BrokerFrameStream.MaximumFrameLength,
+            $"A keep list of 32,639 maximum-length names is {totalLength} bytes.");
+        Assert.AreEqual(names.Length, BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _).KeepFileNames.Count);
+    }
+
     [DataTestMethod]
     [DataRow(int.MaxValue)]
     [DataRow(BrokerFrameStream.MaximumFrameLength + 1)]

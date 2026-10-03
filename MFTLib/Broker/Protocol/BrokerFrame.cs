@@ -28,7 +28,8 @@ internal enum BrokerFrameKind : byte
     ScanReady = 14,
     JournalBatch = 15,
     StartWatch = 16,
-    CaughtUp = 17
+    CaughtUp = 17,
+    ScanCompleted = 18
 }
 
 /// <summary>
@@ -59,9 +60,6 @@ internal readonly record struct BrokerFrame
     public BrokerScanProfile Profile { get; private init; }
     public UsnJournalCursor Cursor { get; private init; }
     public UsnJournalEntry[] Entries { get; private init; }
-    public long RecordCount { get; private init; }
-    public long RowCount { get; private init; }
-    public long NamePoolUsedBytes { get; private init; }
     public long SkippedRecordCount { get; private init; }
     public string? Message { get; private init; }
     public IReadOnlyList<string> KeepFileNames { get; private init; }
@@ -138,15 +136,10 @@ internal readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.QueryVolume, requestId) with { Drive = drive };
     }
 
-    // mftRecordCount is the pre-computed NtfsVolumeInformation.MftRecordCount value;
-    // bytesPerFileRecordSegment and mftValidDataLength are the two raw fields it was derived
-    // from, carried alongside so a client can reconstruct the count independently.
-    public static BrokerFrame VolumeInfo(uint requestId, long mftRecordCount, uint bytesPerFileRecordSegment,
-        long mftValidDataLength)
+    public static BrokerFrame VolumeInfo(uint requestId, uint bytesPerFileRecordSegment, long mftValidDataLength)
     {
         return Empty(BrokerFrameKind.VolumeInfo, requestId) with
         {
-            RecordCount = mftRecordCount,
             BytesPerFileRecordSegment = bytesPerFileRecordSegment,
             MftValidDataLength = mftValidDataLength
         };
@@ -210,19 +203,14 @@ internal readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.ScanProgress, 0) with { Progress = progress };
     }
 
-    internal static BrokerFrame CatchUpLost(BrokerCatchUpLoss loss, string message)
+    internal static BrokerFrame CatchUpLost(BrokerCatchUpLoss loss)
     {
-        return Empty(BrokerFrameKind.CatchUpLost, 0) with { CatchUpLoss = loss, Message = message };
+        return Empty(BrokerFrameKind.CatchUpLost, 0) with { CatchUpLoss = loss };
     }
 
-    public static BrokerFrame ScanReady(long rowCount, long namePoolUsedBytes, long skippedRecordCount)
+    public static BrokerFrame ScanReady(long skippedRecordCount)
     {
-        return Empty(BrokerFrameKind.ScanReady, 0) with
-        {
-            RowCount = rowCount,
-            NamePoolUsedBytes = namePoolUsedBytes,
-            SkippedRecordCount = skippedRecordCount
-        };
+        return Empty(BrokerFrameKind.ScanReady, 0) with { SkippedRecordCount = skippedRecordCount };
     }
 
     public static BrokerFrame JournalBatch(UsnJournalCursor cursor, UsnJournalEntry[] entries)
@@ -240,6 +228,12 @@ internal readonly record struct BrokerFrame
     public static BrokerFrame CaughtUp()
     {
         return Empty(BrokerFrameKind.CaughtUp, 0);
+    }
+
+    // The cursor a scan's catch-up advanced to from the armed one; the entries it read stay on the host.
+    public static BrokerFrame ScanCompleted(UsnJournalCursor advanced)
+    {
+        return Empty(BrokerFrameKind.ScanCompleted, 0) with { Cursor = advanced };
     }
 
     static BrokerFrame Empty(BrokerFrameKind kind, uint requestId)

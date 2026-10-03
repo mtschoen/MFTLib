@@ -153,12 +153,12 @@ public partial class BrokerProcessTests
         Assert.AreEqual("No broker request id is free", exhausted.Message);
         CollectionAssert.AreEqual(new uint[] { 1, 2, 3 }, ids);
 
-        await broker.WriteControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, 2, 1000, 1024, 1024 * 1000));
+        await broker.WriteControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, 2, 1024, 1024 * 1000));
         Assert.AreEqual(1000L, (await requests[1].WaitAsync(HangGuard)).MftRecordCount);
         var fifth = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
         var fifthRequest = await broker.ReadRequestAsync();
         await broker.WriteControlAsync(writer =>
-            BrokerProtocol.WriteVolumeInfo(writer, fifthRequest.RequestId, 500, 1024, 1024 * 500));
+            BrokerProtocol.WriteVolumeInfo(writer, fifthRequest.RequestId, 1024, 1024 * 500));
 
         Assert.AreEqual(2u, fifthRequest.RequestId);
         Assert.AreEqual(500L, (await fifth.WaitAsync(HangGuard)).MftRecordCount);

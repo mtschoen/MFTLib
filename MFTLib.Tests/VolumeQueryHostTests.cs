@@ -25,7 +25,6 @@ public class VolumeQueryHostTests
 
         var volumeInfo = replies.Single(f => f.Kind == BrokerFrameKind.VolumeInfo);
         Assert.AreEqual(1u, volumeInfo.RequestId);
-        Assert.AreEqual(8_192_000_000L / 1024, volumeInfo.RecordCount);
         Assert.AreEqual(1024U, volumeInfo.BytesPerFileRecordSegment);
         Assert.AreEqual(8_192_000_000L, volumeInfo.MftValidDataLength);
 
@@ -62,7 +61,7 @@ public class VolumeQueryHostTests
         Assert.AreEqual(5u, volumeInfo.RequestId);
         Assert.IsTrue(scanFrames.Any(f => f.Kind == BrokerFrameKind.ScanReady),
             "Expected the scan that followed to still complete");
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, scanFrames[^1].Kind);
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, scanFrames[^1].Kind);
     }
 
     static JournalBrokerHost CreateHost(NtfsVolumeInformationQuery? queryVolumeInfo = null)

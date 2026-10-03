@@ -143,12 +143,12 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void CatchUpLostFrame_RoundTrips_EveryLossFieldAndMessage()
+    public void CatchUpLostFrame_RoundTrips_EveryLossField()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteCatchUpLost(writer, FullLoss, "catch-up read failed"));
+        var frame = RoundTrip(writer => BrokerProtocol.WriteCatchUpLost(writer, FullLoss));
 
         Assert.AreEqual(BrokerFrameKind.CatchUpLost, frame.Kind);
-        Assert.AreEqual("catch-up read failed", frame.Message);
+        Assert.IsNull(frame.Message);
         var loss = frame.RequireCatchUpLoss('C');
         Assert.AreEqual('C', loss.DriveLetter);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);
@@ -171,7 +171,7 @@ public partial class BrokerProtocolTests
             BytesBehind = null,
             SizeThatWouldHaveRetained = null
         };
-        var frame = RoundTrip(writer => BrokerProtocol.WriteCatchUpLost(writer, recreated, "recreated"));
+        var frame = RoundTrip(writer => BrokerProtocol.WriteCatchUpLost(writer, recreated));
 
         var loss = frame.RequireCatchUpLoss('D');
         Assert.AreEqual('D', loss.DriveLetter, "The drive is the channel's, not the wire's.");
@@ -184,7 +184,7 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void CatchUpLostFrame_RoundTrips_NegativeBytesBehind()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteCatchUpLost(writer, FullLoss with { BytesBehind = -1 }, "m"));
+        var frame = RoundTrip(writer => BrokerProtocol.WriteCatchUpLost(writer, FullLoss with { BytesBehind = -1 }));
 
         Assert.AreEqual(-1L, frame.RequireCatchUpLoss('C').BytesBehind, "A present value of -1 is not the absent marker.");
     }
@@ -193,7 +193,7 @@ public partial class BrokerProtocolTests
     public void ReadFrame_CatchUpLost_UnknownCause_ThrowsInvalidDataException()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteCatchUpLost(buffer, FullLoss with { Cause = (JournalCheckpointLossCause)42 }, "m");
+        BrokerProtocol.WriteCatchUpLost(buffer, FullLoss with { Cause = (JournalCheckpointLossCause)42 });
 
         var exception = Assert.ThrowsException<InvalidDataException>(() =>
             BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _));
@@ -201,14 +201,23 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void ScanReadyFrame_RoundTrips_Counts()
+    public void ScanReadyFrame_RoundTrips_SkippedRecordCount()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteScanReady(writer, 8_000_000, 900_000_000, 3));
+        var frame = RoundTrip(writer => BrokerProtocol.WriteScanReady(writer, 3));
 
         Assert.AreEqual(BrokerFrameKind.ScanReady, frame.Kind);
-        Assert.AreEqual(8_000_000L, frame.RowCount);
-        Assert.AreEqual(900_000_000L, frame.NamePoolUsedBytes);
         Assert.AreEqual(3L, frame.SkippedRecordCount);
+    }
+
+    [TestMethod]
+    public void ScanCompletedFrame_RoundTrips_AdvancedCursorAndCarriesNoEntries()
+    {
+        var cursor = new UsnJournalCursor(7UL, 1500L);
+        var frame = RoundTrip(writer => BrokerProtocol.WriteScanCompleted(writer, cursor));
+
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frame.Kind);
+        Assert.AreEqual(cursor, frame.Cursor);
+        Assert.AreEqual(0, frame.Entries.Length);
     }
 
     [TestMethod]
@@ -343,13 +352,23 @@ public partial class BrokerProtocolTests
     [TestMethod]
     public void WireBytes_Golden_ScanReadyFrame()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteScanReady(w, 1, 2, 3),
+        AssertWireBytes(w => BrokerProtocol.WriteScanReady(w, 3),
         [
-            0x19, 0x00, 0x00, 0x00, // totalLength = 25
+            0x09, 0x00, 0x00, 0x00, // totalLength = 9
             0x0E, // kind = ScanReady
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // rowCount = 1
-            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // namePoolUsedBytes = 2
             0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // skippedRecordCount = 3
+        ]);
+    }
+
+    [TestMethod]
+    public void WireBytes_Golden_ScanCompletedFrame()
+    {
+        AssertWireBytes(w => BrokerProtocol.WriteScanCompleted(w, new UsnJournalCursor(1UL, 2L)),
+        [
+            0x11, 0x00, 0x00, 0x00, // totalLength = 17
+            0x12, // kind = ScanCompleted
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // journalId = 1
+            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // nextUsn = 2
         ]);
     }
 
@@ -366,9 +385,9 @@ public partial class BrokerProtocolTests
             BytesBehind = 6,
             SizeThatWouldHaveRetained = null
         };
-        AssertWireBytes(w => BrokerProtocol.WriteCatchUpLost(w, loss, "m"),
+        AssertWireBytes(w => BrokerProtocol.WriteCatchUpLost(w, loss),
         [
-            0x45, 0x00, 0x00, 0x00, // totalLength = 69
+            0x3F, 0x00, 0x00, 0x00, // totalLength = 63
             0x0D, // kind = CatchUpLost
             0x00, 0x00, 0x00, 0x00, // cause = CheckpointTrimmed (0)
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // checkpointUsn = 1
@@ -377,8 +396,7 @@ public partial class BrokerProtocolTests
             0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // allocationDelta = 4
             0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // maximumSize = 5
             0x01, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // bytesBehind = present, 6
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // sizeThatWouldHaveRetained = absent
-            0x02, 0x00, 0x00, 0x00, 0x6D, 0x00 // message "m"
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // sizeThatWouldHaveRetained = absent
         ]);
     }
 
@@ -443,13 +461,24 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void Factory_ScanReady_PopulatesCounts()
+    public void Factory_ScanReady_PopulatesSkippedRecordCount()
     {
-        var frame = BrokerFrame.ScanReady(8_000_000, 900_000_000, 0);
+        var frame = BrokerFrame.ScanReady(4);
 
         Assert.AreEqual(BrokerFrameKind.ScanReady, frame.Kind);
-        Assert.AreEqual(8_000_000L, frame.RowCount);
-        Assert.AreEqual(900_000_000L, frame.NamePoolUsedBytes);
+        Assert.AreEqual(4L, frame.SkippedRecordCount);
+        Assert.AreEqual(0, frame.Entries.Length);
+    }
+
+    [TestMethod]
+    public void Factory_ScanCompleted_PopulatesCursor()
+    {
+        var cursor = new UsnJournalCursor(7UL, 110L);
+
+        var frame = BrokerFrame.ScanCompleted(cursor);
+
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frame.Kind);
+        Assert.AreEqual(cursor, frame.Cursor);
         Assert.AreEqual(0, frame.Entries.Length);
     }
 
@@ -514,7 +543,7 @@ public partial class BrokerProtocolTests
         var pipe = await harness.OpenScanChannelAsync('D', "section-D", BrokerScanProfile.DirectoryIndex, KeepFileNamesGit);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind);
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual("section-D", sectionWriter.LastSectionName);
         Assert.AreEqual(BrokerScanProfile.DirectoryIndex, sectionWriter.LastFilter.Profile);
         CollectionAssert.AreEqual(KeepFileNamesGit, sectionWriter.LastFilter.KeepFileNames!.ToArray());

@@ -12,7 +12,8 @@
       `BrokerChannelLostException`. The host admits concurrent scans under one processor-sized
       parse-thread budget and rebalances each `ParseThreadAllowance` when scans enter or leave;
       native parsing reads the allowance at each chunk and before path resolution. A scan writes
-      `ScanReady` before bounded catch-up; a journal-proven loss ends it with `CatchUpLost`, while
+      `ScanReady` before bounded catch-up; a catch-up that held ends it with `ScanCompleted`
+      carrying the advanced cursor, a journal-proven loss ends it with `CatchUpLost`, while
       any unproven failure ends it with `Error`.
       One dedicated background thread visits every pipe every five seconds. An idle control pipe,
       a watch waiting on its volume, a queued scan, and a processing operation that has reported

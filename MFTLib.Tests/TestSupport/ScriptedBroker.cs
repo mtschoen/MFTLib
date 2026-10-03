@@ -44,7 +44,7 @@ internal sealed class ScriptedBroker : IAsyncDisposable
         var request = await ReadRequestAsync();
         Assert.AreEqual(BrokerFrameKind.QueryVolume, request.Kind);
         await WriteControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, request.RequestId,
-            volume.MftRecordCount, volume.BytesPerFileRecordSegment, volume.MftValidDataLength));
+            volume.BytesPerFileRecordSegment, volume.MftValidDataLength));
     }
 
     /// <summary>Reads the next request, which must open a channel, connects it, and acknowledges it.</summary>

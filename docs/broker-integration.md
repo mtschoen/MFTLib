@@ -150,19 +150,38 @@ channel. The elevated host:
 1. captures the drive's journal cursor;
 2. scans MFT records into the shared block;
 3. completes and flushes the block;
-4. reads journal entries produced during the scan; and
-5. returns either the catch-up batch or a proven catch-up loss.
+4. reads the journal entries produced during the scan, from the armed cursor
+   to the journal's tip, and keeps none of them; and
+5. returns either the cursor that read advanced to or a proven catch-up loss.
 
 `ScanDriveAsync` is available for advanced callers and returns
 `BrokerDriveScanResult`; its block belongs to the caller. A successful result
-contains the armed cursor, the advanced cursor, and catch-up entries. A proven
-loss still returns the completed block, with `CatchUpLoss` set,
-`AdvancedCursor` null, and an empty `CatchUpEntries` collection.
+contains the armed cursor and the advanced cursor. The catch-up entries do not
+cross the pipe: a caller that wants them watches from the armed cursor. A proven
+loss still returns the completed block, with `CatchUpLoss` set and
+`AdvancedCursor` null. `BlockScanOutcome` carries the block and its skipped
+record count; the row count and name pool size are in the block's header.
 
 The `FileIndex` adapter deliberately watches from the cursor armed before the
-scan, so the live watch replays the scan window. The adapter uses the scan's
-catch-up result to prove that cursor is still resumable; the live watch applies
-the entries.
+scan, so the live watch replays the scan window and anything after it, provided
+the journal still retains those entries when the watch starts. The advanced
+cursor is where the host's catch-up read finished; the adapter keeps the armed
+cursor and propagates a proven `CatchUpLoss`, and a loss after the scan is
+reported by the watch.
+
+The scan channel's frames are `Cursor`, `ScanProgress`*, `ScanReady` (the
+skipped record count), then one terminal frame: `ScanCompleted` with the
+advanced cursor, or `CatchUpLost` with the journal facts of the proven loss.
+`Error` replaces any of them. The frame length limit is 16 MiB, enforced by the
+writer before a frame is sent and by the reader before it is allocated. The
+library's own frames stay far below it: a watch `JournalBatch` from the native
+source is one 64 KiB journal read, and `Error` and `Stalled` text is cut to
+32,768 UTF-16 units. A `BrokerScanOptions.KeepFileNames` list that makes the
+`ArmAndScan` request exceed the limit (32,639 maximum-length names with the
+default section name) is refused by `ScanDriveAsync` with an
+`ArgumentException` before anything is sent. A custom `JournalBatchSource`
+batch over the limit fails that watch with an `Error` frame, like any source
+failure.
 
 ### Concurrent open progress
 

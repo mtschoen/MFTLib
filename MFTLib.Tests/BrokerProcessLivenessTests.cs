@@ -142,8 +142,8 @@ public class BrokerProcessLivenessTests
         var clock = new FakeTimeProvider();
         await using var session = new LivenessSession(clock);
         var scan = await session.StartScanAsync('C');
-        await scan.SendAsync(writer => BrokerProtocol.WriteScanReady(writer, 0, 0, 0));
-        await scan.SendAsync(writer => BrokerProtocol.WriteJournalBatch(writer, new UsnJournalCursor(7, 1500), []));
+        await scan.SendAsync(writer => BrokerProtocol.WriteScanReady(writer, 0));
+        await scan.SendAsync(writer => BrokerProtocol.WriteScanCompleted(writer, new UsnJournalCursor(7, 1500)));
         await scan.SettledAsync();
         await session.ControlSettledAsync();
 
@@ -211,7 +211,7 @@ public class BrokerProcessLivenessTests
         Assert.IsFalse(session.Process.Ended.IsCompleted, "Only the request timed out.");
         Assert.AreEqual(1, session.Process.PendingRequestCountForTest, "The id stays until its reply arrives.");
 
-        await session.SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, slowRequest.RequestId, 1, 1, 111));
+        await session.SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, slowRequest.RequestId, 1, 111));
         await session.ControlSettledAsync();
         Assert.AreEqual(0, session.Process.PendingRequestCountForTest, "The late reply is dropped with its id.");
 
@@ -219,7 +219,7 @@ public class BrokerProcessLivenessTests
         var nextRequest = await session.Broker.ReadRequestAsync();
         Assert.AreNotEqual(slowRequest.RequestId, nextRequest.RequestId);
         await session.SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, nextRequest.RequestId,
-            Volume.MftRecordCount, Volume.BytesPerFileRecordSegment, 222));
+            Volume.BytesPerFileRecordSegment, 222));
         Assert.AreEqual(222L, (await next.WaitAsync(HangGuard)).MftValidDataLength);
     }
 
@@ -373,7 +373,7 @@ public class BrokerProcessLivenessTests
             var request = await Broker.ReadRequestAsync();
             Assert.AreEqual(BrokerFrameKind.QueryVolume, request.Kind);
             await SendControlAsync(writer => BrokerProtocol.WriteVolumeInfo(writer, request.RequestId,
-                volume.MftRecordCount, volume.BytesPerFileRecordSegment, volume.MftValidDataLength));
+                volume.BytesPerFileRecordSegment, volume.MftValidDataLength));
         }
 
         // Starts a scan and scripts it to the point where the client waits for ScanReady.
@@ -414,11 +414,11 @@ public class BrokerProcessLivenessTests
 
         public Task SettledAsync() => reads.WhenReadPendingAfter(_sent).WaitAsync(HangGuard);
 
-        // The rest of a scan: ScanReady, the terminal JournalBatch, then the host closing the channel.
+        // The rest of a scan: ScanReady, the terminal ScanCompleted, then the host closing the channel.
         public async Task FinishAsync()
         {
-            await SendAsync(writer => BrokerProtocol.WriteScanReady(writer, 0, 0, 0));
-            await SendAsync(writer => BrokerProtocol.WriteJournalBatch(writer, new UsnJournalCursor(7, 1500), []));
+            await SendAsync(writer => BrokerProtocol.WriteScanReady(writer, 0));
+            await SendAsync(writer => BrokerProtocol.WriteScanCompleted(writer, new UsnJournalCursor(7, 1500)));
             await hostPipe.DisposeAsync().AsTask().WaitAsync(HangGuard);
         }
     }

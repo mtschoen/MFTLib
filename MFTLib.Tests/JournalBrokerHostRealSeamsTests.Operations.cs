@@ -35,7 +35,7 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(RowFlags.None, writer.Block.Rows[101].Flags);
         Assert.AreEqual(RowFlags.None, writer.Block.Rows[102].Flags);
         Assert.AreEqual("file0.txt", NamePool.ReadRowName(writer.Block, 100).ToString());
-        var catchUp = frames.Single(frame => frame.Kind == BrokerFrameKind.JournalBatch);
+        var catchUp = frames.Single(frame => frame.Kind == BrokerFrameKind.ScanCompleted);
         Assert.AreEqual(0, catchUp.Entries.Length);
         Assert.AreEqual(5100L, catchUp.Cursor.NextUsn);
     }

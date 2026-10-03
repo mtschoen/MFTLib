@@ -28,7 +28,7 @@
     - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`; `MaterializeBatches`/`ReadRecordBatches` provide bounded-memory batch materialization over the same result.
     - **ElevationUtilities**: Shared logic for detecting and ensuring Administrative privileges.
 
-- **TestProgram** (C# Console App) - CLI that reads MFT metadata for specified drives. Automatically self-elevates.
+- **TestProgram** (C# Console App) - CLI that runs the public read APIs against specified drives: `find-git` (the default), `read-records`, `usn-query`, `usn-read`, `usn-watch [--seconds N]`, and `scan-drive`, which runs `BrokerProcess.ScanDriveAsync` standalone with no `FileIndex`. Every mode except `scan-drive` self-elevates; `scan-drive` stays unelevated and the broker it launches asks for elevation, so TestProgram also dispatches `--broker` through `ElevatedEntryPoint`.
 - **Benchmark** (C# Console App) - Performance benchmark using synthetic MFT generation.
 - **MFTLib.Tests** (C# MSTest) - Unit tests for record mapping and path resolution.
 - **MFTLibTestExtensions** (C# Library) - Public, consumer-facing `BrokerTestHarness` that runs a

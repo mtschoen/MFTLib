@@ -28,7 +28,6 @@ public partial class JournalBrokerHostChannelTests
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, reply.Kind);
         Assert.AreEqual(41u, reply.RequestId);
-        Assert.AreEqual(Volume.MftRecordCount, reply.RecordCount);
         Assert.AreEqual(Volume.BytesPerFileRecordSegment, reply.BytesPerFileRecordSegment);
         Assert.AreEqual(Volume.MftValidDataLength, reply.MftValidDataLength);
         Assert.IsNull(reply.Drive);

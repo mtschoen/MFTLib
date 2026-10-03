@@ -28,11 +28,11 @@ internal static partial class BrokerProtocol
         new PayloadWriter().UInt32(requestId).String(drive).WriteTo(writer, BrokerFrameKind.QueryVolume);
     }
 
-    // payload: [requestId u32][mftRecordCount i64][bytesPerFileRecordSegment u32][mftValidDataLength i64]
-    public static void WriteVolumeInfo(IBufferWriter<byte> writer, uint requestId, long mftRecordCount,
+    // payload: [requestId u32][bytesPerFileRecordSegment u32][mftValidDataLength i64]
+    public static void WriteVolumeInfo(IBufferWriter<byte> writer, uint requestId,
         uint bytesPerFileRecordSegment, long mftValidDataLength)
     {
-        new PayloadWriter().UInt32(requestId).Int64(mftRecordCount).UInt32(bytesPerFileRecordSegment)
+        new PayloadWriter().UInt32(requestId).UInt32(bytesPerFileRecordSegment)
             .Int64(mftValidDataLength).WriteTo(writer, BrokerFrameKind.VolumeInfo);
     }
 
@@ -54,10 +54,22 @@ internal static partial class BrokerProtocol
 
     // Any pipe
 
+    // The longest message either text frame carries, in UTF-16 units; a longer one is cut and
+    // marked, so an exception text never makes a frame the reader refuses.
+    internal const int MaximumMessageUnits = 32768;
+    internal const string TruncationMarker = "... (truncated)";
+
+    static string FitMessage(string message)
+    {
+        return message.Length <= MaximumMessageUnits
+            ? message
+            : string.Concat(message.AsSpan(0, MaximumMessageUnits - TruncationMarker.Length), TruncationMarker);
+    }
+
     // payload: [requestId u32 (0 on a drive pipe)][message string]
     public static void WriteError(IBufferWriter<byte> writer, uint requestId, string message)
     {
-        new PayloadWriter().UInt32(requestId).String(message).WriteTo(writer, BrokerFrameKind.Error);
+        new PayloadWriter().UInt32(requestId).String(FitMessage(message)).WriteTo(writer, BrokerFrameKind.Error);
     }
 
     public static void WriteHeartbeat(IBufferWriter<byte> writer)
@@ -68,10 +80,23 @@ internal static partial class BrokerProtocol
     // payload: [message string]
     public static void WriteStalled(IBufferWriter<byte> writer, string message)
     {
-        new PayloadWriter().String(message).WriteTo(writer, BrokerFrameKind.Stalled);
+        new PayloadWriter().String(FitMessage(message)).WriteTo(writer, BrokerFrameKind.Stalled);
     }
 
     // Drive pipe
+
+    // The ArmAndScan frame's length (kind byte plus payload), so a caller can refuse a keep list
+    // the frame limit cannot carry before anything is sent.
+    public static long ArmAndScanFrameLength(string sectionName, IReadOnlyCollection<string>? keepFileNames)
+    {
+        var length = 1L + 4 + 2L * sectionName.Length + 4 + 4;
+        foreach (var name in keepFileNames ?? [])
+        {
+            length += 4 + 2L * name.Length;
+        }
+
+        return length;
+    }
 
     // payload: [sectionName string][profile i32][nameCount i32][per name: name string]
     public static void WriteArmAndScan(IBufferWriter<byte> writer, string sectionName, BrokerScanProfile profile,
@@ -105,21 +130,19 @@ internal static partial class BrokerProtocol
     }
 
     // payload: [cause i32][checkpointUsn i64][firstUsn i64][nextUsn i64][allocationDelta i64]
-    //          [maximumSize i64][bytesBehind nullable i64][sizeThatWouldHaveRetained nullable i64][message string]
-    internal static void WriteCatchUpLost(IBufferWriter<byte> writer, JournalCheckpointLoss loss, string message)
+    //          [maximumSize i64][bytesBehind nullable i64][sizeThatWouldHaveRetained nullable i64]
+    internal static void WriteCatchUpLost(IBufferWriter<byte> writer, JournalCheckpointLoss loss)
     {
         new PayloadWriter().Int32((int)loss.Cause).Int64(loss.CheckpointUsn).Int64(loss.FirstUsn)
             .Int64(loss.NextUsn).Int64(loss.AllocationDelta).Int64(loss.MaximumSize)
-            .NullableInt64(loss.BytesBehind).NullableInt64(loss.SizeThatWouldHaveRetained).String(message)
+            .NullableInt64(loss.BytesBehind).NullableInt64(loss.SizeThatWouldHaveRetained)
             .WriteTo(writer, BrokerFrameKind.CatchUpLost);
     }
 
-    // payload: [rowCount i64][namePoolUsedBytes i64][skippedRecordCount i64]
-    public static void WriteScanReady(IBufferWriter<byte> writer, long rowCount, long namePoolUsedBytes,
-        long skippedRecordCount)
+    // payload: [skippedRecordCount i64]
+    public static void WriteScanReady(IBufferWriter<byte> writer, long skippedRecordCount)
     {
-        new PayloadWriter().Int64(rowCount).Int64(namePoolUsedBytes).Int64(skippedRecordCount)
-            .WriteTo(writer, BrokerFrameKind.ScanReady);
+        new PayloadWriter().Int64(skippedRecordCount).WriteTo(writer, BrokerFrameKind.ScanReady);
     }
 
     // payload: [journalId u64][nextUsn i64][entryCount i32][entries]
@@ -144,5 +167,11 @@ internal static partial class BrokerProtocol
     public static void WriteCaughtUp(IBufferWriter<byte> writer)
     {
         new PayloadWriter().WriteTo(writer, BrokerFrameKind.CaughtUp);
+    }
+
+    // payload: [journalId u64][nextUsn i64]
+    public static void WriteScanCompleted(IBufferWriter<byte> writer, UsnJournalCursor advanced)
+    {
+        new PayloadWriter().Cursor(advanced).WriteTo(writer, BrokerFrameKind.ScanCompleted);
     }
 }

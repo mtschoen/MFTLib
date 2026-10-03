@@ -132,7 +132,7 @@ public partial class JournalBrokerHostTests
     }
 
     [TestMethod]
-    public async Task ArmAndScan_WithDiagnostics_FiltersCatchUpEntries_ButStillShipsTerminalBatch()
+    public async Task ArmAndScan_WithDiagnostics_CompletesWithTheAdvancedCursorAndShipsNoEntries()
     {
         EnableDiagFilterSeams();
         try
@@ -147,39 +147,10 @@ public partial class JournalBrokerHostTests
             var pipe = await harness.OpenScanChannelAsync('C');
             var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-            var batches = frames.Where(frame => frame.Kind == BrokerFrameKind.JournalBatch).ToList();
-            // The terminal catch-up batch always ships (the client's scan collector waits on it),
-            // with the log entries removed.
-            Assert.AreEqual(1, batches.Count);
-            Assert.AreEqual(1, batches[0].Entries.Length);
-            Assert.AreEqual("real.txt", batches[0].Entries[0].FileName);
-        }
-        finally
-        {
-            ResetDiagFilterSeams();
-        }
-    }
-
-    [TestMethod]
-    public async Task ArmAndScan_WithDiagnostics_LogOnlyCatchUpEntries_ShipsEmptyTerminalBatch()
-    {
-        EnableDiagFilterSeams();
-        try
-        {
-            using var sectionWriter = new RecordingBlockSectionWriter();
-            var host = CreateWatchHost(
-                queryCursor: _ => new UsnJournalCursor(7UL, 0L),
-                readJournal: CatchUpSources.ToTip(new UsnJournalCursor(7UL, 1L), DiagEntry(DiagOwnLogReference)));
-            await using var harness = new HostChannelHarness(host, sectionWriter);
-
-            var pipe = await harness.OpenScanChannelAsync('C');
-            var frames = await HostChannelHarness.ReadToEndAsync(pipe);
-
-            var batches = frames.Where(frame => frame.Kind == BrokerFrameKind.JournalBatch).ToList();
-            // The terminal catch-up batch must still ship even when all entries were filtered out,
-            // producing an empty JournalBatch so the client's scan collector completes the drive.
-            Assert.AreEqual(1, batches.Count);
-            Assert.AreEqual(0, batches[0].Entries.Length);
+            Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.JournalBatch));
+            var completed = frames.Single(frame => frame.Kind == BrokerFrameKind.ScanCompleted);
+            Assert.AreEqual(new UsnJournalCursor(7UL, 2L), completed.Cursor);
+            Assert.AreEqual(0, completed.Entries.Length);
         }
         finally
         {

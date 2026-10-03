@@ -28,6 +28,6 @@ public sealed partial class JournalBrokerHost
         }
 
         await WriteControlFrameAsync(session, writer => BrokerProtocol.WriteVolumeInfo(writer, requestId,
-            info.MftRecordCount, info.BytesPerFileRecordSegment, info.MftValidDataLength)).ConfigureAwait(false);
+            info.BytesPerFileRecordSegment, info.MftValidDataLength)).ConfigureAwait(false);
     }
 }

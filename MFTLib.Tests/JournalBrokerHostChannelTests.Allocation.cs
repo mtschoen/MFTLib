@@ -68,7 +68,7 @@ public partial class JournalBrokerHostChannelTests
         {
             case ScanEnding.Completes:
                 scans["C"].Gate.Release();
-                Assert.AreEqual(BrokerFrameKind.JournalBatch, (await HostChannelHarness.ReadToEndAsync(pipeC))[^1].Kind);
+                Assert.AreEqual(BrokerFrameKind.ScanCompleted, (await HostChannelHarness.ReadToEndAsync(pipeC))[^1].Kind);
                 break;
             case ScanEnding.Cancelled:
                 await pipeC.DisposeAsync();
@@ -159,7 +159,7 @@ public partial class JournalBrokerHostChannelTests
         scans["E"].Gate.Release();
         var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('E'));
 
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind);
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual(0, scans.InvocationCount("D"), "A scan that left the queue never reaches its source.");
     }
 
@@ -226,7 +226,7 @@ public partial class JournalBrokerHostChannelTests
         var frames = await HostChannelHarness.ReadToEndAsync(pipeD);
 
         Assert.IsFalse(scans["D"].Token.IsCancellationRequested);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind);
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
     }
 
     static async Task AssertAtRestAsync(ParseThreadAllocator allocator, int processorCount,

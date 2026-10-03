@@ -37,13 +37,12 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(BrokerScanPhase.Transferring, finalProgress.Phase);
         Assert.AreEqual(string.Empty, finalProgress.DriveLetter, "The drive belongs to the channel, not the frame.");
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^2].Kind);
-        Assert.AreEqual(21L, frames[^2].RowCount);
-        Assert.AreEqual(sectionWriter.Block.Header.NamePoolUsed, frames[^2].NamePoolUsedBytes);
-        Assert.AreEqual(finalProgress.BytesProcessed, frames[^2].NamePoolUsedBytes);
+        Assert.AreEqual(21u, sectionWriter.Block.Header.RowCount);
+        Assert.AreEqual(sectionWriter.Block.Header.NamePoolUsed, finalProgress.BytesProcessed);
         Assert.AreEqual(0L, frames[^2].SkippedRecordCount);
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind);
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual(1500L, frames[^1].Cursor.NextUsn);
-        Assert.AreEqual("file.txt", frames[^1].Entries.Single().FileName);
+        Assert.AreEqual(0, frames[^1].Entries.Length, "Catch-up entries stay on the host.");
         Assert.AreEqual(Armed, caughtUpFrom);
         Assert.AreEqual("section-C", sectionWriter.LastSectionName);
         Assert.IsTrue(frames.All(frame => frame.Drive == null));
@@ -59,7 +58,7 @@ public partial class JournalBrokerHostChannelTests
         var pipe = await harness.OpenScanChannelAsync('C', "section-C", BrokerScanProfile.DirectoryIndex, [".git"]);
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind);
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual(BrokerScanProfile.DirectoryIndex, sectionWriter.LastFilter.Profile);
         CollectionAssert.AreEqual(new[] { ".git" }, sectionWriter.LastFilter.KeepFileNames!.ToArray());
     }
@@ -84,7 +83,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(32768L, loss.MaximumSize);
         Assert.AreEqual(4000L, loss.BytesBehind);
         Assert.AreEqual(12288L, loss.SizeThatWouldHaveRetained);
-        Assert.AreEqual("catch-up read failed", frames[^1].Message);
+        Assert.IsNull(frames[^1].Message, "The failure text stays on the host.");
         Assert.AreEqual(1, cursorQueries, "The host must not query a fresh cursor after a failed catch-up.");
     }
 
@@ -129,7 +128,7 @@ public partial class JournalBrokerHostChannelTests
 
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^1].Kind);
         Assert.IsFalse(frames.Any(frame => frame.Kind is BrokerFrameKind.CatchUpLost or BrokerFrameKind.Error
-            or BrokerFrameKind.JournalBatch));
+            or BrokerFrameKind.ScanCompleted));
     }
 
     [TestMethod]
@@ -145,7 +144,7 @@ public partial class JournalBrokerHostChannelTests
 
         var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
 
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, frames[^1].Kind);
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual(8, allowance);
     }
 
@@ -183,7 +182,7 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(BrokerFrameKind.Cursor, frames[0].Kind);
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^2].Kind);
         Assert.AreEqual(terminal, frames[^1].Kind);
-        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.JournalBatch));
+        Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanCompleted));
     }
 
     // Consumes every batch without a block, for scans whose block content is not under test.

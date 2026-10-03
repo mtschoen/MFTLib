@@ -61,7 +61,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.IsNull(index.Find(At("documents", "created.txt")));
 
         var cursor = completed.AdvancedCursor!.Value;
-        var changes = index.ApplyJournalEntries('C', completed.CatchUpEntries, cursor.JournalId, cursor.NextUsn);
+        var changes = index.ApplyJournalEntries('C', CatchUpEntries(), cursor.JournalId, cursor.NextUsn);
 
         CollectionAssert.AreEqual(new[] { FileChangeKind.Created, FileChangeKind.Deleted, FileChangeKind.Renamed },
             changes.Select(change => change.Kind).ToArray());
@@ -200,7 +200,6 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.IsNotNull(completed.CatchUpLoss);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, completed.CatchUpLoss.DetectedDuring);
         Assert.IsNull(completed.AdvancedCursor);
-        Assert.AreEqual(0, completed.CatchUpEntries.Count);
         Assert.AreEqual(ArmedCursor, completed.ArmedCursor);
         var block = completed.Block.Block;
         Assert.IsTrue(block.Header.IsComplete);

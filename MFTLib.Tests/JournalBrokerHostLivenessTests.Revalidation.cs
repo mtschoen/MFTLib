@@ -114,8 +114,8 @@ public partial class JournalBrokerHostLivenessTests
 
         var rest = await HostChannelHarness.ReadToEndAsync(pipe, includeHeartbeats: true);
         Assert.IsFalse(rest.Any(frame => frame.Kind == BrokerFrameKind.Stalled), "60 seconds of progress never stalls.");
-        Assert.AreEqual(BrokerFrameKind.JournalBatch, rest[^1].Kind);
-        Assert.AreEqual(6, rest[^1].Entries.Length);
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, rest[^1].Kind);
+        Assert.AreEqual(0, rest[^1].Entries.Length, "The chunks the catch-up read stay on the host.");
     }
 
     [DataTestMethod]

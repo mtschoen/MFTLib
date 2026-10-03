@@ -50,7 +50,7 @@ public class DriveScannerTests
         {
             _isElevated = () => false,
             _canSelfElevate = () => true,
-            _tryRunElevated = _ => true,
+            _tryRunElevated = (_, _) => true,
             _writeLine = lines.Add
         };
 
@@ -83,7 +83,7 @@ public class DriveScannerTests
         {
             _isElevated = () => false,
             _canSelfElevate = () => true,
-            _tryRunElevated = _ => false,
+            _tryRunElevated = (_, _) => false,
             _getProcessPath = () => "/some/path",
             _writeLine = lines.Add
         };
