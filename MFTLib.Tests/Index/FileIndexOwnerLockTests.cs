@@ -314,7 +314,7 @@ public class FileIndexOwnerLockTests
         var options = Options() with
         {
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = (_, _) => throw new IOException("Synthetic production failure")
+            MftSource = new MftIndexSource((_, _) => throw new IOException("Synthetic production failure"))
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);

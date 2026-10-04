@@ -248,9 +248,9 @@ public class FileIndexEnumerateTests
             Drives = [new IndexedDrive('T', _treeRoot, TestVolumeSerial.GetNext())],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = (request, _) => Task.FromResult(
+            MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(MftBlockFixture.Build(request, rowCount, i => $"file{i}.dat", FixedMoment), JournalId: 7,
-                    NextUsn: 4096, SkippedRecordCount: 0))
+                    NextUsn: 4096, SkippedRecordCount: 0)))
         }, CancellationToken.None);
     }
 
@@ -322,9 +322,9 @@ public class FileIndexEnumerateTests
             Drives = [new IndexedDrive('T', _treeRoot, TestVolumeSerial.GetNext())],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = (request, _) => Task.FromResult(
+            MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(BuildSyntheticBlockWithDeepCandidate(request), JournalId: 7,
-                    NextUsn: 4096, SkippedRecordCount: 0))
+                    NextUsn: 4096, SkippedRecordCount: 0)))
         }, CancellationToken.None);
     }
 

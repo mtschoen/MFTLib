@@ -122,24 +122,28 @@ var producer = new BrokerMftBlockProducer(
 var options = new FileIndexOptions
 {
     Drives = drives,
-    MftProducer = producer.CreateProducer(),
-    WatchSource = producer.CreateWatchSource()
+    MftSource = producer.CreateIndexSource()
 };
 
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 ```
 
-`BrokerMftBlockProducer.CreateProducer()` returns the `MftBlockProducer` used
-for cold opens and rescans. `CreateWatchSource()` returns an
-`IIndexWatchSource` implemented by `BrokerIndexWatchSource`. Each call to
-`IIndexWatchSource.StartAsync` connects through the callback, opens the drive's
-pipe, writes its watch request, and returns the drive's running
-`IIndexDriveWatch`.
+`BrokerMftBlockProducer.CreateIndexSource()` returns the `MftIndexSource` that
+`FileIndexOptions.MftSource` takes. The source carries both halves of the
+connection: the block producer for cold opens and rescans, and the watch
+source, implemented by `BrokerIndexWatchSource`. Each drive watch start
+connects through the callback, opens the drive's pipe, writes its watch
+request, and returns the drive's running `IIndexDriveWatch`.
+
+A process that cannot scan assigns `MftIndexSource.Unavailable(reason)`
+instead. Every scan of an MFT-backed drive then fails with
+`Drive {letter}: {reason}.`, reported as `DriveFailureKind.ProducerFailed`,
+and starting a watch throws `InvalidOperationException` with the same
+message. Cached blocks still open.
 
 The producer's optional `BrokerScanOptions` supplies `Profile`,
-`KeepFileNames`, and scan progress. Its optional `scanCompleted` callback runs
-after a result passes validation. The callback must not retain the result's
-block because ownership passes immediately to the index.
+`KeepFileNames`, and scan progress. A block that fails validation is disposed
+and its scan fails; a block that passes transfers to the index.
 
 ### What a broker scan does
 

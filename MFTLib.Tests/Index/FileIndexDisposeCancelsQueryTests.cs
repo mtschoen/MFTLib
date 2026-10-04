@@ -239,9 +239,9 @@ public class FileIndexDisposeCancelsQueryTests
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = (request, _) => Task.FromResult(
+            MftSource = new MftIndexSource((request, _) => Task.FromResult(
                 new MftBlockProduceResult(MftBlockFixture.Build(request, RowCount, i => $"file{i % DistinctNameCount}.dat", FixedMoment), JournalId: 7, NextUsn: 4096,
-                    SkippedRecordCount: 0))
+                    SkippedRecordCount: 0)))
         };
     }
 

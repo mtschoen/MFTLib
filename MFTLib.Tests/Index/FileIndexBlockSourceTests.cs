@@ -37,7 +37,7 @@ public class FileIndexBlockSourceTests
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = producerPolicy,
-            MftProducer = mftProducer
+            MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer)
         };
     }
 

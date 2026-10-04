@@ -26,8 +26,7 @@ public class FileIndexWatchRescanCacheTests
                 Drives = [new IndexedDrive('T', directory.FullName, 1)],
                 CacheDirectory = directory.FullName,
                 ProducerPolicy = ProducerPolicy.Mft,
-                WatchSource = source,
-                MftProducer = async (request, cancellationToken) =>
+                MftSource = new MftIndexSource(async (request, cancellationToken) =>
                 {
                     if (rescanRequested.Task.IsCompleted)
                     {
@@ -39,7 +38,7 @@ public class FileIndexWatchRescanCacheTests
                     MftBlockFixture.Write(request.BlockPath, 1, WatchHarness.JournalId, 100, moment: MftBlockFixture.SeededMoment);
                     return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, 1, out _)!,
                         WatchHarness.JournalId, 100, 0);
-                }
+                }, source)
             }, token);
             try
             {

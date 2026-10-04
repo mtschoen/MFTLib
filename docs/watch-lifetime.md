@@ -3,6 +3,10 @@
 - Index contracts:
     - **Watch start readiness**: `StartWatchingAsync(X)` returns once X's channel is connected and
       `StartWatch` is written.
+    - **Watch source**: every drive's watch starts through `FileIndexOptions.MftSource`'s watch
+      source, the same object that produced the drive's block. A source with no watch source
+      (or `MftIndexSource.Unavailable`) makes `StartWatchingAsync` throw
+      `InvalidOperationException`.
     - **Watch and catch-up lifetime**: each MFT-backed drive has an independent
       `IIndexDriveWatch`, pump, stop source, and catch-up slot. `StartWatchingAsync(X)` begins at
       `WatchCatchUpState.CatchingUp`; journal batches through the tip captured at start are applied

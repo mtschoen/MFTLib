@@ -75,8 +75,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             Drives = drives,
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = producer,
-            WatchSource = watchSource,
+            MftSource = new MftIndexSource(producer, watchSource),
             InitialOpenCacheOnly = cacheOnly
         };
     }
@@ -260,7 +259,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             Drives = [driveT],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Enumeration,
-            WatchSource = source
+            MftSource = TestMftSources.WatchOnly(source)
         }, Token);
         try
         {
@@ -305,7 +304,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             Drives = [driveT],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Enumeration,
-            WatchSource = source
+            MftSource = TestMftSources.WatchOnly(source)
         }, Token);
         var channelFaulted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.WatchFaulted += fault =>

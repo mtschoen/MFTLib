@@ -398,12 +398,11 @@ MFTLib.Index.FileIndexOptions :: property public CacheTag { get; init; } : MFTLi
 MFTLib.Index.FileIndexOptions :: property public Diagnostics { get; init; } : System.Action<string>?
 MFTLib.Index.FileIndexOptions :: property public Drives { get; init; } : System.Collections.Generic.IReadOnlyList<MFTLib.Index.IndexedDrive>
 MFTLib.Index.FileIndexOptions :: property public InitialOpenCacheOnly { get; init; } : bool
-MFTLib.Index.FileIndexOptions :: property public MftProducer { get; init; } : MFTLib.Index.MftBlockProducer?
+MFTLib.Index.FileIndexOptions :: property public MftSource { get; init; } : MFTLib.Index.MftIndexSource?
 MFTLib.Index.FileIndexOptions :: property public NoCache { get; init; } : bool
 MFTLib.Index.FileIndexOptions :: property public OpenProgress { get; init; } : System.IProgress<MFTLib.Index.IndexDriveOpened>?
 MFTLib.Index.FileIndexOptions :: property public ProducerPolicy { get; init; } : MFTLib.Index.ProducerPolicy
 MFTLib.Index.FileIndexOptions :: property public Progress { get; init; } : System.IProgress<MFTLib.Index.IndexScanProgress>?
-MFTLib.Index.FileIndexOptions :: property public WatchSource { get; init; } : MFTLib.Index.IIndexWatchSource?
 MFTLib.Index.FileIndexOptions :: type public sealed class : System.IEquatable<MFTLib.Index.FileIndexOptions>
 MFTLib.Index.FileRow :: field public Attributes : uint
 MFTLib.Index.FileRow :: field public Flags : MFTLib.Index.RowFlags
@@ -584,6 +583,9 @@ MFTLib.Index.MftBlockProducer :: method public virtual BeginInvoke(MFTLib.Index.
 MFTLib.Index.MftBlockProducer :: method public virtual EndInvoke(System.IAsyncResult result) : System.Threading.Tasks.Task<MFTLib.Index.MftBlockProduceResult>
 MFTLib.Index.MftBlockProducer :: method public virtual Invoke(MFTLib.Index.MftBlockProduceRequest request, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.MftBlockProduceResult>
 MFTLib.Index.MftBlockProducer :: type public delegate : System.ICloneable, System.Runtime.Serialization.ISerializable
+MFTLib.Index.MftIndexSource :: constructor public (MFTLib.Index.MftBlockProducer producer, MFTLib.Index.IIndexWatchSource? watchSource = default)
+MFTLib.Index.MftIndexSource :: method public static Unavailable(string reason) : MFTLib.Index.MftIndexSource
+MFTLib.Index.MftIndexSource :: type public sealed class
 MFTLib.Index.NamePool :: method public static Read(System.ReadOnlySpan<char> pool, uint offsetBytes, ushort lengthUnits) : System.ReadOnlySpan<char>
 MFTLib.Index.NamePool :: method public static ReadRowName(MFTLib.Index.BlockFile block, uint rowIndex) : System.ReadOnlySpan<char>
 MFTLib.Index.NamePool :: method public static TryAppend(System.Span<char> pool, ref uint usedBytes, uint capacityBytes, System.ReadOnlySpan<char> name, out uint offsetBytes) : bool

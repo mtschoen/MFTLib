@@ -13,7 +13,7 @@ public class BrokerIndexWatchSourceCaughtUpTests
     public async Task WatchSource_SurfacesTheMarkerOnlyOnceTheBacklogReachesTheTip()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         var token = harness.CancellationToken;
         await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 50), token);
         var reader = handle.ReadAsync(token).GetAsyncEnumerator(token);
@@ -32,7 +32,7 @@ public class BrokerIndexWatchSourceCaughtUpTests
     public async Task WatchSource_AfterARestart_SurfacesOnlyTheFreshWatchsMarker()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         var token = harness.CancellationToken;
         var first = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         var firstReader = first.ReadAsync(token).GetAsyncEnumerator(token);

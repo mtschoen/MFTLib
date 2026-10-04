@@ -54,7 +54,7 @@ public class FileIndexOpenProgressTests
             CacheDirectory = _cacheDirectory,
             InitialOpenCacheOnly = cacheOnly,
             ProducerPolicy = producerPolicy,
-            MftProducer = mftProducer,
+            MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
             OpenProgress = openProgress
         };
     }

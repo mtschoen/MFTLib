@@ -12,10 +12,9 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     {
         await using var broker = new InProcessBroker(CreateHost(
             readJournal: CatchUpSources.ToTip(AdvancedCursor, JournalEntryFactory.Create(20, 12400, "file.txt"))));
-        BrokerDriveScanResult? completed = null;
         var request = Request(Target());
 
-        var result = await ProduceAsync(broker.Process, request, scanCompleted: scan => completed = scan).WaitAsync(HangGuard);
+        var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard);
         var block = result.Block;
 
         var section = broker.Sections.Single();
@@ -34,13 +33,8 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.IsFalse(result.Block.Header.IsCompactionNeeded);
         Assert.AreEqual("file.txt", NamePool.ReadRowName(block, 20).ToString());
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
-        Assert.IsNotNull(completed);
-        var outcome = completed.Block;
-        Assert.AreSame(block, outcome.Block);
         Assert.AreEqual(21u, block.Header.RowCount);
         Assert.AreEqual(18u, block.Header.NamePoolUsed);
-        Assert.AreEqual(ArmedCursor, completed.ArmedCursor);
-        Assert.AreEqual(AdvancedCursor.NextUsn, completed.AdvancedCursor!.Value.NextUsn);
 
         await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
@@ -69,16 +63,12 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
                 case "journal cursor": block.Header.UsnNextUsn++; break;
             }
         });
-        var invocations = 0;
         var request = Request(Target());
 
-        // The producer disposes the block on every failure path, so a callback that ran before
-        // validation would hand out a result whose block is already dead.
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => ProduceAsync(broker.Process, request, scanCompleted: _ => invocations++).WaitAsync(HangGuard));
+            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
 
         StringAssert.Contains(exception.Message, check);
-        Assert.AreEqual(0, invocations, "the callback must not run for a result that failed validation");
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);
@@ -90,7 +80,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     {
         // The broker adapter itself, not just the caller, must catch a block whose stored tag
         // does not match what was requested: a mismatch is a producer failure, so it must not
-        // reach the validated-result callback or be handed back as an adopted block.
+        // be handed back as an adopted block.
         var requested = new CacheTag("GITW", 7);
         var stored = new CacheTag("FILE", 1);
         await using var broker = CreateBrokerChangingBlock(block =>
@@ -98,14 +88,12 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
             block.Header.CacheTagFourCc = stored.PackedFourCc;
             block.Header.CacheTagVersion = stored.Version;
         });
-        var invocations = 0;
         var request = Request(Target()) with { CacheTag = requested };
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => ProduceAsync(broker.Process, request, scanCompleted: _ => invocations++).WaitAsync(HangGuard));
+            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
 
         StringAssert.Contains(exception.Message, "cache tag");
-        Assert.AreEqual(0, invocations, "the callback must not run for a block whose tag does not match the request");
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);
@@ -117,16 +105,13 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     {
         await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _) =>
             throw new IOException("batch failed")));
-        var invocations = 0;
         var request = Request(Target());
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => ProduceAsync(broker.Process, request, scanCompleted: _ => invocations++).WaitAsync(HangGuard));
+            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
 
-        // The per-drive error reaches the caller as this exception. The callback sees only
-        // validated results, so a failed drive does not reach it.
+        // The per-drive error reaches the caller as this exception.
         StringAssert.Contains(exception.Message, "batch failed");
-        Assert.AreEqual(0, invocations);
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);
@@ -202,5 +187,24 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.IsTrue(block.Header.IsComplete);
         Assert.AreEqual(ArmedCursor.JournalId, block.Header.UsnJournalId);
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
+    }
+
+    [TestMethod]
+    public void Constructor_WithoutConnectFunction_Throws()
+    {
+        Assert.ThrowsException<ArgumentNullException>(() => new BrokerMftBlockProducer(null!));
+    }
+
+    [TestMethod]
+    public async Task CreateIndexSource_CarriesTheProducerAndTheWatchSourceOfTheSameConnection()
+    {
+        await using var broker = new InProcessBroker(CreateHost());
+
+        var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
+
+        Assert.IsNotNull(source.WatchSource);
+        var result = await source.Producer(Request(Target()), CancellationToken.None).WaitAsync(HangGuard);
+        using var block = result.Block;
+        Assert.IsTrue(block.Header.IsComplete);
     }
 }

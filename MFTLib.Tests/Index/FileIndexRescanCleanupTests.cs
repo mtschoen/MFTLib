@@ -58,7 +58,7 @@ public class FileIndexRescanCleanupTests
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = (request, _cancellationToken) =>
+            MftSource = new MftIndexSource((request, _cancellationToken) =>
             {
                 MftBlockFixture.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
                 var block = BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
@@ -70,7 +70,7 @@ public class FileIndexRescanCleanupTests
 
                 return Task.FromResult(new MftBlockProduceResult(block,
                     JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
-            }
+            })
         };
         await using var index = await FileIndex.OpenAsync(options, Token);
         var canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 1));
@@ -124,7 +124,7 @@ public class FileIndexRescanCleanupTests
             Drives = [new IndexedDrive('T', _treeRoot, 1)],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = (request, _cancellationToken) =>
+            MftSource = new MftIndexSource((request, _cancellationToken) =>
             {
                 if (failTheScan.Value)
                 {
@@ -138,7 +138,7 @@ public class FileIndexRescanCleanupTests
                 return Task.FromResult(new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
-            }
+            })
         };
         await using var index = await FileIndex.OpenAsync(options, Token);
         var canonicalPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 1));
@@ -175,7 +175,7 @@ public class FileIndexRescanCleanupTests
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
             InitialOpenCacheOnly = true,
-            MftProducer = async (request, _cancellationToken) =>
+            MftSource = new MftIndexSource(async (request, _cancellationToken) =>
             {
                 producerEntered.TrySetResult();
                 await producerMayReturn.Task;
@@ -183,7 +183,7 @@ public class FileIndexRescanCleanupTests
                 return new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0);
-            }
+            })
         };
         await using var index = await FileIndex.OpenAsync(options, Token);
         var declined = index.Drives.Single();

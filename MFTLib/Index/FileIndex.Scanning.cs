@@ -210,9 +210,9 @@ public sealed partial class FileIndex
             };
         }
 
-        var producer = _options.MftProducer ?? throw new InvalidOperationException(
+        var producer = _options.MftSource?.Producer ?? throw new InvalidOperationException(
             $"{nameof(ProducerPolicy)}.{nameof(ProducerPolicy.Mft)} requires " +
-            $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.MftProducer)} to be set.");
+            $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.MftSource)} to be set.");
 
         try
         {

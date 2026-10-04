@@ -63,8 +63,7 @@ internal sealed class WatchHarness : IDisposable
                 pair.Value.DirectoryPath, pair.Value.VolumeSerial)).ToArray(),
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = Produce,
-            WatchSource = watchSource ?? Source
+            MftSource = new MftIndexSource(Produce, watchSource ?? Source)
         }, CancellationToken.None).GetAwaiter().GetResult();
         Index.Changed += _changes.Enqueue;
         Index.WatchFaulted += RecordFault;

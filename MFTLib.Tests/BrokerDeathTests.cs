@@ -63,7 +63,7 @@ public class BrokerDeathTests
     {
         await using var broker = new ScriptedWatchBrokerHarness();
         var token = broker.CancellationToken;
-        var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateIndexSource().WatchSource!;
         using var harness = new WatchHarness(source, 'T', 'U');
         await harness.Index.StartWatchingAsync('T', token);
         await harness.Index.StartWatchingAsync('U', token);

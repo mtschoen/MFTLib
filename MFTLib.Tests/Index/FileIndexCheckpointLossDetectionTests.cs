@@ -60,8 +60,7 @@ public class FileIndexCheckpointLossDetectionTests
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = ProduceMftShapedBlock,
-            WatchSource = watchSource
+            MftSource = new MftIndexSource(ProduceMftShapedBlock, watchSource)
         };
     }
 

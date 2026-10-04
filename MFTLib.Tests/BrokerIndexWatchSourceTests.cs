@@ -15,7 +15,7 @@ public class BrokerIndexWatchSourceTests
     public async Task WatchSource_StartsOnePipePerDriveAndEachBatchArrivesOnItsOwnHandle()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         var token = harness.CancellationToken;
         await using var handleC = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         await using var handleD = await source.StartAsync(new IndexWatchTarget('D', 7, 200), token);
@@ -50,7 +50,7 @@ public class BrokerIndexWatchSourceTests
     public async Task WatchSource_LeavesTheBorrowedProcessReadyForAnotherWatch()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         var token = harness.CancellationToken;
         var first = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         var firstReader = first.ReadAsync(token).GetAsyncEnumerator(token);
@@ -78,7 +78,7 @@ public class BrokerIndexWatchSourceTests
     public async Task WatchSource_CompletesWhenTheTokenIsCancelled()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), harness.CancellationToken);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(harness.CancellationToken);
         var reader = handle.ReadAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
@@ -95,7 +95,7 @@ public class BrokerIndexWatchSourceTests
     public async Task WatchSource_CancellationLeavesBorrowedProcessReadyForRestart()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         var token = harness.CancellationToken;
         var cancelled = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -123,7 +123,7 @@ public class BrokerIndexWatchSourceTests
     public async Task WatchSource_HostClosingThePipeIsAChannelLossNotAnEnd()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), harness.CancellationToken);
         var reader = handle.ReadAsync(harness.CancellationToken).GetAsyncEnumerator(harness.CancellationToken);
         await using var _ = reader.ConfigureAwait(false);
@@ -141,7 +141,7 @@ public class BrokerIndexWatchSourceTests
         await using var harness = new ScriptedWatchBrokerHarness();
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
 
         await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() =>
             source.StartAsync(new IndexWatchTarget('C', 7, 100), cancellation.Token));
@@ -154,7 +154,7 @@ public class BrokerIndexWatchSourceTests
     public async Task WatchSource_RejectsANullTargetBeforeConnecting()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
 
         await Assert.ThrowsExceptionAsync<ArgumentNullException>(() =>
             source.StartAsync(null!, harness.CancellationToken));
@@ -166,7 +166,7 @@ public class BrokerIndexWatchSourceTests
     public async Task ReadAsync_TokenCancelled_ReturnsPromptlyWithoutDisposal()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         var token = harness.CancellationToken;
         await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         var run = await harness.Watch('C').RunAsync(1);
@@ -192,7 +192,7 @@ public class BrokerIndexWatchSourceTests
     {
         await using var broker = new ScriptedWatchBrokerHarness();
         var token = broker.CancellationToken;
-        var inner = new BrokerMftBlockProducer(broker.ConnectAsync).CreateWatchSource();
+        var inner = new BrokerMftBlockProducer(broker.ConnectAsync).CreateIndexSource().WatchSource!;
         var teardown = new TestGate();
         using var harness = new WatchHarness(new HoldFirstDisposalSource(inner, teardown), 'T');
         var index = harness.Index;

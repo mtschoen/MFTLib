@@ -204,7 +204,7 @@ public partial class BrokerProcessTests
         await using var broker = new InProcessBroker(
             CreateHost(readJournal: (_, _, _) => throw new IOException("catch-up read failed")));
         var process = broker.Process;
-        var producer = new BrokerMftBlockProducer(_ => Task.FromResult(process)).CreateProducer();
+        var producer = new BrokerMftBlockProducer(_ => Task.FromResult(process)).CreateIndexSource().Producer;
         var target = TestBlockSections.Target();
 
         var produced = await producer(new MftBlockProduceRequest
@@ -308,7 +308,7 @@ public partial class BrokerProcessTests
         var producer = new BrokerMftBlockProducer(_ => Task.FromResult(process), new BrokerScanOptions
         {
             Progress = new SynchronousProgress<BrokerScanProgress>(brokerReports.Add)
-        }).CreateProducer();
+        }).CreateIndexSource().Producer;
         var target = TestBlockSections.Target();
 
         var produced = await producer(new MftBlockProduceRequest
@@ -402,7 +402,7 @@ public partial class BrokerProcessTests
         {
             connections.Enqueue(connectToken);
             return Task.FromResult(process);
-        }).CreateProducer();
+        }).CreateIndexSource().Producer;
         var target = TestBlockSections.Target();
 
         var produced = await producer(new MftBlockProduceRequest

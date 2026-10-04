@@ -32,10 +32,8 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     {
         await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _) => Records(),
             readJournal: CatchUpSources.ToTip(AdvancedCursor, CatchUpEntries())));
-        BrokerDriveScanResult? completed = null;
-        var producer = new BrokerMftBlockProducer(Connect(broker.Process), scanCompleted: result => completed = result)
-            .CreateProducer();
-        await using var index = await FileIndex.OpenAsync(Options(producer), CancellationToken.None).WaitAsync(HangGuard);
+        var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
+        await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard);
 
         AssertReady(index);
         Assert.AreEqual(24u, index.Drives[0].RowCount);
@@ -52,16 +50,12 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(2, duplicates.Entries.Count);
         var deleted = index.Find(At("documents", "obsolete.txt"))!.Value;
         var renamed = index.Find(At("documents", "draft.txt"))!.Value;
-        Assert.IsNotNull(completed);
-        Assert.IsNull(completed.CatchUpLoss);
-        Assert.AreEqual(ArmedCursor, completed.ArmedCursor);
-        var block = completed.Block.Block;
-        Assert.AreSame(block, index.Root('C').DriveBlock.Block);
-        Assert.AreEqual(completed.ArmedCursor.NextUsn, block.Header.UsnNextUsn);
+        Assert.IsNull(index.Drives[0].CheckpointLoss);
+        var block = index.Root('C').DriveBlock.Block;
+        Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.IsNull(index.Find(At("documents", "created.txt")));
 
-        var cursor = completed.AdvancedCursor!.Value;
-        var changes = index.ApplyJournalEntries('C', CatchUpEntries(), cursor.JournalId, cursor.NextUsn);
+        var changes = index.ApplyJournalEntries('C', CatchUpEntries(), AdvancedCursor.JournalId, AdvancedCursor.NextUsn);
 
         CollectionAssert.AreEqual(new[] { FileChangeKind.Created, FileChangeKind.Deleted, FileChangeKind.Renamed },
             changes.Select(change => change.Kind).ToArray());
@@ -74,7 +68,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.IsNull(index.Find(At("documents", "draft.txt")));
         Assert.AreEqual(AdvancedCursor.JournalId, block.Header.UsnJournalId);
         Assert.AreEqual(AdvancedCursor.NextUsn, block.Header.UsnNextUsn);
-        Assert.IsTrue(block.Header.UsnNextUsn > completed.ArmedCursor.NextUsn);
+        Assert.IsTrue(block.Header.UsnNextUsn > ArmedCursor.NextUsn);
     }
 
     [TestMethod]
@@ -88,7 +82,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
             parsingReceived.Task.Wait(HangGuard, cancellationToken);
             return Records();
         }));
-        var producer = new BrokerMftBlockProducer(Connect(broker.Process), new BrokerScanOptions
+        var source = new BrokerMftBlockProducer(Connect(broker.Process), new BrokerScanOptions
         {
             Profile = BrokerScanProfile.DirectoryIndex,
             KeepFileNames = ["NOTES.TXT"],
@@ -100,8 +94,8 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
                     parsingReceived.TrySetResult();
                 }
             })
-        }).CreateProducer();
-        await using var index = await FileIndex.OpenAsync(Options(producer), CancellationToken.None).WaitAsync(HangGuard);
+        }).CreateIndexSource();
+        await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard);
 
         AssertReady(index);
         Assert.AreEqual(BrokerScanPhase.Parsing, progress[0].Phase);
@@ -121,8 +115,8 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         await using var broker = new InProcessBroker(CreateHost(
             scanDrive: (_, _, _, _, _) => Records().Append([Record(1_000_000, 5, "beyond.txt")]),
             queryVolumeInfo: _ => new NtfsVolumeInformation(1024, 1024)));
-        var producer = new BrokerMftBlockProducer(Connect(broker.Process)).CreateProducer();
-        await using var index = await FileIndex.OpenAsync(Options(producer), CancellationToken.None).WaitAsync(HangGuard);
+        var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
+        await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard);
 
         var created = broker.Sections.Single().Block;
         Assert.IsTrue(created.Header.SlotCapacity < 1_000_000);
@@ -143,7 +137,6 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         // block with a fresh armed cursor, and the restarted watch follows it.
         var rearmed = new StrongBox<int>();
         var scanCount = new StrongBox<int>();
-        var scans = new List<BrokerDriveScanResult>();
         var watchSource = new FakeIndexWatchSource();
         await using var broker = new InProcessBroker(CreateHost(
             queryCursor: _ => Volatile.Read(ref rearmed.Value) == 0 ? ArmedCursor : RearmedCursor,
@@ -151,8 +144,9 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
                 ? Records()
                 : [[Record(5, 5, ".", directory: true), Record(40, 5, "replacement.txt")]],
             readJournal: (_, since, _) => (Array.Empty<UsnJournalEntry>(), Volatile.Read(ref rearmed.Value) == 0 ? AdvancedCursor : since)));
-        var producer = new BrokerMftBlockProducer(Connect(broker.Process), scanCompleted: scans.Add).CreateProducer();
-        await using var index = await FileIndex.OpenAsync(Options(producer, watchSource), CancellationToken.None).WaitAsync(HangGuard);
+        var producer = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource().Producer;
+        await using var index = await FileIndex.OpenAsync(Options(new MftIndexSource(producer, watchSource)),
+            CancellationToken.None).WaitAsync(HangGuard);
         var previous = index.Find(At("documents", "notes.txt"))!.Value;
         var previousBlock = previous.DriveBlock.Block;
         var firstBlockCursor = new UsnJournalCursor(previousBlock.Header.UsnJournalId, previousBlock.Header.UsnNextUsn);
@@ -160,7 +154,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         await index.StartWatchingAsync('C', CancellationToken.None).WaitAsync(HangGuard);
 
         Assert.AreEqual(ArmedCursor, firstBlockCursor);
-        Assert.AreNotEqual(scans[0].AdvancedCursor!.Value, firstBlockCursor, "catch-up advanced past the armed cursor");
+        Assert.AreNotEqual(AdvancedCursor, firstBlockCursor, "catch-up advanced past the armed cursor");
         var firstStart = watchSource.Starts.Single();
         Assert.AreEqual(new IndexWatchTarget('C', firstBlockCursor.JournalId, firstBlockCursor.NextUsn), firstStart);
 
@@ -168,11 +162,9 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         await index.RescanAsync('C', CancellationToken.None).WaitAsync(HangGuard);
 
         Assert.AreEqual(2, scanCount.Value);
-        Assert.AreEqual(2, scans.Count);
         var replacementBlock = index.Root('C').DriveBlock.Block;
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreNotSame(previousBlock, replacementBlock);
-        Assert.AreSame(scans[1].Block.Block, replacementBlock);
         Assert.AreEqual(RearmedCursor.NextUsn, replacementBlock.Header.UsnNextUsn);
         Assert.AreEqual(40UL, index.Find(At("replacement.txt"))!.Value.Id.RecordNumber);
         Assert.IsNull(index.Find(At("documents", "notes.txt")));
@@ -191,33 +183,27 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => TrimmedWindow);
         await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _) => Records(),
             readJournal: (_, _, _) => throw new IOException("journal wrapped during scan")));
-        BrokerDriveScanResult? completed = null;
-        var producer = new BrokerMftBlockProducer(Connect(broker.Process), scanCompleted: result => completed = result)
-            .CreateProducer();
-        await using var index = await FileIndex.OpenAsync(Options(producer), CancellationToken.None).WaitAsync(HangGuard);
+        var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
+        await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard);
 
-        Assert.IsNotNull(completed);
-        Assert.IsNotNull(completed.CatchUpLoss);
-        Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, completed.CatchUpLoss.DetectedDuring);
-        Assert.IsNull(completed.AdvancedCursor);
-        Assert.AreEqual(ArmedCursor, completed.ArmedCursor);
-        var block = completed.Block.Block;
+        var loss = index.Drives[0].CheckpointLoss;
+        Assert.IsNotNull(loss);
+        Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);
+        var block = index.Root('C').DriveBlock.Block;
         Assert.IsTrue(block.Header.IsComplete);
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
-        Assert.AreSame(block, index.Root('C').DriveBlock.Block);
         Assert.AreEqual(ProducerKind.Mft, index.Drives[0].ProducerKind);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
     }
 
     string At(params string[] segments) => Path.Combine([_rootDirectory, .. segments]);
 
-    FileIndexOptions Options(MftBlockProducer producer, IIndexWatchSource? watchSource = null) => new()
+    FileIndexOptions Options(MftIndexSource source) => new()
     {
         Drives = [new IndexedDrive('C', _rootDirectory, 123)],
         CacheDirectory = _cacheDirectory,
         ProducerPolicy = ProducerPolicy.Mft,
-        MftProducer = producer,
-        WatchSource = watchSource
+        MftSource = source
     };
 
     static void AssertReady(FileIndex index)

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -112,7 +113,7 @@ public class FileIndexWatchTests
             Drives = [new IndexedDrive('E', _treeRoot, 0x0E0E0E0E)],
             CacheDirectory = Path.Combine(_cacheDirectory, "enumeration-only"),
             ProducerPolicy = ProducerPolicy.Enumeration,
-            WatchSource = source
+            MftSource = TestMftSources.WatchOnly(source)
         }, CancellationToken.None);
 
         var thrown = await Assert.ThrowsExceptionAsync<InvalidOperationException>(

@@ -45,8 +45,8 @@ public abstract class BrokerBlockTestBase
     };
 
     internal static Task<MftBlockProduceResult> ProduceAsync(BrokerProcess process, MftBlockProduceRequest request,
-        BrokerScanOptions? options = null, Action<BrokerDriveScanResult>? scanCompleted = null) =>
-        new BrokerMftBlockProducer(Connect(process), options, scanCompleted).CreateProducer()(request,
+        BrokerScanOptions? options = null) =>
+        new BrokerMftBlockProducer(Connect(process), options).CreateIndexSource().Producer(request,
             CancellationToken.None);
 
     /// <summary>

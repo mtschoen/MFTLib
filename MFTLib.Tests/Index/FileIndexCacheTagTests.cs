@@ -37,7 +37,7 @@ public class FileIndexCacheTagTests
         CacheTag = tag,
         InitialOpenCacheOnly = cacheOnly,
         ProducerPolicy = ProducerPolicy.Mft,
-        MftProducer = Produce
+        MftSource = new MftIndexSource(Produce)
     };
 
     static BlockFile Build(MftBlockProduceRequest request)
@@ -116,7 +116,7 @@ public class FileIndexCacheTagTests
     {
         var options = Options(OriginalTag) with
         {
-            MftProducer = (request, token) => Produce(request with { CacheTag = default }, token)
+            MftSource = new MftIndexSource((request, token) => Produce(request with { CacheTag = default }, token))
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         var status = index.Drives.Single();
@@ -147,7 +147,7 @@ public class FileIndexCacheTagTests
         Seed(tag);
         var options = Options(tag) with
         {
-            MftProducer = (_, _) => throw new AssertFailedException("A matching cache must not scan.")
+            MftSource = new MftIndexSource((_, _) => throw new AssertFailedException("A matching cache must not scan."))
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);

@@ -3,45 +3,35 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>
-///     Produces index blocks through a broker. The process returned by the connect callback
+///     Scans and watches drives through a broker. The process returned by the connect callback
 ///     remains owned by the caller, which decides whether to share it across drives.
 /// </summary>
 public sealed class BrokerMftBlockProducer
 {
     readonly Func<CancellationToken, Task<BrokerProcess>> _connectAsync;
     readonly BrokerScanOptions? _scanOptions;
-    readonly Action<BrokerDriveScanResult>? _scanCompleted;
 
     /// <summary>Builds a producer over the given broker connection and scan defaults.</summary>
     /// <param name="connectAsync">
     ///     Yields the process each scan runs on. The caller keeps ownership of what it returns.
     /// </param>
     /// <param name="scanOptions">Base options for every scan: profile, keep-file names and progress.</param>
-    /// <param name="scanCompleted">
-    ///     Invoked with the scan result once it has passed validation, and not at all when the
-    ///     scan failed or the block was rejected. The callback must not retain the result's
-    ///     block: ownership passes to the index as soon as this producer returns, and the
-    ///     producer disposes it on every failure path.
-    /// </param>
     public BrokerMftBlockProducer(
         Func<CancellationToken, Task<BrokerProcess>> connectAsync,
-        BrokerScanOptions? scanOptions = null,
-        Action<BrokerDriveScanResult>? scanCompleted = null)
+        BrokerScanOptions? scanOptions = null)
     {
+        ArgumentNullException.ThrowIfNull(connectAsync);
         _connectAsync = connectAsync;
         _scanOptions = scanOptions;
-        _scanCompleted = scanCompleted;
     }
 
     /// <summary>
-    ///     The delegate to assign as the index's MFT producer. Each call to the delegate runs one
-    ///     drive scan on a broker obtained from the connect function.
+    ///     The index source over this broker connection, to assign to
+    ///     <see cref="FileIndexOptions.MftSource" />. Each drive scan runs on a broker obtained from
+    ///     the connect function, and each drive's watch runs on a pipe of its own.
     /// </summary>
-    /// <returns>A producer that fills the block named by each request through the broker.</returns>
-    public MftBlockProducer CreateProducer() => ProduceAsync;
-
-    /// <summary>The watch source over the same broker connection: each drive's watch runs on a pipe of its own.</summary>
-    public IIndexWatchSource CreateWatchSource() => new BrokerIndexWatchSource(_connectAsync);
+    /// <returns>A source whose scans fill the block named by each request through the broker.</returns>
+    public MftIndexSource CreateIndexSource() => new(ProduceAsync, new BrokerIndexWatchSource(_connectAsync));
 
     // A result carrying a proven catch-up loss still transfers its block: the scan is complete,
     // and the loss travels with it so the index can refuse to watch from the block's cursor.
@@ -62,7 +52,6 @@ public sealed class BrokerMftBlockProducer
         try
         {
             ValidateBlock(block, request.VolumeSerial, result.ArmedCursor, request.CacheTag);
-            _scanCompleted?.Invoke(result);
             return new MftBlockProduceResult(block, result.ArmedCursor.JournalId, result.ArmedCursor.NextUsn,
                 SkippedRecordCount: checked((int)result.Block.SkippedRecordCount))
             {
@@ -100,9 +89,8 @@ public sealed class BrokerMftBlockProducer
             throw new InvalidOperationException("Block journal cursor does not match the armed cursor.");
         }
 
-        // Checked here, before the validated-result callback: a block that carries a different
-        // tag than requested is a producer failure, exactly like a wrong journal cursor above,
-        // and must not be handed to the callback or returned as adopted.
+        // A block that carries a different tag than requested is a producer failure, exactly
+        // like a wrong journal cursor above, and must not be returned as adopted.
         if (header.CacheTag != requestedCacheTag)
         {
             throw new InvalidOperationException(

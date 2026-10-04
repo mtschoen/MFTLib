@@ -227,8 +227,7 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
             Drives = [new IndexedDrive('T', Path.GetTempPath(), 123), new IndexedDrive('U', Path.GetTempPath(), 456)],
             CacheDirectory = _cacheDirectory,
             NoCache = true,
-            MftProducer = producer.CreateProducer(),
-            WatchSource = producer.CreateWatchSource()
+            MftSource = producer.CreateIndexSource()
         }, Token);
         _index.WatchFaulted += RecordFault;
     }

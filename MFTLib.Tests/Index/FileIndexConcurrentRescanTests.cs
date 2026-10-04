@@ -263,7 +263,7 @@ public class FileIndexConcurrentRescanTests
             CacheDirectory = owner._cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
             InitialOpenCacheOnly = true,
-            MftProducer = ProduceAsync
+            MftSource = new MftIndexSource(ProduceAsync)
         };
 
         async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request,

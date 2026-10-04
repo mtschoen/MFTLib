@@ -129,7 +129,7 @@ dotnet build external\MFTLib\MFTLibTestExtensions\MFTLibTestExtensions.csproj -c
 | Scenario | Recommended API |
 | --- | --- |
 | Elevated CLI or service; simplest integration | `MftVolume` directly |
-| Non-elevated desktop/CLI app; one UAC prompt | `BrokerProcess` with `BrokerMftBlockProducer` and `BrokerIndexWatchSource` |
+| Non-elevated desktop/CLI app; one UAC prompt | `BrokerProcess` with `BrokerMftBlockProducer.CreateIndexSource()` |
 | One-time filename lookup | `MftVolume.FindByName` |
 | Full in-memory index | `MftVolume.ReadAllRecords` |
 | Process records while native memory is alive | `MftVolume.StreamRecords` |
@@ -477,8 +477,7 @@ var options = new FileIndexOptions
 {
     Drives = [drive],
     CacheDirectory = cacheDirectory,
-    MftProducer = brokerAdapter.CreateProducer(),
-    WatchSource = brokerAdapter.CreateWatchSource()
+    MftSource = brokerAdapter.CreateIndexSource()
 };
 
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
@@ -554,7 +553,7 @@ cancellation; drive-specific operational failures stay in `DriveOperationResult.
 
 `FileIndexOptions.ProducerPolicy` selects how each drive's block is built:
 `ProducerPolicy.Mft` (the default) reads the Master File Table through
-`FileIndexOptions.MftProducer`, and `ProducerPolicy.Enumeration` walks the directory
+`FileIndexOptions.MftSource`, and `ProducerPolicy.Enumeration` walks the directory
 tree instead. The two are never mixed within one open: a drive whose MFT scan fails is
 reported `DriveState.Failed` and never falls back to a directory walk, and the
 enumeration producer runs only when a caller chooses `ProducerPolicy.Enumeration`

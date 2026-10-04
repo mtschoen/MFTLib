@@ -17,7 +17,7 @@ public class BrokerIndexWatchSourceFaultTests
     public async Task WatchSource_OneDrivesFaultIsThatHandlesAndTheOtherDriveKeepsFlowing()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         var token = harness.CancellationToken;
         await using var handleC = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         await using var handleD = await source.StartAsync(new IndexWatchTarget('D', 7, 100), token);
@@ -46,7 +46,7 @@ public class BrokerIndexWatchSourceFaultTests
     public async Task WatchSource_EveryDriveFaultsOnItsOwnHandle()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         var token = harness.CancellationToken;
         await using var handleC = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         await using var handleD = await source.StartAsync(new IndexWatchTarget('D', 7, 100), token);
@@ -83,7 +83,7 @@ public class BrokerIndexWatchSourceFaultTests
     {
         await using var broker = new ScriptedWatchBrokerHarness();
         var token = broker.CancellationToken;
-        var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateIndexSource().WatchSource!;
         using var harness = new WatchHarness(source, 'T', 'U');
         var index = harness.Index;
         await index.StartWatchingAsync('T', token);
@@ -114,7 +114,7 @@ public class BrokerIndexWatchSourceFaultTests
     {
         await using var broker = new ScriptedWatchBrokerHarness();
         var token = broker.CancellationToken;
-        var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(broker.ConnectAsync).CreateIndexSource().WatchSource!;
         using var harness = new WatchHarness(source, 'T', 'U');
         var index = harness.Index;
         await index.StartWatchingAsync('T', token);

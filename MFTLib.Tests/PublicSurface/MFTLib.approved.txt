@@ -97,9 +97,8 @@ MFTLib.BrokerDriveScanResult :: property public DriveLetter { get; init; } : cha
 MFTLib.BrokerDriveScanResult :: type public sealed class : System.IEquatable<MFTLib.BrokerDriveScanResult>
 MFTLib.BrokerLauncher :: method public static Launch(string brokerArgs) : bool
 MFTLib.BrokerLauncher :: type public static class
-MFTLib.BrokerMftBlockProducer :: constructor public (System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<MFTLib.BrokerProcess>> connectAsync, MFTLib.BrokerScanOptions? scanOptions = default, System.Action<MFTLib.BrokerDriveScanResult>? scanCompleted = default)
-MFTLib.BrokerMftBlockProducer :: method public CreateProducer() : MFTLib.Index.MftBlockProducer
-MFTLib.BrokerMftBlockProducer :: method public CreateWatchSource() : MFTLib.Index.IIndexWatchSource
+MFTLib.BrokerMftBlockProducer :: constructor public (System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<MFTLib.BrokerProcess>> connectAsync, MFTLib.BrokerScanOptions? scanOptions = default)
+MFTLib.BrokerMftBlockProducer :: method public CreateIndexSource() : MFTLib.Index.MftIndexSource
 MFTLib.BrokerMftBlockProducer :: type public sealed class
 MFTLib.BrokerProcess :: field public static readonly DefaultConnectTimeout : System.TimeSpan
 MFTLib.BrokerProcess :: method public DisposeAsync() : System.Threading.Tasks.ValueTask

@@ -111,20 +111,6 @@ public class BrokerMftBlockProducerProtocolTests : BrokerBlockTestBase
     }
 
     [TestMethod]
-    public async Task Produce_CompletionCallbackFailureDisposesBlock()
-    {
-        await using var broker = new InProcessBroker(CreateHost());
-        var request = Request(Target());
-
-        await Assert.ThrowsExceptionAsync<IOException>(() => ProduceAsync(broker.Process, request,
-            scanCompleted: _ => throw new IOException("callback failed")).WaitAsync(HangGuard));
-
-        var section = broker.Sections.Single();
-        Assert.AreEqual(1, section.Lifetime.DisposeCount);
-        BlockFileAssertions.IsDisposed(section.Block);
-    }
-
-    [TestMethod]
     [DataRow("MissingReady", "ScanProgress or ScanReady")]
     [DataRow("MissingCursor", "Cursor")]
     [DataRow("RepeatedReady", "ScanCompleted or CatchUpLost")]

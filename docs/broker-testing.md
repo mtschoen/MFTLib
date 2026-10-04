@@ -121,6 +121,9 @@ sealed class FakeDriveWatch(char driveLetter) : IIndexDriveWatch
 }
 ```
 
+Hand the fake to the index beside a producer with
+`FileIndexOptions.MftSource = new MftIndexSource(producer, new FakeWatchSource(...))`.
+
 Return from `StartAsync` only when the handle is ready to be read. The index
 starts one pump per returned handle and disposes that handle exactly once. A
 test can drive the public behavior as follows:

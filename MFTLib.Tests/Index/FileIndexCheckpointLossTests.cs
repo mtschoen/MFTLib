@@ -53,7 +53,7 @@ public class FileIndexCheckpointLossTests
             Drives = [new IndexedDrive('T', _treeRoot, 0x0BADF00D)],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = ProduceMftShapedBlock
+            MftSource = new MftIndexSource(ProduceMftShapedBlock)
         };
     }
 
@@ -188,7 +188,7 @@ public class FileIndexCheckpointLossTests
         var scanCount = 0;
         var options = Options() with
         {
-            MftProducer = (request, cancellationToken) =>
+            MftSource = new MftIndexSource((request, cancellationToken) =>
             {
                 using (var exclusive = new FileStream(request.BlockPath,
                            FileMode.Open, FileAccess.ReadWrite, FileShare.None))
@@ -198,7 +198,7 @@ public class FileIndexCheckpointLossTests
 
                 scanCount++;
                 return ProduceMftShapedBlock(request, cancellationToken);
-            }
+            })
         };
 
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
@@ -234,7 +234,7 @@ public class FileIndexCheckpointLossTests
         var options = Options() with
         {
             InitialOpenCacheOnly = true,
-            MftProducer = (_, _) => throw new AssertFailedException("Cache-only must not scan.")
+            MftSource = new MftIndexSource((_, _) => throw new AssertFailedException("Cache-only must not scan."))
         };
 
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);

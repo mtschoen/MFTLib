@@ -23,9 +23,8 @@ public sealed class BrokerFileIndexRescanTests
         using var scenario = new BrokerScenario();
         await using var harness = scenario.CreateHarness();
         var token = harness.CancellationToken;
-        var producer = new BrokerMftBlockProducer(harness.ConnectAsync);
-        await using var index = await scenario.OpenIndexAsync(producer.CreateProducer(),
-            producer.CreateWatchSource(), token);
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource();
+        await using var index = await scenario.OpenIndexAsync(source.Producer, source.WatchSource!, token);
         await index.StartWatchingAsync('T', token);
         await index.StartWatchingAsync('U', token);
         var firstT = await harness.Watch('T').RunAsync(1);
@@ -86,7 +85,7 @@ public sealed class BrokerFileIndexRescanTests
         });
         try
         {
-            await using var index = await scenario.OpenIndexAsync(producer.CreateProducer(), source, token);
+            await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
 
             var start = index.StartWatchingAsync('T', token);
             await connectGate.Entered.WaitAsync(HangGuard);
@@ -118,7 +117,7 @@ public sealed class BrokerFileIndexRescanTests
         var source = new BrokerIndexWatchSource(connectToken => Interlocked.Increment(ref connectAttempts) == 1
             ? Task.FromException<BrokerProcess>(connectionFailure)
             : connect(connectToken));
-        await using var index = await scenario.OpenIndexAsync(producer.CreateProducer(), source, token);
+        await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
 
         var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<IOException>(() => index.StartWatchingAsync('T', token));
 
@@ -153,7 +152,7 @@ public sealed class BrokerFileIndexRescanTests
         });
         try
         {
-            await using var index = await scenario.OpenIndexAsync(producer.CreateProducer(), source, token);
+            await using var index = await scenario.OpenIndexAsync(producer.CreateIndexSource().Producer, source, token);
             using var startCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
 
             var start = index.StartWatchingAsync('T', startCancellation.Token);
@@ -204,8 +203,7 @@ public sealed class BrokerFileIndexRescanTests
                 Drives = [new IndexedDrive('T', Path.GetTempPath(), 123), new IndexedDrive('U', Path.GetTempPath(), 456)],
                 CacheDirectory = _cacheDirectory,
                 NoCache = true,
-                MftProducer = producer,
-                WatchSource = watchSource
+                MftSource = new MftIndexSource(producer, watchSource)
             }, token);
         }
 

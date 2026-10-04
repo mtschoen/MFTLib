@@ -107,8 +107,7 @@ public partial class FileIndexCatchUpLossTests
             Drives = [new IndexedDrive('T', _treeRoot, VolumeSerial)],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = Produce,
-            WatchSource = Source
+            MftSource = new MftIndexSource(Produce, Source)
         };
 
         /// <summary>The cache directory's block files, without their owner-lock siblings.</summary>

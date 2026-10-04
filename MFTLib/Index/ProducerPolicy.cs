@@ -4,7 +4,7 @@ namespace MFTLib.Index;
 public enum ProducerPolicy
 {
     /// <summary>
-    ///     Build every drive's block with <see cref="FileIndexOptions.MftProducer" />. A drive
+    ///     Build every drive's block with <see cref="FileIndexOptions.MftSource" />. A drive
     ///     whose producer fails is reported as <see cref="DriveState.Failed" /> and gets no
     ///     block; it is never rebuilt by a directory walk instead.
     /// </summary>
@@ -12,7 +12,7 @@ public enum ProducerPolicy
 
     /// <summary>
     ///     Build every drive's block by walking its directory tree, ignoring
-    ///     <see cref="FileIndexOptions.MftProducer" /> entirely. The only policy that reads the
+    ///     <see cref="FileIndexOptions.MftSource" /> entirely. The only policy that reads the
     ///     filesystem recursively, and it is never selected on a caller's behalf.
     /// </summary>
     Enumeration

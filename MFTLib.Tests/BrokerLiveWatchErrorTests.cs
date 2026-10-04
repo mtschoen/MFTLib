@@ -20,7 +20,7 @@ public class BrokerLiveWatchErrorTests
     public async Task LiveWatch_ErrorFrameForDrive_FaultsThatDrivesHandle()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         var token = harness.CancellationToken;
         await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         var reader = handle.ReadAsync(token).GetAsyncEnumerator(token);
@@ -38,7 +38,7 @@ public class BrokerLiveWatchErrorTests
     public async Task LiveWatch_ErrorFrameBeforeRead_LateReaderGetsFault()
     {
         await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
+        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateIndexSource().WatchSource!;
         var token = harness.CancellationToken;
         await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         var run = await harness.Watch('C').RunAsync(1);

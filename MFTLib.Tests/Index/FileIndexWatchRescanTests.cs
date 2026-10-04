@@ -302,7 +302,7 @@ public partial class FileIndexWatchRescanTests
             Drives = [new IndexedDrive('T', _treeRoot, 1), new IndexedDrive('U', _treeRoot, 2)],
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
-            MftProducer = (request, _cancellationToken) =>
+            MftSource = new MftIndexSource((request, _cancellationToken) =>
             {
                 if (failDriveT && char.ToUpperInvariant(request.DriveLetter) == 'T')
                 {
@@ -313,8 +313,7 @@ public partial class FileIndexWatchRescanTests
                 return Task.FromResult(new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
-            },
-            WatchSource = source,
+            }, source),
             InitialOpenCacheOnly = true
         };
     }

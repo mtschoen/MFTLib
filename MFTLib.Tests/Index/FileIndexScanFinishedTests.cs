@@ -50,7 +50,7 @@ public class FileIndexScanFinishedTests
             Drives = drives,
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = producerPolicy,
-            MftProducer = mftProducer,
+            MftSource = mftProducer is null ? null : new MftIndexSource(mftProducer),
             Progress = new SynchronousProgress<IndexScanProgress>(samples.Enqueue)
         };
     }

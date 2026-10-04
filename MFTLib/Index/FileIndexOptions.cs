@@ -45,20 +45,15 @@ public sealed record FileIndexOptions
     public ProducerPolicy ProducerPolicy { get; init; } = ProducerPolicy.Mft;
 
     /// <summary>
-    ///     Supplies MFT-derived blocks. Null is a configuration error when
-    ///     <see cref="FileIndexOptions.ProducerPolicy" /> is
-    ///     <see cref="MFTLib.Index.ProducerPolicy.Mft" /> and is ignored when it is
-    ///     <see cref="MFTLib.Index.ProducerPolicy.Enumeration" />.
+    ///     Supplies MFT-derived blocks and each drive's live watch from one place. Null is a
+    ///     configuration error when <see cref="FileIndexOptions.ProducerPolicy" /> is
+    ///     <see cref="MFTLib.Index.ProducerPolicy.Mft" /> and a scan or a watch of an MFT-backed
+    ///     drive is needed; it is ignored when the policy is
+    ///     <see cref="MFTLib.Index.ProducerPolicy.Enumeration" />. A rescan of a watched drive
+    ///     stops that drive's watch and starts a fresh one from the new block's cursor through the
+    ///     same source.
     /// </summary>
-    public MftBlockProducer? MftProducer { get; init; }
-
-    /// <summary>
-    ///     Starts each drive's own watch for <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" />, one
-    ///     <see cref="IIndexDriveWatch" /> handle per drive. A rescan of a watched drive stops that
-    ///     drive's handle and starts a fresh one from the new block's cursor through the same
-    ///     source. Required to watch an MFT-backed drive and ignored otherwise.
-    /// </summary>
-    public IIndexWatchSource? WatchSource { get; init; }
+    public MftIndexSource? MftSource { get; init; }
 
     /// <summary>
     ///     Samples from whichever producer is building a drive's block. Each drive scan, in
