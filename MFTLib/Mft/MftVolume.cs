@@ -106,7 +106,7 @@ public sealed partial class MftVolume : IDisposable
     ///     <paramref name="parseThreads" /> is attached to another parse that is still running. The
     ///     parse starts on the first enumeration, so that is when this is thrown.
     /// </exception>
-    public IEnumerable<MftRecord[]> ReadRecordBatches(bool resolvePaths, int batchSize,
+    internal IEnumerable<MftRecord[]> ReadRecordBatches(bool resolvePaths, int batchSize,
         IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads, CancellationToken cancellationToken)
     {
         using var result = StreamRecords(

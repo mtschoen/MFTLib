@@ -25,7 +25,7 @@
       contract is in `docs/watch-lifetime.md`.
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
-    - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`; `MaterializeBatches`/`ReadRecordBatches` provide bounded-memory batch materialization over the same result.
+    - **Streaming API**: `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`; `MaterializeBatches` provides bounded-memory batch materialization over the same result; the internal `MftVolume.ReadRecordBatches` is the batch path the broker uses.
     - **ElevationUtilities**: Shared logic for detecting and ensuring Administrative privileges.
 
 - **TestProgram** (C# Console App) - CLI that runs the public read APIs against specified drives: `find-git` (the default), `read-records`, `usn-query`, `usn-read`, `usn-watch [--seconds N]`, and `scan-drive`, which runs `BrokerProcess.ScanDriveAsync` standalone with no `FileIndex`. Every mode except `scan-drive` self-elevates; `scan-drive` stays unelevated and the broker it launches asks for elevation, so TestProgram also dispatches `--broker` through `ElevatedEntryPoint`.
