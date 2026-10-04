@@ -149,13 +149,13 @@ public class EnumerationProducerTests
     }
 
     [TestMethod]
-    public async Task Produce_ProducerKindOnTheBlockIsEnumerationSoIdsReadAsSynthetic()
+    public async Task Produce_ProducerKindOnTheBlockIsEnumerationSoIdsCarryThatKind()
     {
         var snapshot = Produce(out _, out _);
         try
         {
             var entry = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures", "holiday.jpg"));
-            Assert.IsTrue(entry!.Value.Id.IsSynthetic);
+            Assert.AreEqual(ProducerKind.Enumeration, entry!.Value.Id.ProducerKind);
         }
         finally
         {

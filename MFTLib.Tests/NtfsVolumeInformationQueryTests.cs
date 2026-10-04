@@ -27,7 +27,7 @@ public class NtfsVolumeInformationQueryTests
 
     [TestMethod]
     [SupportedOSPlatform("windows")] // NtfsVolumeInformation.Query is Windows-only
-    public void Query_WithSyntheticVolumeData_MapsEveryGeometryField()
+    public void Query_WithSyntheticVolumeData_MapsBothSizingFields()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -38,11 +38,7 @@ public class NtfsVolumeInformationQueryTests
         var native = new NtfsVolumeDataBufferNative
         {
             MftValidDataLength = 8_192_000_000L,
-            BytesPerFileRecordSegment = 1024,
-            BytesPerSector = 512,
-            BytesPerCluster = 4096,
-            TotalClusters = 1_000_000,
-            FreeClusters = 500_000
+            BytesPerFileRecordSegment = 1024
         };
         bool FakeDeviceIoControl(SafeFileHandle device, uint ioControlCode, IntPtr inBuffer,
             uint inBufferSize, IntPtr outBuffer, uint outBufferSize, out uint bytesReturned, IntPtr overlapped)
@@ -60,10 +56,6 @@ public class NtfsVolumeInformationQueryTests
 
         Assert.AreEqual(8_192_000_000L, info.MftValidDataLength);
         Assert.AreEqual(1024u, info.BytesPerFileRecordSegment);
-        Assert.AreEqual(512u, info.BytesPerSector);
-        Assert.AreEqual(4096u, info.BytesPerCluster);
-        Assert.AreEqual(1_000_000L, info.TotalClusters);
-        Assert.AreEqual(500_000L, info.FreeClusters);
         Assert.AreEqual(8_000_000L, info.MftRecordCount);
     }
 

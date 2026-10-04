@@ -38,9 +38,9 @@ public sealed partial class BrokerProcess
     }
 
     /// <summary>
-    ///     The drive's NTFS sizing, as the broker reads it. Only the fields a block's capacity is
-    ///     planned from cross the wire (<see cref="NtfsVolumeInformation.MftValidDataLength" /> and
-    ///     <see cref="NtfsVolumeInformation.BytesPerFileRecordSegment" />); the geometry fields are zero.
+    ///     The drive's NTFS sizing, as the broker reads it: the fields a block's capacity is
+    ///     planned from (<see cref="NtfsVolumeInformation.MftValidDataLength" /> and
+    ///     <see cref="NtfsVolumeInformation.BytesPerFileRecordSegment" />).
     /// </summary>
     /// <param name="driveLetter">The drive to query.</param>
     /// <param name="cancellationToken">
@@ -55,7 +55,7 @@ public sealed partial class BrokerProcess
         var drive = NormalizeDrive(driveLetter);
         var reply = await RequestAsync((writer, requestId) => BrokerProtocol.WriteQueryVolume(writer, requestId, drive),
             BrokerFrameKind.VolumeInfo, cancellationToken).ConfigureAwait(false);
-        return new NtfsVolumeInformation(reply.MftValidDataLength, reply.BytesPerFileRecordSegment, 0, 0, 0, 0);
+        return new NtfsVolumeInformation(reply.MftValidDataLength, reply.BytesPerFileRecordSegment);
     }
 
     /// <summary>

@@ -85,7 +85,7 @@ public class BrokerFrameLengthTests
         await using var broker = new ScriptedBroker();
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(),
             CancellationToken.None);
-        await broker.AnswerQueryVolumeAsync(new NtfsVolumeInformation(1024 * 1000, 1024, 512, 4096, 100, 10));
+        await broker.AnswerQueryVolumeAsync(new NtfsVolumeInformation(1024 * 1000, 1024));
         await using var pipe = await broker.AcceptChannelAsync();
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, (await HostChannelHarness.ReadFrameAsync(pipe))?.Kind);
 
@@ -108,6 +108,6 @@ public class BrokerFrameLengthTests
             _ => new UsnJournalCursor(7, 1000),
             (_, _, _, _, _) => [],
             (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
-            queryVolumeInfo: _ => new NtfsVolumeInformation(1024 * 1000, 1024, 512, 4096, 100, 10));
+            queryVolumeInfo: _ => new NtfsVolumeInformation(1024 * 1000, 1024));
     }
 }

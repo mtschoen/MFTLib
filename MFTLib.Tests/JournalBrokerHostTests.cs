@@ -13,7 +13,7 @@ namespace MFTLib.Tests;
 public partial class JournalBrokerHostTests
 {
     static readonly UsnJournalCursor ScanArmedCursor = new(7UL, 100L);
-    static readonly NtfsVolumeInformation ControlVolume = new(1024 * 1000, 1024, 512, 4096, 100, 10);
+    static readonly NtfsVolumeInformation ControlVolume = new(1024 * 1000, 1024);
 
     static readonly string[] ScanKeepFileNamesGit = [".git"];
     static readonly string[] ScanKeepFileNamesGitUppercase = [".GIT"];

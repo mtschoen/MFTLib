@@ -6,30 +6,16 @@ using MFTLib.Interop;
 namespace MFTLib;
 
 /// <summary>
-///     Volume-level NTFS geometry and MFT sizing, queried directly from a live volume via
+///     Volume-level NTFS MFT sizing, queried directly from a live volume via
 ///     <c>FSCTL_GET_NTFS_VOLUME_DATA</c> rather than derived from a scan. An elevated caller
 ///     can learn a volume's approximate MFT record count before allocating a scan buffer
 ///     sized for it; a standard user cannot obtain this any other way, since the same IOCTL
 ///     issued against a limited-access volume handle fails with
 ///     <c>ERROR_INVALID_FUNCTION</c> instead of returning a value.
 /// </summary>
-/// <remarks>
-///     When queried directly on Windows via <see cref="Query(string)" /> with administrator
-///     elevation, all cluster and sector geometry fields are populated from the live volume.
-///     When reconstructed on a non-elevated client from a broker query
-///     through <see cref="BrokerProcess.QueryVolumeAsync" />, only
-///     <see cref="MftValidDataLength" /> and <see cref="BytesPerFileRecordSegment" /> (and
-///     derived <see cref="MftRecordCount" />) are transmitted; <see cref="BytesPerSector" />,
-///     <see cref="BytesPerCluster" />, <see cref="TotalClusters" />, and
-///     <see cref="FreeClusters" /> are zero.
-/// </remarks>
 public readonly record struct NtfsVolumeInformation(
     long MftValidDataLength,
-    uint BytesPerFileRecordSegment,
-    uint BytesPerSector,
-    uint BytesPerCluster,
-    long TotalClusters,
-    long FreeClusters)
+    uint BytesPerFileRecordSegment)
 {
     /// <summary>
     ///     The MFT's approximate record count, derived from the bytes NTFS reports as
@@ -74,9 +60,7 @@ public readonly record struct NtfsVolumeInformation(
             }
 
             var native = Marshal.PtrToStructure<NtfsVolumeDataBufferNative>(buffer);
-            return new NtfsVolumeInformation(
-                native.MftValidDataLength, native.BytesPerFileRecordSegment, native.BytesPerSector,
-                native.BytesPerCluster, native.TotalClusters, native.FreeClusters);
+            return new NtfsVolumeInformation(native.MftValidDataLength, native.BytesPerFileRecordSegment);
         }
         finally
         {

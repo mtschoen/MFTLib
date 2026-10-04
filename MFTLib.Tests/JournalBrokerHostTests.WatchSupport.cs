@@ -9,7 +9,7 @@ namespace MFTLib.Tests;
 // state, which is why the class (attributes on the main partial) runs serially.
 public partial class JournalBrokerHostTests
 {
-    static readonly NtfsVolumeInformation WatchVolume = new(1024 * 1000, 1024, 512, 4096, 100, 10);
+    static readonly NtfsVolumeInformation WatchVolume = new(1024 * 1000, 1024);
 
     static JournalBrokerHost CreateWatchHost(
         UsnJournalCursorQuery? queryCursor = null,

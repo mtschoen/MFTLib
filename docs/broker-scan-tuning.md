@@ -22,10 +22,8 @@ records. Treat that as a reason to rescan.
 A drive's MFT sizing can also be queried without starting a scan through
 `BrokerProcess.QueryVolumeAsync`. The broker protocol returns
 `MftValidDataLength`, `BytesPerFileRecordSegment`, and the derived
-`MftRecordCount`; cluster and sector geometry fields (`BytesPerSector`,
-`BytesPerCluster`, `TotalClusters`, and `FreeClusters`) are zero. Code that is
-already elevated can call `NtfsVolumeInformation.Query` directly for the full
-geometry.
+`MftRecordCount`. Code that is already elevated can call
+`NtfsVolumeInformation.Query` directly for the same values.
 
 ## Concurrent scans and parse threads
 

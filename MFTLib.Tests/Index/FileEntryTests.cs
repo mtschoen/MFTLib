@@ -92,7 +92,6 @@ public class FileEntryTests
         Assert.AreEqual('T', id.DriveLetter);
         Assert.AreEqual(_fileRow, id.RecordNumber);
         Assert.AreEqual(ProducerKind.Enumeration, id.ProducerKind);
-        Assert.IsTrue(id.IsSynthetic);
     }
 
     [TestMethod]

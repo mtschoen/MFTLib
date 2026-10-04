@@ -319,7 +319,7 @@ public class FileIndexCallbackReentrancyTests
             (_, _, _, _, _) => [],
             (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
             null,
-            _ => new NtfsVolumeInformation(1024 * 1000, 1024, 512, 4096, 100, 10),
+            _ => new NtfsVolumeInformation(1024 * 1000, 1024),
             (_, maximumSize, allocationDelta) =>
                 new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta },
             processorCount: 4));

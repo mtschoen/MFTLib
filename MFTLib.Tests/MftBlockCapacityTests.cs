@@ -11,8 +11,7 @@ public class MftBlockCapacityTests
     {
         // 4 million records at 1024 bytes per file record segment.
         var volumeInformation = new NtfsVolumeInformation(
-            MftValidDataLength: 4_000_000L * 1024, BytesPerFileRecordSegment: 1024,
-            BytesPerSector: 512, BytesPerCluster: 4096, TotalClusters: 0, FreeClusters: 0);
+            MftValidDataLength: 4_000_000L * 1024, BytesPerFileRecordSegment: 1024);
 
         var (slotCapacity, namePoolCapacity) = MftBlockCapacity.Plan(volumeInformation);
 
@@ -25,7 +24,7 @@ public class MftBlockCapacityTests
     {
         // BytesPerFileRecordSegment zero is the type's documented unqueried case, so
         // MftRecordCount is zero and there is nothing to size from.
-        var volumeInformation = new NtfsVolumeInformation(1024, 0, 0, 0, 0, 0);
+        var volumeInformation = new NtfsVolumeInformation(1024, 0);
         Assert.AreEqual(MftBlockCapacity.MinimumEstimatedRowCount,
             MftBlockCapacity.EstimateRowCount(volumeInformation));
     }
@@ -33,7 +32,7 @@ public class MftBlockCapacityTests
     [TestMethod]
     public void EstimateRowCount_RecordCountBeyondThirtyTwoBits_ClampsBelowTheSlotHeadroom()
     {
-        var volumeInformation = new NtfsVolumeInformation(long.MaxValue, 1024, 0, 0, 0, 0);
+        var volumeInformation = new NtfsVolumeInformation(long.MaxValue, 1024);
         Assert.AreEqual(uint.MaxValue / 2, MftBlockCapacity.EstimateRowCount(volumeInformation));
     }
 
@@ -43,7 +42,7 @@ public class MftBlockCapacityTests
         // The clamp exists so an extreme volume degrades gracefully. Clamping to
         // uint.MaxValue instead selected the one input whose quarter headroom overflows
         // ComputeSlotCapacity's checked addition.
-        var volumeInformation = new NtfsVolumeInformation(long.MaxValue, 1024, 0, 0, 0, 0);
+        var volumeInformation = new NtfsVolumeInformation(long.MaxValue, 1024);
         var (slotCapacity, _) = MftBlockCapacity.Plan(volumeInformation);
         Assert.AreEqual(BlockLayout.ComputeSlotCapacity(uint.MaxValue / 2), slotCapacity);
     }
@@ -52,7 +51,7 @@ public class MftBlockCapacityTests
     public void Plan_HugeNamePoolEstimate_ClampsToPreventOverflow()
     {
         // The estimated names for this volume exceed uint.MaxValue / 2.
-        var volumeInformation = new NtfsVolumeInformation(100_000_000L * 1024, 1024, 0, 0, 0, 0);
+        var volumeInformation = new NtfsVolumeInformation(100_000_000L * 1024, 1024);
         var (_, namePoolCapacity) = MftBlockCapacity.Plan(volumeInformation);
         Assert.AreEqual(BlockLayout.ComputeNamePoolCapacity(uint.MaxValue / 2), namePoolCapacity);
     }

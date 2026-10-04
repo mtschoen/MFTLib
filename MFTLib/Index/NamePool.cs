@@ -8,7 +8,7 @@ namespace MFTLib.Index;
 public static class NamePool
 {
     /// <summary>The row's name length field is 16 bits, so a name longer than this cannot be stored.</summary>
-    public const int MaximumNameLengthUnits = 32767;
+    internal const int MaximumNameLengthUnits = 32767;
 
     public static ReadOnlySpan<char> Read(ReadOnlySpan<char> pool, uint offsetBytes, ushort lengthUnits)
     {

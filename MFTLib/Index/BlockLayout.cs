@@ -23,15 +23,15 @@ public static class BlockLayout
     public const int RowBytes = 32;
 
     /// <summary>Headroom is 25 percent of the estimate or this many rows, whichever is larger.</summary>
-    public const int MinimumSlotHeadroomRows = 65536;
+    internal const int MinimumSlotHeadroomRows = 65536;
 
     /// <summary>Name pool headroom is 25 percent of the estimate or this many bytes, whichever is larger.</summary>
-    public const int MinimumNamePoolHeadroomBytes = 1048576;
+    internal const int MinimumNamePoolHeadroomBytes = 1048576;
 
     /// <summary>Mirrors the native resolver's cap so a corrupt parent column cannot loop forever.</summary>
     public const int MaximumPathDepth = 128;
 
-    public const int SequenceBytes = 2;
+    internal const int SequenceBytes = 2;
 
     /// <summary>
     ///     Fixed, not computed: the header region is exactly one page, so this can never be
@@ -39,7 +39,7 @@ public static class BlockLayout
     /// </summary>
     public const long RowRegionOffset = HeaderRegionBytes;
 
-    public static long AlignUp(long value, int alignment)
+    internal static long AlignUp(long value, int alignment)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(alignment);
         ArgumentOutOfRangeException.ThrowIfNegative(value);
@@ -59,7 +59,7 @@ public static class BlockLayout
         return checked(estimatedNameBytes + headroom);
     }
 
-    public static long RowRegionBytes(uint slotCapacity)
+    internal static long RowRegionBytes(uint slotCapacity)
     {
         return AlignUp((long)slotCapacity * RowBytes, PageSize);
     }
@@ -69,7 +69,7 @@ public static class BlockLayout
         return RowRegionOffset + RowRegionBytes(slotCapacity);
     }
 
-    public static long SequenceRegionBytes(uint slotCapacity)
+    internal static long SequenceRegionBytes(uint slotCapacity)
     {
         return AlignUp((long)slotCapacity * SequenceBytes, PageSize);
     }

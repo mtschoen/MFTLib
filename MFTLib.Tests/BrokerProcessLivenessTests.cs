@@ -22,7 +22,7 @@ public class BrokerProcessLivenessTests
     static readonly TimeSpan StallLimit = BrokerLiveness.StallLimit;
     static readonly TimeSpan HalfWindow = TimeSpan.FromSeconds(10);
     static readonly TimeSpan SendInterval = TimeSpan.FromSeconds(20);
-    static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024, 512, 4096, 100, 10);
+    static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024);
 
     [TestMethod]
     public async Task ControlSilentPastStallLimit_EndsProcess()

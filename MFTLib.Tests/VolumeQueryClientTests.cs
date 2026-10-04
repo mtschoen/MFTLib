@@ -9,7 +9,7 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
     [TestMethod]
     public async Task QueryVolumeAsync_OneDriveSucceedsAndOneErrors_ReturnsTheVolumeAndThrowsTheHostMessage()
     {
-        var reply = new NtfsVolumeInformation(8_192_000_000, 1024, 512, 4096, 100, 10);
+        var reply = new NtfsVolumeInformation(8_192_000_000, 1024);
         await using var broker = new InProcessBroker(CreateHost(queryVolumeInfo: drive => drive == "C"
             ? reply
             : throw new UnauthorizedAccessException("access denied")));
@@ -21,10 +21,6 @@ public class VolumeQueryClientTests : BrokerBlockTestBase
         Assert.AreEqual(8_000_000L, volume.MftRecordCount);
         Assert.AreEqual(1024U, volume.BytesPerFileRecordSegment);
         Assert.AreEqual(8_192_000_000L, volume.MftValidDataLength);
-        Assert.AreEqual(0U, volume.BytesPerSector);
-        Assert.AreEqual(0U, volume.BytesPerCluster);
-        Assert.AreEqual(0L, volume.TotalClusters);
-        Assert.AreEqual(0L, volume.FreeClusters);
         Assert.AreEqual("access denied", exception.Message);
     }
 

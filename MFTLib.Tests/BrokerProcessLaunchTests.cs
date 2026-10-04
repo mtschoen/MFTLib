@@ -143,7 +143,7 @@ public class BrokerProcessLaunchTests
                     _ => new UsnJournalCursor(7UL, 0L),
                     (_, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]],
                     (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
-                    queryVolumeInfo: _ => new NtfsVolumeInformation(1024 * 1000, 1024, 512, 4096, 100, 10));
+                    queryVolumeInfo: _ => new NtfsVolumeInformation(1024 * 1000, 1024));
                 await host.ServeAsync(pipe, DefaultElevatedEntryRunner.ConnectDrivePipeAsync,
                     new RealBlockSectionWriter(), CancellationToken.None);
             });

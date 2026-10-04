@@ -22,7 +22,7 @@ public class NtfsVolumeInformationAdminTests
 
     [TestMethod]
     [SupportedOSPlatform("windows")] // NtfsVolumeInformation.Query is Windows-only (FSCTL_GET_NTFS_VOLUME_DATA)
-    public void Query_SystemDrive_ReturnsPlausibleVolumeGeometry()
+    public void Query_SystemDrive_ReturnsPlausibleMftSizing()
     {
         RequireElevation();
 
@@ -32,11 +32,6 @@ public class NtfsVolumeInformationAdminTests
             $"Expected the standard 1024- or 4096-byte MFT record size, got {info.BytesPerFileRecordSegment}");
         Assert.IsTrue(info.MftValidDataLength > 0, "A live system volume must have a non-empty MFT");
         Assert.IsTrue(info.MftRecordCount > 0, "A live system volume must report at least one MFT record");
-        Assert.IsTrue(info.BytesPerSector > 0);
-        Assert.IsTrue(info.BytesPerCluster > 0);
-        Assert.IsTrue(info.TotalClusters > 0);
-        Assert.IsTrue(info.FreeClusters >= 0 && info.FreeClusters <= info.TotalClusters,
-            $"FreeClusters ({info.FreeClusters}) must be between 0 and TotalClusters ({info.TotalClusters})");
     }
 
     [TestMethod]

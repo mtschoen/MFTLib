@@ -15,7 +15,7 @@ public class VolumeQueryHostTests
     public async Task QueryVolume_TwoRequests_OneSeamThrows_EmitsVolumeInfoAndError()
     {
         var host = CreateHost(queryVolumeInfo: drive => drive == "C"
-            ? new NtfsVolumeInformation(8_192_000_000L, 1024, 512, 4096, 1_000_000, 500_000)
+            ? new NtfsVolumeInformation(8_192_000_000L, 1024)
             : throw new InvalidOperationException("access denied"));
         await using var harness = new HostChannelHarness(host);
 
@@ -49,7 +49,7 @@ public class VolumeQueryHostTests
     [TestMethod]
     public async Task QueryVolume_DoesNotEndSession_SubsequentArmAndScanStillWorks()
     {
-        var host = CreateHost(queryVolumeInfo: _ => new NtfsVolumeInformation(1024, 1024, 512, 4096, 1, 1));
+        var host = CreateHost(queryVolumeInfo: _ => new NtfsVolumeInformation(1024, 1024));
         using var blockWriter = new RecordingBlockSectionWriter();
         await using var harness = new HostChannelHarness(host, blockWriter);
 

@@ -120,7 +120,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     {
         await using var broker = new InProcessBroker(CreateHost(
             scanDrive: (_, _, _, _, _) => Records().Append([Record(1_000_000, 5, "beyond.txt")]),
-            queryVolumeInfo: _ => new NtfsVolumeInformation(1024, 1024, 0, 0, 0, 0)));
+            queryVolumeInfo: _ => new NtfsVolumeInformation(1024, 1024)));
         var producer = new BrokerMftBlockProducer(Connect(broker.Process)).CreateProducer();
         await using var index = await FileIndex.OpenAsync(Options(producer), CancellationToken.None).WaitAsync(HangGuard);
 

@@ -14,7 +14,7 @@ namespace MFTLib.Tests;
 public class DriveScannerModeTests
 {
     static readonly UsnJournalCursor Armed = new(7, 1000);
-    static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024, 512, 4096, 100, 10);
+    static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024);
 
     string _directory = null!;
 
