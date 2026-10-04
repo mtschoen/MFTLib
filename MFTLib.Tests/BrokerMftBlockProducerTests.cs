@@ -69,12 +69,16 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
                 case "journal cursor": block.Header.UsnNextUsn++; break;
             }
         });
+        var invocations = 0;
         var request = Request(Target());
 
+        // The producer disposes the block on every failure path, so a callback that ran before
+        // validation would hand out a result whose block is already dead.
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => ProduceAsync(broker.Process, request).WaitAsync(HangGuard));
+            () => ProduceAsync(broker.Process, request, scanCompleted: _ => invocations++).WaitAsync(HangGuard));
 
         StringAssert.Contains(exception.Message, check);
+        Assert.AreEqual(0, invocations, "the callback must not run for a result that failed validation");
         var section = broker.Sections.Single();
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);
@@ -106,24 +110,6 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.AreEqual(1, section.Lifetime.DisposeCount);
         BlockFileAssertions.IsDisposed(section.Block);
         Assert.IsFalse(File.Exists(request.BlockPath));
-    }
-
-    [TestMethod]
-    public async Task Produce_InvalidHeader_DoesNotInvokeScanCompleted()
-    {
-        // The producer disposes the block on every failure path, so a callback that ran
-        // before validation would hand out a BrokerDriveScanResult whose block is dead by the
-        // time the callback returns. Reading through it is undefined behaviour rather
-        // than an exception, which is why the callback must not see this result at all.
-        await using var broker = CreateBrokerChangingBlock(block => block.Header.RowCount = 0);
-        var invocations = 0;
-
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
-            () => ProduceAsync(broker.Process, Request(Target()), scanCompleted: _ => invocations++).WaitAsync(HangGuard));
-
-        StringAssert.Contains(exception.Message, "RowCount");
-        Assert.AreEqual(0, invocations, "the callback must not run for a result that failed validation");
-        BlockFileAssertions.IsDisposed(broker.Sections.Single().Block);
     }
 
     [TestMethod]

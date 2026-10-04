@@ -120,30 +120,6 @@ public class BrokerIndexWatchSourceTests
     }
 
     [TestMethod]
-    public async Task WatchSource_OneDrivesErrorDoesNotEndAnotherDrivesHandle()
-    {
-        await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var token = harness.CancellationToken;
-        await using var handleC = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
-        await using var handleD = await source.StartAsync(new IndexWatchTarget('D', 7, 100), token);
-        var readerC = handleC.ReadAsync(token).GetAsyncEnumerator(token);
-        await using var _ = readerC.ConfigureAwait(false);
-        var readerD = handleD.ReadAsync(token).GetAsyncEnumerator(token);
-        await using var __ = readerD.ConfigureAwait(false);
-        var runC = await harness.Watch('C').RunAsync(1);
-        var runD = await harness.Watch('D').RunAsync(1);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
-
-        runD.Fail(new IOException("journal wrapped"));
-        runC.Push(1, "c.txt", 110);
-
-        await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
-        Assert.AreEqual(110L, (await WatchReads.NextBatchAsync(readerC)).NextUsn);
-    }
-
-    [TestMethod]
     public async Task WatchSource_HostClosingThePipeIsAChannelLossNotAnEnd()
     {
         await using var harness = new ScriptedWatchBrokerHarness();

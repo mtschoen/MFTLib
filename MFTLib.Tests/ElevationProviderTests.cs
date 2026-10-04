@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -71,15 +70,11 @@ public class ElevationProviderTests
     [TestMethod]
     public void DefaultProvider_TryRunElevated_ProcessExitsZero_ReturnsTrue()
     {
-        var isPosix = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ||
-                      RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
         ElevationUtilities._getProcessPathFunc = () => "C:/app/MyApp.exe";
         ElevationUtilities._isUserInteractive = () => true;
-        ElevationUtilities._startProcess = _ => Process.Start(new ProcessStartInfo(
-                isPosix ? "true" : "cmd.exe",
-                isPosix ? string.Empty : "/c exit 0"
-            )
-        { CreateNoWindow = true, UseShellExecute = false });
+        ElevationUtilities._startProcess = _ => new Process();
+        ElevationUtilities._waitForExit = (_, _) => true;
+        ElevationUtilities._getExitCode = _ => 0;
         Assert.IsTrue(ElevationUtilities.DefaultProvider.TryRunElevated("--test"));
     }
 }

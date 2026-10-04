@@ -24,7 +24,7 @@ public partial class JournalBrokerHostTests
             },
             queryVolumeInfo: _ => ControlVolume);
         var connector = new BreakableScanPipeConnector();
-        await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter(), connector.ConnectAsync);
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter(), connector.ConnectAsync);
         connector.Harness = harness;
         var pipe = await harness.OpenScanChannelAsync('C');
 

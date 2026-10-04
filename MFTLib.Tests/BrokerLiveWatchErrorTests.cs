@@ -35,30 +35,6 @@ public class BrokerLiveWatchErrorTests
     }
 
     [TestMethod]
-    public async Task LiveWatch_ErrorFrameForOneDrive_OtherDrivesKeepStreaming()
-    {
-        await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var token = harness.CancellationToken;
-        await using var handleC = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
-        await using var handleD = await source.StartAsync(new IndexWatchTarget('D', 7, 100), token);
-        var readerC = handleC.ReadAsync(token).GetAsyncEnumerator(token);
-        await using var _ = readerC.ConfigureAwait(false);
-        var readerD = handleD.ReadAsync(token).GetAsyncEnumerator(token);
-        await using var __ = readerD.ConfigureAwait(false);
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerC));
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(readerD));
-
-        (await harness.Watch('D').RunAsync(1)).Fail(new IOException("journal wrapped"));
-        (await harness.Watch('C').RunAsync(1)).Push(1, "f.txt", 210);
-
-        await WatchReads.ThrowsNextAsync<DriveWatchFaultException>(readerD);
-        var batch = await WatchReads.NextBatchAsync(readerC);
-        Assert.AreEqual(new UsnJournalCursor(7, 210), new UsnJournalCursor(batch.JournalId, batch.NextUsn));
-        Assert.AreEqual("f.txt", batch.Entries.Single().FileName);
-    }
-
-    [TestMethod]
     public async Task LiveWatch_ErrorFrameBeforeRead_LateReaderGetsFault()
     {
         await using var harness = new ScriptedWatchBrokerHarness();

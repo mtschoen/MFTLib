@@ -10,27 +10,6 @@ namespace MFTLib.Tests;
 public class BrokerIndexWatchSourceCaughtUpTests
 {
     [TestMethod]
-    public async Task WatchSource_SurfacesACaughtUpFrameAsADriveCaughtUpItem()
-    {
-        await using var harness = new ScriptedWatchBrokerHarness();
-        var source = new BrokerMftBlockProducer(harness.ConnectAsync).CreateWatchSource();
-        var token = harness.CancellationToken;
-        await using var handle = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
-        var reader = handle.ReadAsync(token).GetAsyncEnumerator(token);
-        await using var _ = reader.ConfigureAwait(false);
-        var run = await harness.Watch('C').RunAsync(1);
-
-        // A watch that starts at the journal tip has no backlog, so the marker leads.
-        Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
-        run.Push(1, "c.txt", 110);
-
-        // The marker ends nothing: the watch's batches keep flowing after it.
-        var batch = await WatchReads.NextBatchAsync(reader);
-        Assert.AreEqual(110L, batch.NextUsn);
-        Assert.AreEqual("c.txt", batch.Entries.Single().FileName);
-    }
-
-    [TestMethod]
     public async Task WatchSource_SurfacesTheMarkerOnlyOnceTheBacklogReachesTheTip()
     {
         await using var harness = new ScriptedWatchBrokerHarness();

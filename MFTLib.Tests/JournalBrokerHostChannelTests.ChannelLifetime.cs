@@ -142,7 +142,7 @@ public partial class JournalBrokerHostChannelTests
     {
         var clock = new TimerSignalingClock();
         var host = CreateHost(timeProvider: clock);
-        var (client, hostControl) = DuplexStream.CreatePair();
+        var (client, hostControl) = new InMemoryPipePair();
         await using var serverEnd = hostControl;
         await using var pipes = new InMemoryPipePair();
         var heldReply = new HeldReply();

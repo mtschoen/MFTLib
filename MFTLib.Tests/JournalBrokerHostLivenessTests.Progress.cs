@@ -9,7 +9,7 @@ namespace MFTLib.Tests;
 public partial class JournalBrokerHostLivenessTests
 {
     [TestMethod]
-    public async Task BlockedWriteOnX_DoesNotDelayHeartbeatsOnY_OnlyXFaults()
+    public async Task BlockedWriteOnX_DoesNotDelayHeartbeatsOnY_AndSkipsXsHeartbeatsWhileItsWriteIsInFlight()
     {
         var liveness = new Liveness();
         var held = new HeldWrites();
@@ -23,29 +23,17 @@ public partial class JournalBrokerHostLivenessTests
         for (var interval = 0; interval < 10; interval++)
         {
             await liveness.AdvanceOneIntervalAsync();
+            if (interval == 0)
+            {
+                Assert.AreEqual(1, held.Attempts, "The first visit starts a heartbeat on X, which is held.");
+            }
+
             Assert.AreEqual(BrokerFrameKind.Heartbeat, await ReadIncludingHeartbeatsAsync(healthy),
                 $"Y heartbeats on interval {interval + 1} while X's write is held.");
         }
 
         Assert.AreEqual(1, held.Attempts, "X's first heartbeat is held, and no later heartbeat is started on X.");
         Assert.IsNotNull(blocked);
-    }
-
-    [TestMethod]
-    public async Task HeartbeatSkipped_WhilePreviousWriteInFlight()
-    {
-        var liveness = new Liveness();
-        var held = new HeldWrites();
-        await using var harness = HarnessHoldingWritesTo('X', liveness.Host(watchDrive: NeverYields), held);
-        await harness.OpenWatchChannelAsync('X', BehindTip);
-        await liveness.WhenPublished(DriveTag('X', 1), ChannelOperationKind.WaitingOnVolume);
-
-        await liveness.AdvanceOneIntervalAsync();
-        Assert.AreEqual(1, held.Attempts, "The first visit starts a heartbeat, which is held.");
-        await liveness.AdvanceOneIntervalAsync();
-        await liveness.AdvanceOneIntervalAsync();
-
-        Assert.AreEqual(1, held.Attempts, "Three visits to a pipe with a held write start exactly one heartbeat.");
     }
 
     [TestMethod]

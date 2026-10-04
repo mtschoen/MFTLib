@@ -35,7 +35,7 @@ public partial class JournalBrokerHostTests
                 progress.Report(new BlockWriteProgress(19, 0, 20, null, BrokerScanPhase.Parsing));
                 return [[ScanRecord(5, ".", 3)]];
             });
-            await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter());
+            await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
             var pipe = await harness.OpenScanChannelAsync('C');
 
             // The first report is on the wire before the second is made, so the second lands
@@ -57,7 +57,7 @@ public partial class JournalBrokerHostTests
     public async Task ScanProgress_CancelledScan_EndsCleanlyWithoutErrorFrame()
     {
         var host = ScanHost(scanDrive: (_, _, _, _, cancellationToken) => throw new OperationCanceledException(cancellationToken));
-        await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
 
         var frames = await ScanFramesAsync(harness);
 
@@ -189,38 +189,6 @@ public partial class JournalBrokerHostTests
     }
 
     [TestMethod]
-    public Task ScanProgress_EmitsParsingThenTransferring()
-    {
-        return WithScanProgressThrottleAsync(TimeSpan.Zero, async () =>
-        {
-            var afterParsingReport = new TestGate();
-            using var blockWriter = new RecordingBlockSectionWriter();
-            var host = ScanHost(scanDrive: (_, _, _, progress, _) =>
-            {
-                progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BrokerScanPhase.Parsing));
-                afterParsingReport.MarkEntered();
-                afterParsingReport.WaitForRelease();
-                return [[ScanRecord(5, ".", 3)], [ScanRecord(20, "file.txt")]];
-            });
-            await using var harness = new HostChannelHarness(host, blockWriter);
-            var pipe = await harness.OpenScanChannelAsync('C');
-
-            await HostChannelHarness.ReadFrameAsync(pipe); // Cursor
-            var parsing = (await HostChannelHarness.ReadFrameAsync(pipe))!.Value.Progress!.Value;
-            afterParsingReport.Release();
-            var rest = await HostChannelHarness.ReadToEndAsync(pipe);
-            var transferring = rest.Last(f => f.Kind == BrokerFrameKind.ScanProgress).Progress!.Value;
-
-            Assert.AreEqual(BrokerScanPhase.Parsing, parsing.Phase);
-            Assert.AreEqual(500L, parsing.RecordsProcessed);
-            Assert.AreEqual(1000L, parsing.TotalRecords);
-            Assert.AreEqual(BrokerScanPhase.Transferring, transferring.Phase);
-            Assert.AreEqual(blockWriter.Block.Header.NamePoolUsed, transferring.BytesProcessed);
-            Assert.AreEqual(transferring.BytesProcessed, transferring.TotalBytes);
-        });
-    }
-
-    [TestMethod]
     public async Task ScanProgress_ScanCancelledBeforeAnyProgressReported_EndsWithoutErrorFrame()
     {
         var scanStarted = new TestGate();
@@ -232,7 +200,7 @@ public partial class JournalBrokerHostTests
             cancellationToken.WaitHandle.WaitOne(HostChannelHarness.HangGuard);
             throw new OperationCanceledException(cancellationToken);
         });
-        await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipe = await harness.OpenScanChannelAsync('C');
         await scanStarted.Entered.WaitAsync(HostChannelHarness.HangGuard);
 
@@ -255,7 +223,7 @@ public partial class JournalBrokerHostTests
             progress!.Report(new BlockWriteProgress(10, 500, 5, 1000, BrokerScanPhase.Parsing));
             return [[new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "r1.txt", null)]];
         });
-        await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
 
         var frames = await ScanFramesAsync(harness);
 

@@ -3,6 +3,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public class BrokerDiagnosticsLogFilterTests
 {
     const string OwnLogPath = @"C:\broker-diag\broker-diagnostics.log";

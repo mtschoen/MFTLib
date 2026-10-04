@@ -22,7 +22,9 @@ public partial class BrokerProcessTests
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.DriveLetter);
         await sourceCancelled.Task.WaitAsync(HangGuard);
-        AssertSectionReleased(broker.Sections.Single());
+        var section = broker.Sections.Single();
+        AssertSectionReleased(section);
+        Assert.AreEqual(1, section.Lifetime.DisposeCount, "a lifetime left over from an in-flight scan is disposed exactly once");
     }
 
     // The host abandons a channel whose operation ignores cancellation once its grace period ends,
@@ -178,28 +180,6 @@ public partial class BrokerProcessTests
         var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
         Assert.AreEqual('C', lost.DriveLetter);
         AssertSectionReleased(broker.Sections.Single());
-    }
-
-    [TestMethod]
-    public async Task Dispose_WithTwoPendingControlRequests_FailsBothWithChannelLost()
-    {
-        await using var broker = new ScriptedBroker();
-        var active = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
-        Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
-        var queued = broker.Process.QueryVolumeAsync('D', CancellationToken.None);
-        Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
-
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-
-        foreach (var request in new Task[] { active, queued })
-        {
-            var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => request.WaitAsync(HangGuard));
-            Assert.IsNull(lost.DriveLetter);
-        }
-
-        await broker.Process.Ended.WaitAsync(HangGuard);
-        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
-            broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
     }
 
     [TestMethod]

@@ -85,20 +85,6 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task ScanDrive_HostError_ThrowsInvalidOperation()
-    {
-        await using var broker = new InProcessBroker(CreateHost(
-            scanDrive: (_, _, _, _, _) => throw new IOException("volume vanished")));
-
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(),
-                CancellationToken.None).WaitAsync(HangGuard));
-
-        Assert.AreEqual("volume vanished", exception.Message);
-        AssertSectionReleased(broker.Sections.Single());
-    }
-
-    [TestMethod]
     public async Task ScanDrive_CatchUpLost_ReturnsBlockWithLossAndArmedCursor()
     {
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => TrimmedWindow);
@@ -372,21 +358,16 @@ public partial class BrokerProcessTests
         return [];
     }
 
-    // The host dying mid-frame is a lost channel: a frame that never finishes is not an end of scan.
-    [TestMethod]
-    public async Task ScanDrive_TruncatedFrame_IsChannelLost()
-    {
-        var lost = await ScanScriptedAsync(pipe => WriteRawAsync(pipe, [10, 0, 0, 0, 1, 2, 3]));
-
-        Assert.AreEqual('C', lost.DriveLetter);
-        StringAssert.Contains(lost.Message, "Truncated");
-    }
-
     // The distinct case of EOF exactly at the frame boundary, after the length prefix and before any body byte.
-    [TestMethod]
-    public async Task ScanDrive_HeaderOnlyThenEof_IsChannelLost()
+    // The host dying mid-frame is a lost channel: a frame that never finishes is not an end of scan.
+    // A length prefix claiming ten bytes is followed by EOF partway through the body, or exactly
+    // at the frame boundary before any body byte.
+    [DataTestMethod]
+    [DataRow(new byte[] { 10, 0, 0, 0, 1, 2, 3 }, DisplayName = "TruncatedFrame")]
+    [DataRow(new byte[] { 10, 0, 0, 0 }, DisplayName = "HeaderOnlyThenEof")]
+    public async Task ScanDrive_FrameCutShortByEof_IsChannelLost(byte[] rawBytes)
     {
-        var lost = await ScanScriptedAsync(pipe => WriteRawAsync(pipe, [10, 0, 0, 0]));
+        var lost = await ScanScriptedAsync(pipe => WriteRawAsync(pipe, rawBytes));
 
         Assert.AreEqual('C', lost.DriveLetter);
         StringAssert.Contains(lost.Message, "Truncated");

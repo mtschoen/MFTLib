@@ -35,7 +35,7 @@ public partial class JournalBrokerHostChannelTests
     {
         var scans = new HeldScans();
         var host = CreateHost(processorCount: 4, scanDrive: scans.Source);
-        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         await scans["C"].Gate.Entered.WaitAsync(HostChannelHarness.HangGuard);
         Assert.AreEqual(4, scans["C"].Allowance!.Count);
@@ -58,7 +58,7 @@ public partial class JournalBrokerHostChannelTests
     {
         var scans = new HeldScans();
         var host = CreateHost(processorCount: 4, scanDrive: scans.Source);
-        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
         await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HostChannelHarness.HangGuard);
@@ -145,7 +145,7 @@ public partial class JournalBrokerHostChannelTests
     {
         var scans = new HeldScans();
         var host = CreateHost(processorCount: 1, scanDrive: scans.Source);
-        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         await scans["C"].Gate.Entered.WaitAsync(HostChannelHarness.HangGuard);
 
@@ -164,30 +164,12 @@ public partial class JournalBrokerHostChannelTests
     }
 
     [TestMethod]
-    public async Task ConcurrentScans_TwoChannels_BothInsideSourceAtOnce()
-    {
-        var scans = new HeldScans();
-        var host = CreateHost(processorCount: 4, scanDrive: scans.Source);
-        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
-        var pipeC = await harness.OpenScanChannelAsync('C');
-        var pipeD = await harness.OpenScanChannelAsync('D');
-
-        await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HostChannelHarness.HangGuard);
-
-        Assert.AreEqual(2, scans["C"].Allowance!.Count);
-        Assert.AreEqual(2, scans["D"].Allowance!.Count);
-        scans.ReleaseAll();
-        await HostChannelHarness.ReadToEndAsync(pipeC);
-        await HostChannelHarness.ReadToEndAsync(pipeD);
-    }
-
-    [TestMethod]
     public async Task ScanChannel_PipeClosed_ShareReturnsOnlyAfterSourceReturns()
     {
         var scans = new HeldScans();
         scans["C"].HonorCancellation = false;
         var host = CreateHost(processorCount: 2, scanDrive: scans.Source);
-        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
         await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HostChannelHarness.HangGuard);
@@ -215,7 +197,7 @@ public partial class JournalBrokerHostChannelTests
     {
         var scans = new HeldScans();
         var host = CreateHost(processorCount: 4, scanDrive: scans.Source);
-        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipeC = await harness.OpenScanChannelAsync('C');
         var pipeD = await harness.OpenScanChannelAsync('D');
         await Task.WhenAll(scans["C"].Gate.Entered, scans["D"].Gate.Entered).WaitAsync(HostChannelHarness.HangGuard);

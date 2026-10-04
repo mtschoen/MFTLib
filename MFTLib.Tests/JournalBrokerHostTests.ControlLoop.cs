@@ -35,39 +35,26 @@ public partial class JournalBrokerHostTests
         await harness.Serve.WaitAsync(HostChannelHarness.HangGuard);
     }
 
-    [TestMethod]
-    public async Task ServeAsync_TruncatedFrameBody_ThrowsEndOfStreamException()
+    // A length prefix claims a 10-byte frame; the pipe closes after three body bytes (EOF partway
+    // through the body read) or after none (EOF exactly at the frame boundary).
+    [DataTestMethod]
+    [DataRow(3, DisplayName = "TruncatedFrameBody")]
+    [DataRow(0, DisplayName = "HeaderOnlyThenEof")]
+    public async Task ServeAsync_FrameCutShortByEof_ThrowsEndOfStreamException(int deliveredBodyBytes)
     {
         var host = ScanHost();
         var harness = new HostChannelHarness(host);
 
         var header = new byte[4];
-        BinaryPrimitives.WriteInt32LittleEndian(header, 10); // claims a 10-byte frame
+        BinaryPrimitives.WriteInt32LittleEndian(header, 10);
         await harness.SendControlAsync(writer =>
         {
             writer.Write(header);
-            writer.Write(new byte[] { 1, 2, 3 }); // delivers only 3
+            writer.Write(new byte[deliveredBodyBytes]);
         });
-        await harness.CloseControlAsync(); // EOF partway through the frame body
-
-        // The session's fault surfaces from its serve task, which disposing the harness awaits.
-        await Assert.ThrowsExceptionAsync<EndOfStreamException>(async () => await harness.DisposeAsync());
-    }
-
-    [TestMethod]
-    public async Task ServeAsync_HeaderOnlyThenEof_ThrowsEndOfStreamException()
-    {
-        var host = ScanHost();
-        var harness = new HostChannelHarness(host);
-
-        // A 4-byte length prefix claiming a 10-byte frame, but zero body bytes before the pipe
-        // closes: the distinct "EOF exactly at the frame boundary" case, as opposed to EOF
-        // partway through an already-started body read.
-        var header = new byte[4];
-        BinaryPrimitives.WriteInt32LittleEndian(header, 10);
-        await harness.SendControlAsync(writer => writer.Write(header));
         await harness.CloseControlAsync();
 
+        // The session's fault surfaces from its serve task, which disposing the harness awaits.
         await Assert.ThrowsExceptionAsync<EndOfStreamException>(async () => await harness.DisposeAsync());
     }
 }

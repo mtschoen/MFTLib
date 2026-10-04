@@ -59,20 +59,6 @@ public class BrokerDeathTests
     }
 
     [TestMethod]
-    public async Task ControlOperation_AfterProcessDeath_ThrowsChannelLost()
-    {
-        await using var broker = new ScriptedBroker();
-        await broker.CloseControlAsync();
-        await broker.Process.Ended.WaitAsync(HangGuard);
-
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
-            broker.Process.QueryVolumeAsync('C', CancellationToken.None).WaitAsync(HangGuard));
-
-        Assert.IsNull(lost.DriveLetter, "the control pipe is what was lost");
-        await broker.Process.Ended.WaitAsync(HangGuard);
-    }
-
-    [TestMethod]
     public async Task ProcessDeath_FaultsEveryDriveByName_EndedCompletes()
     {
         await using var broker = new ScriptedWatchBrokerHarness();

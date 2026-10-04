@@ -56,44 +56,18 @@ public partial class JournalBrokerHostTests
         Assert.AreEqual(2, InUseRowCount(blockWriter));
     }
 
-    [TestMethod]
-    public async Task DirectoryIndexProfile_KeepFileNameMatch_KeepsTheNamedFile()
+    // The directory (repo) is always kept; a file is kept only when its name matches a keep name.
+    [DataTestMethod]
+    [DataRow(new[] { ".git" }, 2, DisplayName = "KeepFileNameMatch_KeepsTheNamedFile")]
+    [DataRow(new[] { ".GIT" }, 2, DisplayName = "KeepFileNameMatch_IsCaseInsensitive")]
+    [DataRow(new[] { "other.txt" }, 1, DisplayName = "NonMatchingFiles_AreDropped")]
+    [DataRow(null, 1, DisplayName = "NullKeepFileNames_YieldsDirectoriesOnly")]
+    [DataRow(new string[0], 1, DisplayName = "EmptyKeepFileNames_YieldsDirectoriesOnly")]
+    public async Task DirectoryIndexProfile_KeepFileNames_DecideWhichFilesAreKept(string[]? keepFileNames, int expectedInUseRows)
     {
-        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, ScanKeepFileNamesGit);
+        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, keepFileNames);
 
-        Assert.AreEqual(2, InUseRowCount(writer)); // repo (directory) + .git (named match)
-    }
-
-    [TestMethod]
-    public async Task DirectoryIndexProfile_KeepFileNameMatch_IsCaseInsensitive()
-    {
-        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, ScanKeepFileNamesGitUppercase);
-
-        Assert.AreEqual(2, InUseRowCount(writer)); // repo (directory) + .git (matched despite case)
-    }
-
-    [TestMethod]
-    public async Task DirectoryIndexProfile_NonMatchingFiles_AreDropped()
-    {
-        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, ScanKeepFileNamesNonMatching);
-
-        Assert.AreEqual(1, InUseRowCount(writer)); // repo (directory) only
-    }
-
-    [TestMethod]
-    public async Task DirectoryIndexProfile_NullKeepFileNames_YieldsDirectoriesOnly()
-    {
-        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, null);
-
-        Assert.AreEqual(1, InUseRowCount(writer)); // repo (directory) only
-    }
-
-    [TestMethod]
-    public async Task DirectoryIndexProfile_EmptyKeepFileNames_YieldsDirectoriesOnly()
-    {
-        using var writer = await ServeDirectoryIndexAsync(DirectoryIndexSampleRecords, Array.Empty<string>());
-
-        Assert.AreEqual(1, InUseRowCount(writer)); // repo (directory) only
+        Assert.AreEqual(expectedInUseRows, InUseRowCount(writer));
     }
 
     [TestMethod]
@@ -143,7 +117,7 @@ public partial class JournalBrokerHostTests
             readJournal: (drive, since, _) => drive == "C"
                 ? throw new InvalidOperationException("journal wrapped")
                 : (Array.Empty<UsnJournalEntry>(), since));
-        await using var harness = new HostChannelHarness(host, new RowCountingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
 
         var failing = await harness.OpenScanChannelAsync('C');
         var healthy = await harness.OpenScanChannelAsync('D');
@@ -224,24 +198,5 @@ public partial class JournalBrokerHostTests
 
         Assert.AreEqual(BrokerFrameKind.VolumeInfo, reply.Kind);
         Assert.AreEqual(requestId, reply.RequestId);
-    }
-
-    // Counts rows without writing a block, for scans that run on several drives at once (a
-    // recording writer owns one block).
-    sealed class RowCountingSectionWriter : IBlockSectionWriter
-    {
-        public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor,
-            IEnumerable<IReadOnlyList<MftRecord>> batches, MftBlockRowFilter filter,
-            BlockWriteReporting reporting, CancellationToken cancellationToken)
-        {
-            long rows = 0;
-            foreach (var batch in batches)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                rows += batch.Count;
-            }
-
-            return new BlockWriteResult(rows, 0, 0, false);
-        }
     }
 }

@@ -44,7 +44,7 @@ internal sealed class HostChannelHarness : IAsyncDisposable
         _wrapDrivePipe = wrapDrivePipe;
         _connectionsReleased = connectionsReleased;
         BreakableControl = breakableControl ? new BrokenPipeStream(_control.Host) : null;
-        Serve = host.ServeAsync(BreakableControl ?? (Stream)_control.Host, connectChannel ?? ConnectInMemoryAsync,
+        Serve = host.ServeAsync(BreakableControl ?? _control.Host, connectChannel ?? ConnectInMemoryAsync,
             blockSectionWriter, CancellationToken.None);
     }
 

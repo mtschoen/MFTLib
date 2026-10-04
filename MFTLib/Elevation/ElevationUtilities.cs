@@ -15,6 +15,9 @@ public static class ElevationUtilities
     internal static Func<string?> _getProcessPathFunc = () => Environment.ProcessPath;
     internal static Func<ProcessStartInfo, Process?> _startProcess = Process.Start;
     internal static Func<bool> _isUserInteractive = () => Environment.UserInteractive;
+    internal static Func<Process, int, bool> _waitForExit = (process, timeoutMs) => process.WaitForExit(timeoutMs);
+    internal static Action<Process> _killProcess = process => process.Kill();
+    internal static Func<Process, int> _getExitCode = process => process.ExitCode;
 
     /// <summary>
     ///     Default <see cref="IElevationProvider" /> backed by the static methods below.
@@ -28,6 +31,9 @@ public static class ElevationUtilities
         _getProcessPathFunc = () => Environment.ProcessPath;
         _startProcess = Process.Start;
         _isUserInteractive = () => Environment.UserInteractive;
+        _waitForExit = (process, timeoutMs) => process.WaitForExit(timeoutMs);
+        _killProcess = process => process.Kill();
+        _getExitCode = process => process.ExitCode;
     }
 
     [SuppressMessage("Interoperability", "CA1416", Justification = "Guarded by IsWindows() runtime check")]
@@ -121,13 +127,13 @@ public static class ElevationUtilities
                 return false;
             }
 
-            if (!process.WaitForExit(timeoutMs))
+            if (!_waitForExit(process, timeoutMs))
             {
-                process.Kill();
+                _killProcess(process);
                 return false;
             }
 
-            return process.ExitCode == 0;
+            return _getExitCode(process) == 0;
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {

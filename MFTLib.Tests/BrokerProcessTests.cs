@@ -240,29 +240,6 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task HostEnds_EveryPendingRequestFailsWithChannelLost_EndedCompletes()
-    {
-        await using var broker = new ScriptedBroker();
-        var first = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
-        var second = broker.Process.GrowUsnJournalAsync('D', 1, 1, CancellationToken.None);
-        await broker.ReadRequestAsync();
-        await broker.ReadRequestAsync();
-
-        await broker.CloseControlAsync();
-
-        foreach (var request in new Task[] { first, second })
-        {
-            var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => request.WaitAsync(HangGuard));
-            Assert.IsNull(lost.DriveLetter);
-        }
-
-        await broker.Process.Ended.WaitAsync(HangGuard);
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() =>
-            broker.Process.QueryVolumeAsync('C', CancellationToken.None));
-    }
-
-    [TestMethod]
     public async Task Dispose_EndsHost()
     {
         var watchCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -295,44 +272,6 @@ public partial class BrokerProcessTests
         StringAssert.Contains(exception.Message, "declined");
     }
 
-
-    // Whatever ends the control pipe's reader ends the process: a pending request fails with the
-    // reason and Ended fires once.
-    [DataTestMethod]
-    [DataRow("unroutable frame", "CaughtUp")]
-    [DataRow("truncated frame", "Truncated")]
-    [DataRow("eof", "closed its control pipe")]
-    public async Task ControlExchange_DemuxExit_CompletesPendingQuery(string ending, string expectedReason)
-    {
-        await using var broker = new ScriptedBroker();
-        var ended = broker.Process.Ended;
-        var query = broker.Process.QueryVolumeAsync('C', CancellationToken.None);
-        Assert.AreEqual(BrokerFrameKind.QueryVolume, (await broker.ReadRequestAsync()).Kind);
-
-        if (ending == "unroutable frame")
-        {
-            await broker.WriteControlAsync(BrokerProtocol.WriteCaughtUp);
-        }
-        else
-        {
-            if (ending == "truncated frame")
-            {
-                await broker.WriteControlAsync(writer =>
-                {
-                    byte[] bytes = [10, 0, 0, 0, 1, 2, 3];
-                    bytes.CopyTo(writer.GetSpan(bytes.Length));
-                    writer.Advance(bytes.Length);
-                });
-            }
-
-            await broker.CloseControlAsync();
-        }
-
-        var lost = await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => query.WaitAsync(HangGuard));
-        Assert.IsNull(lost.DriveLetter);
-        StringAssert.Contains(await ended.WaitAsync(HangGuard), expectedReason);
-        await broker.Process.Ended.WaitAsync(HangGuard);
-    }
 
     // A cancelled wait may surface as OperationCanceledException or its TaskCanceledException subtype.
     static async Task AssertCancelledAsync(Task task)

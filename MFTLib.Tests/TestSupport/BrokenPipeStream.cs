@@ -7,8 +7,8 @@ namespace MFTLib.Tests.TestSupport;
 ///     write and flush throws <see cref="IOException" />, the way a named pipe fails when
 ///     the far end is gone ("Pipe is broken" / ERROR_NO_DATA). Reads pass through untouched,
 ///     so the wrapper's owner still observes EOF once the peer is disposed.
-///     <see cref="DuplexStream" /> cannot produce this failure: disposing one side completes
-///     the peer's reader but never makes this side's writes throw.
+///     <see cref="InMemoryPipePair" /> cannot produce this failure: disposing one side completes
+///     the peer's reader but never makes this side's writes throw <see cref="IOException" />.
 /// </summary>
 internal sealed class BrokenPipeStream(Stream inner) : DelegatingStream(inner)
 {

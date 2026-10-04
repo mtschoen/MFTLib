@@ -246,22 +246,10 @@ public class BrokerProcessLaunchTests
     [TestMethod]
     public async Task DisposeAsync_ControlPipeAlreadyClosed_DoesNotThrow()
     {
-        var (clientSide, _) = DuplexStream.CreatePair();
+        var (clientSide, _) = new InMemoryPipePair();
         var process = CreateProcess(clientSide);
         await clientSide.DisposeAsync();
 
-        await process.DisposeAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard);
-    }
-
-    [TestMethod]
-    public async Task DisposeAsync_CalledTwice_DoesNotThrow()
-    {
-        var (clientSide, serverSide) = DuplexStream.CreatePair();
-        await using var peer = serverSide;
-        var process = CreateProcess(clientSide);
-
-        // Disposing twice is the behavior under test, so it is not expressed as an `await using`.
-        await process.DisposeAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard);
         await process.DisposeAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard);
     }
 

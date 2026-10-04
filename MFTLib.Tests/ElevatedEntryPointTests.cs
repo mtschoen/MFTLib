@@ -3,6 +3,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public class ElevatedEntryPointTests
 {
     static readonly string[] BrokerArgs = ["--broker", "--pipe", "mftlib-pipe-123"];

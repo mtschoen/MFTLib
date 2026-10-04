@@ -39,6 +39,7 @@ public class BrokerIndexWatchSourceFaultTests
         var batch = await WatchReads.NextBatchAsync(readerC);
         Assert.AreEqual(7ul, batch.JournalId);
         Assert.AreEqual(110L, batch.NextUsn);
+        Assert.AreEqual("c.txt", batch.Entries.Single().FileName);
     }
 
     [TestMethod]

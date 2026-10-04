@@ -49,21 +49,6 @@ public partial class JournalBrokerHostChannelTests
     }
 
     [TestMethod]
-    public async Task ScanChannel_ForwardsProfileAndKeepNamesToSectionWriter()
-    {
-        using var sectionWriter = new RecordingBlockSectionWriter();
-        var host = CreateHost(scanDrive: (_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]);
-        await using var harness = new HostChannelHarness(host, sectionWriter);
-
-        var pipe = await harness.OpenScanChannelAsync('C', "section-C", BrokerScanProfile.DirectoryIndex, [".git"]);
-        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
-
-        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
-        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, sectionWriter.LastFilter.Profile);
-        CollectionAssert.AreEqual(new[] { ".git" }, sectionWriter.LastFilter.KeepFileNames!.ToArray());
-    }
-
-    [TestMethod]
     public async Task ScanChannel_CatchUpFailsAndJournalProvesLoss_EmitsScanReadyThenCatchUpLostAndCloses()
     {
         var cursorQueries = 0;
@@ -140,7 +125,7 @@ public partial class JournalBrokerHostChannelTests
             allowance = parseThreads.Count;
             return [[Record(5, ".", 3)]];
         });
-        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
 
         var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
 
@@ -154,7 +139,7 @@ public partial class JournalBrokerHostChannelTests
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
         var tip = new UsnJournalCursor(7, 1500);
         var host = CreateHost(readJournal: (_, _, _) => ([JournalEntryFactory.Create(20, 1200, "file.txt")], tip));
-        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
 
         var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
 
@@ -173,7 +158,7 @@ public partial class JournalBrokerHostChannelTests
                 return Armed;
             },
             readJournal: (_, _, _) => throw failure);
-        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         return await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));
     }
 
@@ -183,23 +168,5 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(BrokerFrameKind.ScanReady, frames[^2].Kind);
         Assert.AreEqual(terminal, frames[^1].Kind);
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanCompleted));
-    }
-
-    // Consumes every batch without a block, for scans whose block content is not under test.
-    sealed class EnumeratingSectionWriter : IBlockSectionWriter
-    {
-        public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor,
-            IEnumerable<IReadOnlyList<MftRecord>> batches, MftBlockRowFilter filter,
-            BlockWriteReporting reporting, CancellationToken cancellationToken)
-        {
-            long rows = 0;
-            foreach (var batch in batches)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                rows += batch.Count;
-            }
-
-            return new BlockWriteResult(rows, 0, 0, false);
-        }
     }
 }

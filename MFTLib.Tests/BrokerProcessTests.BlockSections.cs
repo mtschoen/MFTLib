@@ -69,31 +69,8 @@ public partial class BrokerProcessTests
             TestBlockSections.Target(), new BrokerScanOptions(), CancellationToken.None).WaitAsync(HangGuard));
 
         var section = broker.Sections.Single();
-        StringAssert.Contains(exception.Message, "drive failed");
+        Assert.AreEqual("drive failed", exception.Message);
         Assert.AreEqual(1, section.Lifetime.DisposeCount, "an Error frame must immediately release the failed drive's section");
-        BlockFileAssertions.IsDisposed(section.Block);
-    }
-
-    [TestMethod]
-    public async Task DisposeAsync_WithAScanStillInFlight_DisposesTheLeftoverBlockAndLifetime()
-    {
-        var entered = new TestGate();
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, cancellationToken) =>
-        {
-            entered.MarkEntered();
-            cancellationToken.WaitHandle.WaitOne(HangGuard);
-            cancellationToken.ThrowIfCancellationRequested();
-            return [];
-        }));
-        var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(), CancellationToken.None);
-        await entered.Entered.WaitAsync(HangGuard);
-
-        await broker.Process.DisposeAsync().AsTask().WaitAsync(HangGuard);
-        await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));
-
-        var section = broker.Sections.Single();
-        Assert.AreEqual(1, section.Lifetime.DisposeCount,
-            "a lifetime left over from an in-flight scan must be disposed when the process is disposed");
         BlockFileAssertions.IsDisposed(section.Block);
     }
 

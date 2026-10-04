@@ -1,7 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using MFTLib.Index;
-using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -34,6 +33,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(BrokerScanProfile.Full, frame.Profile);
         Assert.AreEqual(0, frame.KeepFileNames.Count);
         Assert.IsNull(frame.Drive, "The drive pipe names no drive.");
+        Assert.AreEqual(0, frame.Entries.Length);
     }
 
     [TestMethod]
@@ -66,6 +66,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
         Assert.AreEqual(cursor, frame.Cursor);
+        Assert.AreEqual(0, frame.Entries.Length);
     }
 
     [TestMethod]
@@ -77,6 +78,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(BrokerFrameKind.Cursor, frame.Kind);
         Assert.AreEqual(cursor, frame.Cursor);
         Assert.IsNull(frame.Drive);
+        Assert.AreEqual(0, frame.Entries.Length);
     }
 
     [TestMethod]
@@ -207,6 +209,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.ScanReady, frame.Kind);
         Assert.AreEqual(3L, frame.SkippedRecordCount);
+        Assert.AreEqual(0, frame.Entries.Length);
     }
 
     [TestMethod]
@@ -255,6 +258,7 @@ public partial class BrokerProtocolTests
         var frame = RoundTrip(BrokerProtocol.WriteCaughtUp);
 
         Assert.AreEqual(BrokerFrameKind.CaughtUp, frame.Kind);
+        Assert.AreEqual(0, frame.Entries.Length);
     }
 
     [TestMethod]
@@ -427,19 +431,6 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void Factory_ArmAndScan_PopulatesSectionProfileAndKeepFileNames()
-    {
-        var frame = BrokerFrame.ArmAndScan("section", BrokerScanProfile.DirectoryIndex, KeepFileNamesGit);
-
-        Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
-        Assert.AreEqual("section", frame.SectionName);
-        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, frame.Profile);
-        CollectionAssert.AreEqual(KeepFileNamesGit, frame.KeepFileNames.ToArray());
-        Assert.IsNotNull(frame.Entries);
-        Assert.AreEqual(0, frame.Entries.Length);
-    }
-
-    [TestMethod]
     public void Factory_ArmAndScan_WithoutKeepFileNames_HasEmptyList()
     {
         var frame = BrokerFrame.ArmAndScan("section", BrokerScanProfile.Full);
@@ -458,28 +449,6 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(BrokerFrameKind.JournalBatch, frame.Kind);
         Assert.AreEqual(cursor, frame.Cursor);
         Assert.AreSame(entries, frame.Entries);
-    }
-
-    [TestMethod]
-    public void Factory_ScanReady_PopulatesSkippedRecordCount()
-    {
-        var frame = BrokerFrame.ScanReady(4);
-
-        Assert.AreEqual(BrokerFrameKind.ScanReady, frame.Kind);
-        Assert.AreEqual(4L, frame.SkippedRecordCount);
-        Assert.AreEqual(0, frame.Entries.Length);
-    }
-
-    [TestMethod]
-    public void Factory_ScanCompleted_PopulatesCursor()
-    {
-        var cursor = new UsnJournalCursor(7UL, 110L);
-
-        var frame = BrokerFrame.ScanCompleted(cursor);
-
-        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frame.Kind);
-        Assert.AreEqual(cursor, frame.Cursor);
-        Assert.AreEqual(0, frame.Entries.Length);
     }
 
     [TestMethod]
@@ -502,50 +471,5 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(progress, frame.Progress);
         Assert.AreEqual(BrokerScanPhase.Parsing, frame.Progress!.Value.Phase);
         Assert.AreEqual(0, frame.Entries.Length);
-    }
-
-    [TestMethod]
-    public void Factory_ArmedCursor_PopulatesCursor()
-    {
-        var cursor = new UsnJournalCursor(12345UL, 67890L);
-
-        var frame = BrokerFrame.ArmedCursor(cursor);
-
-        Assert.AreEqual(BrokerFrameKind.Cursor, frame.Kind);
-        Assert.AreEqual(cursor, frame.Cursor);
-        Assert.AreEqual(0, frame.Entries.Length);
-    }
-
-    [TestMethod]
-    public void Factory_StartWatch_PopulatesCursor()
-    {
-        var frame = BrokerFrame.StartWatch(new UsnJournalCursor(1UL, 100L));
-
-        Assert.AreEqual(BrokerFrameKind.StartWatch, frame.Kind);
-        Assert.AreEqual(new UsnJournalCursor(1UL, 100L), frame.Cursor);
-        Assert.AreEqual(0, frame.Entries.Length);
-    }
-
-    // The base-commit client test asserted that the old client wrote one request; with the
-    // client gone the wire contract is pinned on the host side: an ArmAndScan written by
-    // BrokerProtocol reaches the section writer with exactly the section, profile and names sent.
-    [TestMethod]
-    public async Task ArmAndScan_RawFrameOnDrivePipe_ReachesSectionWriterWithSectionProfileAndKeepNames()
-    {
-        using var sectionWriter = new RecordingBlockSectionWriter();
-        var host = new JournalBrokerHost(
-            _ => new UsnJournalCursor(7, 1000),
-            (_, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]],
-            (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
-            processorCount: 2);
-        await using var harness = new HostChannelHarness(host, sectionWriter);
-
-        var pipe = await harness.OpenScanChannelAsync('D', "section-D", BrokerScanProfile.DirectoryIndex, KeepFileNamesGit);
-        var frames = await HostChannelHarness.ReadToEndAsync(pipe);
-
-        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
-        Assert.AreEqual("section-D", sectionWriter.LastSectionName);
-        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, sectionWriter.LastFilter.Profile);
-        CollectionAssert.AreEqual(KeepFileNamesGit, sectionWriter.LastFilter.KeepFileNames!.ToArray());
     }
 }

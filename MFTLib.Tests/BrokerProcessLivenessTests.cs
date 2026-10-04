@@ -227,7 +227,7 @@ public class BrokerProcessLivenessTests
     public async Task ReaderSilentPipe_FailsAtStallLimitBoundary_AndClosesPipe()
     {
         var clock = new TimerSignalingClock();
-        var (client, host) = DuplexStream.CreatePair();
+        var (client, host) = new InMemoryPipePair();
         await using var hostPipe = host;
         await using var reader = new BrokerFrameReader(client, 'C', "test", clock);
 
@@ -250,7 +250,7 @@ public class BrokerProcessLivenessTests
     public async Task ReaderFrame_RestartsStallWindowFromNextRead()
     {
         var clock = new FakeTimeProvider();
-        var (client, host) = DuplexStream.CreatePair();
+        var (client, host) = new InMemoryPipePair();
         await using var hostPipe = host;
         await using var reader = new BrokerFrameReader(client, 'C', "test", clock);
         var first = reader.ReadAsync(CancellationToken.None).AsTask();
@@ -271,7 +271,7 @@ public class BrokerProcessLivenessTests
     public async Task ReaderFrameLandingAfterStallClaimedTheRead_StallWinsExactlyOnce()
     {
         var clock = new FakeTimeProvider();
-        var (client, host) = DuplexStream.CreatePair();
+        var (client, host) = new InMemoryPipePair();
         await using var hostPipe = host;
         var gate = new TestGate();
         await using var reader = new BrokerFrameReader(new IgnoreCancellationStream(client, gate), 'C', "test", clock);
@@ -291,7 +291,7 @@ public class BrokerProcessLivenessTests
     public async Task ReaderDispose_WaitsForARunningStallCallback()
     {
         var clock = new CallbackDrainingClock();
-        var (client, hostPipe) = DuplexStream.CreatePair();
+        var (client, hostPipe) = new InMemoryPipePair();
         var reader = new BrokerFrameReader(client, 'C', "test", clock);
         var read = reader.ReadAsync(CancellationToken.None).AsTask();
         await clock.TimerCreated.WaitAsync(HangGuard);

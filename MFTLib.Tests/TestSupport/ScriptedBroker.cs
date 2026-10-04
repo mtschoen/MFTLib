@@ -11,12 +11,12 @@ namespace MFTLib.Tests.TestSupport;
 /// </summary>
 internal sealed class ScriptedBroker : IAsyncDisposable
 {
-    readonly DuplexStream _hostControl;
+    readonly Stream _hostControl;
 
     public ScriptedBroker(TimeProvider? clock = null, Func<Stream, Stream>? wrapClientControl = null,
         Func<string, Stream, Stream>? wrapClientDrivePipe = null)
     {
-        var (client, host) = DuplexStream.CreatePair();
+        var (client, host) = new InMemoryPipePair();
         _hostControl = host;
         Pipes = new InMemoryBrokerPipes(new BrokerTestHarnessOptions(), wrapClientDrivePipe);
         Process = new BrokerProcess(wrapClientControl?.Invoke(client) ?? client, Pipes, Sections.Create,

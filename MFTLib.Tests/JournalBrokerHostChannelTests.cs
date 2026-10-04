@@ -212,7 +212,7 @@ public partial class JournalBrokerHostChannelTests
         }
 
         var host = CreateHost(queryVolumeInfo: _ => Volume);
-        await using var harness = new HostChannelHarness(host, new EnumeratingSectionWriter());
+        await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
         var pipe = await harness.OpenChannelAsync('C');
 
         await HostChannelHarness.WriteFrameAsync(pipe, writer =>

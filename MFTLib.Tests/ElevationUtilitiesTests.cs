@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -89,7 +88,7 @@ public class ElevationUtilitiesTests
     [TestMethod]
     public void TryRunElevated_DotnetExe_ReturnsFalse()
     {
-        ElevationUtilities._getProcessPathFunc = () => @"C:\dotnet\dotnet.exe";
+        ElevationUtilities._getProcessPathFunc = () => "C:/dotnet/dotnet.exe";
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
@@ -102,41 +101,40 @@ public class ElevationUtilitiesTests
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
-    [TestMethod]
-    public void TryRunElevated_ProcessExitsZero_ReturnsTrue()
+    [DataTestMethod]
+    [DataRow(0, true)]
+    [DataRow(1, false)]
+    public void TryRunElevated_ProcessExit_ReturnsTrueOnlyForZero(int exitCode, bool expected)
     {
-        ElevationUtilities._getProcessPathFunc = () => "C:/app/MyApp.exe";
-        ElevationUtilities._isUserInteractive = () => true;
-        // Use cross-platform command: 'true' on POSIX, 'cmd /c exit 0' on Windows
-        ElevationUtilities._startProcess = _ => Process.Start(new ProcessStartInfo(
-                RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    ? "true"
-                    : "cmd.exe",
-                RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    ? string.Empty
-                    : "/c exit 0"
-            )
-        { CreateNoWindow = true });
-        Assert.IsTrue(ElevationUtilities.TryRunElevated("--test"));
-    }
-
-    [TestMethod]
-    public void TryRunElevated_ProcessExitsNonZero_ReturnsFalse()
-    {
-        ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
-        ElevationUtilities._isUserInteractive = () => true;
-        ElevationUtilities._startProcess = _ => Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 1")
-        { CreateNoWindow = true });
-        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
+        ArrangeFakeProcess(waitResult: true, exitCode, out var killed);
+        Assert.AreEqual(expected, ElevationUtilities.TryRunElevated("--test"));
+        Assert.AreEqual(0, killed.Count, "A process that exited is never killed.");
     }
 
     [TestMethod]
     public void TryRunElevated_Timeout_KillsProcessAndReturnsFalse()
     {
-        ElevationUtilities._getProcessPathFunc = () => @"C:\app\MyApp.exe";
-        ElevationUtilities._isUserInteractive = () => true;
-        ElevationUtilities._startProcess = _ => Process.Start(LongRunningProcessStartInfo());
-        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", 100));
+        var waitedMilliseconds = new List<int>();
+        ArrangeFakeProcess(waitResult: false, exitCode: 0, out var killed);
+        var wait = ElevationUtilities._waitForExit;
+        ElevationUtilities._waitForExit = (process, timeoutMs) =>
+        {
+            waitedMilliseconds.Add(timeoutMs);
+            return wait(process, timeoutMs);
+        };
+
+        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test", 123));
+
+        CollectionAssert.AreEqual(new[] { 123 }, waitedMilliseconds);
+        Assert.AreEqual(1, killed.Count, "The process that outlived its timeout is killed once.");
+    }
+
+    [TestMethod]
+    public void TryRunElevated_TimeoutAndKillFails_ReturnsFalse()
+    {
+        ArrangeFakeProcess(waitResult: false, exitCode: 0, out _);
+        ElevationUtilities._killProcess = _ => throw new InvalidOperationException("already exited");
+        Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
     [TestMethod]
@@ -166,23 +164,16 @@ public class ElevationUtilitiesTests
         Assert.IsFalse(ElevationUtilities.TryRunElevated("--test"));
     }
 
-    /// <summary>
-    ///     A process that outlives a short timeout and that <see cref="Process.Kill()" /> fully
-    ///     terminates. Deliberately not wrapped in <c>cmd.exe /c</c>: Kill() ends only the process
-    ///     it is handed, so a wrapper leaves the real sleeper orphaned holding the inherited stdio
-    ///     handles, which fails the CI step with "WaitDelay expired before I/O complete". Output is
-    ///     redirected for the same reason.
-    /// </summary>
-    internal static ProcessStartInfo LongRunningProcessStartInfo()
+    // A never-started Process is only a handle: the wait, kill and exit-code seams stand in for it.
+    static void ArrangeFakeProcess(bool waitResult, int exitCode, out List<Process> killed)
     {
-        var isPosix = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ||
-                      RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
-        return new ProcessStartInfo(isPosix ? "sleep" : "ping.exe", isPosix ? "60" : "-n 30 127.0.0.1")
-        {
-            CreateNoWindow = true,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
+        var killedProcesses = new List<Process>();
+        killed = killedProcesses;
+        ElevationUtilities._getProcessPathFunc = () => "C:/app/MyApp.exe";
+        ElevationUtilities._isUserInteractive = () => true;
+        ElevationUtilities._startProcess = _ => new Process();
+        ElevationUtilities._waitForExit = (_, _) => waitResult;
+        ElevationUtilities._killProcess = killedProcesses.Add;
+        ElevationUtilities._getExitCode = _ => exitCode;
     }
 }

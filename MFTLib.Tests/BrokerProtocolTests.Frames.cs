@@ -46,6 +46,8 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(0xDEADBEEF, frame.RequestId);
         Assert.AreEqual("C", frame.Drive);
         Assert.AreEqual("mftlib-drive-C-1", frame.PipeName);
+        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.AreEqual(0, frame.KeepFileNames.Count);
     }
 
     [TestMethod]
@@ -77,6 +79,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(1024U, frame.BytesPerFileRecordSegment);
         Assert.AreEqual(8_192_000_000L, frame.MftValidDataLength);
         Assert.IsNull(frame.Drive, "The reply is matched by its request id, not by a drive.");
+        Assert.AreEqual(0, frame.Entries.Length);
     }
 
     [TestMethod]
@@ -88,6 +91,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(42u, frame.RequestId);
         Assert.AreEqual("journal wrapped", frame.Message);
         Assert.IsNull(frame.Drive);
+        Assert.AreEqual(0, frame.Entries.Length);
     }
 
     [TestMethod]
@@ -106,6 +110,7 @@ public partial class BrokerProtocolTests
 
         Assert.AreEqual(BrokerFrameKind.Heartbeat, frame.Kind);
         Assert.AreEqual(0u, frame.RequestId);
+        Assert.AreEqual(0, frame.Entries.Length);
     }
 
     [TestMethod]
@@ -190,50 +195,5 @@ public partial class BrokerProtocolTests
             0x09, // kind = Stalled
             0x02, 0x00, 0x00, 0x00, 0x44, 0x00 // message "D"
         ]);
-    }
-
-    [TestMethod]
-    public void Factory_OpenChannel_PopulatesRequestIdDriveAndPipeName()
-    {
-        var frame = BrokerFrame.OpenChannel(8, "E", "pipe");
-
-        Assert.AreEqual(BrokerFrameKind.OpenChannel, frame.Kind);
-        Assert.AreEqual(8u, frame.RequestId);
-        Assert.AreEqual("E", frame.Drive);
-        Assert.AreEqual("pipe", frame.PipeName);
-        Assert.AreEqual(0, frame.Entries.Length);
-        Assert.AreEqual(0, frame.KeepFileNames.Count);
-    }
-
-    [TestMethod]
-    public void Factory_VolumeInfo_PopulatesAllFields()
-    {
-        var frame = BrokerFrame.VolumeInfo(6, 1024, 8_192_000_000);
-
-        Assert.AreEqual(BrokerFrameKind.VolumeInfo, frame.Kind);
-        Assert.AreEqual(6u, frame.RequestId);
-        Assert.AreEqual(1024U, frame.BytesPerFileRecordSegment);
-        Assert.AreEqual(8_192_000_000L, frame.MftValidDataLength);
-        Assert.AreEqual(0, frame.Entries.Length);
-    }
-
-    [TestMethod]
-    public void Factory_Error_PopulatesRequestIdAndMessage()
-    {
-        var frame = BrokerFrame.Error(5, "journal wrapped");
-
-        Assert.AreEqual(BrokerFrameKind.Error, frame.Kind);
-        Assert.AreEqual(5u, frame.RequestId);
-        Assert.AreEqual("journal wrapped", frame.Message);
-        Assert.AreEqual(0, frame.Entries.Length);
-    }
-
-    [TestMethod]
-    public void Factory_NoPayloadKinds_SetKindAndEmptyEntries()
-    {
-        Assert.AreEqual(BrokerFrameKind.Heartbeat, BrokerFrame.Heartbeat().Kind);
-        Assert.AreEqual(BrokerFrameKind.CaughtUp, BrokerFrame.CaughtUp().Kind);
-        Assert.AreEqual(0, BrokerFrame.Heartbeat().Entries.Length);
-        Assert.AreEqual(0, BrokerFrame.CaughtUp().Entries.Length);
     }
 }

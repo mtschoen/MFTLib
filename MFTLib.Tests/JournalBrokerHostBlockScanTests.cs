@@ -64,6 +64,8 @@ public class JournalBrokerHostBlockScanTests
         var frames = await ScanAsync(host, blockWriter, BrokerScanProfile.DirectoryIndex, [".git"]);
 
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
+        Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
+        Assert.AreEqual("section-C", blockWriter.LastSectionName);
         Assert.AreEqual(BrokerScanProfile.DirectoryIndex, blockWriter.LastFilter.Profile);
         Assert.IsNotNull(blockWriter.LastFilter.KeepFileNames);
         CollectionAssert.AreEqual(new[] { ".git" }, blockWriter.LastFilter.KeepFileNames.ToArray());
@@ -110,7 +112,7 @@ public class JournalBrokerHostBlockScanTests
         var parsingReported = new TestGate();
         var host = CreateHost((_, _, _, progress, _) =>
         {
-            progress!.Report(new BlockWriteProgress(100, 0, 100, null, BrokerScanPhase.Parsing));
+            progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BrokerScanPhase.Parsing));
             parsingReported.MarkEntered();
             parsingReported.WaitForRelease();
             return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
@@ -121,7 +123,8 @@ public class JournalBrokerHostBlockScanTests
         await HostChannelHarness.ReadFrameAsync(pipe); // Cursor
         var firstProgress = (await HostChannelHarness.ReadFrameAsync(pipe))!.Value;
         Assert.AreEqual(BrokerScanPhase.Parsing, firstProgress.Progress?.Phase);
-        Assert.AreEqual(100L, firstProgress.Progress?.RecordsProcessed);
+        Assert.AreEqual(500L, firstProgress.Progress?.RecordsProcessed);
+        Assert.AreEqual(1000L, firstProgress.Progress?.TotalRecords);
         parsingReported.Release();
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
@@ -129,7 +132,8 @@ public class JournalBrokerHostBlockScanTests
         Assert.IsTrue(transfers.Length > 0);
         Assert.IsTrue(transfers.All(frame => frame.Progress?.Phase == BrokerScanPhase.Transferring));
         Assert.AreEqual(18L, transfers[^1].Progress?.BytesProcessed);
-        Assert.AreEqual(100L, transfers[^1].Progress?.TotalRecords);
+        Assert.AreEqual(transfers[^1].Progress?.BytesProcessed, transfers[^1].Progress?.TotalBytes);
+        Assert.AreEqual(1000L, transfers[^1].Progress?.TotalRecords);
     }
 
     [TestMethod]

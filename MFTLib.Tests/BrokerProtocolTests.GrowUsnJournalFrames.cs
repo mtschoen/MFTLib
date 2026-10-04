@@ -19,6 +19,8 @@ public partial class BrokerProtocolTests
         Assert.AreEqual("C", frame.Drive);
         Assert.AreEqual(0x08000000L, frame.JournalMaximumSize);
         Assert.AreEqual(0x01000000L, frame.JournalAllocationDelta);
+        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.AreEqual(0, frame.KeepFileNames.Count);
     }
 
     [TestMethod]
@@ -31,6 +33,8 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(0x10000000L, frame.JournalMaximumSize);
         Assert.AreEqual(0x02000000L, frame.JournalAllocationDelta);
         Assert.IsNull(frame.Drive, "The reply is matched by its request id, not by a drive.");
+        Assert.AreEqual(0, frame.Entries.Length);
+        Assert.AreEqual(0, frame.KeepFileNames.Count);
     }
 
     [TestMethod]
@@ -58,32 +62,5 @@ public partial class BrokerProtocolTests
             0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, // maximumSize = 0x08000000
             0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00 // allocationDelta = 0x01000000
         ]);
-    }
-
-    [TestMethod]
-    public void Factory_GrowUsnJournal_PopulatesKindRequestIdDriveAndSizes()
-    {
-        var frame = BrokerFrame.GrowUsnJournal(3, "C", 1, 2);
-
-        Assert.AreEqual(BrokerFrameKind.GrowUsnJournal, frame.Kind);
-        Assert.AreEqual(3u, frame.RequestId);
-        Assert.AreEqual("C", frame.Drive);
-        Assert.AreEqual(1L, frame.JournalMaximumSize);
-        Assert.AreEqual(2L, frame.JournalAllocationDelta);
-        Assert.AreEqual(0, frame.Entries.Length);
-        Assert.AreEqual(0, frame.KeepFileNames.Count);
-    }
-
-    [TestMethod]
-    public void Factory_UsnJournalSettings_PopulatesKindRequestIdAndSizes()
-    {
-        var frame = BrokerFrame.UsnJournalSettings(3, 1, 2);
-
-        Assert.AreEqual(BrokerFrameKind.UsnJournalSettings, frame.Kind);
-        Assert.AreEqual(3u, frame.RequestId);
-        Assert.AreEqual(1L, frame.JournalMaximumSize);
-        Assert.AreEqual(2L, frame.JournalAllocationDelta);
-        Assert.AreEqual(0, frame.Entries.Length);
-        Assert.AreEqual(0, frame.KeepFileNames.Count);
     }
 }
