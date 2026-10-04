@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace TestProgram;
 
 /// <summary>What one run does to each drive.</summary>
@@ -21,92 +19,93 @@ internal enum ProgramMode
     UsnRead,
 
     /// <summary>Watches the USN journal from its current cursor for a number of seconds.</summary>
-    UsnWatch
+    UsnWatch,
+
+    /// <summary>Finds records by name, with the match flags the options select.</summary>
+    FindName,
+
+    /// <summary>Streams a parse as a native result, reporting progress, counters and retained records.</summary>
+    StreamRecords,
+
+    /// <summary>Parses a saved MFT image from a file, with no volume and no elevation.</summary>
+    ParseFile,
+
+    /// <summary>Reports the volume's NTFS MFT sizing.</summary>
+    VolumeInfo,
+
+    /// <summary>Grows the USN journal to sizes given on the command line.</summary>
+    UsnGrow
 }
 
 /// <summary>
-///     The parsed command line: an optional mode name, then drive letters, then mode options. A
-///     first argument that names no mode is a drive letter and selects <see cref="ProgramMode.FindGit" />.
+///     The parsed command line: an optional mode name, then drive letters (an MFT file path for
+///     parse-file), then mode options. A first argument that names no mode is a drive letter and
+///     selects <see cref="ProgramMode.FindGit" />.
 /// </summary>
-internal sealed record TestProgramArguments(ProgramMode Mode, IReadOnlyList<string> Drives, int WatchSeconds)
+internal sealed partial record TestProgramArguments(ProgramMode Mode, IReadOnlyList<string> Drives, int WatchSeconds)
 {
     internal const string DefaultDrive = "G";
     internal const int DefaultWatchSeconds = 10;
     internal const int DefaultElevationTimeoutMilliseconds = 60000;
     internal const string SecondsOption = "--seconds";
 
+    /// <summary>The other mode options; each is rejected on a mode it does not apply to.</summary>
+    internal ModeOptions Options { get; init; } = new();
+
     internal static string Usage =>
-        "Usage: TestProgram [mode] [drive ...] [--seconds N]" + Environment.NewLine +
+        "Usage: TestProgram [mode] [drive ...] [options]" + Environment.NewLine +
         "  modes: " + string.Join(", ", ProgramModes.Names.Keys) + " (default find-git)" + Environment.NewLine +
-        $"  drive defaults to {DefaultDrive}; --seconds applies to usn-watch (default {DefaultWatchSeconds})";
+        $"  drive defaults to {DefaultDrive}; --seconds applies to usn-watch (default {DefaultWatchSeconds})" +
+        Environment.NewLine +
+        "  find-name <drive> --name TEXT [--contains] [--include-freed] [--no-paths] [--buffer-size N]" +
+        Environment.NewLine +
+        "  stream-records <drive> [--name TEXT] [--contains] [--include-freed] [--no-paths] [--threads N]" +
+        Environment.NewLine +
+        "                 [--timeout-seconds N] [--buffer-size N] [--batch-size N]" + Environment.NewLine +
+        "  parse-file <mft-file> [--name TEXT] [--contains] [--include-freed] [--no-paths] [--stream]" +
+        Environment.NewLine +
+        "             [--buffer-size N] [--batch-size N]  (needs no elevation)" + Environment.NewLine +
+        "  read-records <drive> [--no-paths] [--timings] [--buffer-size N]" + Environment.NewLine +
+        "  find-git and usn-read accept --buffer-size N" + Environment.NewLine +
+        "  usn-grow <drive> --maximum-size BYTES --allocation-delta BYTES  (changes the volume; never shrinks)";
 
     /// <summary>
-    ///     Scanning through the broker is the one mode that runs unelevated: the broker is the
-    ///     elevated process, and it asks for elevation itself.
+    ///     Scanning through the broker runs unelevated because the broker is the elevated process and
+    ///     asks for elevation itself; parsing a saved MFT image touches no volume.
     /// </summary>
-    internal bool RequiresElevation => Mode != ProgramMode.ScanDrive;
+    internal bool RequiresElevation => Mode is not (ProgramMode.ScanDrive or ProgramMode.ParseFile);
 
-    /// <summary>The wait for the elevated copy: the default plus every drive's requested watch time.</summary>
+    /// <summary>
+    ///     The wait for the elevated copy: the completion allowance plus every drive's requested
+    ///     watch or streaming time, or unbounded when streaming has no requested timeout.
+    /// </summary>
     internal int ElevationTimeoutMilliseconds
     {
         get
         {
-            var watchMilliseconds = Mode == ProgramMode.UsnWatch ? (long)Drives.Count * WatchSeconds * 1000 : 0;
-            return (int)Math.Min(int.MaxValue, DefaultElevationTimeoutMilliseconds + watchMilliseconds);
-        }
-    }
-
-    internal static bool TryParse(string[] arguments, out TestProgramArguments parsed,
-        [NotNullWhen(false)] out string? error)
-    {
-        var mode = ProgramMode.FindGit;
-        var start = 0;
-        if (arguments.Length > 0 && ProgramModes.Names.TryGetValue(arguments[0], out var named))
-        {
-            mode = named;
-            start = 1;
-        }
-
-        var drives = new List<string>();
-        var watchSeconds = DefaultWatchSeconds;
-        for (var index = start; index < arguments.Length; index++)
-        {
-            var argument = arguments[index];
-            if (argument == SecondsOption)
+            long requestedSecondsPerDrive;
+            if (Mode == ProgramMode.UsnWatch)
             {
-                if (mode != ProgramMode.UsnWatch)
-                {
-                    return Fail($"{SecondsOption} applies only to usn-watch.", out parsed, out error);
-                }
-
-                if (index + 1 >= arguments.Length || !int.TryParse(arguments[index + 1], out watchSeconds) ||
-                    watchSeconds <= 0)
-                {
-                    return Fail($"{SecondsOption} needs a positive whole number.", out parsed, out error);
-                }
-
-                index++;
+                requestedSecondsPerDrive = WatchSeconds;
             }
-            else if (argument.StartsWith("--", StringComparison.Ordinal))
+            else if (Mode == ProgramMode.StreamRecords)
             {
-                return Fail($"Unknown option {argument}.", out parsed, out error);
+                if (Options.TimeoutSeconds is not { } streamTimeout)
+                {
+                    // stream-records without --timeout-seconds lets the scan run, so the wait must not cap it.
+                    return Timeout.Infinite;
+                }
+
+                requestedSecondsPerDrive = streamTimeout;
             }
             else
             {
-                drives.Add(argument);
+                requestedSecondsPerDrive = 0;
             }
+
+            var requestedMilliseconds = Drives.Count * requestedSecondsPerDrive * 1000;
+            return (int)Math.Min(int.MaxValue, DefaultElevationTimeoutMilliseconds + requestedMilliseconds);
         }
-
-        parsed = new TestProgramArguments(mode, drives.Count > 0 ? drives : [DefaultDrive], watchSeconds);
-        error = null;
-        return true;
-    }
-
-    static bool Fail(string message, out TestProgramArguments parsed, [NotNullWhen(false)] out string? error)
-    {
-        parsed = new TestProgramArguments(ProgramMode.FindGit, [DefaultDrive], DefaultWatchSeconds);
-        error = message;
-        return false;
     }
 }
 
@@ -119,6 +118,16 @@ internal static class ProgramModes
         ["read-records"] = ProgramMode.ReadRecords,
         ["usn-query"] = ProgramMode.UsnQuery,
         ["usn-read"] = ProgramMode.UsnRead,
-        ["usn-watch"] = ProgramMode.UsnWatch
+        ["usn-watch"] = ProgramMode.UsnWatch,
+        ["find-name"] = ProgramMode.FindName,
+        ["stream-records"] = ProgramMode.StreamRecords,
+        ["parse-file"] = ProgramMode.ParseFile,
+        ["volume-info"] = ProgramMode.VolumeInfo,
+        ["usn-grow"] = ProgramMode.UsnGrow
     };
+
+    internal static string NameOf(ProgramMode mode)
+    {
+        return Names.First(entry => entry.Value == mode).Key;
+    }
 }

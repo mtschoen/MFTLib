@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -136,15 +137,17 @@ public class DriveScannerModeTests
     {
         var lines = new List<string>();
         var scanner = ElevatedScanner(lines);
-        scanner._readAllRecords = _ =>
-            [new MftRecord(5, 5, new MftRecordFields(3), "root", null), new MftRecord(20, 5, new MftRecordFields(1), "file.txt", null)];
+        scanner._readAllRecords = (_, _, _) =>
+            ([new MftRecord(5, 5, new MftRecordFields(3), "root", null), new MftRecord(20, 5, new MftRecordFields(1), "file.txt", null)], null);
 
         var result = scanner.Run(["read-records", "T"]);
 
         Assert.AreEqual(0, result);
         Assert.IsTrue(lines.Any(line => line.StartsWith("Read 2 records (1 directories) in ", StringComparison.Ordinal)));
-        Assert.IsTrue(lines.Contains("  root"));
-        Assert.IsTrue(lines.Contains("  file.txt"));
+        Assert.IsTrue(lines.Any(line => line.StartsWith("  root [record 5 ", StringComparison.Ordinal) &&
+                                        line.Contains("directory in use")));
+        Assert.IsTrue(lines.Any(line => line.StartsWith("  file.txt [record 20 ", StringComparison.Ordinal) &&
+                                        line.Contains("file in use")));
         Assert.IsTrue(lines.Contains("=== Drive T: done ==="));
     }
 
@@ -174,10 +177,10 @@ public class DriveScannerModeTests
             order.Add("arm");
             return Armed;
         };
-        scanner._readAllRecords = _ =>
+        scanner._readAllRecords = (_, _, _) =>
         {
             order.Add("scan");
-            return [new MftRecord(5, 5, new MftRecordFields(3), "root", null)];
+            return ([new MftRecord(5, 5, new MftRecordFields(3), "root", null)], null);
         };
         scanner._readJournal = (_, since) =>
         {
@@ -203,7 +206,7 @@ public class DriveScannerModeTests
         var cancellation = new CancellationTokenSource();
         TimeSpan? requestedDuration = null;
         UsnJournalCursor? watchedFrom = null;
-        scanner._createWatchCancellation = duration =>
+        scanner._createTimedCancellation = duration =>
         {
             requestedDuration = duration;
             return cancellation;
@@ -241,8 +244,14 @@ public class DriveScannerModeTests
         Assert.IsTrue(lines.Any(line => line.StartsWith("Completed at ", StringComparison.Ordinal)));
     }
 
-    [TestMethod]
-    public void Run_VolumeMode_NotElevated_SelfElevatesWithTheOriginalArguments()
+    [DataTestMethod]
+    [DataRow(new[] { "usn-watch", "C", "--seconds", "5" }, 60000 + 5000,
+        DisplayName = "the elevation wait covers the requested watch time")]
+    [DataRow(new[] { "stream-records", "C", "D", "--timeout-seconds", "120" }, 60000 + 240_000,
+        DisplayName = "the elevation wait covers every drive's requested streaming timeout")]
+    [DataRow(new[] { "stream-records", "C" }, -1,
+        DisplayName = "streaming without a requested timeout waits without a limit (Timeout.Infinite)")]
+    public void Run_VolumeMode_NotElevated_SelfElevatesWithTheOriginalArguments(string[] arguments, int expectedTimeout)
     {
         string? relaunchedWith = null;
         var elevationTimeout = 0;
@@ -250,21 +259,99 @@ public class DriveScannerModeTests
         {
             _isElevated = () => false,
             _canSelfElevate = () => true,
-            _tryRunElevated = (arguments, timeoutMilliseconds) =>
+            _tryRunElevated = (formatted, timeoutMilliseconds) =>
             {
-                relaunchedWith = arguments;
+                relaunchedWith = formatted;
                 elevationTimeout = timeoutMilliseconds;
                 return true;
             },
             _writeLine = _ => { }
         };
 
-        var result = scanner.Run(["usn-watch", "C", "--seconds", "5"]);
+        var result = scanner.Run(arguments);
 
         Assert.AreEqual(0, result);
-        Assert.AreEqual("usn-watch C --seconds 5", relaunchedWith);
-        Assert.AreEqual(60000 + 5000, elevationTimeout, "The elevation wait covers the requested watch time.");
+        Assert.AreEqual(string.Join(" ", arguments), relaunchedWith);
+        Assert.AreEqual(expectedTimeout, elevationTimeout, "The elevation wait covers the requested duration.");
     }
+
+    // The elevated child parses its command line under the Windows argv rules, so each probe is
+    // encoded by the production formatter, split by CommandLineToArgvW behind a stand-in program
+    // name (argv[0] parses differently), and must come back as the arguments the parent accepted.
+    [DataTestMethod]
+    [DataRow(new[] { "usn-grow", "--maximum-size", "8000", "--allocation-delta", "2048", "C\" --maximum-size 9000 --allocation-delta 4096" },
+        DisplayName = "an option-injection positional stays one argument")]
+    [DataRow(new[] { "find-name", "C", "--name", "a\"b" }, DisplayName = "a literal quote survives")]
+    [DataRow(new[] { "find-name", "C", "--name", "a\\\"b" }, DisplayName = "a backslash before a quote survives")]
+    [DataRow(new[] { "find-name", "C", "--name", "" }, DisplayName = "an empty value last survives")]
+    [DataRow(new[] { "find-name", "C", "--name", "", "--include-freed" },
+        DisplayName = "an empty value before another option survives")]
+    [DataRow(new[] { "find-name", "C", "--name", "a\tb.txt" }, DisplayName = "a tab inside a value survives")]
+    [DataRow(new[] { "find-name", "C", "--name", "C:\\spaced directory\\" },
+        DisplayName = "a trailing backslash last survives")]
+    [DataRow(new[] { "find-name", "C", "--name", "C:\\spaced directory\\", "--include-freed" },
+        DisplayName = "a trailing backslash before another option survives")]
+    public void Run_NotElevated_RelaunchCommandLine_RoundTripsThroughTheWindowsParser(string[] arguments)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return;
+        }
+
+        string? relaunchedWith = null;
+        var scanner = new DriveScanner
+        {
+            _isElevated = () => false,
+            _canSelfElevate = () => true,
+            _tryRunElevated = (formatted, _) =>
+            {
+                relaunchedWith = formatted;
+                return true;
+            },
+            _writeLine = _ => { }
+        };
+
+        Assert.AreEqual(0, scanner.Run(arguments));
+
+        var childArguments = SplitAsWindowsChild(relaunchedWith!);
+        CollectionAssert.AreEqual(arguments, childArguments,
+            "The child must receive exactly the arguments the parent accepted.");
+
+        Assert.IsTrue(TestProgramArguments.TryParse(arguments, out var parentParsed, out _),
+            "The probe arguments must be a valid command line.");
+        Assert.IsTrue(TestProgramArguments.TryParse(childArguments, out var childParsed, out _));
+        Assert.AreEqual(parentParsed.Mode, childParsed.Mode);
+        CollectionAssert.AreEqual(parentParsed.Drives.ToArray(), childParsed.Drives.ToArray());
+        Assert.AreEqual(parentParsed.Options.Name, childParsed.Options.Name);
+        Assert.AreEqual(parentParsed.Options.MaximumSize, childParsed.Options.MaximumSize);
+        Assert.AreEqual(parentParsed.Options.AllocationDelta, childParsed.Options.AllocationDelta);
+    }
+
+    static string[] SplitAsWindowsChild(string commandLine)
+    {
+        var argv = CommandLineToArgvW("TestProgram.exe " + commandLine, out var count);
+        Assert.AreNotEqual(IntPtr.Zero, argv, "CommandLineToArgvW could not split the relaunch command line.");
+        try
+        {
+            var split = new string[count - 1];
+            for (var index = 1; index < count; index++)
+            {
+                split[index - 1] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(argv, index * IntPtr.Size))!;
+            }
+
+            return split;
+        }
+        finally
+        {
+            LocalFree(argv);
+        }
+    }
+
+    [DllImport("shell32.dll", SetLastError = true)]
+    static extern IntPtr CommandLineToArgvW([MarshalAs(UnmanagedType.LPWStr)] string commandLine, out int numArgs);
+
+    [DllImport("kernel32.dll")]
+    static extern IntPtr LocalFree(IntPtr memory);
 
     static DriveScanner ElevatedScanner(List<string> lines)
     {

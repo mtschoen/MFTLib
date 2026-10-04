@@ -40,6 +40,19 @@ public class DriveScannerTests
         Assert.AreEqual("\"Program Files\" C", result);
     }
 
+    [DataTestMethod]
+    [DataRow("", "\"\"", DisplayName = "an empty value relaunches as an empty value")]
+    [DataRow("a\tb.txt", "\"a\tb.txt\"", DisplayName = "separator whitespace beyond the ASCII space quotes")]
+    [DataRow("a\"b", "\"a\\\"b\"", DisplayName = "an embedded quote takes a backslash")]
+    [DataRow("a\\\"b", "\"a\\\\\\\"b\"", DisplayName = "a backslash run before an embedded quote doubles")]
+    [DataRow("a\\b c", "\"a\\b c\"", DisplayName = "a backslash before no quote passes through")]
+    [DataRow("C:\\spaced directory\\", "\"C:\\spaced directory\\\\\"",
+        DisplayName = "a trailing backslash doubles before the closing quote")]
+    public void FormatArguments_RequiringQuoting_FollowsTheWindowsArgvRules(string argument, string expected)
+    {
+        Assert.AreEqual(expected, DriveScanner.FormatArguments([argument]));
+    }
+
     // --- Run: elevation paths ---
 
     [TestMethod]
@@ -181,7 +194,7 @@ public class DriveScannerTests
             _writeLine = lines.Add
         };
 
-        scanner.ScanDrive("C");
+        scanner.ScanDrive("C", new ModeOptions());
         Assert.IsTrue(lines.Any(line => line.Contains("Error on drive C")));
         Assert.IsTrue(lines.Any(line => line.Contains("Access denied")));
     }
@@ -201,7 +214,7 @@ public class DriveScannerTests
             _writeLine = lines.Add
         };
 
-        scanner.ScanDrive("C:");
+        scanner.ScanDrive("C:", new ModeOptions());
         Assert.AreEqual("C", openedLetters[0]);
         Assert.IsTrue(lines.Any(line => line == "=== Drive C: ==="));
     }
@@ -221,7 +234,7 @@ public class DriveScannerTests
             _writeLine = lines.Add
         };
 
-        scanner.ScanDrive("T");
+        scanner.ScanDrive("T", new ModeOptions());
         Assert.IsTrue(lines.Any(line => line.Contains("Found 0 .git directories")));
         Assert.IsTrue(lines.Any(line => line.Contains("=== Drive T: done ===")));
     }
@@ -241,7 +254,7 @@ public class DriveScannerTests
             _writeLine = lines.Add
         };
 
-        scanner.ScanDrive("T");
+        scanner.ScanDrive("T", new ModeOptions());
         Assert.IsTrue(lines.Any(line => line.Contains("Found 1 .git directories")));
         Assert.IsTrue(lines.Any(line => line.Contains("=== Drive T: done ===")));
     }

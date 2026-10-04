@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using MFTLib;
 
 namespace TestProgram;
@@ -7,18 +8,76 @@ namespace TestProgram;
 partial class DriveScanner
 {
     internal Func<uint, IntPtr> _acrtIobFunc = AcrtIobFuncNative;
-    internal Func<bool> _canSelfElevate = ElevationUtilities.CanSelfElevate;
+    // The provider is the library's injectable face of the same three elevation calls.
+    static readonly IElevationProvider Elevation = ElevationUtilities.DefaultProvider;
+
+    internal Func<bool> _canSelfElevate = Elevation.CanSelfElevate;
     internal Func<string?> _getProcessPath = () => Environment.ProcessPath;
-    internal Func<bool> _isElevated = ElevationUtilities.IsElevated;
+    internal Func<bool> _isElevated = Elevation.IsElevated;
     internal Func<string, MftVolume> _openVolume = letter => MftVolume.Open(letter);
+    internal Func<string, uint, MftVolume> _openVolumeWithBuffer = MftVolume.Open;
+
     internal Func<string, int, bool> _tryRunElevated =
-        (arguments, timeoutMilliseconds) => ElevationUtilities.TryRunElevated(arguments, timeoutMilliseconds);
+        (arguments, timeoutMilliseconds) => Elevation.TryRunElevated(arguments, timeoutMilliseconds);
     internal Func<string, string, IntPtr, IntPtr> _wFreopen = WFreopenNative;
     internal Action<string> _writeLine = Console.WriteLine;
 
     internal static string FormatArguments(string[] arguments)
     {
-        return string.Join(" ", arguments.Select(argument => argument.Contains(' ') ? $"\"{argument}\"" : argument));
+        return string.Join(" ", arguments.Select(FormatArgument));
+    }
+
+    // The Windows argv rules the relaunched child's runtime applies to its command line: an empty
+    // argument or one holding separator whitespace or a quote is quoted; inside the quotes a
+    // backslash run doubles before a quote (including the closing quote) and a bare quote takes a
+    // backslash, so every value reaches the child exactly as the parent parsed it.
+    static string FormatArgument(string argument)
+    {
+        if (argument.Length > 0 && !argument.Any(static character => char.IsWhiteSpace(character) || character == '"'))
+        {
+            return argument;
+        }
+
+        var formatted = new StringBuilder("\"");
+        var index = 0;
+        while (index < argument.Length)
+        {
+            var backslashes = 0;
+            while (index < argument.Length && argument[index] == '\\')
+            {
+                backslashes++;
+                index++;
+            }
+
+            if (backslashes > 0)
+            {
+                if (index == argument.Length)
+                {
+                    formatted.Append('\\', backslashes * 2);
+                }
+                else if (argument[index] == '"')
+                {
+                    formatted.Append('\\', backslashes * 2 + 1).Append('"');
+                    index++;
+                }
+                else
+                {
+                    formatted.Append('\\', backslashes);
+                }
+            }
+            else if (argument[index] == '"')
+            {
+                formatted.Append("\\\"");
+                index++;
+            }
+            else
+            {
+                formatted.Append(argument[index]);
+                index++;
+            }
+        }
+
+        return formatted.Append('"').ToString();
     }
 
     internal int Run(string[] arguments)
@@ -66,25 +125,44 @@ partial class DriveScanner
             return;
         }
 
+        if (parsed.Mode == ProgramMode.ParseFile)
+        {
+            ParseFile(parsed.Options);
+            _writeLine($"Completed at {DateTime.Now}");
+            return;
+        }
+
         foreach (var drive in parsed.Drives)
         {
             switch (parsed.Mode)
             {
                 case ProgramMode.ReadRecords:
-                    ReadRecords(drive);
+                    ReadRecords(drive, parsed.Options);
+                    break;
+                case ProgramMode.FindName:
+                    FindName(drive, parsed.Options);
+                    break;
+                case ProgramMode.StreamRecords:
+                    StreamRecords(drive, parsed.Options);
+                    break;
+                case ProgramMode.VolumeInfo:
+                    QueryVolumeInformation(drive);
+                    break;
+                case ProgramMode.UsnGrow:
+                    GrowJournal(drive, parsed.Options);
                     break;
                 case ProgramMode.UsnQuery:
                     QueryJournal(drive);
                     break;
                 case ProgramMode.UsnRead:
-                    ReadJournal(drive);
+                    ReadJournal(drive, parsed.Options);
                     break;
                 case ProgramMode.UsnWatch:
                     // The console entry point has no synchronization context, so blocking here cannot deadlock.
                     WatchJournalAsync(drive, parsed.WatchSeconds).GetAwaiter().GetResult();
                     break;
                 default:
-                    ScanDrive(drive);
+                    ScanDrive(drive, parsed.Options);
                     break;
             }
         }
@@ -92,13 +170,13 @@ partial class DriveScanner
         _writeLine($"Completed at {DateTime.Now}");
     }
 
-    internal void ScanDrive(string drive)
+    internal void ScanDrive(string drive, ModeOptions options)
     {
         var letter = drive.TrimEnd(':');
         _writeLine($"=== Drive {letter}: ===");
         try
         {
-            using var volume = _openVolume(letter);
+            using var volume = OpenVolume(letter, options);
 
             var stopwatch = Stopwatch.StartNew();
             var records = volume.FindByName(".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths, out var timings);

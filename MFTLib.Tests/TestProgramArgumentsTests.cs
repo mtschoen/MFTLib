@@ -34,11 +34,22 @@ public class TestProgramArgumentsTests
     [DataRow("usn-read", nameof(ProgramMode.UsnRead))]
     [DataRow("usn-watch", nameof(ProgramMode.UsnWatch))]
     [DataRow("USN-Watch", nameof(ProgramMode.UsnWatch))]
+    [DataRow("stream-records", nameof(ProgramMode.StreamRecords))]
+    [DataRow("volume-info", nameof(ProgramMode.VolumeInfo))]
     public void TryParse_ModeName_SelectsTheModeAndKeepsTheDrivesAfterIt(string name, string expected)
     {
         Assert.IsTrue(TestProgramArguments.TryParse([name, "C", "E"], out var parsed, out _));
 
         Assert.AreEqual(Enum.Parse<ProgramMode>(expected), parsed.Mode);
+        CollectionAssert.AreEqual(new[] { "C", "E" }, parsed.Drives.ToArray());
+    }
+
+    [TestMethod]
+    public void TryParse_FindName_KeepsTheDrivesAroundItsRequiredName()
+    {
+        Assert.IsTrue(TestProgramArguments.TryParse(["find-name", "C", "--name", "x", "E"], out var parsed, out _));
+
+        Assert.AreEqual(ProgramMode.FindName, parsed.Mode);
         CollectionAssert.AreEqual(new[] { "C", "E" }, parsed.Drives.ToArray());
     }
 
@@ -82,7 +93,12 @@ public class TestProgramArgumentsTests
     [DataRow(nameof(ProgramMode.UsnQuery), true)]
     [DataRow(nameof(ProgramMode.UsnRead), true)]
     [DataRow(nameof(ProgramMode.UsnWatch), true)]
-    public void RequiresElevation_OnlyScanDriveRunsUnelevated(string mode, bool expected)
+    [DataRow(nameof(ProgramMode.FindName), true)]
+    [DataRow(nameof(ProgramMode.StreamRecords), true)]
+    [DataRow(nameof(ProgramMode.ParseFile), false)]
+    [DataRow(nameof(ProgramMode.VolumeInfo), true)]
+    [DataRow(nameof(ProgramMode.UsnGrow), true)]
+    public void RequiresElevation_OnlyBrokerAndFileModesRunUnelevated(string mode, bool expected)
     {
         var arguments = new TestProgramArguments(Enum.Parse<ProgramMode>(mode), ["C"], 1);
 
@@ -90,14 +106,22 @@ public class TestProgramArgumentsTests
     }
 
     [DataTestMethod]
-    [DataRow(nameof(ProgramMode.FindGit), 3, 10, 60000)]
-    [DataRow(nameof(ProgramMode.UsnWatch), 1, 120, 60000 + 120_000)]
-    [DataRow(nameof(ProgramMode.UsnWatch), 2, 120, 60000 + 240_000)]
-    [DataRow(nameof(ProgramMode.UsnWatch), 4, int.MaxValue, int.MaxValue)]
-    public void ElevationTimeoutMilliseconds_CoversEveryRequestedWatch(string mode, int drives, int seconds, int expected)
+    [DataRow(nameof(ProgramMode.FindGit), 3, 10, null, 60000)]
+    [DataRow(nameof(ProgramMode.UsnWatch), 1, 120, null, 60000 + 120_000)]
+    [DataRow(nameof(ProgramMode.UsnWatch), 2, 120, null, 60000 + 240_000)]
+    [DataRow(nameof(ProgramMode.UsnWatch), 4, int.MaxValue, null, int.MaxValue)]
+    [DataRow(nameof(ProgramMode.StreamRecords), 1, 10, 120, 60000 + 120_000)]
+    [DataRow(nameof(ProgramMode.StreamRecords), 2, 10, 120, 60000 + 240_000)]
+    [DataRow(nameof(ProgramMode.StreamRecords), 2, 10, null, -1)]
+    public void ElevationTimeoutMilliseconds_CoversEveryRequestedDuration(string mode, int drives, int watchSeconds,
+        int? streamTimeoutSeconds, int expected)
     {
+        // A stream without a requested timeout gets Timeout.Infinite (-1): the scan runs unbounded.
         var arguments = new TestProgramArguments(Enum.Parse<ProgramMode>(mode),
-            Enumerable.Repeat("C", drives).ToArray(), seconds);
+            Enumerable.Repeat("C", drives).ToArray(), watchSeconds)
+        {
+            Options = new ModeOptions { TimeoutSeconds = streamTimeoutSeconds }
+        };
 
         Assert.AreEqual(expected, arguments.ElevationTimeoutMilliseconds);
     }
@@ -105,7 +129,11 @@ public class TestProgramArgumentsTests
     [TestMethod]
     public void Usage_NamesEveryMode()
     {
-        foreach (var mode in new[] { "find-git", "scan-drive", "read-records", "usn-query", "usn-read", "usn-watch" })
+        foreach (var mode in new[]
+                 {
+                     "find-git", "scan-drive", "read-records", "usn-query", "usn-read", "usn-watch", "find-name",
+                     "stream-records", "parse-file", "volume-info", "usn-grow"
+                 })
         {
             StringAssert.Contains(TestProgramArguments.Usage, mode);
         }
