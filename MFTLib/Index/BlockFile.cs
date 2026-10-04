@@ -69,8 +69,16 @@ public sealed unsafe partial class BlockFile : IDisposable
     /// <summary>Bounds each native flush call so progress is reported while a large block is written out.</summary>
     internal const long FlushRangeBytes = 64L * 1024 * 1024;
 
+    /// <summary>
+    ///     Gets the path of the backing file. Its mapped contents remain available until this block
+    ///     is disposed.
+    /// </summary>
     public string Path { get; }
 
+    /// <summary>
+    ///     Gets the fixed mapped-file length in bytes, including the header, rows, sequence
+    ///     numbers, and name pool.
+    /// </summary>
     public long Length { get; }
 
     /// <summary>
@@ -116,6 +124,10 @@ public sealed unsafe partial class BlockFile : IDisposable
         return new BlockAccessScope(this);
     }
 
+    /// <summary>
+    ///     Exposes the mapped header while a caller holds an access scope; callers must not retain
+    ///     the returned reference after that scope ends.
+    /// </summary>
     public ref BlockHeader Header
     {
         get
@@ -135,6 +147,10 @@ public sealed unsafe partial class BlockFile : IDisposable
         }
     }
 
+    /// <summary>
+    ///     Exposes the sequence number for every row slot, indexed by the same ordinal as
+    ///     <see cref="Rows" />.
+    /// </summary>
     public Span<ushort> SequenceNumbers
     {
         get
@@ -155,6 +171,11 @@ public sealed unsafe partial class BlockFile : IDisposable
         }
     }
 
+    /// <summary>
+    ///     Creates and maps a new empty block whose layout is sized from <paramref name="options" />.
+    /// </summary>
+    /// <param name="options">Capacity, identity, and path settings for the new block.</param>
+    /// <returns>A writable mapped block owned by the caller.</returns>
     public static BlockFile Create(BlockFileCreateOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);

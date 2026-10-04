@@ -10,6 +10,7 @@ namespace MFTLib.Index;
 /// </summary>
 public interface IIndexDriveWatch : IAsyncDisposable
 {
+    /// <summary>Gets the drive the index uses to associate this watch's batches and faults with a drive block.</summary>
     char DriveLetter { get; }
 
     /// <summary>
@@ -21,5 +22,8 @@ public interface IIndexDriveWatch : IAsyncDisposable
     ///     any other exception when the channel carrying it was lost. A normal end before
     ///     cancellation is treated as a lost channel.
     /// </summary>
+    /// <param name="cancellationToken">Token used by the index to stop this drive's pump.</param>
+    /// <returns>An asynchronous sequence of journal batches and the caught-up marker.</returns>
+    /// <exception cref="DriveWatchFaultException">The drive's own watch reports a fault.</exception>
     IAsyncEnumerable<WatchStreamItem> ReadAsync(CancellationToken cancellationToken);
 }

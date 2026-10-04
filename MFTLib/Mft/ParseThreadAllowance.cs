@@ -15,6 +15,9 @@ public sealed class ParseThreadAllowance
     int _count;
     unsafe int* _attachedField;
 
+    /// <summary>Initializes an allowance with the requested initial thread count.</summary>
+    /// <param name="count">Initial maximum parse-thread count, at least one.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count" /> is less than one.</exception>
     public ParseThreadAllowance(int count)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);

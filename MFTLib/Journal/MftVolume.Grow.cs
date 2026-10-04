@@ -4,6 +4,10 @@ using MFTLib.Index;
 
 namespace MFTLib;
 
+/// <summary>
+///     Adds USN journal management to an open volume while preserving the disposal and handle
+///     ownership contract of the MFT reader partial type.
+/// </summary>
 public sealed partial class MftVolume
 {
     /// <summary>
@@ -16,6 +20,13 @@ public sealed partial class MftVolume
     ///     post-change settings read back from the volume, which can round up past the
     ///     request to an allocation-delta multiple.
     /// </summary>
+    /// <param name="maximumSize">Requested maximum journal size in bytes. It must exceed the current maximum.</param>
+    /// <param name="allocationDelta">Journal allocation granularity in bytes.</param>
+    /// <returns>The journal settings Windows reports after growth.</returns>
+    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Either size is not positive.</exception>
+    /// <exception cref="InvalidOperationException"><paramref name="maximumSize" /> does not grow the journal.</exception>
+    /// <exception cref="Win32Exception">Windows rejects the journal creation control request.</exception>
     public UsnJournalSettings GrowUsnJournal(long maximumSize, long allocationDelta)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

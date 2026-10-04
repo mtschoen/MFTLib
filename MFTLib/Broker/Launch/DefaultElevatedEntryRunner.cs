@@ -15,6 +15,10 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
 
     readonly TimeProvider _timeProvider;
 
+    /// <summary>
+    ///     Initializes the production runner, using the system clock to bound diagnostic
+    ///     flushing when the elevated broker exits.
+    /// </summary>
     public DefaultElevatedEntryRunner()
         : this(TimeProvider.System)
     {
@@ -31,6 +35,15 @@ public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
     // kill the test host), so tests inject a fake. Production always uses Environment.Exit.
     internal static Action<int> _exitProcess = Environment.Exit;
 
+    /// <summary>
+    ///     Connects to the caller-created control pipe and serves one elevated journal-broker
+    ///     session. This method terminates the current process after the session ends.
+    /// </summary>
+    /// <param name="controlPipeName">
+    ///     Name of the caller-created control pipe. A null name terminates the process with a
+    ///     failure exit code.
+    /// </param>
+    /// <exception cref="IOException">The control pipe cannot be connected or used.</exception>
     [SupportedOSPlatform("windows")]
     public void RunBroker(string? controlPipeName)
     {

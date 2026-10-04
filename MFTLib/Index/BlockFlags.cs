@@ -11,7 +11,10 @@ namespace MFTLib.Index;
 [SuppressMessage("Naming", "CA1711", Justification = "Flags suffix is conventional here; renaming breaks consumers.")]
 public enum BlockFlags : uint
 {
+    /// <summary>No header-level state is set.</summary>
     None = 0,
+    /// <summary>Set by the producer after writing completes and before flushing; a block without it is discarded.</summary>
     Complete = 1,
+    /// <summary>A journal mutation could not fit in the block, so it requires compaction.</summary>
     CompactionNeeded = 2
 }

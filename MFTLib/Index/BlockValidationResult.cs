@@ -7,13 +7,21 @@ namespace MFTLib.Index;
 /// </summary>
 public enum BlockValidationResult
 {
+    /// <summary>Allows the caller to open the cached block without a replacement scan.</summary>
     Valid,
+    /// <summary>The file does not begin with the block-format magic value.</summary>
     WrongMagic,
+    /// <summary>The file uses an unsupported block-format version.</summary>
     WrongFormatVersion,
+    /// <summary>The completion marker was never published, so the partially written file must be discarded.</summary>
     Incomplete,
+    /// <summary>The cached identifiers arise from another volume, so they cannot identify files on the requested drive.</summary>
     WrongVolumeSerial,
+    /// <summary>The on-disk layout cannot be mapped safely because its regions contradict the header.</summary>
     InconsistentRegions,
+    /// <summary>The cache covers another tree on the same volume, so it cannot satisfy this open request.</summary>
     WrongRootDirectory,
+    /// <summary>A row could address unvalidated name-pool bytes, so the cache cannot be read safely.</summary>
     InvalidNameDescriptor,
 
     /// <summary>

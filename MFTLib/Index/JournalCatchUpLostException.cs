@@ -31,6 +31,7 @@ public sealed class JournalCatchUpLostException : Exception
         CheckpointLoss = checkpointLoss;
     }
 
+    /// <summary>Gets the drive whose scan lost journal catch-up.</summary>
     public char DriveLetter { get; }
 
     /// <summary>

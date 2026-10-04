@@ -10,6 +10,11 @@ public static class NamePool
     /// <summary>The row's name length field is 16 bits, so a name longer than this cannot be stored.</summary>
     internal const int MaximumNameLengthUnits = 32767;
 
+    /// <summary>Returns a name slice addressed by a byte offset and UTF-16 code-unit length.</summary>
+    /// <param name="pool">Name-pool characters.</param>
+    /// <param name="offsetBytes">Byte offset of the name in <paramref name="pool" />.</param>
+    /// <param name="lengthUnits">Name length in UTF-16 code units.</param>
+    /// <returns>A view over the requested characters; the caller must keep the backing block alive.</returns>
     public static ReadOnlySpan<char> Read(ReadOnlySpan<char> pool, uint offsetBytes, ushort lengthUnits)
     {
         var start = (int)(offsetBytes / sizeof(char));
@@ -21,6 +26,10 @@ public static class NamePool
     ///     read, so a rename running concurrently on the writer thread cannot hand this reader
     ///     one name's offset paired with another name's length.
     /// </summary>
+    /// <param name="block">Mapped block containing the row and name pool.</param>
+    /// <param name="rowIndex">Row whose name is read.</param>
+    /// <returns>A view over the row name; it becomes unusable when <paramref name="block" /> is disposed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="block" /> is null.</exception>
     public static ReadOnlySpan<char> ReadRowName(BlockFile block, uint rowIndex)
     {
         ArgumentNullException.ThrowIfNull(block);
@@ -35,6 +44,12 @@ public static class NamePool
     ///     untouched. A false result is the pool-exhaustion path: the caller sets the
     ///     compaction-needed flag and keeps applying what does fit.
     /// </summary>
+    /// <param name="pool">Writable UTF-16 name-pool storage.</param>
+    /// <param name="usedBytes">Used pool bytes, updated only after a successful append.</param>
+    /// <param name="capacityBytes">Usable pool capacity in bytes.</param>
+    /// <param name="name">Name to append.</param>
+    /// <param name="offsetBytes">Receives the appended name's byte offset, or zero on failure.</param>
+    /// <returns>true when the name fits and was appended; otherwise, false.</returns>
     public static bool TryAppend(Span<char> pool, ref uint usedBytes, uint capacityBytes,
         ReadOnlySpan<char> name, out uint offsetBytes)
     {

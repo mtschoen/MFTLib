@@ -75,6 +75,9 @@ public readonly partial record struct FileEntry
     /// </summary>
     public bool IsDisposed => _snapshot is not null && _snapshot.IsReleased;
 
+    /// <summary>Gets the row key of this entry: its drive plus its row number in that drive's block. It is not an NTFS file identifier; see <see cref="FileId" />.</summary>
+    /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
+    /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
     public FileId Id
     {
         get
@@ -84,20 +87,31 @@ public readonly partial record struct FileEntry
         }
     }
 
+    /// <summary>Gets the current file or directory name. This allocates a managed string.</summary>
+    /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
+    /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
     public string Name => new(NamePool.ReadRowName(DriveBlock.Block, _rowIndex));
 
+    /// <summary>Gets the file length in bytes, or zero for directories and unknown sizes.</summary>
     public long Size => Row.Size;
 
+    /// <summary>Determines whether <see cref="Size" /> is known.</summary>
     public bool SizeKnown => Row.SizeKnown;
 
+    /// <summary>Gets the last-write time in UTC.</summary>
     public DateTime Modified => Row.ModifiedUtc;
 
+    /// <summary>Gets the attribute flags captured in this snapshot, which can be stale after a later change.</summary>
     public FileAttributes Attributes => (FileAttributes)Row.Attributes;
 
+    /// <summary>Determines whether the entry represents a directory.</summary>
     public bool IsDirectory => Row.IsDirectory;
 
+    /// <summary>Determines whether the entry is a retained deletion tombstone.</summary>
     public bool IsDeleted => Row.IsDeleted;
 
+    /// <summary>Formats this entry for diagnostics without allocating its name when invalid or disposed.</summary>
+    /// <returns>An invalid, disposed, or name-and-identifier representation.</returns>
     public override string ToString()
     {
         if (!IsValid)

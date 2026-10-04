@@ -7,7 +7,9 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed record EnumerationProducerOptions
 {
+    /// <summary>Directory from which recursive enumeration begins.</summary>
     public required string RootDirectory { get; init; }
 
+    /// <summary>Drive letter reported by entries produced by this enumeration.</summary>
     public required char DriveLetter { get; init; }
 }

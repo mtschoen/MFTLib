@@ -7,6 +7,8 @@ namespace MFTLib.Index;
 /// </summary>
 public enum ProducerKind : uint
 {
+    /// <summary>Row numbers are NTFS MFT segment indexes; a segment index may be reused by a later file, so it is not a stable file identity by itself.</summary>
     Mft = 1,
+    /// <summary>Row numbers were assigned in traversal order and do not correspond to NTFS segment indexes.</summary>
     Enumeration = 2
 }

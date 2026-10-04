@@ -6,6 +6,11 @@ namespace MFTLib.Index;
 /// <summary>An opaque consumer cache identity. The zero value means unspecified.</summary>
 public readonly record struct CacheTag
 {
+    /// <summary>Initializes a consumer identity from a four-character ASCII code and version.</summary>
+    /// <param name="fourCc">Exactly four ASCII characters identifying the consumer.</param>
+    /// <param name="version">Consumer-defined version, including zero.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="fourCc" /> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="fourCc" /> is not exactly four ASCII characters.</exception>
     public CacheTag(string fourCc, uint version)
     {
         ArgumentNullException.ThrowIfNull(fourCc);
@@ -25,7 +30,9 @@ public readonly record struct CacheTag
     }
 
     internal uint PackedFourCc { get; }
+    /// <summary>Consumer-defined cache identity version.</summary>
     public uint Version { get; }
+    /// <summary>Four-character ASCII code reconstructed from the packed on-disk representation.</summary>
     public string FourCc => new(new[]
     {
         (char)(PackedFourCc & 0xff), (char)((PackedFourCc >> 8) & 0xff),
@@ -43,6 +50,8 @@ public readonly record struct CacheTag
     /// </summary>
     internal static bool IsValidStorage(uint packedFourCc) => (packedFourCc & 0x80808080) == 0;
 
+    /// <summary>Formats the identity as a quoted FourCC followed by its invariant-culture version.</summary>
+    /// <returns>A diagnostic representation of this cache identity.</returns>
     public override string ToString() =>
         $"{JsonSerializer.Serialize(FourCc)} v{Version.ToString(CultureInfo.InvariantCulture)}";
 }

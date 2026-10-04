@@ -7,6 +7,11 @@ namespace MFTLib;
 /// </summary>
 public enum BrokerScanProfile
 {
+    /// <summary>Returns the complete MFT inventory.</summary>
     Full = 0,
+    /// <summary>
+    ///     Returns directory records for path resolution and records whose names occur in
+    ///     <see cref="BrokerScanOptions.KeepFileNames" />.
+    /// </summary>
     DirectoryIndex = 1
 }

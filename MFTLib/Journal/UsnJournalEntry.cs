@@ -12,6 +12,7 @@ readonly record struct NativeUsnJournalEntryData
     public required string FileName { get; init; }
 }
 
+/// <summary>One decoded NTFS USN change-journal record.</summary>
 public readonly struct UsnJournalEntry
 {
     /// <summary>
@@ -31,15 +32,24 @@ public readonly struct UsnJournalEntry
     /// </summary>
     public ulong ParentRecordNumber { get; }
 
+    /// <summary>Monotonic journal sequence number assigned to this change.</summary>
     public long Usn { get; }
+    /// <summary>UTC timestamp of the record, or <see cref="DateTime.MinValue" /> when unavailable.</summary>
     public DateTime Timestamp { get; }
+    /// <summary>NTFS reasons that caused this journal record.</summary>
     public UsnReason Reason { get; }
+    /// <summary>NTFS file attributes captured with the change.</summary>
     public FileAttributes FileAttributes { get; }
+    /// <summary>Name of the changed item, without a parent path.</summary>
     public string FileName { get; }
 
+    /// <summary>Determines whether this record closes a file-handle operation.</summary>
     public bool IsClose => (Reason & UsnReason.Close) != 0;
+    /// <summary>Determines whether this record reports creation.</summary>
     public bool IsCreate => (Reason & UsnReason.FileCreate) != 0;
+    /// <summary>Determines whether this record reports deletion.</summary>
     public bool IsDelete => (Reason & UsnReason.FileDelete) != 0;
+    /// <summary>Determines whether this record reports either half of a rename operation.</summary>
     public bool IsRename => (Reason & (UsnReason.RenameOldName | UsnReason.RenameNewName)) != 0;
 
     internal UsnJournalEntry(NativeUsnJournalEntryData data)
@@ -73,11 +83,15 @@ public readonly struct UsnJournalEntry
     ///     produce entries outside the native marshaling path (e.g. a tool that
     ///     serializes journal data to disk and reconstructs it in another process).
     /// </summary>
+    /// <param name="options">Already-decoded journal values to copy into the entry.</param>
+    /// <returns>A journal entry containing the supplied values.</returns>
     public static UsnJournalEntry Create(UsnJournalEntryOptions options)
     {
         return new UsnJournalEntry(options);
     }
 
+    /// <summary>Formats the journal reasons, name, and record number for diagnostics.</summary>
+    /// <returns>A diagnostic representation of this entry.</returns>
     public override string ToString()
     {
         return $"[{Reason}] {FileName} (record {RecordNumber})";

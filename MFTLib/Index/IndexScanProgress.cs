@@ -10,15 +10,21 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed record IndexScanProgress
 {
+    /// <summary>Drive whose block is being produced.</summary>
     public required char DriveLetter { get; init; }
 
+    /// <summary>Current stage of the scan.</summary>
     public required IndexScanPhase Phase { get; init; }
 
+    /// <summary>Number of rows written so far, or final row count on a successful completion sample.</summary>
     public required uint RowsWritten { get; init; }
 
+    /// <summary>Expected total rows when known; otherwise, null.</summary>
     public uint? TotalRows { get; init; }
 
+    /// <summary>Current directory during enumeration, or null for producers without directories.</summary>
     public string? CurrentDirectory { get; init; }
 
+    /// <summary>Terminal scan outcome on a finished sample; otherwise, null.</summary>
     public IndexScanOutcome? Outcome { get; init; }
 }

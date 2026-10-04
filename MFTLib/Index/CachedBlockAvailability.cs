@@ -1,5 +1,6 @@
 namespace MFTLib.Index;
 
+/// <summary>Describes whether a cached block can be used after attempting locked validation.</summary>
 public enum CachedBlockAvailability
 {
     /// <summary>Validation passed under the slot lock, so the root and producer fields are populated.</summary>

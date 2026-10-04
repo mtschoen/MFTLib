@@ -13,11 +13,16 @@ namespace MFTLib.Index;
                     "construct one that names no drive.")]
 public sealed class DriveWatchFaultException : Exception
 {
+    /// <summary>Initializes a drive-specific watch fault.</summary>
+    /// <param name="driveLetter">Drive whose watch failed.</param>
+    /// <param name="message">Description of the failure.</param>
+    /// <param name="innerException">Underlying failure, if one is available.</param>
     public DriveWatchFaultException(char driveLetter, string message, Exception? innerException = null)
         : base(message, innerException)
     {
         DriveLetter = driveLetter;
     }
 
+    /// <summary>Gets the drive whose watch failed; the index attributes the fault to this drive.</summary>
     public char DriveLetter { get; }
 }

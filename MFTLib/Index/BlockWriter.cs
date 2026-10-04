@@ -12,12 +12,16 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed class BlockWriter
 {
+    /// <summary>Initializes a writer for one mapped block.</summary>
+    /// <param name="block">Block that receives rows, names, and header updates.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="block" /> is null.</exception>
     public BlockWriter(BlockFile block)
     {
         ArgumentNullException.ThrowIfNull(block);
         Block = block;
     }
 
+    /// <summary>Provides the mapped block that each writer operation keeps accessible during its lifetime.</summary>
     public BlockFile Block { get; }
 
     /// <summary>
@@ -35,6 +39,7 @@ public sealed class BlockWriter
     /// </summary>
     internal Action? _completeAccessTakenForTest;
 
+    /// <summary>Gets the highest written row index plus one, including tombstones and unpopulated gaps.</summary>
     public uint RowCount
     {
         get
@@ -44,6 +49,7 @@ public sealed class BlockWriter
         }
     }
 
+    /// <summary>Determines whether the block has exhausted row or name-pool capacity.</summary>
     public bool CompactionNeeded
     {
         get
@@ -57,6 +63,10 @@ public sealed class BlockWriter
     ///     Fills one slot. Returns false without writing anything when the slot is past capacity
     ///     or the name does not fit, having first set the compaction-needed flag.
     /// </summary>
+    /// <param name="rowIndex">Zero-based row slot to populate.</param>
+    /// <param name="name">File or directory name to append to the immutable name pool.</param>
+    /// <param name="columns">Remaining row values, including parent, attributes, size, and flags.</param>
+    /// <returns>true when the row and name fit; otherwise, false after marking compaction needed.</returns>
     public bool TryWriteRow(uint rowIndex, ReadOnlySpan<char> name, in RowColumns columns)
     {
         using var access = Block.TakeAccess();
@@ -116,6 +126,10 @@ public sealed class BlockWriter
     ///     concurrent reader sees the old name or the new one and never a torn pairing of one
     ///     name's offset with another name's length.
     /// </summary>
+    /// <param name="rowIndex">Zero-based row slot to rename or move.</param>
+    /// <param name="name">New name, or the current name for a parent-only move.</param>
+    /// <param name="parentRow">New parent-row index.</param>
+    /// <returns>true when the update fits; otherwise, false after marking compaction needed.</returns>
     public bool TryRenameRow(uint rowIndex, ReadOnlySpan<char> name, uint parentRow)
     {
         using var access = Block.TakeAccess();
@@ -144,18 +158,23 @@ public sealed class BlockWriter
         return true;
     }
 
+    /// <summary>Marks an allocated row deleted while retaining its name for change reporting.</summary>
+    /// <param name="rowIndex">Zero-based row slot to mark.</param>
     public void MarkTombstone(uint rowIndex)
     {
         using var access = Block.TakeAccess();
         AddRowFlags(rowIndex, RowFlags.Tombstone);
     }
 
+    /// <summary>Marks a directory whose subtree enumeration was skipped after an access denial.</summary>
+    /// <param name="rowIndex">Zero-based directory row slot to mark.</param>
     public void MarkSubtreeSkipped(uint rowIndex)
     {
         using var access = Block.TakeAccess();
         AddRowFlags(rowIndex, RowFlags.SubtreeSkipped);
     }
 
+    /// <summary>Marks the block stale because an update could not fit its reserved capacity.</summary>
     public void MarkCompactionNeeded()
     {
         using var access = Block.TakeAccess();
@@ -168,6 +187,9 @@ public sealed class BlockWriter
         Block.Header.Flags |= BlockFlags.CompactionNeeded;
     }
 
+    /// <summary>Stores the journal checkpoint from which this completed block can be watched.</summary>
+    /// <param name="journalId">Current USN journal identifier.</param>
+    /// <param name="nextUsn">Next unread USN cursor.</param>
     public void SetJournalCursor(ulong journalId, long nextUsn)
     {
         using var access = Block.TakeAccess();
@@ -176,6 +198,8 @@ public sealed class BlockWriter
         header.UsnNextUsn = nextUsn;
     }
 
+    /// <summary>Increments and returns the block's mutation generation.</summary>
+    /// <returns>The incremented generation.</returns>
     public ulong BumpGeneration()
     {
         using var access = Block.TakeAccess();
@@ -185,10 +209,12 @@ public sealed class BlockWriter
     }
 
     /// <summary>
-    ///     Stamps the scan timestamp and sets the complete flag last, then flushes, reporting each
-    ///     flushed range to <paramref name="rangeFlushed" /> when it is not null. A producer
+    ///     Stamps the scan timestamp and sets the complete flag last, then flushes, reporting cumulative
+    ///     bytes flushed to <paramref name="rangeFlushed" /> after each range when it is not null. A producer
     ///     that dies before this call leaves a block that validation rejects.
     /// </summary>
+    /// <param name="scanTimestampUtc">UTC time at which production completed.</param>
+    /// <param name="rangeFlushed">Optional callback receiving cumulative bytes flushed so far after each range.</param>
     public void Complete(DateTime scanTimestampUtc, Action<long>? rangeFlushed)
     {
         using var access = Block.TakeAccess();

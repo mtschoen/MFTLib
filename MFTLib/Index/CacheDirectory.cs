@@ -13,6 +13,13 @@ namespace MFTLib.Index;
 /// </summary>
 public static partial class CacheDirectory
 {
+    /// <summary>
+    ///     Produces the canonical cache filename for a volume, using an uppercase drive letter and
+    ///     eight hexadecimal serial-number digits.
+    /// </summary>
+    /// <param name="driveLetter">Drive letter for the cached volume.</param>
+    /// <param name="volumeSerial">NTFS volume serial number encoded in the filename.</param>
+    /// <returns>The filename without a directory component.</returns>
     public static string BlockFileName(char driveLetter, uint volumeSerial)
     {
         return $"{char.ToUpperInvariant(driveLetter)}-{volumeSerial:X8}{BlockFileExtension}";

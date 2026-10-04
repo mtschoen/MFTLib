@@ -6,6 +6,7 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed record FileIndexOptions
 {
+    /// <summary>Drives to include in the index. An empty collection opens an index with no drives.</summary>
     public IReadOnlyList<IndexedDrive> Drives { get; init; } = [];
 
     /// <summary>
@@ -40,6 +41,7 @@ public sealed record FileIndexOptions
     /// </summary>
     public bool InitialOpenCacheOnly { get; init; }
 
+    /// <summary>Selects the default producer used for configured drives.</summary>
     public ProducerPolicy ProducerPolicy { get; init; } = ProducerPolicy.Mft;
 
     /// <summary>

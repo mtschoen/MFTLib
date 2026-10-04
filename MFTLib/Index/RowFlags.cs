@@ -9,6 +9,7 @@ namespace MFTLib.Index;
 [SuppressMessage("Naming", "CA1711", Justification = "Flags suffix is conventional here; renaming breaks consumers.")]
 public enum RowFlags : ushort
 {
+    /// <summary>No per-row state is set.</summary>
     None = 0,
 
     /// <summary>The slot holds a live record. Slots that were never filled read as zero.</summary>

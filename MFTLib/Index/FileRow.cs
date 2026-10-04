@@ -27,23 +27,31 @@ public struct FileRow
     /// <summary>Name length in UTF-16 code units, not bytes.</summary>
     [FieldOffset(12)] public ushort NameLengthUnits;
 
+    /// <summary>Per-row state flags.</summary>
     [FieldOffset(14)] public RowFlags Flags;
 
     /// <summary>Size in bytes. Directories carry zero, as do rows with the size-unknown flag.</summary>
     [FieldOffset(16)] public long Size;
 
+    /// <summary>Last-write time as UTC <see cref="DateTime.Ticks" />.</summary>
     [FieldOffset(24)] public long ModifiedTicks;
 
+    /// <summary>Determines whether this slot contains a live or tombstoned row.</summary>
     public readonly bool IsInUse => (Flags & RowFlags.InUse) != 0;
 
+    /// <summary>Determines whether this row represents a directory.</summary>
     public readonly bool IsDirectory => (Flags & RowFlags.Directory) != 0;
 
+    /// <summary>Determines whether this row was deleted but retained as a tombstone.</summary>
     public readonly bool IsDeleted => (Flags & RowFlags.Tombstone) != 0;
 
+    /// <summary>Determines whether <see cref="Size" /> is known.</summary>
     public readonly bool SizeKnown => (Flags & RowFlags.SizeUnknown) == 0;
 
+    /// <summary>Determines whether enumeration skipped this directory's subtree after an access denial.</summary>
     public readonly bool SubtreeSkipped => (Flags & RowFlags.SubtreeSkipped) != 0;
 
+    /// <summary>Converts <see cref="ModifiedTicks" /> to a UTC <see cref="DateTime" />.</summary>
     public readonly DateTime ModifiedUtc => new(ModifiedTicks, DateTimeKind.Utc);
 
     /// <summary>

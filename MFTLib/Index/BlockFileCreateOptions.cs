@@ -6,10 +6,13 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed record BlockFileCreateOptions
 {
+    /// <summary>Full path of the block file to create.</summary>
     public required string Path { get; init; }
 
+    /// <summary>NTFS volume serial number that the block represents.</summary>
     public required uint VolumeSerial { get; init; }
 
+    /// <summary>Identifies the producer and row-number semantics recorded in the header.</summary>
     public required ProducerKind ProducerKind { get; init; }
 
     /// <summary>
