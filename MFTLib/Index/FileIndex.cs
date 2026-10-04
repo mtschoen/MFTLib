@@ -94,6 +94,10 @@ public sealed partial class FileIndex : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     The directory this index keeps its cache blocks in: the configured cache directory,
+    ///     or the resolved default when none was set. It is resolved even when no drive caches.
+    /// </summary>
     public string CacheDirectoryPath { get; }
 
     /// <summary>
@@ -137,6 +141,21 @@ public sealed partial class FileIndex : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     Opens an index over the configured drives, adopting a valid cached block for each or
+    ///     producing a fresh one. The returned task completes once every drive has settled. A
+    ///     missing drive settles as <see cref="DriveState.Offline" />, and an MFT-producer scan
+    ///     failure settles as <see cref="DriveState.Failed" /> in <see cref="Drives" /> without
+    ///     failing the open; an enumeration production failure throws.
+    /// </summary>
+    /// <param name="options">The drives to index and the cache, progress and producer settings.</param>
+    /// <param name="cancellationToken">
+    ///     Cancels the open. Every drive's settle finishes first, and blocks already adopted are
+    ///     released before the cancellation is thrown.
+    /// </param>
+    /// <returns>The opened index, which the caller disposes.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options" /> is null.</exception>
+    /// <exception cref="OperationCanceledException">The token was cancelled before the open finished.</exception>
     public static async Task<FileIndex> OpenAsync(FileIndexOptions options,
         CancellationToken cancellationToken)
     {

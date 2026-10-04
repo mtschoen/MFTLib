@@ -3,12 +3,14 @@ using MFTLib.Index;
 
 namespace MFTLib;
 
-/// <summary>The production volume seams <see cref="JournalBrokerHost.CreateDefault" /> wires.</summary>
+/// <summary>The production volume seams <see cref="CreateDefault()" /> wires.</summary>
 public sealed partial class JournalBrokerHost
 {
     /// <summary>The MFT bytes a host scan reads per chunk, so a progress callback lands at least this often.</summary>
     internal const long HostScanChunkBytes = 64L * 1024 * 1024;
 
+    /// <summary>Creates the host that scans, reads and watches real volumes through the native seams of MFTLib itself.</summary>
+    /// <returns>A host whose volume access needs the elevation that raw volume handles require.</returns>
     public static JournalBrokerHost CreateDefault()
     {
         return CreateDefault(null);

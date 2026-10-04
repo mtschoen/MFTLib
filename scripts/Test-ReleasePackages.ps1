@@ -92,6 +92,7 @@ function Assert-ReleasePackages {
     try {
         Assert-True (-not @($mftLibArchive.Entries | Where-Object { $_.FullName -like '*MFTLibTestExtensions.dll' }).Count) 'MFTLib package contains MFTLibTestExtensions.dll.'
         foreach ($requiredEntry in @(
+            'lib/net10.0/MFTLib.xml',
             'runtimes/win-x64/native/MFTLibNative.dll',
             'build/MFTLib.targets',
             'buildTransitive/MFTLib.targets',

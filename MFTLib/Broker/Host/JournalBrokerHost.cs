@@ -7,7 +7,7 @@ namespace MFTLib;
 ///     scan, or one watch) runs on its own pipe, so drives never share a stream, a write lock or
 ///     a failure. A scan arms the journal cursor BEFORE scanning, so changes made during the scan
 ///     are replayed by catch-up. Volume access is injected so the core is testable without real
-///     elevation; <see cref="CreateDefault" /> wires the real MFTLib seams.
+///     elevation; <see cref="CreateDefault()" /> wires the real MFTLib seams.
 /// </summary>
 public sealed partial class JournalBrokerHost
 {

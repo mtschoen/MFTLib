@@ -36,6 +36,12 @@ internal sealed record MftRecordTestValues
     public ushort SequenceNumber { get; init; }
 }
 
+/// <summary>
+///     One parsed MFT file record. A record read straight from an <see cref="MftResult" /> borrows
+///     its name and path strings from native memory and is valid only until that result is
+///     disposed; call <see cref="Materialize" /> to keep one longer. Records from the batch and
+///     array APIs are already materialized.
+/// </summary>
 public readonly struct MftRecord
 {
     readonly ushort _flags;
@@ -71,6 +77,10 @@ public readonly struct MftRecord
     /// </summary>
     public ulong ParentRecordNumber { get; }
 
+    /// <summary>
+    ///     The NTFS sequence number of the file reference. NTFS reuses a segment index after a
+    ///     file is deleted, so pair it with <see cref="RecordNumber" /> to identify one file.
+    /// </summary>
     public ushort SequenceNumber => _sequenceNumber;
 
     /// <summary>
@@ -78,7 +88,10 @@ public readonly struct MftRecord
     ///     <see cref="MatchFlags.IncludeFreed" /> have this value set to false.
     /// </summary>
     public bool InUse => (_flags & 1) != 0;
+    /// <summary>Whether the record header marks a directory.</summary>
     public bool IsDirectory => (_flags & 2) != 0;
+
+    /// <summary>The Win32 file attributes the record carries; the directory bit also appears in <see cref="IsDirectory" />.</summary>
     public FileAttributes FileAttributes { get; }
 
     /// <summary>
@@ -88,6 +101,10 @@ public readonly struct MftRecord
     /// </summary>
     public long Size => _size;
 
+    /// <summary>
+    ///     False when <see cref="Size" /> is a placeholder zero because the base record carried
+    ///     no usable data size. A true <see cref="Size" /> of zero reads true here.
+    /// </summary>
     public bool SizeKnown => (_flags & SizeUnknownFlag) == 0;
 
     /// <summary>
@@ -108,6 +125,11 @@ public readonly struct MftRecord
         }
     }
 
+    /// <summary>
+    ///     The file name without its directory. When the record carried no name of its own it is
+    ///     taken from the last segment of the path; the root directory (segment 5) reads as
+    ///     <c>.</c>, and a record with neither a name nor a path reads as an empty string.
+    /// </summary>
     public unsafe string FileName
     {
         get
@@ -249,6 +271,8 @@ public readonly struct MftRecord
         return new MftRecord(values.RecordNumber, values.ParentRecordNumber, fields, values.FileName, values.FullPath);
     }
 
+    /// <summary>Formats the record as its path when one was resolved, otherwise as its file name.</summary>
+    /// <returns>The <see cref="FullPath" /> or, when that is null, the <see cref="FileName" />.</returns>
     public override string ToString()
     {
         return FullPath ?? FileName;

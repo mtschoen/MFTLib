@@ -6,6 +6,9 @@ using System.Security.Principal;
 
 namespace MFTLib;
 
+/// <summary>
+///     Elevation checks and the UAC self-relaunch helper that raw volume access needs.
+/// </summary>
 public static class ElevationUtilities
 {
     // Swappable dependencies for testability - tests replace these to exercise
@@ -36,6 +39,8 @@ public static class ElevationUtilities
         _getExitCode = process => process.ExitCode;
     }
 
+    /// <summary>Reports whether the current process holds the Administrator role.</summary>
+    /// <returns>True when elevated; always false when the host is not Windows.</returns>
     [SuppressMessage("Interoperability", "CA1416", Justification = "Guarded by IsWindows() runtime check")]
     public static bool IsElevated()
     {

@@ -17,14 +17,29 @@ public delegate Task<MftBlockProduceResult> MftBlockProducer(
 /// </summary>
 public sealed record MftBlockProduceRequest
 {
+    /// <summary>The drive to scan: its MFT is read, and the block that results is filed under this letter in the index.</summary>
     public required char DriveLetter { get; init; }
 
+    /// <summary>
+    ///     The volume serial number to stamp into the block header; a later open rejects a
+    ///     cached block whose serial differs from the volume's.
+    /// </summary>
     public required uint VolumeSerial { get; init; }
 
+    /// <summary>Where the producer creates the block file, exactly: the cache slot, a private fallback beside it, or a temporary file, already chosen by the index.</summary>
     public required string BlockPath { get; init; }
 
+    /// <summary>
+    ///     True when the block is a temporary file that the operating system deletes when its
+    ///     last handle closes, as for a no-cache open or a private block; the producer must
+    ///     create the file with that option.
+    /// </summary>
     public bool DeleteOnClose { get; init; }
 
+    /// <summary>
+    ///     Where the producer reports scan progress, taken from <see cref="FileIndexOptions.Progress" />.
+    ///     Null when the caller did not ask for progress.
+    /// </summary>
     public IProgress<IndexScanProgress>? Progress { get; init; }
 
     /// <summary>

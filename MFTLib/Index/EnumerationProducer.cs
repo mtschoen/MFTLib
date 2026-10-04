@@ -26,12 +26,16 @@ public sealed class EnumerationProducer
     /// </summary>
     internal const int EnumerationBufferSizeBytes = 64 * 1024;
 
+    /// <summary>Creates a producer that walks the tree named by the options.</summary>
+    /// <param name="options">The root directory to walk and the drive letter to report progress under.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="options" /> is null.</exception>
     public EnumerationProducer(EnumerationProducerOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         Options = options;
     }
 
+    /// <summary>The root directory and progress drive letter fixed at construction; they never change during a walk.</summary>
     public EnumerationProducerOptions Options { get; }
 
     /// <summary>
@@ -64,11 +68,26 @@ public sealed class EnumerationProducer
         }
     }
 
+    /// <summary>Budgets name-pool bytes for a row estimate at a fixed mean of 24 UTF-16 units per name.</summary>
+    /// <param name="estimatedRowCount">Row estimate, typically from <see cref="EstimateRowCount" />.</param>
+    /// <returns>The estimated name-pool size in bytes.</returns>
+    /// <exception cref="OverflowException">The product exceeds <see cref="UInt32.MaxValue" />.</exception>
     public static uint EstimateNamePoolBytes(uint estimatedRowCount)
     {
         return checked(estimatedRowCount * EstimatedNameBytesPerRow);
     }
 
+    /// <summary>
+    ///     Walks the tree breadth first, writing the root as row 0 and every entry after it into
+    ///     the writer. It does not call <see cref="BlockWriter.Complete" />; the caller does. The
+    ///     walk stops early once the writer reports compaction needed.
+    /// </summary>
+    /// <param name="writer">The block to write rows into.</param>
+    /// <param name="progress">Receives one sample after each directory is enumerated, on the calling thread; may be null.</param>
+    /// <param name="cancellationToken">Observed before the root row and before each directory.</param>
+    /// <returns>The row count, the number of subtrees that could not be entered, and whether the block was too small.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="writer" /> is null.</exception>
+    /// <exception cref="OperationCanceledException">The token was cancelled; the block is left partially written.</exception>
     public EnumerationResult Produce(BlockWriter writer, IProgress<IndexScanProgress>? progress,
         CancellationToken cancellationToken)
     {

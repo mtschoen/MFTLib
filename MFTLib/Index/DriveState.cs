@@ -9,8 +9,13 @@ namespace MFTLib.Index;
 /// </summary>
 public enum DriveState
 {
+    /// <summary>The drive has a valid block and answers queries; its watch may still be failing independently.</summary>
     Ready,
+
+    /// <summary>A mutation did not fit the block, so queries still answer but a rescan is needed.</summary>
     Stale,
+
+    /// <summary>The drive was unavailable when the index opened and has no block.</summary>
     Offline,
 
     /// <summary>

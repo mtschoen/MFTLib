@@ -5,6 +5,12 @@ using MFTLib.Interop;
 
 namespace MFTLib;
 
+/// <summary>
+///     The native result of one MFT parse. It owns the native record tables and string pools
+///     until disposed. Enumerating it yields records that borrow their strings from that native
+///     memory, so they and any open enumerator must not outlive <see cref="Dispose" />; use
+///     <see cref="MaterializeBatches" /> or <see cref="ToArray" /> for records that do.
+/// </summary>
 public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 {
     readonly char _driveLetter;
@@ -99,6 +105,10 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         }
     }
 
+    /// <summary>
+    ///     Frees the native tables and pools. Safe to call more than once. The count and timing
+    ///     properties stay readable afterward; enumeration and materialization throw.
+    /// </summary>
     public void Dispose()
     {
         if (!_disposed)
@@ -113,6 +123,9 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         }
     }
 
+    /// <summary>Enumerates the records in native order, borrowing strings from native memory.</summary>
+    /// <returns>An enumerator that is valid only until this result is disposed.</returns>
+    /// <exception cref="ObjectDisposedException">This result has been disposed.</exception>
     public IEnumerator<MftRecord> GetEnumerator()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -138,6 +151,14 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         return GetCompactEntry(active.Table, active.Pool, active.PoolUnits, index, active.IsPath, _driveLetter);
     }
 
+    /// <summary>
+    ///     Copies the records into managed memory one batch at a time, so a caller holds at most
+    ///     one batch of managed strings while the native result stays alive.
+    /// </summary>
+    /// <param name="batchSize">Records per batch; the last batch may be smaller.</param>
+    /// <returns>Batches of materialized records in native order. Enumerate before disposing this result.</returns>
+    /// <exception cref="ObjectDisposedException">This result has been disposed; thrown when enumeration starts.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="batchSize" /> is not positive; thrown when enumeration starts.</exception>
     public IEnumerable<MftRecord[]> MaterializeBatches(int batchSize = 4096)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -155,6 +176,9 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         }
     }
 
+    /// <summary>Copies every record into one managed array of materialized records.</summary>
+    /// <returns>The records, which stay valid after this result is disposed.</returns>
+    /// <exception cref="ObjectDisposedException">This result has been disposed.</exception>
     public MftRecord[] ToArray()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

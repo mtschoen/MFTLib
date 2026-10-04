@@ -41,6 +41,7 @@ try {
     $testExtensionsPackage = Join-Path $temporaryDirectory 'MFTLib.TestExtensions.nupkg'
     $mftLibEntries = @(
         'lib/net10.0/MFTLib.dll',
+        'lib/net10.0/MFTLib.xml',
         'runtimes/win-x64/native/MFTLibNative.dll',
         'build/MFTLib.targets',
         'buildTransitive/MFTLib.targets',
@@ -57,7 +58,7 @@ try {
         @{ Identity = 'MFTLib'; Path = $mftLibPackage; Entries = $mftLibEntries },
         @{ Identity = 'MFTLib.TestExtensions'; Path = $testExtensionsPackage; Entries = $testExtensionsEntries }
     )) {
-        foreach ($missingEntry in $package.Entries | Where-Object { $_ -notlike 'lib/*' }) {
+        foreach ($missingEntry in $package.Entries | Where-Object { $_ -notlike 'lib/*' -or $_ -like '*.xml' }) {
             $incompletePackage = Join-Path $temporaryDirectory ("incomplete-$passed.nupkg")
             New-TestPackage $incompletePackage $package.Identity @($package.Entries | Where-Object { $_ -cne $missingEntry })
             $libraryPath = if ($package.Identity -eq 'MFTLib') { $incompletePackage } else { $mftLibPackage }

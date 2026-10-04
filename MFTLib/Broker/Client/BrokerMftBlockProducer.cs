@@ -33,6 +33,11 @@ public sealed class BrokerMftBlockProducer
         _scanCompleted = scanCompleted;
     }
 
+    /// <summary>
+    ///     The delegate to assign as the index's MFT producer. Each call to the delegate runs one
+    ///     drive scan on a broker obtained from the connect function.
+    /// </summary>
+    /// <returns>A producer that fills the block named by each request through the broker.</returns>
     public MftBlockProducer CreateProducer() => ProduceAsync;
 
     /// <summary>The watch source over the same broker connection: each drive's watch runs on a pipe of its own.</summary>

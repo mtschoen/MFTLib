@@ -5,6 +5,11 @@ using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib;
 
+/// <summary>
+///     A raw read handle on one NTFS volume. Opening needs the Administrator role because it
+///     opens the volume device itself. Dispose releases the handle. The scan members here parse
+///     the MFT natively; the USN journal members live in the same type.
+/// </summary>
 public sealed partial class MftVolume : IDisposable
 {
     readonly uint _bufferSizeRecords;
@@ -21,6 +26,7 @@ public sealed partial class MftVolume : IDisposable
         _bufferSizeRecords = bufferSizeRecords;
     }
 
+    /// <summary>Closes the volume handle. Safe to call more than once.</summary>
     public void Dispose()
     {
         if (!_disposed)
@@ -35,6 +41,16 @@ public sealed partial class MftVolume : IDisposable
         return _volumeHandle;
     }
 
+    /// <summary>Opens a volume for reading.</summary>
+    /// <param name="volumePath">
+    ///     A drive letter (<c>C</c>, <c>C:</c> or <c>C:\</c>), a raw device path (<c>\\.\C:</c>) or a
+    ///     volume GUID path. A GUID path leaves record paths without a drive prefix.
+    /// </param>
+    /// <param name="bufferSizeRecords">Records the native parser reads per chunk; also the unit at which cancellation is observed.</param>
+    /// <returns>The open volume, which the caller disposes.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="volumePath" /> is null or empty.</exception>
+    /// <exception cref="ArgumentException"><paramref name="volumePath" /> is in none of the recognized formats.</exception>
+    /// <exception cref="IOException">The volume could not be opened, for example without elevation.</exception>
     public static MftVolume Open(string volumePath, uint bufferSizeRecords = 262144)
     {
         var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
@@ -43,21 +59,37 @@ public sealed partial class MftVolume : IDisposable
         return new MftVolume(handle, normalizedPath, bufferSizeRecords);
     }
 
+    /// <summary>Parses every record, with names but without resolved paths.</summary>
+    /// <returns>All records as materialized values that outlive this volume.</returns>
+    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
     public MftRecord[] ReadAllRecords()
     {
         return ReadAllRecords(false, out _);
     }
 
+    /// <summary>Parses every record, optionally resolving full paths.</summary>
+    /// <param name="resolvePaths">True to resolve <see cref="MftRecord.FullPath" />, which adds a resolution pass.</param>
+    /// <returns>All records as materialized values that outlive this volume.</returns>
+    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
     public MftRecord[] ReadAllRecords(bool resolvePaths)
     {
         return ReadAllRecords(resolvePaths, out _);
     }
 
+    /// <summary>Parses every record without resolving paths and reports how long each phase took.</summary>
+    /// <param name="timings">Phase timings, including the time spent copying records into managed memory.</param>
+    /// <returns>All records as materialized values that outlive this volume.</returns>
+    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
     public MftRecord[] ReadAllRecords(out MftParseTimings timings)
     {
         return ReadAllRecords(false, out timings);
     }
 
+    /// <summary>Parses every record, optionally resolving paths, and reports how long each phase took.</summary>
+    /// <param name="resolvePaths">True to resolve <see cref="MftRecord.FullPath" />, which adds a resolution pass.</param>
+    /// <param name="timings">Phase timings, including the time spent copying records into managed memory.</param>
+    /// <returns>All records as materialized values that outlive this volume.</returns>
+    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
     public MftRecord[] ReadAllRecords(bool resolvePaths, out MftParseTimings timings)
     {
         using var result = StreamRecords(
@@ -87,11 +119,22 @@ public sealed partial class MftVolume : IDisposable
         }
     }
 
+    /// <summary>Parses the MFT and keeps only records whose name matches.</summary>
+    /// <param name="name">The name to look for, matched as <paramref name="matchFlags" /> directs.</param>
+    /// <param name="matchFlags">Exact or contains matching, plus optional path resolution; defaults to an exact match.</param>
+    /// <returns>The matching records as materialized values that outlive this volume.</returns>
+    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
     public MftRecord[] FindByName(string name, MatchFlags matchFlags = MatchFlags.ExactMatch)
     {
         return FindByName(name, matchFlags, out _);
     }
 
+    /// <summary>Parses the MFT, keeps only records whose name matches, and reports how long each phase took.</summary>
+    /// <param name="name">The name to look for, matched as <paramref name="matchFlags" /> directs.</param>
+    /// <param name="matchFlags">Exact or contains matching, plus optional path resolution.</param>
+    /// <param name="timings">Phase timings, including the time spent copying records into managed memory.</param>
+    /// <returns>The matching records as materialized values that outlive this volume.</returns>
+    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
     public MftRecord[] FindByName(string name, MatchFlags matchFlags, out MftParseTimings timings)
     {
         using var result = StreamRecords(name, matchFlags, null, null, CancellationToken.None);
@@ -230,11 +273,24 @@ public sealed partial class MftVolume : IDisposable
         }
     }
 
+    /// <summary>Parses a saved MFT image without resolving paths and without needing a volume or elevation.</summary>
+    /// <param name="filePath">The MFT file to parse.</param>
+    /// <param name="timings">Phase timings, including the time spent copying records into managed memory.</param>
+    /// <returns>All records as materialized values.</returns>
+    /// <exception cref="InvalidOperationException">The native parser rejected the file.</exception>
     public static MftRecord[] ParseMFTFromFile(string filePath, out MftParseTimings timings)
     {
         return ParseMFTFromFile(filePath, null, MatchFlags.None, out timings);
     }
 
+    /// <summary>Parses a saved MFT image with an optional name filter, without needing a volume or elevation.</summary>
+    /// <param name="filePath">The MFT file to parse.</param>
+    /// <param name="filter">A name to keep, or null for every record.</param>
+    /// <param name="matchFlags">How <paramref name="filter" /> is matched and whether paths are resolved.</param>
+    /// <param name="timings">Phase timings, including the time spent copying records into managed memory.</param>
+    /// <param name="bufferSizeRecords">Records the native parser reads per chunk.</param>
+    /// <returns>The matching records as materialized values.</returns>
+    /// <exception cref="InvalidOperationException">The native parser rejected the file.</exception>
     public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags,
         out MftParseTimings timings, uint bufferSizeRecords = 262144)
     {
@@ -242,6 +298,13 @@ public sealed partial class MftVolume : IDisposable
         return MaterializeWithTimings(result, out timings);
     }
 
+    /// <summary>Parses a saved MFT image and keeps the native result, so records can be enumerated without copying them.</summary>
+    /// <param name="filePath">The MFT file to parse.</param>
+    /// <param name="filter">A name to keep, or null for every record.</param>
+    /// <param name="matchFlags">How <paramref name="filter" /> is matched and whether paths are resolved.</param>
+    /// <param name="bufferSizeRecords">Records the native parser reads per chunk.</param>
+    /// <returns>The native result, which the caller disposes.</returns>
+    /// <exception cref="InvalidOperationException">The native parser rejected the file.</exception>
     public static MftResult StreamMFTFromFile(
         string filePath, string? filter = null, MatchFlags matchFlags = MatchFlags.None,
         uint bufferSizeRecords = 262144)
