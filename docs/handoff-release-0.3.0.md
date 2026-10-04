@@ -1,11 +1,12 @@
 # Handoff: MFTLib 0.3.0 Release
 
-Updated 2026-10-02. `CHANGELOG.md` is the authoritative description of 0.3.0;
+Updated 2026-10-03. `CHANGELOG.md` is the authoritative description of 0.3.0;
 this document tracks the remaining release sequence.
 
 ## Status
 
-The pre-ship base HEAD and `gitea/main` are at `d8439ab`. The remote named `origin`
+The pre-ship simplification pass (pull requests 339 through 352) is merged; its last
+code commit on `gitea/main` is `67f05d9`. The remote named `origin`
 in some checkouts is a stale GitHub mirror; Gitea `main` is canonical. Merged to `main`:
 
 - Per-drive watch channels ([MFTLib issue 265, per-drive channels](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/265), merged in pull request 301):
@@ -18,6 +19,11 @@ in some checkouts is a stale GitHub mirror; Gitea `main` is canonical. Merged to
   then `MFTLib.TestExtensions`.
 - `MatchFlags.IncludeFreed` opt-in scan of freed MFT records ([MFTLib issue 292, include-freed scan](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/292)); the
   native ABI is version 3.
+- Pre-ship simplification pass: 17 types made internal and public members with no
+  caller deleted; `DriveStatus.AccessDeniedSubtreeCount` and `SkippedRecordCount`
+  split by producer; the broker scan frame trimmed to the advanced cursor;
+  `FileId` renamed to `IndexRecordKey`; managed test hook declarations moved into
+  `MFTLib.Tests`; every public member documented, with `MFTLib.xml` in the package.
 
 The 0.3.0 NuGet artifact set is:
 
@@ -29,8 +35,9 @@ The 0.3.0 NuGet artifact set is:
 
 Gate 1, [MFTLib issue 330, consumer API gaps](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/330),
 landed in pull requests 333 through 338. Consumers have migrated to per-drive
-watch channels and both pin MFTLib `d8439ab`: file-wizard at `b37816f` and
-git-wizard `gitea/main` at `17b1b0f`. The attended consumer runtime smokes remain
+watch channels and to the post-simplification API, and both pin MFTLib `67f05d9`:
+file-wizard at `5a59eed` and git-wizard `gitea/main` at `d03adec`. No attended
+smoke has run against these commits; the attended consumer runtime smokes remain
 part of gate 2.
 
 Not yet done: 0.3.0 is not published to nuget.org and `v0.3.0` is not tagged.
@@ -46,9 +53,6 @@ Not yet done: 0.3.0 is not published to nuget.org and `v0.3.0` is not tagged.
 5. Retire the consumer bridges (step 5):
    [file-wizard issue 288, retire submodule bridge](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/288),
    [git-wizard issue 134, retire submodule bridge](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/134).
-
-Related open consumer work: [git-wizard issue 252, recover per-drive watch failures through rescan](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/252)
-and [git-wizard issue 247, adopt MFTLib index lifecycle instead of NoCache](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/247).
 
 ### Validation measurements
 
@@ -191,6 +195,7 @@ The release notes in `CHANGELOG.md` and GitHub Release must match `CHANGELOG.md`
 - **Per-drive watch channels**: `BrokerProcess` runs one control pipe and one channel per drive operation; `FileIndex` start, stop, rescan and catch-up are per drive with concurrent list and all-drive overloads, automatic per-drive recovery, and bounded catch-up-loss recovery.
 - **Include-freed scan**: `MatchFlags.IncludeFreed` returns validated freed MFT base records with `InUse == false`; native ABI version 3.
 - **`MFTLib.TestExtensions` package**: `BrokerTestHarness` and the cache and journal isolation guards ship as a separate package.
+- **Documented public API**: the package ships `MFTLib.xml`, so IntelliSense documents every public member.
 
 ## Known issues (resolved)
 

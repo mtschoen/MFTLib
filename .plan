@@ -26,8 +26,6 @@
 - **Secondary name index**: revisit when a warm `FindByName` query exceeds 200 ms; sidecars are keyed by block generation.
 - **Subtree exclusion**: revisit when a user asks.
 - **Hard links as multiple rows per record**: revisit when a consumer needs the second name.
-- **file-wizard cache catalog**: verify `BlockCacheCatalog` is replaced by `CacheDirectory.EnumerateCached` in the consumer.
-- **file-wizard duplicate queries**: verify the refresh drain token is passed into `DuplicateNames` after the MFTLib pin update.
 
 ## CI / Build Follow-Ups (deferred)
 
