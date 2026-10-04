@@ -60,6 +60,10 @@ To move the global binary to a different commit or tag of the fork:
 `pnpm add -g --allow-build=aislop "github:mtschoen/aislop#<commit-ish>"`
 (CI pin updates are separate and tracked in `.aislop/fork-commit`.)
 
+## Public surface test
+
+`MFTLib.Tests/PublicSurfaceTests.cs` compares the public surface with the approved files in `MFTLib.Tests/PublicSurface/` and runs in both the Windows and Linux test jobs; see `docs/architecture.md`.
+
 ## Agent instruction budgets
 
 `MFTLib.Tests/AgentInstructionsTests.cs` checks that the root `AGENTS.md` stays

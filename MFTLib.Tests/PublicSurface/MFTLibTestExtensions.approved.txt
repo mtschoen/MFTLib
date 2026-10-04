@@ -1,0 +1,44 @@
+MFTLibTestExtensions.BrokerDiagnosticsIsolation :: method public static Reset() : void
+MFTLibTestExtensions.BrokerDiagnosticsIsolation :: type public static class
+MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLib.JournalBrokerHost host) : MFTLibTestExtensions.InProcessBrokerHandle
+MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLib.JournalBrokerHost host, MFTLib.IBlockSectionWriter blockSectionWriter, MFTLib.BrokerBlockSectionFactory createBlockSection) : MFTLibTestExtensions.InProcessBrokerHandle
+MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLib.JournalBrokerHost host, MFTLib.IBlockSectionWriter blockSectionWriter, MFTLib.BrokerBlockSectionFactory createBlockSection, MFTLibTestExtensions.BrokerTestHarnessOptions options) : MFTLibTestExtensions.InProcessBrokerHandle
+MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLib.JournalBrokerHost host, MFTLibTestExtensions.BrokerTestHarnessOptions options) : MFTLibTestExtensions.InProcessBrokerHandle
+MFTLibTestExtensions.BrokerTestHarness :: type public static class
+MFTLibTestExtensions.BrokerTestHarnessOptions :: constructor public ()
+MFTLibTestExtensions.BrokerTestHarnessOptions :: method public <Clone>$() : MFTLibTestExtensions.BrokerTestHarnessOptions
+MFTLibTestExtensions.BrokerTestHarnessOptions :: method public Equals(MFTLibTestExtensions.BrokerTestHarnessOptions? other) : bool
+MFTLibTestExtensions.BrokerTestHarnessOptions :: method public override Equals(object? obj) : bool
+MFTLibTestExtensions.BrokerTestHarnessOptions :: method public override GetHashCode() : int
+MFTLibTestExtensions.BrokerTestHarnessOptions :: method public override ToString() : string
+MFTLibTestExtensions.BrokerTestHarnessOptions :: method public static op_Equality(MFTLibTestExtensions.BrokerTestHarnessOptions? left, MFTLibTestExtensions.BrokerTestHarnessOptions? right) : bool
+MFTLibTestExtensions.BrokerTestHarnessOptions :: method public static op_Inequality(MFTLibTestExtensions.BrokerTestHarnessOptions? left, MFTLibTestExtensions.BrokerTestHarnessOptions? right) : bool
+MFTLibTestExtensions.BrokerTestHarnessOptions :: property public FailConnection { get; init; } : System.Func<string, System.Exception?>?
+MFTLibTestExtensions.BrokerTestHarnessOptions :: property public HoldWrites { get; init; } : System.Func<string, System.Threading.Tasks.Task>?
+MFTLibTestExtensions.BrokerTestHarnessOptions :: property public TimeProvider { get; init; } : System.TimeProvider
+MFTLibTestExtensions.BrokerTestHarnessOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.BrokerTestHarnessOptions>
+MFTLibTestExtensions.CacheDirectoryIsolation :: method public static ForbidDefaultCacheDirectory() : void
+MFTLibTestExtensions.CacheDirectoryIsolation :: type public static class
+MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, char driveLetter, System.Collections.Generic.IReadOnlyList<MFTLib.UsnJournalEntry> entries, ulong journalId, long nextUsn) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
+MFTLibTestExtensions.FileIndexTestAccess :: type public static class
+MFTLibTestExtensions.InProcessBrokerHandle :: method public Crash() : void
+MFTLibTestExtensions.InProcessBrokerHandle :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
+MFTLibTestExtensions.InProcessBrokerHandle :: property public Process { get; } : MFTLib.BrokerProcess
+MFTLibTestExtensions.InProcessBrokerHandle :: type public sealed class : System.IAsyncDisposable
+MFTLibTestExtensions.JournalIsolation :: method public static ForbidLiveJournalReads() : void
+MFTLibTestExtensions.JournalIsolation :: method public static OverrideJournalWindow(System.Func<char, MFTLibTestExtensions.SyntheticJournalWindow?> journal) : System.IDisposable
+MFTLibTestExtensions.JournalIsolation :: type public static class
+MFTLibTestExtensions.SyntheticJournalWindow :: constructor public (ulong JournalId, long FirstUsn, long NextUsn, long AllocationDelta, long MaximumSize)
+MFTLibTestExtensions.SyntheticJournalWindow :: method public Deconstruct(out ulong JournalId, out long FirstUsn, out long NextUsn, out long AllocationDelta, out long MaximumSize) : void
+MFTLibTestExtensions.SyntheticJournalWindow :: method public Equals(MFTLibTestExtensions.SyntheticJournalWindow other) : bool
+MFTLibTestExtensions.SyntheticJournalWindow :: method public override Equals(object obj) : bool
+MFTLibTestExtensions.SyntheticJournalWindow :: method public override GetHashCode() : int
+MFTLibTestExtensions.SyntheticJournalWindow :: method public override ToString() : string
+MFTLibTestExtensions.SyntheticJournalWindow :: method public static op_Equality(MFTLibTestExtensions.SyntheticJournalWindow left, MFTLibTestExtensions.SyntheticJournalWindow right) : bool
+MFTLibTestExtensions.SyntheticJournalWindow :: method public static op_Inequality(MFTLibTestExtensions.SyntheticJournalWindow left, MFTLibTestExtensions.SyntheticJournalWindow right) : bool
+MFTLibTestExtensions.SyntheticJournalWindow :: property public AllocationDelta { get; init; } : long
+MFTLibTestExtensions.SyntheticJournalWindow :: property public FirstUsn { get; init; } : long
+MFTLibTestExtensions.SyntheticJournalWindow :: property public JournalId { get; init; } : ulong
+MFTLibTestExtensions.SyntheticJournalWindow :: property public MaximumSize { get; init; } : long
+MFTLibTestExtensions.SyntheticJournalWindow :: property public NextUsn { get; init; } : long
+MFTLibTestExtensions.SyntheticJournalWindow :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.SyntheticJournalWindow>

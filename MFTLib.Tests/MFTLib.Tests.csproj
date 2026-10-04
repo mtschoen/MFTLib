@@ -28,6 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="PublicSurface\*.approved.txt" CopyToOutputDirectory="Always" Link="PublicSurface\%(Filename)%(Extension)" />
     <None Include="..\AGENTS.md" Link="repository-docs\AGENTS.md"
           CopyToOutputDirectory="Always" />
     <None Include="..\docs\*.md" Link="repository-docs\docs\%(Filename)%(Extension)"

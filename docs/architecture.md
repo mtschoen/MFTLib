@@ -80,3 +80,50 @@ Why they stay:
 Revisit this only with a measurement that shows a cost: a quiet-machine benchmark where the
 hook-free build wins by more than the run-to-run spread. Do not propose removing the hooks
 from the shipping DLL on the grounds that test code is present in a release binary.
+
+### Public surface
+
+A type or member is public only when a consumer needs it in production code. Test-only
+access goes through `MFTLibTestExtensions`, which forwards to internal code and never
+re-implements it, and `InternalsVisibleTo` on the MFTLib assembly names only `MFTLib.Tests`,
+`MFTLibTestExtensions` and `Benchmark`, never a consumer assembly.
+
+`MFTLib.Tests/PublicSurfaceTests.cs` pins the surface with a reflection enumerator,
+`MFTLib.Tests/PublicSurfaceEnumerator.cs`. It walks every public top-level type, whatever its
+namespace, and every public or protected nested type at any depth, and lists every public or
+protected constructor, method, property, field and event each type declares. Members the
+compiler synthesizes are included because consumers can call them: record equality members and
+operators, `Deconstruct`, the clone method, and on unsealed records the copy constructor,
+`EqualityContract` and `PrintMembers`.
+
+Each approved line names the declaring type, then the member kind, modifiers, name, parameters
+and type, for example
+`MFTLib.Index.FileIndex :: method public DisposeAsync() : System.Threading.Tasks.ValueTask`.
+Types are written with every nesting level's own generic arguments (`Outer<T>.Nested<U>`,
+never `Outer<T, U>`) and with the nullable annotations the compiler's `NullableAttribute` and
+`NullableContextAttribute` metadata carries, including on unconstrained generic parameters,
+plus the nullable flow attributes such as `MaybeNullWhen`. The enumerator decodes that metadata
+itself because `NullabilityInfoContext` reports an unconstrained `T` and `T?` alike. Lines are
+sorted ordinally. The approved files in `MFTLib.Tests/PublicSurface/` are `MFTLib.approved.txt` (every
+MFTLib type outside `MFTLib.Index`), `MFTLib.Index.approved.txt` and
+`MFTLibTestExtensions.approved.txt`. The test fails on any added or removed line and prints
+both sets. A change to the public surface is therefore a diff to an approved file in the same
+pull request. The negative control in `PublicSurfaceTests` runs the enumerator over fixtures and
+pins each of these properties.
+
+Detection contract: the gate pins the set of public and protected types and members of MFTLib,
+MFTLib.Index and MFTLib.TestExtensions, each with its signature: the declaring type with every
+nesting level's own generic arguments, the name, the parameter and return types, and the
+nullable annotations the compiler records on them. Adding or removing a type or member, or
+changing a signature, fails the test. Modifier and annotation rendering covers the constructs
+these assemblies use today. A construct the formatter does not render still appears as a line
+when it is introduced, so its arrival is reviewable, and rendering for it is added when MFTLib
+first uses it. Not rendered today: type-parameter variance, function pointers, volatile fields,
+scoped parameters, control characters in literals, and nullability on base types, interface
+implementations, generic constraints and accessor flow attributes. That is a stated limit of the
+method, not a defect.
+
+To update an approved file, set `MFTLIB_PUBLIC_SURFACE_REGENERATE_TO` to a scratch directory
+and run `PublicSurfaceTests`: the tests write the current surface there and fail on purpose.
+Review the diff and copy the files into `MFTLib.Tests/PublicSurface/` by hand. A normal run
+never writes an approved file.
