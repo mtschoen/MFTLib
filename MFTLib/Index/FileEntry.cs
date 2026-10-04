@@ -75,15 +75,15 @@ public readonly partial record struct FileEntry
     /// </summary>
     public bool IsDisposed => _snapshot is not null && _snapshot.IsReleased;
 
-    /// <summary>Gets the row key of this entry: its drive plus its row number in that drive's block. It is not an NTFS file identifier; see <see cref="FileId" />.</summary>
+    /// <summary>Gets the row key of this entry: its drive plus its row number in that drive's block. It is not an NTFS file identifier and is not sufficient for an open by id; NTFS reuses record numbers, so it does not identify a file over time. See <see cref="IndexRecordKey" />.</summary>
     /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
     /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
-    public FileId Id
+    public IndexRecordKey Id
     {
         get
         {
             var driveBlock = DriveBlock;
-            return new FileId(driveBlock.DriveLetter, _rowIndex, driveBlock.ProducerKind);
+            return new IndexRecordKey(driveBlock.DriveLetter, _rowIndex, driveBlock.ProducerKind);
         }
     }
 

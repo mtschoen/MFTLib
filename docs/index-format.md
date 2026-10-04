@@ -270,7 +270,7 @@ name length is 32767 UTF-16 code units.
 An enumeration producer has no record numbers, so it assigns rows sequentially
 in traversal order with the parent column in the same shape. Nothing downstream
 can tell the difference except the producer kind and the absence of a journal
-cursor, which is why a `FileId` from such a block reports `ProducerKind.Enumeration`.
+cursor, which is why an `IndexRecordKey` from such a block reports `ProducerKind.Enumeration`.
 
 ## MFT blocks
 

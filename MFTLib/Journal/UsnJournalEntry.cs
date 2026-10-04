@@ -18,7 +18,9 @@ public readonly struct UsnJournalEntry
     /// <summary>
     ///     MFT segment index (the lower 48 bits of the file reference number). Matches MftRecord.RecordNumber.
     ///     The sequence number is carried separately in <see cref="SequenceNumber" />.
-    ///     Safe to use as a dictionary key across MFT scans and USN journal reads on the same volume.
+    ///     NTFS reuses a segment index after a file is deleted, so a record number alone does not identify
+    ///     a file over time: key on (<see cref="RecordNumber" />, <see cref="SequenceNumber" />) to tell
+    ///     a file from a later one that reused the segment.
     /// </summary>
     public ulong RecordNumber { get; }
 
