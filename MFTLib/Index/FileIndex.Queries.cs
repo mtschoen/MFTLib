@@ -175,6 +175,17 @@ public sealed partial class FileIndex
     /// </summary>
     QueryScope BeginQuery(CancellationToken cancellationToken)
     {
+        var scope = AdmitQuery(cancellationToken);
+        scope.Snapshot.ReleaseState._readerAdmittedForTest?.Invoke();
+        return scope;
+    }
+
+    /// <summary>
+    ///     Builds the scope <see cref="BeginQuery" /> hands out: the caller's token is checked,
+    ///     linked to disposal when it can be cancelled at all, and the borrow is taken last.
+    /// </summary>
+    QueryScope AdmitQuery(CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         if (!cancellationToken.CanBeCanceled)
         {

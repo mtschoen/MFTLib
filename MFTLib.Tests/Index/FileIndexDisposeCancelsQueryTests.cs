@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using MFTLib.Tests.TestSupport;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -12,18 +11,24 @@ namespace MFTLib.Tests.Index;
 ///     leave before it unmaps, so the scan ends with an exception its caller can handle and the
 ///     process survives. That the test completes at all is the second half of the assertion: an
 ///     access violation takes the whole test host with it.
+///     <para>
+///         Every test holds its reader at the snapshot's reader-admitted seam, so the reader is
+///         in flight by construction when disposal begins: it has its borrow and has not read a
+///         row. Nothing here depends on a scan being slow enough to still be running.
+///     </para>
 /// </summary>
 [TestClass]
 public class FileIndexDisposeCancelsQueryTests
 {
     static readonly DateTime FixedMoment = new(2026, 9, 14, 0, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>A bound on a handshake that failed, never a duration any assertion measures.</summary>
     static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>Rows enough to exercise every row-scanning query path.</summary>
-    const uint RowCount = 600_000;
+    const uint RowCount = 64;
 
-    const uint DistinctNameCount = 1000;
+    /// <summary>Fewer names than rows, so the duplicate-name scan has groups to find.</summary>
+    const uint DistinctNameCount = 8;
 
     OwnedIndexDirectories _directories = null!;
     string _cacheDirectory = null!;
@@ -48,33 +53,10 @@ public class FileIndexDisposeCancelsQueryTests
     [TestMethod]
     public async Task DisposeAsync_WhileADuplicateNameScanIsRunning_CancelsItAndCompletes()
     {
-        var index = await FileIndex.OpenAsync(LargeSyntheticDriveOptions(), CancellationToken.None);
-        var release = index.CurrentSnapshot.ReleaseState;
-        var scan = Task.Run(() =>
-        {
-            try
-            {
-                index.DuplicateNames();
-                return null;
-            }
-            catch (Exception exception)
-            {
-                return exception;
-            }
-        });
-
-        // Waits for the borrow itself, not for a worker that is merely about to take one. Until
-        // the count moves, disposal could win the race and the scan would be turned away before
-        // it ever read a row, which proves nothing about what happens to a scan in flight.
-        WaitUntilBorrowTaken(release, "the scan");
-
-        await index.DisposeAsync();
-        var outcome = await scan;
+        var outcome = await QueryAcrossDisposalAsync((index, _) => index.DuplicateNames());
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
-            $"a scan that held the snapshot when disposal began must be cancelled, not {outcome?.GetType().Name ?? "answered normally"}");
-        BlockFileHoldAssertions.AssertNotHeld(
-            Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
+            $"a scan that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
     }
 
     /// <summary>
@@ -86,101 +68,36 @@ public class FileIndexDisposeCancelsQueryTests
     [TestMethod]
     public async Task DisposeAsync_WhileAScanWithACallerTokenIsRunning_CancelsItToo()
     {
-        var index = await FileIndex.OpenAsync(LargeSyntheticDriveOptions(), CancellationToken.None);
-        var release = index.CurrentSnapshot.ReleaseState;
         using var callerCancellation = new CancellationTokenSource();
         var callerToken = callerCancellation.Token;
-        var scan = Task.Run(() =>
-        {
-            try
-            {
-                index.DuplicateNames(callerToken);
-                return null;
-            }
-            catch (Exception exception)
-            {
-                return exception;
-            }
-        });
 
-        WaitUntilBorrowTaken(release, "the scan");
-
-        await index.DisposeAsync();
-        var outcome = await scan;
+        var outcome = await QueryAcrossDisposalAsync((index, _) => index.DuplicateNames(callerToken));
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
-            $"a scan carrying its caller's token must still be cancelled by disposal, not {outcome?.GetType().Name ?? "answered normally"}");
+            $"a scan carrying its caller's token must still be cancelled by disposal, not {Describe(outcome)}");
     }
 
-    /// <summary>
-    ///     The same race through the parallel search path, and the other half of the contract:
-    ///     once disposal returns, the block file is closed, so a reader it cancelled is not still
-    ///     holding a mapping open behind it.
-    /// </summary>
+    /// <summary>The same through the parallel search path, with a pattern that matches every row.</summary>
     [TestMethod]
     public async Task DisposeAsync_WhileAParallelSearchIsRunning_CancelsItAndReleasesEveryBlock()
     {
-        var index = await FileIndex.OpenAsync(LargeSyntheticDriveOptions(), CancellationToken.None);
-        var release = index.CurrentSnapshot.ReleaseState;
-        var scan = Task.Run(() =>
-        {
-            try
-            {
-                // Matches every row, so the search materializes the whole drive and is still
-                // running when the handshake below sees its borrow. A pattern that matched one
-                // row would be over in a few milliseconds and the race would not happen.
-                index.Search(new SearchQuery("file"));
-                return null;
-            }
-            catch (Exception exception)
-            {
-                return exception;
-            }
-        });
-
-        WaitUntilBorrowTaken(release, "the search");
-
-        await index.DisposeAsync();
-        var outcome = await scan;
+        var outcome = await QueryAcrossDisposalAsync((index, _) => index.Search(new SearchQuery("file")));
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
-            $"a search that held the snapshot when disposal began must be cancelled, not {outcome?.GetType().Name ?? "answered normally"}");
-        BlockFileHoldAssertions.AssertNotHeld(
-            Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
+            $"a search that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
     }
 
     /// <summary>
-    ///     A largest-file query in flight when disposal begins must be cancelled promptly, not
-    ///     throw ObjectDisposedException on guarded FileEntry property reads, and allow deterministic
-    ///     release to unmap every block once the borrow is returned.
+    ///     A largest-file query in flight when disposal begins must be cancelled, not throw
+    ///     ObjectDisposedException on guarded FileEntry property reads.
     /// </summary>
     [TestMethod]
     public async Task DisposeAsync_WhileALargestQueryIsRunning_CancelsItAndReleasesEveryBlock()
     {
-        var index = await FileIndex.OpenAsync(LargeSyntheticDriveOptions(), CancellationToken.None);
-        var release = index.CurrentSnapshot.ReleaseState;
-        var scan = Task.Run(() =>
-        {
-            try
-            {
-                index.Largest(100);
-                return null;
-            }
-            catch (Exception exception)
-            {
-                return exception;
-            }
-        });
-
-        WaitUntilBorrowTaken(release, "the largest query");
-
-        await index.DisposeAsync();
-        var outcome = await scan;
+        var outcome = await QueryAcrossDisposalAsync((index, _) => index.Largest(100));
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
-            $"a largest query that held the snapshot when disposal began must be cancelled, not {outcome?.GetType().Name ?? "answered normally"}");
-        BlockFileHoldAssertions.AssertNotHeld(
-            Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
+            $"a largest query that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
     }
 
     /// <summary>
@@ -190,65 +107,24 @@ public class FileIndexDisposeCancelsQueryTests
     [TestMethod]
     public async Task DisposeAsync_WhileALargestWithSubtreeFilterIsRunning_CancelsItAndReleasesEveryBlock()
     {
-        var index = await FileIndex.OpenAsync(LargeSyntheticDriveOptions(), CancellationToken.None);
-        var release = index.CurrentSnapshot.ReleaseState;
-        var root = index.Root('T');
-        var scan = Task.Run(() =>
-        {
-            try
-            {
-                index.Largest(100, under: root);
-                return null;
-            }
-            catch (Exception exception)
-            {
-                return exception;
-            }
-        });
-
-        WaitUntilBorrowTaken(release, "the largest query with subtree filter");
-
-        await index.DisposeAsync();
-        var outcome = await scan;
+        var outcome = await QueryAcrossDisposalAsync((index, root) => index.Largest(100, under: root));
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
-            $"a largest query with subtree filter that held the snapshot when disposal began must be cancelled, not {outcome?.GetType().Name ?? "answered normally"}");
-        BlockFileHoldAssertions.AssertNotHeld(
-            Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
+            $"a largest query with subtree filter that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
     }
 
     /// <summary>
     ///     A search with a subtree filter in flight when disposal begins must observe cancellation
-    ///     during post-scan subtree filtering without throwing ObjectDisposedException.
+    ///     without throwing ObjectDisposedException.
     /// </summary>
     [TestMethod]
     public async Task DisposeAsync_WhileASearchWithSubtreeFilterIsRunning_CancelsItAndReleasesEveryBlock()
     {
-        var index = await FileIndex.OpenAsync(LargeSyntheticDriveOptions(), CancellationToken.None);
-        var release = index.CurrentSnapshot.ReleaseState;
-        var root = index.Root('T');
-        var scan = Task.Run(() =>
-        {
-            try
-            {
-                index.Search(new SearchQuery("file", Under: root));
-                return null;
-            }
-            catch (Exception exception)
-            {
-                return exception;
-            }
-        });
-
-        WaitUntilBorrowTaken(release, "the search with subtree filter");
-
-        await index.DisposeAsync();
-        var outcome = await scan;
+        var outcome = await QueryAcrossDisposalAsync(
+            (index, root) => index.Search(new SearchQuery("file", Under: root)));
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
-            $"a search with subtree filter that held the snapshot when disposal began must be cancelled, not {outcome?.GetType().Name ?? "answered normally"}");
-        BlockFileHoldAssertions.AssertNotHeld(
-            Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
+            $"a search with subtree filter that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
     }
 
     /// <summary>
@@ -259,19 +135,10 @@ public class FileIndexDisposeCancelsQueryTests
     [TestMethod]
     public async Task DisposeAsync_WhileAChildrenScanIsRunning_WaitsForItAndReleasesEveryBlock()
     {
-        var index = await FileIndex.OpenAsync(LargeSyntheticDriveOptions(), CancellationToken.None);
-        var release = index.CurrentSnapshot.ReleaseState;
-        var root = index.Root('T');
-        var listing = Task.Run(() => root.Children().Count);
+        var listed = await ReadAcrossDisposalAsync((_, root) => root.Children().Count);
 
-        WaitUntilBorrowTaken(release, "the listing");
-
-        await index.DisposeAsync();
-
-        Assert.AreEqual((int)RowCount, await listing,
+        Assert.AreEqual((int)RowCount, listed,
             "the listing was cut short, so disposal unmapped rows it was still walking");
-        BlockFileHoldAssertions.AssertNotHeld(
-            Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
     }
 
     /// <summary>
@@ -283,18 +150,30 @@ public class FileIndexDisposeCancelsQueryTests
     [TestMethod]
     public async Task DisposeAsync_WhileAnEnumerationIsInFlight_CancelsItAndReleasesEveryBlock()
     {
-        var index = await FileIndex.OpenAsync(LargeSyntheticDriveOptions(), CancellationToken.None);
-        var release = index.CurrentSnapshot.ReleaseState;
-        var scan = Task.Run(() =>
+        var outcome = await QueryAcrossDisposalAsync((index, _) =>
+        {
+            foreach (var unused in index.Enumerate(new SearchQuery("file")))
+            {
+            }
+        });
+
+        Assert.IsInstanceOfType<OperationCanceledException>(outcome,
+            $"an enumeration that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
+    }
+
+    static string Describe(Exception? outcome)
+    {
+        return outcome?.GetType().Name ?? "answered normally";
+    }
+
+    /// <summary>The exception a query ended with across a disposal, or null when it answered.</summary>
+    Task<Exception?> QueryAcrossDisposalAsync(Action<FileIndex, FileEntry> query)
+    {
+        return ReadAcrossDisposalAsync((index, root) =>
         {
             try
             {
-                // Matches every file row, so the enumeration is still streaming when the
-                // handshake below sees its borrow.
-                foreach (var _ in index.Enumerate(new SearchQuery("file")))
-                {
-                }
-
+                query(index, root);
                 return null;
             }
             catch (Exception exception)
@@ -302,33 +181,58 @@ public class FileIndexDisposeCancelsQueryTests
                 return exception;
             }
         });
-
-        WaitUntilBorrowTaken(release, "the enumeration");
-
-        await index.DisposeAsync();
-        var outcome = await scan;
-
-        Assert.IsInstanceOfType<OperationCanceledException>(outcome,
-            $"an enumeration that held the snapshot when disposal began must be cancelled, not {outcome?.GetType().Name ?? "answered normally"}");
-        BlockFileHoldAssertions.AssertNotHeld(
-            Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
     }
 
-    static void WaitUntilBorrowTaken(SnapshotRelease release, string reader)
+    /// <summary>
+    ///     Runs one reader across a disposal, in an order nothing can reorder: the reader is held
+    ///     at the seam with its borrow counted, disposal begins and delivers its cancellation,
+    ///     disposal is seen still waiting on the borrow, and only then is the reader let go.
+    ///     Disposal reaches its lifecycle gates after its cancellation has run every callback, a
+    ///     linked query token's among them, so that seam is what says the reader has been told.
+    /// </summary>
+    async Task<TResult> ReadAcrossDisposalAsync<TResult>(Func<FileIndex, FileEntry, TResult> read)
     {
-        var elapsed = Stopwatch.StartNew();
-        while (release.OutstandingBorrowCount == 0)
+        var index = await FileIndex.OpenAsync(SyntheticDriveOptions(), CancellationToken.None);
+        var released = new TaskCompletionSource();
+        Task? disposal = null;
+        try
         {
-            if (elapsed.Elapsed > HandshakeTimeout)
+            var root = index.Root('T');
+            var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var cancellationDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            index.CurrentSnapshot.ReleaseState._readerAdmittedForTest = () =>
             {
-                Assert.Fail($"{reader} never took its borrow, so it was never in flight when disposal began");
-            }
+                admitted.TrySetResult();
+                released.Task.Wait();
+            };
+            index.LifecycleGatesTakenForDisposalForTest = () => cancellationDelivered.TrySetResult();
 
-            Thread.SpinWait(20);
+            var reader = Task.Run(() => read(index, root));
+            await admitted.Task.WaitAsync(HandshakeTimeout);
+
+            disposal = index.DisposeAsync().AsTask();
+            await cancellationDelivered.Task.WaitAsync(HandshakeTimeout);
+            Assert.IsFalse(disposal.IsCompleted,
+                "DisposeAsync returned while the reader still held its borrow on the snapshot");
+
+            released.TrySetResult();
+            var result = await reader;
+            await disposal;
+
+            BlockFileHoldAssertions.AssertNotHeld(
+                Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', 0x0BADF00D)));
+            return result;
+        }
+        finally
+        {
+            // Lets a reader still parked at the seam go, so a failed handshake cannot strand its
+            // borrow and leave the disposal below waiting for it.
+            released.TrySetResult();
+            await (disposal ?? index.DisposeAsync().AsTask());
         }
     }
 
-    FileIndexOptions LargeSyntheticDriveOptions()
+    FileIndexOptions SyntheticDriveOptions()
     {
         return new FileIndexOptions
         {

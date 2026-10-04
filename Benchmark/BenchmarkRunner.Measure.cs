@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Text;
 
 namespace Benchmark;
 
@@ -50,37 +49,28 @@ public partial class BenchmarkRunner
 
     int ExecuteMeasure(string scenario, string mftPath, int iterations)
     {
-        var output = new StringBuilder();
-
-        void Log(string line = "")
-        {
-            _writeLineToConsole(line);
-            output.AppendLine(line);
-        }
-
-        Log($"--- Scenario: {scenario} ---");
+        _writeLineToConsole($"--- Scenario: {scenario} ---");
 
         var metrics = new ScenarioMetricAccumulator();
 
         for (var iteration = 0; iteration < iterations; iteration++)
         {
-            ExecuteMeasureIteration(scenario, mftPath, iteration, iterations, output, metrics);
+            ExecuteMeasureIteration(scenario, mftPath, iteration, iterations, metrics);
         }
 
         if (metrics.WallClocks.Count == 0)
         {
-            Log("  All iterations failed - no results to report.");
-            Log();
+            _writeLineToConsole("  All iterations failed - no results to report.");
+            _writeLineToConsole(string.Empty);
             return 1;
         }
 
-        LogMeasureResults(metrics, Log);
+        LogMeasureResults(metrics, _writeLineToConsole);
         return 0;
     }
 
     void ExecuteMeasureIteration(
-        string scenario, string mftPath, int iteration, int iterations, StringBuilder output,
-        ScenarioMetricAccumulator metrics)
+        string scenario, string mftPath, int iteration, int iterations, ScenarioMetricAccumulator metrics)
     {
         _writeToConsole($"  Iteration {iteration + 1}/{iterations}... ");
         try
@@ -114,17 +104,11 @@ public partial class BenchmarkRunner
             metrics.PeakPrivateBytesList.Add(peakPrivateBytes);
             metrics.NativeCompactBytesList.Add(nativeBytes);
 
-            var iterationLine = $"{elapsedMs:F0}ms ({recordsCount:N0} records)";
-            _writeLineToConsole(iterationLine);
-            output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {iterationLine}")
-                .AppendLine();
+            _writeLineToConsole($"{elapsedMs:F0}ms ({recordsCount:N0} records)");
         }
         catch (Exception exception)
         {
-            var failLine = $"FAILED: {exception.GetType().Name}: {exception.Message}";
-            _writeLineToConsole(failLine);
-            output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {failLine}")
-                .AppendLine();
+            _writeLineToConsole($"FAILED: {exception.GetType().Name}: {exception.Message}");
         }
     }
 

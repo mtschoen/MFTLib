@@ -7,9 +7,6 @@ namespace Benchmark;
 
 #pragma warning disable CA1416 // Validate platform compatibility - Benchmark is Windows-only
 
-// One benchmark scenario: a display name plus the filter/match-flags it exercises.
-readonly record struct BenchmarkScenario(string Name, string? Filter, MatchFlags MatchFlags);
-
 sealed record ReportMetrics(
     double CompatThroughput,
     long CompatPeakPrivateBytes,
@@ -56,7 +53,7 @@ public partial class BenchmarkRunner
         return "0000000000000000000000000000000000000000";
     };
 
-    internal Func<long> _getPeakPrivateBytes64 = () => Process.GetCurrentProcess().PrivateMemorySize64;
+    internal Func<long> _getPeakPrivateBytes64 = () => Process.GetCurrentProcess().PeakPagedMemorySize64;
     internal Func<long> _getPeakWorkingSet64 = () => Process.GetCurrentProcess().PeakWorkingSet64;
     internal Func<Stopwatch, double> _getStopwatchElapsedMs = stopwatch => stopwatch.Elapsed.TotalMilliseconds;
 
@@ -115,14 +112,6 @@ public partial class BenchmarkRunner
         var records = result.ToArray();
         return (records.Length, result.NativeCompactBytes);
     };
-
-    // Scenario execution seams (used by measure subcommand)
-    internal Func<string, string?, MatchFlags, (MftRecord[] Records, MftParseTimings Timings)> _parseFromFile =
-        (path, filter, flags) =>
-        {
-            var records = MftVolume.ParseMFTFromFile(path, filter, flags, out var timings);
-            return (records, timings);
-        };
 
     internal Func<string, string> _readAllText = File.ReadAllText;
 

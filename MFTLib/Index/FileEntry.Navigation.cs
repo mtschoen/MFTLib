@@ -51,6 +51,7 @@ public readonly partial record struct FileEntry
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var borrow = Snapshot.Borrow();
+        borrow.Snapshot.ReleaseState._readerAdmittedForTest?.Invoke();
         return IndexNavigation.GetChildren(borrow.Snapshot, DriveOrdinal, RowIndex, cancellationToken);
     }
 }

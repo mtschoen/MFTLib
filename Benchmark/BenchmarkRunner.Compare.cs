@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Benchmark;
@@ -14,30 +13,21 @@ public partial class BenchmarkRunner
             return 1;
         }
 
-        return RunCompare(arguments[0], arguments[1], _writeLineToConsole, new StringBuilder());
-    }
-
-    int RunCompare(string beforePath, string afterPath, Action<string> log, StringBuilder output)
-    {
-        void LogLine(string line = "")
-        {
-            log(line);
-            output.AppendLine(line);
-        }
-
+        var beforePath = arguments[0];
+        var afterPath = arguments[1];
         if (!_fileExists(beforePath))
         {
-            LogLine($"Error: Baseline before file not found: {beforePath}");
+            _writeLineToConsole($"Error: Baseline before file not found: {beforePath}");
             return 1;
         }
 
         if (!_fileExists(afterPath))
         {
-            LogLine($"Error: Benchmark after file not found: {afterPath}");
+            _writeLineToConsole($"Error: Benchmark after file not found: {afterPath}");
             return 1;
         }
 
-        return CompareTexts(_readAllText(beforePath), _readAllText(afterPath), LogLine);
+        return CompareTexts(_readAllText(beforePath), _readAllText(afterPath), _writeLineToConsole);
     }
 
     // Compares against the report text held in memory rather than re-reading a file the same run
@@ -113,14 +103,12 @@ public partial class BenchmarkRunner
         string beforeGitSha, long beforePeakPrivateBytes, double beforeThroughput, ReportMetrics metrics,
         Action<string> log)
     {
-        var throughputRegressionPercentage = beforeThroughput > 0
-            ? (beforeThroughput - metrics.CompatThroughput) / beforeThroughput * 100.0
-            : 0.0;
+        var throughputRegressionPercentage =
+            (beforeThroughput - metrics.CompatThroughput) / beforeThroughput * 100.0;
         var throughputPass = throughputRegressionPercentage <= 10.0;
 
-        var privateBytesReductionPercentage = beforePeakPrivateBytes > 0
-            ? (beforePeakPrivateBytes - metrics.CompatPeakPrivateBytes) / (double)beforePeakPrivateBytes * 100.0
-            : 0.0;
+        var privateBytesReductionPercentage =
+            (beforePeakPrivateBytes - metrics.CompatPeakPrivateBytes) / (double)beforePeakPrivateBytes * 100.0;
         var privateBytesPass = privateBytesReductionPercentage >= 40.0;
 
         var boundedPass = metrics.BoundedPeakPrivateBytes <= metrics.CompatPeakPrivateBytes;

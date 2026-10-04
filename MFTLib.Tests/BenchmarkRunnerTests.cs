@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text;
 using Benchmark;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -37,7 +37,6 @@ public class BenchmarkRunnerTests
             _getPeakWorkingSet64 = () => 500_000_000L,
             _getPeakPrivateBytes64 = () => 400_000_000L,
             _generateSynthetic = (_, _, _) => { },
-            _parseFromFile = (_, _, _) => ([], default),
             _deleteFile = path => _deletedFiles.Add(path),
             _getFileInfo = _ => new FileInfo(typeof(BenchmarkRunnerTests).Assembly.Location),
             _fileExists = _ => false,
@@ -224,69 +223,6 @@ public class BenchmarkRunnerTests
     }
 
     [TestMethod]
-    public void RunScenario_WithMultipleIterations_ComputesMedians()
-    {
-        var callCount = 0;
-        _runner._parseFromFile = (_, _, _) =>
-        {
-            callCount++;
-            return (new MftRecord[callCount * 10], default);
-        };
-
-        var logLines = new List<string>();
-        var output = new StringBuilder();
-        _runner.RunScenario(new BenchmarkScenario("Test Scenario", null, MatchFlags.None), "fake.mft", 3, 100,
-            logLines.Add, output);
-
-        Assert.AreEqual(3, callCount);
-        Assert.IsTrue(logLines.Any(line => line.Contains("Test Scenario")));
-        Assert.IsTrue(logLines.Any(line => line.Contains("Results (median")));
-        Assert.IsTrue(logLines.Any(line => line.Contains("Wall clock:")));
-        Assert.IsTrue(logLines.Any(line => line.Contains("Throughput:")));
-    }
-
-    [TestMethod]
-    public void RunScenario_SingleIteration_Works()
-    {
-        _runner._parseFromFile = (_, _, _) => (new MftRecord[42], default);
-
-        var logLines = new List<string>();
-        var output = new StringBuilder();
-        _runner.RunScenario(new BenchmarkScenario("Single", null, MatchFlags.None), "fake.mft", 1, 1000, logLines.Add,
-            output);
-
-        Assert.IsTrue(logLines.Any(line => line.Contains("42")));
-    }
-
-    [TestMethod]
-    public void DefaultParseFromFile_CallsNative()
-    {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return;
-        }
-
-        var temporaryPath = Path.GetTempFileName();
-        try
-        {
-            File.Delete(temporaryPath);
-            MftVolume.GenerateSyntheticMFT(temporaryPath, 10, 256);
-
-            var freshRunner = new BenchmarkRunner();
-            var (records, _) = freshRunner._parseFromFile(temporaryPath, null, MatchFlags.None);
-
-            Assert.IsNotNull(records);
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath))
-            {
-                File.Delete(temporaryPath);
-            }
-        }
-    }
-
-    [TestMethod]
     public void Benchmark_EntryPoint_Executes()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -321,64 +257,6 @@ public class BenchmarkRunnerTests
                 File.Delete(reportPath);
             }
         }
-    }
-
-    [TestMethod]
-    public void RunScenario_OutputIncludesAllTimingFields()
-    {
-        var logLines = new List<string>();
-        var output = new StringBuilder();
-        _runner.RunScenario(new BenchmarkScenario("Format Test", "test", MatchFlags.ExactMatch), "fake.mft", 1, 5000,
-            logLines.Add, output);
-
-        var allOutput = string.Join("\n", logLines);
-        Assert.IsTrue(allOutput.Contains("I/O:"));
-        Assert.IsTrue(allOutput.Contains("Fixup:"));
-        Assert.IsTrue(allOutput.Contains("Parse:"));
-        Assert.IsTrue(allOutput.Contains("Marshal:"));
-        Assert.IsTrue(allOutput.Contains("Compute:"));
-    }
-
-    [TestMethod]
-    public void RunScenario_AllIterationsFail_PrintsNoResults()
-    {
-        _runner._parseFromFile = (_, _, _) => throw new InvalidOperationException("boom");
-
-        var logLines = new List<string>();
-        var output = new StringBuilder();
-        _runner.RunScenario(new BenchmarkScenario("Failing", null, MatchFlags.None), "fake.mft", 3, 100, logLines.Add,
-            output);
-
-        var allOutput = string.Join("\n", logLines);
-        Assert.IsTrue(allOutput.Contains("All iterations failed"));
-        Assert.IsFalse(allOutput.Contains("Throughput:"));
-    }
-
-    [TestMethod]
-    public void RunScenario_PartialFailure_ReportsSuccessfulIterations()
-    {
-        var callCount = 0;
-        _runner._parseFromFile = (_, _, _) =>
-        {
-            callCount++;
-            if (callCount == 2)
-            {
-                throw new InvalidOperationException("boom");
-            }
-
-            return (new MftRecord[10], default);
-        };
-
-        var logLines = new List<string>();
-        var output = new StringBuilder();
-        _runner.RunScenario(new BenchmarkScenario("Partial", null, MatchFlags.None), "fake.mft", 3, 100, logLines.Add,
-            output);
-
-        var outputText = output.ToString();
-        Assert.IsTrue(outputText.Contains("FAILED:"));
-        var allLogOutput = string.Join("\n", logLines);
-        Assert.IsTrue(allLogOutput.Contains("Results (median of 2 successful iteration"));
-        Assert.IsTrue(allLogOutput.Contains("Throughput:"));
     }
 
     // --- measure subcommand tests ---
@@ -799,6 +677,34 @@ public class BenchmarkRunnerTests
     }
 
     [TestMethod]
+    public void DefaultGetPeakPrivateBytes_KeepsAnAllocationThatWasAlreadyFreed()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return;
+        }
+
+        // A reading taken while the block is committed is one the peak has already passed, so the
+        // peak can never fall below it. The current private size, which is not a peak, drops by
+        // the block's size the moment the block is freed.
+        const int blockBytes = 64 * 1024 * 1024;
+        var runner = new BenchmarkRunner();
+        var block = Marshal.AllocHGlobal(blockBytes);
+        long privateBytesWhileHeld;
+        try
+        {
+            privateBytesWhileHeld = Process.GetCurrentProcess().PrivateMemorySize64;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(block);
+        }
+
+        Assert.IsTrue(runner._getPeakPrivateBytes64() >= privateBytesWhileHeld,
+            "the seam reported less than the process had committed earlier, so it is not a peak");
+    }
+
+    [TestMethod]
     public void Run_Compare_InvalidAfterMetrics_ReturnsOne()
     {
         const string beforeContent = """
@@ -951,48 +857,6 @@ public class BenchmarkRunnerTests
         }
     }
 
-    // --- BenchmarkRunner.Compare.cs: EvaluateThresholds guard-clause branches ---
-    // ValidateBeforeBaseline always rejects a non-positive throughput or peak-private-bytes
-    // value before EvaluateThresholds runs, so the "not positive" side of these ternaries is
-    // unreachable through the public Run(...) surface. EvaluateThresholds is called directly
-    // via reflection (the same private-member pattern used elsewhere in this suite) to
-    // exercise it.
-
-    [TestMethod]
-    public void EvaluateThresholds_BeforeThroughputNotPositive_SkipsRegressionFormula()
-    {
-        var method = typeof(BenchmarkRunner).GetMethod("EvaluateThresholds", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var logLines = new List<string>();
-        var metrics = new ReportMetrics(2_500_000, 900_000_000, 600_000_000, 650_000_000);
-
-        method.Invoke(null,
-        [
-            "9f17b3fd75215cef39788031ac1cc36dbbbed060", 900_000_000L, 0.0, metrics, (Action<string>)logLines.Add
-        ]);
-
-        var allOutput = string.Join("\n", logLines);
-        Assert.IsTrue(allOutput.Contains("Throughput regression:") && allOutput.Contains("0.0%"));
-        Assert.IsFalse(allOutput.Contains("Infinity"));
-    }
-
-    [TestMethod]
-    public void EvaluateThresholds_BeforePeakPrivateBytesNotPositive_SkipsReductionFormula()
-    {
-        var method = typeof(BenchmarkRunner).GetMethod("EvaluateThresholds", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var logLines = new List<string>();
-        var metrics = new ReportMetrics(2_500_000, 900_000_000, 600_000_000, 650_000_000);
-
-        var result = (int)method.Invoke(null,
-        [
-            "9f17b3fd75215cef39788031ac1cc36dbbbed060", 0L, 2_500_000.0, metrics, (Action<string>)logLines.Add
-        ])!;
-
-        Assert.AreEqual(1, result);
-        var allOutput = string.Join("\n", logLines);
-        Assert.IsTrue(allOutput.Contains("Peak private bytes reduction:") && allOutput.Contains("0.0%"));
-        Assert.IsFalse(allOutput.Contains("Infinity"));
-    }
-
     // --- BenchmarkRunner.Measure.cs: iterations-argument default branch ---
     // Each of these leaves the trailing iterations argument unusable in a different way
     // (absent, non-numeric, non-positive), exercising a different short-circuit of the
@@ -1034,15 +898,13 @@ public class BenchmarkRunnerTests
     public void ExecuteMeasureIteration_UnknownScenario_HitsSwitchDiscardArmAndLogsFailure()
     {
         var method = typeof(BenchmarkRunner).GetMethod("ExecuteMeasureIteration", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var output = new StringBuilder();
         var metrics = new ScenarioMetricAccumulator();
 
-        method.Invoke(_runner, ["not-a-real-scenario", "fake.mft", 0, 1, output, metrics]);
+        method.Invoke(_runner, ["not-a-real-scenario", "fake.mft", 0, 1, metrics]);
 
         Assert.AreEqual(0, metrics.WallClocks.Count);
-        var outputText = output.ToString();
-        Assert.IsTrue(outputText.Contains("FAILED:"));
-        Assert.IsTrue(outputText.Contains("Unknown scenario: not-a-real-scenario"));
+        var failureLine = _consoleLines.Single(line => line.Contains("FAILED:"));
+        Assert.IsTrue(failureLine.Contains("Unknown scenario: not-a-real-scenario"));
     }
 
     int RunComparison(string afterContent)

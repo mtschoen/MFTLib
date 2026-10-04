@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
-using MFTLib;
 
 namespace Benchmark;
 
@@ -171,70 +170,5 @@ public partial class BenchmarkRunner
 
         log(string.Empty);
         return RunCompare(resolvedBaselinePath, output.ToString(), log);
-    }
-
-    internal void RunScenario(BenchmarkScenario scenario,
-        string mftPath, int iterations, ulong recordCount, Action<string> log, StringBuilder output)
-    {
-        log($"--- {scenario.Name} ---");
-
-        var allTimings = new List<MftParseTimings>();
-        var allWallClocks = new List<double>();
-        var recordCounts = new List<int>();
-
-        for (var iteration = 0; iteration < iterations; iteration++)
-        {
-            _writeToConsole($"  Iteration {iteration + 1}/{iterations}... ");
-            try
-            {
-                var stopwatch = Stopwatch.StartNew();
-                var (records, timings) = _parseFromFile(mftPath, scenario.Filter, scenario.MatchFlags);
-                stopwatch.Stop();
-
-                allTimings.Add(timings);
-                allWallClocks.Add(stopwatch.Elapsed.TotalMilliseconds);
-                recordCounts.Add(records.Length);
-
-                var iterationLine = $"{stopwatch.Elapsed.TotalMilliseconds:F0}ms ({records.Length:N0} records)";
-                _writeLineToConsole(iterationLine);
-                output.Append(CultureInfo.InvariantCulture,
-                    $"  Iteration {iteration + 1}/{iterations}... {iterationLine}").AppendLine();
-            }
-            catch (Exception exception)
-            {
-                var failLine = $"FAILED: {exception.GetType().Name}: {exception.Message}";
-                _writeLineToConsole(failLine);
-                output.Append(CultureInfo.InvariantCulture, $"  Iteration {iteration + 1}/{iterations}... {failLine}")
-                    .AppendLine();
-            }
-        }
-
-        if (allWallClocks.Count == 0)
-        {
-            log("  All iterations failed - no results to report.");
-            log(string.Empty);
-            return;
-        }
-
-        var medianRecords = recordCounts.OrderBy(x => x).ElementAt(recordCounts.Count / 2);
-        var medianIo = allTimings.Select(t => t.NativeIoMs).OrderBy(x => x).ElementAt(allTimings.Count / 2);
-        var successCount = allTimings.Count;
-        var medianFixup = allTimings.Select(t => t.NativeFixupMs).OrderBy(x => x).ElementAt(successCount / 2);
-        var medianParse = allTimings.Select(t => t.NativeParseMs).OrderBy(x => x).ElementAt(successCount / 2);
-        var medianMarshal = allTimings.Select(t => t.MarshalMs).OrderBy(x => x).ElementAt(successCount / 2);
-        var medianWall = allWallClocks.OrderBy(x => x).ElementAt(successCount / 2);
-        var computeMs = medianFixup + medianParse + medianMarshal;
-
-        log($"  Results (median of {successCount} successful iteration{(successCount == 1 ? "" : "s")}):");
-        log($"    Records:      {medianRecords,12:N0}");
-        log($"    I/O:          {medianIo,12:F1}ms");
-        log($"    Fixup:        {medianFixup,12:F1}ms");
-        log($"    Parse:        {medianParse,12:F1}ms");
-        log($"    Marshal:      {medianMarshal,12:F1}ms");
-        log($"    Compute:      {computeMs,12:F1}ms  (fixup + parse + marshal)");
-        log($"    Wall clock:   {medianWall,12:F1}ms");
-        log($"    Throughput:   {recordCount / (computeMs / 1000.0),12:N0} records/sec (compute)");
-        log($"                  {recordCount / (medianWall / 1000.0),12:N0} records/sec (wall clock)");
-        log(string.Empty);
     }
 }

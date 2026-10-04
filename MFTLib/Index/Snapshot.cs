@@ -182,6 +182,14 @@ internal sealed class SnapshotRelease
     /// </summary>
     internal Action? _releaseStartedForTest;
 
+    /// <summary>
+    ///     A test seam, per instance for the same reason. Invoked by a row-scanning reader once
+    ///     its borrow is counted and before it reads a row, outside every lock, so a test can
+    ///     hold the reader there while a release begins. The borrow is already counted when this
+    ///     runs, so the callback must not throw.
+    /// </summary>
+    internal Action? _readerAdmittedForTest;
+
     internal SnapshotRelease(DriveBlock[] driveBlocks)
     {
         _driveBlocks = driveBlocks;
