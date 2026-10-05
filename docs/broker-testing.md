@@ -119,8 +119,12 @@ await watch.PublishCaughtUpAsync();
 The source records every start in `Starts` (the drive and the cursor it resumed
 from, including starts that were then failed) and every watch it handed out in
 `Watches`; `WatchFor` returns the latest watch of one drive and
-`WaitForStartAsync` completes with the next watch handed out for it (register the wait
-before triggering the start). Starts are
+`WaitForStartAsync(drive, startNumber, token)` completes with the drive's
+`startNumber`th watch (one for the first). A watch handed out before the call satisfies it
+at once, so a test may trigger the start and wait afterwards, or wait first; neither misses it.
+A drive the index restarts gets a new watch each time: the first start is number one, the
+restart number two. A start that failed or is held has handed out no watch and is not
+counted. A test that needs both drives started awaits one call per drive. Starts are
 scripted per source:
 
 - `CatchUpOnStart` queues the caught-up marker the moment each watch starts, for a
@@ -159,8 +163,9 @@ the public seam is designed to exclude.
 A test that needs a cache block on disk does not write one by hand. `SyntheticBlock`
 writes, edits and reads blocks through the production block writer, so a test never
 sees the block format. Rows are `SyntheticRow` values: row number, name, parent row,
-and optional `IsDirectory`, `IsTombstone`, `Attributes`, `Size` (null writes the
-size-unknown flag), `ModifiedUtc` and `SequenceNumber`. Capacity is planned from the
+and optional `IsDirectory`, `IsTombstone` (a deleted record whose name is kept),
+`IsFree` (a slot holding no record, so scans and counts skip it and `ReadRows` omits it),
+`Attributes`, `Size` (null writes the size-unknown flag), `ModifiedUtc` and `SequenceNumber`. Capacity is planned from the
 rows, with headroom for later edits.
 
 ```csharp
@@ -190,8 +195,12 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
   `ProducerKind = ProducerKind.Enumeration` and `RootRow = 0` for an enumeration block.
 - `Edit` opens an existing block and hands a `SyntheticBlockEditor` to the callback,
   then flushes and closes it. The editor reads and writes rows, sets attributes,
-  marks a tombstone or compaction needed, replaces the journal cursor or scan
-  timestamp, and `CorruptNamePool` makes the next open reject the block with
+  marks a tombstone, a size unknown (`MarkSizeUnknown` for one row, `MarkSizesUnknown`
+  for every row a filter selects, returning how many) or compaction needed, replaces the
+  journal cursor or scan timestamp (`ReadHeader(...).CompletedUtc` is the stored one,
+  so an edit can write it back), `SetProducerKind(ProducerKind.Mft)` turns a block
+  written by an enumeration scan into one an index warm-starts without a producer and
+  whose rows accept `FileIndexTestAccess.ApplyJournalEntries`, and `CorruptNamePool` makes the next open reject the block with
   `BlockValidationResult.InvalidNameDescriptor`. Using the editor after the edit
   returns throws `InvalidOperationException`.
 - `ReadRows` returns every row in use, tombstones included, in row order.

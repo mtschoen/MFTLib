@@ -119,10 +119,10 @@ public class ScriptedWatchSourceTests
     }
 
     [TestMethod]
-    public async Task WaitForStartAsync_CompletesWithTheNextWatchHandedOutForTheDrive()
+    public async Task WaitForStartAsync_CompletesWithTheWatchHandedOutForTheDriveLater()
     {
         var source = new ScriptedWatchSource();
-        var waiting = source.WaitForStartAsync('T', Token);
+        var waiting = source.WaitForStartAsync('T', 1, Token);
         await StartAsync(source, Target('U'));
 
         Assert.IsFalse(waiting.IsCompleted, "a start of another drive does not satisfy the wait");
@@ -133,14 +133,61 @@ public class ScriptedWatchSourceTests
     }
 
     [TestMethod]
-    public async Task WaitForStartAsync_IgnoresStartsThatHappenedBeforeTheCall()
+    public async Task WaitForStartAsync_ACallAfterTheStart_IsSatisfiedAtOnce()
     {
         var source = new ScriptedWatchSource();
-        await StartAsync(source, Target('T'));
+        var started = await StartAsync(source, Target('T'));
 
-        var waiting = source.WaitForStartAsync('T', Token);
+        var waiting = source.WaitForStartAsync('t', 1, Token);
 
+        Assert.IsTrue(waiting.IsCompleted, "a start that happened before the call must not be missed");
+        Assert.AreSame(started, await waiting);
+    }
+
+    [TestMethod]
+    public async Task WaitForStartAsync_TheNthStartOfADriveIsTheNthWatchHandedOutForIt()
+    {
+        var source = new ScriptedWatchSource();
+        var first = await StartAsync(source, Target('T'));
+        await StartAsync(source, Target('U'));
+        var secondWait = source.WaitForStartAsync('T', 2, Token);
+        var thirdWait = source.WaitForStartAsync('T', 3, Token);
+        Assert.AreSame(first, await source.WaitForStartAsync('T', 1, Token));
+        Assert.IsFalse(secondWait.IsCompleted, "the drive was started once, not twice");
+
+        await ((IAsyncDisposable)first).DisposeAsync();
+        var second = await StartAsync(source, Target('T'));
+
+        Assert.AreSame(second, await secondWait.WaitAsync(HangGuard, Token));
+        Assert.IsFalse(thirdWait.IsCompleted);
+        Assert.AreSame(second, await source.WaitForStartAsync('T', 2, Token));
+        await ((IAsyncDisposable)second).DisposeAsync();
+        var third = await StartAsync(source, Target('T'));
+        Assert.AreSame(third, await thirdWait.WaitAsync(HangGuard, Token));
+    }
+
+    [TestMethod]
+    public async Task WaitForStartAsync_AFailedStartHandsOutNoWatchAndIsNotCounted()
+    {
+        var source = new ScriptedWatchSource();
+        source.FailNextStart(new IOException("refused"));
+        await Assert.ThrowsExceptionAsync<IOException>(() => StartAsync(source, Target('T')));
+        var waiting = source.WaitForStartAsync('T', 1, Token);
         Assert.IsFalse(waiting.IsCompleted);
+
+        var started = await StartAsync(source, Target('T'));
+
+        Assert.AreSame(started, await waiting.WaitAsync(HangGuard, Token));
+    }
+
+    [DataTestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public void WaitForStartAsync_AStartNumberBelowOne_IsRejected(int startNumber)
+    {
+        var source = new ScriptedWatchSource();
+
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => source.WaitForStartAsync('T', startNumber, Token));
     }
 
     [TestMethod]
@@ -148,7 +195,7 @@ public class ScriptedWatchSourceTests
     {
         var source = new ScriptedWatchSource();
         using var cancellation = new CancellationTokenSource();
-        var waiting = source.WaitForStartAsync('T', cancellation.Token);
+        var waiting = source.WaitForStartAsync('T', 1, cancellation.Token);
 
         await cancellation.CancelAsync();
 

@@ -70,7 +70,7 @@ public static class SyntheticBlock
         block.Flush(null);
     }
 
-    /// <summary>Reads every row in use, tombstones included, in row order.</summary>
+    /// <summary>Reads every row in use, tombstones included and free slots left out, in row order.</summary>
     /// <param name="blockPath">The block file.</param>
     /// <param name="volumeSerial">The volume serial number the block was written for.</param>
     /// <returns>The rows as they are stored.</returns>
@@ -148,7 +148,7 @@ public static class SyntheticBlock
 
     internal static void WriteRow(BlockWriter writer, SyntheticRow row)
     {
-        var flags = RowFlags.InUse;
+        var flags = row.IsFree ? RowFlags.None : RowFlags.InUse;
         if (row.IsDirectory)
         {
             flags |= RowFlags.Directory;

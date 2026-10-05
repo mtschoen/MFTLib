@@ -16,6 +16,13 @@ public sealed record SyntheticRow(uint Row, string Name, uint ParentRow)
     /// <summary>True for a row whose record was deleted; the name is kept so a change feed can still name it.</summary>
     public bool IsTombstone { get; init; }
 
+    /// <summary>
+    ///     True for a slot that holds no record: the in-use flag is clear, as for a slot never filled or
+    ///     freed, so scans, lookups and counts skip it. The other columns are still stored, which lets a
+    ///     test seed stale data a reader must ignore. <see cref="SyntheticBlock.ReadRows" /> reports only rows in use.
+    /// </summary>
+    public bool IsFree { get; init; }
+
     /// <summary>Stored as the raw attribute word, so any combination a search or filter inspects can be seeded.</summary>
     public FileAttributes Attributes { get; init; }
 

@@ -57,6 +57,37 @@ public sealed class SyntheticBlockEditor
         _block.Rows[(int)row].Attributes = (uint)attributes;
     }
 
+    /// <summary>
+    ///     Marks a row's size as unknown, the way an enumeration producer records a file it could not
+    ///     stat: the unknown flag is set and the stored size becomes zero. The name is not rewritten.
+    /// </summary>
+    /// <param name="row">The row number; it must be in use.</param>
+    public void MarkSizeUnknown(uint row)
+    {
+        RequireRow(row);
+        WriteSizeUnknown(row);
+    }
+
+    /// <summary>Marks the size of every row in use whose stored value satisfies <paramref name="matches" /> as unknown.</summary>
+    /// <param name="matches">Chooses the rows, from each row as stored.</param>
+    /// <returns>How many rows were marked, so a test can assert that its filter selected something.</returns>
+    public int MarkSizesUnknown(Func<SyntheticRow, bool> matches)
+    {
+        ArgumentNullException.ThrowIfNull(matches);
+        EnsureOpen();
+        var marked = 0;
+        for (var row = 0u; row < _writer.RowCount; row++)
+        {
+            if (_block.Rows[(int)row].IsInUse && matches(SyntheticBlock.ReadRow(_block, row)))
+            {
+                WriteSizeUnknown(row);
+                marked++;
+            }
+        }
+
+        return marked;
+    }
+
     /// <summary>Marks a row deleted, keeping its name.</summary>
     /// <param name="row">The row number.</param>
     public void MarkTombstone(uint row)
@@ -81,11 +112,23 @@ public sealed class SyntheticBlockEditor
     }
 
     /// <summary>Replaces the scan timestamp and flushes the block.</summary>
-    /// <param name="completedUtc">The new scan timestamp.</param>
+    /// <param name="completedUtc">The new scan timestamp; <see cref="SyntheticDriveHeader.CompletedUtc" /> from <see cref="SyntheticBlock.ReadHeader" /> writes the stored one back.</param>
     public void Complete(DateTime completedUtc)
     {
         EnsureOpen();
         _writer.Complete(completedUtc, null);
+    }
+
+    /// <summary>
+    ///     Replaces the producer recorded in the header. A block written by <see cref="ProducerKind.Enumeration" />
+    ///     becomes one an index treats as an MFT block: it can be warm-started without a producer and its
+    ///     rows accept journal entries. Only the header changes, so the rows must already suit the new kind.
+    /// </summary>
+    /// <param name="producerKind">The producer to record.</param>
+    public void SetProducerKind(ProducerKind producerKind)
+    {
+        EnsureOpen();
+        _block.Header.ProducerKind = producerKind;
     }
 
     /// <summary>
@@ -96,6 +139,20 @@ public sealed class SyntheticBlockEditor
     {
         EnsureOpen();
         _block.Header.NamePoolUsed = 0;
+    }
+
+    /// <summary>
+    ///     Sets the size-unknown flag by rewriting the whole descriptor word, as the block writer does
+    ///     for every flag change, and zeroes the stored size.
+    /// </summary>
+    void WriteSizeUnknown(uint rowIndex)
+    {
+        using var access = _block.TakeAccess();
+        ref var stored = ref _block.Rows[(int)rowIndex];
+        var descriptor = FileRow.ReadDescriptorWord(in stored);
+        FileRow.WriteDescriptorWord(ref stored, FileRow.DescriptorNameOffsetBytes(descriptor),
+            FileRow.DescriptorNameLengthUnits(descriptor), FileRow.DescriptorFlags(descriptor) | RowFlags.SizeUnknown);
+        stored.Size = 0;
     }
 
     internal void Close()

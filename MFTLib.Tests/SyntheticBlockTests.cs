@@ -11,7 +11,7 @@ namespace MFTLib.Tests;
 ///     <see cref="BlockFile" /> read, so the block it writes is judged by the production reader.
 /// </summary>
 [TestClass]
-public class SyntheticBlockTests
+public partial class SyntheticBlockTests
 {
     const uint Serial = 0x1234;
     static readonly DateTime Moment = new(2026, 10, 4, 0, 0, 0, DateTimeKind.Utc);
@@ -310,6 +310,7 @@ public class SyntheticBlockTests
         Assert.AreEqual(ProducerKind.Mft, header.ProducerKind);
         Assert.AreEqual(10u, header.RowCount, "the highest used slot plus one, tombstones included");
         Assert.AreEqual(tag, header.CacheTag);
+        Assert.AreEqual(Moment, header.CompletedUtc);
     }
 
     [TestMethod]

@@ -67,7 +67,7 @@ MFTLibTestExtensions.ScriptedScan :: type public sealed class
 MFTLibTestExtensions.ScriptedWatchSource :: constructor public ()
 MFTLibTestExtensions.ScriptedWatchSource :: method public FailNextStart(System.Exception failure) : void
 MFTLibTestExtensions.ScriptedWatchSource :: method public FailNextStartFor(char driveLetter, System.Exception failure) : void
-MFTLibTestExtensions.ScriptedWatchSource :: method public WaitForStartAsync(char driveLetter, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLibTestExtensions.ScriptedDriveWatch>
+MFTLibTestExtensions.ScriptedWatchSource :: method public WaitForStartAsync(char driveLetter, int startNumber, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLibTestExtensions.ScriptedDriveWatch>
 MFTLibTestExtensions.ScriptedWatchSource :: method public WatchFor(char driveLetter) : MFTLibTestExtensions.ScriptedDriveWatch
 MFTLibTestExtensions.ScriptedWatchSource :: property public CatchUpOnStart { get; init; } : bool
 MFTLibTestExtensions.ScriptedWatchSource :: property public StartFailure { get; set; } : System.Func<char, System.Exception?>?
@@ -95,10 +95,13 @@ MFTLibTestExtensions.SyntheticBlock :: type public static class
 MFTLibTestExtensions.SyntheticBlockEditor :: method public Complete(System.DateTime completedUtc) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public CorruptNamePool() : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkCompactionNeeded() : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkSizeUnknown(uint row) : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkSizesUnknown(System.Func<MFTLibTestExtensions.SyntheticRow, bool> matches) : int
 MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkTombstone(uint row) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public ReadRow(uint row) : MFTLibTestExtensions.SyntheticRow
 MFTLibTestExtensions.SyntheticBlockEditor :: method public SetAttributes(uint row, System.IO.FileAttributes attributes) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public SetJournalCursor(MFTLib.UsnJournalCursor cursor) : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public SetProducerKind(MFTLib.Index.ProducerKind producerKind) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public WriteRow(MFTLibTestExtensions.SyntheticRow row) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: property public RowCount { get; } : uint
 MFTLibTestExtensions.SyntheticBlockEditor :: type public sealed class
@@ -121,9 +124,9 @@ MFTLibTestExtensions.SyntheticCacheTag :: method public static GetVersion(MFTLib
 MFTLibTestExtensions.SyntheticCacheTag :: type public static class
 MFTLibTestExtensions.SyntheticCheckpointLoss :: method public static WithJournalPositions(MFTLib.Index.JournalCheckpointLoss report, long checkpointUsn, long firstUsn, long nextUsn) : MFTLib.Index.JournalCheckpointLoss
 MFTLibTestExtensions.SyntheticCheckpointLoss :: type public static class
-MFTLibTestExtensions.SyntheticDriveHeader :: constructor public (MFTLib.Index.ProducerKind ProducerKind, uint RowCount, MFTLib.Index.CacheTag CacheTag)
+MFTLibTestExtensions.SyntheticDriveHeader :: constructor public (MFTLib.Index.ProducerKind ProducerKind, uint RowCount, MFTLib.Index.CacheTag CacheTag, System.DateTime CompletedUtc)
 MFTLibTestExtensions.SyntheticDriveHeader :: method public <Clone>$() : MFTLibTestExtensions.SyntheticDriveHeader
-MFTLibTestExtensions.SyntheticDriveHeader :: method public Deconstruct(out MFTLib.Index.ProducerKind ProducerKind, out uint RowCount, out MFTLib.Index.CacheTag CacheTag) : void
+MFTLibTestExtensions.SyntheticDriveHeader :: method public Deconstruct(out MFTLib.Index.ProducerKind ProducerKind, out uint RowCount, out MFTLib.Index.CacheTag CacheTag, out System.DateTime CompletedUtc) : void
 MFTLibTestExtensions.SyntheticDriveHeader :: method public Equals(MFTLibTestExtensions.SyntheticDriveHeader? other) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: method public override Equals(object? obj) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: method public override GetHashCode() : int
@@ -131,6 +134,7 @@ MFTLibTestExtensions.SyntheticDriveHeader :: method public override ToString() :
 MFTLibTestExtensions.SyntheticDriveHeader :: method public static op_Equality(MFTLibTestExtensions.SyntheticDriveHeader? left, MFTLibTestExtensions.SyntheticDriveHeader? right) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: method public static op_Inequality(MFTLibTestExtensions.SyntheticDriveHeader? left, MFTLibTestExtensions.SyntheticDriveHeader? right) : bool
 MFTLibTestExtensions.SyntheticDriveHeader :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
+MFTLibTestExtensions.SyntheticDriveHeader :: property public CompletedUtc { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticDriveHeader :: property public ProducerKind { get; init; } : MFTLib.Index.ProducerKind
 MFTLibTestExtensions.SyntheticDriveHeader :: property public RowCount { get; init; } : uint
 MFTLibTestExtensions.SyntheticDriveHeader :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticDriveHeader>
@@ -212,6 +216,7 @@ MFTLibTestExtensions.SyntheticRow :: method public static op_Equality(MFTLibTest
 MFTLibTestExtensions.SyntheticRow :: method public static op_Inequality(MFTLibTestExtensions.SyntheticRow? left, MFTLibTestExtensions.SyntheticRow? right) : bool
 MFTLibTestExtensions.SyntheticRow :: property public Attributes { get; init; } : System.IO.FileAttributes
 MFTLibTestExtensions.SyntheticRow :: property public IsDirectory { get; init; } : bool
+MFTLibTestExtensions.SyntheticRow :: property public IsFree { get; init; } : bool
 MFTLibTestExtensions.SyntheticRow :: property public IsTombstone { get; init; } : bool
 MFTLibTestExtensions.SyntheticRow :: property public ModifiedUtc { get; init; } : System.DateTime
 MFTLibTestExtensions.SyntheticRow :: property public Name { get; init; } : string

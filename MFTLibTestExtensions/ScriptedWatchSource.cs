@@ -17,7 +17,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     readonly List<ScriptedDriveWatch> _watches = [];
     readonly Dictionary<char, HeldStart> _holdsByDrive = [];
     readonly Dictionary<char, Exception> _failuresByDrive = [];
-    readonly Dictionary<char, List<TaskCompletionSource<ScriptedDriveWatch>>> _startWaiters = [];
+    readonly Dictionary<char, List<StartWaiter>> _startWaiters = [];
     HeldStart? _nextHold;
     Exception? _nextFailure;
 
@@ -71,15 +71,31 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     public ScriptedDriveWatch WatchFor(char driveLetter) =>
         Watches.Last(watch => Same(watch.DriveLetter, driveLetter));
 
-    /// <summary>Completes with the next watch handed out for the drive after this call.</summary>
-    /// <param name="driveLetter">The drive to wait for.</param>
+    /// <summary>
+    ///     Completes with the watch handed out for the drive as its <paramref name="startNumber" />th, counting
+    ///     from one in the order the watches were handed out. A watch handed out before this call satisfies
+    ///     the wait at once, so a test may trigger the start and wait afterwards without racing it. A drive
+    ///     the index restarts gets a new watch each time: the first start is number one, the restart number
+    ///     two. A start that failed or is still held has handed out no watch and is not counted.
+    /// </summary>
+    /// <param name="driveLetter">The drive to wait for, matched without regard to letter case.</param>
+    /// <param name="startNumber">Which watch of the drive to wait for, one for the first.</param>
     /// <param name="cancellationToken">Ends the wait with <see cref="OperationCanceledException" />.</param>
     /// <returns>The watch the index received.</returns>
-    public Task<ScriptedDriveWatch> WaitForStartAsync(char driveLetter, CancellationToken cancellationToken)
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="startNumber" /> is less than one.</exception>
+    public Task<ScriptedDriveWatch> WaitForStartAsync(char driveLetter, int startNumber,
+        CancellationToken cancellationToken)
     {
-        var waiter = new TaskCompletionSource<ScriptedDriveWatch>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ArgumentOutOfRangeException.ThrowIfLessThan(startNumber, 1);
+        var waiter = new StartWaiter(startNumber);
         lock (_stateLock)
         {
+            var handedOut = _watches.Where(watch => Same(watch.DriveLetter, driveLetter)).ToList();
+            if (handedOut.Count >= startNumber)
+            {
+                return Task.FromResult(handedOut[startNumber - 1]);
+            }
+
             var key = char.ToUpperInvariant(driveLetter);
             if (!_startWaiters.TryGetValue(key, out var waiters))
             {
@@ -90,7 +106,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
             waiters.Add(waiter);
         }
 
-        return waiter.Task.WaitAsync(cancellationToken);
+        return waiter.Completion.Task.WaitAsync(cancellationToken);
     }
 
     /// <summary>Makes the next start throw <paramref name="failure" />.</summary>
@@ -188,7 +204,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     ScriptedDriveWatch HandOut(IndexWatchTarget target)
     {
         var watch = new ScriptedDriveWatch(target);
-        List<TaskCompletionSource<ScriptedDriveWatch>>? waiters = null;
+        List<StartWaiter> satisfied = [];
         lock (_stateLock)
         {
             var previous = _watches.LastOrDefault(existing => Same(existing.DriveLetter, target.DriveLetter));
@@ -199,9 +215,11 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
             }
 
             _watches.Add(watch);
-            if (_startWaiters.Remove(char.ToUpperInvariant(target.DriveLetter), out var found))
+            if (_startWaiters.TryGetValue(char.ToUpperInvariant(target.DriveLetter), out var waiters))
             {
-                waiters = found;
+                var startNumber = _watches.Count(existing => Same(existing.DriveLetter, target.DriveLetter));
+                satisfied = [.. waiters.Where(waiter => waiter.StartNumber <= startNumber)];
+                waiters.RemoveAll(satisfied.Contains);
             }
         }
 
@@ -210,9 +228,9 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
             _ = watch.QueueCaughtUp();
         }
 
-        foreach (var waiter in waiters ?? [])
+        foreach (var waiter in satisfied)
         {
-            waiter.TrySetResult(watch);
+            waiter.Completion.TrySetResult(watch);
         }
 
         return watch;
@@ -221,4 +239,12 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     static bool Same(char left, char right) => char.ToUpperInvariant(left) == char.ToUpperInvariant(right);
 
     sealed record HeldStart(TestGate Gate, bool ObserveToken);
+
+    sealed class StartWaiter(int startNumber)
+    {
+        public int StartNumber { get; } = startNumber;
+
+        public TaskCompletionSource<ScriptedDriveWatch> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
 }
