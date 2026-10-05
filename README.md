@@ -1,9 +1,18 @@
 # MFTLib
 
-MFTLib is a .NET library for building fast NTFS file indexes, search tools, backup
-catalogs, and filesystem monitors. It reads the Master File Table (MFT) directly for a
-high-throughput snapshot, then uses the USN change journal to keep that snapshot current
-without repeatedly walking the filesystem.
+MFTLib is a .NET library for building fast file indexes, search tools, backup
+catalogs, and filesystem monitors. On NTFS volumes it reads the Master File Table (MFT)
+directly for a high-throughput snapshot, then uses the USN change journal to keep that
+snapshot current without repeatedly walking the filesystem.
+
+The index in `MFTLib.Index` is not limited to NTFS or to Windows. A cached, memory-mapped
+block holds each drive's file metadata, and a producer fills it: the MFT scan on an NTFS
+volume, or the enumeration producer, which walks the directory tree and so runs over any
+filesystem, including on Linux. Queries and the cache work the same way whichever producer
+built the block; live USN watching requires an MFT-backed NTFS index, while
+enumeration-backed indexes are refreshed by rescanning. The name stays MFTLib because the
+MFT scan is the fast path the library was built around and the project's identity; the other
+producers feed the same index.
 
 The public API is managed C#; performance-sensitive volume I/O, record parsing, and path
 resolution run in a native C++ core.
@@ -19,11 +28,13 @@ instead reads NTFS's central record table, which is useful when an application n
 - correlate full-scan records with later filesystem changes; or
 - keep its main process non-elevated while raw-volume work runs in one elevated child.
 
-MFTLib is not a cross-platform filesystem abstraction and does not read file contents.
-It is specialized for NTFS metadata on Windows.
+MFTLib does not read file contents. The raw MFT and USN journal paths are specialized
+for NTFS metadata on Windows; the index runs elsewhere through the enumeration producer.
 
 ## Highlights
 
+- File index (`MFTLib.Index`) over any filesystem, with the enumeration producer on Linux
+  and the MFT scan on NTFS
 - Direct MFT parsing through raw NTFS volume access
 - Runtime detection of the volume's MFT record size (1024 or 4096 bytes) instead of an
   assumed fixed size
@@ -43,10 +54,10 @@ volume size, filtering, path resolution, and hardware.
 
 ## Requirements
 
-- Windows on an NTFS volume
+- Windows on an NTFS volume for direct raw MFT and USN journal operations
+- Administrator access for direct raw-volume and USN operations (cross-platform enumeration indexing requires neither)
 - .NET 10.0 or later
 - x64 process architecture
-- Administrator access for direct raw-volume and USN operations
 
 The NuGet package includes `MFTLibNative.dll` under `runtimes/win-x64/native` and a
 transitive build target that copies it to the consumer's output directory.
@@ -80,7 +91,7 @@ the matching test extensions package:
 While 0.3.0 is unpublished, consumers of MFTLib (such as `file-wizard` and `git-wizard`) build it from source through a git submodule:
 
 1. **Submodule convention**: Declare MFTLib as a submodule whose url resolves to `https://gitea.fleet.sticktoitive.net/schoen/MFTLib.git`. Both consumers declare it at `external/MFTLib` with the relative url `../MFTLib.git`, which keeps the submodule on the same Gitea instance and under the same owner as the consumer. The gitlink is the pin: the commit sha recorded at that path is the MFTLib revision the consumer builds, and it is the only place that revision is stored.
-2. **Automated fan-out**: On push to `main` in MFTLib, `.gitea/workflows/sync-consumers.yml` executes `scripts/sync_consumers.sh`, enumerates `schoen/*` repos on Gitea, and opens a `chore/mftlib-pin-bump` pull request as the `claude-code` bot (backed by the `MFTLIB_SYNC_TOKEN` Actions secret) in every repo whose `.gitmodules` declares a submodule resolving to MFTLib. That pull request commits the new sha into the gitlink. The submodule path is read from `.gitmodules` rather than assumed. A repo with no such submodule is not a consumer and is skipped.
+2. **Fan-out by hand**: the pin moves in each consumer's own pull request, because a breaking MFTLib change leaves an automatic pin-bump pull request unable to compile. `.gitea/workflows/sync-consumers.yml` runs on `workflow_dispatch` only: when run by hand it executes `scripts/sync_consumers.sh`, enumerates `schoen/*` repos on Gitea, and opens a `chore/mftlib-pin-bump` pull request as the `claude-code` bot (backed by the `MFTLIB_SYNC_TOKEN` Actions secret) in every repo whose `.gitmodules` declares a submodule resolving to MFTLib. That pull request commits the new sha into the gitlink. The submodule path is read from `.gitmodules` rather than assumed. A repo with no such submodule is not a consumer and is skipped.
 3. **A silent no-op is a failure**: a fan-out that matched zero consumers exits non-zero instead of reporting success, and so does one where any single consumer failed to bump. A green run that updated nothing is what let both consumers drift four MFTLib pull requests behind (issue #194).
 4. **Local development**: Populate the submodule with `git submodule update --init --recursive`. Do this after a `git clean -ffxd`, which removes the checked-out submodule content along with every other untracked file.
 5. **Post-0.3.0 NuGet transition**: Once 0.3.0 is published on NuGet, consumers drop the submodule and replace it with a standard `<PackageReference Include="MFTLib" Version="0.3.0" />` (automated package reference updates are planned for a future iteration of the fan-out workflow).

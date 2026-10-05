@@ -186,6 +186,12 @@ at `gitea/main` that build the submodule (native, managed or test extensions):
   `ci.yml`, `preview.yml`, `release.yml` and `screenshot.yml` (and the `release.yml`
   trigger paths for the deleted files), and verify required checks.
 
+- **MFTLib:** delete `.gitea/workflows/sync-consumers.yml`, `scripts/sync_consumers.sh`,
+  `scripts/sync_consumers.tests.sh` and the `Test the consumer sync script` step of the
+  `linux` job in `.gitea/workflows/test.yml`. The workflow runs by hand only until then.
+  `sync_consumers.sh` exits 1 when no consumer matches, which is every push once the
+  submodules are gone, so the script must not outlive the bridges.
+
 ### 6. Release notes highlights (0.3.0)
 
 The release notes in `CHANGELOG.md` and GitHub Release must match `CHANGELOG.md` and highlight:

@@ -24,6 +24,12 @@ on:
     branches: [main, 'pr-crew/merge-train/**']
   workflow_dispatch:
 
+# A newer commit on a pull request supersedes the run in flight. Never cancel a
+# push to main or a merge-train branch: those runs gate the landing batch.
+concurrency:
+  group: aislop-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   # Node ignores the Windows cert store, so staged mkcert CA on the runner preserves
   # TLS verification for internal HTTPS fetches when present (local-ci #33).
@@ -104,7 +110,92 @@ jobs:
             if ($LASTEXITCODE -ne 0) { Write-Error "dotnet build $proj failed"; exit 1 }
           }
 
+      - name: Restore the built aislop fork
+        id: aislop-cache
+        uses: actions/cache@v4
+        with:
+          # Keyed on the pinned sha, which is immutable, so a hit is always the
+          # build for exactly this pin and the clone + install below is skipped.
+          # The key is a literal sha, never hashFiles() (project-ci-setup.md:
+          # hashFiles can evaluate empty on act_runner and freeze the cache).
+          # A workspace-relative path (../aislop) is stable across jobs on this
+          # host-mode runner, whereas runner.temp contains a random per-job path
+          # that changes the cache version hash and prevents cache hits.
+          path: ../aislop
+          key: aislop-fork-${{ env.AISLOP_FORK_COMMIT }}
+
+      - name: Repair restored aislop dependency links
+        if: steps.aislop-cache.outputs.cache-hit == 'true'
+        # pnpm links dependencies on Windows with junctions whose targets are
+        # ABSOLUTE paths into the producing job's directory. Gitea act gives
+        # every job a fresh random hostexecutor directory that is deleted at
+        # job cleanup, and actions/cache restores the archived links verbatim,
+        # so a cache hit leaves every junction pointing into the deleted
+        # producing job and node dies with MODULE_NOT_FOUND. Junctions cannot
+        # be relative, so re-point each restored link at the same path suffix
+        # inside this job's tree before the CLI runs. A link whose absolute
+        # target still resolves outside the tree is left alone; one that maps
+        # nowhere fails the step instead of running a broken gate. Verified
+        # with the same tar invocation actions/cache uses (GNU tar --posix -P
+        # with MSYS=winsymlinks:nativestrict): restore in a fresh directory
+        # reproduces MODULE_NOT_FOUND, and after this repair the CLI runs and
+        # its unbundled runtime deps (typescript, web-tree-sitter) resolve.
+        shell: pwsh
+        run: |
+          $aislopDir = (Resolve-Path "$env:GITHUB_WORKSPACE\..\aislop").Path
+          $links = [System.Collections.Generic.List[string]]::new()
+          $stack = [System.Collections.Generic.Stack[string]]::new([string[]]@($aislopDir))
+          while ($stack.Count -gt 0) {
+            $dir = $stack.Pop()
+            foreach ($entry in [System.IO.Directory]::EnumerateFileSystemEntries($dir)) {
+              $attrs = [System.IO.File]::GetAttributes($entry)
+              if (($attrs -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                $links.Add($entry)
+              } elseif (($attrs -band [System.IO.FileAttributes]::Directory) -ne 0) {
+                $stack.Push($entry)
+              }
+            }
+          }
+          $retargeted = 0
+          $unrepairable = [System.Collections.Generic.List[string]]::new()
+          foreach ($entry in $links) {
+            $target = (Get-Item -LiteralPath $entry -Force).LinkTarget
+            if ([string]::IsNullOrEmpty($target)) { continue }
+            $normalized = $target -replace '^\\\\\?\\', '' -replace '^\\\?\?\\', ''
+            if (-not [System.IO.Path]::IsPathRooted($normalized)) { continue }
+            $components = $normalized.Split('\', [StringSplitOptions]::RemoveEmptyEntries)
+            $candidate = $null
+            for ($i = 1; $i -lt $components.Count; $i++) {
+              $candidatePath = Join-Path $aislopDir ([string]::Join('\', $components, $i, $components.Count - $i))
+              if (Test-Path -LiteralPath $candidatePath) { $candidate = $candidatePath; break }
+            }
+            if ($null -eq $candidate) {
+              if (Test-Path -LiteralPath $normalized) { continue }
+              $unrepairable.Add("$entry -> $target")
+              continue
+            }
+            if ($candidate -ieq $normalized) { continue }
+            $isDir = ([System.IO.File]::GetAttributes($entry) -band [System.IO.FileAttributes]::Directory) -ne 0
+            if ($isDir) {
+              [System.IO.Directory]::Delete($entry)
+              New-Item -ItemType Junction -Path $entry -Target $candidate | Out-Null
+            } else {
+              [System.IO.File]::Delete($entry)
+              New-Item -ItemType SymbolicLink -Path $entry -Target $candidate | Out-Null
+            }
+            $retargeted++
+          }
+          Write-Host "Repaired $retargeted of $($links.Count) restored dependency links"
+          if ($unrepairable.Count -gt 0) {
+            $unrepairable | ForEach-Object { Write-Host "UNREPAIRABLE: $_" }
+            Write-Error "Restored aislop tree has dependency links that do not map into this job's tree"
+            exit 1
+          }
+          & node "$aislopDir\dist\cli.js" --version
+          if ($LASTEXITCODE -ne 0) { Write-Error "restored aislop CLI failed to start after link repair"; exit 1 }
+
       - name: Build C#-capable aislop (pinned fork commit)
+        if: steps.aislop-cache.outputs.cache-hit != 'true'
         # Cloned outside the workspace so aislop does not scan the fork's own source.
         # From Gitea (canonical, always current), not the github.com mirror (can lag
         # behind by many commits, so a freshly bumped pin can be absent there).
@@ -113,11 +204,13 @@ jobs:
         # (hermetic - no corepack or preinstalled pnpm needed).
         shell: pwsh
         run: |
-          git clone https://gitea.fleet.sticktoitive.net/schoen/aislop.git "$env:RUNNER_TEMP\aislop"
+          $aislopDir = "$env:GITHUB_WORKSPACE\..\aislop"
+          if (Test-Path $aislopDir) { Remove-Item -Recurse -Force $aislopDir }
+          git clone https://gitea.fleet.sticktoitive.net/schoen/aislop.git $aislopDir
           if ($LASTEXITCODE -ne 0) { Write-Error "git clone failed"; exit 1 }
-          git -C "$env:RUNNER_TEMP\aislop" checkout "$env:AISLOP_FORK_COMMIT"
+          git -C $aislopDir checkout "$env:AISLOP_FORK_COMMIT"
           if ($LASTEXITCODE -ne 0) { Write-Error "git checkout failed"; exit 1 }
-          Push-Location "$env:RUNNER_TEMP\aislop"
+          Push-Location $aislopDir
           npx -y pnpm@10.28.0 install --frozen-lockfile
           $installExit = $LASTEXITCODE
           Pop-Location
@@ -135,7 +228,8 @@ jobs:
           # (ZOMBIE_TASK_TIMEOUT, 10 minutes) fails any task whose log is quiet that
           # long, which a busy runner can trigger. Run the scan detached and heartbeat
           # from the foreground so the task log stays alive.
-          $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "node `"$env:RUNNER_TEMP\aislop\dist\cli.js`" ci . --json > `"$report`"" -NoNewWindow -PassThru
+          $cli = "$env:GITHUB_WORKSPACE\..\aislop\dist\cli.js"
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "node `"$cli`" ci . --json > `"$report`"" -NoNewWindow -PassThru
           $null = $process.Handle
           $lastBeat = [DateTime]::UtcNow
           while (-not $process.HasExited) {

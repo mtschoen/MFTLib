@@ -1,11 +1,14 @@
 # .gitea/workflows/sync-consumers.yml
 name: sync-consumers
-# Keeps every consumer repo's MFTLib pin in sync with main.
+# Moves every consumer repo's MFTLib pin to main, when run by hand
+# (workflow_dispatch only): each consumer otherwise moves its own pin in its own
+# pull request, because an automatic pin-bump pull request cannot compile while a
+# breaking MFTLib slice is in flight. Deleted at bridge retirement.
 # Convention: a consumer repo pins MFTLib with a git submodule whose url
 # resolves to this repository, declared in .gitmodules on its default branch.
 # Both consumers declare it at external/MFTLib with the relative url
 # ../MFTLib.git. The submodule gitlink is the pin, so this workflow bumps that
-# gitlink across every consumer on every push to main. A run that matches no
+# gitlink across every consumer on each run. A run that matches no
 # consumer fails rather than reporting success: a green fan-out that updated
 # nothing hides pin drift.
 #
@@ -20,8 +23,6 @@ name: sync-consumers
 # on Gitea. The GitHub mirror can lag behind it, so every clone and fetch
 # targets gitea.fleet.sticktoitive.net.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

@@ -10,6 +10,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  DOTNET_NOLOGO: 'true'
+
 jobs:
   windows:
     runs-on: windows-latest
@@ -328,6 +331,23 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      # The hash is computed in the shell: hashFiles() can evaluate to an empty
+      # string on act_runner, which freezes the cache at its first snapshot
+      # (project-ci-setup.md, "hashFiles silently evaluates empty").
+      - name: Compute NuGet cache key
+        id: nuget-hash
+        if: steps.changed-files.outputs.pin_only != 'true'
+        run: echo "sha=$(git ls-files '*.csproj' | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache NuGet packages
+        if: steps.changed-files.outputs.pin_only != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: linux-nuget-${{ steps.nuget-hash.outputs.sha }}-${{ vars.CACHE_EPOCH }}
+          restore-keys: |
+            linux-nuget-
 
       - name: Run coverage
         if: steps.changed-files.outputs.pin_only != 'true'
