@@ -22,12 +22,15 @@ MFTLib has never shipped to an external consumer. file-wizard and git-wizard are
 # Build native and managed Release|x64 projects
 .\init.ps1 -Build
 
+# Build only (restore + native + managed, without checkout initialization)
+.\scripts\build-windows.ps1
+
 # Build managed projects (or test program)
 dotnet build -c Release -p:Platform=x64
 dotnet build TestProgram\TestProgram.csproj -c Release -p:Platform=x64
 ```
 
-`dotnet build` cannot build `.vcxproj`. `init.ps1 -Build` passes MSBuild an absolute `SolutionDir` with a trailing backslash so the native DLL lands in root `x64\Release`, where managed builds copy it.
+`dotnet build` cannot build `.vcxproj`. `scripts/build-windows.ps1` owns the Windows recipe used by init, coverage and CI: amd64 MSBuild, an absolute trailing-backslash `SolutionDir`, then managed builds. Native output lands in root `x64\Release` for managed copying.
 
 ### NuGet packaging
 
@@ -82,7 +85,7 @@ cat .\TestProgram\bin\x64\Release\net10.0\output.log
 
 [CI rules](docs/quality-gates.md): `.gitea/workflows/test.yml` runs Windows and Linux coverage on PRs and main pushes, via `scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`. Both pull-request checks and `aislop / quality-gate (pull_request)` must pass before merge. Read `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md` before workflow edits. Fix runner PATH/pwsh and `DOTNET_INSTALL_DIR` at the service, never with workflow bootstrap steps.
 
-[Aislop rules](docs/quality-gates.md): invoke installed `aislop`, never `npx aislop`; the fork supplies C# engines. Before completion run `aislop scan .` and address findings; before committing run `aislop scan --staged`. `aislop fix` handles mechanical fixes; `aislop fix --claude` handles the rest. `aislop ci .` enforces `.aislop/config.yml`'s `failBelow: 100`; failure is a failing gate. `.gitea/workflows/aislop.yml` runs on windows-latest for every PR/main push; use 64-bit amd64 MSBuild/MSVC for the mixed solution. Preserve `lint.csharp.jbProjects` scoping and native clang-tidy/cppcheck separation. Do not use `actions/setup-node` on the host-mode runner; the workflow builds the pinned fork with pnpm and runs it with node. Keep the local fork pin and `.aislop/fork-commit` roughly synchronized but update them separately. Never infer a commit from a version/tag: inspect `aislop --version` and `pnpm ls -g --depth 0`. The global update command is `pnpm add -g --allow-build=aislop "github:mtschoen/aislop#<commit-ish>"`.
+[Aislop rules](docs/quality-gates.md): invoke installed `aislop`, never `npx aislop`; the fork supplies C# engines. Before completion run `aislop scan .` and address findings; before committing run `aislop scan --staged`. `aislop fix` handles mechanical fixes; `aislop fix --claude` handles the rest. `aislop ci .` enforces `.aislop/config.yml`'s `failBelow: 100`; failure is a failing gate. `.gitea/workflows/aislop.yml` runs on windows-latest for every PR/main push; use 64-bit amd64 MSBuild/MSVC for the mixed solution. Preserve `lint.csharp.jbProjects` scoping and native clang-tidy/cppcheck separation. Do not use `actions/setup-node` on the host-mode runner; the workflow builds the pinned fork with pnpm and runs it with node. Keep the local fork pin and `.aislop/fork-commit` roughly synchronized but update them separately.
 
 [Instruction budgets](docs/quality-gates.md): keep this file strictly below 15000 characters and each blank-line-delimited block strictly below 3000. Preserve rules here and relocate narrative verbatim to linked docs. `AgentInstructionsTests` runs in both existing test jobs; locally run `dotnet test MFTLib.Tests/MFTLib.Tests.csproj -c Release -p:Platform=x64 --filter FullyQualifiedName~AgentInstructionsTests` and `wc -m AGENTS.md`. Build before a `--no-build` test run so its copied document is current.
 

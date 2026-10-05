@@ -81,6 +81,11 @@ jobs:
           dotnet tool update --global dotnet-reportgenerator-globaltool
           echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
 
+      - name: Test Windows build script
+        if: steps.changed-files.outputs.pin_only != 'true'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/build-windows.tests.ps1
+
       - name: Test coverage status guard
         if: steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh

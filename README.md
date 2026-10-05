@@ -767,12 +767,15 @@ silent, the client's 30-second no-frame limit ends that pipe.
 ## Building from source
 
 Visual Studio 2022 with the Desktop development with C++ workload and .NET 10 SDK is
-required. Build the solution with 64-bit MSBuild; `dotnet build` cannot build the native
-C++ project:
+required. Use the shared Windows build script to restore packages, build the native
+DLL with amd64 MSBuild, and build all five managed projects:
 
-```bash
-MSBuild.exe MFTLib.sln -p:Configuration=Release -p:Platform=x64
+```powershell
+.\scripts\build-windows.ps1
 ```
+
+The default is Release|x64; pass `-Configuration Debug` for Debug|x64. For checkout
+initialization plus the same build, run `.\init.ps1 -Build`.
 
 Run non-interactive managed coverage with:
 

@@ -44,55 +44,9 @@ foreach ($path in @($jsonFile, $coberturaFile, $reportDir)) {
     }
 }
 
-# Build strategy for a mixed C#/C++ solution on VS BuildTools runner:
-#
-# Step 1 - dotnet restore: generates project.assets.json for C# projects.
-#   (VS MSBuild doesn't auto-restore; dotnet.exe is 64-bit so no WOW64 issue.)
-# Step 2 - 64-bit VS MSBuild builds the native C++ project (MFTLibNative.vcxproj).
-#   Use the amd64 binary and the vcxproj's v143 toolset.
-#   Pass SolutionDir with trailing slash so post-build xcopy resolves correctly.
-# Step 3 - dotnet builds all managed projects against the built native binary.
-#   Directory.Build.targets drops the native ProjectReference during dotnet builds.
+& "$PSScriptRoot/build-windows.ps1" -Configuration $Configuration
+if ($LASTEXITCODE -ne 0) { exit 1 }
 
-Write-Host "Restoring NuGet packages..." -ForegroundColor Cyan
-$slnPath = Join-Path $repoRoot "MFTLib.sln"
-& dotnet restore $slnPath
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Restore failed." -ForegroundColor Red
-    exit 1
-}
-Write-Host "Restore succeeded." -ForegroundColor Green
-
-$vsInstallPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
-    -products '*' -requires Microsoft.Component.MSBuild -property installationPath -latest 2>$null
-$msbuild = if ($vsInstallPath) {
-    Join-Path $vsInstallPath "MSBuild\Current\Bin\amd64\MSBuild.exe"
-} else { "MSBuild.exe" }
-
-Write-Host "Building native project ($Configuration|x64)..." -ForegroundColor Cyan
-$nativeProj = Join-Path $repoRoot "MFTLibNative\MFTLibNative.vcxproj"
-& $msbuild $nativeProj -t:Build -p:Configuration=$Configuration -p:Platform=x64 -p:PlatformToolset=v143 -p:SolutionDir="$repoRoot\" -v:q -nologo
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Native build failed." -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "Building managed projects ($Configuration|x64)..." -ForegroundColor Cyan
-$managedProjects = @(
-    "MFTLib\MFTLib.csproj",
-    "MFTLibTestExtensions\MFTLibTestExtensions.csproj",
-    "TestProgram\TestProgram.csproj",
-    "Benchmark\Benchmark.csproj",
-    "MFTLib.Tests\MFTLib.Tests.csproj"
-)
-foreach ($proj in $managedProjects) {
-    $projPath = Join-Path $repoRoot $proj
-    & dotnet build $projPath -c $Configuration -p:Platform=x64 --no-restore
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Build failed for $proj." -ForegroundColor Red
-        exit 1
-    }
-}
 
 # Run non-admin tests - output JSON for MergeWith compatibility (or cobertura if non-interactive)
 if ($NonInteractive) {

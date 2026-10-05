@@ -83,32 +83,9 @@ jobs:
       - name: Build MFTLib (native + managed; jb/roslynator load it)
         shell: pwsh
         run: |
-          # Mixed C#/C++ build on the SYSTEM-account VS BuildTools runner. Mirrors
-          # scripts/run-coverage.ps1 (the test job's proven build):
-          #  - dotnet restore first (VS MSBuild does not auto-restore);
-          #  - 64-bit VS MSBuild builds the native C++ project (MFTLibNative.vcxproj);
-          #  - use the vcxproj's v143 toolset explicitly;
-          #  - dotnet builds each managed project against the built native library
-          #    (Directory.Build.targets drops the vcxproj ProjectReference for dotnet).
-          $sln = "$env:GITHUB_WORKSPACE\MFTLib.sln"
-          dotnet restore $sln
-          if ($LASTEXITCODE -ne 0) { Write-Error "dotnet restore failed"; exit 1 }
-          $vsInstallPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
-            -products '*' -requires Microsoft.Component.MSBuild -property installationPath -latest
-          $msbuild = if ($vsInstallPath) { Join-Path $vsInstallPath "MSBuild\Current\Bin\amd64\MSBuild.exe" } else { "MSBuild.exe" }
-          $native = "$env:GITHUB_WORKSPACE\MFTLibNative\MFTLibNative.vcxproj"
-          & $msbuild $native -t:Build -p:Configuration=Release -p:Platform=x64 -p:PlatformToolset=v143 -p:SolutionDir="$env:GITHUB_WORKSPACE\" -v:minimal -nologo
-          if ($LASTEXITCODE -ne 0) { Write-Error "msbuild MFTLibNative failed"; exit 1 }
-          foreach ($proj in @(
-            "MFTLib\MFTLib.csproj",
-            "MFTLibTestExtensions\MFTLibTestExtensions.csproj",
-            "TestProgram\TestProgram.csproj",
-            "Benchmark\Benchmark.csproj",
-            "MFTLib.Tests\MFTLib.Tests.csproj"
-          )) {
-            dotnet build "$env:GITHUB_WORKSPACE\$proj" -c Release -p:Platform=x64 --no-restore
-            if ($LASTEXITCODE -ne 0) { Write-Error "dotnet build $proj failed"; exit 1 }
-          }
+          $ErrorActionPreference = 'Stop'
+          & "$env:GITHUB_WORKSPACE/scripts/build-windows.ps1" -Configuration Release
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Restore the built aislop fork
         id: aislop-cache
