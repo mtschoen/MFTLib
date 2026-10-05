@@ -69,3 +69,21 @@ per-test synchronization and is not part of the native delegate seam family.
 A test whose subject really is a real volume overrides with
 `JournalCheckpointCheck.ReadLiveJournal`, which bypasses the guard; three tests
 in `UsnJournalVolumeInteropTests` do.
+
+## Elevation isolation
+
+The same initializer also calls `MFTLibTestExtensions.ElevationIsolation.ForbidElevation()`, on the same one-way
+idempotent terms: no reset, no `ResetToDefaults` undoes it, it is not inherited by child processes and it is not part
+of the native delegate seam family. A test that reaches a real elevated launch with default dependencies would start
+the test host (or any other executable) with the `runas` verb, and the person at the keyboard gets an unexpected UAC
+prompt. Once the guard is active, the real default start behind `ElevationUtilities.TryRunElevated` and
+`BrokerLauncher.Launch` throws an `InvalidOperationException` that names the executable, the verb and the arguments,
+and starts nothing. `TryRunElevated` reports every other start failure as `false` but lets this refusal propagate, so
+the test fails visibly instead of passing on a swallowed exception.
+
+The guard sits only in the real default start. A test that installs its own `_startProcess` stub never reaches it, and
+the `ElevationUtilities` and `BrokerLauncher` `ResetToDefaults` restore the guarded default, not a bare
+`Process.Start`. A test of code that takes the default provider, such as `TestProgram`'s `DriveScanner`, must stub
+`_tryRunElevated` and `_canSelfElevate` or choose a mode that needs no elevation. A consumer whose tests can start a
+real broker through a default launcher calls `ForbidElevation()` from its own `[ModuleInitializer]`.
+

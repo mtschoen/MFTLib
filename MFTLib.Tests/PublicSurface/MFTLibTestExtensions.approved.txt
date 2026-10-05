@@ -6,6 +6,8 @@ MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MF
 MFTLibTestExtensions.BrokerTestHarness :: type public static class
 MFTLibTestExtensions.CacheDirectoryIsolation :: method public static ForbidDefaultCacheDirectory() : void
 MFTLibTestExtensions.CacheDirectoryIsolation :: type public static class
+MFTLibTestExtensions.ElevationIsolation :: method public static ForbidElevation() : void
+MFTLibTestExtensions.ElevationIsolation :: type public static class
 MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, char driveLetter, System.Collections.Generic.IReadOnlyList<MFTLib.UsnJournalEntry> entries, ulong journalId, long nextUsn) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
 MFTLibTestExtensions.FileIndexTestAccess :: type public static class
 MFTLibTestExtensions.InProcessBrokerHandle :: method public Crash() : void

@@ -16,7 +16,7 @@ public static class ElevationUtilities
     // that cannot be triggered in a normal Windows test environment.
     internal static Func<bool> _isWindows = () => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
     internal static Func<string?> _getProcessPathFunc = () => Environment.ProcessPath;
-    internal static Func<ProcessStartInfo, Process?> _startProcess = Process.Start;
+    internal static Func<ProcessStartInfo, Process?> _startProcess = ElevationGuard.Start;
     internal static Func<bool> _isUserInteractive = () => Environment.UserInteractive;
     internal static Func<Process, TimeSpan, bool> _waitForExit = (process, timeout) => process.WaitForExit(timeout);
     internal static Action<Process> _killProcess = process => process.Kill();
@@ -35,7 +35,7 @@ public static class ElevationUtilities
     {
         _isWindows = () => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
         _getProcessPathFunc = () => Environment.ProcessPath;
-        _startProcess = Process.Start;
+        _startProcess = ElevationGuard.Start;
         _isUserInteractive = () => Environment.UserInteractive;
         _waitForExit = (process, timeout) => process.WaitForExit(timeout);
         _killProcess = process => process.Kill();
@@ -165,7 +165,7 @@ public static class ElevationUtilities
         {
             return false;
         }
-        catch
+        catch (Exception exception) when (exception is not ElevationForbiddenException)
         {
             return false;
         }

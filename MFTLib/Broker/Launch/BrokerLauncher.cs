@@ -17,12 +17,12 @@ public static class BrokerLauncher
     // launch cannot be exercised from an in-process unit test, so tests substitute
     // these to reach the success, null-process, and declined-prompt branches.
     internal static Func<string?> _getProcessPathFunc = () => Environment.ProcessPath;
-    internal static Func<ProcessStartInfo, Process?> _startProcess = Process.Start;
+    internal static Func<ProcessStartInfo, Process?> _startProcess = ElevationGuard.Start;
 
     internal static void ResetToDefaults()
     {
         _getProcessPathFunc = () => Environment.ProcessPath;
-        _startProcess = Process.Start;
+        _startProcess = ElevationGuard.Start;
     }
 
     /// <summary>
