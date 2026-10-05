@@ -56,7 +56,7 @@ For the most reliable experience (proper UAC prompt handling), **run the compile
 cat .\TestProgram\bin\x64\Release\net10.0\output.log
 ```
 
-If running via `dotnet TestProgram.dll`, the helper will still attempt to relaunch the process with `runas`, but running the `.exe` is preferred.
+`dotnet TestProgram.dll` cannot self-elevate; run the `.exe`. [Attended and unattended runs](docs/elevation.md): `MFTLIB_TESTPROGRAM_UNATTENDED=1` skips every prompt.
 
 ### Test coverage
 

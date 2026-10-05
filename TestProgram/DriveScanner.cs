@@ -31,14 +31,25 @@ partial class DriveScanner
 
         if (!parsed.RequiresElevation)
         {
+            // scan-drive needs no elevation here, but the broker it launches would raise a UAC prompt.
+            if (parsed.Mode == ProgramMode.ScanDrive && IsUnattended() && !_isElevated())
+            {
+                return SkipElevationUnattended(arguments);
+            }
+
             RunOnDrives(parsed);
             return 0;
         }
 
         if (!_isElevated())
         {
+            if (IsUnattended())
+            {
+                return SkipElevationUnattended(arguments);
+            }
+
             _writeLine("Not running as administrator. Attempting to self-elevate...");
-            if (_canSelfElevate() && _tryRunElevated(arguments, parsed.ElevationTimeout))
+            if (_canSelfElevate() && ConfirmElevation(arguments) && _tryRunElevated(arguments, parsed.ElevationTimeout))
             {
                 return 0;
             }
@@ -160,9 +171,9 @@ partial class DriveScanner
         _writeLine("This program requires Administrative privileges to read the MFT.");
         _writeLine($"Run this program from an ELEVATED terminal: {_getProcessPath()}");
         _writeLine($"Arguments ({arguments.Length}), one per line exactly as received; <empty> marks an empty argument:");
-        foreach (var argument in arguments)
+        foreach (var line in ArgumentLines(arguments))
         {
-            _writeLine(argument.Length == 0 ? "  <empty>" : $"  {argument}");
+            _writeLine(line);
         }
 
         _writeLine("------------------------------------------------------------------");

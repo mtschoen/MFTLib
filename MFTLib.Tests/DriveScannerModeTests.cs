@@ -300,6 +300,7 @@ public class DriveScannerModeTests
             },
             _writeLine = _ => { }
         };
+        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
 
         var result = scanner.Run(arguments);
 
@@ -338,6 +339,7 @@ public class DriveScannerModeTests
             },
             _writeLine = _ => { }
         };
+        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
 
         Assert.AreEqual(0, scanner.Run(arguments));
 
@@ -362,6 +364,7 @@ public class DriveScannerModeTests
         return new DriveScanner
         {
             _isElevated = () => false,
+            _getEnvironmentVariable = _ => null,
             _canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate."),
             _tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate."),
             _launchBroker = _ => Task.FromResult(broker.Process),

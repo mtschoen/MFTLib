@@ -30,6 +30,7 @@ public class DriveScannerTests
             _tryRunElevated = (_, _) => true,
             _writeLine = lines.Add
         };
+        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
 
         var result = scanner.Run([]);
         Assert.AreEqual(0, result);
@@ -54,6 +55,7 @@ public class DriveScannerTests
         {
             _isElevated = () => false,
             _canSelfElevate = () => false,
+            _getEnvironmentVariable = _ => null,
             _getProcessPath = () => @"C:pp\TestProgram.exe",
             _writeLine = lines.Add
         };
@@ -83,6 +85,7 @@ public class DriveScannerTests
             _getProcessPath = () => "/some/path",
             _writeLine = lines.Add
         };
+        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
 
         var result = scanner.Run(["C"]);
         Assert.AreEqual(1, result);
@@ -244,14 +247,30 @@ public class DriveScannerTests
 
     // --- Entry point ---
 
+    // The entry point builds a DriveScanner with every default seam, so it must be given a mode that
+    // needs no elevation: with no arguments it would relaunch testhost.exe with the runas verb.
     [TestMethod]
-    public void TestProgram_EntryPoint_RunsAndExits()
+    public void TestProgram_EntryPoint_ParseFileOfAMissingFile_ReportsTheErrorAndReturnsZero()
     {
+        var missing = Path.Combine(Path.GetTempPath(), $"no-such-{Guid.NewGuid():N}.mft");
         var entryPoint = typeof(DriveScanner).Assembly.EntryPoint!;
-        var exitCode = entryPoint.Invoke(null, [Array.Empty<string>()]);
-        // Non-elevated: prints failure message and returns 1
-        // Elevated: scans default drive G and returns 0
-        Assert.IsTrue(exitCode is 0 or 1);
+        var originalOut = Console.Out;
+        using var captured = new StringWriter();
+        object? exitCode;
+        try
+        {
+            Console.SetOut(captured);
+            exitCode = entryPoint.Invoke(null, [new[] { "parse-file", missing }]);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        Assert.AreEqual(0, exitCode);
+        var output = captured.ToString();
+        Assert.IsTrue(output.Contains($"Error on file {missing}: ", StringComparison.Ordinal));
+        Assert.IsTrue(output.Contains("Completed at ", StringComparison.Ordinal));
     }
 
     // --- Helpers ---
