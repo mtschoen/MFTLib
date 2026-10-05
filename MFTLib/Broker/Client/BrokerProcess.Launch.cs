@@ -26,7 +26,7 @@ public sealed partial class BrokerProcess
     /// </summary>
     /// <inheritdoc cref="LaunchAsync(Func{string, bool}, TimeSpan, CancellationToken)" />
     [SupportedOSPlatform("windows")]
-    public static Task<BrokerProcess> LaunchAsync(Func<string, bool> launchBroker, CancellationToken cancellationToken)
+    internal static Task<BrokerProcess> LaunchAsync(Func<string, bool> launchBroker, CancellationToken cancellationToken)
     {
         return LaunchAsync(launchBroker, _connectTimeout, cancellationToken);
     }
@@ -46,7 +46,7 @@ public sealed partial class BrokerProcess
     /// <exception cref="InvalidOperationException">The launch did not start.</exception>
     /// <exception cref="TimeoutException">The broker launched but never connected.</exception>
     [SupportedOSPlatform("windows")]
-    public static async Task<BrokerProcess> LaunchAsync(Func<string, bool> launchBroker, TimeSpan connectTimeout,
+    internal static async Task<BrokerProcess> LaunchAsync(Func<string, bool> launchBroker, TimeSpan connectTimeout,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(launchBroker);

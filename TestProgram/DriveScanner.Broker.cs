@@ -7,16 +7,16 @@ namespace TestProgram;
 // every consumer ships. This process stays unelevated; the broker it launches asks for elevation.
 partial class DriveScanner
 {
-    internal Func<CancellationToken, Task<BrokerProcess>> _launchBroker = LaunchBrokerNative;
+    internal Func<BrokerSession> _createBrokerSession = CreateBrokerSessionNative;
     internal Func<string, IndexedDrive> _resolveDrive = ResolveDriveNative;
 
     // Where the index keeps its cache folder; null selects the library's default location.
     internal string? _cacheDirectory;
 
-    static Task<BrokerProcess> LaunchBrokerNative(CancellationToken cancellationToken)
+    static BrokerSession CreateBrokerSessionNative()
     {
         return OperatingSystem.IsWindows()
-            ? BrokerProcess.LaunchAsync(BrokerLauncher.Launch, cancellationToken)
+            ? new BrokerSession()
             : throw new PlatformNotSupportedException("The broker is Windows only.");
     }
 
@@ -30,19 +30,19 @@ partial class DriveScanner
     // One broker, so one elevation prompt, serves every drive of the run.
     internal async Task ScanDrivesThroughBrokerAsync(IReadOnlyList<string> drives, CancellationToken cancellationToken)
     {
-        BrokerProcess broker;
+        BrokerSession session;
         try
         {
-            broker = await _launchBroker(cancellationToken).ConfigureAwait(false);
+            session = _createBrokerSession();
         }
         catch (Exception exception)
         {
-            _writeLine($"Error launching the broker: {exception.Message}");
+            _writeLine($"Error creating broker session: {exception.Message}");
             return;
         }
 
-        await using var ownedBroker = broker.ConfigureAwait(false);
-        var source = new BrokerMftBlockProducer(_ => Task.FromResult(broker)).CreateIndexSource();
+        await using var ownedSession = session.ConfigureAwait(false);
+        var source = session.CreateIndexSource();
         foreach (var drive in drives)
         {
             await ScanDriveThroughIndexAsync(source, drive, cancellationToken).ConfigureAwait(false);

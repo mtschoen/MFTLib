@@ -28,6 +28,12 @@ hang: no UAC prompt, the manual-elevation fallback, exit code 1.
 `scan-drive` run shows the same heads-up dialog before the broker launch; Cancel or the five-minute timeout
 skips the launch with the same fallback text and exit code 1.
 
+The heads-up gate precedes creation of the scan's `BrokerSession`. One session serves the
+whole run and launches its broker only when a drive needs a scan; offline drives do not
+launch it. A session-construction failure is printed as `Error creating broker session: ...`.
+A lazy launch failure is reported through the affected drive as `Error on drive X: ...`;
+a later drive can retry a failed launch using the session's normal retry behavior.
+
 ## Unattended: the owner said to proceed autonomously, or nobody is at the desktop
 
 Set the environment variable once for the whole session; every lane and child process inherits it.

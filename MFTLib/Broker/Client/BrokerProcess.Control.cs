@@ -68,7 +68,7 @@ public sealed partial class BrokerProcess
     /// <exception cref="InvalidOperationException">The broker refused or failed the change.</exception>
     /// <exception cref="BrokerChannelLostException">The process ended first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer within the reply timeout.</exception>
-    public async Task<UsnJournalSettings> GrowUsnJournalAsync(char driveLetter, long maximumSize, long allocationDelta,
+    internal async Task<UsnJournalSettings> GrowUsnJournalAsync(char driveLetter, long maximumSize, long allocationDelta,
         CancellationToken cancellationToken)
     {
         var drive = NormalizeDrive(driveLetter);

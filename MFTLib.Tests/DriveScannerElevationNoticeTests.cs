@@ -258,7 +258,7 @@ public class DriveScannerElevationNoticeTests
         var lines = new List<string>();
         var scanner = Scanner(lines, [], []);
         scanner._getEnvironmentVariable = Unattended;
-        scanner._launchBroker = _ => throw new AssertFailedException("Unattended scan-drive must not launch the broker.");
+        scanner._createBrokerSession = () => throw new AssertFailedException("Unattended scan-drive must not launch the broker.");
 
         var result = scanner.Run(["scan-drive", "C"]);
 
@@ -336,12 +336,12 @@ public class DriveScannerElevationNoticeTests
         var scanner = Scanner(lines, [], []);
         scanner._isElevated = () => true;
         scanner._getEnvironmentVariable = Unattended;
-        scanner._launchBroker = _ => throw new IOException("the scan was attempted");
+        scanner._createBrokerSession = () => throw new IOException("the scan was attempted");
 
         var result = scanner.Run(["scan-drive", "C"]);
 
         Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Contains("Error launching the broker: the scan was attempted"));
+        Assert.IsTrue(lines.Contains("Error creating broker session: the scan was attempted"));
         Assert.IsFalse(lines.Any(line => line.Contains("Running unattended")));
     }
 
@@ -370,7 +370,7 @@ public class DriveScannerElevationNoticeTests
                 clock.Advance(TimeSpan.FromSeconds(5));
                 return DriveScanner.MessageBoxResultOk;
             },
-            _launchBroker = _ => throw new IOException("the scripted launch stands in for the broker"),
+            _createBrokerSession = () => throw new IOException("the scripted launch stands in for the broker"),
             _canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate."),
             _tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate.")
         };
@@ -509,14 +509,14 @@ public class DriveScannerElevationNoticeTests
         {
             scanner._canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate.");
             scanner._tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate.");
-            scanner._launchBroker = _ =>
+            scanner._createBrokerSession = () =>
             {
-                events.Add("launch");
+                events.Add("create-session");
                 throw new IOException("the scripted launch stands in for the broker");
             };
         }
         string[] args = isScanDrive ? ["scan-drive", "C"] : ["find-name", "C", "--name", "x"];
-        var launchEvent = isScanDrive ? "launch" : "elevate";
+        var launchEvent = isScanDrive ? "create-session" : "elevate";
         return (scanner, args, launchEvent);
     }
 

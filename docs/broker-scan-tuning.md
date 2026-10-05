@@ -73,7 +73,7 @@ The `JournalCheckpointLoss` report in the drive's `DriveStatus.CheckpointLoss` t
 consumer what happened. For `JournalCheckpointLossCause.CheckpointTrimmed`, a non-null
 `SizeThatWouldHaveRetained` is the minimum size that would have kept the cursor.
 After user consent, grow the journal through
-`BrokerProcess.GrowUsnJournalAsync`, choosing a maximum greater than the current
+`BrokerSession.GrowUsnJournalAsync`, choosing a maximum greater than the current
 `UsnJournalSettings.MaximumSize` and at least the suggested size. Then rescan the
 drive. Journal growth cannot recover records already discarded, so the rescan is
 required. If watching had been refused over the unresumable block, the successful

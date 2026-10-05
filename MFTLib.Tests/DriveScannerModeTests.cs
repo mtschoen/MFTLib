@@ -75,11 +75,11 @@ public class DriveScannerModeTests
         var launches = 0;
         var scanner = ScannerOverBroker(broker, lines);
         var process = broker.Process;
-        scanner._launchBroker = _ =>
+        scanner._createBrokerSession = () => BrokerTestHarness.CreateSession(_ =>
         {
-            launches++;
+            Interlocked.Increment(ref launches);
             return Task.FromResult(process);
-        };
+        });
 
         var result = scanner.Run(["scan-drive", "C", "D:"]);
 
@@ -87,6 +87,8 @@ public class DriveScannerModeTests
         Assert.AreEqual(1, launches);
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("=== Drive D: done ==="));
+        Assert.IsTrue(process.Ended.IsCompleted,
+            "The scanner must dispose its session before returning.");
     }
 
     [TestMethod]
@@ -137,23 +139,36 @@ public class DriveScannerModeTests
         await using var broker = new InProcessBroker(CreateHost());
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
+        var launches = 0;
+        var process = broker.Process;
+        scanner._createBrokerSession = () => BrokerTestHarness.CreateSession(_ =>
+        {
+            Interlocked.Increment(ref launches);
+            return Task.FromResult(process);
+        });
         scanner._resolveDrive = _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242);
 
         await scanner.ScanDrivesThroughBrokerAsync(["Q"], CancellationToken.None);
 
+        Assert.AreEqual(0, launches, "An offline drive needs no elevated broker.");
         Assert.IsTrue(lines.Contains("Error on drive Q: The drive is offline; nothing was scanned."),
             string.Join(Environment.NewLine, lines));
         Assert.IsFalse(lines.Any(line => line.StartsWith("Catch-up", StringComparison.Ordinal) ||
                                         line.Contains("done")));
     }
 
-    [TestMethod]
-    public async Task ScanDriveThroughBroker_LaunchDeclined_PrintsTheError()
+    [DataTestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task ScanDriveThroughBroker_LaunchDeclined_PrintsTheError(bool failAtCreation)
     {
         var lines = new List<string>();
         var scanner = new DriveScanner
         {
-            _launchBroker = _ => throw new InvalidOperationException("UAC prompt declined"),
+            _createBrokerSession = () => failAtCreation
+                ? throw new InvalidOperationException("UAC prompt declined")
+                : BrokerTestHarness.CreateSession(_ =>
+                    throw new InvalidOperationException("UAC prompt declined")),
             _resolveDrive = ResolveDrive,
             _cacheDirectory = _directory,
             _writeLine = lines.Add
@@ -161,8 +176,11 @@ public class DriveScannerModeTests
 
         await scanner.ScanDrivesThroughBrokerAsync(["C"], CancellationToken.None);
 
-        Assert.IsTrue(lines.Contains("Error launching the broker: UAC prompt declined"));
-        Assert.IsFalse(lines.Any(line => line.Contains("done")));
+        var prefix = failAtCreation ? "Error creating broker session: " : "Error on drive C: ";
+        Assert.IsTrue(lines.Any(line => line.StartsWith(prefix, StringComparison.Ordinal) &&
+                                        line.Contains("UAC prompt declined", StringComparison.Ordinal)),
+            string.Join(Environment.NewLine, lines));
+        Assert.IsFalse(lines.Any(line => line.Contains("done", StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -367,7 +385,7 @@ public class DriveScannerModeTests
             _getEnvironmentVariable = _ => null,
             _canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate."),
             _tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate."),
-            _launchBroker = _ => Task.FromResult(broker.Process),
+            _createBrokerSession = () => BrokerTestHarness.CreateSession(_ => Task.FromResult(broker.Process)),
             _resolveDrive = ResolveDrive,
             _cacheDirectory = _directory,
             _writeLine = lines.Add

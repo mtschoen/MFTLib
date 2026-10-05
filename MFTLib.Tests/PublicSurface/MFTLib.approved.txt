@@ -4,13 +4,7 @@ MFTLib.BrokerDiagnostics :: property public static LogDirectory { get; set; } : 
 MFTLib.BrokerDiagnostics :: type public static class
 MFTLib.BrokerLauncher :: method public static Launch(string brokerArgs) : bool
 MFTLib.BrokerLauncher :: type public static class
-MFTLib.BrokerMftBlockProducer :: constructor public (System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<MFTLib.BrokerProcess>> connectAsync, MFTLib.BrokerScanOptions? scanOptions = default)
-MFTLib.BrokerMftBlockProducer :: method public CreateIndexSource() : MFTLib.Index.MftIndexSource
-MFTLib.BrokerMftBlockProducer :: type public sealed class
 MFTLib.BrokerProcess :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
-MFTLib.BrokerProcess :: method public GrowUsnJournalAsync(char driveLetter, long maximumSize, long allocationDelta, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.UsnJournalSettings>
-MFTLib.BrokerProcess :: method public static LaunchAsync(System.Func<string, bool> launchBroker, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.BrokerProcess>
-MFTLib.BrokerProcess :: method public static LaunchAsync(System.Func<string, bool> launchBroker, System.TimeSpan connectTimeout, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.BrokerProcess>
 MFTLib.BrokerProcess :: property public Ended { get; } : System.Threading.Tasks.Task<string>
 MFTLib.BrokerProcess :: type public sealed class : System.IAsyncDisposable
 MFTLib.BrokerScanOptions :: constructor public ()

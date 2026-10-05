@@ -6,7 +6,7 @@ namespace MFTLib;
 ///     Scans and watches drives through a broker. The process returned by the connect callback
 ///     remains owned by the caller, which decides whether to share it across drives.
 /// </summary>
-public sealed class BrokerMftBlockProducer
+internal sealed class BrokerMftBlockProducer
 {
     readonly Func<CancellationToken, Task<BrokerProcess>> _connectAsync;
     readonly BrokerScanOptions? _scanOptions;
@@ -16,7 +16,7 @@ public sealed class BrokerMftBlockProducer
     ///     Yields the process each scan runs on. The caller keeps ownership of what it returns.
     /// </param>
     /// <param name="scanOptions">Base options for every scan: profile, keep-file names and progress.</param>
-    public BrokerMftBlockProducer(
+    internal BrokerMftBlockProducer(
         Func<CancellationToken, Task<BrokerProcess>> connectAsync,
         BrokerScanOptions? scanOptions = null)
     {
@@ -31,7 +31,7 @@ public sealed class BrokerMftBlockProducer
     ///     the connect function, and each drive's watch runs on a pipe of its own.
     /// </summary>
     /// <returns>A source whose scans fill the block named by each request through the broker.</returns>
-    public MftIndexSource CreateIndexSource() => new(ProduceAsync, new BrokerIndexWatchSource(_connectAsync));
+    internal MftIndexSource CreateIndexSource() => new(ProduceAsync, new BrokerIndexWatchSource(_connectAsync));
 
     // A result carrying a proven catch-up loss still transfers its block: the scan is complete,
     // and the loss travels with it so the index can refuse to watch from the block's cursor.

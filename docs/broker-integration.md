@@ -124,14 +124,14 @@ End rules:
   `Ended` if the process had not ended. Any use after disposal throws `ObjectDisposedException`.
 
 `BrokerSession.GrowUsnJournalAsync(driveLetter, maximumSize, allocationDelta, cancellationToken)`
-launches the broker if no use has yet, then grows the journal as `BrokerProcess.GrowUsnJournalAsync`
-does.
+launches the broker if no use has yet, grows the journal, and returns the settings read back
+from the volume.
 
-`BrokerProcess` is the lower level the session is built on: `BrokerProcess.LaunchAsync` creates
-the control pipe, invokes the launch callback, and waits for the elevated child; `Ended` completes
-when the control pipe is lost or the process is disposed. A session replaces the application-owned
-process and its connection callback; reach for `BrokerProcess` directly only for a bespoke
-lifetime.
+Consumers create index sources only through `BrokerSession.CreateIndexSource(scanOptions)`.
+`BrokerMftBlockProducer`, both `BrokerProcess.LaunchAsync` overloads and
+`BrokerProcess.GrowUsnJournalAsync` are internal implementation details. `BrokerProcess`
+remains public because the test package exposes it through `InProcessBrokerHandle.Process`
+and `BrokerTestHarness.CreateSession`; application code owns a `BrokerSession`.
 
 ## 3. Build FileIndex over the broker
 
@@ -420,7 +420,7 @@ The broker also answers a volume query for the MFT sizing that block planning
 uses; only `MftValidDataLength` and `BytesPerFileRecordSegment` cross the
 protocol. The query is internal to the producer.
 
-`BrokerSession.GrowUsnJournalAsync` (`BrokerProcess.GrowUsnJournalAsync` beneath it) grows a journal in place. It never shrinks
+`BrokerSession.GrowUsnJournalAsync` grows a journal in place. It never shrinks
 one. It is a control request, like the volume query. Cancellation before its
 request starts writing sends nothing. Once writing begins, the process completes the frame so a
 partial request cannot corrupt the control stream; a cancelled caller stops

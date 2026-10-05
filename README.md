@@ -516,8 +516,14 @@ UsnJournalSettings grown = await session.GrowUsnJournalAsync(
 ```
 
 Journal growth is an explicit user action; the broker refuses a requested maximum at or
-below the current value. `Ended` completes with the reason when the control pipe is lost. See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
-for startup dispatch, direct scans, watch channels, recovery, and diagnostics.
+below the current value. `Ended` completes with the reason when the control pipe is lost.
+
+Consumers obtain a broker-backed source only through `BrokerSession.CreateIndexSource`.
+The producer and the process launch and journal-growth methods are internal. `BrokerProcess`
+remains public for the test-package signatures; production code uses `BrokerSession`.
+
+See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
+for startup dispatch, index scans, watch channels, recovery, and diagnostics.
 
 ## Build a live index with FileIndex
 
