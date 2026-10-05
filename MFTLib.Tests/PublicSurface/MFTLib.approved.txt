@@ -73,7 +73,6 @@ MFTLib.BrokerChannelConnector :: method public virtual EndInvoke(System.IAsyncRe
 MFTLib.BrokerChannelConnector :: method public virtual Invoke(string pipeName, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<System.IO.Stream>
 MFTLib.BrokerChannelConnector :: type public delegate : System.ICloneable, System.Runtime.Serialization.ISerializable
 MFTLib.BrokerChannelLostException :: constructor public (char? driveLetter, string message, System.Exception? innerException = default)
-MFTLib.BrokerChannelLostException :: property public DriveLetter { get; } : char?
 MFTLib.BrokerChannelLostException :: type public sealed class : System.IO.IOException, System.Runtime.Serialization.ISerializable
 MFTLib.BrokerDiagnostics :: method public static Enable(string role) : void
 MFTLib.BrokerDiagnostics :: method public static FlushAsync(System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task

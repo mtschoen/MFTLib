@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -47,8 +48,8 @@ public class FileIndexLifetimeTests
 
         Assert.AreEqual(1, index.Drives.Count);
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
-        Assert.AreEqual(ProducerKind.Enumeration, index.Drives[0].ProducerKind);
-        Assert.IsTrue(index.Drives[0].RowCount >= 3);
+        Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
+        Assert.IsTrue(index.HeaderOf().RowCount >= 3);
         Assert.IsFalse(index.Drives[0].WatchSupported);
         Assert.IsTrue(File.Exists(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial))));
     }
@@ -91,7 +92,8 @@ public class FileIndexLifetimeTests
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
-        Assert.AreEqual(0u, index.Drives[0].RowCount);
+        Assert.AreEqual(0u, index.Drives[0].LiveRowCount);
+        Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, 'Z'));
     }
 
 
@@ -134,14 +136,14 @@ public class FileIndexLifetimeTests
         var oldSnapshot = index.CurrentSnapshot;
         Assert.IsTrue(index.TryGetDriveOrdinal('T', out var driveOrdinal));
         var oldEntry = FileEntry.Create(oldSnapshot, driveOrdinal, rowIndex: 0);
-        var rowsBefore = index.Drives[driveOrdinal].RowCount;
+        var rowsBefore = index.HeaderOf().RowCount;
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
         await index.RescanAsync('T', CancellationToken.None);
 
         Assert.AreNotSame(oldSnapshot, index.CurrentSnapshot);
         Assert.IsTrue(oldEntry.IsDirectory);
-        Assert.AreEqual(rowsBefore + 1, index.Drives[driveOrdinal].RowCount);
+        Assert.AreEqual(rowsBefore + 1, index.HeaderOf().RowCount);
 
         await oldSnapshot.ReleaseNowAsync();
         Assert.ThrowsException<ObjectDisposedException>(() => oldEntry.IsDirectory);

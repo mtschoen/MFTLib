@@ -36,7 +36,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard);
 
         AssertReady(index);
-        Assert.AreEqual(24u, index.Drives[0].RowCount);
+        Assert.AreEqual(24u, index.HeaderOf('C').RowCount);
         Assert.AreEqual(_rootDirectory, index.Root('C').Path);
         var notes = index.Find(At("documents", "notes.txt"))!.Value;
         Assert.AreEqual(20UL, notes.Id.RecordNumber);
@@ -124,7 +124,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.IsTrue(created.Header.IsCompactionNeeded);
         Assert.IsTrue(index.Drives[0].CompactionNeeded);
         Assert.AreEqual(DriveState.Stale, index.Drives[0].State);
-        Assert.AreEqual(ProducerKind.Mft, index.Drives[0].ProducerKind);
+        Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
         Assert.IsNull(index.Find(At("beyond.txt")));
     }
@@ -192,7 +192,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         var block = index.Root('C').DriveBlock.Block;
         Assert.IsTrue(block.Header.IsComplete);
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
-        Assert.AreEqual(ProducerKind.Mft, index.Drives[0].ProducerKind);
+        Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
     }
 
@@ -209,7 +209,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     static void AssertReady(FileIndex index)
     {
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
-        Assert.AreEqual(ProducerKind.Mft, index.Drives[0].ProducerKind);
+        Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsTrue(index.Drives[0].WatchSupported);
         Assert.IsFalse(index.Drives[0].CompactionNeeded);
         Assert.IsNull(index.Drives[0].MftProducerFailureMessage);

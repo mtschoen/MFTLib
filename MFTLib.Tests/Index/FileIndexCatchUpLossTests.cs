@@ -65,10 +65,10 @@ public partial class FileIndexCatchUpLossTests
         Assert.IsTrue(retiredAtFirstLoss, "the first publication drained the old watch before reporting the loss");
         Assert.AreEqual(2, harness.ProductionCount('T') - producedBefore);
         var lost = WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T').Single();
-        Assert.AreEqual('T', lost.DriveLetter);
-        Assert.AreEqual(1, lost.ConsecutiveLostCatchUps);
+        var atLoss = harness.CatchUpLossStatuses('T').Single();
+        Assert.AreEqual(1, atLoss.ConsecutiveLostCatchUps);
         Assert.IsFalse(lost.RecoveryStopped);
-        Assert.AreEqual(WatchDeduplicationTestSupport.StandardCatchUpLoss('T'), lost.CheckpointLoss);
+        Assert.AreEqual(WatchDeduplicationTestSupport.StandardCatchUpLoss('T'), atLoss.CheckpointLoss);
         Assert.AreEqual(WatchCatchUpState.Recovering, stateSeenByHandler,
             "Recovering is published before the fault is raised");
         var drive = harness.DriveFor('T');
@@ -93,11 +93,12 @@ public partial class FileIndexCatchUpLossTests
 
         Assert.AreEqual(3, harness.ProductionCount('T') - producedBefore);
         var losses = WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T');
-        CollectionAssert.AreEqual(new[] { 1, 2, 3 }, losses.Select(loss => loss.ConsecutiveLostCatchUps).ToArray());
+        var statusesAtLoss = harness.CatchUpLossStatuses('T');
+        CollectionAssert.AreEqual(new[] { 1, 2, 3 }, statusesAtLoss.Select(status => status.ConsecutiveLostCatchUps).ToArray());
         CollectionAssert.AreEqual(new[] { false, false, true }, losses.Select(loss => loss.RecoveryStopped).ToArray());
-        Assert.AreEqual(3, thrown.ConsecutiveLostCatchUps);
+        Assert.AreEqual(3, harness.DriveFor('T').ConsecutiveLostCatchUps);
         Assert.IsTrue(thrown.RecoveryStopped);
-        Assert.AreEqual(WatchDeduplicationTestSupport.StandardCatchUpLoss('T'), thrown.CheckpointLoss);
+        Assert.AreEqual(WatchDeduplicationTestSupport.StandardCatchUpLoss('T'), statusesAtLoss[^1].CheckpointLoss);
 
         Assert.AreSame(harness.BlockFor('T'), harness.Index.Root('T').DriveBlock.Block,
             "the drive keeps its third block, queryable");
@@ -130,7 +131,7 @@ public partial class FileIndexCatchUpLossTests
 
         Assert.AreEqual(2, harness.ProductionCount('T') - producedBefore, "a later single loss retries");
         var latest = WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T')[^1];
-        Assert.AreEqual(1, latest.ConsecutiveLostCatchUps);
+        Assert.AreEqual(1, harness.CatchUpLossStatuses('T')[^1].ConsecutiveLostCatchUps);
         Assert.IsFalse(latest.RecoveryStopped);
         Assert.AreEqual(0, harness.DriveFor('T').ConsecutiveLostCatchUps);
     }
@@ -148,7 +149,6 @@ public partial class FileIndexCatchUpLossTests
         var thrown = await ThrowsAsync<JournalCatchUpLostException>(
             () => harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard));
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
-        Assert.AreEqual(4, thrown.ConsecutiveLostCatchUps);
         Assert.IsTrue(thrown.RecoveryStopped);
         Assert.AreEqual(4, harness.DriveFor('T').ConsecutiveLostCatchUps);
 
@@ -181,7 +181,7 @@ public partial class FileIndexCatchUpLossTests
             () => harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard));
 
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore);
-        Assert.AreEqual(3, thrown.ConsecutiveLostCatchUps);
+        Assert.AreEqual(3, harness.DriveFor('T').ConsecutiveLostCatchUps);
         Assert.IsTrue(thrown.RecoveryStopped);
     }
 
@@ -200,7 +200,8 @@ public partial class FileIndexCatchUpLossTests
         var thrown = await ThrowsAsync<JournalCatchUpLostException>(
             () => harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard));
 
-        Assert.AreEqual(recreated, thrown.CheckpointLoss);
+        Assert.AreEqual(recreated, harness.CatchUpLossStatuses('T')[^1].CheckpointLoss);
+        Assert.IsTrue(thrown.RecoveryStopped);
         Assert.AreEqual(recreated, harness.DriveFor('T').CheckpointLoss);
         foreach (var message in WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T').Select(loss => loss.Message))
         {

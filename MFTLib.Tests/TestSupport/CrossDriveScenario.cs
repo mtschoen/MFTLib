@@ -32,6 +32,7 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
     readonly Lock _gate = new();
     readonly List<(string Name, ReadCounter Reads)> _pipes = [];
     readonly List<WatchFault> _faults = [];
+    readonly FaultStatusLog _faultStatuses = new();
     readonly List<(WatchFaultKind Kind, char Drive, int Occurrence, TaskCompletionSource<WatchFault> Signal)> _waiters = [];
     readonly Dictionary<string, Cadence> _tracked = new(StringComparer.Ordinal);
 
@@ -270,8 +271,12 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
         _tracked[key] = new Cadence(reads);
     }
 
+    /// <summary>The status of <paramref name="driveLetter" /> at each of its lost-catch-up faults, in raise order.</summary>
+    public DriveStatus[] CatchUpLossStatuses(char driveLetter) => _faultStatuses.CatchUpLossStatuses(driveLetter);
+
     void RecordFault(WatchFault fault)
     {
+        _faultStatuses.Record(Index, fault);
         lock (_gate)
         {
             _faults.Add(fault);

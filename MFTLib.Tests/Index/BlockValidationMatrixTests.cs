@@ -47,12 +47,20 @@ public class BlockValidationMatrixTests
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
     }
 
-    static async Task AssertColdScansAsync(FileIndexOptions options, BlockValidationResult expectedDiscardReason)
+    /// <summary>
+    ///     The open deletes the cached block for <paramref name="expectedRejection" />, which its
+    ///     diagnostics name, and cold-scans the drive.
+    /// </summary>
+    static async Task AssertColdScansAsync(FileIndexOptions options, BlockValidationResult expectedRejection)
     {
-        await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
+        var diagnostics = new List<string>();
+        await using var index = await FileIndex.OpenAsync(options with { Diagnostics = diagnostics.Add },
+            CancellationToken.None);
+        Assert.IsTrue(diagnostics.Any(line => line.Contains($"cache validation failed: {expectedRejection}")),
+            $"the rejection reason {expectedRejection} is logged");
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
-        Assert.IsTrue(index.Drives[0].RowCount >= 3);
-        Assert.AreEqual(expectedDiscardReason, index.Drives[0].DiscardedBlock);
+        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives[0].BlockSource);
+        Assert.IsTrue(index.HeaderOf().RowCount >= 3);
     }
 
     [TestMethod]

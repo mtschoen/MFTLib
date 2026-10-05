@@ -49,7 +49,8 @@ public sealed partial class BrokerCrossDriveLivenessTests
         CollectionAssert.AreEqual(Enumerable.Repeat(WatchFaultKind.CatchUpLost, 3).ToArray(),
             faults.Select(fault => fault.Kind).ToArray(), "three CatchUpLost faults and no Recovery");
         var losses = faults.Select(fault => (JournalCatchUpLostException)fault.Exception).ToArray();
-        CollectionAssert.AreEqual(new[] { 1, 2, 3 }, losses.Select(loss => loss.ConsecutiveLostCatchUps).ToArray());
+        var statusesAtLoss = scenario.CatchUpLossStatuses('T');
+        CollectionAssert.AreEqual(new[] { 1, 2, 3 }, statusesAtLoss.Select(status => status.ConsecutiveLostCatchUps).ToArray());
         CollectionAssert.AreEqual(new[] { false, false, true }, losses.Select(loss => loss.RecoveryStopped).ToArray());
         Assert.AreSame(losses[2], thrown, "the rescan throws the loss that stopped it");
 
@@ -64,7 +65,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(ArmedCursor.NextUsn, report.CheckpointUsn);
         Assert.AreEqual(JournalSizeArithmetic.SizeThatWouldHaveRetained(ArmedCursor.NextUsn, TrimmedWindow.NextUsn,
             TrimmedWindow.AllocationDelta), report.SizeThatWouldHaveRetained);
-        Assert.AreEqual(report, thrown.CheckpointLoss);
+        Assert.AreEqual(report, statusesAtLoss[^1].CheckpointLoss);
         await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() => index.StartWatchingAsync('T', token));
 
         // U completed normally in the same run.
@@ -107,7 +108,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var fault = scenario.FaultsOf('T').Single();
         Assert.AreEqual(WatchFaultKind.CatchUpLost, fault.Kind);
         var loss = (JournalCatchUpLostException)fault.Exception;
-        Assert.AreEqual(1, loss.ConsecutiveLostCatchUps);
+        Assert.AreEqual(1, scenario.CatchUpLossStatuses('T').Single().ConsecutiveLostCatchUps);
         Assert.IsFalse(loss.RecoveryStopped);
         var drive = scenario.DriveOf('T');
         Assert.AreEqual(0, drive.ConsecutiveLostCatchUps);

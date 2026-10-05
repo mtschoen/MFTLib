@@ -119,8 +119,6 @@ MFTLib.Index.CacheTag :: method public override GetHashCode() : int
 MFTLib.Index.CacheTag :: method public override ToString() : string
 MFTLib.Index.CacheTag :: method public static op_Equality(MFTLib.Index.CacheTag left, MFTLib.Index.CacheTag right) : bool
 MFTLib.Index.CacheTag :: method public static op_Inequality(MFTLib.Index.CacheTag left, MFTLib.Index.CacheTag right) : bool
-MFTLib.Index.CacheTag :: property public FourCc { get; } : string
-MFTLib.Index.CacheTag :: property public Version { get; } : uint
 MFTLib.Index.CacheTag :: type public readonly struct : System.IEquatable<MFTLib.Index.CacheTag>
 MFTLib.Index.CachedBlockAvailability :: field public const Available : MFTLib.Index.CachedBlockAvailability = 0
 MFTLib.Index.CachedBlockAvailability :: field public const InUse : MFTLib.Index.CachedBlockAvailability = 1
@@ -238,7 +236,6 @@ MFTLib.Index.DriveStatus :: property public AccessDeniedSubtreeCount { get; init
 MFTLib.Index.DriveStatus :: property public CacheSlot { get; init; } : MFTLib.Index.CacheSlotState
 MFTLib.Index.DriveStatus :: property public CheckpointLoss { get; init; } : MFTLib.Index.JournalCheckpointLoss?
 MFTLib.Index.DriveStatus :: property public ConsecutiveLostCatchUps { get; init; } : int
-MFTLib.Index.DriveStatus :: property public DiscardedBlock { get; init; } : MFTLib.Index.BlockValidationResult?
 MFTLib.Index.DriveStatus :: property public FailureKind { get; init; } : MFTLib.Index.DriveFailureKind
 MFTLib.Index.DriveStatus :: property public MftProducerFailureMessage { get; init; } : string?
 MFTLib.Index.DriveStatus :: property public SkippedRecordCount { get; init; } : int
@@ -250,8 +247,6 @@ MFTLib.Index.DriveStatus :: property public required BlockSource { get; init; } 
 MFTLib.Index.DriveStatus :: property public required CompactionNeeded { get; init; } : bool
 MFTLib.Index.DriveStatus :: property public required DriveLetter { get; init; } : char
 MFTLib.Index.DriveStatus :: property public required LiveRowCount { get; init; } : uint
-MFTLib.Index.DriveStatus :: property public required ProducerKind { get; init; } : MFTLib.Index.ProducerKind
-MFTLib.Index.DriveStatus :: property public required RowCount { get; init; } : uint
 MFTLib.Index.DriveStatus :: property public required ScanTimestamp { get; init; } : System.DateTime
 MFTLib.Index.DriveStatus :: property public required State { get; init; } : MFTLib.Index.DriveState
 MFTLib.Index.DriveStatus :: property public required WatchSupported { get; init; } : bool
@@ -431,10 +426,8 @@ MFTLib.Index.IndexDriveOpened :: method public override GetHashCode() : int
 MFTLib.Index.IndexDriveOpened :: method public override ToString() : string
 MFTLib.Index.IndexDriveOpened :: method public static op_Equality(MFTLib.Index.IndexDriveOpened? left, MFTLib.Index.IndexDriveOpened? right) : bool
 MFTLib.Index.IndexDriveOpened :: method public static op_Inequality(MFTLib.Index.IndexDriveOpened? left, MFTLib.Index.IndexDriveOpened? right) : bool
-MFTLib.Index.IndexDriveOpened :: property public required BlockSource { get; init; } : MFTLib.Index.BlockSource
 MFTLib.Index.IndexDriveOpened :: property public required DriveLetter { get; init; } : char
 MFTLib.Index.IndexDriveOpened :: property public required SettledCount { get; init; } : int
-MFTLib.Index.IndexDriveOpened :: property public required State { get; init; } : MFTLib.Index.DriveState
 MFTLib.Index.IndexDriveOpened :: property public required Total { get; init; } : int
 MFTLib.Index.IndexDriveOpened :: type public sealed class : System.IEquatable<MFTLib.Index.IndexDriveOpened>
 MFTLib.Index.IndexRecordKey :: constructor public (char DriveLetter, ulong RecordNumber, MFTLib.Index.ProducerKind ProducerKind)
@@ -516,10 +509,7 @@ MFTLib.Index.JournalBatch :: property public Entries { get; init; } : System.Col
 MFTLib.Index.JournalBatch :: property public JournalId { get; init; } : ulong
 MFTLib.Index.JournalBatch :: property public NextUsn { get; init; } : long
 MFTLib.Index.JournalBatch :: type public sealed class : MFTLib.Index.WatchStreamItem, System.IEquatable<MFTLib.Index.JournalBatch>, System.IEquatable<MFTLib.Index.WatchStreamItem>
-MFTLib.Index.JournalCatchUpLostException :: constructor public (char driveLetter, int consecutiveLostCatchUps, bool recoveryStopped, MFTLib.Index.JournalCheckpointLoss checkpointLoss, string message)
-MFTLib.Index.JournalCatchUpLostException :: property public CheckpointLoss { get; } : MFTLib.Index.JournalCheckpointLoss
-MFTLib.Index.JournalCatchUpLostException :: property public ConsecutiveLostCatchUps { get; } : int
-MFTLib.Index.JournalCatchUpLostException :: property public DriveLetter { get; } : char
+MFTLib.Index.JournalCatchUpLostException :: constructor public (bool recoveryStopped, string message)
 MFTLib.Index.JournalCatchUpLostException :: property public RecoveryStopped { get; } : bool
 MFTLib.Index.JournalCatchUpLostException :: type public sealed class : System.Exception, System.Runtime.Serialization.ISerializable
 MFTLib.Index.JournalCheckpointLoss :: constructor public ()
@@ -534,12 +524,9 @@ MFTLib.Index.JournalCheckpointLoss :: property public BytesBehind { get; init; }
 MFTLib.Index.JournalCheckpointLoss :: property public SizeThatWouldHaveRetained { get; init; } : long?
 MFTLib.Index.JournalCheckpointLoss :: property public required AllocationDelta { get; init; } : long
 MFTLib.Index.JournalCheckpointLoss :: property public required Cause { get; init; } : MFTLib.Index.JournalCheckpointLossCause
-MFTLib.Index.JournalCheckpointLoss :: property public required CheckpointUsn { get; init; } : long
 MFTLib.Index.JournalCheckpointLoss :: property public required DetectedDuring { get; init; } : MFTLib.Index.JournalCheckpointLossDetection
 MFTLib.Index.JournalCheckpointLoss :: property public required DriveLetter { get; init; } : char
-MFTLib.Index.JournalCheckpointLoss :: property public required FirstUsn { get; init; } : long
 MFTLib.Index.JournalCheckpointLoss :: property public required MaximumSize { get; init; } : long
-MFTLib.Index.JournalCheckpointLoss :: property public required NextUsn { get; init; } : long
 MFTLib.Index.JournalCheckpointLoss :: type public sealed class : System.IEquatable<MFTLib.Index.JournalCheckpointLoss>
 MFTLib.Index.JournalCheckpointLossCause :: field public const CheckpointTrimmed : MFTLib.Index.JournalCheckpointLossCause = 0
 MFTLib.Index.JournalCheckpointLossCause :: field public const JournalRecreated : MFTLib.Index.JournalCheckpointLossCause = 1

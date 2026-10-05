@@ -101,7 +101,6 @@ public class FileIndexProducerSelectionTests
         var ready = index.Drives.Single(drive => drive.DriveLetter == 'U');
         Assert.AreEqual(DriveState.Ready, ready.State);
         Assert.AreEqual(DriveFailureKind.None, ready.FailureKind);
-        Assert.IsNull(ready.DiscardedBlock);
     }
 
     [TestMethod]
@@ -215,7 +214,7 @@ public class FileIndexProducerSelectionTests
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(ProducerKind.Enumeration, status.ProducerKind);
+        Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
         Assert.IsNull(status.MftProducerFailureMessage);
         Assert.IsNotNull(index.Find(Path.Combine(_treeRoot, "indexed.txt")));
         Assert.AreEqual(0, invocationCount);
@@ -315,7 +314,7 @@ public class FileIndexProducerSelectionTests
         await index.RescanAsync('T', CancellationToken.None);
 
         Assert.AreEqual(2, invocationCount);
-        Assert.AreEqual(ProducerKind.Mft, index.Drives[0].ProducerKind);
+        Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.IsTrue(index.Drives[0].WatchSupported);
         Assert.AreEqual(8192L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(4096L, previousRoot.DriveBlock.Block.Header.UsnNextUsn);
@@ -334,7 +333,7 @@ public class FileIndexProducerSelectionTests
         var options = Options(ProducerPolicy.Mft, FakeProducer);
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        Assert.AreEqual(ProducerKind.Mft, index.Drives[0].ProducerKind);
+        Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.IsTrue(index.Drives[0].WatchSupported);
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
     }
@@ -373,7 +372,7 @@ public class FileIndexProducerSelectionTests
 
         Assert.AreEqual(1, invocationCount,
             "the producer must run again rather than the index warm-starting from the rejected block");
-        Assert.AreEqual(ProducerKind.Mft, index.Drives[0].ProducerKind);
+        Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
     }
 
 
@@ -484,7 +483,7 @@ public class FileIndexProducerSelectionTests
         Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
         Assert.IsNull(status.MftProducerFailureMessage);
         Assert.AreEqual(BlockSource.ProducedByScan, status.BlockSource);
-        Assert.AreEqual(ProducerKind.Mft, status.ProducerKind);
+        Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.IsTrue(status.WatchSupported);
         Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
     }

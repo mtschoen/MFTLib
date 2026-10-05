@@ -239,7 +239,8 @@ public partial class FileIndexWatchRecoveryTests
         await rescan.WaitAsync(HangGuard);
 
         var lost = await ThrowsAsync<JournalCatchUpLostException>(() => wait.WaitAsync(HangGuard));
-        Assert.AreEqual(1, lost.ConsecutiveLostCatchUps);
+        Assert.IsFalse(lost.RecoveryStopped);
+        Assert.AreEqual(1, harness.CatchUpLossStatuses('T').Single().ConsecutiveLostCatchUps);
         Assert.AreEqual(2, harness.Source.StartsFor('T').Count, "the retry's block restarts the watch");
         await index.StopWatchingAsync('T', Token);
     }

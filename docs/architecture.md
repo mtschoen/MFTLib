@@ -13,7 +13,9 @@
       stored/requested tag diagnostics. `InspectCached` reports tags on available
       blocks. Tags are initialized before completion; custom MFT producers copy
       `request.CacheTag` into creation options, and the built-in broker adapter
-      forwards it automatically. See `docs/index-format.md` for the contract.
+      forwards it automatically. `CacheTag` has no public component accessors: consumers
+      construct and compare whole tags, and `MFTLibTestExtensions.SyntheticCacheTag` reads the
+      components for policy tests. See `docs/index-format.md` for the contract.
 
     - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory.
 

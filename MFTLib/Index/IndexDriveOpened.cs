@@ -11,7 +11,7 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed record IndexDriveOpened
 {
-    /// <summary>The settled drive, as <see cref="DriveStatus.DriveLetter" /> reports it.</summary>
+    /// <summary>The settled drive, in upper case, so it matches <see cref="DriveStatus.DriveLetter" /> of a drive configured with an upper-case letter.</summary>
     public required char DriveLetter { get; init; }
 
     /// <summary>
@@ -24,14 +24,4 @@ public sealed record IndexDriveOpened
 
     /// <summary>How many drives this open was configured with.</summary>
     public required int Total { get; init; }
-
-    /// <summary>
-    ///     Where the settled drive's block came from, as <see cref="DriveStatus.BlockSource" />
-    ///     reports it. <see cref="MFTLib.Index.BlockSource.None" /> for an offline, declined, or
-    ///     failed drive.
-    /// </summary>
-    public required BlockSource BlockSource { get; init; }
-
-    /// <summary>The settled drive's state, as <see cref="DriveStatus.State" /> reports it.</summary>
-    public required DriveState State { get; init; }
 }

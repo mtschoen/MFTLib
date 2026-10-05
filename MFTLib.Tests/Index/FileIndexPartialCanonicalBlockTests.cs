@@ -209,12 +209,12 @@ public class FileIndexPartialCanonicalBlockTests
             throw new OperationCanceledException();
         }, diagnostics);
         await using var index = await FileIndex.OpenAsync(options, Token);
-        var rowCount = index.Drives.Single().RowCount;
+        var rowCount = index.HeaderOf().RowCount;
 
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => index.RescanAsync('T', Token));
 
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-        Assert.AreEqual(rowCount, index.Drives.Single().RowCount);
+        Assert.AreEqual(rowCount, index.HeaderOf().RowCount);
         Assert.IsTrue(new FileInfo(_canonicalPath).Length > 3,
             "the slot holds the complete previous block, not the partial replacement");
         Assert.AreEqual(0, Directory.GetFiles(_cacheDirectory, "*.retired-*").Length);

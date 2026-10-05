@@ -17,7 +17,6 @@ public sealed partial class FileIndex : IAsyncDisposable
     readonly List<DriveBlock> _driveBlocks = [];
     readonly Dictionary<char, IndexedDrive> _driveConfigurations = [];
     readonly List<DriveStatus> _blocklessDriveStatuses = [];
-    readonly Dictionary<ushort, BlockValidationResult> _discardedBlocksByOrdinal = [];
     readonly Dictionary<ushort, int> _accessDeniedSubtreeCountByOrdinal = [];
     readonly Dictionary<ushort, int> _skippedRecordCountByOrdinal = [];
     readonly Dictionary<ushort, string> _mftProducerFailureMessagesByOrdinal = [];
@@ -361,26 +360,20 @@ public sealed partial class FileIndex : IAsyncDisposable
 
     DriveStatus DescribeOnlineDriveBlock(DriveBlock driveBlock)
     {
-        var discardedBlock = _discardedBlocksByOrdinal.TryGetValue(driveBlock.DriveOrdinal, out var reason)
-            ? reason
-            : (BlockValidationResult?)null;
         var runtime = GetDriveRuntime(driveBlock.DriveLetter);
         ref readonly var header = ref driveBlock.Block.Header;
         return new DriveStatus
         {
             DriveLetter = driveBlock.DriveLetter,
-            ProducerKind = driveBlock.ProducerKind,
             BlockSource = _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             CacheSlot = _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             State = header.IsCompactionNeeded ? DriveState.Stale : DriveState.Ready,
-            RowCount = header.RowCount,
             LiveRowCount = header.LiveRowCount,
             ScanTimestamp = header.ScanTimestampUtc,
             CompactionNeeded = header.IsCompactionNeeded,
             WatchSupported = driveBlock.ProducerKind == ProducerKind.Mft,
             AccessDeniedSubtreeCount = _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             SkippedRecordCount = _skippedRecordCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            DiscardedBlock = discardedBlock,
             MftProducerFailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             WatchFailureMessage = _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             WatchCatchUp = GetWatchCatchUpStateLocked(driveBlock.DriveLetter),

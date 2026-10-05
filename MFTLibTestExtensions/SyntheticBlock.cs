@@ -92,6 +92,19 @@ public static class SyntheticBlock
         return rows;
     }
 
+    /// <summary>Reads the header of an existing block, through the same validation and slot lock as <see cref="ReadRows" />.</summary>
+    /// <param name="blockPath">The block file.</param>
+    /// <param name="volumeSerial">The volume serial number the block was written for.</param>
+    /// <returns>The producer, row count and cache tag the header stores.</returns>
+    /// <exception cref="InvalidOperationException">The block is missing, fails validation, or is owned by an open index.</exception>
+    public static SyntheticDriveHeader ReadHeader(string blockPath, uint volumeSerial)
+    {
+        RequireExists(blockPath);
+        using var owner = AcquireSlot(blockPath);
+        using var block = OpenExisting(blockPath, volumeSerial);
+        return SyntheticDriveHeader.From(block);
+    }
+
     /// <summary>
     ///     Creates the block file at <paramref name="path" />, writes the rows and the header
     ///     values, and returns the open handle. Internal because the handle is not public surface:

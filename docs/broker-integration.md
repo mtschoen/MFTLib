@@ -25,7 +25,7 @@ The separation is important:
 - a slow scan on one drive does not delay another drive's watch;
 - a watch reader that stops consuming holds back only its own pipe;
 - closing a watch pipe stops only that drive;
-- a drive pipe failure names that drive in `BrokerChannelLostException`; and
+- a drive pipe failure fails only that drive's operations with `BrokerChannelLostException`; and
 - losing the control pipe ends the process, completes the `BrokerProcess.Ended` task with the reason, and
   causes every open drive channel to fail.
 
@@ -281,7 +281,7 @@ concurrently. The status has already been updated when the event runs.
 | Signal | Meaning and consumer action |
 | --- | --- |
 | Completed `BrokerProcess.Ended` task | The control connection and elevated process are gone. Stop using the process, close its indexes, and create a new process and new indexes. |
-| `BrokerChannelLostException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. `DriveLetter` names a drive pipe; null names the control pipe. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
+| `BrokerChannelLostException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
 | `DriveWatchFaultException` | The host reported an `Error` on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
 | `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan; a successful rescan starts the watch if it is requested. |
 | `WatchFaultKind.RescanRestart` | A rescan replaced the block but could not start its watch. The scan returns success. The exception and `WatchFailureMessage` identify the rescan; the inner exception is the start failure. No automatic recovery starts. A consumer start or rescan retries it, and stop rethrows the fault once. |

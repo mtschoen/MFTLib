@@ -30,8 +30,6 @@ public sealed partial class FileIndex
         /// <summary>Why the drive has no block: the producer's failure, or the cache-only refusal.</summary>
         public string? ProducerFailureMessage { get; init; }
 
-        public BlockValidationResult? DiscardedBlock { get; init; }
-
         /// <summary>The loss that made the open reject or distrust the drive's cached block.</summary>
         public JournalCheckpointLoss? CheckpointLoss { get; init; }
 
@@ -68,15 +66,6 @@ public sealed partial class FileIndex
         _accessDeniedSubtreeCountByOrdinal[driveOrdinal] = published.AccessDeniedSubtreeCount;
         _skippedRecordCountByOrdinal[driveOrdinal] = published.SkippedRecordCount;
         _mftProducerFailureMessagesByOrdinal.Remove(driveOrdinal);
-        if (published.DiscardedBlock is { } discardedBlock)
-        {
-            _discardedBlocksByOrdinal[driveOrdinal] = discardedBlock;
-        }
-        else
-        {
-            _discardedBlocksByOrdinal.Remove(driveOrdinal);
-        }
-
         if (published.CatchUpLoss is { } catchUpLoss)
         {
             runtime.ConsecutiveLostCatchUps++;

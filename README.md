@@ -350,9 +350,11 @@ foreach (var drive in index.Drives)
 ```
 
 USNs are byte offsets into the journal, so every number there is exact integer
-arithmetic on values read off the volume: `BytesBehind` is `FirstUsn` minus the
-checkpoint, and `SizeThatWouldHaveRetained` is `NextUsn` minus the checkpoint,
-rounded up to the journal's allocation delta, plus one more allocation delta.
+arithmetic on values read off the volume: `BytesBehind` is the journal's oldest
+retained USN minus the checkpoint, and `SizeThatWouldHaveRetained` is the journal's
+next USN minus the checkpoint, rounded up to the journal's allocation delta, plus one
+more allocation delta. The three positions themselves are internal; the report
+carries the two derived sizes.
 That margin comes from NTFS's documented trimming behavior in
 `CREATE_USN_JOURNAL_DATA` and `USN_JOURNAL_DATA`: the maximum is a target and a
 trim can leave the journal below it. The value is not a live measurement, and
@@ -585,8 +587,7 @@ reported only some of the drives. `OpenAsync` settles its
 drives concurrently and runs no lock around a handler, so reports can overlap and
 arrive out of order; `SettledCount` gives the order. The report
 carries the drive letter, `SettledCount` (this drive was the n-th to settle,
-counted from 1), the total configured drive count, and the settled `BlockSource`
-and `DriveState`, so a consumer can render "3 of 9 drives settled" while the open
+counted from 1), and the total configured drive count, so a consumer can render "3 of 9 drives settled" while the open
 is still in flight. Keep the report with the largest `SettledCount`, not simply
 the last callback to arrive. A declined or failed drive still counts toward the total and
 still reports. Block ordinals follow the same order for drives with a block;
@@ -699,7 +700,7 @@ index.WatchFaulted += fault =>
         case WatchFaultKind.CatchUpLost
             when fault.Exception is JournalCatchUpLostException lost:
             Console.WriteLine(
-                $"Drive {fault.DriveLetter}: loss {lost.ConsecutiveLostCatchUps}, " +
+                $"Drive {fault.DriveLetter}: loss {status.ConsecutiveLostCatchUps}, " +
                 $"stopped {lost.RecoveryStopped}, report {status.CheckpointLoss?.DetectedDuring}");
             break;
 

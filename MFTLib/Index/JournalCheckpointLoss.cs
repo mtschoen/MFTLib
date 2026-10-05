@@ -67,6 +67,22 @@ public enum JournalCheckpointLossCause
 /// </summary>
 public sealed record JournalCheckpointLoss
 {
+    /// <summary>Creates a report for a consumer to fill in, with no journal positions.</summary>
+    public JournalCheckpointLoss()
+    {
+    }
+
+    /// <summary>Creates a report that carries the three raw journal positions MFTLib observed.</summary>
+    /// <param name="checkpointUsn">The position the drive's block left off at.</param>
+    /// <param name="firstUsn">The oldest USN the journal still retained.</param>
+    /// <param name="nextUsn">The USN the journal's next record would be written at.</param>
+    internal JournalCheckpointLoss(long checkpointUsn, long firstUsn, long nextUsn)
+    {
+        CheckpointUsn = checkpointUsn;
+        FirstUsn = firstUsn;
+        NextUsn = nextUsn;
+    }
+
     /// <summary>Upper case, matching the letter this drive was configured with.</summary>
     public required char DriveLetter { get; init; }
 
@@ -89,15 +105,16 @@ public sealed record JournalCheckpointLoss
     ///     Where the drive's block left off, and so the point the journal would have had to
     ///     still reach back to for this drive to be caught up instead of rescanned. That is the
     ///     cached checkpoint for a loss found at open, and the position the live watch had
-    ///     reached for one found when a watch faulted.
+    ///     reached for one found when a watch faulted. Internal: consumers read the sizes derived
+    ///     from it, <see cref="BytesBehind" /> and <see cref="SizeThatWouldHaveRetained" />.
     /// </summary>
-    public required long CheckpointUsn { get; init; }
+    internal long CheckpointUsn { get; init; }
 
     /// <summary>The oldest USN the journal still retained when the loss was detected.</summary>
-    public required long FirstUsn { get; init; }
+    internal long FirstUsn { get; init; }
 
     /// <summary>The USN the journal's next record would be written at.</summary>
-    public required long NextUsn { get; init; }
+    internal long NextUsn { get; init; }
 
     /// <summary>The journal's allocation unit, which sizes are rounded up to.</summary>
     public required long AllocationDelta { get; init; }
@@ -107,7 +124,7 @@ public sealed record JournalCheckpointLoss
 
     /// <summary>
     ///     How far behind the journal the checkpoint had fallen, in bytes:
-    ///     <see cref="FirstUsn" /> minus <see cref="CheckpointUsn" />. Null for
+    ///     the oldest USN the journal retained minus the checkpoint. Null for
     ///     <see cref="JournalCheckpointLossCause.JournalRecreated" />, where the checkpoint and
     ///     the journal belong to different USN spaces and the difference would mean nothing.
     /// </summary>
@@ -115,7 +132,7 @@ public sealed record JournalCheckpointLoss
 
     /// <summary>
     ///     A journal's maximum size in bytes would need to be at least this large to have kept
-    ///     the checkpoint readable: <see cref="NextUsn" /> minus <see cref="CheckpointUsn" />,
+    ///     the checkpoint readable: the journal's next USN minus the checkpoint,
     ///     rounded up to <see cref="AllocationDelta" />, plus one more allocation delta. The
     ///     margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
     ///     USN_JOURNAL_DATA, not a live measurement. This is the size to offer the user

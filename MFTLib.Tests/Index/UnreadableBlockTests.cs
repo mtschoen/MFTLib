@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -84,9 +85,9 @@ public class UnreadableBlockTests
 
             await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-            Assert.AreEqual(BlockValidationResult.WrongMagic, reopened.Drives[0].DiscardedBlock);
+            Assert.AreEqual(BlockSource.ProducedByScan, reopened.Drives[0].BlockSource);
             Assert.AreEqual(DriveState.Ready, reopened.Drives[0].State);
-            Assert.IsTrue(reopened.Drives[0].RowCount >= 3,
+            Assert.IsTrue(reopened.HeaderOf().RowCount >= 3,
                 "the drive must be cold-scanned rather than left empty");
         }
         finally

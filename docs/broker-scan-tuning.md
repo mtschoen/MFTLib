@@ -71,8 +71,8 @@ watch catch-up state is already `WatchCatchUpState.Faulted`. A later
 `StartWatchingAsync` is refused until `RescanAsync` succeeds. The refusal retains
 the watch request, so a successful rescan clears the refusal and starts the watch.
 
-The `JournalCatchUpLostException.CheckpointLoss` report tells the consumer what
-happened. For `JournalCheckpointLossCause.CheckpointTrimmed`, a non-null
+The `JournalCheckpointLoss` report in the drive's `DriveStatus.CheckpointLoss` tells the
+consumer what happened. For `JournalCheckpointLossCause.CheckpointTrimmed`, a non-null
 `SizeThatWouldHaveRetained` is the minimum size that would have kept the cursor.
 After user consent, grow the journal through
 `BrokerProcess.GrowUsnJournalAsync`, choosing a maximum greater than the current

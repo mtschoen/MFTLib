@@ -263,7 +263,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         }, Token);
         try
         {
-            Assert.AreEqual(ProducerKind.Mft, index.Drives.Single().ProducerKind, "the cached MFT block warm-started");
+            Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind, "the cached MFT block warm-started");
             await index.StartWatchingAsync('T', Token);
             Task? wait = null;
             index.BeforeRestartDecisionForTest = _ => wait ??= index.WaitForCatchUpAsync('T', CancellationToken.None);
@@ -275,7 +275,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
                 () => wait.WaitAsync(FakeIndexWatchSource.HangGuard));
             StringAssert.Contains(failure.Message, "no MFT-backed block");
             var status = index.Drives.Single();
-            Assert.AreEqual(ProducerKind.Enumeration, status.ProducerKind);
+            Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
             Assert.IsFalse(status.WatchRequested);
             Assert.AreEqual(WatchCatchUpState.NotStarted, status.WatchCatchUp);
             Assert.AreEqual(1, source.StartsFor('T').Count);
@@ -322,7 +322,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.RescanAsync('T', Token));
 
         var status = index.Drives.Single();
-        Assert.AreEqual(ProducerKind.Enumeration, status.ProducerKind);
+        Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
         Assert.IsFalse(status.WatchRequested);
         Assert.AreEqual(WatchCatchUpState.NotStarted, status.WatchCatchUp);
         Assert.IsNull(status.WatchFailureMessage, "the superseded watch's channel failure no longer describes the drive");

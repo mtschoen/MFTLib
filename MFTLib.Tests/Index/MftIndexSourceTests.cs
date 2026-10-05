@@ -132,7 +132,7 @@ public class MftIndexSourceTests
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(ProducerKind.Mft, status.ProducerKind);
+        Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         var refusal = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => index.StartWatchingAsync('T', Token));
         Assert.AreEqual("Drive T: the broker is not running.", refusal.Message);
@@ -181,6 +181,6 @@ public class MftIndexSourceTests
         await using var index = await FileIndex.OpenAsync(
             Options(null) with { ProducerPolicy = ProducerPolicy.Enumeration }, Token);
 
-        Assert.AreEqual(ProducerKind.Enumeration, index.Drives.Single().ProducerKind);
+        Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
     }
 }

@@ -30,6 +30,7 @@ MFTLibTestExtensions.JournalIsolation :: method public static OverrideJournalWin
 MFTLibTestExtensions.JournalIsolation :: type public static class
 MFTLibTestExtensions.SyntheticBlock :: method public static CachedPath(string cacheDirectory, char driveLetter, uint volumeSerial) : string
 MFTLibTestExtensions.SyntheticBlock :: method public static Edit(string blockPath, uint volumeSerial, System.Action<MFTLibTestExtensions.SyntheticBlockEditor> edit) : void
+MFTLibTestExtensions.SyntheticBlock :: method public static ReadHeader(string blockPath, uint volumeSerial) : MFTLibTestExtensions.SyntheticDriveHeader
 MFTLibTestExtensions.SyntheticBlock :: method public static ReadRows(string blockPath, uint volumeSerial) : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticRow>
 MFTLibTestExtensions.SyntheticBlock :: method public static WriteCached(string cacheDirectory, char driveLetter, uint volumeSerial, MFTLibTestExtensions.SyntheticBlockOptions options, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow> rows) : string
 MFTLibTestExtensions.SyntheticBlock :: property public static MaximumPathDepth { get; } : int
@@ -58,6 +59,26 @@ MFTLibTestExtensions.SyntheticBlockOptions :: property public JournalCursor { ge
 MFTLibTestExtensions.SyntheticBlockOptions :: property public ProducerKind { get; init; } : MFTLib.Index.ProducerKind
 MFTLibTestExtensions.SyntheticBlockOptions :: property public RootRow { get; init; } : uint
 MFTLibTestExtensions.SyntheticBlockOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticBlockOptions>
+MFTLibTestExtensions.SyntheticCacheTag :: method public static GetFourCharacterCode(MFTLib.Index.CacheTag tag) : string
+MFTLibTestExtensions.SyntheticCacheTag :: method public static GetVersion(MFTLib.Index.CacheTag tag) : uint
+MFTLibTestExtensions.SyntheticCacheTag :: type public static class
+MFTLibTestExtensions.SyntheticCheckpointLoss :: method public static WithJournalPositions(MFTLib.Index.JournalCheckpointLoss report, long checkpointUsn, long firstUsn, long nextUsn) : MFTLib.Index.JournalCheckpointLoss
+MFTLibTestExtensions.SyntheticCheckpointLoss :: type public static class
+MFTLibTestExtensions.SyntheticDriveHeader :: constructor public (MFTLib.Index.ProducerKind ProducerKind, uint RowCount, MFTLib.Index.CacheTag CacheTag)
+MFTLibTestExtensions.SyntheticDriveHeader :: method public <Clone>$() : MFTLibTestExtensions.SyntheticDriveHeader
+MFTLibTestExtensions.SyntheticDriveHeader :: method public Deconstruct(out MFTLib.Index.ProducerKind ProducerKind, out uint RowCount, out MFTLib.Index.CacheTag CacheTag) : void
+MFTLibTestExtensions.SyntheticDriveHeader :: method public Equals(MFTLibTestExtensions.SyntheticDriveHeader? other) : bool
+MFTLibTestExtensions.SyntheticDriveHeader :: method public override Equals(object? obj) : bool
+MFTLibTestExtensions.SyntheticDriveHeader :: method public override GetHashCode() : int
+MFTLibTestExtensions.SyntheticDriveHeader :: method public override ToString() : string
+MFTLibTestExtensions.SyntheticDriveHeader :: method public static op_Equality(MFTLibTestExtensions.SyntheticDriveHeader? left, MFTLibTestExtensions.SyntheticDriveHeader? right) : bool
+MFTLibTestExtensions.SyntheticDriveHeader :: method public static op_Inequality(MFTLibTestExtensions.SyntheticDriveHeader? left, MFTLibTestExtensions.SyntheticDriveHeader? right) : bool
+MFTLibTestExtensions.SyntheticDriveHeader :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
+MFTLibTestExtensions.SyntheticDriveHeader :: property public ProducerKind { get; init; } : MFTLib.Index.ProducerKind
+MFTLibTestExtensions.SyntheticDriveHeader :: property public RowCount { get; init; } : uint
+MFTLibTestExtensions.SyntheticDriveHeader :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticDriveHeader>
+MFTLibTestExtensions.SyntheticIndexInspection :: method public static ReadHeader(MFTLib.Index.FileIndex index, char driveLetter) : MFTLibTestExtensions.SyntheticDriveHeader?
+MFTLibTestExtensions.SyntheticIndexInspection :: type public static class
 MFTLibTestExtensions.SyntheticJournalWindow :: constructor public (ulong JournalId, long FirstUsn, long NextUsn, long AllocationDelta, long MaximumSize)
 MFTLibTestExtensions.SyntheticJournalWindow :: method public Deconstruct(out ulong JournalId, out long FirstUsn, out long NextUsn, out long AllocationDelta, out long MaximumSize) : void
 MFTLibTestExtensions.SyntheticJournalWindow :: method public Equals(MFTLibTestExtensions.SyntheticJournalWindow other) : bool

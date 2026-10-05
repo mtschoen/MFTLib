@@ -63,14 +63,11 @@ static class JournalCheckpointCheck
 
         if (journal.JournalId != checkpointJournalId)
         {
-            return new JournalCheckpointLoss
+            return new JournalCheckpointLoss(checkpointUsn, firstUsn, nextUsn)
             {
                 DriveLetter = driveLetter,
                 DetectedDuring = detectedDuring,
                 Cause = JournalCheckpointLossCause.JournalRecreated,
-                CheckpointUsn = checkpointUsn,
-                FirstUsn = firstUsn,
-                NextUsn = nextUsn,
                 AllocationDelta = allocationDelta,
                 MaximumSize = maximumSize
             };
@@ -82,14 +79,11 @@ static class JournalCheckpointCheck
             return null;
         }
 
-        return new JournalCheckpointLoss
+        return new JournalCheckpointLoss(checkpointUsn, firstUsn, nextUsn)
         {
             DriveLetter = driveLetter,
             DetectedDuring = detectedDuring,
             Cause = JournalCheckpointLossCause.CheckpointTrimmed,
-            CheckpointUsn = checkpointUsn,
-            FirstUsn = firstUsn,
-            NextUsn = nextUsn,
             AllocationDelta = allocationDelta,
             MaximumSize = maximumSize,
             BytesBehind = JournalSizeArithmetic.BytesBehind(checkpointUsn, firstUsn),

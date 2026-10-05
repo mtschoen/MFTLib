@@ -2,15 +2,12 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     One drive's current state. Online status includes block-header data; blockless status
-///     carries zero row counts.
+///     carries a zero live row count.
 /// </summary>
 public sealed record DriveStatus
 {
     /// <summary>Identifies the drive in every per-drive <see cref="FileIndex" /> call; one status exists per configured drive, including failed and offline ones.</summary>
     public required char DriveLetter { get; init; }
-
-    /// <summary>Which producer built the current block: MFT parsing or directory enumeration.</summary>
-    public required ProducerKind ProducerKind { get; init; }
 
     /// <summary>
     ///     Where the block behind this status came from. <see cref="BlockSource.None" /> for a
@@ -33,14 +30,8 @@ public sealed record DriveStatus
     public required DriveState State { get; init; }
 
     /// <summary>
-    ///     The highest used slot plus one, from the block header. Zero for a drive with no
-    ///     block. Compare <see cref="LiveRowCount" /> for the rows a query can return.
-    /// </summary>
-    public required uint RowCount { get; init; }
-
-    /// <summary>
-    ///     Rows that are in use and not tombstoned. <see cref="RowCount" /> is the highest used
-    ///     slot plus one and can include free slots and deleted files.
+    ///     Rows that are in use and not tombstoned: the rows a query can return. Zero for a
+    ///     drive with no block.
     /// </summary>
     public required uint LiveRowCount { get; init; }
 
@@ -74,13 +65,6 @@ public sealed record DriveStatus
     ///     in the block.
     /// </summary>
     public int SkippedRecordCount { get; init; }
-
-    /// <summary>
-    ///     Set when opening this drive found an existing block at its cache path, rejected it,
-    ///     and cold-scanned instead. Null when the current block came from a warm start or a
-    ///     first-ever scan with nothing to reject.
-    /// </summary>
-    public BlockValidationResult? DiscardedBlock { get; init; }
 
     /// <summary>
     ///     The detail behind <see cref="FailureKind" />: the MFT producer's error when the
@@ -220,7 +204,7 @@ public sealed record DriveStatus
     ///         fault; an unrelated fault neither rewrites nor deletes it.
     ///     </para>
     ///     Null when the drive warm-started, had no cache to resume, was rejected for a reason
-    ///     unrelated to the journal (which <see cref="DiscardedBlock" /> covers), or has never
+    ///     unrelated to the journal, or has never
     ///     lost its position at either moment.
     /// </summary>
     public JournalCheckpointLoss? CheckpointLoss { get; init; }

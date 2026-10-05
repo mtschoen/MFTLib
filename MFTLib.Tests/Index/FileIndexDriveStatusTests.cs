@@ -87,7 +87,7 @@ public class FileIndexDriveStatusTests
 
         var status = index.Drives.Single();
         Assert.AreEqual(3u, status.LiveRowCount);
-        Assert.IsTrue(status.LiveRowCount <= status.RowCount);
+        Assert.IsTrue(status.LiveRowCount <= index.HeaderOf().RowCount);
     }
 
     [TestMethod]

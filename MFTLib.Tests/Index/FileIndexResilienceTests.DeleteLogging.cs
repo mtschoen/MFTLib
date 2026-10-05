@@ -6,13 +6,12 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     Every block-file delete a <see cref="FileIndex" /> performs is reported through
 ///     <see cref="FileIndexOptions.Diagnostics" /> with the deleted path and the reason, and a
-///     failed drive keeps the <see cref="DriveStatus.DiscardedBlock" /> reason its cache was
-///     rejected with.
+///     cache-only open declines a drive whose cache was rejected.
 /// </summary>
 public partial class FileIndexResilienceTests
 {
     [TestMethod]
-    public async Task OpenAsync_CacheOnly_WithACorruptCache_KeepsTheDiscardedBlockReasonOnTheFailedDrive()
+    public async Task OpenAsync_CacheOnly_WithACorruptCache_DeclinesTheDriveWithNoBlock()
     {
         await using (await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
@@ -30,8 +29,7 @@ public partial class FileIndexResilienceTests
         var failed = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, failed.State);
         Assert.AreEqual(DriveFailureKind.CacheDeclined, failed.FailureKind);
-        Assert.AreEqual(BlockValidationResult.WrongMagic, failed.DiscardedBlock,
-            "a failed drive keeps the reason its cache block was discarded");
+        Assert.AreEqual(BlockSource.None, failed.BlockSource);
     }
 
     [TestMethod]
@@ -95,7 +93,7 @@ public partial class FileIndexResilienceTests
             await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
             var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
-            Assert.AreEqual(BlockValidationResult.WrongRootDirectory, index.Drives[0].DiscardedBlock);
+            Assert.AreEqual(BlockSource.ProducedByScan, index.Drives[0].BlockSource);
             var line = deletions.SingleOrDefault(entry => entry.Contains(blockPath));
             Assert.IsNotNull(line, "the wrong-root discard must be logged with its path");
             StringAssert.Contains(line, nameof(BlockValidationResult.WrongRootDirectory));

@@ -5,8 +5,8 @@ namespace MFTLib;
 /// <summary>
 ///     A broker pipe failed in a way the host did not report with an <c>Error</c> frame: it
 ///     reached EOF, a read or write failed, it carried a frame out of protocol order, or the host
-///     reported a stall. A drive channel's failure names its drive; the control pipe's names none,
-///     and ends the whole <see cref="BrokerProcess" />.
+///     reported a stall. A lost control pipe ends the whole <see cref="BrokerProcess" />; a lost
+///     drive channel ends only that drive's operation.
 /// </summary>
 [SuppressMessage("Roslynator", "RCS1194",
     Justification = "Every instance says which pipe was lost, a drive's channel or the control pipe, which is " +
@@ -25,5 +25,5 @@ public sealed class BrokerChannelLostException : IOException
     }
 
     /// <summary>The drive whose channel was lost, or null when the control pipe was.</summary>
-    public char? DriveLetter { get; }
+    internal char? DriveLetter { get; }
 }

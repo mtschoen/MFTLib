@@ -69,7 +69,6 @@ public class FileIndexOwnerLockTests
                 Assert.AreEqual(
                     "Drive T: cache block is in use by another FileIndex and --cache-only forbids a scan.",
                     status.MftProducerFailureMessage);
-                Assert.IsNull(status.DiscardedBlock);
                 Assert.IsTrue(File.Exists(CanonicalPath),
                     "the second opener must not delete the first index's live block");
                 Assert.AreEqual(DriveState.Ready, first.Drives.Single().State);
@@ -122,7 +121,7 @@ public class FileIndexOwnerLockTests
 
         await using (var first = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None))
         {
-            rowsBefore = first.Drives[0].RowCount;
+            rowsBefore = first.HeaderOf().RowCount;
             timestampBefore = first.Drives[0].ScanTimestamp;
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
@@ -150,9 +149,9 @@ public class FileIndexOwnerLockTests
 
         await using var third = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, third.Drives[0].State);
-        Assert.AreEqual(rowsBefore, third.Drives[0].RowCount);
+        Assert.AreEqual(rowsBefore, third.HeaderOf().RowCount);
         Assert.AreEqual(timestampBefore, third.Drives[0].ScanTimestamp);
-        Assert.IsNull(third.Drives[0].DiscardedBlock);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, third.Drives[0].BlockSource);
     }
 
     [TestMethod]
@@ -333,6 +332,7 @@ public class FileIndexOwnerLockTests
             var progress = new BlockOnFirstArmedReport();
             await using var second = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None);
             var before = second.Drives.Single();
+            var rowCountBefore = second.HeaderOf().RowCount;
             Assert.AreEqual(CacheSlotState.PrivateFallback, before.CacheSlot);
             await first.DisposeAsync();
 
@@ -343,7 +343,7 @@ public class FileIndexOwnerLockTests
             {
                 await progress.Reported.WaitAsync(TimeSpan.FromSeconds(30));
                 Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().CacheSlot);
-                Assert.AreEqual(before.RowCount, second.Drives.Single().RowCount);
+                Assert.AreEqual(rowCountBefore, second.HeaderOf().RowCount);
             }
             finally
             {

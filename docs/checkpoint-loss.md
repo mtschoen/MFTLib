@@ -5,7 +5,8 @@
       volume-root handle (`UsnJournalVolumeInterop`) before adopting a cached block. A block
       whose `BlockHeader.UsnNextUsn` is below the journal's `FirstUsn`, or whose
       `BlockHeader.UsnJournalId` no longer matches, cannot be resumed, so the drive cold-scans
-      and `DriveStatus.CheckpointLoss` records the checkpoint, the journal window, and the size
+      and `DriveStatus.CheckpointLoss` records the cause, the journal's allocation delta and
+      maximum size, how far behind the journal the checkpoint fell, and the size
       a journal would need to be at least to have kept it (`JournalSizeArithmetic`: the
       checkpoint-to-tip span rounded up to the allocation delta, plus one more allocation delta).
       The margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
@@ -32,4 +33,10 @@
       refuses its watch, and requires a consumer `RescanAsync` to publish a resumable block
       and start the watch if it is requested.
       A catch-up failure the journal cannot prove is an ordinary failed scan and carries no report.
+      `JournalCheckpointLoss` keeps the checkpoint, first and next USN positions internal: the broker
+      protocol carries them, report equality covers them, and `BytesBehind` and
+      `SizeThatWouldHaveRetained` derive from them. `JournalCatchUpLostException` carries only
+      `RecoveryStopped` and its message; the drive is the fault's `WatchFault.DriveLetter`, and the
+      consecutive count and the report are the drive's `DriveStatus` values, which a
+      `WatchFaulted` handler reads when the fault is raised.
       A bounded catch-up read that returns entries without advancing its cursor fails the scan.

@@ -35,10 +35,8 @@ public sealed partial class FileIndex
             _blocklessDriveStatuses.Add(new DriveStatus
             {
                 DriveLetter = driveLetter,
-                ProducerKind = ProducerKind.Enumeration,
                 BlockSource = BlockSource.None,
                 State = DriveState.Offline,
-                RowCount = 0,
                 LiveRowCount = 0,
                 ScanTimestamp = DateTime.MinValue,
                 CompactionNeeded = false,
@@ -59,15 +57,12 @@ public sealed partial class FileIndex
             _blocklessDriveStatuses.Add(new DriveStatus
             {
                 DriveLetter = driveLetter,
-                ProducerKind = ProducerKind.Mft,
                 BlockSource = BlockSource.None,
                 State = DriveState.Failed,
-                RowCount = 0,
                 LiveRowCount = 0,
                 ScanTimestamp = DateTime.MinValue,
                 CompactionNeeded = false,
                 WatchSupported = false,
-                DiscardedBlock = settled.DiscardedBlock,
                 MftProducerFailureMessage = settled.ProducerFailureMessage,
                 FailureKind = failureKind,
                 // A cache-only open declines the drive precisely because the checkpoint was

@@ -105,7 +105,7 @@ public partial class FileIndexResilienceTests
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, reopened.Drives[0].State);
-        Assert.IsTrue(reopened.Drives[0].RowCount >= 3);
+        Assert.IsTrue(reopened.HeaderOf().RowCount >= 3);
     }
 
     [TestMethod]
@@ -234,7 +234,7 @@ public partial class FileIndexResilienceTests
         using var cancellationTokenSource = new CancellationTokenSource();
         var progress = new CancelOnFirstReport(cancellationTokenSource) { Armed = false };
         await using var index = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None);
-        var rowsBefore = index.Drives[0].RowCount;
+        var rowsBefore = index.HeaderOf().RowCount;
         var timestampBefore = index.Drives[0].ScanTimestamp;
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
@@ -242,7 +242,7 @@ public partial class FileIndexResilienceTests
 
         await AssertThrowsCancellation(() => index.RescanAsync('T', cancellationTokenSource.Token));
 
-        Assert.AreEqual(rowsBefore, index.Drives[0].RowCount);
+        Assert.AreEqual(rowsBefore, index.HeaderOf().RowCount);
         Assert.AreEqual(timestampBefore, index.Drives[0].ScanTimestamp);
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
     }
@@ -257,7 +257,7 @@ public partial class FileIndexResilienceTests
 
         await using (var index = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None))
         {
-            rowsBefore = index.Drives[0].RowCount;
+            rowsBefore = index.HeaderOf().RowCount;
             timestampBefore = index.Drives[0].ScanTimestamp;
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
@@ -273,9 +273,9 @@ public partial class FileIndexResilienceTests
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, reopened.Drives[0].State);
-        Assert.AreEqual(rowsBefore, reopened.Drives[0].RowCount);
+        Assert.AreEqual(rowsBefore, reopened.HeaderOf().RowCount);
         Assert.AreEqual(timestampBefore, reopened.Drives[0].ScanTimestamp);
-        Assert.IsNull(reopened.Drives[0].DiscardedBlock);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives[0].BlockSource);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -389,7 +389,7 @@ public partial class FileIndexResilienceTests
         }
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.IsNull(reopened.Drives[0].DiscardedBlock);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives[0].BlockSource);
     }
 
     [TestMethod]

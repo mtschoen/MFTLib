@@ -54,20 +54,16 @@ public sealed partial class FileIndex
 
         var driveLetter = char.ToUpperInvariant(drive.DriveLetter);
         int settledCount;
-        DriveStatus settled;
         lock (_stateLock)
         {
             settledCount = _settledCountsByLetter[driveLetter];
-            settled = DescribeOnlineDrive(driveLetter) ?? DescribeBlocklessDrive(driveLetter);
         }
 
         openProgress.Report(new IndexDriveOpened
         {
-            DriveLetter = settled.DriveLetter,
+            DriveLetter = driveLetter,
             SettledCount = settledCount,
-            Total = total,
-            BlockSource = settled.BlockSource,
-            State = settled.State
+            Total = total
         });
     }
 
@@ -104,7 +100,6 @@ public sealed partial class FileIndex
         warmStart = RejectUnresumableCheckpoint(driveLetter, warmStart);
         var opened = new PendingDriveResult
         {
-            DiscardedBlock = warmStart.DiscardedBlock,
             CheckpointLoss = warmStart.CheckpointLoss,
             CacheSlot = DescribeCacheSlot(ownsCanonicalSlot)
         };

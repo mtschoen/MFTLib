@@ -27,6 +27,7 @@ internal sealed class WatchHarness : IDisposable
     readonly List<TestGate> _gates = [];
     readonly ConcurrentQueue<FileChange> _changes = [];
     readonly List<WatchFault> _faults = [];
+    readonly FaultStatusLog _faultStatuses = new();
     readonly Dictionary<char, List<Task>> _recoveriesByDrive = [];
     readonly List<(Func<WatchFault, bool> Match, TaskCompletionSource<WatchFault> Completion)> _faultWaiters = [];
     readonly HashSet<char> _blocklessDrives;
@@ -277,8 +278,12 @@ internal sealed class WatchHarness : IDisposable
         }
     }
 
+    /// <summary>The status of <paramref name="driveLetter" /> at each of its lost-catch-up faults, in raise order.</summary>
+    public DriveStatus[] CatchUpLossStatuses(char driveLetter) => _faultStatuses.CatchUpLossStatuses(driveLetter);
+
     void RecordFault(WatchFault fault)
     {
+        _faultStatuses.Record(Index, fault);
         List<TaskCompletionSource<WatchFault>> matched = [];
         _ = Index.TryGetRecoveryCompletionForTest(fault.DriveLetter, out var recovery);
         lock (_faults)

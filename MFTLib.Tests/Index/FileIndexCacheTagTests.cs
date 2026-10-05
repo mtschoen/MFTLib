@@ -152,7 +152,6 @@ public class FileIndexCacheTagTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
         Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().BlockSource);
-        Assert.IsNull(index.Drives.Single().DiscardedBlock);
         Assert.IsNull(index.Drives.Single().CheckpointLoss);
     }
 
@@ -176,7 +175,8 @@ public class FileIndexCacheTagTests
         await using (var index = await FileIndex.OpenAsync(options, CancellationToken.None))
         {
             var status = index.Drives.Single();
-            Assert.AreEqual(BlockValidationResult.WrongCacheTag, status.DiscardedBlock);
+            Assert.IsTrue(diagnostics.Any(line => line.Contains("cache validation failed: WrongCacheTag")),
+                "the rejected block's deletion names the reason");
             Assert.IsTrue(diagnostics.Any(line => line.Contains("Cache tag mismatch") &&
                 line.Contains(stored.ToString()) && line.Contains(requested.ToString())));
             if (cacheOnly)
@@ -188,7 +188,6 @@ public class FileIndexCacheTagTests
                 await index.RescanAsync('T', CancellationToken.None);
                 Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
                 Assert.AreEqual(DriveFailureKind.None, index.Drives.Single().FailureKind);
-                Assert.IsNull(index.Drives.Single().DiscardedBlock);
             }
             else
             {
@@ -211,9 +210,12 @@ public class FileIndexCacheTagTests
             block.Header.FormatVersion = 2;
             block.Flush(null);
         }
-        await using (var index = await FileIndex.OpenAsync(Options(OriginalTag), CancellationToken.None))
+        var diagnostics = new List<string>();
+        await using (var index = await FileIndex.OpenAsync(
+            Options(OriginalTag) with { Diagnostics = diagnostics.Add }, CancellationToken.None))
         {
-            Assert.AreEqual(BlockValidationResult.WrongFormatVersion, index.Drives.Single().DiscardedBlock);
+            Assert.IsTrue(diagnostics.Any(line => line.Contains("cache validation failed: WrongFormatVersion")),
+                "the rejected block's deletion names the reason");
             Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().BlockSource);
         }
         await using var reopened = await FileIndex.OpenAsync(Options(OriginalTag), CancellationToken.None);
@@ -232,7 +234,6 @@ public class FileIndexCacheTagTests
             Options(requested, true) with { Diagnostics = diagnostics.Add }, CancellationToken.None))
         {
             Assert.AreEqual(DriveFailureKind.InUse, declined.Drives.Single().FailureKind);
-            Assert.IsNull(declined.Drives.Single().DiscardedBlock);
         }
         await using (var privateIndex = await FileIndex.OpenAsync(
             Options(requested) with { Diagnostics = diagnostics.Add }, CancellationToken.None))

@@ -30,7 +30,8 @@ public partial class FileIndexWatchRecoveryTests
 
         Assert.AreEqual(3, harness.ProductionCount('T') - producedBefore);
         var losses = WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T');
-        CollectionAssert.AreEqual(new[] { 1, 2 }, losses.Select(loss => loss.ConsecutiveLostCatchUps).ToArray());
+        CollectionAssert.AreEqual(new[] { 1, 2 },
+            harness.CatchUpLossStatuses('T').Select(status => status.ConsecutiveLostCatchUps).ToArray());
         Assert.IsFalse(losses.Any(loss => loss.RecoveryStopped));
         CollectionAssert.AreEqual(
             new[] { WatchFaultKind.Drive, WatchFaultKind.CatchUpLost, WatchFaultKind.CatchUpLost },

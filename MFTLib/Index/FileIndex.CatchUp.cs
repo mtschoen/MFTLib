@@ -132,7 +132,6 @@ public sealed partial class FileIndex
 
             var settled = produced with
             {
-                DiscardedBlock = opened.DiscardedBlock,
                 CheckpointLoss = opened.CheckpointLoss,
                 CacheSlot = opened.CacheSlot
             };
@@ -192,8 +191,8 @@ public sealed partial class FileIndex
     {
         var driveLetter = runtime.DriveLetter;
         var recoveryStopped = consecutiveLostCatchUps >= LostCatchUpRecoveryLimit;
-        var lost = new JournalCatchUpLostException(driveLetter, consecutiveLostCatchUps, recoveryStopped,
-            catchUpLoss, DescribeLostCatchUp(driveLetter, consecutiveLostCatchUps, recoveryStopped, catchUpLoss));
+        var lost = new JournalCatchUpLostException(recoveryStopped,
+            DescribeLostCatchUp(driveLetter, consecutiveLostCatchUps, recoveryStopped, catchUpLoss));
         lock (_stateLock)
         {
             runtime.RetryingLostCatchUp = !recoveryStopped && runtime.WatchRequested;

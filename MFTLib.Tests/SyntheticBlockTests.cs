@@ -122,9 +122,9 @@ public class SyntheticBlockTests
 
         var drive = index.Drives.Single();
         Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.BlockSource);
-        Assert.AreEqual(ProducerKind.Mft, drive.ProducerKind);
+        Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
         Assert.AreEqual(Moment, drive.ScanTimestamp);
-        Assert.AreEqual(10u, drive.RowCount);
+        Assert.AreEqual(10u, index.HeaderOf().RowCount);
         Assert.AreEqual(5u, drive.LiveRowCount);
         var report = index.FindByName("report.txt").Single();
         Assert.AreEqual(1234, report.Size);
@@ -251,7 +251,6 @@ public class SyntheticBlockTests
         var producer = SampleProducer();
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
         var drive = index.Drives.Single();
-        Assert.AreEqual(BlockValidationResult.InvalidNameDescriptor, drive.DiscardedBlock);
         Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
     }
 
@@ -301,6 +300,34 @@ public class SyntheticBlockTests
     }
 
     [TestMethod]
+    public void ReadHeader_ReturnsTheProducerRowCountAndTagTheBlockWasWrittenWith()
+    {
+        var tag = new CacheTag("SYNT", 3);
+        var path = Seed(options: Options() with { CacheTag = tag });
+
+        var header = SyntheticBlock.ReadHeader(path, Serial);
+
+        Assert.AreEqual(ProducerKind.Mft, header.ProducerKind);
+        Assert.AreEqual(10u, header.RowCount, "the highest used slot plus one, tombstones included");
+        Assert.AreEqual(tag, header.CacheTag);
+    }
+
+    [TestMethod]
+    public void ReadHeader_OfABlockTheProductionReaderRejects_ThrowsWithTheReason()
+    {
+        var path = Seed();
+        var bytes = File.ReadAllBytes(path);
+        bytes[0] = 0;
+        File.WriteAllBytes(path, bytes);
+
+        var failure = Assert.ThrowsException<InvalidOperationException>(() => SyntheticBlock.ReadHeader(path, Serial));
+
+        StringAssert.Contains(failure.Message, nameof(BlockValidationResult.WrongMagic));
+        Assert.ThrowsException<InvalidOperationException>(
+            () => SyntheticBlock.ReadHeader(Path.Combine(CacheDirectoryPath, "absent.mlix"), Serial));
+    }
+
+    [TestMethod]
     public async Task EveryOperation_OnASlotAnOpenIndexOwns_ThrowsInsteadOfRacingIt()
     {
         var path = Seed();
@@ -308,6 +335,7 @@ public class SyntheticBlockTests
 
         Assert.ThrowsException<InvalidOperationException>(() => SyntheticBlock.Edit(path, Serial, _ => { }));
         Assert.ThrowsException<InvalidOperationException>(() => SyntheticBlock.ReadRows(path, Serial));
+        Assert.ThrowsException<InvalidOperationException>(() => SyntheticBlock.ReadHeader(path, Serial));
         Assert.ThrowsException<InvalidOperationException>(() => Seed());
     }
 

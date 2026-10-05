@@ -8,37 +8,23 @@ namespace MFTLib.Index;
 ///     complete but cannot be watched from its cursor. Carried by a
 ///     <see cref="WatchFaultKind.CatchUpLost" /> fault after every such scan, and thrown by
 ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> when the scan operation stops retrying.
+///     The exception names no drive: <see cref="WatchFault.DriveLetter" /> does, and the drive's
+///     <see cref="DriveStatus.ConsecutiveLostCatchUps" /> and <see cref="DriveStatus.CheckpointLoss" />
+///     carry the count and the journal's proof.
 /// </summary>
 [SuppressMessage("Roslynator", "RCS1194",
-    Justification = "Every instance names its drive, its count and its report, which is what a consumer " +
-                    "acts on; the standard overloads would construct one that carries none of them.")]
+    Justification = "Every instance says whether recovery stopped, which is what a consumer acts on; " +
+                    "the standard overloads would construct one that carries no such classification.")]
 public sealed class JournalCatchUpLostException : Exception
 {
     /// <summary>Records one lost catch-up.</summary>
-    /// <param name="driveLetter">The drive whose scan lost its catch-up.</param>
-    /// <param name="consecutiveLostCatchUps">The drive's count after this loss.</param>
     /// <param name="recoveryStopped">Whether the scan operation stopped retrying at this loss.</param>
-    /// <param name="checkpointLoss">The journal's proof of the loss, recorded as the drive's report.</param>
     /// <param name="message">What was lost and what happens next.</param>
-    public JournalCatchUpLostException(char driveLetter, int consecutiveLostCatchUps, bool recoveryStopped,
-        JournalCheckpointLoss checkpointLoss, string message)
+    public JournalCatchUpLostException(bool recoveryStopped, string message)
         : base(message)
     {
-        ArgumentNullException.ThrowIfNull(checkpointLoss);
-        DriveLetter = driveLetter;
-        ConsecutiveLostCatchUps = consecutiveLostCatchUps;
         RecoveryStopped = recoveryStopped;
-        CheckpointLoss = checkpointLoss;
     }
-
-    /// <summary>Gets the drive whose scan lost journal catch-up.</summary>
-    public char DriveLetter { get; }
-
-    /// <summary>
-    ///     The drive's <see cref="DriveStatus.ConsecutiveLostCatchUps" /> once this loss was
-    ///     counted.
-    /// </summary>
-    public int ConsecutiveLostCatchUps { get; }
 
     /// <summary>
     ///     True when this loss brought the count to <see cref="FileIndex.LostCatchUpRecoveryLimit" />
@@ -46,13 +32,4 @@ public sealed class JournalCatchUpLostException : Exception
     ///     queryable but not watchable, until a consumer's <see cref="FileIndex.RescanAsync(char, CancellationToken)" />.
     /// </summary>
     public bool RecoveryStopped { get; }
-
-    /// <summary>
-    ///     The report the broker proved against the live journal, with
-    ///     <see cref="JournalCheckpointLoss.DetectedDuring" /> reading
-    ///     <see cref="JournalCheckpointLossDetection.ScanCatchUp" />. Its
-    ///     <see cref="JournalCheckpointLoss.SizeThatWouldHaveRetained" /> is the journal size to grow
-    ///     to when the journal was trimmed rather than recreated.
-    /// </summary>
-    public JournalCheckpointLoss CheckpointLoss { get; }
 }

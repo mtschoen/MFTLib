@@ -28,9 +28,7 @@ public class QueryContractTests
         {
             BlockSource = BlockSource.None,
             DriveLetter = 'T',
-            ProducerKind = ProducerKind.Enumeration,
             State = DriveState.Ready,
-            RowCount = 42,
             LiveRowCount = 40,
             ScanTimestamp = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
             CompactionNeeded = false,
@@ -38,7 +36,6 @@ public class QueryContractTests
         };
 
         Assert.AreEqual(0, status.AccessDeniedSubtreeCount);
-        Assert.IsNull(status.DiscardedBlock);
         Assert.IsNull(status.WatchFailureMessage);
         Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
     }

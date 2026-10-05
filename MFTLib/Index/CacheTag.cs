@@ -31,9 +31,9 @@ public readonly record struct CacheTag
 
     internal uint PackedFourCc { get; }
     /// <summary>Consumer-defined cache identity version.</summary>
-    public uint Version { get; }
+    internal uint Version { get; }
     /// <summary>Four-character ASCII code reconstructed from the packed on-disk representation.</summary>
-    public string FourCc => new(new[]
+    internal string FourCc => new(new[]
     {
         (char)(PackedFourCc & 0xff), (char)((PackedFourCc >> 8) & 0xff),
         (char)((PackedFourCc >> 16) & 0xff), (char)((PackedFourCc >> 24) & 0xff)
