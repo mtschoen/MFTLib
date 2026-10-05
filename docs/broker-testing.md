@@ -141,6 +141,70 @@ dispose end its pump. Keep fakes per drive. Sharing one queue between handles
 would reintroduce cross-drive ordering and failure coupling that the public seam
 is designed to exclude.
 
+## Seed and edit cache blocks
+
+A test that needs a cache block on disk does not write one by hand. `SyntheticBlock`
+writes, edits and reads blocks through the production block writer, so a test never
+sees the block format. Rows are `SyntheticRow` values: row number, name, parent row,
+and optional `IsDirectory`, `IsTombstone`, `Attributes`, `Size` (null writes the
+size-unknown flag), `ModifiedUtc` and `SequenceNumber`. Capacity is planned from the
+rows, with headroom for later edits.
+
+```csharp
+var cacheDirectory = Path.Combine(Path.GetTempPath(), $"cache-{Guid.NewGuid():N}");
+var path = SyntheticBlock.WriteCached(cacheDirectory, 'C', volumeSerial: 0x1234,
+    new SyntheticBlockOptions
+    {
+        JournalCursor = new UsnJournalCursor(7, 4096),
+        CompletedUtc = completed,
+        CacheTag = new CacheTag("TEST", 1)
+    },
+    [
+        new SyntheticRow(5, ".", 5) { IsDirectory = true },
+        new SyntheticRow(6, "notes.txt", 5) { Size = 12 }
+    ]);
+
+SyntheticBlock.Edit(path, 0x1234, editor =>
+{
+    editor.WriteRow(editor.ReadRow(6) with { Size = null });
+    editor.MarkCompactionNeeded();
+});
+```
+
+- `CachedPath` is the canonical file path for a drive, so a test never builds the
+  file name itself.
+- `WriteCached` writes a complete block into the drive's cache slot. Set
+  `ProducerKind = ProducerKind.Enumeration` and `RootRow = 0` for an enumeration block.
+- `Edit` opens an existing block and hands a `SyntheticBlockEditor` to the callback,
+  then flushes and closes it. The editor reads and writes rows, sets attributes,
+  marks a tombstone or compaction needed, replaces the journal cursor or scan
+  timestamp, and `CorruptNamePool` makes the next open reject the block with
+  `BlockValidationResult.InvalidNameDescriptor`. Using the editor after the edit
+  returns throws `InvalidOperationException`.
+- `ReadRows` returns every row in use, tombstones included, in row order.
+- `MaximumPathDepth` is the deepest path the index resolves.
+
+Every operation holds the cache slot's owner lock for its duration and throws
+`InvalidOperationException` when an open index owns the slot, so dispose the index
+before seeding, editing or reading its block. A missing block or one that fails
+validation throws the same exception naming the problem.
+
+`SyntheticMftProducer` is the block producer of a test index. It writes the rows a
+callback returns for each drive through the same writer and reports a real
+`MftBlockProduceResult` carrying the request's cache tag. Its settings model what a
+test needs from a scan:
+
+- `JournalCursor`, `CompletedUtc` and `SkippedRecordCount` are stamped into every
+  block and reported;
+- `BeforeProduceAsync` is awaited before each production, so a test holds a scan or
+  rescan in progress and releases it when ready;
+- `CatchUpLoss` returns the proven catch-up loss a production reports, which the
+  index surfaces as `DriveStatus.CheckpointLoss`;
+- `ProducedDrives` lists every drive whose production started, in order, including
+  repeats, so a test counts scans and rescans.
+
+The callback must return the root row (row 5 for an MFT block).
+
 ## Isolate cache and journal state
 
 Consumer test assemblies can activate both guards from a module initializer:

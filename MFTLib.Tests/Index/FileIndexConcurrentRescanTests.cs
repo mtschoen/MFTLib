@@ -278,8 +278,8 @@ public class FileIndexConcurrentRescanTests
                 throw failure;
             }
 
-            MftBlockFixture.Write(request.BlockPath, request.VolumeSerial,
-                journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
+            SeededBlocks.Write(request.BlockPath, request.VolumeSerial,
+                journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
             return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                 JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0);
         }

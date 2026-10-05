@@ -295,8 +295,8 @@ public partial class FileIndexWatchRescanTests
     /// </summary>
     FileIndexOptions CacheOnlyWatchOptions(FakeIndexWatchSource source, bool failDriveT)
     {
-        MftBlockFixture.Write(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 2)),
-            volumeSerial: 2, journalId: 22, nextUsn: 8484, moment: MftBlockFixture.SeededMoment);
+        SeededBlocks.Write(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 2)),
+            volumeSerial: 2, journalId: 22, nextUsn: 8484, moment: SeededBlocks.SeededMoment);
         return new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1), new IndexedDrive('U', _treeRoot, 2)],
@@ -309,7 +309,7 @@ public partial class FileIndexWatchRescanTests
                     throw new UnauthorizedAccessException("elevation declined");
                 }
 
-                MftBlockFixture.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
+                SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
                 return Task.FromResult(new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));

@@ -173,8 +173,9 @@ profile or keep-list changes the rows it stores. For example:
 
 Both fields are initialized before a block is marked complete, for initial
 scans, rescans and private/no-cache blocks. A custom `MftBlockProducer` must
-copy `MftBlockProduceRequest.CacheTag` into `BlockFileCreateOptions.CacheTag`;
-returning a differently tagged block is a producer failure. The built-in
+copy `MftBlockProduceRequest.CacheTag` into the block it creates; returning a
+differently tagged block is a producer failure. `SyntheticMftProducer` in
+`MFTLibTestExtensions` does this for tests. The built-in
 `BrokerMftBlockProducer` forwards it through the client-created block target.
 
 After structural validation, warm opening compares both fields to the

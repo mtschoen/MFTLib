@@ -28,6 +28,36 @@ MFTLibTestExtensions.InProcessBrokerHandle :: type public sealed class : System.
 MFTLibTestExtensions.JournalIsolation :: method public static ForbidLiveJournalReads() : void
 MFTLibTestExtensions.JournalIsolation :: method public static OverrideJournalWindow(System.Func<char, MFTLibTestExtensions.SyntheticJournalWindow?> journal) : System.IDisposable
 MFTLibTestExtensions.JournalIsolation :: type public static class
+MFTLibTestExtensions.SyntheticBlock :: method public static CachedPath(string cacheDirectory, char driveLetter, uint volumeSerial) : string
+MFTLibTestExtensions.SyntheticBlock :: method public static Edit(string blockPath, uint volumeSerial, System.Action<MFTLibTestExtensions.SyntheticBlockEditor> edit) : void
+MFTLibTestExtensions.SyntheticBlock :: method public static ReadRows(string blockPath, uint volumeSerial) : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticRow>
+MFTLibTestExtensions.SyntheticBlock :: method public static WriteCached(string cacheDirectory, char driveLetter, uint volumeSerial, MFTLibTestExtensions.SyntheticBlockOptions options, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow> rows) : string
+MFTLibTestExtensions.SyntheticBlock :: property public static MaximumPathDepth { get; } : int
+MFTLibTestExtensions.SyntheticBlock :: type public static class
+MFTLibTestExtensions.SyntheticBlockEditor :: method public Complete(System.DateTime completedUtc) : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public CorruptNamePool() : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkCompactionNeeded() : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkTombstone(uint row) : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public ReadRow(uint row) : MFTLibTestExtensions.SyntheticRow
+MFTLibTestExtensions.SyntheticBlockEditor :: method public SetAttributes(uint row, System.IO.FileAttributes attributes) : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public SetJournalCursor(MFTLib.UsnJournalCursor cursor) : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public WriteRow(MFTLibTestExtensions.SyntheticRow row) : void
+MFTLibTestExtensions.SyntheticBlockEditor :: property public RowCount { get; } : uint
+MFTLibTestExtensions.SyntheticBlockEditor :: type public sealed class
+MFTLibTestExtensions.SyntheticBlockOptions :: constructor public ()
+MFTLibTestExtensions.SyntheticBlockOptions :: method public <Clone>$() : MFTLibTestExtensions.SyntheticBlockOptions
+MFTLibTestExtensions.SyntheticBlockOptions :: method public Equals(MFTLibTestExtensions.SyntheticBlockOptions? other) : bool
+MFTLibTestExtensions.SyntheticBlockOptions :: method public override Equals(object? obj) : bool
+MFTLibTestExtensions.SyntheticBlockOptions :: method public override GetHashCode() : int
+MFTLibTestExtensions.SyntheticBlockOptions :: method public override ToString() : string
+MFTLibTestExtensions.SyntheticBlockOptions :: method public static op_Equality(MFTLibTestExtensions.SyntheticBlockOptions? left, MFTLibTestExtensions.SyntheticBlockOptions? right) : bool
+MFTLibTestExtensions.SyntheticBlockOptions :: method public static op_Inequality(MFTLibTestExtensions.SyntheticBlockOptions? left, MFTLibTestExtensions.SyntheticBlockOptions? right) : bool
+MFTLibTestExtensions.SyntheticBlockOptions :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
+MFTLibTestExtensions.SyntheticBlockOptions :: property public CompletedUtc { get; init; } : System.DateTime
+MFTLibTestExtensions.SyntheticBlockOptions :: property public JournalCursor { get; init; } : MFTLib.UsnJournalCursor
+MFTLibTestExtensions.SyntheticBlockOptions :: property public ProducerKind { get; init; } : MFTLib.Index.ProducerKind
+MFTLibTestExtensions.SyntheticBlockOptions :: property public RootRow { get; init; } : uint
+MFTLibTestExtensions.SyntheticBlockOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticBlockOptions>
 MFTLibTestExtensions.SyntheticJournalWindow :: constructor public (ulong JournalId, long FirstUsn, long NextUsn, long AllocationDelta, long MaximumSize)
 MFTLibTestExtensions.SyntheticJournalWindow :: method public Deconstruct(out ulong JournalId, out long FirstUsn, out long NextUsn, out long AllocationDelta, out long MaximumSize) : void
 MFTLibTestExtensions.SyntheticJournalWindow :: method public Equals(MFTLibTestExtensions.SyntheticJournalWindow other) : bool
@@ -42,3 +72,30 @@ MFTLibTestExtensions.SyntheticJournalWindow :: property public JournalId { get; 
 MFTLibTestExtensions.SyntheticJournalWindow :: property public MaximumSize { get; init; } : long
 MFTLibTestExtensions.SyntheticJournalWindow :: property public NextUsn { get; init; } : long
 MFTLibTestExtensions.SyntheticJournalWindow :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.SyntheticJournalWindow>
+MFTLibTestExtensions.SyntheticMftProducer :: constructor public (System.Func<char, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow>> rowsForDrive)
+MFTLibTestExtensions.SyntheticMftProducer :: property public BeforeProduceAsync { get; set; } : System.Func<char, System.Threading.CancellationToken, System.Threading.Tasks.Task>?
+MFTLibTestExtensions.SyntheticMftProducer :: property public CatchUpLoss { get; set; } : System.Func<char, MFTLib.Index.JournalCheckpointLoss?>?
+MFTLibTestExtensions.SyntheticMftProducer :: property public CompletedUtc { get; set; } : System.DateTime
+MFTLibTestExtensions.SyntheticMftProducer :: property public JournalCursor { get; set; } : MFTLib.UsnJournalCursor
+MFTLibTestExtensions.SyntheticMftProducer :: property public ProducedDrives { get; } : System.Collections.Generic.IReadOnlyList<char>
+MFTLibTestExtensions.SyntheticMftProducer :: property public SkippedRecordCount { get; set; } : int
+MFTLibTestExtensions.SyntheticMftProducer :: type public sealed class
+MFTLibTestExtensions.SyntheticRow :: constructor public (uint Row, string Name, uint ParentRow)
+MFTLibTestExtensions.SyntheticRow :: method public <Clone>$() : MFTLibTestExtensions.SyntheticRow
+MFTLibTestExtensions.SyntheticRow :: method public Deconstruct(out uint Row, out string Name, out uint ParentRow) : void
+MFTLibTestExtensions.SyntheticRow :: method public Equals(MFTLibTestExtensions.SyntheticRow? other) : bool
+MFTLibTestExtensions.SyntheticRow :: method public override Equals(object? obj) : bool
+MFTLibTestExtensions.SyntheticRow :: method public override GetHashCode() : int
+MFTLibTestExtensions.SyntheticRow :: method public override ToString() : string
+MFTLibTestExtensions.SyntheticRow :: method public static op_Equality(MFTLibTestExtensions.SyntheticRow? left, MFTLibTestExtensions.SyntheticRow? right) : bool
+MFTLibTestExtensions.SyntheticRow :: method public static op_Inequality(MFTLibTestExtensions.SyntheticRow? left, MFTLibTestExtensions.SyntheticRow? right) : bool
+MFTLibTestExtensions.SyntheticRow :: property public Attributes { get; init; } : System.IO.FileAttributes
+MFTLibTestExtensions.SyntheticRow :: property public IsDirectory { get; init; } : bool
+MFTLibTestExtensions.SyntheticRow :: property public IsTombstone { get; init; } : bool
+MFTLibTestExtensions.SyntheticRow :: property public ModifiedUtc { get; init; } : System.DateTime
+MFTLibTestExtensions.SyntheticRow :: property public Name { get; init; } : string
+MFTLibTestExtensions.SyntheticRow :: property public ParentRow { get; init; } : uint
+MFTLibTestExtensions.SyntheticRow :: property public Row { get; init; } : uint
+MFTLibTestExtensions.SyntheticRow :: property public SequenceNumber { get; init; } : ushort
+MFTLibTestExtensions.SyntheticRow :: property public Size { get; init; } : long?
+MFTLibTestExtensions.SyntheticRow :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticRow>

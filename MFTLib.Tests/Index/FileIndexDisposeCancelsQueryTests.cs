@@ -240,7 +240,7 @@ public class FileIndexDisposeCancelsQueryTests
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
-                new MftBlockProduceResult(MftBlockFixture.Build(request, RowCount, i => $"file{i % DistinctNameCount}.dat", FixedMoment), JournalId: 7, NextUsn: 4096,
+                new MftBlockProduceResult(SeededBlocks.Build(request, RowCount, i => $"file{i % DistinctNameCount}.dat", FixedMoment), JournalId: 7, NextUsn: 4096,
                     SkippedRecordCount: 0)))
         };
     }

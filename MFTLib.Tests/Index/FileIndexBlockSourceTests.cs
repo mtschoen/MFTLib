@@ -104,7 +104,7 @@ public class FileIndexBlockSourceTests
         Task<MftBlockProduceResult> CountingProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             invocationCount++;
-            return Task.FromResult(new MftBlockProduceResult(MftBlockFixture.Build(request, journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment),
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment),
                 JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 

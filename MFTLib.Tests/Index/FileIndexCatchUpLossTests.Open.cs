@@ -138,8 +138,8 @@ public partial class FileIndexCatchUpLossTests
                 throw new IOException("the retry scan failed");
             }
 
-            MftBlockFixture.Write(request.BlockPath, request.VolumeSerial,
-                journalId: 7, nextUsn: 4096, moment: MftBlockFixture.SeededMoment);
+            SeededBlocks.Write(request.BlockPath, request.VolumeSerial,
+                journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
             var loss = Losses.Count > 0 ? Losses.Dequeue() : null;
             return Task.FromResult(new MftBlockProduceResult(
                 BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,

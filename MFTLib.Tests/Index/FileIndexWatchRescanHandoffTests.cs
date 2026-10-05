@@ -26,7 +26,7 @@ public class FileIndexWatchRescanHandoffTests
                 ProducerPolicy = ProducerPolicy.Mft,
                 MftSource = new MftIndexSource((request, cancellationToken) =>
                 {
-                    MftBlockFixture.Write(request.BlockPath, 1, WatchHarness.JournalId, 100, moment: MftBlockFixture.SeededMoment);
+                    SeededBlocks.Write(request.BlockPath, 1, WatchHarness.JournalId, 100, moment: SeededBlocks.SeededMoment);
                     var block = BlockFile.Open(request.BlockPath, 1, out _)!;
                     return Task.FromResult(new MftBlockProduceResult(block, WatchHarness.JournalId, 100, 0));
                 }, source)

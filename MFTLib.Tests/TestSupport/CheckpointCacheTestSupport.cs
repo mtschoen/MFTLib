@@ -10,7 +10,7 @@ internal static class CheckpointCacheTestSupport
 
     public static Task<MftBlockProduceResult> ProduceMftShapedBlock(
         MftBlockProduceRequest request, CancellationToken cancellationToken) =>
-        MftBlockFixture.Produce(request, CachedJournalId, CachedNextUsn, FixedMoment);
+        SeededBlocks.Produce(request, CachedJournalId, CachedNextUsn, FixedMoment);
 
     public static JournalWindow HealthyWindow =>
         new(CachedJournalId, 0, CachedNextUsn, 64, 128L * 1024 * 1024);

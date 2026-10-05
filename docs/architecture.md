@@ -42,7 +42,9 @@
   holding the production `BrokerProcess` connected to it, with `Crash()` to simulate broker death. `BrokerTestHarnessOptions` supplies the client clock, per-pipe
   connection failures, and held host writes. Host faults surface only through production behavior:
   the `BrokerProcess.Ended` task, `BrokerChannelLostException` on pending operations, and
-  `Error` frames; disposing the process never throws a host fault. Ships as the separate
+  `Error` frames; disposing the process never throws a host fault. `SyntheticBlock`,
+  `SyntheticBlockEditor` and `SyntheticMftProducer` seed, edit and read cache blocks and produce MFT
+  blocks through the production block writer, so consumer tests never call the block writer. Ships as the separate
   `MFTLib.TestExtensions` NuGet package at publish time; never folded into the `MFTLib` package.
 
 ### Native error messages
