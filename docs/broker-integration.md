@@ -1,7 +1,7 @@
 # Integrating the elevated broker
 
 Master File Table (MFT) and USN journal access require an Administrator volume
-handle. `BrokerProcess` lets a desktop or CLI application keep its main process
+handle. `BrokerSession` lets a desktop or CLI application keep its main process
 non-elevated while one elevated child performs raw-volume work for the consumer
 session.
 
@@ -58,45 +58,85 @@ Run the compiled app host (`MyApp.exe`), not `dotnet MyApp.dll`.
 `BrokerLauncher` relaunches the current executable, so the current process must
 be the application executable that contains this dispatch code.
 
-## 2. Launch and own one BrokerProcess
+## 2. Launch and own one broker with BrokerSession
 
-Launch the process once for the lifetime of the indexes that use it:
+Create one `BrokerSession` for the lifetime of the indexes that use it. It owns the elevated
+process: it launches the broker on first use, reports its end and disposes it.
 
 ```csharp
-await using var broker = await BrokerProcess.LaunchAsync(
-    BrokerLauncher.Launch,
-    cancellationToken);
+await using var session = new BrokerSession();
 
-_ = broker.Ended.ContinueWith(
+session.Connecting += () => ShowStatus("Requesting elevation...");
+session.Connected += () => ShowStatus("Elevated broker connected.");
+
+_ = session.Ended.ContinueWith(
     ended => Console.Error.WriteLine($"MFT broker ended: {ended.Result}"),
     TaskScheduler.Default);
 ```
 
-`LaunchAsync` creates the control pipe, invokes `BrokerLauncher.Launch`, and
-waits up to 30 seconds for the elevated child. The
-overload taking a `TimeSpan` lets a host choose a different connection timeout.
-A declined UAC prompt throws `InvalidOperationException`; a child that does not
-connect in time throws `TimeoutException`.
+`new BrokerSession()` launches through `BrokerLauncher.Launch` and waits up to 30 seconds for the
+elevated child to connect. `new BrokerSession(launchBroker, connectTimeout)` takes the launch
+callback (it receives the broker command line and returns false when the UAC prompt was declined)
+and optionally a different connection timeout. Nothing launches at construction: the first scan,
+watch or `GrowUsnJournalAsync` starts the launch, so the UAC prompt appears when the broker is
+first needed.
 
-`Ended` is a `Task<string>` that completes when the control pipe is lost or the
-process is disposed, with the reason. It never faults, and a caller that looks
-after the end still receives the reason; `Ended.IsCompleted` tells whether the
-process has ended. Pending control operations fail with
-`BrokerChannelLostException`, and open drive pipes then fail independently as
-they observe the process exit. `DisposeAsync` closes the control pipe and every
-open drive channel. The reason the host ended is reported through `Ended` and
-the affected operations, not thrown again by disposal.
+Launch rules:
 
-The application owns the process returned by `LaunchAsync`. The connection
-callback given to the producer and watch source borrows it; neither type disposes
-it. After `Ended`, close the indexes using that process, dispose it, launch a new
-process, and open new indexes against the replacement.
+- **One shared launch.** Concurrent first uses wait for the same launch. A caller's cancellation
+  ends only that caller's wait and never aborts the launch, which only disposal cancels, so one
+  cancelled caller never fails a concurrent or later one.
+- **A failed launch is not remembered.** A declined UAC prompt (`InvalidOperationException`) or a
+  connect timeout (`TimeoutException`) fails the callers waiting on that launch; the next use
+  launches again and raises `Connecting` again. A rescan after a declined prompt therefore
+  prompts again.
+- **The launch runs on the thread pool.** The launcher blocks on the UAC prompt, so it never runs
+  on the caller's thread or synchronization context; a first use from a UI thread does not block
+  that thread. A launch that disposal overtakes before the launcher runs, including disposal a
+  `Connecting` subscriber starts, never runs the launcher and fails its callers with
+  `OperationCanceledException`.
+- **`Connecting` and `Connected`** run on the launching thread-pool thread, outside every gate the
+  session holds, so a subscriber may call any member. A subscriber that throws does not corrupt the
+  session: the other subscribers still run and the exception reaches the callers waiting on that
+  launch. A throwing `Connecting` subscriber fails the attempt before anything launches; a
+  throwing `Connected` subscriber fails that attempt after the process exists, the session keeps
+  and owns the process, and the next use returns it.
+
+End rules:
+
+- `Ended` is a `Task<string>` that completes once with the process's end reason (the control pipe
+  was lost, the broker exited), or at disposal with "The broker session was disposed." when the
+  process had not ended. It never faults.
+- `HasEnded` turns true when the process ends or the session is disposed and stays true. It reads
+  the process's end directly, so an end that has completed is visible before `Ended`'s
+  continuations run, and it never waits for a launch. It does not distinguish a process that died
+  from a session its owner disposed: to report only a dead process, check your own disposal flag
+  first, or read the reason `Ended` completed with.
+- `Ended` continuations run asynchronously, never under a gate the session holds, so a continuation
+  may call any member: `HasEnded`, `DisposeAsync`, or a use that throws `InvalidOperationException`
+  (`ObjectDisposedException` after disposal).
+- A session whose process ended stays ended: every later use throws `InvalidOperationException`
+  naming the reason, and the session never relaunches behind the indexes that still reference the
+  dead process. After `Ended`, close the indexes built over the session, dispose it, create a new
+  session and open new indexes.
+- `DisposeAsync` is idempotent. It cancels and awaits an in-flight launch, so a process that
+  arrives after disposal began is reclaimed and disposed, then disposes the process, and completes
+  `Ended` if the process had not ended. Any use after disposal throws `ObjectDisposedException`.
+
+`BrokerSession.GrowUsnJournalAsync(driveLetter, maximumSize, allocationDelta, cancellationToken)`
+launches the broker if no use has yet, then grows the journal as `BrokerProcess.GrowUsnJournalAsync`
+does.
+
+`BrokerProcess` is the lower level the session is built on: `BrokerProcess.LaunchAsync` creates
+the control pipe, invokes the launch callback, and waits for the elevated child; `Ended` completes
+when the control pipe is lost or the process is disposed. A session replaces the application-owned
+process and its connection callback; reach for `BrokerProcess` directly only for a bespoke
+lifetime.
 
 ## 3. Build FileIndex over the broker
 
-`BrokerMftBlockProducer` adapts broker scans to `FileIndex`. Its watch source
-uses the same connection callback and opens a separate broker channel for every
-drive watch.
+`BrokerSession.CreateIndexSource()` adapts broker scans to `FileIndex`. Its watch source
+uses the same session and opens a separate broker channel for every drive watch.
 
 Given an `IReadOnlyList<IndexedDrive>` named `drives`:
 
@@ -104,33 +144,23 @@ Given an `IReadOnlyList<IndexedDrive>` named `drives`:
 using MFTLib;
 using MFTLib.Index;
 
-Task<BrokerProcess> ConnectAsync(CancellationToken token)
-{
-    token.ThrowIfCancellationRequested();
-    return Task.FromResult(broker);
-}
-
-var producer = new BrokerMftBlockProducer(
-    ConnectAsync,
-    new BrokerScanOptions
-    {
-        Profile = BrokerScanProfile.Full
-    });
-
 var options = new FileIndexOptions
 {
     Drives = drives,
-    MftSource = producer.CreateIndexSource()
+    MftSource = session.CreateIndexSource(new BrokerScanOptions
+    {
+        Profile = BrokerScanProfile.Full
+    })
 };
 
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 ```
 
-`BrokerMftBlockProducer.CreateIndexSource()` returns the `MftIndexSource` that
+`BrokerSession.CreateIndexSource()` returns the `MftIndexSource` that
 `FileIndexOptions.MftSource` takes. The source carries both halves of the
 connection: the block producer for cold opens and rescans, and the watch
 source, implemented by `BrokerIndexWatchSource`. Each drive watch start
-connects through the callback, opens the drive's pipe, writes its watch
+connects through the session, opens the drive's pipe, writes its watch
 request, and returns the drive's running watch. The watch source, the drive
 watch handle and the block producer are internal to MFTLib; a consumer holds
 only the opaque `MftIndexSource`.
@@ -141,7 +171,7 @@ instead. Every scan of an MFT-backed drive then fails with
 and starting a watch throws `InvalidOperationException` with the same
 message. Cached blocks still open.
 
-The producer's optional `BrokerScanOptions` supplies `Profile` and
+The optional `BrokerScanOptions` supplies `Profile` and
 `KeepFileNames`; scan progress reaches the application as `IndexScanProgress`
 through `FileIndexOptions.Progress`. A block that fails validation is disposed
 and its scan fails; a block that passes transfers to the index.
@@ -282,7 +312,7 @@ concurrently. The status has already been updated when the event runs.
 
 | Signal | Meaning and consumer action |
 | --- | --- |
-| Completed `BrokerProcess.Ended` task | The control connection and elevated process are gone. Stop using the process, close its indexes, and create a new process and new indexes. |
+| Completed `BrokerSession.Ended` task | The control connection and elevated process are gone. Stop using the session, close its indexes, and create a new session and new indexes. |
 | `BrokerChannelLostException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
 | Drive watch fault (internal `DriveWatchFaultException`) | The host reported an `Error` on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
 | `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan; a successful rescan starts the watch if it is requested. |
@@ -342,7 +372,7 @@ Do not call an index lifecycle method synchronously from that index's `Changed`,
 an unsettled catch-up wait fail immediately with `InvalidOperationException`.
 Queue the work so it begins after the handler returns. Queries, `Drives`,
 `QueryUsnJournalSettings`, and already settled catch-up waits are allowed.
-`BrokerProcess.GrowUsnJournalAsync` is outside the index and is also allowed.
+`BrokerSession.GrowUsnJournalAsync` is outside the index and is also allowed.
 
 ## 6. Recover from a lost scan catch-up
 
@@ -390,7 +420,7 @@ The broker also answers a volume query for the MFT sizing that block planning
 uses; only `MftValidDataLength` and `BytesPerFileRecordSegment` cross the
 protocol. The query is internal to the producer.
 
-`BrokerProcess.GrowUsnJournalAsync` grows a journal in place. It never shrinks
+`BrokerSession.GrowUsnJournalAsync` (`BrokerProcess.GrowUsnJournalAsync` beneath it) grows a journal in place. It never shrinks
 one. It is a control request, like the volume query. Cancellation before its
 request starts writing sends nothing. Once writing begins, the process completes the frame so a
 partial request cannot corrupt the control stream; a cancelled caller stops
@@ -425,8 +455,8 @@ while debugging diagnostics themselves.
   `MFTLibNative.dll` to the output directory.
 - Publish an executable app host and launch that `.exe`.
 - Dispatch `ElevatedEntryPoint.TryHandle` before normal app startup.
-- Launch one `BrokerProcess` for the consumer session and retain ownership of it.
-- Give `BrokerMftBlockProducer` and `BrokerIndexWatchSource` access to that same
-  process.
+- Create one `BrokerSession` for the consumer session and retain ownership of it.
+- Assign `session.CreateIndexSource()` to every index of the session, so all drives share
+  the one process.
 - Observe `Ended`, per-drive start results, watch faults, and lost catch-up.
-- Dispose indexes before disposing the process during application shutdown.
+- Dispose indexes before disposing the session during application shutdown.

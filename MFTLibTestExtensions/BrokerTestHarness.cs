@@ -31,6 +31,21 @@ public static class BrokerTestHarness
             null, null).Own(resources);
     }
 
+    /// <summary>
+    ///     A <see cref="BrokerSession" /> whose launch is <paramref name="launchAsync" />, so a test hands it the
+    ///     process of a started in-process broker (or a launch it holds open, fails or delays) instead of
+    ///     launching an elevated one. Everything else is the production session: lazy shared launch, sticky end,
+    ///     disposal.
+    /// </summary>
+    /// <param name="launchAsync">
+    ///     Called at most once per launch attempt, with a token that only disposal cancels, and returns the process
+    ///     the session then owns.
+    /// </param>
+    /// <returns>The session; the test disposes it.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="launchAsync" /> is null.</exception>
+    public static BrokerSession CreateSession(Func<CancellationToken, Task<BrokerProcess>> launchAsync) =>
+        new(launchAsync);
+
     static JournalBrokerHost CreateHost(ScriptedBrokerVolumes volumes)
     {
         var queryCursor = volumes.QueryJournalCursor;

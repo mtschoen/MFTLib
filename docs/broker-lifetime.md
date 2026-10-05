@@ -24,7 +24,13 @@
       channel is cancelled. A pipe that wrote an operation frame since the previous visit skips
       that visit. A pipe with a frame write in flight is also skipped, so it cannot delay other
       pipes; the client's 30-second no-frame limit then closes that pipe. Any frame resets the
-      client limit. `BrokerMftBlockProducer` validates
+      client limit. `BrokerSession` owns the one `BrokerProcess` of a consumer session: its launch
+      is lazy and shared, runs on the thread pool and never on the caller's synchronization
+      context, only disposal cancels it, a launch that loses to disposal (checked before and
+      after `Connecting`) never runs the launcher, a failed launch is not cached, a process that
+      ended stays ended, `Ended` continuations run outside the session's gate, and disposal
+      reclaims a process that arrives after it began.
+      `BrokerMftBlockProducer` validates
       completed blocks and transfers them to the index, while `BrokerIndexWatchSource` opens one
       channel per drive watch. `ElevatedEntryPoint` and `BrokerLauncher` dispatch `--broker` mode.
       `BrokerDiagnostics` writes through a bounded background queue and filters the two diagnostic

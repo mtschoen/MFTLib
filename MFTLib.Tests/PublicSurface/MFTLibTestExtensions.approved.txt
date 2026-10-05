@@ -2,6 +2,7 @@ MFTLibTestExtensions.BrokerDiagnosticsIsolation :: method public static FlushAsy
 MFTLibTestExtensions.BrokerDiagnosticsIsolation :: method public static Log(string channel, string message) : void
 MFTLibTestExtensions.BrokerDiagnosticsIsolation :: method public static Reset() : void
 MFTLibTestExtensions.BrokerDiagnosticsIsolation :: type public static class
+MFTLibTestExtensions.BrokerTestHarness :: method public static CreateSession(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<MFTLib.BrokerProcess>> launchAsync) : MFTLib.BrokerSession
 MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLibTestExtensions.ScriptedBrokerVolumes volumes) : MFTLibTestExtensions.InProcessBrokerHandle
 MFTLibTestExtensions.BrokerTestHarness :: type public static class
 MFTLibTestExtensions.CacheDirectoryIsolation :: method public static ForbidDefaultCacheDirectory() : void

@@ -140,7 +140,7 @@ dotnet build external\MFTLib\MFTLibTestExtensions\MFTLibTestExtensions.csproj -c
 | Scenario | Recommended API |
 | --- | --- |
 | Elevated CLI or service; simplest integration | `MftVolume` directly |
-| Non-elevated desktop/CLI app; one UAC prompt | `BrokerProcess` with `BrokerMftBlockProducer.CreateIndexSource()` |
+| Non-elevated desktop/CLI app; one UAC prompt | `BrokerSession` with `CreateIndexSource()` |
 | One-time filename lookup | `MftVolume.StreamRecords` with a name filter |
 | Full in-memory index | `MftVolume.StreamRecords`, then `MftResult.ToArray()` |
 | Process records while native memory is alive | `MftVolume.StreamRecords` |
@@ -457,7 +457,7 @@ is worth it or whether an occasional rescan is cheaper. Scans are fast by design
 so a rescan is an acceptable outcome, not a failure.
 
 MFTLib never changes the journal on its own:
-enlarging it is an explicit call, `BrokerProcess.GrowUsnJournalAsync`,
+enlarging it is an explicit call, `BrokerSession.GrowUsnJournalAsync`,
 which the broker performs elevated and which only grows, refusing a requested
 maximum at or below the current one. Growing is persistent and shared with
 every other journal consumer on the volume (Windows Search, backup and
@@ -466,8 +466,8 @@ replication agents), so surface it as a user action, not a startup default.
 ## Keep the application non-elevated
 
 For desktop applications and long-running tools, use the elevated broker instead of
-running the entire process as Administrator. One `BrokerProcess` owns the control pipe
-for the consumer session. Each scan and each drive watch gets its own drive pipe, so a
+running the entire process as Administrator. One `BrokerSession` owns the elevated process and
+its control pipe for the consumer session. Each scan and each drive watch gets its own drive pipe, so a
 slow, stopped, or failed drive does not end another drive's operation.
 
 At minimum, the application must dispatch broker mode before normal startup:
@@ -479,38 +479,36 @@ if (ElevatedEntryPoint.TryHandle(Environment.GetCommandLineArgs()))
 }
 ```
 
-The non-elevated side launches one broker process, then shares it with the index adapters:
+The non-elevated side creates one session. It launches the broker on first use, so the UAC
+prompt appears when the first scan or watch needs it, not when the session is created:
 
 ```csharp
-await using var broker = await BrokerProcess.LaunchAsync(
-    BrokerLauncher.Launch,
-    cancellationToken);
+await using var session = new BrokerSession();
 
-_ = broker.Ended.ContinueWith(
+session.Connecting += () => Console.Error.WriteLine("Requesting elevation...");
+_ = session.Ended.ContinueWith(
     ended => Console.Error.WriteLine($"Broker ended: {ended.Result}"),
     TaskScheduler.Default);
 
-Task<BrokerProcess> ConnectBrokerAsync(CancellationToken _) =>
-    Task.FromResult(broker);
-
-var brokerAdapter = new BrokerMftBlockProducer(ConnectBrokerAsync);
 var drive = IndexedDrive.FromWindowsVolume("C:");
 var options = new FileIndexOptions
 {
     Drives = [drive],
     CacheDirectory = cacheDirectory,
-    MftSource = brokerAdapter.CreateIndexSource()
+    MftSource = session.CreateIndexSource()
 };
 
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 ```
 
-The adapter's connection callback does not transfer ownership: the application keeps and
-disposes the shared `BrokerProcess`. Scans run only through the index source, and
-`BrokerProcess.GrowUsnJournalAsync` is the one direct broker operation:
+The session owns the broker process: a launch that fails (the UAC prompt declined, a connect
+timeout) is not remembered, so the next use asks again; a process that ends stays ended
+(`HasEnded`, `Ended`) and every later use throws `InvalidOperationException`. Dispose the
+indexes, then the session. Scans run only through the index source, and
+`BrokerSession.GrowUsnJournalAsync` is the one direct broker operation:
 
 ```csharp
-UsnJournalSettings grown = await broker.GrowUsnJournalAsync(
+UsnJournalSettings grown = await session.GrowUsnJournalAsync(
     drive.DriveLetter,
     requestedMaximumSize,
     requestedAllocationDelta,

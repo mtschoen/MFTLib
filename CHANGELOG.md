@@ -2,6 +2,7 @@
 
 ## 0.3.0
 
+- Add `BrokerSession`, the one public type that owns a consumer session's elevated broker: it launches the process on first use (`new BrokerSession()` through `BrokerLauncher.Launch`, or `new BrokerSession(launchBroker, connectTimeout)`), reports `Connecting` and `Connected`, exposes `HasEnded` and `Ended` (a sticky end with the reason; every later use throws `InvalidOperationException` naming it, and it never relaunches), hands out `CreateIndexSource(scanOptions)` and `GrowUsnJournalAsync`, and disposes the process. One shared launch that no single caller's cancellation can abort; a failed launch (the UAC prompt declined, a connect timeout) is not cached, so the next use launches and prompts again; disposal cancels and awaits an in-flight launch and reclaims a late process. It replaces file-wizard `BrokerSessionHost` and git-wizard `MftBrokerConnection`. `MFTLib.TestExtensions` adds `BrokerTestHarness.CreateSession(launchAsync)` so a test hands a session the process of an in-process broker. See `docs/broker-integration.md` section 2.
 - Add the Benchmark `index` scenario for synthetic or cache-only blocks, reporting per-drive block geometry, name-pool share, and median warm `FindByName` and `Search` latency.
 
 ### Public API cleanup

@@ -27,6 +27,16 @@ MFTLib.BrokerScanOptions :: type public sealed class : System.IEquatable<MFTLib.
 MFTLib.BrokerScanProfile :: field public const DirectoryIndex : MFTLib.BrokerScanProfile = 1
 MFTLib.BrokerScanProfile :: field public const Full : MFTLib.BrokerScanProfile = 0
 MFTLib.BrokerScanProfile :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+MFTLib.BrokerSession :: constructor public ()
+MFTLib.BrokerSession :: constructor public (System.Func<string, bool> launchBroker, System.TimeSpan? connectTimeout = default)
+MFTLib.BrokerSession :: event public Connected : System.Action?
+MFTLib.BrokerSession :: event public Connecting : System.Action?
+MFTLib.BrokerSession :: method public CreateIndexSource(MFTLib.BrokerScanOptions? scanOptions = default) : MFTLib.Index.MftIndexSource
+MFTLib.BrokerSession :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
+MFTLib.BrokerSession :: method public GrowUsnJournalAsync(char driveLetter, long maximumSize, long allocationDelta, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.UsnJournalSettings>
+MFTLib.BrokerSession :: property public Ended { get; } : System.Threading.Tasks.Task<string>
+MFTLib.BrokerSession :: property public HasEnded { get; } : bool
+MFTLib.BrokerSession :: type public sealed class : System.IAsyncDisposable
 MFTLib.ElevatedEntryPoint :: method public static TryHandle(string[] args) : bool
 MFTLib.ElevatedEntryPoint :: type public static class
 MFTLib.ElevationUtilities :: field public static readonly DefaultElevatedTimeout : System.TimeSpan

@@ -21,7 +21,7 @@
 
     - **MFT source**: `FileIndexOptions.MftSource` is one `MftIndexSource` carrying the block
       producer and the watch source of every MFT-backed drive, so the two cannot come from
-      different connections. `BrokerMftBlockProducer.CreateIndexSource()` builds the broker-backed
+      different connections. `BrokerSession.CreateIndexSource()` builds the broker-backed
       one; `MftIndexSource.Unavailable(reason)` fails every scan and watch start with
       `Drive {letter}: {reason}.`. A null `MftSource` is a configuration error for
       `ProducerPolicy.Mft` and is ignored by `ProducerPolicy.Enumeration`. The block producer
