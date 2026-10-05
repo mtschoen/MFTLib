@@ -7,6 +7,16 @@ namespace Benchmark;
 
 public partial class BenchmarkRunner
 {
+    public Task<int> RunAsync(string[] arguments)
+    {
+        if (arguments.Length > 0 && arguments[0].Equals("index", StringComparison.OrdinalIgnoreCase))
+        {
+            return RunIndexAsync(arguments.AsSpan(1).ToArray());
+        }
+
+        return Task.FromResult(Run(arguments));
+    }
+
     int RunParent(string[] arguments)
     {
         const ulong defaultRecordCount = 8_000_000;

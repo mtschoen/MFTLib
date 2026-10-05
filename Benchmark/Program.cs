@@ -1,4 +1,4 @@
 using Benchmark;
 
 var runner = new BenchmarkRunner();
-return runner.Run(args);
+return await runner.RunAsync(args);

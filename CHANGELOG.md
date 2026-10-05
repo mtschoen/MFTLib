@@ -2,6 +2,8 @@
 
 ## 0.3.0
 
+- Add the Benchmark `index` scenario for synthetic or cache-only blocks, reporting per-drive block geometry, name-pool share, and median warm `FindByName` and `Search` latency.
+
 ### Public API cleanup
 
 - Remove legacy progress constructors and explicit deconstruction overloads. Use phase-bearing `MftScanProgress` construction, `BrokerScanProgress` property initialization, and the current `BlockWriteProgress` shape.
