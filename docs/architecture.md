@@ -116,8 +116,9 @@ sorted ordinally. The approved files in `MFTLib.Tests/PublicSurface/` are `MFTLi
 MFTLib type outside `MFTLib.Index`), `MFTLib.Index.approved.txt` and
 `MFTLibTestExtensions.approved.txt`. The test fails on any added or removed line and prints
 both sets. A change to the public surface is therefore a diff to an approved file in the same
-pull request. The negative control in `PublicSurfaceTests` runs the enumerator over fixtures and
-pins each of these properties.
+pull request. A pull request that grows an approved file names, in its body, the consumer
+production caller of every added member. The negative control in `PublicSurfaceTests` runs the
+enumerator over fixtures and pins each of these properties.
 
 Detection contract: the gate pins the set of public and protected types and members of MFTLib,
 MFTLib.Index and MFTLib.TestExtensions, each with its signature: the declaring type with every

@@ -90,7 +90,7 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 
 [Components and ABI](docs/architecture.md): preserve native thread safety, runtime record geometry and validated compact ABI/stride before parsing. Materialize lazy native-backed strings before freeing buffers. Preserve streaming/batched APIs and elevation dispatch. TestProgram self-elevates; Benchmark uses synthetic data. `MFTLibTestExtensions` ships separately, never inside MFTLib; its harness exposes production process/channel outcomes. The linked contracts specify layouts and component responsibilities.
 
-[Public surface](docs/architecture.md): `PublicSurfaceTests` pins every public type and member of MFTLib and MFTLibTestExtensions to `MFTLib.Tests/PublicSurface/*.approved.txt`; update the file in the same pull request. A member is public only when a consumer needs it in production code. Test-only access goes through `MFTLibTestExtensions`, which forwards to internal code and never re-implements it. `InternalsVisibleTo` never names a consumer assembly.
+[Public surface](docs/architecture.md): `PublicSurfaceTests` pins every public type and member of MFTLib and MFTLibTestExtensions to `MFTLib.Tests/PublicSurface/*.approved.txt`; update the file in the same pull request. A member is public only when a consumer needs it in production code. Test-only access goes through `MFTLibTestExtensions`, which forwards to internal code and never re-implements it. `InternalsVisibleTo` never names a consumer assembly. A pull request that grows an approved file names, in its body, the consumer production caller of every added member.
 
 [Index namespace boundary](docs/architecture.md): `MFTLib.Index` must not depend on flat `MFTLib` or `MFTLib.Interop` except `UsnJournalEntry`, `UsnJournalEntryOptions` and `UsnReason`. `MFTLib.Tests/Index/NamespaceBoundaryTests.cs` enforces the compiled-IL boundary with a mandatory negative control; growing the allowlist requires review, not an import-lint rule.
 
@@ -112,4 +112,4 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 
 ## Roadmap
 
-See `.plan` for details. Current release is **0.3.0** with USN journal support (`QueryUsnJournal`, `ReadUsnJournal`, and `WatchUsnJournal`, which yields `(Entries, Cursor)` batches). Primary consumer is [file-wizard](C:\Users\mtsch\file-wizard).
+See `.plan` for details. Current release is **0.3.0** with USN journal support. Primary consumers are file-wizard and git-wizard.
