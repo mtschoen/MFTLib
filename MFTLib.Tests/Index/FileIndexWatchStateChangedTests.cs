@@ -256,7 +256,7 @@ public partial class FileIndexWatchStateChangedTests
         var recorder = new WatchStateRecorder(harness.Index);
         await harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        harness.ScriptScans('T', new ScriptedScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')), new ScriptedScan());
+        harness.ScriptScans('T', new WatchHarnessScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')), new WatchHarnessScan());
 
         await harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
@@ -291,9 +291,9 @@ public partial class FileIndexWatchStateChangedTests
 
         var after = opening.Length;
         string At(string state, int stepsAfterOpening) => $"{state}:{after + stepsAfterOpening}";
-        harness.ScriptScans('T', new ScriptedScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')),
-            new ScriptedScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')),
-            new ScriptedScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')));
+        harness.ScriptScans('T', new WatchHarnessScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')),
+            new WatchHarnessScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')),
+            new WatchHarnessScan(WatchDeduplicationTestSupport.StandardCatchUpLoss('T')));
 
         JournalCatchUpLostException stopped;
         if (automaticRecovery)

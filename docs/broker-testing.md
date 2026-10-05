@@ -7,32 +7,59 @@ a real volume's USN journal.
 
 ## BrokerTestHarness
 
-`BrokerTestHarness.StartInProcess` runs a real `JournalBrokerHost` on a
+`BrokerTestHarness.StartInProcess(ScriptedBrokerVolumes)` runs a real `JournalBrokerHost` on a
 background task and returns an `InProcessBrokerHandle` whose `Process` is a real
-`BrokerProcess` connected through in-memory
-control and drive pipes. It needs no elevation and launches no child process.
-Consumer tests therefore exercise the same request routing, per-drive channels,
-frame decoding, timeouts, producer, and watch source used in production.
+`BrokerProcess` connected through in-memory control and drive pipes. It needs no
+elevation and launches no child process. Consumer tests therefore exercise the same
+request routing, per-drive channels, frame decoding, timeouts, producer, and watch source
+used in production. The harness supplies everything except the volumes: the client creates
+real block sections, and each scan's records are written through the production row writer
+and filter.
 
-The required arguments are:
+`ScriptedBrokerVolumes` is the fake volumes the host serves. Only `QueryJournalCursor` is
+required; a null source refuses that operation as the real host does.
 
-- a `JournalBrokerHost` whose cursor, scan, catch-up, watch, volume-query, and
-  journal-grow delegates are test fakes;
-- an `IBlockSectionWriter` that writes scan batches into the section named by
-  the host request; and
-- a `BrokerBlockSectionFactory` that creates the client side's block and section
-  lifetime.
+- `QueryJournalCursor` arms a drive's journal cursor before its scan and bounds a watch's
+  backlog.
+- `ScanDrive` receives a `ScriptedScan` (the drive letter, the scan's parse-thread allowance
+  and cancellation token) and returns the scan's records in batches. `ScriptedScan.ReportParsed`
+  emits one parsing-phase progress frame, which the client reports as
+  `IndexScanPhase.ParsingMft`. A batch sequence that yields lazily is written as it is
+  enumerated, so a test can pause after the first batch, or call `InProcessBrokerHandle.Crash()`
+  from inside the scan. Null refuses every scan with the channel error "Broker has no scan
+  source".
+- `ReadJournal` answers the bounded catch-up read after a scan. Null answers "nothing new"
+  from every cursor.
+- `WatchDrive` streams a drive's journal for a watch. Null refuses every watch.
+- `QueryVolume` answers volume sizing queries. Null answers a small fixed volume (256 KiB of
+  1024-byte records).
+- `GrowUsnJournal` grows a drive's journal. Null refuses every grow request.
 
-`StartInProcess(host)` and `StartInProcess(host, options)` take no writer or
-section factory, for tests that exercise only control operations. A
-`JournalBrokerHost` built without `scanDrive` and `readJournal` refuses every
-scan with the channel error "Broker has no scan source", and a harness started
-without a section factory makes `ScanDriveAsync` throw `InvalidOperationException`
-before it opens a channel.
+```csharp
+await using var broker = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
+{
+    QueryJournalCursor = _ => new UsnJournalCursor(7, 1000),
+    ScanDrive = scan =>
+    {
+        scan.ReportParsed(1, 1);
+        return [[SyntheticMftRecord.Create(new SyntheticMftRecordOptions
+        {
+            RecordNumber = 5, ParentRecordNumber = 5, FileName = ".", IsDirectory = true
+        })]];
+    }
+});
+```
+
+`InProcessBrokerHandle.Scans` lists every scan the host served, in order, as an
+`InProcessBrokerScan` (the drive, the scan profile and the keep-file-names list the client
+requested), so a test asserts what it asked for. The harness does not offer the section
+lifetime or the write path: those are MFTLib's own, and `MFTLib.Tests` covers them. A consumer
+asserts the outcome it owns, such as the block file under its cache directory.
 
 The handle owns the harness session from the client side. Disposing the handle
-disposes the process: it closes the control pipe, ends the host, closes the drive pipes, and waits for
-the session task. The harness has no separate fault event or stored host
+disposes the process: it closes the control pipe, ends the host, closes the drive pipes, waits for
+the session task, and then releases the block sections the scans wrote into. Disposal is
+safe to repeat. The harness has no separate fault event or stored host
 exception. A host failure reaches the test through the production surfaces:
 
 - the `BrokerProcess.Ended` task;
@@ -49,27 +76,16 @@ later requests fail with `BrokerChannelLostException`. It differs from disposing
 process, which ends with the reason "The broker process was disposed.". The handle
 still disposes normally after a crash.
 
-A test that enables `BrokerDiagnostics` awaits `BrokerDiagnostics.FlushAsync` to read
-the log file deterministically, and calls `BrokerDiagnosticsIsolation.Reset()` in
+A test that enables `BrokerDiagnostics` awaits `BrokerDiagnosticsIsolation.FlushAsync` to
+read the log file deterministically, writes its own marker line with
+`BrokerDiagnosticsIsolation.Log`, and calls `BrokerDiagnosticsIsolation.Reset()` in
 cleanup to restore the default diagnostics state.
 
-`BrokerTestHarnessOptions` adds deterministic transport seams:
-
-- `TimeProvider` is the client clock for write and reply timeouts;
-- `FailConnection` returns the exception a named drive-pipe connection should
-  throw; and
-- `HoldWrites` returns a task that a named host pipe waits on before writing.
-  The name is `"control"` for the control pipe or the generated drive-pipe name.
-
-The host's clock and processor count belong to the `JournalBrokerHost`
-constructor. Use those parameters to drive host deadlines and parse-thread
-admission. Use `BrokerTestHarnessOptions.TimeProvider` for the client's deadlines.
-
-For portable block-writing examples, see
-`MFTLib.Tests/TestSupport/RecordingBlockSectionWriter.cs` and the broker harness
-fixtures in this repository. Those helpers are repository test types, not part
-of `MFTLib.TestExtensions`; consumer tests implement the same public
-`IBlockSectionWriter` and `BrokerBlockSectionFactory` seams.
+The client clock, per-pipe connection failures, held host writes, the host clock and the
+processor count are not exposed: no consumer drives them. They stay internal seams that
+`MFTLib.Tests` reaches through the same assembly, together with the section recorders that
+back `Scans` (`InProcessBroker`, `TestBlockSections`, `RecordingBlockSectionWriter`), which
+live in `MFTLibTestExtensions` as internal types.
 
 ## Script a drive watch
 

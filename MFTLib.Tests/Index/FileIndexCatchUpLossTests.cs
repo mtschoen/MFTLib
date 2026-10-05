@@ -26,11 +26,11 @@ public partial class FileIndexCatchUpLossTests
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     /// <summary>A scan whose catch-up the producer reports lost with the standard loss.</summary>
-    static ScriptedScan Lost(char driveLetter, TestGate? hold = null) =>
+    static WatchHarnessScan Lost(char driveLetter, TestGate? hold = null) =>
         new(StandardCatchUpLoss(driveLetter), Hold: hold);
 
     /// <summary>A scan whose catch-up held.</summary>
-    static ScriptedScan Held => new();
+    static WatchHarnessScan Held => new();
 
     [TestMethod]
     public async Task Rescan_CatchUpLostOnce_RetriesAtOnceAndKeepsTheReport()
@@ -171,7 +171,7 @@ public partial class FileIndexCatchUpLossTests
     public async Task CatchUpLostCount_SurvivesOperations()
     {
         using var harness = new WatchHarness('T');
-        harness.ScriptScans('T', Lost('T'), Lost('T'), new ScriptedScan(Failure: new IOException("the volume went away")));
+        harness.ScriptScans('T', Lost('T'), Lost('T'), new WatchHarnessScan(Failure: new IOException("the volume went away")));
         await ThrowsAsync<InvalidOperationException>(() => harness.Index.RescanAsync('T', Token));
         Assert.AreEqual(2, harness.DriveFor('T').ConsecutiveLostCatchUps,
             "a scan that produced no block leaves the count unchanged");
@@ -196,7 +196,7 @@ public partial class FileIndexCatchUpLossTests
             BytesBehind = null,
             SizeThatWouldHaveRetained = null
         };
-        harness.ScriptScans('T', new ScriptedScan(recreated), new ScriptedScan(recreated), new ScriptedScan(recreated));
+        harness.ScriptScans('T', new WatchHarnessScan(recreated), new WatchHarnessScan(recreated), new WatchHarnessScan(recreated));
 
         var thrown = await ThrowsAsync<JournalCatchUpLostException>(
             () => harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard));
@@ -308,7 +308,7 @@ public partial class FileIndexCatchUpLossTests
         using var harness = new WatchHarness('T');
         await harness.Index.StartWatchingAsync('T', Token);
         var producerFailure = new IOException("the volume went away");
-        harness.ScriptScans('T', Lost('T'), new ScriptedScan(Failure: producerFailure));
+        harness.ScriptScans('T', Lost('T'), new WatchHarnessScan(Failure: producerFailure));
 
         var thrown = await ThrowsAsync<InvalidOperationException>(
             () => harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard));

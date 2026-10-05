@@ -234,7 +234,7 @@ public class FileIndexCallbackReentrancyTests
     {
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
-        harness.ScriptScans('T', new ScriptedScan(CatchUpLoss: WatchDeduplicationTestSupport.StandardCatchUpLoss('T')));
+        harness.ScriptScans('T', new WatchHarnessScan(CatchUpLoss: WatchDeduplicationTestSupport.StandardCatchUpLoss('T')));
         var outcome = NewSignal<Exception?>();
         index.WatchFaulted += fault =>
         {

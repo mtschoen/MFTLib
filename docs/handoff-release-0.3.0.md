@@ -30,7 +30,7 @@ The 0.3.0 NuGet artifact set is:
 - `MFTLib` version 0.3.0, including `MFTLibNative.dll` for Windows x64; and
 - `MFTLib.TestExtensions` version 0.3.0, a pure managed test package with an
   exact-version dependency on `MFTLib` 0.3.0. It contains
-  `BrokerTestHarness`, `BrokerTestHarnessOptions`, `CacheDirectoryIsolation`,
+  `BrokerTestHarness`, `ScriptedBrokerVolumes`, `CacheDirectoryIsolation`,
   `JournalIsolation`, and `SyntheticJournalWindow`.
 
 Gate 1, [MFTLib issue 330, consumer API gaps](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/330),

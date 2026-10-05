@@ -102,6 +102,7 @@ public sealed partial class JournalBrokerHost
                 progressState.Report(channel.Drive, value, progressWriter));
 
             // Armed before the scan starts, so every change the scan misses is replayed by catch-up.
+            ScanStartingForTest?.Invoke(channel.Drive, request.Profile, request.KeepFileNames);
             channel.Pipe.WaitingOnVolume();
             var cursor = _queryCursor(channel.Drive);
             await channel.Pipe.WriteFrameAsync(writer => BrokerProtocol.WriteCursor(writer, cursor),

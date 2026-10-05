@@ -1,5 +1,4 @@
 using MFTLib;
-using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
 
@@ -11,62 +10,57 @@ namespace MFTLibTestExtensions;
 public static class BrokerTestHarness
 {
     /// <summary>
-    ///     Starts <paramref name="host" />'s session on a background task over an in-memory
-    ///     control pipe; every drive pipe the returned process opens is connected in memory by
-    ///     name. Disposing the handle disposes the process, which ends the host's session and
-    ///     waits for it to return.
+    ///     Starts an in-process broker that serves <paramref name="volumes" />, over an in-memory control
+    ///     pipe; every drive pipe the returned process opens is connected in memory by name. The
+    ///     host is the real <see cref="JournalBrokerHost" />, the client creates real block sections, and each
+    ///     scan's records are written through the production row writer and filter. Disposing the handle
+    ///     disposes the process, which ends the host's session and waits for it to return, then releases the
+    ///     sections.
     /// </summary>
-    /// <param name="host">The host to serve; its sources are the test's fakes.</param>
-    /// <param name="blockSectionWriter">Writes each scan into the section the client created.</param>
-    /// <param name="createBlockSection">Creates the client's block section for each scan.</param>
-    public static InProcessBrokerHandle StartInProcess(JournalBrokerHost host, IBlockSectionWriter blockSectionWriter,
-        BrokerBlockSectionFactory createBlockSection)
+    /// <param name="volumes">The fake volumes the host serves.</param>
+    /// <returns>The handle whose <see cref="InProcessBrokerHandle.Process" /> a test drives.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="volumes" /> is null.</exception>
+    public static InProcessBrokerHandle StartInProcess(ScriptedBrokerVolumes volumes)
     {
-        return StartInProcess(host, blockSectionWriter, createBlockSection, new BrokerTestHarnessOptions());
+        ArgumentNullException.ThrowIfNull(volumes);
+        var host = CreateHost(volumes);
+        // aislop-ignore-next-line IDISP001 -- ownership moves to the returned handle, which disposes it
+        var resources = new ScriptedBrokerResources();
+        host.ScanStartingForTest = resources.RecordScan;
+        return Start(host, resources.Writer, resources.Sections.Create, new BrokerTestHarnessOptions(),
+            null, null).Own(resources);
     }
 
-    /// <inheritdoc cref="StartInProcess(JournalBrokerHost, IBlockSectionWriter, BrokerBlockSectionFactory)" />
-    /// <param name="host">The host to serve; its sources are the test's fakes.</param>
-    /// <param name="blockSectionWriter">Writes each scan into the section the client created.</param>
-    /// <param name="createBlockSection">Creates the client's block section for each scan.</param>
-    /// <param name="options">The client's clock, per-pipe connection failures and per-pipe held host writes.</param>
-    public static InProcessBrokerHandle StartInProcess(JournalBrokerHost host, IBlockSectionWriter blockSectionWriter,
-        BrokerBlockSectionFactory createBlockSection, BrokerTestHarnessOptions options)
+    static JournalBrokerHost CreateHost(ScriptedBrokerVolumes volumes)
     {
-        ArgumentNullException.ThrowIfNull(blockSectionWriter);
-        ArgumentNullException.ThrowIfNull(createBlockSection);
-        return Start(host, blockSectionWriter, createBlockSection, options, null, null);
+        var queryCursor = volumes.QueryJournalCursor;
+        var scan = volumes.ScanDrive;
+        var readJournal = volumes.ReadJournal ?? NothingNew;
+        var watch = volumes.WatchDrive;
+        var queryVolume = volumes.QueryVolume ?? SmallVolume;
+        var grow = volumes.GrowUsnJournal;
+        return new JournalBrokerHost(
+            driveLetter => queryCursor(driveLetter),
+            scan is null
+                ? null
+                : (driveLetter, parseThreads, operation, progress, cancellationToken) =>
+                    scan(new ScriptedScan(driveLetter, parseThreads, operation, progress, cancellationToken)),
+            scan is null ? null : (driveLetter, since, maximumBufferReads) => readJournal(driveLetter, since, maximumBufferReads),
+            watch is null
+                ? null
+                : (driveLetter, since, _, cancellationToken) => watch(driveLetter, since, cancellationToken),
+            driveLetter => queryVolume(driveLetter),
+            grow is null ? null : (driveLetter, maximumSize, allocationDelta) => grow(driveLetter, maximumSize, allocationDelta));
     }
 
-    /// <summary>
-    ///     Starts <paramref name="host" />'s session with no block-section seams, for tests that
-    ///     exercise only control operations. A scan fails clearly: the client has no section
-    ///     factory, so <see cref="BrokerProcess.ScanDriveAsync" /> throws
-    ///     <see cref="InvalidOperationException" /> before it opens a channel.
-    /// </summary>
-    /// <param name="host">The host to serve; its sources are the test's fakes.</param>
-    public static InProcessBrokerHandle StartInProcess(JournalBrokerHost host)
-    {
-        return StartInProcess(host, new BrokerTestHarnessOptions());
-    }
+    static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) NothingNew(string driveLetter, UsnJournalCursor since,
+        int maximumBufferReads) => ([], since);
 
-    /// <inheritdoc cref="StartInProcess(JournalBrokerHost)" />
-    /// <param name="host">The host to serve; its sources are the test's fakes.</param>
-    /// <param name="options">The client's clock, per-pipe connection failures and per-pipe held host writes.</param>
-    public static InProcessBrokerHandle StartInProcess(JournalBrokerHost host, BrokerTestHarnessOptions options)
-    {
-        return Start(host, null, RefuseBlockSection, options, null, null);
-    }
+    static NtfsVolumeInformation SmallVolume(string driveLetter) => new(256 * 1024, 1024);
 
-    static (string SectionName, BlockFile Block, IDisposable Lifetime) RefuseBlockSection(char driveLetter,
-        BlockFileCreateOptions options)
-    {
-        throw new InvalidOperationException(
-            $"Drive {driveLetter} scan needs a block section, but this in-process broker was started without a block section factory.");
-    }
-
-    // The same start with two more seams for MFTLib's own tests: a wrapper around each client
-    // end, by pipe name, and a wrapper around the host's connector.
+    // The start MFTLib's own tests use: any host, section writer and client section factory, plus the
+    // client's clock, per-pipe connection failures and held host writes, a wrapper around each client end
+    // by pipe name, and a wrapper around the host's connector.
     internal static InProcessBrokerHandle Start(JournalBrokerHost host, IBlockSectionWriter? blockSectionWriter,
         BrokerBlockSectionFactory createBlockSection, BrokerTestHarnessOptions options,
         Func<string, Stream, Stream>? wrapClientStream, Func<BrokerChannelConnector, BrokerChannelConnector>? wrapConnector)

@@ -38,7 +38,7 @@ public class FileIndexBatchedOperationTests
         SizeThatWouldHaveRetained = 12288
     };
 
-    static ScriptedScan Lost(char driveLetter) => new(Loss(driveLetter));
+    static WatchHarnessScan Lost(char driveLetter) => new(Loss(driveLetter));
 
     static char[] Letters(IReadOnlyList<DriveOperationResult> results) =>
         [.. results.Select(result => result.DriveLetter)];

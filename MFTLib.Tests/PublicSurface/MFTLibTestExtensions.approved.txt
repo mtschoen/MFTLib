@@ -1,22 +1,9 @@
+MFTLibTestExtensions.BrokerDiagnosticsIsolation :: method public static FlushAsync(System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task
+MFTLibTestExtensions.BrokerDiagnosticsIsolation :: method public static Log(string channel, string message) : void
 MFTLibTestExtensions.BrokerDiagnosticsIsolation :: method public static Reset() : void
 MFTLibTestExtensions.BrokerDiagnosticsIsolation :: type public static class
-MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLib.JournalBrokerHost host) : MFTLibTestExtensions.InProcessBrokerHandle
-MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLib.JournalBrokerHost host, MFTLib.IBlockSectionWriter blockSectionWriter, MFTLib.BrokerBlockSectionFactory createBlockSection) : MFTLibTestExtensions.InProcessBrokerHandle
-MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLib.JournalBrokerHost host, MFTLib.IBlockSectionWriter blockSectionWriter, MFTLib.BrokerBlockSectionFactory createBlockSection, MFTLibTestExtensions.BrokerTestHarnessOptions options) : MFTLibTestExtensions.InProcessBrokerHandle
-MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLib.JournalBrokerHost host, MFTLibTestExtensions.BrokerTestHarnessOptions options) : MFTLibTestExtensions.InProcessBrokerHandle
+MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLibTestExtensions.ScriptedBrokerVolumes volumes) : MFTLibTestExtensions.InProcessBrokerHandle
 MFTLibTestExtensions.BrokerTestHarness :: type public static class
-MFTLibTestExtensions.BrokerTestHarnessOptions :: constructor public ()
-MFTLibTestExtensions.BrokerTestHarnessOptions :: method public <Clone>$() : MFTLibTestExtensions.BrokerTestHarnessOptions
-MFTLibTestExtensions.BrokerTestHarnessOptions :: method public Equals(MFTLibTestExtensions.BrokerTestHarnessOptions? other) : bool
-MFTLibTestExtensions.BrokerTestHarnessOptions :: method public override Equals(object? obj) : bool
-MFTLibTestExtensions.BrokerTestHarnessOptions :: method public override GetHashCode() : int
-MFTLibTestExtensions.BrokerTestHarnessOptions :: method public override ToString() : string
-MFTLibTestExtensions.BrokerTestHarnessOptions :: method public static op_Equality(MFTLibTestExtensions.BrokerTestHarnessOptions? left, MFTLibTestExtensions.BrokerTestHarnessOptions? right) : bool
-MFTLibTestExtensions.BrokerTestHarnessOptions :: method public static op_Inequality(MFTLibTestExtensions.BrokerTestHarnessOptions? left, MFTLibTestExtensions.BrokerTestHarnessOptions? right) : bool
-MFTLibTestExtensions.BrokerTestHarnessOptions :: property public FailConnection { get; init; } : System.Func<string, System.Exception?>?
-MFTLibTestExtensions.BrokerTestHarnessOptions :: property public HoldWrites { get; init; } : System.Func<string, System.Threading.Tasks.Task>?
-MFTLibTestExtensions.BrokerTestHarnessOptions :: property public TimeProvider { get; init; } : System.TimeProvider
-MFTLibTestExtensions.BrokerTestHarnessOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.BrokerTestHarnessOptions>
 MFTLibTestExtensions.CacheDirectoryIsolation :: method public static ForbidDefaultCacheDirectory() : void
 MFTLibTestExtensions.CacheDirectoryIsolation :: type public static class
 MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, char driveLetter, System.Collections.Generic.IReadOnlyList<MFTLib.UsnJournalEntry> entries, ulong journalId, long nextUsn) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
@@ -24,10 +11,39 @@ MFTLibTestExtensions.FileIndexTestAccess :: type public static class
 MFTLibTestExtensions.InProcessBrokerHandle :: method public Crash() : void
 MFTLibTestExtensions.InProcessBrokerHandle :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
 MFTLibTestExtensions.InProcessBrokerHandle :: property public Process { get; } : MFTLib.BrokerProcess
+MFTLibTestExtensions.InProcessBrokerHandle :: property public Scans { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.InProcessBrokerScan>
 MFTLibTestExtensions.InProcessBrokerHandle :: type public sealed class : System.IAsyncDisposable
+MFTLibTestExtensions.InProcessBrokerScan :: constructor public (string DriveLetter, MFTLib.BrokerScanProfile Profile, System.Collections.Generic.IReadOnlyCollection<string>? KeepFileNames)
+MFTLibTestExtensions.InProcessBrokerScan :: method public <Clone>$() : MFTLibTestExtensions.InProcessBrokerScan
+MFTLibTestExtensions.InProcessBrokerScan :: method public Deconstruct(out string DriveLetter, out MFTLib.BrokerScanProfile Profile, out System.Collections.Generic.IReadOnlyCollection<string>? KeepFileNames) : void
+MFTLibTestExtensions.InProcessBrokerScan :: method public Equals(MFTLibTestExtensions.InProcessBrokerScan? other) : bool
+MFTLibTestExtensions.InProcessBrokerScan :: method public override Equals(object? obj) : bool
+MFTLibTestExtensions.InProcessBrokerScan :: method public override GetHashCode() : int
+MFTLibTestExtensions.InProcessBrokerScan :: method public override ToString() : string
+MFTLibTestExtensions.InProcessBrokerScan :: method public static op_Equality(MFTLibTestExtensions.InProcessBrokerScan? left, MFTLibTestExtensions.InProcessBrokerScan? right) : bool
+MFTLibTestExtensions.InProcessBrokerScan :: method public static op_Inequality(MFTLibTestExtensions.InProcessBrokerScan? left, MFTLibTestExtensions.InProcessBrokerScan? right) : bool
+MFTLibTestExtensions.InProcessBrokerScan :: property public DriveLetter { get; init; } : string
+MFTLibTestExtensions.InProcessBrokerScan :: property public KeepFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
+MFTLibTestExtensions.InProcessBrokerScan :: property public Profile { get; init; } : MFTLib.BrokerScanProfile
+MFTLibTestExtensions.InProcessBrokerScan :: type public sealed class : System.IEquatable<MFTLibTestExtensions.InProcessBrokerScan>
 MFTLibTestExtensions.JournalIsolation :: method public static ForbidLiveJournalReads() : void
 MFTLibTestExtensions.JournalIsolation :: method public static OverrideJournalWindow(System.Func<char, MFTLibTestExtensions.SyntheticJournalWindow?> journal) : System.IDisposable
 MFTLibTestExtensions.JournalIsolation :: type public static class
+MFTLibTestExtensions.ScriptedBrokerVolumes :: constructor public ()
+MFTLibTestExtensions.ScriptedBrokerVolumes :: method public <Clone>$() : MFTLibTestExtensions.ScriptedBrokerVolumes
+MFTLibTestExtensions.ScriptedBrokerVolumes :: method public Equals(MFTLibTestExtensions.ScriptedBrokerVolumes? other) : bool
+MFTLibTestExtensions.ScriptedBrokerVolumes :: method public override Equals(object? obj) : bool
+MFTLibTestExtensions.ScriptedBrokerVolumes :: method public override GetHashCode() : int
+MFTLibTestExtensions.ScriptedBrokerVolumes :: method public override ToString() : string
+MFTLibTestExtensions.ScriptedBrokerVolumes :: method public static op_Equality(MFTLibTestExtensions.ScriptedBrokerVolumes? left, MFTLibTestExtensions.ScriptedBrokerVolumes? right) : bool
+MFTLibTestExtensions.ScriptedBrokerVolumes :: method public static op_Inequality(MFTLibTestExtensions.ScriptedBrokerVolumes? left, MFTLibTestExtensions.ScriptedBrokerVolumes? right) : bool
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public GrowUsnJournal { get; init; } : System.Func<string, long, long, MFTLib.UsnJournalSettings>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public QueryVolume { get; init; } : System.Func<string, MFTLib.NtfsVolumeInformation>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ReadJournal { get; init; } : System.Func<string, MFTLib.UsnJournalCursor, int, System.ValueTuple<MFTLib.UsnJournalEntry[], MFTLib.UsnJournalCursor>>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ScanDrive { get; init; } : System.Func<MFTLibTestExtensions.ScriptedScan, System.Collections.Generic.IEnumerable<System.Collections.Generic.IReadOnlyList<MFTLib.MftRecord>>>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public WatchDrive { get; init; } : System.Func<string, MFTLib.UsnJournalCursor, System.Threading.CancellationToken, System.Collections.Generic.IAsyncEnumerable<System.ValueTuple<MFTLib.UsnJournalEntry[], MFTLib.UsnJournalCursor>>>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public required QueryJournalCursor { get; init; } : System.Func<string, MFTLib.UsnJournalCursor>
+MFTLibTestExtensions.ScriptedBrokerVolumes :: type public sealed class : System.IEquatable<MFTLibTestExtensions.ScriptedBrokerVolumes>
 MFTLibTestExtensions.ScriptedDriveWatch :: method public End() : void
 MFTLibTestExtensions.ScriptedDriveWatch :: method public FailDrive(System.Exception exception) : void
 MFTLibTestExtensions.ScriptedDriveWatch :: method public FailOnCancellation(System.Exception exception) : void
@@ -43,6 +59,11 @@ MFTLibTestExtensions.ScriptedDriveWatch :: property public ReadEnded { get; } : 
 MFTLibTestExtensions.ScriptedDriveWatch :: property public ReadStarted { get; } : bool
 MFTLibTestExtensions.ScriptedDriveWatch :: property public StartCursor { get; } : MFTLib.UsnJournalCursor
 MFTLibTestExtensions.ScriptedDriveWatch :: type public sealed class : MFTLib.Index.IIndexDriveWatch, System.IAsyncDisposable
+MFTLibTestExtensions.ScriptedScan :: method public ReportParsed(long recordsProcessed, long? totalRecords) : void
+MFTLibTestExtensions.ScriptedScan :: property public CancellationToken { get; } : System.Threading.CancellationToken
+MFTLibTestExtensions.ScriptedScan :: property public DriveLetter { get; } : string
+MFTLibTestExtensions.ScriptedScan :: property public ParseThreads { get; } : MFTLib.ParseThreadAllowance
+MFTLibTestExtensions.ScriptedScan :: type public sealed class
 MFTLibTestExtensions.ScriptedWatchSource :: constructor public ()
 MFTLibTestExtensions.ScriptedWatchSource :: method public FailNextStart(System.Exception failure) : void
 MFTLibTestExtensions.ScriptedWatchSource :: method public FailNextStartFor(char driveLetter, System.Exception failure) : void
@@ -115,6 +136,8 @@ MFTLibTestExtensions.SyntheticDriveHeader :: property public RowCount { get; ini
 MFTLibTestExtensions.SyntheticDriveHeader :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticDriveHeader>
 MFTLibTestExtensions.SyntheticIndexInspection :: method public static ReadHeader(MFTLib.Index.FileIndex index, char driveLetter) : MFTLibTestExtensions.SyntheticDriveHeader?
 MFTLibTestExtensions.SyntheticIndexInspection :: type public static class
+MFTLibTestExtensions.SyntheticIndexSource :: method public static Create(MFTLibTestExtensions.SyntheticMftProducer? producer = default, MFTLibTestExtensions.ScriptedWatchSource? watches = default) : MFTLib.Index.MftIndexSource
+MFTLibTestExtensions.SyntheticIndexSource :: type public static class
 MFTLibTestExtensions.SyntheticJournalEntry :: method public static Create(MFTLibTestExtensions.SyntheticJournalEntryOptions options) : MFTLib.UsnJournalEntry
 MFTLibTestExtensions.SyntheticJournalEntry :: type public static class
 MFTLibTestExtensions.SyntheticJournalEntryOptions :: constructor public ()

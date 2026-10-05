@@ -49,7 +49,7 @@ public sealed class SyntheticMftProducer
         }
     }
 
-    /// <summary>The producer as the delegate an index takes. Internal until the index-source factory arrives.</summary>
+    /// <summary>The producer as the delegate <see cref="SyntheticIndexSource" /> hands to an index.</summary>
     internal MftBlockProducer Producer => ProduceAsync;
 
     async Task<MftBlockProduceResult> ProduceAsync(MftBlockProduceRequest request,

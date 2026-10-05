@@ -1,3 +1,5 @@
+using MFTLibTestExtensions;
+
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>Host-side steps of a scan that a test scripts on a <see cref="ScriptedBroker" />.</summary>

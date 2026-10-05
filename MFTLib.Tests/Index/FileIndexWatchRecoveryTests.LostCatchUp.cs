@@ -12,10 +12,10 @@ namespace MFTLib.Tests.Index;
 /// </summary>
 public partial class FileIndexWatchRecoveryTests
 {
-    static ScriptedScan Lost(char driveLetter, TestGate? hold = null) =>
+    static WatchHarnessScan Lost(char driveLetter, TestGate? hold = null) =>
         new(WatchDeduplicationTestSupport.StandardCatchUpLoss(driveLetter), Hold: hold);
 
-    static ScriptedScan Held(TestGate? hold = null) => new(Hold: hold);
+    static WatchHarnessScan Held(TestGate? hold = null) => new(Hold: hold);
 
     [TestMethod]
     public async Task RecoveryRescan_LosesCatchUpTwiceThenSucceeds_ReachesCaughtUp_NoRecoveryFault()

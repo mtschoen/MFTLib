@@ -23,7 +23,7 @@ internal sealed class WatchHarness : IDisposable
     readonly ConcurrentDictionary<char, BlockFile> _producedBlocks = [];
     readonly ConcurrentDictionary<char, Exception> _productionFailuresByDrive = [];
     readonly ConcurrentDictionary<char, TestGate> _productionHoldsByDrive = [];
-    readonly ConcurrentDictionary<char, ConcurrentQueue<ScriptedScan>> _scriptedScansByDrive = [];
+    readonly ConcurrentDictionary<char, ConcurrentQueue<WatchHarnessScan>> _scriptedScansByDrive = [];
     readonly ConcurrentDictionary<char, int> _productionCountsByDrive = [];
     readonly List<TestGate> _gates = [];
     readonly ConcurrentQueue<FileChange> _changes = [];
@@ -142,7 +142,7 @@ internal sealed class WatchHarness : IDisposable
     ///     Scripts this drive's next scans, one entry per scan in order. Scans past the script
     ///     return a block whose catch-up held.
     /// </summary>
-    public void ScriptScans(char driveLetter, params ScriptedScan[] scans)
+    public void ScriptScans(char driveLetter, params WatchHarnessScan[] scans)
     {
         var queue = _scriptedScansByDrive.GetOrAdd(char.ToUpperInvariant(driveLetter), _ => []);
         foreach (var scan in scans)
@@ -340,7 +340,7 @@ internal sealed class WatchHarness : IDisposable
         var scripted = _scriptedScansByDrive.TryGetValue(driveLetter, out var scans) &&
                        scans.TryDequeue(out var scan)
             ? scan
-            : new ScriptedScan();
+            : new WatchHarnessScan();
         if (scripted.Hold is { } scriptedHold)
         {
             scriptedHold.MarkEntered();
@@ -381,7 +381,7 @@ internal sealed class WatchHarness : IDisposable
 ///     whose catch-up <paramref name="CatchUpLoss" /> says was lost, or held when it is null. A
 ///     hold gate should come from <see cref="WatchHarness.TrackGate" />, so teardown releases it.
 /// </summary>
-internal sealed record ScriptedScan(
+internal sealed record WatchHarnessScan(
     JournalCheckpointLoss? CatchUpLoss = null,
     Exception? Failure = null,
     TestGate? Hold = null);

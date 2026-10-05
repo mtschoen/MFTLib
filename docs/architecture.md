@@ -41,14 +41,17 @@
 - **MFTLib.Tests** (C# MSTest) - Unit tests for record mapping and path resolution.
 - **MFTLibTestExtensions** (C# Library) - Public, consumer-facing `BrokerTestHarness` that runs a
   `JournalBrokerHost` in process over in-memory control and drive pipes and returns an `InProcessBrokerHandle`
-  holding the production `BrokerProcess` connected to it, with `Crash()` to simulate broker death. `BrokerTestHarnessOptions` supplies the client clock, per-pipe
-  connection failures, and held host writes. Host faults surface only through production behavior:
+  holding the production `BrokerProcess` connected to it, with `Crash()` to simulate broker death and `Scans`
+  to read the scans it served. A test scripts the host through `ScriptedBrokerVolumes` (journal cursor,
+  scan, catch-up, watch, volume query and journal grow sources) and `ScriptedScan`; the client clock,
+  per-pipe connection failures and held host writes stay internal seams for `MFTLib.Tests`. Host faults surface only through production behavior:
   the `BrokerProcess.Ended` task, `BrokerChannelLostException` on pending operations, and
   `Error` frames; disposing the process never throws a host fault. `SyntheticBlock`,
   `SyntheticBlockEditor` and `SyntheticMftProducer` seed, edit and read cache blocks and produce MFT
   blocks through the production block writer, so consumer tests never call the block writer. Ships as the separate
   `MFTLib.TestExtensions` NuGet package at publish time; never folded into the `MFTLib` package.
   `ScriptedWatchSource` and `ScriptedDriveWatch` script the live watch an index runs beside its scan,
+  `SyntheticIndexSource.Create` joins a producer and a watch source into the `MftIndexSource` an index takes,
   and `SyntheticJournalEntry` and `SyntheticMftRecord` mint journal entries and materialized records.
 
 ### Native error messages

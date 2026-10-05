@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using MFTLib.Index;
+using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
 

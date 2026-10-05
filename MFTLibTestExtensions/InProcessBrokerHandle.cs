@@ -9,11 +9,20 @@ namespace MFTLibTestExtensions;
 public sealed class InProcessBrokerHandle : IAsyncDisposable
 {
     readonly Action _crash;
+    ScriptedBrokerResources? _resources;
+    int _released;
 
     internal InProcessBrokerHandle(BrokerProcess process, Action crash)
     {
         Process = process;
         _crash = crash;
+    }
+
+    // Hands the handle the scan log and the resources it releases after the process is disposed.
+    internal InProcessBrokerHandle Own(ScriptedBrokerResources resources)
+    {
+        _resources = resources;
+        return this;
     }
 
     /// <summary>The client connected to the in-process host.</summary>
@@ -29,6 +38,51 @@ public sealed class InProcessBrokerHandle : IAsyncDisposable
     /// </summary>
     public void Crash() => _crash();
 
-    /// <summary>Disposes <see cref="Process" />, which ends the host's session and waits for it to return.</summary>
-    public ValueTask DisposeAsync() => Process.DisposeAsync();
+    /// <summary>
+    ///     Every scan the host served so far, in the order it started, as the client requested it. Empty for a
+    ///     handle MFTLib's own tests started with their own host.
+    /// </summary>
+    public IReadOnlyList<InProcessBrokerScan> Scans => _resources?.Scans() ?? [];
+
+    readonly Lock _gate = new();
+    Task? _disposeTask;
+
+    /// <summary>
+    ///     Disposes <see cref="Process" />, which ends the host's session and waits for it to return, then
+    ///     releases the block sections the scans wrote into. Safe to call more than once.
+    /// </summary>
+    public ValueTask DisposeAsync()
+    {
+        Task task;
+        lock (_gate)
+        {
+            if (_disposeTask is null)
+            {
+                _disposeTask = PerformDisposeAsync();
+            }
+            else if (_disposeTask.IsCompleted)
+            {
+                return ValueTask.CompletedTask;
+            }
+
+            task = _disposeTask;
+        }
+
+        return new ValueTask(task);
+    }
+
+    async Task PerformDisposeAsync()
+    {
+        try
+        {
+            await Process.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0)
+            {
+                _resources?.Dispose();
+            }
+        }
+    }
 }

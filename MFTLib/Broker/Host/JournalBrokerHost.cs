@@ -76,6 +76,9 @@ public sealed partial class JournalBrokerHost
     /// <summary>Test hook, set before serving: runs on the heartbeat sender's thread after each visit.</summary>
     internal Action? HeartbeatVisitedForTest { get; set; }
 
+    /// <summary>Test hook, set before serving: receives each accepted scan request before cursor query or source execution.</summary>
+    internal Action<string, BrokerScanProfile, IReadOnlyList<string>?>? ScanStartingForTest { get; set; }
+
     // One watch channel: stream this drive's journal from the requested cursor until the
     // channel is cancelled (its pipe closed or the session ended) or the watch fails. The loop
     // publishes WaitingOnVolume before each read, which heartbeats however long the journal stays

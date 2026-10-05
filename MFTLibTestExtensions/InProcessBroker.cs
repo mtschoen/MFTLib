@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
+using MFTLib;
 using MFTLib.Index;
-using MFTLibTestExtensions;
 
-namespace MFTLib.Tests.TestSupport;
+namespace MFTLibTestExtensions;
 
 /// <summary>
 ///     A <see cref="BrokerProcess" /> connected to an in-process <see cref="JournalBrokerHost" />
@@ -21,6 +21,9 @@ internal sealed class InProcessBroker : IAsyncDisposable
             wrapClientStream, wrapConnector);
     }
 
+    // A guard, not a measurement: a disposal that hangs fails the test instead of the run.
+    static readonly TimeSpan DisposeTimeout = TimeSpan.FromSeconds(10);
+
     public InProcessBrokerHandle Handle { get; }
 
     public BrokerProcess Process => Handle.Process;
@@ -33,7 +36,7 @@ internal sealed class InProcessBroker : IAsyncDisposable
     {
         try
         {
-            await Process.DisposeAsync().AsTask().WaitAsync(HostChannelHarness.HangGuard);
+            await Process.DisposeAsync().AsTask().WaitAsync(DisposeTimeout);
         }
         finally
         {
@@ -64,7 +67,7 @@ internal sealed class TestBlockSections : IDisposable
     public BlockFile? Resolve(string sectionName) =>
         _sections.TryGetValue(sectionName, out var section) ? section.Block : null;
 
-    /// <summary>The one section created so far.</summary>
+    /// <summary>Throws unless exactly one section was created, so a test that expects one scan fails when it sees two.</summary>
     public (string SectionName, BlockFile Block, RecordingLifetime Lifetime) Single()
     {
         var (sectionName, section) = _sections.Single();
@@ -88,7 +91,7 @@ internal sealed class TestBlockSections : IDisposable
         }
     }
 
-    /// <summary>A path for a new block under the temporary directory.</summary>
+    /// <summary>Every call names a new file, so scans that overlap never share a block.</summary>
     public static BlockScanTarget Target(uint volumeSerial = 123) =>
         new(Path.Combine(Path.GetTempPath(), $"broker-process-block-{Guid.NewGuid():N}.bin"), volumeSerial,
             DeleteOnClose: true);

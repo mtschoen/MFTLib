@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 

@@ -50,16 +50,27 @@ public class BrokerDiagnosticsTests
         Assert.IsFalse(BrokerDiagnostics.Enabled);
     }
 
-    [TestMethod]
-    public async Task Log_WhenEnabled_AppendsTimestampedLine()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Log_WhenEnabled_AppendsTimestampedLine(bool viaIsolation)
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
-        BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "cold-scan-broker-ok");
-        await BrokerDiagnostics.FlushAsync(CancellationToken.None);
+        var message = viaIsolation ? "isolation-forwarded" : "cold-scan-broker-ok";
+        if (viaIsolation)
+        {
+            BrokerDiagnosticsIsolation.Log(BrokerDiagnostics.ControlChannel, message);
+            await BrokerDiagnosticsIsolation.FlushAsync(CancellationToken.None);
+        }
+        else
+        {
+            BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, message);
+            await BrokerDiagnostics.FlushAsync(CancellationToken.None);
+        }
 
         var path = Path.Combine(_temporaryRoot, "broker-diagnostics.log");
         Assert.IsTrue(File.Exists(path));
-        StringAssert.Contains(await File.ReadAllTextAsync(path), "cold-scan-broker-ok");
+        StringAssert.Contains(await File.ReadAllTextAsync(path), message);
     }
 
     [TestMethod]

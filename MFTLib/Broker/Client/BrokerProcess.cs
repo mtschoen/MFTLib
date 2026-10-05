@@ -70,6 +70,8 @@ public sealed partial class BrokerProcess : IAsyncDisposable
     /// </summary>
     public Task<string> Ended => _ended.Task;
 
+    Task? _disposeTask;
+
     /// <summary>
     ///     Closes the control pipe, which ends every channel on the host, then closes every drive
     ///     channel still open here and waits for the control reader, so <see cref="Ended" /> is
@@ -78,13 +80,29 @@ public sealed partial class BrokerProcess : IAsyncDisposable
     ///     channels, and a control pipe that fails to close is only logged. An exception from
     ///     closing a drive channel still propagates.
     /// </summary>
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        Task task;
+        lock (_gate)
         {
-            return;
+            if (_disposeTask is null)
+            {
+                _disposed = 1;
+                _disposeTask = PerformDisposeAsync();
+            }
+            else if (_disposeTask.IsCompleted)
+            {
+                return ValueTask.CompletedTask;
+            }
+
+            task = _disposeTask;
         }
 
+        return new ValueTask(task);
+    }
+
+    async Task PerformDisposeAsync()
+    {
         RequestEnd("The broker process was disposed.");
         try
         {

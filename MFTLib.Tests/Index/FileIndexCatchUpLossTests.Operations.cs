@@ -18,7 +18,7 @@ public partial class FileIndexCatchUpLossTests
     {
         using var harness = new WatchHarness('T');
         var heldRetry = harness.TrackGate();
-        harness.ScriptScans('T', Lost('T'), new ScriptedScan(Hold: heldRetry));
+        harness.ScriptScans('T', Lost('T'), new WatchHarnessScan(Hold: heldRetry));
         var index = harness.Index;
         var token = Token;
         var queuedRescan = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);

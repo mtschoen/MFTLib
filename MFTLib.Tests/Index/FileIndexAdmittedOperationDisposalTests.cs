@@ -67,7 +67,7 @@ public class FileIndexAdmittedOperationDisposalTests
         using var harness = new WatchHarness('T');
         var index = harness.Index;
         await index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
-        harness.ScriptScans('T', new ScriptedScan(new JournalCheckpointLoss
+        harness.ScriptScans('T', new WatchHarnessScan(new JournalCheckpointLoss
         {
             DriveLetter = 'T',
             DetectedDuring = JournalCheckpointLossDetection.ScanCatchUp,
@@ -79,7 +79,7 @@ public class FileIndexAdmittedOperationDisposalTests
             MaximumSize = 32768,
             BytesBehind = 4000,
             SizeThatWouldHaveRetained = 12288
-        }), new ScriptedScan());
+        }), new WatchHarnessScan());
         var lostRaised = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var flagSet = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.DisposedFlagSetForTest = () => flagSet.TrySetResult();

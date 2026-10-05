@@ -1,10 +1,17 @@
+using MFTLib;
 using MFTLib.Index;
 
-namespace MFTLib.Tests.TestSupport;
+namespace MFTLibTestExtensions;
 
-public sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolveSection = null,
-    DateTime? completionTimestamp = null) : IBlockSectionWriter, IDisposable
+/// <summary>
+///     Writes each scan through the production row writer into the section the client created, and
+///     remembers the last section and filter.
+/// </summary>
+internal sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolveSection = null)
+    : IBlockSectionWriter, IDisposable
 {
+    static readonly DateTime CompletedUtc = new(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc);
+
     public BlockFile Block { get; } = BlockFile.Create(new BlockFileCreateOptions
     {
         Path = Path.Combine(Path.GetTempPath(), $"mft-block-section-{Guid.NewGuid():N}.bin"),
@@ -27,7 +34,7 @@ public sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? resolv
         var writer = new BlockWriter(resolveSection?.Invoke(sectionName) ?? Block);
         var result = MftBlockRowWriter.WriteBatches(writer, batches, filter, reporting.Progress, cancellationToken);
         writer.SetJournalCursor(cursor.JournalId, cursor.NextUsn);
-        writer.Complete(completionTimestamp ?? new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc), null);
+        writer.Complete(CompletedUtc, null);
         return result;
     }
 
