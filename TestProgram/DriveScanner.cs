@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
 using MFTLib;
 
 namespace TestProgram;
@@ -17,68 +16,9 @@ partial class DriveScanner
     internal Func<string, MftVolume> _openVolume = letter => MftVolume.Open(letter);
     internal Func<string, uint, MftVolume> _openVolumeWithBuffer = MftVolume.Open;
 
-    internal Func<string, int, bool> _tryRunElevated =
-        (arguments, timeoutMilliseconds) => Elevation.TryRunElevated(arguments, timeoutMilliseconds);
+    internal Func<IReadOnlyList<string>, TimeSpan, bool> _tryRunElevated = Elevation.TryRunElevated;
     internal Func<string, string, IntPtr, IntPtr> _wFreopen = WFreopenNative;
     internal Action<string> _writeLine = Console.WriteLine;
-
-    internal static string FormatArguments(string[] arguments)
-    {
-        return string.Join(" ", arguments.Select(FormatArgument));
-    }
-
-    // The Windows argv rules the relaunched child's runtime applies to its command line: an empty
-    // argument or one holding separator whitespace or a quote is quoted; inside the quotes a
-    // backslash run doubles before a quote (including the closing quote) and a bare quote takes a
-    // backslash, so every value reaches the child exactly as the parent parsed it.
-    static string FormatArgument(string argument)
-    {
-        if (argument.Length > 0 && !argument.Any(static character => char.IsWhiteSpace(character) || character == '"'))
-        {
-            return argument;
-        }
-
-        var formatted = new StringBuilder("\"");
-        var index = 0;
-        while (index < argument.Length)
-        {
-            var backslashes = 0;
-            while (index < argument.Length && argument[index] == '\\')
-            {
-                backslashes++;
-                index++;
-            }
-
-            if (backslashes > 0)
-            {
-                if (index == argument.Length)
-                {
-                    formatted.Append('\\', backslashes * 2);
-                }
-                else if (argument[index] == '"')
-                {
-                    formatted.Append('\\', backslashes * 2 + 1).Append('"');
-                    index++;
-                }
-                else
-                {
-                    formatted.Append('\\', backslashes);
-                }
-            }
-            else if (argument[index] == '"')
-            {
-                formatted.Append("\\\"");
-                index++;
-            }
-            else
-            {
-                formatted.Append(argument[index]);
-                index++;
-            }
-        }
-
-        return formatted.Append('"').ToString();
-    }
 
     internal int Run(string[] arguments)
     {
@@ -97,9 +37,8 @@ partial class DriveScanner
 
         if (!_isElevated())
         {
-            var formattedArguments = FormatArguments(arguments);
             _writeLine("Not running as administrator. Attempting to self-elevate...");
-            if (_canSelfElevate() && _tryRunElevated(formattedArguments, parsed.ElevationTimeoutMilliseconds))
+            if (_canSelfElevate() && _tryRunElevated(arguments, parsed.ElevationTimeout))
             {
                 return 0;
             }
@@ -179,7 +118,9 @@ partial class DriveScanner
             using var volume = OpenVolume(letter, options);
 
             var stopwatch = Stopwatch.StartNew();
-            var records = volume.FindByName(".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths, out var timings);
+            using var result = volume.StreamRecords(
+                ".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths, null, null, CancellationToken.None);
+            var records = result.ToArray();
             stopwatch.Stop();
 
             var gitDirectories = records.Where(record => record.IsDirectory).ToArray();
@@ -187,7 +128,7 @@ partial class DriveScanner
             _writeLine($"Found {gitDirectories.Length} .git directories in {stopwatch.Elapsed}");
             _writeLine(string.Empty);
             _writeLine("Performance breakdown:");
-            _writeLine($"  {timings}");
+            _writeLine($"  {result.Timings}");
             _writeLine($"  Wall clock: {stopwatch.Elapsed.TotalMilliseconds:F1}ms");
             _writeLine($"  Matched {records.Length} records (marshalled), {gitDirectories.Length} directories");
             _writeLine(string.Empty);
@@ -207,15 +148,23 @@ partial class DriveScanner
         _writeLine(string.Empty);
     }
 
+    /// <summary>
+    ///     Prints the elevation failure notice. The arguments are listed as data, one per line and verbatim, never
+    ///     as a command line: no quoting rule is correct for every shell, so the user re-enters them in their own.
+    ///     An empty argument is shown as <c>&lt;empty&gt;</c>.
+    /// </summary>
     void PrintElevationFailure(string[] arguments)
     {
-        var formattedArguments = FormatArguments(arguments);
         _writeLine("------------------------------------------------------------------");
         _writeLine("AUTOMATIC ELEVATION FAILED.");
         _writeLine("This program requires Administrative privileges to read the MFT.");
-        _writeLine("Please run this command from an ELEVATED terminal:");
-        _writeLine(string.Empty);
-        _writeLine($"  {_getProcessPath()} {formattedArguments}");
+        _writeLine($"Run this program from an ELEVATED terminal: {_getProcessPath()}");
+        _writeLine($"Arguments ({arguments.Length}), one per line exactly as received; <empty> marks an empty argument:");
+        foreach (var argument in arguments)
+        {
+            _writeLine(argument.Length == 0 ? "  <empty>" : $"  {argument}");
+        }
+
         _writeLine("------------------------------------------------------------------");
     }
 

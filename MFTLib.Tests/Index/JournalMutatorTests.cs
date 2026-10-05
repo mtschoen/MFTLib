@@ -139,7 +139,7 @@ public partial class JournalMutatorTests
             Usn = 1000,
             Reason = UsnReason.RenameNewName,
             FileAttributes = FileAttributes.Archive,
-            Timestamp = fixture.Timestamp
+            TimestampUtc = fixture.Timestamp
         });
 
         var change = fixture.Apply([moved]).Single();
@@ -162,7 +162,7 @@ public partial class JournalMutatorTests
             Usn = 1000,
             Reason = UsnReason.FileCreate,
             FileAttributes = FileAttributes.Archive,
-            Timestamp = fixture.Timestamp
+            TimestampUtc = fixture.Timestamp
         });
         var renamed = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
@@ -173,7 +173,7 @@ public partial class JournalMutatorTests
             Usn = 1001,
             Reason = UsnReason.RenameNewName,
             FileAttributes = FileAttributes.Archive,
-            Timestamp = fixture.Timestamp
+            TimestampUtc = fixture.Timestamp
         });
 
         var changes = fixture.Apply([created, renamed]);
@@ -196,7 +196,7 @@ public partial class JournalMutatorTests
             Usn = 1000,
             Reason = UsnReason.FileDelete,
             FileAttributes = FileAttributes.Archive,
-            Timestamp = fixture.Timestamp
+            TimestampUtc = fixture.Timestamp
         });
 
         var change = fixture.Apply([deleted]).Single();

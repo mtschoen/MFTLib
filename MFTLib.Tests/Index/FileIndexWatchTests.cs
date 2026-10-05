@@ -87,7 +87,7 @@ public class FileIndexWatchTests
             RecordNumber = recordNumber,
             ParentRecordNumber = parentRecordNumber,
             Usn = 1,
-            Timestamp = ChangeMoment,
+            TimestampUtc = ChangeMoment,
             Reason = reason,
             FileAttributes = FileAttributes.Archive,
             FileName = fileName

@@ -191,7 +191,7 @@ public partial class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 100, 256);
             NativeTestHooks.NativeSetFailPlatformRead(1); // fail the first positioned read
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {

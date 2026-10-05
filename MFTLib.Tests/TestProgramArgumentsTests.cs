@@ -113,17 +113,17 @@ public class TestProgramArgumentsTests
     [DataRow(nameof(ProgramMode.StreamRecords), 1, 10, 120, 60000 + 120_000)]
     [DataRow(nameof(ProgramMode.StreamRecords), 2, 10, 120, 60000 + 240_000)]
     [DataRow(nameof(ProgramMode.StreamRecords), 2, 10, null, -1)]
-    public void ElevationTimeoutMilliseconds_CoversEveryRequestedDuration(string mode, int drives, int watchSeconds,
+    public void ElevationTimeout_CoversEveryRequestedDuration(string mode, int drives, int watchSeconds,
         int? streamTimeoutSeconds, int expected)
     {
-        // A stream without a requested timeout gets Timeout.Infinite (-1): the scan runs unbounded.
+        // A stream without a requested timeout gets Timeout.InfiniteTimeSpan (-1 ms): the scan runs unbounded.
         var arguments = new TestProgramArguments(Enum.Parse<ProgramMode>(mode),
             Enumerable.Repeat("C", drives).ToArray(), watchSeconds)
         {
             Options = new ModeOptions { TimeoutSeconds = streamTimeoutSeconds }
         };
 
-        Assert.AreEqual(expected, arguments.ElevationTimeoutMilliseconds);
+        Assert.AreEqual(TimeSpan.FromMilliseconds(expected), arguments.ElevationTimeout);
     }
 
     [TestMethod]

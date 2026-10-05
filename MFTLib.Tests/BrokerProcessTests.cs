@@ -1,5 +1,4 @@
 using System.Runtime.Versioning;
-using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;

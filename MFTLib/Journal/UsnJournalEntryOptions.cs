@@ -12,7 +12,7 @@ public readonly record struct UsnJournalEntryOptions
     /// <summary>Monotonic USN value assigned to the change.</summary>
     public required long Usn { get; init; }
     /// <summary>UTC time associated with the journal record.</summary>
-    public required DateTime Timestamp { get; init; }
+    public required DateTime TimestampUtc { get; init; }
     /// <summary>Reasons that caused the journal record.</summary>
     public required UsnReason Reason { get; init; }
     /// <summary>NTFS file attributes captured by the record.</summary>

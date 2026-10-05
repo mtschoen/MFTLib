@@ -22,6 +22,7 @@ extern "C" MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wcha
                                                 uint32_t bufferSizeRecords);
 extern "C" MftParseResult* ParseMFTFromFileUtf8WithProgress(const char* filePath, const wchar_t* filter,
                                                             uint32_t matchFlags, uint32_t bufferSizeRecords,
+                                                            const MftParseControl* control,
                                                             MftProgressCallback callback, void* context);
 extern "C" void FreeMftResult(MftParseResult* result);
 extern "C" void SetAllocFailCountdown(int countdown);
@@ -374,7 +375,7 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 21> tests = {{
+    const std::array<TestCase, 22> tests = {{
         {"abi_version", test_abi_version},
         {"include_freed", testIncludeFreed},
         {"round_trip", test_round_trip},
@@ -395,6 +396,7 @@ int main() {
         {"zero_length_file_name", test_zero_length_file_name},
         {"path_resolution_and_fallback", test_path_resolution_and_fallback},
         {"progress_callback", test_progress_callback},
+        {"file_parse_control_block", test_file_parse_control_block},
         {"parallel_progress_monotonicity", test_parallel_progress_monotonicity},
     }};
 

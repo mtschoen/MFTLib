@@ -361,7 +361,7 @@ MFTLib.Index.FileIndex :: method public Enumerate(MFTLib.Index.SearchQuery query
 MFTLib.Index.FileIndex :: method public Find(string nativePath, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.FileEntry?
 MFTLib.Index.FileIndex :: method public FindByName(string name, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileEntry>
 MFTLib.Index.FileIndex :: method public Largest(int count, MFTLib.Index.FileEntry? under = default, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileEntry>
-MFTLib.Index.FileIndex :: method public QueryUsnJournalSettings(char driveLetter) : MFTLib.Index.UsnJournalSettings
+MFTLib.Index.FileIndex :: method public QueryUsnJournalSettings(char driveLetter) : MFTLib.UsnJournalSettings
 MFTLib.Index.FileIndex :: method public RescanAsync(System.Collections.Generic.IReadOnlyList<char> driveLetters, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MFTLib.Index.DriveOperationResult>>
 MFTLib.Index.FileIndex :: method public RescanAsync(System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MFTLib.Index.DriveOperationResult>>
 MFTLib.Index.FileIndex :: method public RescanAsync(char driveLetter, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task
@@ -623,15 +623,6 @@ MFTLib.Index.SearchQuery :: property public ModifiedBefore { get; init; } : Syst
 MFTLib.Index.SearchQuery :: property public NamePattern { get; init; } : string?
 MFTLib.Index.SearchQuery :: property public Under { get; init; } : MFTLib.Index.FileEntry?
 MFTLib.Index.SearchQuery :: type public sealed class : System.IEquatable<MFTLib.Index.SearchQuery>
-MFTLib.Index.UsnJournalSettings :: method public Equals(MFTLib.Index.UsnJournalSettings other) : bool
-MFTLib.Index.UsnJournalSettings :: method public override Equals(object obj) : bool
-MFTLib.Index.UsnJournalSettings :: method public override GetHashCode() : int
-MFTLib.Index.UsnJournalSettings :: method public override ToString() : string
-MFTLib.Index.UsnJournalSettings :: method public static op_Equality(MFTLib.Index.UsnJournalSettings left, MFTLib.Index.UsnJournalSettings right) : bool
-MFTLib.Index.UsnJournalSettings :: method public static op_Inequality(MFTLib.Index.UsnJournalSettings left, MFTLib.Index.UsnJournalSettings right) : bool
-MFTLib.Index.UsnJournalSettings :: property public required AllocationDelta { get; init; } : long
-MFTLib.Index.UsnJournalSettings :: property public required MaximumSize { get; init; } : long
-MFTLib.Index.UsnJournalSettings :: type public readonly struct : System.IEquatable<MFTLib.Index.UsnJournalSettings>
 MFTLib.Index.WatchCatchUpState :: field public const CatchingUp : MFTLib.Index.WatchCatchUpState = 1
 MFTLib.Index.WatchCatchUpState :: field public const CaughtUp : MFTLib.Index.WatchCatchUpState = 2
 MFTLib.Index.WatchCatchUpState :: field public const Faulted : MFTLib.Index.WatchCatchUpState = 4

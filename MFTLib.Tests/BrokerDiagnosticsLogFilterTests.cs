@@ -305,7 +305,7 @@ public class BrokerDiagnosticsLogFilterTests
                 SequenceNumber = (ushort)(reference.Value >> 48),
                 ParentRecordNumber = 5,
                 Usn = 110,
-                Timestamp = DateTime.UnixEpoch,
+                TimestampUtc = DateTime.UnixEpoch,
                 Reason = UsnReason.Close,
                 FileAttributes = FileAttributes.Normal,
                 FileName = "broker-diagnostics.log"

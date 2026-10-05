@@ -31,7 +31,7 @@ public class JournalCloseCoalescingLiveTests
             ? volumeRoot[..1]
             : "C";
         using var volume = MftVolume.Open(driveSpecifier);
-        var cursor = volume.QueryUsnJournal();
+        var cursor = volume.QueryUsnJournalCursor();
         var tempFileName = Path.GetFileName(tempPath);
 
         var batches = new List<UsnJournalEntry[]>();
@@ -89,7 +89,7 @@ public class JournalCloseCoalescingLiveTests
                     ParentRecordNumber = 6,
                     SequenceNumber = e.SequenceNumber,
                     Usn = e.Usn,
-                    Timestamp = e.Timestamp,
+                    TimestampUtc = e.TimestampUtc,
                     Reason = e.Reason,
                     FileAttributes = e.FileAttributes,
                     FileName = e.FileName
@@ -105,7 +105,7 @@ public class JournalCloseCoalescingLiveTests
             {
                 if (entry.IsClose && !entry.IsDelete)
                 {
-                    lastContentClose = entry.Timestamp;
+                    lastContentClose = entry.TimestampUtc;
                     ticksAfterLastContentClose = fixture.Block.Rows[20].ModifiedTicks;
                 }
             }

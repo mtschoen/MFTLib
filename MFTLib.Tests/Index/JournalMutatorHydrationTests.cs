@@ -19,7 +19,7 @@ public class JournalMutatorHydrationTests
             FileAttributes = FileAttributes.Archive,
             SequenceNumber = 3,
             Usn = 1000,
-            Timestamp = fixture.Timestamp
+            TimestampUtc = fixture.Timestamp
         });
 
         var change = fixture.Apply([edited]).Single();
@@ -42,7 +42,7 @@ public class JournalMutatorHydrationTests
             Reason = UsnReason.FileDelete,
             FileAttributes = FileAttributes.Archive,
             Usn = 1000,
-            Timestamp = fixture.Timestamp
+            TimestampUtc = fixture.Timestamp
         });
 
         var change = fixture.Apply([deleted]).Single();
@@ -64,7 +64,7 @@ public class JournalMutatorHydrationTests
             Reason = UsnReason.RenameNewName,
             FileAttributes = FileAttributes.Archive,
             Usn = 1000,
-            Timestamp = fixture.Timestamp
+            TimestampUtc = fixture.Timestamp
         });
 
         var change = fixture.Apply([renamed]).Single();
@@ -90,7 +90,7 @@ public class JournalMutatorHydrationTests
             Reason = reason,
             FileAttributes = FileAttributes.Archive,
             Usn = 1000,
-            Timestamp = fixture.Timestamp
+            TimestampUtc = fixture.Timestamp
         });
 
         Assert.AreEqual(0, fixture.Apply([bad]).Count);
@@ -109,7 +109,7 @@ public class JournalMutatorHydrationTests
             Reason = UsnReason.DataOverwrite,
             FileAttributes = FileAttributes.Directory,
             Usn = 1000,
-            Timestamp = fixture.Timestamp
+            TimestampUtc = fixture.Timestamp
         });
 
         var change = fixture.Apply([edited]).Single();
@@ -131,7 +131,7 @@ public class JournalMutatorHydrationTests
             Reason = UsnReason.DataOverwrite,
             FileAttributes = FileAttributes.Archive,
             Usn = 1000,
-            Timestamp = fixture.Timestamp
+            TimestampUtc = fixture.Timestamp
         });
 
         var change = fixture.Apply([edited]).Single();

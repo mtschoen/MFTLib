@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using MFTLib.Index;
 
 namespace MFTLib;
 
@@ -112,7 +111,7 @@ public sealed partial class JournalBrokerHost
     static UsnJournalCursor QueryCursor(string drive)
     {
         using var volume = MftVolume.Open(Bare(drive));
-        return volume.QueryUsnJournal();
+        return volume.QueryUsnJournalCursor();
     }
 
     // NtfsVolumeInformation.Query is [SupportedOSPlatform("windows")]; the explicit

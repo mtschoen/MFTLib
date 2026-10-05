@@ -33,7 +33,7 @@ public partial class BrokerProtocolTests
                 Usn = 10,
                 Reason = UsnReason.FileCreate,
                 FileAttributes = FileAttributes.Normal,
-                Timestamp = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                TimestampUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
                 FileName = fileName
             })
         ]);

@@ -37,7 +37,7 @@ public readonly struct UsnJournalEntry
     /// <summary>Monotonic journal sequence number assigned to this change.</summary>
     public long Usn { get; }
     /// <summary>UTC timestamp of the record, or <see cref="DateTime.MinValue" /> when unavailable.</summary>
-    public DateTime Timestamp { get; }
+    public DateTime TimestampUtc { get; }
     /// <summary>NTFS reasons that caused this journal record.</summary>
     public UsnReason Reason { get; }
     /// <summary>NTFS file attributes captured with the change.</summary>
@@ -60,7 +60,7 @@ public readonly struct UsnJournalEntry
         ParentRecordNumber = data.ParentRecordNumber;
         SequenceNumber = data.SequenceNumber;
         Usn = data.Usn;
-        Timestamp = data.FileTimeTimestamp > 0
+        TimestampUtc = data.FileTimeTimestamp > 0
             ? DateTime.FromFileTimeUtc(data.FileTimeTimestamp)
             : DateTime.MinValue;
         Reason = (UsnReason)data.Reason;
@@ -74,7 +74,7 @@ public readonly struct UsnJournalEntry
         ParentRecordNumber = options.ParentRecordNumber;
         SequenceNumber = options.SequenceNumber;
         Usn = options.Usn;
-        Timestamp = options.Timestamp;
+        TimestampUtc = options.TimestampUtc;
         Reason = options.Reason;
         FileAttributes = options.FileAttributes;
         FileName = options.FileName;

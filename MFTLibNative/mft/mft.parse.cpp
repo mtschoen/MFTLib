@@ -216,8 +216,8 @@ uint64_t FileReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
 
 // Core implementation that takes a UTF-8 file path.
 MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filter, uint32_t matchFlags,
-                                     uint32_t bufferSizeRecords, MftProgressCallback callback = nullptr,
-                                     void* context = nullptr) {
+                                     uint32_t bufferSizeRecords, const MftParseControl* control,
+                                     MftProgressCallback callback, void* context) {
 #ifndef _WIN32
     if (filter != nullptr) {
         return CreateErrorResult(L"Filter not supported on Linux yet");
@@ -264,7 +264,7 @@ MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filte
     uint64_t totalRecords = static_cast<uint64_t>(fileSize) / geometry->recordSize;
     FileReadContext ctx = {file, totalRecords, bufferSizeRecords, 0, *geometry};
     auto* result = ParseMFTImpl(FileReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords,
-                                *geometry, nullptr, callback, context);
+                                *geometry, control, callback, context);
     mftlib::platform::close_file(file);
     return result;
 }
@@ -371,7 +371,8 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wc
 // C-ABI export; (filePath, filter) order is fixed by the C# P/Invoke signature.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* filter, uint32_t matchFlags,
-                                        uint32_t bufferSizeRecords) {
+                                        uint32_t bufferSizeRecords, const MftParseControl* control,
+                                        MftProgressCallback callback, void* context) {
     int u8len =
         ShouldFailPathConversion() ? 0 : WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
     if (u8len <= 0) {
@@ -383,7 +384,7 @@ EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* 
     }
     std::string utf8(static_cast<size_t>(u8len - 1), '\0');
     WideCharToMultiByte(CP_UTF8, 0, filePath, -1, utf8.data(), u8len, nullptr, nullptr);
-    return ParseMFTFromFileImpl(utf8.c_str(), filter, matchFlags, bufferSizeRecords);
+    return ParseMFTFromFileImpl(utf8.c_str(), filter, matchFlags, bufferSizeRecords, control, callback, context);
 }
 #endif  // _WIN32
 
@@ -397,13 +398,14 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(void* /*volumeHandle*/, const
 
 EXPORT MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,
                                             uint32_t bufferSizeRecords) {
-    return ParseMFTFromFileImpl(filePath, filter, matchFlags, bufferSizeRecords);
+    return ParseMFTFromFileImpl(filePath, filter, matchFlags, bufferSizeRecords, nullptr, nullptr, nullptr);
 }
 
 EXPORT MftParseResult* ParseMFTFromFileUtf8WithProgress(const char* filePath, const wchar_t* filter,
                                                         uint32_t matchFlags, uint32_t bufferSizeRecords,
-                                                        MftProgressCallback callback, void* context) {
-    return ParseMFTFromFileImpl(filePath, filter, matchFlags, bufferSizeRecords, callback, context);
+                                                        const MftParseControl* control, MftProgressCallback callback,
+                                                        void* context) {
+    return ParseMFTFromFileImpl(filePath, filter, matchFlags, bufferSizeRecords, control, callback, context);
 }
 #endif
 }

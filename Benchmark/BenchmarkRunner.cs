@@ -62,7 +62,7 @@ public partial class BenchmarkRunner
 
     internal Func<string, int, (int RecordCount, ulong NativeCompactBytes)> _parseBounded = (path, batchSize) =>
     {
-        using var result = MftVolume.StreamMFTFromFile(path);
+        using var result = MftVolume.StreamMftFromFile(path);
         var count = 0;
         foreach (var batch in result.MaterializeBatches(batchSize))
         {
@@ -75,7 +75,7 @@ public partial class BenchmarkRunner
     // Measures the production named-section block transfer.
     internal Func<string, int, (int RecordCount, ulong NativeCompactBytes)> _parseBrokerStream = (path, batchSize) =>
     {
-        using var result = MftVolume.StreamMFTFromFile(path);
+        using var result = MftVolume.StreamMftFromFile(path);
         var sectionName = NamedBlockSection.BuildSectionName('C');
         var slotCapacity = checked((uint)Math.Max(6UL, result.TotalRecords));
         var (block, lifetime) = NamedBlockSection.Create(new BlockFileCreateOptions
@@ -108,7 +108,7 @@ public partial class BenchmarkRunner
 
     internal Func<string, (int RecordCount, ulong NativeCompactBytes)> _parseCompat = path =>
     {
-        using var result = MftVolume.StreamMFTFromFile(path);
+        using var result = MftVolume.StreamMftFromFile(path);
         var records = result.ToArray();
         return (records.Length, result.NativeCompactBytes);
     };

@@ -244,7 +244,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
             FileName = name,
             Reason = reason,
             Usn = journalPosition,
-            Timestamp = Modified,
+            TimestampUtc = Modified,
             FileAttributes = FileAttributes.Normal
         });
 }

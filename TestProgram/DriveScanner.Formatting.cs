@@ -1,5 +1,4 @@
 using MFTLib;
-using MFTLib.Index;
 
 namespace TestProgram;
 
@@ -43,7 +42,7 @@ partial class DriveScanner
             entry.IsRename ? "rename" : null,
             entry.IsClose ? "close" : null
         }.OfType<string>();
-        return $"  USN {entry.Usn} {entry.Timestamp:u} {entry} parent {entry.ParentRecordNumber} " +
+        return $"  USN {entry.Usn} {entry.TimestampUtc:u} {entry} parent {entry.ParentRecordNumber} " +
                $"sequence {entry.SequenceNumber} {entry.FileAttributes} flags [{string.Join(" ", flags)}]";
     }
 
@@ -52,10 +51,10 @@ partial class DriveScanner
         return $"maximum size {settings.MaximumSize} bytes, allocation delta {settings.AllocationDelta} bytes";
     }
 
-    internal static string FormatTimings(MftParseTimings timings)
+    internal static string FormatTimings(ulong totalRecords, MftParseTimings timings)
     {
-        return $"{timings.TotalRecords} records; native IO {timings.NativeIoMs:F1}ms, fixup " +
-               $"{timings.NativeFixupMs:F1}ms, parse {timings.NativeParseMs:F1}ms, total " +
-               $"{timings.NativeTotalMs:F1}ms; marshal {timings.MarshalMs:F1}ms";
+        return $"{totalRecords} records; native IO {timings.NativeIo.TotalMilliseconds:F1}ms, fixup " +
+               $"{timings.NativeFixup.TotalMilliseconds:F1}ms, parse {timings.NativeParse.TotalMilliseconds:F1}ms, " +
+               $"total {timings.NativeTotal.TotalMilliseconds:F1}ms";
     }
 }

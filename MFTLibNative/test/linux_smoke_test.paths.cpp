@@ -288,7 +288,8 @@ bool test_progress_callback() {
     }
     std::vector<ProgressReport> reports;
     MftParseResult* result =
-        ParseMFTFromFileUtf8WithProgress(kFixturePath, nullptr, MATCH_FLAG_RESOLVE_PATHS, 1, CollectProgress, &reports);
+        ParseMFTFromFileUtf8WithProgress(kFixturePath, nullptr, MATCH_FLAG_RESOLVE_PATHS, 1, nullptr, CollectProgress,
+                                      &reports);
     bool ok = (result != nullptr && result->usedRecords > 0);
     if (ok) {
         if (reports.empty()) {
@@ -326,6 +327,37 @@ bool test_progress_callback() {
     return ok;
 }
 
+// The file export honours the caller's control block the way the volume export does: a parse
+// asked to cancel before it starts reports cancellation, and one given an allowance still parses.
+bool test_file_parse_control_block() {
+    if (!generate_fixture()) {
+        return false;
+    }
+    MftParseControl cancelled = {1, 0};
+    MftParseResult* cancelledResult =
+        ParseMFTFromFileUtf8WithProgress(kFixturePath, nullptr, 0, 1, &cancelled, nullptr, nullptr);
+    bool ok = (cancelledResult != nullptr && cancelledResult->cancelled == 1);
+    if (!ok) {
+        std::fprintf(stderr, "  FAIL: a control block with cancelRequested set did not cancel the file parse\n");
+    }
+    if (cancelledResult != nullptr) {
+        FreeMftResult(cancelledResult);
+    }
+
+    MftParseControl limited = {0, 1};
+    MftParseResult* limitedResult =
+        ParseMFTFromFileUtf8WithProgress(kFixturePath, nullptr, 0, 1, &limited, nullptr, nullptr);
+    if (ok && (limitedResult == nullptr || limitedResult->cancelled != 0 || limitedResult->usedRecords == 0)) {
+        std::fprintf(stderr, "  FAIL: a one-thread allowance did not parse the file\n");
+        ok = false;
+    }
+    if (limitedResult != nullptr) {
+        FreeMftResult(limitedResult);
+    }
+    remove_fixture();
+    return ok;
+}
+
 bool test_parallel_progress_monotonicity() {
     constexpr const char* kFixtureParallel = "/tmp/mftlib_parallel_progress.mft";
     constexpr uint64_t kRecordCount = 70000;
@@ -335,7 +367,7 @@ bool test_parallel_progress_monotonicity() {
     SetMaxThreads(8);
     std::vector<ProgressReport> reports;
     MftParseResult* result = ParseMFTFromFileUtf8WithProgress(kFixtureParallel, nullptr, MATCH_FLAG_RESOLVE_PATHS, 4096,
-                                                              CollectProgress, &reports);
+                                                              nullptr, CollectProgress, &reports);
     SetMaxThreads(0);
     ResetTestState();
 

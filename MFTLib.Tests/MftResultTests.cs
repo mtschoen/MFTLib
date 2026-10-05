@@ -34,24 +34,24 @@ public partial class MftResultTests
     public void TotalRecords_ReturnsExpectedCount()
     {
         Assert.IsNotNull(_tempMftPath);
-        MftVolume.ParseMFTFromFile(_tempMftPath, out var timings);
-        Assert.AreEqual(500UL, timings.TotalRecords);
+        DirectParse.ParseFile(_tempMftPath, out _, out var totalRecords);
+        Assert.AreEqual(500UL, totalRecords);
     }
 
     [TestMethod]
     public void UsedRecords_LessThanOrEqualToTotal()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out var timings);
+        var records = DirectParse.ParseFile(_tempMftPath, out _, out var totalRecords);
         // UsedRecords excludes deleted/extension records
-        Assert.IsTrue((ulong)records.Length <= timings.TotalRecords);
+        Assert.IsTrue((ulong)records.Length <= totalRecords);
     }
 
     [TestMethod]
     public void ToArray_MaterializesRecords_StableStrings()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, out _);
 
         // After ToArray, all records should have stable materialized strings
         foreach (var record in records)
@@ -67,7 +67,7 @@ public partial class MftResultTests
     public void ToArray_WithPaths_MaterializesFullPaths()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, null, MatchFlags.ResolvePaths, out _);
 
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
         Assert.IsTrue(withPaths.Length > 0);
@@ -91,10 +91,10 @@ public partial class MftResultTests
     }
 
     [TestMethod]
-    public void GetMftNativeAbiVersion_ReturnsVersion3()
+    public void GetMftNativeAbiVersion_ReturnsVersion4()
     {
         var version = MFTLibNative._getMftNativeAbiVersion();
-        Assert.AreEqual(3U, version);
+        Assert.AreEqual(4U, version);
     }
 
     [TestMethod]

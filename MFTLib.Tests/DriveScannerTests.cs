@@ -17,42 +17,6 @@ public class DriveScannerTests
         FileUtilities.ResetToDefaults();
     }
 
-    // --- FormatArguments ---
-
-    [TestMethod]
-    public void FormatArguments_EmptyArray_ReturnsEmptyString()
-    {
-        var result = DriveScanner.FormatArguments([]);
-        Assert.AreEqual(string.Empty, result);
-    }
-
-    [TestMethod]
-    public void FormatArguments_NoSpaces_ReturnsUnquoted()
-    {
-        var result = DriveScanner.FormatArguments(["C", "D"]);
-        Assert.AreEqual("C D", result);
-    }
-
-    [TestMethod]
-    public void FormatArguments_WithSpaces_QuotesArguments()
-    {
-        var result = DriveScanner.FormatArguments(["Program Files", "C"]);
-        Assert.AreEqual("\"Program Files\" C", result);
-    }
-
-    [DataTestMethod]
-    [DataRow("", "\"\"", DisplayName = "an empty value relaunches as an empty value")]
-    [DataRow("a\tb.txt", "\"a\tb.txt\"", DisplayName = "separator whitespace beyond the ASCII space quotes")]
-    [DataRow("a\"b", "\"a\\\"b\"", DisplayName = "an embedded quote takes a backslash")]
-    [DataRow("a\\\"b", "\"a\\\\\\\"b\"", DisplayName = "a backslash run before an embedded quote doubles")]
-    [DataRow("a\\b c", "\"a\\b c\"", DisplayName = "a backslash before no quote passes through")]
-    [DataRow("C:\\spaced directory\\", "\"C:\\spaced directory\\\\\"",
-        DisplayName = "a trailing backslash doubles before the closing quote")]
-    public void FormatArguments_RequiringQuoting_FollowsTheWindowsArgvRules(string argument, string expected)
-    {
-        Assert.AreEqual(expected, DriveScanner.FormatArguments([argument]));
-    }
-
     // --- Run: elevation paths ---
 
     [TestMethod]
@@ -71,21 +35,40 @@ public class DriveScannerTests
         Assert.AreEqual(0, result);
     }
 
-    [TestMethod]
-    public void Run_NotElevated_CannotSelfElevate_PrintsFailureAndReturnsOne()
+    [DataTestMethod]
+    [DataRow(new[] { "C" }, DisplayName = "default-drive")]
+    [DataRow(new[] { "find-name", "C", "--name", "", "--include-freed" }, DisplayName = "empty-name")]
+    [DataRow(new[] { "find-name", "C", "--name", "x&echo(123", "--include-freed" }, DisplayName = "cmd-ampersand")]
+    [DataRow(new[] { "find-name", "C", "--name", "x;echo(123);#", "--include-freed" }, DisplayName = "powershell-separator")]
+    [DataRow(new[] { "find-name", "C", "--name", "$(Get-Date)", "--include-freed" }, DisplayName = "powershell-subexpression")]
+    [DataRow(new[] { "find-name", "C", "--name", "%USERNAME%", "--include-freed" }, DisplayName = "cmd-variable")]
+    [DataRow(new[] { "find-name", "C", "--name", "$env:USERNAME", "--include-freed" }, DisplayName = "powershell-variable")]
+    [DataRow(new[] { "find-name", "C", "--name", "`n", "--include-freed" }, DisplayName = "backtick-n")]
+    [DataRow(new[] { "find-name", "C", "--name", "a'b", "--include-freed" }, DisplayName = "single-quote")]
+    [DataRow(new[] { "find-name", "C", "--name", "say\"hi", "--include-freed" }, DisplayName = "embedded-quote")]
+    [DataRow(new[] { "find-name", "C", "--name", @"C:\spaced directory\", "--include-freed" }, DisplayName = "trailing-backslash")]
+    public void Run_NotElevated_CannotSelfElevate_PrintsEachArgumentVerbatimOnItsOwnLine(string[] arguments)
     {
         var lines = new List<string>();
         var scanner = new DriveScanner
         {
             _isElevated = () => false,
             _canSelfElevate = () => false,
-            _getProcessPath = () => "/some/path",
+            _getProcessPath = () => @"C:pp\TestProgram.exe",
             _writeLine = lines.Add
         };
 
-        var result = scanner.Run(["C"]);
+        var result = scanner.Run(arguments);
         Assert.AreEqual(1, result);
         Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
+        Assert.IsTrue(lines.Any(line => line.Contains(@"C:pp\TestProgram.exe")));
+
+        var headerIndex = lines.FindIndex(line => line.StartsWith($"Arguments ({arguments.Length})", StringComparison.Ordinal));
+        Assert.IsTrue(headerIndex >= 0, "argument count header missing");
+        var listed = lines.Skip(headerIndex + 1).Take(arguments.Length).ToArray();
+        var expected = arguments.Select(argument => argument.Length == 0 ? "  <empty>" : "  " + argument).ToArray();
+        CollectionAssert.AreEqual(expected, listed);
+        Assert.AreEqual(headerIndex + arguments.Length + 2, lines.Count, "only the closing rule may follow the arguments");
     }
 
     [TestMethod]

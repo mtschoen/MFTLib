@@ -1,5 +1,4 @@
 using MFTLib.Tests.TestSupport;
-using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;

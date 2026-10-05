@@ -51,7 +51,7 @@ partial class DriveScanner
     {
         _writeLine($"Parsed {result.TotalRecords} records, {result.UsedRecords} kept, " +
                    $"{result.NativeCompactBytes} native bytes");
-        _writeLine($"  {FormatTimings(result.Timings)}");
+        _writeLine($"  {FormatTimings(result.TotalRecords, result.Timings)}");
 
         MftRecord? retained = null;
         var directories = 0;

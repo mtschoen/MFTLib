@@ -1,3 +1,5 @@
+using MFTLib;
+
 namespace TestProgram;
 
 /// <summary>What one run does to each drive.</summary>
@@ -46,7 +48,6 @@ internal sealed partial record TestProgramArguments(ProgramMode Mode, IReadOnlyL
 {
     internal const string DefaultDrive = "G";
     internal const int DefaultWatchSeconds = 10;
-    internal const int DefaultElevationTimeoutMilliseconds = 60000;
     internal const string SecondsOption = "--seconds";
 
     /// <summary>The other mode options; each is rejected on a mode it does not apply to.</summary>
@@ -79,7 +80,7 @@ internal sealed partial record TestProgramArguments(ProgramMode Mode, IReadOnlyL
     ///     The wait for the elevated copy: the completion allowance plus every drive's requested
     ///     watch or streaming time, or unbounded when streaming has no requested timeout.
     /// </summary>
-    internal int ElevationTimeoutMilliseconds
+    internal TimeSpan ElevationTimeout
     {
         get
         {
@@ -93,7 +94,7 @@ internal sealed partial record TestProgramArguments(ProgramMode Mode, IReadOnlyL
                 if (Options.TimeoutSeconds is not { } streamTimeout)
                 {
                     // stream-records without --timeout-seconds lets the scan run, so the wait must not cap it.
-                    return Timeout.Infinite;
+                    return Timeout.InfiniteTimeSpan;
                 }
 
                 requestedSecondsPerDrive = streamTimeout;
@@ -104,7 +105,8 @@ internal sealed partial record TestProgramArguments(ProgramMode Mode, IReadOnlyL
             }
 
             var requestedMilliseconds = Drives.Count * requestedSecondsPerDrive * 1000;
-            return (int)Math.Min(int.MaxValue, DefaultElevationTimeoutMilliseconds + requestedMilliseconds);
+            var totalMilliseconds = ElevationUtilities.DefaultElevatedTimeout.TotalMilliseconds + requestedMilliseconds;
+            return TimeSpan.FromMilliseconds(Math.Min(int.MaxValue, totalMilliseconds));
         }
     }
 }

@@ -210,7 +210,7 @@ internal sealed class WatchHarness : IDisposable
             ParentRecordNumber = parentRecordNumber,
             SequenceNumber = 1,
             Usn = 1,
-            Timestamp = ChangeMoment,
+            TimestampUtc = ChangeMoment,
             Reason = UsnReason.FileCreate | UsnReason.Close,
             FileAttributes = FileAttributes.Archive,
             FileName = fileName

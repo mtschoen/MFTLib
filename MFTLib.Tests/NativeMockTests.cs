@@ -19,10 +19,10 @@ public class NativeMockTests
     [TestMethod]
     public void ParseMFTFromFile_NullReturn_ThrowsInvalidOperation()
     {
-        MFTLibNative._parseMftFromFile = (_, _, _, _) => IntPtr.Zero;
+        MFTLibNative._parseMftFromFile = (_, _, _, _, _, _) => IntPtr.Zero;
 
         Assert.ThrowsException<InvalidOperationException>(() =>
-            MftVolume.ParseMFTFromFile("fake.bin", out _));
+            DirectParse.ParseFile("fake.bin", out _));
     }
 
     [TestMethod]
@@ -37,11 +37,11 @@ public class NativeMockTests
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(errorResult, resultPtr, false);
 
-        MFTLibNative._parseMftFromFile = (_, _, _, _) => resultPtr;
+        MFTLibNative._parseMftFromFile = (_, _, _, _, _, _) => resultPtr;
         MFTLibNative._freeMftResult = _ => Marshal.FreeHGlobal(resultPtr);
 
         var ex = Assert.ThrowsException<InvalidOperationException>(() =>
-            MftVolume.ParseMFTFromFile("fake.bin", out _));
+            DirectParse.ParseFile("fake.bin", out _));
         Assert.AreEqual("Volume is not NTFS", ex.Message);
     }
 

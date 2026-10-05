@@ -18,7 +18,7 @@ public partial class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256, IntPtr.Zero, null);
         using var result = new MftResult(resultPtr, string.Empty);
 
         var expectedRecordNumbers = result.Select(r => r.RecordNumber).ToArray();
@@ -38,7 +38,7 @@ public partial class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256, IntPtr.Zero, null);
         using var result = new MftResult(resultPtr, string.Empty);
 
         const int batchSize = 64;
@@ -62,7 +62,7 @@ public partial class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, 256, IntPtr.Zero, null);
         using var result = new MftResult(resultPtr, "C");
 
         var batches = result.MaterializeBatches(50).ToList();
@@ -75,7 +75,7 @@ public partial class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256, IntPtr.Zero, null);
         using var result = new MftResult(resultPtr, string.Empty);
 
         using var enumerator = result.MaterializeBatches(10).GetEnumerator();
@@ -98,7 +98,7 @@ public partial class MftResultTests
     {
         Assert.IsNotNull(_tempMftPath);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256);
+        var resultPtr = MFTLibNative._parseMftFromFile(_tempMftPath, null, MatchFlags.None, 256, IntPtr.Zero, null);
         using var result = new MftResult(resultPtr, string.Empty);
         var expectedRecords = result.ToArray();
 

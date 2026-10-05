@@ -1,4 +1,4 @@
-namespace MFTLib.Index;
+namespace MFTLib;
 
 /// <summary>
 ///     One volume's USN change journal sizing, as reported by

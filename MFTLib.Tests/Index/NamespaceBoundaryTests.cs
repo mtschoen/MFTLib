@@ -51,6 +51,8 @@ public class NamespaceBoundaryTests
             .And().DoNotHaveFullName("MFTLib.UsnJournalEntry")
             // The options record that shapes a UsnJournalEntry. Same reason as above.
             .And().DoNotHaveFullName("MFTLib.UsnJournalEntryOptions")
+            // The journal sizing the index reports but does not own; a plain value record of two longs.
+            .And().DoNotHaveFullName("MFTLib.UsnJournalSettings")
             // The reason flags on a journal entry. A plain [Flags] enum of uint.
             .And().DoNotHaveFullName("MFTLib.UsnReason");
 

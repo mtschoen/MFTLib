@@ -1,30 +1,24 @@
 namespace MFTLib;
 
-/// <summary>Timing breakdown for one MFT parse operation.</summary>
+/// <summary>Native timing breakdown for one MFT parse operation.</summary>
 public readonly struct MftParseTimings
 {
-    /// <summary>Number of MFT records processed.</summary>
-    public ulong TotalRecords { get; }
-    /// <summary>Native disk I/O duration in milliseconds.</summary>
-    public double NativeIoMs { get; }
-    /// <summary>Native update-sequence fixup duration in milliseconds.</summary>
-    public double NativeFixupMs { get; }
-    /// <summary>Native record-parsing duration in milliseconds.</summary>
-    public double NativeParseMs { get; }
-    /// <summary>Total native duration in milliseconds.</summary>
-    public double NativeTotalMs { get; }
-    /// <summary>Managed marshalling duration in milliseconds.</summary>
-    public double MarshalMs { get; }
+    /// <summary>Native disk I/O duration.</summary>
+    public TimeSpan NativeIo { get; }
+    /// <summary>Native update-sequence fixup duration.</summary>
+    public TimeSpan NativeFixup { get; }
+    /// <summary>Native record-parsing duration.</summary>
+    public TimeSpan NativeParse { get; }
+    /// <summary>Total native duration.</summary>
+    public TimeSpan NativeTotal { get; }
 
-    internal MftParseTimings(ulong totalRecords, double ioMs, double fixupMs, double parseMs, double nativeTotalMs,
-        double marshalMs)
+    internal MftParseTimings(double ioMilliseconds, double fixupMilliseconds, double parseMilliseconds,
+        double totalMilliseconds)
     {
-        TotalRecords = totalRecords;
-        NativeIoMs = ioMs;
-        NativeFixupMs = fixupMs;
-        NativeParseMs = parseMs;
-        NativeTotalMs = nativeTotalMs;
-        MarshalMs = marshalMs;
+        NativeIo = TimeSpan.FromMilliseconds(ioMilliseconds);
+        NativeFixup = TimeSpan.FromMilliseconds(fixupMilliseconds);
+        NativeParse = TimeSpan.FromMilliseconds(parseMilliseconds);
+        NativeTotal = TimeSpan.FromMilliseconds(totalMilliseconds);
     }
 
     /// <summary>Formats the timing breakdown for diagnostics.</summary>
@@ -32,11 +26,6 @@ public readonly struct MftParseTimings
     public override string ToString()
     {
         return
-            $"Native: {NativeTotalMs:F1}ms (IO: {NativeIoMs:F1}ms, Fixup: {NativeFixupMs:F1}ms, Parse: {NativeParseMs:F1}ms), Marshal: {MarshalMs:F1}ms, Total records: {TotalRecords:N0}";
-    }
-
-    internal MftParseTimings WithMarshalMs(double marshalMs)
-    {
-        return new MftParseTimings(TotalRecords, NativeIoMs, NativeFixupMs, NativeParseMs, NativeTotalMs, marshalMs);
+            $"Native: {NativeTotal.TotalMilliseconds:F1}ms (IO: {NativeIo.TotalMilliseconds:F1}ms, Fixup: {NativeFixup.TotalMilliseconds:F1}ms, Parse: {NativeParse.TotalMilliseconds:F1}ms)";
     }
 }

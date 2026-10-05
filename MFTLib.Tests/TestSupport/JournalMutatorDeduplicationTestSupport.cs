@@ -12,7 +12,7 @@ internal static class JournalMutatorDeduplicationTestSupport
             ParentRecordNumber = parentRecordNumber,
             SequenceNumber = sequenceNumber,
             Usn = 1000,
-            Timestamp = timestamp,
+            TimestampUtc = timestamp,
             Reason = reason,
             FileAttributes = fileAttributes,
             FileName = fileName

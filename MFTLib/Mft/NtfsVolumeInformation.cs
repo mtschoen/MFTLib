@@ -26,18 +26,18 @@ public readonly record struct NtfsVolumeInformation(
     public long MftRecordCount => BytesPerFileRecordSegment == 0 ? 0 : MftValidDataLength / BytesPerFileRecordSegment;
 
     /// <summary>
-    ///     Queries live NTFS volume data for <paramref name="driveLetter" /> (accepts the
-    ///     same formats as <see cref="MftVolume.Open(string,uint)" />: a bare letter,
-    ///     <c>C:</c>, <c>C:\</c>, or a raw <c>\\.\C:</c> path) via
-    ///     <c>FSCTL_GET_NTFS_VOLUME_DATA</c>. Opening the volume handle requires
+    ///     Queries live NTFS volume data for <paramref name="volumePath" /> via
+    ///     <c>FSCTL_GET_NTFS_VOLUME_DATA</c>. Accepts the formats <see cref="MftVolume.Open(string,uint)" />
+    ///     does: a drive letter (<c>C</c>, <c>C:</c> or <c>C:\</c>), a raw device path (<c>\\.\C:</c>) or
+    ///     a volume GUID path (<c>\\?\Volume{guid}</c>, with or without a trailing backslash). Opening the volume handle requires
     ///     <c>GENERIC_READ</c>, which in turn requires administrator elevation on a live
     ///     volume; throws <see cref="Win32Exception" /> on failure, including
     ///     access-denied when not elevated.
     /// </summary>
     [SupportedOSPlatform("windows")]
-    public static NtfsVolumeInformation Query(string driveLetter) => Query(driveLetter, OperatingSystem.IsWindows());
+    public static NtfsVolumeInformation Query(string volumePath) => Query(volumePath, OperatingSystem.IsWindows());
 
-    internal static NtfsVolumeInformation Query(string driveLetter, bool isWindows)
+    internal static NtfsVolumeInformation Query(string volumePath, bool isWindows)
     {
         if (!isWindows)
         {
@@ -45,7 +45,7 @@ public readonly record struct NtfsVolumeInformation(
                 "NTFS volume information queries require Windows (FSCTL_GET_NTFS_VOLUME_DATA).");
         }
 
-        var normalizedPath = MFTUtilities.GetVolumePath(driveLetter);
+        var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
         using var handle = FileUtilities._getVolumeHandle(normalizedPath);
 
         var bufferSize = Marshal.SizeOf<NtfsVolumeDataBufferNative>();

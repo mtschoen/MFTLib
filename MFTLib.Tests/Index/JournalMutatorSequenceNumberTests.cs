@@ -24,7 +24,7 @@ public class JournalMutatorSequenceNumberTests
             FileAttributes = FileAttributes.Archive,
             SequenceNumber = 9,
             Usn = 1000,
-            Timestamp = fixture.Timestamp
+            TimestampUtc = fixture.Timestamp
         });
 
         var change = fixture.Apply([created]).Single();

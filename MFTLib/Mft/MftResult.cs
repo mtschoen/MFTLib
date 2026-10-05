@@ -58,8 +58,7 @@ public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         }
 
         Timings = new MftParseTimings(
-            _result.TotalRecords, _result.IoTimeMs, _result.FixupTimeMs, _result.ParseTimeMs,
-            _result.TotalTimeMs, 0);
+            _result.IoTimeMs, _result.FixupTimeMs, _result.ParseTimeMs, _result.TotalTimeMs);
     }
 
     /// <summary>

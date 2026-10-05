@@ -39,10 +39,10 @@ public partial class IncludeFreedTests
         }
 
         var flags = FlagsFor(resolvePaths, filter);
-        var ordinary = MftVolume.ParseMFTFromFile(_fixturePath, filter, flags, out _);
+        var ordinary = DirectParse.ParseFile(_fixturePath, filter, flags, out _);
         Assert.IsTrue(ordinary.All(record => record.InUse));
-        var records = MftVolume.ParseMFTFromFile(_fixturePath, filter, flags | MatchFlags.IncludeFreed, out var timings);
-        Assert.AreEqual(24ul, timings.TotalRecords);
+        var records = DirectParse.ParseFile(_fixturePath, filter, flags | MatchFlags.IncludeFreed, out _, out var totalRecords);
+        Assert.AreEqual(24ul, totalRecords);
         var freed = records.Where(record => !record.InUse).ToArray();
         var expected = new (ulong Number, string Name, ulong Parent, ushort Sequence, string? Path)[]
         {
@@ -91,8 +91,8 @@ public partial class IncludeFreedTests
         WriteParent(image, 9, 12, 0);
         File.WriteAllBytes(_fixturePath, image);
         var flags = FlagsFor(resolvePaths, null);
-        var ordinary = MftVolume.ParseMFTFromFile(_fixturePath, null, flags, out _);
-        var includingFreed = MftVolume.ParseMFTFromFile(_fixturePath, null, flags | MatchFlags.IncludeFreed, out _);
+        var ordinary = DirectParse.ParseFile(_fixturePath, null, flags, out _);
+        var includingFreed = DirectParse.ParseFile(_fixturePath, null, flags | MatchFlags.IncludeFreed, out _);
         AssertRowsEqual(ordinary, includingFreed.Where(record => record.InUse).ToArray());
         Assert.AreEqual(resolvePaths ? "nodata.dat" : null,
             includingFreed.Single(record => record.RecordNumber == 9).FullPath);

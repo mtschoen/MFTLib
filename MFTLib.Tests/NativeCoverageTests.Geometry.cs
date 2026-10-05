@@ -25,7 +25,7 @@ public partial class NativeCoverageTests
             BitConverter.GetBytes(1024u).CopyTo(data, 0x1C);
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -65,7 +65,7 @@ public partial class NativeCoverageTests
             BitConverter.GetBytes(recordSize).CopyTo(data, 0x1C);
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -100,7 +100,7 @@ public partial class NativeCoverageTests
             BitConverter.GetBytes(1024u).CopyTo(data, 0x1C);
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -296,7 +296,7 @@ public partial class NativeCoverageTests
             data[6 * 1024 + attributeOffset + 0x15] = 0xEA;
             File.WriteAllBytes(path, data);
 
-            var records = MftVolume.ParseMFTFromFile(path, out _);
+            var records = DirectParse.ParseFile(path, out _);
             Assert.IsTrue(records.Length > 0);
             Assert.IsFalse(records.Any(r => r.RecordNumber == 6));
         }

@@ -130,9 +130,10 @@ dotnet build external\MFTLib\MFTLibTestExtensions\MFTLibTestExtensions.csproj -c
 | --- | --- |
 | Elevated CLI or service; simplest integration | `MftVolume` directly |
 | Non-elevated desktop/CLI app; one UAC prompt | `BrokerProcess` with `BrokerMftBlockProducer.CreateIndexSource()` |
-| One-time filename lookup | `MftVolume.FindByName` |
-| Full in-memory index | `MftVolume.ReadAllRecords` |
+| One-time filename lookup | `MftVolume.StreamRecords` with a name filter |
+| Full in-memory index | `MftVolume.StreamRecords`, then `MftResult.ToArray()` |
 | Process records while native memory is alive | `MftVolume.StreamRecords` |
+| Parse a saved MFT image, no volume or elevation | `MftVolume.StreamMftFromFile` |
 | Resume from a persisted journal cursor | `MftVolume.ReadUsnJournal` |
 | Continuously receive changes | `WatchUsnJournal` or broker batches |
 | Explain a rescan the change journal forced, at open or mid-watch | `DriveStatus.CheckpointLoss` |
@@ -145,18 +146,21 @@ Run the application as Administrator when using `MftVolume` directly.
 using MFTLib;
 
 using var volume = MftVolume.Open("C");
-var records = volume.FindByName(
+using var result = volume.StreamRecords(
     ".git",
     MatchFlags.ExactMatch | MatchFlags.ResolvePaths,
-    out var timings);
+    progress: null, parseThreads: null, CancellationToken.None);
+var records = result.ToArray();
 
 foreach (var record in records.Where(record => record.IsDirectory))
     Console.WriteLine(record.FullPath);
 
-Console.WriteLine($"Matched {records.Length:N0} records; {timings}");
+Console.WriteLine($"Matched {records.Length:N0} of {result.TotalRecords:N0} records; {result.Timings}");
 ```
 
-`MftVolume.Open` accepts `"C"`, `"C:"`, or `"C:\\"`.
+`MftVolume.Open` accepts a drive letter (`"C"`, `"C:"` or `"C:\\"`), a raw device path
+(`\\.\C:`) or a volume GUID path (`\\?\Volume{guid}`). `MftResult.Timings` reports the native I/O, fixup, parse
+and total durations as `TimeSpan` values; time your own `ToArray()` if you want the copy cost.
 
 ## Core MFT workflows
 
@@ -164,7 +168,9 @@ Console.WriteLine($"Matched {records.Length:N0} records; {timings}");
 
 ```csharp
 using var volume = MftVolume.Open("C");
-var records = volume.ReadAllRecords(resolvePaths: true, out var timings);
+using var result = volume.StreamRecords(
+    filter: null, MatchFlags.ResolvePaths, progress: null, parseThreads: null, CancellationToken.None);
+var records = result.ToArray();
 
 var byRecordNumber = records.ToDictionary(record => record.RecordNumber);
 ```
@@ -180,13 +186,15 @@ detects an MFT record NTFS has since reused for a different file.
 ### Filter in native code
 
 ```csharp
-var exact = volume.FindByName("report.pdf", MatchFlags.ExactMatch);
-var containing = volume.FindByName(
-    "report",
-    MatchFlags.Contains | MatchFlags.ResolvePaths);
+using var exact = volume.StreamRecords(
+    "report.pdf", MatchFlags.ExactMatch, progress: null, parseThreads: null, CancellationToken.None);
+using var containing = volume.StreamRecords(
+    "report", MatchFlags.Contains | MatchFlags.ResolvePaths,
+    progress: null, parseThreads: null, CancellationToken.None);
 ```
 
-`ExactMatch` and `Contains` are case-insensitive. Add `ResolvePaths` only when full paths
+`ExactMatch` and `Contains` are case-insensitive. A filter with neither flag throws
+`ArgumentException` before any native call. Add `ResolvePaths` only when full paths
 are needed; path resolution has additional CPU and memory cost.
 
 `MatchFlags.IncludeFreed` opts a scan into returning freed base records whose
@@ -203,13 +211,14 @@ chains longer than 128 components leave `FullPath` null and preserve the bare
 keep their existing path behavior. Name filters work with `IncludeFreed`.
 
 ```csharp
-var records = MftVolume.ParseMFTFromFile(mftFilePath, null,
-    MatchFlags.IncludeFreed | MatchFlags.ResolvePaths, out var timings);
+using var result = MftVolume.StreamMftFromFile(mftFilePath, null,
+    MatchFlags.IncludeFreed | MatchFlags.ResolvePaths);
 ```
 
-The flag is available through the existing `StreamRecords`, `FindByName`,
-`ParseMFTFromFile`, and `StreamMFTFromFile` scan APIs. `MFTLib.Index` and the broker
-block scan remain a live-files index.
+The flag is available through the two streaming scan APIs, `StreamRecords` and
+`StreamMftFromFile`. Both accept progress, thread allowance, and cancellation
+execution controls (`StreamMftFromFile` via `MftFileScanOptions`). `MFTLib.Index`
+and the broker block scan remain a live-files index.
 
 ### Stream to reduce managed allocations
 
@@ -233,13 +242,13 @@ Do not retain them after disposing it unless each record is materialized:
 var retained = record.Materialize();
 ```
 
-`ReadAllRecords`, `FindByName`, and `MftResult.ToArray()` return records whose strings
-are already materialized into managed memory.
+`MftResult.ToArray()` returns records whose strings are already materialized into managed
+memory.
 
 ### Tune scan buffers
 
 ```csharp
-// Number of MFT records per native buffer. Default: 262,144.
+// Number of MFT records per native buffer. Default: MftVolume.DefaultBufferSizeRecords (262,144).
 using var volume = MftVolume.Open("C", bufferSizeRecords: 65_536);
 ```
 
@@ -257,8 +266,10 @@ catch-up entries produced while the scan was running:
 ```csharp
 using var volume = MftVolume.Open("C");
 
-var armedCursor = volume.QueryUsnJournal();
-var records = volume.ReadAllRecords(resolvePaths: true);
+var armedCursor = volume.QueryUsnJournalCursor();
+using var result = volume.StreamRecords(
+    filter: null, MatchFlags.ResolvePaths, progress: null, parseThreads: null, CancellationToken.None);
+var records = result.ToArray();
 var (catchUpEntries, currentCursor) = volume.ReadUsnJournal(armedCursor);
 
 ApplyChanges(records, catchUpEntries);

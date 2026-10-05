@@ -1,4 +1,3 @@
-using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
 using TestProgram;
@@ -24,8 +23,8 @@ public class DriveScannerDirectApiTests
         }
 
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        MFTLibNative._parseMftRecordsWithProgress = (_, filter, flags, buffer, _, _) =>
-            MFTLibNative._parseMftFromFile(_fixturePath, filter, flags, buffer);
+        MFTLibNative._parseMftRecordsWithProgress = (_, filter, flags, buffer, control, callback) =>
+            MFTLibNative._parseMftFromFile(_fixturePath, filter, flags, buffer, control, callback);
     }
 
     [TestCleanup]
@@ -200,12 +199,12 @@ public class DriveScannerDirectApiTests
 
         var lines = new List<string>();
         var scanner = ElevatedScanner(lines);
-        scanner._streamRecords = (_, filter, flags, progress, _, _) =>
+        scanner._streamRecords = (_, filter, flags, progress, parseThreads, cancellationToken) =>
         {
             progress!.Report(new MftScanProgress(MftScanPhase.Parsing, 10, 24, TimeSpan.FromMilliseconds(2)));
             progress.Report(new MftScanProgress(MftScanPhase.Parsing, 24, 24, TimeSpan.FromMilliseconds(5)));
             progress.Report(new MftScanProgress(MftScanPhase.ResolvingPaths, 8, 8, TimeSpan.FromMilliseconds(7)));
-            return MftVolume.StreamMFTFromFile(_fixturePath, filter, flags);
+            return MftVolume.StreamMftFromFile(_fixturePath, filter, flags, new(progress, parseThreads, CancellationToken: cancellationToken));
         };
 
         scanner.Run(["stream-records", "T"]);
@@ -226,6 +225,9 @@ public class DriveScannerDirectApiTests
         }
 
         var lines = new List<string>();
+        // A native parse that never invokes the progress callback.
+        MFTLibNative._parseMftRecordsWithProgress = (_, filter, flags, buffer, control, _) =>
+            MFTLibNative._parseMftFromFile(_fixturePath, filter, flags, buffer, control, null);
 
         ElevatedScanner(lines).Run(["stream-records", "T"]);
 

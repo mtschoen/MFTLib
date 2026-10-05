@@ -101,7 +101,7 @@ MFTLib.BrokerMftBlockProducer :: method public CreateIndexSource() : MFTLib.Inde
 MFTLib.BrokerMftBlockProducer :: type public sealed class
 MFTLib.BrokerProcess :: field public static readonly DefaultConnectTimeout : System.TimeSpan
 MFTLib.BrokerProcess :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
-MFTLib.BrokerProcess :: method public GrowUsnJournalAsync(char driveLetter, long maximumSize, long allocationDelta, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.UsnJournalSettings>
+MFTLib.BrokerProcess :: method public GrowUsnJournalAsync(char driveLetter, long maximumSize, long allocationDelta, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.UsnJournalSettings>
 MFTLib.BrokerProcess :: method public QueryVolumeAsync(char driveLetter, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.NtfsVolumeInformation>
 MFTLib.BrokerProcess :: method public ScanDriveAsync(char driveLetter, MFTLib.BlockScanTarget target, MFTLib.BrokerScanOptions options, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.BrokerDriveScanResult>
 MFTLib.BrokerProcess :: method public static LaunchAsync(System.Func<string, bool> launchBroker, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.BrokerProcess>
@@ -145,15 +145,16 @@ MFTLib.DefaultElevatedEntryRunner :: method public RunBroker(string? controlPipe
 MFTLib.DefaultElevatedEntryRunner :: type public sealed class : MFTLib.IElevatedEntryRunner
 MFTLib.ElevatedEntryPoint :: method public static TryHandle(string[] args, MFTLib.IElevatedEntryRunner runner) : bool
 MFTLib.ElevatedEntryPoint :: type public static class
+MFTLib.ElevationUtilities :: field public static readonly DefaultElevatedTimeout : System.TimeSpan
 MFTLib.ElevationUtilities :: method public static CanSelfElevate() : bool
 MFTLib.ElevationUtilities :: method public static IsElevated() : bool
-MFTLib.ElevationUtilities :: method public static TryRunElevated(string arguments, int timeoutMs = 60000) : bool
+MFTLib.ElevationUtilities :: method public static TryRunElevated(System.Collections.Generic.IReadOnlyList<string> arguments, System.TimeSpan timeout) : bool
 MFTLib.ElevationUtilities :: property public static DefaultProvider { get; } : MFTLib.IElevationProvider
 MFTLib.ElevationUtilities :: type public static class
 MFTLib.GrowUsnJournalQuery :: constructor public (object object, System.IntPtr method)
 MFTLib.GrowUsnJournalQuery :: method public virtual BeginInvoke(string driveLetter, long maximumSize, long allocationDelta, System.AsyncCallback callback, object object) : System.IAsyncResult
-MFTLib.GrowUsnJournalQuery :: method public virtual EndInvoke(System.IAsyncResult result) : MFTLib.Index.UsnJournalSettings
-MFTLib.GrowUsnJournalQuery :: method public virtual Invoke(string driveLetter, long maximumSize, long allocationDelta) : MFTLib.Index.UsnJournalSettings
+MFTLib.GrowUsnJournalQuery :: method public virtual EndInvoke(System.IAsyncResult result) : MFTLib.UsnJournalSettings
+MFTLib.GrowUsnJournalQuery :: method public virtual Invoke(string driveLetter, long maximumSize, long allocationDelta) : MFTLib.UsnJournalSettings
 MFTLib.GrowUsnJournalQuery :: type public delegate : System.ICloneable, System.Runtime.Serialization.ISerializable
 MFTLib.IBlockSectionWriter :: method public abstract Write(string sectionName, MFTLib.UsnJournalCursor cursor, System.Collections.Generic.IEnumerable<System.Collections.Generic.IReadOnlyList<MFTLib.MftRecord>> batches, MFTLib.MftBlockRowFilter filter, MFTLib.BlockWriteReporting reporting, System.Threading.CancellationToken cancellationToken) : MFTLib.BlockWriteResult
 MFTLib.IBlockSectionWriter :: type public interface
@@ -164,7 +165,7 @@ MFTLib.IElevatedEntryRunner :: method public abstract RunBroker(string? controlP
 MFTLib.IElevatedEntryRunner :: type public interface
 MFTLib.IElevationProvider :: method public abstract CanSelfElevate() : bool
 MFTLib.IElevationProvider :: method public abstract IsElevated() : bool
-MFTLib.IElevationProvider :: method public abstract TryRunElevated(string arguments, int timeoutMs = 60000) : bool
+MFTLib.IElevationProvider :: method public abstract TryRunElevated(System.Collections.Generic.IReadOnlyList<string> arguments, System.TimeSpan timeout) : bool
 MFTLib.IElevationProvider :: type public interface
 MFTLib.JournalBatchSource :: constructor public (object object, System.IntPtr method)
 MFTLib.JournalBatchSource :: method public virtual BeginInvoke(string driveLetter, MFTLib.UsnJournalCursor since, MFTLib.IBrokerOperationReporter operation, System.Threading.CancellationToken cancellationToken, System.AsyncCallback callback, object object) : System.IAsyncResult
@@ -193,13 +194,24 @@ MFTLib.MftBlockRowFilter :: property public KeepFileNames { get; init; } : Syste
 MFTLib.MftBlockRowFilter :: property public Profile { get; init; } : MFTLib.BrokerScanProfile
 MFTLib.MftBlockRowFilter :: property public static Full { get; } : MFTLib.MftBlockRowFilter
 MFTLib.MftBlockRowFilter :: type public readonly struct : System.IEquatable<MFTLib.MftBlockRowFilter>
+MFTLib.MftFileScanOptions :: constructor public (System.IProgress<MFTLib.MftScanProgress>? Progress = default, MFTLib.ParseThreadAllowance? ParseThreads = default, uint BufferSizeRecords = 262144, System.Threading.CancellationToken CancellationToken = default)
+MFTLib.MftFileScanOptions :: method public Deconstruct(out System.IProgress<MFTLib.MftScanProgress>? Progress, out MFTLib.ParseThreadAllowance? ParseThreads, out uint BufferSizeRecords, out System.Threading.CancellationToken CancellationToken) : void
+MFTLib.MftFileScanOptions :: method public Equals(MFTLib.MftFileScanOptions other) : bool
+MFTLib.MftFileScanOptions :: method public override Equals(object obj) : bool
+MFTLib.MftFileScanOptions :: method public override GetHashCode() : int
+MFTLib.MftFileScanOptions :: method public override ToString() : string
+MFTLib.MftFileScanOptions :: method public static op_Equality(MFTLib.MftFileScanOptions left, MFTLib.MftFileScanOptions right) : bool
+MFTLib.MftFileScanOptions :: method public static op_Inequality(MFTLib.MftFileScanOptions left, MFTLib.MftFileScanOptions right) : bool
+MFTLib.MftFileScanOptions :: property public BufferSizeRecords { get; init; } : uint
+MFTLib.MftFileScanOptions :: property public CancellationToken { get; init; } : System.Threading.CancellationToken
+MFTLib.MftFileScanOptions :: property public ParseThreads { get; init; } : MFTLib.ParseThreadAllowance?
+MFTLib.MftFileScanOptions :: property public Progress { get; init; } : System.IProgress<MFTLib.MftScanProgress>?
+MFTLib.MftFileScanOptions :: type public readonly struct : System.IEquatable<MFTLib.MftFileScanOptions>
 MFTLib.MftParseTimings :: method public override ToString() : string
-MFTLib.MftParseTimings :: property public MarshalMs { get; } : double
-MFTLib.MftParseTimings :: property public NativeFixupMs { get; } : double
-MFTLib.MftParseTimings :: property public NativeIoMs { get; } : double
-MFTLib.MftParseTimings :: property public NativeParseMs { get; } : double
-MFTLib.MftParseTimings :: property public NativeTotalMs { get; } : double
-MFTLib.MftParseTimings :: property public TotalRecords { get; } : ulong
+MFTLib.MftParseTimings :: property public NativeFixup { get; } : System.TimeSpan
+MFTLib.MftParseTimings :: property public NativeIo { get; } : System.TimeSpan
+MFTLib.MftParseTimings :: property public NativeParse { get; } : System.TimeSpan
+MFTLib.MftParseTimings :: property public NativeTotal { get; } : System.TimeSpan
 MFTLib.MftParseTimings :: type public readonly struct
 MFTLib.MftRecord :: method public Materialize() : MFTLib.MftRecord
 MFTLib.MftRecord :: method public override ToString() : string
@@ -245,23 +257,16 @@ MFTLib.MftScanProgress :: property public Phase { get; init; } : MFTLib.MftScanP
 MFTLib.MftScanProgress :: property public RecordsScanned { get; init; } : long
 MFTLib.MftScanProgress :: property public TotalRecords { get; init; } : long
 MFTLib.MftScanProgress :: type public readonly struct : System.IEquatable<MFTLib.MftScanProgress>
+MFTLib.MftVolume :: field public const DefaultBufferSizeRecords : uint = 262144
 MFTLib.MftVolume :: method public Dispose() : void
-MFTLib.MftVolume :: method public FindByName(string name, MFTLib.MatchFlags matchFlags = 1) : MFTLib.MftRecord[]
-MFTLib.MftVolume :: method public FindByName(string name, MFTLib.MatchFlags matchFlags, out MFTLib.MftParseTimings timings) : MFTLib.MftRecord[]
-MFTLib.MftVolume :: method public GrowUsnJournal(long maximumSize, long allocationDelta) : MFTLib.Index.UsnJournalSettings
-MFTLib.MftVolume :: method public QueryUsnJournal() : MFTLib.UsnJournalCursor
-MFTLib.MftVolume :: method public QueryUsnJournalSettings() : MFTLib.Index.UsnJournalSettings
-MFTLib.MftVolume :: method public ReadAllRecords() : MFTLib.MftRecord[]
-MFTLib.MftVolume :: method public ReadAllRecords(bool resolvePaths) : MFTLib.MftRecord[]
-MFTLib.MftVolume :: method public ReadAllRecords(bool resolvePaths, out MFTLib.MftParseTimings timings) : MFTLib.MftRecord[]
-MFTLib.MftVolume :: method public ReadAllRecords(out MFTLib.MftParseTimings timings) : MFTLib.MftRecord[]
+MFTLib.MftVolume :: method public GrowUsnJournal(long maximumSize, long allocationDelta) : MFTLib.UsnJournalSettings
+MFTLib.MftVolume :: method public QueryUsnJournalCursor() : MFTLib.UsnJournalCursor
+MFTLib.MftVolume :: method public QueryUsnJournalSettings() : MFTLib.UsnJournalSettings
 MFTLib.MftVolume :: method public ReadUsnJournal(MFTLib.UsnJournalCursor since) : System.ValueTuple<MFTLib.UsnJournalEntry[], MFTLib.UsnJournalCursor>
 MFTLib.MftVolume :: method public StreamRecords(string? filter, MFTLib.MatchFlags matchFlags, System.IProgress<MFTLib.MftScanProgress>? progress, MFTLib.ParseThreadAllowance? parseThreads, System.Threading.CancellationToken cancellationToken) : MFTLib.MftResult
 MFTLib.MftVolume :: method public WatchUsnJournal(MFTLib.UsnJournalCursor since, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IAsyncEnumerable<System.ValueTuple<MFTLib.UsnJournalEntry[], MFTLib.UsnJournalCursor>>
 MFTLib.MftVolume :: method public static Open(string volumePath, uint bufferSizeRecords = 262144) : MFTLib.MftVolume
-MFTLib.MftVolume :: method public static ParseMFTFromFile(string filePath, out MFTLib.MftParseTimings timings) : MFTLib.MftRecord[]
-MFTLib.MftVolume :: method public static ParseMFTFromFile(string filePath, string? filter, MFTLib.MatchFlags matchFlags, out MFTLib.MftParseTimings timings, uint bufferSizeRecords = 262144) : MFTLib.MftRecord[]
-MFTLib.MftVolume :: method public static StreamMFTFromFile(string filePath, string? filter = default, MFTLib.MatchFlags matchFlags = 0, uint bufferSizeRecords = 262144) : MFTLib.MftResult
+MFTLib.MftVolume :: method public static StreamMftFromFile(string filePath, string? filter = default, MFTLib.MatchFlags matchFlags = 0, MFTLib.MftFileScanOptions options = default) : MFTLib.MftResult
 MFTLib.MftVolume :: type public sealed class : System.IDisposable
 MFTLib.NtfsVolumeInformation :: constructor public (long MftValidDataLength, uint BytesPerFileRecordSegment)
 MFTLib.NtfsVolumeInformation :: method public Deconstruct(out long MftValidDataLength, out uint BytesPerFileRecordSegment) : void
@@ -269,7 +274,7 @@ MFTLib.NtfsVolumeInformation :: method public Equals(MFTLib.NtfsVolumeInformatio
 MFTLib.NtfsVolumeInformation :: method public override Equals(object obj) : bool
 MFTLib.NtfsVolumeInformation :: method public override GetHashCode() : int
 MFTLib.NtfsVolumeInformation :: method public override ToString() : string
-MFTLib.NtfsVolumeInformation :: method public static Query(string driveLetter) : MFTLib.NtfsVolumeInformation
+MFTLib.NtfsVolumeInformation :: method public static Query(string volumePath) : MFTLib.NtfsVolumeInformation
 MFTLib.NtfsVolumeInformation :: method public static op_Equality(MFTLib.NtfsVolumeInformation left, MFTLib.NtfsVolumeInformation right) : bool
 MFTLib.NtfsVolumeInformation :: method public static op_Inequality(MFTLib.NtfsVolumeInformation left, MFTLib.NtfsVolumeInformation right) : bool
 MFTLib.NtfsVolumeInformation :: property public BytesPerFileRecordSegment { get; init; } : uint
@@ -317,7 +322,7 @@ MFTLib.UsnJournalEntry :: property public ParentRecordNumber { get; } : ulong
 MFTLib.UsnJournalEntry :: property public Reason { get; } : MFTLib.UsnReason
 MFTLib.UsnJournalEntry :: property public RecordNumber { get; } : ulong
 MFTLib.UsnJournalEntry :: property public SequenceNumber { get; } : ushort
-MFTLib.UsnJournalEntry :: property public Timestamp { get; } : System.DateTime
+MFTLib.UsnJournalEntry :: property public TimestampUtc { get; } : System.DateTime
 MFTLib.UsnJournalEntry :: property public Usn { get; } : long
 MFTLib.UsnJournalEntry :: type public readonly struct
 MFTLib.UsnJournalEntryOptions :: method public Equals(MFTLib.UsnJournalEntryOptions other) : bool
@@ -332,9 +337,18 @@ MFTLib.UsnJournalEntryOptions :: property public required FileName { get; init; 
 MFTLib.UsnJournalEntryOptions :: property public required ParentRecordNumber { get; init; } : ulong
 MFTLib.UsnJournalEntryOptions :: property public required Reason { get; init; } : MFTLib.UsnReason
 MFTLib.UsnJournalEntryOptions :: property public required RecordNumber { get; init; } : ulong
-MFTLib.UsnJournalEntryOptions :: property public required Timestamp { get; init; } : System.DateTime
+MFTLib.UsnJournalEntryOptions :: property public required TimestampUtc { get; init; } : System.DateTime
 MFTLib.UsnJournalEntryOptions :: property public required Usn { get; init; } : long
 MFTLib.UsnJournalEntryOptions :: type public readonly struct : System.IEquatable<MFTLib.UsnJournalEntryOptions>
+MFTLib.UsnJournalSettings :: method public Equals(MFTLib.UsnJournalSettings other) : bool
+MFTLib.UsnJournalSettings :: method public override Equals(object obj) : bool
+MFTLib.UsnJournalSettings :: method public override GetHashCode() : int
+MFTLib.UsnJournalSettings :: method public override ToString() : string
+MFTLib.UsnJournalSettings :: method public static op_Equality(MFTLib.UsnJournalSettings left, MFTLib.UsnJournalSettings right) : bool
+MFTLib.UsnJournalSettings :: method public static op_Inequality(MFTLib.UsnJournalSettings left, MFTLib.UsnJournalSettings right) : bool
+MFTLib.UsnJournalSettings :: property public required AllocationDelta { get; init; } : long
+MFTLib.UsnJournalSettings :: property public required MaximumSize { get; init; } : long
+MFTLib.UsnJournalSettings :: type public readonly struct : System.IEquatable<MFTLib.UsnJournalSettings>
 MFTLib.UsnReason :: field public const BasicInfoChange : MFTLib.UsnReason = 32768
 MFTLib.UsnReason :: field public const Close : MFTLib.UsnReason = 2147483648
 MFTLib.UsnReason :: field public const CompressionChange : MFTLib.UsnReason = 131072

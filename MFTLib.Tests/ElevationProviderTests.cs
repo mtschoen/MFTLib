@@ -64,7 +64,7 @@ public class ElevationProviderTests
     public void DefaultProvider_TryRunElevated_NullProcessPath_ReturnsFalse()
     {
         ElevationUtilities._getProcessPathFunc = () => null;
-        Assert.IsFalse(ElevationUtilities.DefaultProvider.TryRunElevated("--test"));
+        Assert.IsFalse(ElevationUtilities.DefaultProvider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
     }
 
     [TestMethod]
@@ -75,6 +75,6 @@ public class ElevationProviderTests
         ElevationUtilities._startProcess = _ => new Process();
         ElevationUtilities._waitForExit = (_, _) => true;
         ElevationUtilities._getExitCode = _ => 0;
-        Assert.IsTrue(ElevationUtilities.DefaultProvider.TryRunElevated("--test"));
+        Assert.IsTrue(ElevationUtilities.DefaultProvider.TryRunElevated(["--test"], ElevationUtilities.DefaultElevatedTimeout));
     }
 }

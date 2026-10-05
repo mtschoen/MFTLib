@@ -21,7 +21,7 @@ public class UsnJournalLiveTests
         }
 
         using var volume = MftVolume.Open("C");
-        var cursor = volume.QueryUsnJournal();
+        var cursor = volume.QueryUsnJournalCursor();
 
         Assert.IsTrue(cursor.JournalId > 0, "JournalId should be nonzero");
         Assert.IsTrue(cursor.NextUsn > 0, "NextUsn should be positive");
@@ -40,7 +40,7 @@ public class UsnJournalLiveTests
         using var volume = MftVolume.Open("C");
 
         // Get current cursor
-        var cursor = volume.QueryUsnJournal();
+        var cursor = volume.QueryUsnJournalCursor();
 
         // Create and delete a temp file to generate journal entries
         var tempPath = Path.Combine(Path.GetTempPath(), $"mftlib-usn-test-{Guid.NewGuid()}.tmp");
@@ -76,7 +76,7 @@ public class UsnJournalLiveTests
         }
 
         using var volume = MftVolume.Open("C");
-        var cursor = volume.QueryUsnJournal();
+        var cursor = volume.QueryUsnJournalCursor();
 
         // Reading from current position should return very few entries
         var (entries, _) = volume.ReadUsnJournal(cursor);
@@ -96,7 +96,7 @@ public class UsnJournalLiveTests
         }
 
         using var volume = MftVolume.Open("C");
-        var cursor = volume.QueryUsnJournal();
+        var cursor = volume.QueryUsnJournalCursor();
 
         var tempPath = Path.Combine(Path.GetTempPath(), $"mftlib-watch-test-{Guid.NewGuid()}.tmp");
         var tempFileName = Path.GetFileName(tempPath);

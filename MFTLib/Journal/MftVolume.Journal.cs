@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using MFTLib.Index;
 using MFTLib.Interop;
 
 namespace MFTLib;
@@ -18,7 +17,7 @@ public sealed partial class MftVolume
     ///     Capture this before a full MFT scan, then read from it after the scan, to
     ///     include changes that occurred while the scan was running.
     /// </summary>
-    public UsnJournalCursor QueryUsnJournal()
+    public UsnJournalCursor QueryUsnJournalCursor()
     {
         var info = QueryJournalInfo();
         return new UsnJournalCursor(info.JournalId, info.NextUsn);

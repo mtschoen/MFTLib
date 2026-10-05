@@ -131,7 +131,7 @@ public partial class IncludeFreedTests
 
     void AssertFreedPath(ulong recordNumber, string name, string? expectedPath)
     {
-        using var result = MftVolume.StreamMFTFromFile(_fixturePath, null,
+        using var result = MftVolume.StreamMftFromFile(_fixturePath, null,
             MatchFlags.IncludeFreed | MatchFlags.ResolvePaths);
         var record = result.Single(candidate => candidate.RecordNumber == recordNumber);
         Assert.IsFalse(record.InUse);

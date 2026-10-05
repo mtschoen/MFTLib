@@ -144,7 +144,7 @@ public class MftRecordTests
         {
             MftVolume.GenerateSyntheticMFT(path, 100, 256);
             var matchFlags = resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None;
-            var records = MftVolume.ParseMFTFromFile(path, null, matchFlags, out _);
+            var records = DirectParse.ParseFile(path, null, matchFlags, out _);
             Assert.IsTrue(records.Length >= 10, $"Expected at least 10 records, got {records.Length}");
 
             foreach (var record in records.Take(10))

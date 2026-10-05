@@ -107,7 +107,7 @@ public partial class NativeCoverageTests
     public void ParseFromFile_NonexistentFile_ReturnsErrorMessage()
     {
         var resultPointer = MFTLibNative._parseMftFromFile(
-            @"C:\nonexistent_file_12345.mft", null, MatchFlags.None, 256);
+            @"C:\nonexistent_file_12345.mft", null, MatchFlags.None, 256, IntPtr.Zero, null);
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
         {
@@ -148,7 +148,7 @@ public partial class NativeCoverageTests
             data[sectorEnd + 1] = (byte)(badValue >> 8);
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -184,7 +184,7 @@ public partial class NativeCoverageTests
             data[recordOffset + 0x17] = 0;
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             MFTLibNative._freeMftResult(resultPointer);
         }
@@ -211,7 +211,7 @@ public partial class NativeCoverageTests
             data[recordOffset + 7] = 0;
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             MFTLibNative._freeMftResult(resultPointer);
         }

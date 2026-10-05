@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -251,18 +250,18 @@ public class DriveScannerModeTests
         DisplayName = "the elevation wait covers every drive's requested streaming timeout")]
     [DataRow(new[] { "stream-records", "C" }, -1,
         DisplayName = "streaming without a requested timeout waits without a limit (Timeout.Infinite)")]
-    public void Run_VolumeMode_NotElevated_SelfElevatesWithTheOriginalArguments(string[] arguments, int expectedTimeout)
+    public void Run_VolumeMode_NotElevated_SelfElevatesWithTheOriginalArguments(string[] arguments, int expectedTimeoutMilliseconds)
     {
-        string? relaunchedWith = null;
-        var elevationTimeout = 0;
+        IReadOnlyList<string>? relaunchedWith = null;
+        var elevationTimeout = TimeSpan.Zero;
         var scanner = new DriveScanner
         {
             _isElevated = () => false,
             _canSelfElevate = () => true,
-            _tryRunElevated = (formatted, timeoutMilliseconds) =>
+            _tryRunElevated = (relaunchArguments, timeout) =>
             {
-                relaunchedWith = formatted;
-                elevationTimeout = timeoutMilliseconds;
+                relaunchedWith = relaunchArguments;
+                elevationTimeout = timeout;
                 return true;
             },
             _writeLine = _ => { }
@@ -271,13 +270,13 @@ public class DriveScannerModeTests
         var result = scanner.Run(arguments);
 
         Assert.AreEqual(0, result);
-        Assert.AreEqual(string.Join(" ", arguments), relaunchedWith);
-        Assert.AreEqual(expectedTimeout, elevationTimeout, "The elevation wait covers the requested duration.");
+        CollectionAssert.AreEqual(arguments, relaunchedWith!.ToArray());
+        Assert.AreEqual(TimeSpan.FromMilliseconds(expectedTimeoutMilliseconds), elevationTimeout,
+            "The elevation wait covers the requested duration.");
     }
 
-    // The elevated child parses its command line under the Windows argv rules, so each probe is
-    // encoded by the production formatter, split by CommandLineToArgvW behind a stand-in program
-    // name (argv[0] parses differently), and must come back as the arguments the parent accepted.
+    // The library quotes each element for the child's command line, so the scanner hands over the
+    // arguments exactly as it accepted them, whatever whitespace or quotes they hold.
     [DataTestMethod]
     [DataRow(new[] { "usn-grow", "--maximum-size", "8000", "--allocation-delta", "2048", "C\" --maximum-size 9000 --allocation-delta 4096" },
         DisplayName = "an option-injection positional stays one argument")]
@@ -291,21 +290,16 @@ public class DriveScannerModeTests
         DisplayName = "a trailing backslash last survives")]
     [DataRow(new[] { "find-name", "C", "--name", "C:\\spaced directory\\", "--include-freed" },
         DisplayName = "a trailing backslash before another option survives")]
-    public void Run_NotElevated_RelaunchCommandLine_RoundTripsThroughTheWindowsParser(string[] arguments)
+    public void Run_NotElevated_RelaunchesWithEachArgumentVerbatim(string[] arguments)
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return;
-        }
-
-        string? relaunchedWith = null;
+        IReadOnlyList<string>? relaunchedWith = null;
         var scanner = new DriveScanner
         {
             _isElevated = () => false,
             _canSelfElevate = () => true,
-            _tryRunElevated = (formatted, _) =>
+            _tryRunElevated = (relaunchArguments, _) =>
             {
-                relaunchedWith = formatted;
+                relaunchedWith = relaunchArguments;
                 return true;
             },
             _writeLine = _ => { }
@@ -313,45 +307,9 @@ public class DriveScannerModeTests
 
         Assert.AreEqual(0, scanner.Run(arguments));
 
-        var childArguments = SplitAsWindowsChild(relaunchedWith!);
-        CollectionAssert.AreEqual(arguments, childArguments,
+        CollectionAssert.AreEqual(arguments, relaunchedWith!.ToArray(),
             "The child must receive exactly the arguments the parent accepted.");
-
-        Assert.IsTrue(TestProgramArguments.TryParse(arguments, out var parentParsed, out _),
-            "The probe arguments must be a valid command line.");
-        Assert.IsTrue(TestProgramArguments.TryParse(childArguments, out var childParsed, out _));
-        Assert.AreEqual(parentParsed.Mode, childParsed.Mode);
-        CollectionAssert.AreEqual(parentParsed.Drives.ToArray(), childParsed.Drives.ToArray());
-        Assert.AreEqual(parentParsed.Options.Name, childParsed.Options.Name);
-        Assert.AreEqual(parentParsed.Options.MaximumSize, childParsed.Options.MaximumSize);
-        Assert.AreEqual(parentParsed.Options.AllocationDelta, childParsed.Options.AllocationDelta);
     }
-
-    static string[] SplitAsWindowsChild(string commandLine)
-    {
-        var argv = CommandLineToArgvW("TestProgram.exe " + commandLine, out var count);
-        Assert.AreNotEqual(IntPtr.Zero, argv, "CommandLineToArgvW could not split the relaunch command line.");
-        try
-        {
-            var split = new string[count - 1];
-            for (var index = 1; index < count; index++)
-            {
-                split[index - 1] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(argv, index * IntPtr.Size))!;
-            }
-
-            return split;
-        }
-        finally
-        {
-            LocalFree(argv);
-        }
-    }
-
-    [DllImport("shell32.dll", SetLastError = true)]
-    static extern IntPtr CommandLineToArgvW([MarshalAs(UnmanagedType.LPWStr)] string commandLine, out int numArgs);
-
-    [DllImport("kernel32.dll")]
-    static extern IntPtr LocalFree(IntPtr memory);
 
     static DriveScanner ElevatedScanner(List<string> lines)
     {

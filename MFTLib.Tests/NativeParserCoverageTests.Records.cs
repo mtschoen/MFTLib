@@ -35,7 +35,7 @@ public partial class NativeParserCoverageTests
 
             File.WriteAllBytes(path, data);
 
-            var records = MftVolume.ParseMFTFromFile(path, out _);
+            var records = DirectParse.ParseFile(path, out _);
             Assert.IsTrue(records.Length > 0);
             Assert.IsFalse(records.Any(record => record.RecordNumber == 6));
         }
@@ -66,7 +66,7 @@ public partial class NativeParserCoverageTests
 
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -117,7 +117,7 @@ public partial class NativeParserCoverageTests
 
             File.WriteAllBytes(path, data);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -162,7 +162,7 @@ public partial class NativeParserCoverageTests
             // leaving partial records in the result.
             NativeTestHooks.NativeSetAllocFailCountdown(7);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 8192);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 8192, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -199,10 +199,10 @@ public partial class NativeParserCoverageTests
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 1000, 256);
 
-            var everyCore = MftVolume.ParseMFTFromFile(path, null, MatchFlags.None, out _, 64)
+            var everyCore = DirectParse.ParseFile(path, null, MatchFlags.None, out _, 64)
                 .Select(record => record.RecordNumber).ToArray();
             NativeTestHooks.NativeSetMaxThreads(1);
-            var singleThread = MftVolume.ParseMFTFromFile(path, null, MatchFlags.None, out _, 64)
+            var singleThread = DirectParse.ParseFile(path, null, MatchFlags.None, out _, 64)
                 .Select(record => record.RecordNumber).ToArray();
 
             Assert.IsTrue(everyCore.Length > 64, "The parse must span several 64-record chunks");

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using MFTLib;
-using MFTLib.Index;
 
 namespace TestProgram;
 
@@ -14,7 +13,7 @@ partial class DriveScanner
     internal Func<MftVolume, bool, bool, (MftRecord[] Records, MftParseTimings? Timings)> _readAllRecords =
         ReadAllRecordsNative;
 
-    internal Func<MftVolume, UsnJournalCursor> _queryJournal = volume => volume.QueryUsnJournal();
+    internal Func<MftVolume, UsnJournalCursor> _queryJournal = volume => volume.QueryUsnJournalCursor();
     internal Func<MftVolume, UsnJournalSettings> _queryJournalSettings = volume => volume.QueryUsnJournalSettings();
 
     internal Func<MftVolume, UsnJournalCursor, (UsnJournalEntry[] Entries, UsnJournalCursor UpdatedCursor)> _readJournal =
@@ -27,18 +26,12 @@ partial class DriveScanner
     internal Func<TimeSpan, CancellationTokenSource> _createTimedCancellation =
         duration => new CancellationTokenSource(duration);
 
-    // Each combination of the two options is a different ReadAllRecords overload.
     static (MftRecord[] Records, MftParseTimings? Timings) ReadAllRecordsNative(MftVolume volume,
         bool resolvePaths, bool withTimings)
     {
-        if (!withTimings)
-        {
-            return (resolvePaths ? volume.ReadAllRecords(true) : volume.ReadAllRecords(), null);
-        }
-
-        MftParseTimings timings;
-        var records = resolvePaths ? volume.ReadAllRecords(true, out timings) : volume.ReadAllRecords(out timings);
-        return (records, timings);
+        using var result = volume.StreamRecords(
+            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None, null, null, CancellationToken.None);
+        return (result.ToArray(), withTimings ? result.Timings : null);
     }
 
     internal void ReadRecords(string drive, ModeOptions options)
@@ -66,7 +59,9 @@ partial class DriveScanner
         RunOnVolume(drive, options, volume =>
         {
             var stopwatch = Stopwatch.StartNew();
-            var records = volume.FindByName(options.RequiredName, options.ToMatchFlags());
+            using var result = volume.StreamRecords(
+                options.RequiredName, options.ToMatchFlags(), null, null, CancellationToken.None);
+            var records = result.ToArray();
             stopwatch.Stop();
 
             _writeLine($"Found {records.Length} records matching {options.Name} in {stopwatch.Elapsed}");

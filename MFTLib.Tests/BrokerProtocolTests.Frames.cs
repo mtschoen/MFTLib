@@ -16,7 +16,7 @@ public partial class BrokerProtocolTests
             ParentRecordNumber = 7,
             SequenceNumber = 169,
             Usn = 123456,
-            Timestamp = new DateTime(2026, 6, 20, 1, 2, 3, DateTimeKind.Utc),
+            TimestampUtc = new DateTime(2026, 6, 20, 1, 2, 3, DateTimeKind.Utc),
             Reason = UsnReason.FileCreate | UsnReason.Close,
             FileAttributes = FileAttributes.Archive,
             FileName = "repört.txt"
@@ -31,7 +31,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(entry.ParentRecordNumber, read.ParentRecordNumber);
         Assert.AreEqual(entry.SequenceNumber, read.SequenceNumber);
         Assert.AreEqual(entry.Usn, read.Usn);
-        Assert.AreEqual(entry.Timestamp, read.Timestamp);
+        Assert.AreEqual(entry.TimestampUtc, read.TimestampUtc);
         Assert.AreEqual(entry.Reason, read.Reason);
         Assert.AreEqual(entry.FileAttributes, read.FileAttributes);
         Assert.AreEqual(entry.FileName, read.FileName);

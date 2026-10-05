@@ -138,7 +138,7 @@ public partial class UsnJournalSyntheticTests
         UseFakeHandle();
         QueueSuccess(BuildQueryBuffer());
         using var volume = MftVolume.Open("C");
-        var cursor = volume.QueryUsnJournal();
+        var cursor = volume.QueryUsnJournalCursor();
         Assert.AreEqual(0xABCDUL, cursor.JournalId);
         Assert.AreEqual(5000L, cursor.NextUsn);
     }
@@ -151,7 +151,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.QueryUsnJournal();
+            volume.QueryUsnJournalCursor();
         });
         Assert.IsTrue(exception.Message.Contains("not active"));
     }
@@ -175,7 +175,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.QueryUsnJournal();
+            volume.QueryUsnJournalCursor();
         });
         Assert.IsTrue(exception.Message.Contains("deletion"));
     }
@@ -188,7 +188,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.QueryUsnJournal();
+            volume.QueryUsnJournalCursor();
         });
         Assert.IsTrue(exception.Message.Contains("Error: 5"));
     }
@@ -467,7 +467,7 @@ public partial class UsnJournalSyntheticTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.QueryUsnJournal();
+            volume.QueryUsnJournalCursor();
         });
         Assert.IsTrue(exception.Message.Contains("Error:"), $"got: {exception.Message}");
     }

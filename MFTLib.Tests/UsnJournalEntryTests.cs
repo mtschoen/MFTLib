@@ -25,7 +25,7 @@ public class UsnJournalEntryTests
             ParentRecordNumber = 5,
             SequenceNumber = 169,
             Usn = 42,
-            Timestamp = new DateTime(2026, 9, 9, 0, 0, 0, DateTimeKind.Utc),
+            TimestampUtc = new DateTime(2026, 9, 9, 0, 0, 0, DateTimeKind.Utc),
             Reason = UsnReason.FileCreate,
             FileAttributes = FileAttributes.Normal,
             FileName = "probe.txt"

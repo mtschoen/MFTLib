@@ -20,7 +20,7 @@ public partial class NativeParserCoverageTests
             MftVolume.GenerateFixtureMFT(path);
             NativeTestHooks.NativeSetAllocFailCountdown(allocation);
             var pointer = MFTLibNative._parseMftFromFile(path, null,
-                MatchFlags.IncludeFreed | MatchFlags.ResolvePaths, 256);
+                MatchFlags.IncludeFreed | MatchFlags.ResolvePaths, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, pointer);
             try
             {
@@ -35,7 +35,7 @@ public partial class NativeParserCoverageTests
             }
 
             NativeTestHooks.NativeResetTestState();
-            var records = MftVolume.ParseMFTFromFile(path, null,
+            var records = DirectParse.ParseFile(path, null,
                 MatchFlags.IncludeFreed | MatchFlags.ResolvePaths, out _);
             Assert.AreEqual(16, records.Length);
         }
@@ -54,7 +54,7 @@ public partial class NativeParserCoverageTests
         try
         {
             MftVolume.GenerateFixtureMFT(path);
-            var pointer = MFTLibNative._parseMftFromFile(path, null, flags, 256);
+            var pointer = MFTLibNative._parseMftFromFile(path, null, flags, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, pointer);
             try
             {
@@ -104,7 +104,7 @@ public partial class NativeParserCoverageTests
             NativeTestHooks.NativeSetMaxThreads(1);
             NativeTestHooks.NativeSetNamePoolCapacityOverride(1);
             var pointer = MFTLibNative._parseMftFromFile(path, null,
-                MatchFlags.IncludeFreed | MatchFlags.ResolvePaths, 256);
+                MatchFlags.IncludeFreed | MatchFlags.ResolvePaths, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, pointer);
             try
             {

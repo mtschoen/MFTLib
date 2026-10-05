@@ -92,7 +92,7 @@ If running via `dotnet TestProgram.dll`, the helper will still attempt to relaun
 
 [Public surface](docs/architecture.md): `PublicSurfaceTests` pins every public type and member of MFTLib and MFTLibTestExtensions to `MFTLib.Tests/PublicSurface/*.approved.txt`; update the file in the same pull request. A member is public only when a consumer needs it in production code. Test-only access goes through `MFTLibTestExtensions`, which forwards to internal code and never re-implements it. `InternalsVisibleTo` never names a consumer assembly. A pull request that grows an approved file names, in its body, the consumer production caller of every added member.
 
-[Index namespace boundary](docs/architecture.md): `MFTLib.Index` must not depend on flat `MFTLib` or `MFTLib.Interop` except `UsnJournalEntry`, `UsnJournalEntryOptions` and `UsnReason`. `MFTLib.Tests/Index/NamespaceBoundaryTests.cs` enforces the compiled-IL boundary with a mandatory negative control; growing the allowlist requires review, not an import-lint rule.
+[Index namespace boundary](docs/architecture.md): `MFTLib.Index` must not depend on flat `MFTLib` or `MFTLib.Interop` except `UsnJournalEntry`, `UsnJournalEntryOptions`, `UsnJournalSettings` and `UsnReason`. `MFTLib.Tests/Index/NamespaceBoundaryTests.cs` enforces the compiled-IL boundary with a mandatory negative control; growing the allowlist requires review, not an import-lint rule.
 
 [Cache identity](docs/architecture.md) and [block format](docs/index-format.md): CacheTag compares exactly, including zero; initialize before completion and copy `request.CacheTag` in custom producers. Consumers bump versions for profile/keep-list changes. Preserve the documented mismatch, cache-only failure and diagnostic contracts.
 

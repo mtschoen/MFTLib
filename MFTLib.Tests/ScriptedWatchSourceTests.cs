@@ -613,7 +613,7 @@ public class ScriptedWatchSourceTests
         Assert.AreEqual("x.txt", entry.FileName);
         Assert.AreEqual(UsnReason.FileCreate, entry.Reason);
         Assert.AreEqual(FileAttributes.Hidden, entry.FileAttributes);
-        Assert.AreEqual(timestamp, entry.Timestamp);
+        Assert.AreEqual(timestamp, entry.TimestampUtc);
         Assert.AreEqual((ushort)3, entry.SequenceNumber);
     }
 
@@ -630,7 +630,7 @@ public class ScriptedWatchSourceTests
 
         Assert.AreEqual(UsnReason.Close, entry.Reason);
         Assert.AreEqual(FileAttributes.Normal, entry.FileAttributes);
-        Assert.AreEqual(DateTime.UnixEpoch, entry.Timestamp);
+        Assert.AreEqual(DateTime.UnixEpoch, entry.TimestampUtc);
         Assert.AreEqual((ushort)0, entry.SequenceNumber);
     }
 

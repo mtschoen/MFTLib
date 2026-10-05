@@ -66,7 +66,7 @@ public class UsnJournalTests
         MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(infoPtr);
 
         using var volume = MftVolume.Open("C");
-        var cursor = volume.QueryUsnJournal();
+        var cursor = volume.QueryUsnJournalCursor();
 
         Assert.AreEqual(0x123456789ABCDEF0UL, cursor.JournalId);
         Assert.AreEqual(42000L, cursor.NextUsn);
@@ -90,7 +90,7 @@ public class UsnJournalTests
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.QueryUsnJournal();
+            volume.QueryUsnJournalCursor();
         });
         Assert.IsTrue(exception.Message.Contains("error 5"));
     }
@@ -104,7 +104,7 @@ public class UsnJournalTests
         Assert.ThrowsException<InvalidOperationException>(() =>
         {
             using var volume = MftVolume.Open("C");
-            volume.QueryUsnJournal();
+            volume.QueryUsnJournalCursor();
         });
     }
 
@@ -269,7 +269,7 @@ public class UsnJournalTests
         FileUtilities._getVolumeHandle = _ => FakeHandle();
         var volume = MftVolume.Open("C");
         volume.Dispose();
-        Assert.ThrowsException<ObjectDisposedException>(() => volume.QueryUsnJournal());
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.QueryUsnJournalCursor());
     }
 
     [TestMethod]
@@ -312,7 +312,7 @@ public class UsnJournalTests
             FileName = "timestamped.txt"
         });
 
-        Assert.AreEqual(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc), entry.Timestamp);
+        Assert.AreEqual(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc), entry.TimestampUtc);
         Assert.AreEqual(100L, entry.Usn);
         Assert.AreEqual(5UL, entry.ParentRecordNumber);
         Assert.AreEqual(FileAttributes.Archive, entry.FileAttributes);
@@ -332,7 +332,7 @@ public class UsnJournalTests
             FileAttributes = 0,
             FileName = "test.txt"
         });
-        Assert.AreEqual(DateTime.MinValue, entry.Timestamp);
+        Assert.AreEqual(DateTime.MinValue, entry.TimestampUtc);
     }
 
     [TestMethod]
@@ -344,7 +344,7 @@ public class UsnJournalTests
             RecordNumber = 77,
             ParentRecordNumber = 5,
             Usn = 9000,
-            Timestamp = timestamp,
+            TimestampUtc = timestamp,
             Reason = UsnReason.FileCreate | UsnReason.Close,
             FileAttributes = FileAttributes.Archive,
             FileName = "reconstructed.txt"
@@ -353,7 +353,7 @@ public class UsnJournalTests
         Assert.AreEqual(77UL, entry.RecordNumber);
         Assert.AreEqual(5UL, entry.ParentRecordNumber);
         Assert.AreEqual(9000L, entry.Usn);
-        Assert.AreEqual(timestamp, entry.Timestamp);
+        Assert.AreEqual(timestamp, entry.TimestampUtc);
         Assert.AreEqual(UsnReason.FileCreate | UsnReason.Close, entry.Reason);
         Assert.AreEqual(FileAttributes.Archive, entry.FileAttributes);
         Assert.AreEqual("reconstructed.txt", entry.FileName);

@@ -242,7 +242,7 @@ public partial class NativeCoverageTests
             // 4=entries malloc, 5=strings malloc, 6=realloc when capacity exceeded
             NativeTestHooks.NativeSetAllocFailCountdown(6);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -280,7 +280,7 @@ public partial class NativeCoverageTests
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 5000, 4096);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 4096);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 4096, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -314,7 +314,7 @@ public partial class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 5000, 4096);
 
             // Substring match on "file" should match all synthetic records
-            var resultPointer = MFTLibNative._parseMftFromFile(path, "file", MatchFlags.Contains, 4096);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, "file", MatchFlags.Contains, 4096, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {

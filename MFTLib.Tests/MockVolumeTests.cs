@@ -173,8 +173,8 @@ public class MockVolumeTests
         var volume = MftVolume.Open("C");
         volume.Dispose();
 
-        Assert.ThrowsException<ObjectDisposedException>(volume.ReadAllRecords);
-        Assert.ThrowsException<ObjectDisposedException>(() => volume.FindByName("test"));
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.ReadAll());
+        Assert.ThrowsException<ObjectDisposedException>(() => volume.FindName("test"));
         Assert.ThrowsException<ObjectDisposedException>(() => volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None));
     }
 
@@ -186,7 +186,7 @@ public class MockVolumeTests
         SetupMocks();
 
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAllRecords();
+        var records = volume.ReadAll();
 
         Assert.AreEqual(3, records.Length);
         Assert.AreEqual(0UL, records[0].RecordNumber);
@@ -200,7 +200,7 @@ public class MockVolumeTests
         SetupMocks(withPaths: true);
 
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAllRecords(true);
+        var records = volume.ReadAll(true);
 
         Assert.AreEqual(3, records.Length);
         Assert.AreEqual(@"C:\dir\file0.txt", records[0].FullPath);
@@ -213,11 +213,10 @@ public class MockVolumeTests
         SetupMocks();
 
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAllRecords(out var timings);
+        var records = volume.ReadAll(out _, out var totalRecords);
 
         Assert.AreEqual(3, records.Length);
-        Assert.AreEqual(3UL, timings.TotalRecords);
-        Assert.IsTrue(timings.MarshalMs >= 0);
+        Assert.AreEqual(3UL, totalRecords);
     }
 
     [TestMethod]
@@ -226,11 +225,11 @@ public class MockVolumeTests
         SetupMocks(withPaths: true);
 
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAllRecords(true, out var timings);
+        var records = volume.ReadAll(true, out _, out var totalRecords);
 
         Assert.AreEqual(3, records.Length);
         Assert.AreEqual(@"C:\dir\file0.txt", records[0].FullPath);
-        Assert.AreEqual(3UL, timings.TotalRecords);
+        Assert.AreEqual(3UL, totalRecords);
     }
 
     // --- FindByName ---
@@ -265,7 +264,7 @@ public class MockVolumeTests
         };
 
         using var volume = MftVolume.Open("C");
-        var records = volume.FindByName("test.txt");
+        var records = volume.FindName("test.txt");
 
         Assert.AreEqual(1, records.Length);
         Assert.AreEqual("test.txt", capturedFilter);
@@ -278,10 +277,46 @@ public class MockVolumeTests
         SetupMocks(2);
 
         using var volume = MftVolume.Open("C");
-        var records = volume.FindByName("file", MatchFlags.Contains, out var timings);
+        var records = volume.FindName("file", MatchFlags.Contains, out _, out var totalRecords);
 
         Assert.AreEqual(2, records.Length);
-        Assert.AreEqual(2UL, timings.TotalRecords);
+        Assert.AreEqual(2UL, totalRecords);
+    }
+
+    [DataTestMethod]
+    [DataRow(MatchFlags.None)]
+    [DataRow(MatchFlags.ResolvePaths)]
+    [DataRow(MatchFlags.IncludeFreed | MatchFlags.ResolvePaths)]
+    public void StreamRecords_FilterWithoutAMatchBit_ThrowsBeforeAnyNativeCall(MatchFlags matchFlags)
+    {
+        FileUtilities._getVolumeHandle = _ => FakeHandle();
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) =>
+            throw new AssertFailedException("No native call is made.");
+        using var volume = MftVolume.Open("C");
+
+        // The assertion runs the lambda synchronously.
+        // ReSharper disable once AccessToDisposedClosure
+        var exception = Assert.ThrowsException<ArgumentException>(
+            () => volume.StreamRecords("test.txt", matchFlags, null, null, CancellationToken.None));
+
+        Assert.AreEqual("matchFlags", exception.ParamName);
+        StringAssert.Contains(exception.Message, nameof(MatchFlags.ExactMatch));
+        StringAssert.Contains(exception.Message, nameof(MatchFlags.Contains));
+    }
+
+    [DataTestMethod]
+    [DataRow(MatchFlags.ExactMatch)]
+    [DataRow(MatchFlags.Contains)]
+    [DataRow(MatchFlags.None)]
+    public void StreamRecords_FilterWithAMatchBitOrNoFilter_CallsTheNativeParser(MatchFlags matchFlags)
+    {
+        SetupMocks();
+        using var volume = MftVolume.Open("C");
+
+        using var stream = volume.StreamRecords(
+            matchFlags == MatchFlags.None ? null : "test.txt", matchFlags, null, null, CancellationToken.None);
+
+        Assert.AreEqual(3UL, stream.TotalRecords);
     }
 
     // --- StreamRecords ---
@@ -366,7 +401,7 @@ public class MockVolumeTests
     [TestMethod]
     public void ParseMFTFromFile_WithTimings_ReturnsRecordsAndTimings()
     {
-        MFTLibNative._parseMftFromFile = (_, _, _, _) => BuildResult(2);
+        MFTLibNative._parseMftFromFile = (_, _, _, _, _, _) => BuildResult(2);
         MFTLibNative._freeMftResult = ptr =>
         {
             var p = Marshal.PtrToStructure<MftParseResult>(ptr);
@@ -383,16 +418,16 @@ public class MockVolumeTests
             Marshal.FreeHGlobal(ptr);
         };
 
-        var records = MftVolume.ParseMFTFromFile("fake.bin", out var timings);
+        var records = DirectParse.ParseFile("fake.bin", out _, out var totalRecords);
 
         Assert.AreEqual(2, records.Length);
-        Assert.AreEqual(2UL, timings.TotalRecords);
+        Assert.AreEqual(2UL, totalRecords);
     }
 
     [TestMethod]
     public void StreamMFTFromFile_ReturnsStream()
     {
-        MFTLibNative._parseMftFromFile = (_, _, _, _) => BuildResult(3);
+        MFTLibNative._parseMftFromFile = (_, _, _, _, _, _) => BuildResult(3);
         MFTLibNative._freeMftResult = ptr =>
         {
             var p = Marshal.PtrToStructure<MftParseResult>(ptr);
@@ -409,7 +444,7 @@ public class MockVolumeTests
             Marshal.FreeHGlobal(ptr);
         };
 
-        using var result = MftVolume.StreamMFTFromFile("fake.bin");
+        using var result = MftVolume.StreamMftFromFile("fake.bin");
 
         Assert.AreEqual(3UL, result.TotalRecords);
         Assert.AreEqual(3UL, result.UsedRecords);
@@ -418,10 +453,10 @@ public class MockVolumeTests
     [TestMethod]
     public void StreamMFTFromFile_NullReturn_ThrowsInvalidOperation()
     {
-        MFTLibNative._parseMftFromFile = (_, _, _, _) => IntPtr.Zero;
+        MFTLibNative._parseMftFromFile = (_, _, _, _, _, _) => IntPtr.Zero;
 
         Assert.ThrowsException<InvalidOperationException>(() =>
-            MftVolume.StreamMFTFromFile("fake.bin"));
+            MftVolume.StreamMftFromFile("fake.bin"));
     }
 
     // --- MftResult Error and Dispose ---
@@ -561,7 +596,7 @@ public class MockVolumeTests
         SetupMocks(5);
 
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAllRecords();
+        var records = volume.ReadAll();
 
         Assert.AreEqual(5, records.Length);
         Assert.AreEqual("file0.txt", records[0].FileName);

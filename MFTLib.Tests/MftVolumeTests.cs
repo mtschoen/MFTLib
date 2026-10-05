@@ -34,27 +34,25 @@ public partial class MftVolumeTests
     public void ParseMFTFromFile_ReadAll_ReturnsRecords()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out var timings);
+        var records = DirectParse.ParseFile(_tempMftPath, out _, out var totalRecords);
 
         Assert.IsTrue(records.Length > 0);
-        Assert.IsTrue(timings.TotalRecords >= 1000);
+        Assert.IsTrue(totalRecords >= 1000);
         Assert.IsNotNull(records[0].FileName);
     }
 
     [TestMethod]
-    public void ParseMFTFromFile_FilterWithNoMatchBits_ReturnsEmpty()
+    public void ParseMFTFromFile_FilterWithNoMatchBits_Throws()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.None, out _);
-        Assert.AreEqual(0, records.Length, "Expected no results when filter is set but no match bits");
+        Assert.ThrowsException<ArgumentException>(() => DirectParse.ParseFile(_tempMftPath, "README.md", MatchFlags.None, out _));
     }
 
     [TestMethod]
-    public void ParseMFTFromFile_FilterWithResolvePathsOnly_ReturnsEmpty()
+    public void ParseMFTFromFile_FilterWithResolvePathsOnly_Throws()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.ResolvePaths, out _);
-        Assert.AreEqual(0, records.Length, "Expected no results when filter is set but only resolve-paths bit is set");
+        Assert.ThrowsException<ArgumentException>(() => DirectParse.ParseFile(_tempMftPath, "README.md", MatchFlags.ResolvePaths, out _));
     }
 
     [TestMethod]
@@ -63,9 +61,9 @@ public partial class MftVolumeTests
         Assert.IsNotNull(_tempMftPath);
         // Both match bits set. Native code checks exact first, so
         // "README.md" should match exactly, not as a substring
-        var bothBits = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md",
+        var bothBits = DirectParse.ParseFile(_tempMftPath, "README.md",
             MatchFlags.ExactMatch | MatchFlags.Contains, out _);
-        var exactOnly = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.ExactMatch, out _);
+        var exactOnly = DirectParse.ParseFile(_tempMftPath, "README.md", MatchFlags.ExactMatch, out _);
 
         Assert.AreEqual(exactOnly.Length, bothBits.Length, "1|2 should behave the same as 1 (exact wins)");
     }
@@ -75,9 +73,9 @@ public partial class MftVolumeTests
     {
         Assert.IsNotNull(_tempMftPath);
         // All bits set. Should be same as ExactMatch|ResolvePaths since exact takes precedence
-        var allBits = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md",
+        var allBits = DirectParse.ParseFile(_tempMftPath, "README.md",
             MatchFlags.ExactMatch | MatchFlags.Contains | MatchFlags.ResolvePaths, out _);
-        var exactWithPaths = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md",
+        var exactWithPaths = DirectParse.ParseFile(_tempMftPath, "README.md",
             MatchFlags.ExactMatch | MatchFlags.ResolvePaths, out _);
 
         Assert.AreEqual(exactWithPaths.Length, allBits.Length, "1|2|4 should behave the same as 1|4");
@@ -92,7 +90,7 @@ public partial class MftVolumeTests
     public void ParseMFTFromFile_NullFilterWithResolvePaths_PopulatesPaths()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, null, MatchFlags.ResolvePaths, out _);
 
         Assert.IsTrue(records.Length > 0, "Expected records to be returned");
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
@@ -108,18 +106,17 @@ public partial class MftVolumeTests
     public void ParseMFTFromFile_Timings_ArePopulated()
     {
         Assert.IsNotNull(_tempMftPath);
-        MftVolume.ParseMFTFromFile(_tempMftPath, out var timings);
+        DirectParse.ParseFile(_tempMftPath, out var timings, out var totalRecords);
 
-        Assert.IsTrue(timings.TotalRecords >= 1000);
-        Assert.IsTrue(timings.NativeTotalMs >= 0);
-        Assert.IsTrue(timings.MarshalMs >= 0);
+        Assert.IsTrue(totalRecords >= 1000);
+        Assert.IsTrue(timings.NativeTotal >= TimeSpan.Zero);
     }
 
     [TestMethod]
     public void ParseMFTFromFile_AllRecords_HaveFileNames()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, out _);
 
         foreach (var record in records)
         {
@@ -132,7 +129,7 @@ public partial class MftVolumeTests
     public void ParseMFTFromFile_ContainsDirectoriesAndFiles()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, out _);
 
         var hasDirectory = records.Any(r => r.IsDirectory);
         var hasFile = records.Any(r => !r.IsDirectory && r.InUse);
@@ -145,7 +142,7 @@ public partial class MftVolumeTests
     public void ParseMFTFromFile_RecordNumbers_AreUnique()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, out _);
         var uniqueCount = records.Select(r => r.RecordNumber).Distinct().Count();
         Assert.AreEqual(records.Length, uniqueCount, "Expected all record numbers to be unique");
     }
@@ -154,7 +151,7 @@ public partial class MftVolumeTests
     public void ParseMFTFromFile_WithSubstringFilter_ReturnsMatches()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "main", MatchFlags.Contains, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, "main", MatchFlags.Contains, out _);
 
         Assert.IsTrue(records.Length > 0, "Expected substring filter 'main' to match some records");
         foreach (var record in records)
@@ -168,7 +165,7 @@ public partial class MftVolumeTests
     public void ParseMFTFromFile_ExactFilter_NoMatch_ReturnsEmpty()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "nonexistent_file_xyz", MatchFlags.ExactMatch, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, "nonexistent_file_xyz", MatchFlags.ExactMatch, out _);
         Assert.AreEqual(0, records.Length);
     }
 
@@ -177,7 +174,7 @@ public partial class MftVolumeTests
     {
         Assert.IsNotNull(_tempMftPath);
         // "README.md" is one of the fixed synthetic filenames
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md", MatchFlags.ExactMatch, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, "README.md", MatchFlags.ExactMatch, out _);
         Assert.IsTrue(records.Length > 0, "Expected exact filter to find 'README.md'");
         foreach (var record in records)
         {
@@ -190,7 +187,7 @@ public partial class MftVolumeTests
     {
         Assert.IsNotNull(_tempMftPath);
         // Path resolution requires filter != null; use substring match + resolve paths (2|4=6)
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, "README.md",
+        var records = DirectParse.ParseFile(_tempMftPath, "README.md",
             MatchFlags.ExactMatch | MatchFlags.ResolvePaths, out _);
 
         Assert.IsTrue(records.Length > 0, "Expected filter to match some records");
@@ -209,7 +206,7 @@ public partial class MftVolumeTests
     {
         Assert.IsNotNull(_tempMftPath);
         var records =
-            MftVolume.ParseMFTFromFile(_tempMftPath, "main", MatchFlags.Contains | MatchFlags.ResolvePaths, out _);
+            DirectParse.ParseFile(_tempMftPath, "main", MatchFlags.Contains | MatchFlags.ResolvePaths, out _);
 
         Assert.IsTrue(records.Length > 0, "Expected combined filter to match");
         foreach (var record in records)
@@ -223,7 +220,7 @@ public partial class MftVolumeTests
     public void ParseMFTFromFile_RootRecord_IsDirectory()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, out _);
 
         // Synthetic MFT places root at record 5 with name "."
         var root = records.FirstOrDefault(r => r.RecordNumber == 5);
@@ -236,7 +233,7 @@ public partial class MftVolumeTests
     public void ParseMFTFromFile_SystemRecords_ArePresent()
     {
         Assert.IsNotNull(_tempMftPath);
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, out _);
 
         // Records 0-4 are $MFT in synthetic data
         var mftRecords = records.Where(r => r.RecordNumber < 5).ToArray();
@@ -285,11 +282,11 @@ public partial class MftVolumeTests
     {
         Assert.IsNotNull(_tempMftPath);
         // Scan without paths, then selectively resolve a few records
-        var records = MftVolume.ParseMFTFromFile(_tempMftPath, out _);
+        var records = DirectParse.ParseFile(_tempMftPath, out _);
         var lookup = records.ToDictionary(r => r.RecordNumber);
 
         // Also scan with native path resolution for comparison
-        var withPaths = MftVolume.ParseMFTFromFile(_tempMftPath, null, MatchFlags.ResolvePaths, out _);
+        var withPaths = DirectParse.ParseFile(_tempMftPath, null, MatchFlags.ResolvePaths, out _);
         var pathLookup = withPaths.Where(r => r.FullPath != null).ToDictionary(r => r.RecordNumber);
 
         // Resolve a few records manually and verify they match native resolution
@@ -338,10 +335,10 @@ public partial class MftVolumeTests
         try
         {
             MftVolume.GenerateSyntheticMFT(tempPath, 1000, 256, recordSize);
-            var records = MftVolume.ParseMFTFromFile(tempPath, out var timings);
+            var records = DirectParse.ParseFile(tempPath, out _, out var totalRecords);
 
             Assert.IsTrue(records.Length > 0);
-            Assert.AreEqual(1000UL, timings.TotalRecords);
+            Assert.AreEqual(1000UL, totalRecords);
 
             var rec0 = records.FirstOrDefault(r => r.RecordNumber == 0);
             Assert.IsNotNull(rec0, "Record 0 ($MFT) must exist");

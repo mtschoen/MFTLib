@@ -10,7 +10,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 3;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 4;
 
 // Parser-synthesized, not an on-disk NTFS record flag. The flags field carries the
 // raw FILE_RECORD_SEGMENT_HEADER flags in the low bits; the parser sets this top

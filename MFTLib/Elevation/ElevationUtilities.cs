@@ -18,9 +18,12 @@ public static class ElevationUtilities
     internal static Func<string?> _getProcessPathFunc = () => Environment.ProcessPath;
     internal static Func<ProcessStartInfo, Process?> _startProcess = Process.Start;
     internal static Func<bool> _isUserInteractive = () => Environment.UserInteractive;
-    internal static Func<Process, int, bool> _waitForExit = (process, timeoutMs) => process.WaitForExit(timeoutMs);
+    internal static Func<Process, TimeSpan, bool> _waitForExit = (process, timeout) => process.WaitForExit(timeout);
     internal static Action<Process> _killProcess = process => process.Kill();
     internal static Func<Process, int> _getExitCode = process => process.ExitCode;
+
+    /// <summary>The wait <see cref="TryRunElevated" /> callers use when they have no reason to choose another: 60 seconds.</summary>
+    public static readonly TimeSpan DefaultElevatedTimeout = TimeSpan.FromSeconds(60);
 
     /// <summary>
     ///     Default <see cref="IElevationProvider" /> backed by the static methods below.
@@ -34,7 +37,7 @@ public static class ElevationUtilities
         _getProcessPathFunc = () => Environment.ProcessPath;
         _startProcess = Process.Start;
         _isUserInteractive = () => Environment.UserInteractive;
-        _waitForExit = (process, timeoutMs) => process.WaitForExit(timeoutMs);
+        _waitForExit = (process, timeout) => process.WaitForExit(timeout);
         _killProcess = process => process.Kill();
         _getExitCode = process => process.ExitCode;
     }
@@ -91,11 +94,26 @@ public static class ElevationUtilities
     ///     Launch an elevated copy of this executable with the given arguments and wait
     ///     for it to exit. Returns false if the process path is unavailable, the user
     ///     declines UAC, the child process returns a non-zero exit code, the timeout
-    ///     elapses (in which case the child is killed), or there is no interactive
+    ///     elapses (in which case the child is killed), the timeout is unsupported by
+    ///     <see cref="Process.WaitForExit(TimeSpan)" />, or there is no interactive
     ///     session to host a UAC consent prompt (e.g. a Session 0 service host).
     /// </summary>
-    public static bool TryRunElevated(string arguments, int timeoutMs = 60000)
+    /// <param name="arguments">
+    ///     Arguments for the elevated child, one element per argument. Each is quoted for the
+    ///     child's command line, so an element may contain spaces or quotation marks.
+    /// </param>
+    /// <param name="timeout">
+    ///     Maximum time to wait for the elevated child; <see cref="DefaultElevatedTimeout" /> is a sensible choice.
+    ///     Must be between 0 and <see cref="int.MaxValue" /> milliseconds, or <see cref="Timeout.InfiniteTimeSpan" />.
+    /// </param>
+    public static bool TryRunElevated(IReadOnlyList<string> arguments, TimeSpan timeout)
     {
+        var totalMilliseconds = (long)timeout.TotalMilliseconds;
+        if (totalMilliseconds < -1 || totalMilliseconds > int.MaxValue || (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan))
+        {
+            return false;
+        }
+
         var exePath = GetProcessPath();
         if (string.IsNullOrEmpty(exePath))
         {
@@ -120,11 +138,14 @@ public static class ElevationUtilities
             var startInfo = new ProcessStartInfo
             {
                 FileName = exePath,
-                Arguments = arguments,
                 Verb = "runas",
                 UseShellExecute = true,
                 CreateNoWindow = true
             };
+            foreach (var argument in arguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
 
             var process = _startProcess(startInfo);
             if (process == null)
@@ -132,7 +153,7 @@ public static class ElevationUtilities
                 return false;
             }
 
-            if (!_waitForExit(process, timeoutMs))
+            if (!_waitForExit(process, timeout))
             {
                 _killProcess(process);
                 return false;
@@ -163,8 +184,8 @@ sealed class DefaultElevationProvider : IElevationProvider
         return ElevationUtilities.CanSelfElevate();
     }
 
-    public bool TryRunElevated(string arguments, int timeoutMs = 60000)
+    public bool TryRunElevated(IReadOnlyList<string> arguments, TimeSpan timeout)
     {
-        return ElevationUtilities.TryRunElevated(arguments, timeoutMs);
+        return ElevationUtilities.TryRunElevated(arguments, timeout);
     }
 }

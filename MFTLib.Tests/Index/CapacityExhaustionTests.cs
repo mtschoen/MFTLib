@@ -57,7 +57,7 @@ public class CapacityExhaustionTests
             RecordNumber = recordNumber,
             ParentRecordNumber = 0,
             Usn = 1,
-            Timestamp = Moment,
+            TimestampUtc = Moment,
             Reason = UsnReason.FileCreate | UsnReason.Close,
             FileAttributes = FileAttributes.Archive,
             FileName = fileName

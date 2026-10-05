@@ -152,7 +152,7 @@ internal sealed class JournalMutator
         var path = IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex);
         Writer.MarkTombstone(rowIndex);
         return new FileChange(FileChangeKind.Deleted, FileEntry.Create(snapshot, driveOrdinal, rowIndex), path,
-            entry.Timestamp);
+            entry.TimestampUtc);
     }
 
     /// <summary>
@@ -169,7 +169,7 @@ internal sealed class JournalMutator
         if (hydrated)
         {
             return new FileChange(FileChangeKind.Created, FileEntry.Create(snapshot, driveOrdinal, rowIndex),
-                IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex), entry.Timestamp);
+                IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex), entry.TimestampUtc);
         }
 
         return ApplyRename(snapshot, driveOrdinal, entry, rowIndex);
@@ -192,7 +192,7 @@ internal sealed class JournalMutator
             return false;
         }
 
-        var modifiedTicks = entry.Timestamp.Ticks;
+        var modifiedTicks = entry.TimestampUtc.Ticks;
         var attributes = (uint)entry.FileAttributes;
         if (row.ModifiedTicks == modifiedTicks && row.Attributes == attributes)
         {
@@ -213,7 +213,7 @@ internal sealed class JournalMutator
         }
 
         return new FileChange(FileChangeKind.Created, FileEntry.Create(snapshot, driveOrdinal, rowIndex),
-            IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex), entry.Timestamp);
+            IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex), entry.TimestampUtc);
     }
 
     FileChange? ApplyRename(Snapshot snapshot, ushort driveOrdinal, UsnJournalEntry entry, uint rowIndex)
@@ -224,10 +224,10 @@ internal sealed class JournalMutator
             return null;
         }
 
-        Writer.Block.Rows[(int)rowIndex].ModifiedTicks = entry.Timestamp.Ticks;
+        Writer.Block.Rows[(int)rowIndex].ModifiedTicks = entry.TimestampUtc.Ticks;
         return new FileChange(FileChangeKind.Renamed,
             FileEntry.Create(snapshot, driveOrdinal, rowIndex), IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex),
-            entry.Timestamp, previousPath);
+            entry.TimestampUtc, previousPath);
     }
 
     /// <summary>
@@ -247,10 +247,10 @@ internal sealed class JournalMutator
 
         ref var row = ref Writer.Block.Rows[(int)rowIndex];
         // USN records carry no size, so the size column is left to a producer.
-        row.ModifiedTicks = entry.Timestamp.Ticks;
+        row.ModifiedTicks = entry.TimestampUtc.Ticks;
         row.Attributes = (uint)entry.FileAttributes;
         return new FileChange(FileChangeKind.Modified, FileEntry.Create(snapshot, driveOrdinal, rowIndex),
-            IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex), entry.Timestamp);
+            IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex), entry.TimestampUtc);
     }
 
     /// <summary>
@@ -303,6 +303,6 @@ internal sealed class JournalMutator
         }
 
         return new RowColumns((uint)entry.ParentRecordNumber, flags, (uint)entry.FileAttributes, Size: 0,
-            entry.Timestamp.Ticks, entry.SequenceNumber);
+            entry.TimestampUtc.Ticks, entry.SequenceNumber);
     }
 }

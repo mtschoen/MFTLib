@@ -20,7 +20,7 @@ public partial class NativeCoverageTests
 
             // Fail the first calloc (result allocation)
             NativeTestHooks.NativeSetAllocFailCountdown(1);
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreEqual(IntPtr.Zero, resultPointer);
         }
         finally
@@ -43,7 +43,7 @@ public partial class NativeCoverageTests
 
             // Fail the second alloc (lookup.init when resolving paths)
             NativeTestHooks.NativeSetAllocFailCountdown(2);
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -77,7 +77,7 @@ public partial class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
             NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -111,7 +111,7 @@ public partial class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
             NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -145,7 +145,7 @@ public partial class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 10, 256);
 
             NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -183,7 +183,7 @@ public partial class NativeCoverageTests
             MftVolume.GenerateSyntheticMFT(path, 4000, 8192);
 
             NativeTestHooks.NativeSetAllocFailCountdown(allocationToFail);
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 8192);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, matchFlags, 8192, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -274,7 +274,7 @@ public partial class NativeCoverageTests
 
             // Fail the first ReadFile in FileReadChunk
             NativeTestHooks.NativeSetReadFailCountdown(1);
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {

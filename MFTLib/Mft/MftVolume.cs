@@ -1,9 +1,22 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using MFTLib.Interop;
 using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib;
+
+/// <summary>
+///     Optional execution controls for <see cref="MftVolume.StreamMftFromFile" />: progress reporting,
+///     thread allowance, chunk buffer size, and cancellation.
+/// </summary>
+/// <param name="Progress">Receives one sample per native progress callback.</param>
+/// <param name="ParseThreads">The thread count the parse reads at every chunk; null uses every processor.</param>
+/// <param name="BufferSizeRecords">Records the native parser reads per chunk; defaults to <see cref="MftVolume.DefaultBufferSizeRecords" />.</param>
+/// <param name="CancellationToken">Stops the native parse; a stopped parse throws <see cref="OperationCanceledException" />.</param>
+public readonly record struct MftFileScanOptions(
+    IProgress<MftScanProgress>? Progress = null,
+    ParseThreadAllowance? ParseThreads = null,
+    uint BufferSizeRecords = MftVolume.DefaultBufferSizeRecords,
+    CancellationToken CancellationToken = default);
 
 /// <summary>
 ///     A raw read handle on one NTFS volume. Opening needs the Administrator role because it
@@ -12,6 +25,9 @@ namespace MFTLib;
 /// </summary>
 public sealed partial class MftVolume : IDisposable
 {
+    /// <summary>The records the native parser reads per chunk when the caller names no buffer size: 262144.</summary>
+    public const uint DefaultBufferSizeRecords = 262144;
+
     readonly uint _bufferSizeRecords;
     readonly string _driveLetter;
     readonly string _volumePath;
@@ -44,57 +60,20 @@ public sealed partial class MftVolume : IDisposable
     /// <summary>Opens a volume for reading.</summary>
     /// <param name="volumePath">
     ///     A drive letter (<c>C</c>, <c>C:</c> or <c>C:\</c>), a raw device path (<c>\\.\C:</c>) or a
-    ///     volume GUID path. A GUID path leaves record paths without a drive prefix.
+    ///     volume GUID path (<c>\\?\Volume{guid}</c>, with or without a trailing backslash). A GUID path
+    ///     leaves record paths without a drive prefix.
     /// </param>
     /// <param name="bufferSizeRecords">Records the native parser reads per chunk; also the unit at which cancellation is observed.</param>
     /// <returns>The open volume, which the caller disposes.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="volumePath" /> is null or empty.</exception>
     /// <exception cref="ArgumentException"><paramref name="volumePath" /> is in none of the recognized formats.</exception>
     /// <exception cref="IOException">The volume could not be opened, for example without elevation.</exception>
-    public static MftVolume Open(string volumePath, uint bufferSizeRecords = 262144)
+    public static MftVolume Open(string volumePath, uint bufferSizeRecords = DefaultBufferSizeRecords)
     {
         var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
         var handle = FileUtilities._getVolumeHandle(normalizedPath);
 
         return new MftVolume(handle, normalizedPath, bufferSizeRecords);
-    }
-
-    /// <summary>Parses every record, with names but without resolved paths.</summary>
-    /// <returns>All records as materialized values that outlive this volume.</returns>
-    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
-    public MftRecord[] ReadAllRecords()
-    {
-        return ReadAllRecords(false, out _);
-    }
-
-    /// <summary>Parses every record, optionally resolving full paths.</summary>
-    /// <param name="resolvePaths">True to resolve <see cref="MftRecord.FullPath" />, which adds a resolution pass.</param>
-    /// <returns>All records as materialized values that outlive this volume.</returns>
-    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
-    public MftRecord[] ReadAllRecords(bool resolvePaths)
-    {
-        return ReadAllRecords(resolvePaths, out _);
-    }
-
-    /// <summary>Parses every record without resolving paths and reports how long each phase took.</summary>
-    /// <param name="timings">Phase timings, including the time spent copying records into managed memory.</param>
-    /// <returns>All records as materialized values that outlive this volume.</returns>
-    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
-    public MftRecord[] ReadAllRecords(out MftParseTimings timings)
-    {
-        return ReadAllRecords(false, out timings);
-    }
-
-    /// <summary>Parses every record, optionally resolving paths, and reports how long each phase took.</summary>
-    /// <param name="resolvePaths">True to resolve <see cref="MftRecord.FullPath" />, which adds a resolution pass.</param>
-    /// <param name="timings">Phase timings, including the time spent copying records into managed memory.</param>
-    /// <returns>All records as materialized values that outlive this volume.</returns>
-    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
-    public MftRecord[] ReadAllRecords(bool resolvePaths, out MftParseTimings timings)
-    {
-        using var result = StreamRecords(
-            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None, null, null, CancellationToken.None);
-        return MaterializeWithTimings(result, out timings);
     }
 
     /// <summary>
@@ -117,28 +96,6 @@ public sealed partial class MftVolume : IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             yield return batch;
         }
-    }
-
-    /// <summary>Parses the MFT and keeps only records whose name matches.</summary>
-    /// <param name="name">The name to look for, matched as <paramref name="matchFlags" /> directs.</param>
-    /// <param name="matchFlags">Exact or contains matching, plus optional path resolution; defaults to an exact match.</param>
-    /// <returns>The matching records as materialized values that outlive this volume.</returns>
-    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
-    public MftRecord[] FindByName(string name, MatchFlags matchFlags = MatchFlags.ExactMatch)
-    {
-        return FindByName(name, matchFlags, out _);
-    }
-
-    /// <summary>Parses the MFT, keeps only records whose name matches, and reports how long each phase took.</summary>
-    /// <param name="name">The name to look for, matched as <paramref name="matchFlags" /> directs.</param>
-    /// <param name="matchFlags">Exact or contains matching, plus optional path resolution.</param>
-    /// <param name="timings">Phase timings, including the time spent copying records into managed memory.</param>
-    /// <returns>The matching records as materialized values that outlive this volume.</returns>
-    /// <exception cref="ObjectDisposedException">This volume has been disposed.</exception>
-    public MftRecord[] FindByName(string name, MatchFlags matchFlags, out MftParseTimings timings)
-    {
-        using var result = StreamRecords(name, matchFlags, null, null, CancellationToken.None);
-        return MaterializeWithTimings(result, out timings);
     }
 
     /// <summary>
@@ -165,6 +122,10 @@ public sealed partial class MftVolume : IDisposable
     ///     Stops the native parse between chunks, between 4096-record sub-slices, and between
     ///     path-resolution slices; a stopped parse throws <see cref="OperationCanceledException" />.
     /// </param>
+    /// <exception cref="ArgumentException">
+    ///     <paramref name="filter" /> is set and <paramref name="matchFlags" /> has neither
+    ///     <see cref="MatchFlags.ExactMatch" /> nor <see cref="MatchFlags.Contains" />.
+    /// </exception>
     /// <exception cref="InvalidOperationException">
     ///     <paramref name="parseThreads" /> is attached to another parse that is still running.
     /// </exception>
@@ -172,24 +133,52 @@ public sealed partial class MftVolume : IDisposable
         ParseThreadAllowance? parseThreads, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ValidateFilter(filter, matchFlags);
         MFTLibNative.EnsureCompatibleNativeAbi();
 
+        return ParseToResult(
+            (control, callback) => MFTLibNative._parseMftRecordsWithProgress(
+                _volumeHandle, filter, matchFlags, _bufferSizeRecords, control, callback),
+            "ParseMFTRecords", _driveLetter, progress, parseThreads, cancellationToken);
+    }
+
+    // A filter is matched exactly or by substring; with neither flag the native parser would
+    // silently match nothing, so the mistake is reported before any native call.
+    static void ValidateFilter(string? filter, MatchFlags matchFlags)
+    {
+        if (filter != null && (matchFlags & (MatchFlags.ExactMatch | MatchFlags.Contains)) == 0)
+        {
+            throw new ArgumentException(
+                $"A filter needs {nameof(MatchFlags.ExactMatch)} or {nameof(MatchFlags.Contains)} in matchFlags.",
+                nameof(matchFlags));
+        }
+    }
+
+    // The one place a streaming parse is assembled, for a volume or a saved file alike: the
+    // progress adapter, the control block and its allowance and cancellation hooks, the null
+    // check and the result wrapper. Only the native call differs.
+    static MftResult ParseToResult(
+        Func<IntPtr, MFTLibNative.NativeMftProgressCallback?, IntPtr> nativeParse, string nativeName,
+        string driveLetter, IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads,
+        CancellationToken cancellationToken)
+    {
         var nativeCallback = CreateNativeProgressCallback(progress);
-        var resultPtr = ParseWithControl(filter, matchFlags, nativeCallback, parseThreads, cancellationToken);
+        var resultPtr = ParseWithControl(nativeParse, nativeCallback, parseThreads, cancellationToken);
         GC.KeepAlive(nativeCallback);
 
         if (resultPtr == IntPtr.Zero)
         {
-            throw new InvalidOperationException("ParseMFTRecords returned null");
+            throw new InvalidOperationException($"{nativeName} returned null");
         }
 
-        return new MftResult(resultPtr, _driveLetter, cancellationToken);
+        return new MftResult(resultPtr, driveLetter, cancellationToken);
     }
 
     // Runs the native parse against a control block that stays at one address for the whole call:
     // the allowance writes through to it and the token registration sets its cancellation flag,
     // and both are released before it is freed.
-    unsafe IntPtr ParseWithControl(string? filter, MatchFlags matchFlags,
+    static unsafe IntPtr ParseWithControl(
+        Func<IntPtr, MFTLibNative.NativeMftProgressCallback?, IntPtr> nativeParse,
         MFTLibNative.NativeMftProgressCallback? nativeCallback, ParseThreadAllowance? parseThreads,
         CancellationToken cancellationToken)
     {
@@ -201,8 +190,7 @@ public sealed partial class MftVolume : IDisposable
             {
                 var controlAddress = (IntPtr)control;
                 using var registration = cancellationToken.Register(() => RequestCancel(controlAddress));
-                return MFTLibNative._parseMftRecordsWithProgress(
-                    _volumeHandle, filter, matchFlags, _bufferSizeRecords, (IntPtr)control, nativeCallback);
+                return nativeParse(controlAddress, nativeCallback);
             }
             finally
             {
@@ -244,7 +232,7 @@ public sealed partial class MftVolume : IDisposable
 
     const uint DefaultSyntheticRecordSize = 1024;
 
-    internal static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords = 262144)
+    internal static void GenerateSyntheticMFT(string filePath, ulong recordCount, uint bufferSizeRecords = DefaultBufferSizeRecords)
     {
         GenerateSyntheticMFT(filePath, recordCount, bufferSizeRecords, DefaultSyntheticRecordSize);
     }
@@ -273,60 +261,31 @@ public sealed partial class MftVolume : IDisposable
         }
     }
 
-    /// <summary>Parses a saved MFT image without resolving paths and without needing a volume or elevation.</summary>
-    /// <param name="filePath">The MFT file to parse.</param>
-    /// <param name="timings">Phase timings, including the time spent copying records into managed memory.</param>
-    /// <returns>All records as materialized values.</returns>
-    /// <exception cref="InvalidOperationException">The native parser rejected the file.</exception>
-    public static MftRecord[] ParseMFTFromFile(string filePath, out MftParseTimings timings)
-    {
-        return ParseMFTFromFile(filePath, null, MatchFlags.None, out timings);
-    }
-
-    /// <summary>Parses a saved MFT image with an optional name filter, without needing a volume or elevation.</summary>
+    /// <summary>
+    ///     Parses a saved MFT image and keeps the native result, so records can be enumerated without
+    ///     copying them. Needs no volume and no elevation. <paramref name="options" /> controls progress
+    ///     reporting, thread allowance, cancellation, and chunk buffer size.
+    /// </summary>
     /// <param name="filePath">The MFT file to parse.</param>
     /// <param name="filter">A name to keep, or null for every record.</param>
     /// <param name="matchFlags">How <paramref name="filter" /> is matched and whether paths are resolved.</param>
-    /// <param name="timings">Phase timings, including the time spent copying records into managed memory.</param>
-    /// <param name="bufferSizeRecords">Records the native parser reads per chunk.</param>
-    /// <returns>The matching records as materialized values.</returns>
-    /// <exception cref="InvalidOperationException">The native parser rejected the file.</exception>
-    public static MftRecord[] ParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags,
-        out MftParseTimings timings, uint bufferSizeRecords = 262144)
-    {
-        using var result = StreamMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords);
-        return MaterializeWithTimings(result, out timings);
-    }
-
-    /// <summary>Parses a saved MFT image and keeps the native result, so records can be enumerated without copying them.</summary>
-    /// <param name="filePath">The MFT file to parse.</param>
-    /// <param name="filter">A name to keep, or null for every record.</param>
-    /// <param name="matchFlags">How <paramref name="filter" /> is matched and whether paths are resolved.</param>
-    /// <param name="bufferSizeRecords">Records the native parser reads per chunk.</param>
+    /// <param name="options">Progress, thread allowance, cancellation, and chunk buffer size controls.</param>
     /// <returns>The native result, which the caller disposes.</returns>
-    /// <exception cref="InvalidOperationException">The native parser rejected the file.</exception>
-    public static MftResult StreamMFTFromFile(
-        string filePath, string? filter = null, MatchFlags matchFlags = MatchFlags.None,
-        uint bufferSizeRecords = 262144)
+    /// <exception cref="ArgumentException"><paramref name="filter" /> is set and <paramref name="matchFlags" /> has neither <see cref="MatchFlags.ExactMatch" /> nor <see cref="MatchFlags.Contains" />.</exception>
+    /// <exception cref="InvalidOperationException">
+    ///     The native parser rejected the file, or <see cref="MftFileScanOptions.ParseThreads" /> is attached to another parse that is still running.
+    /// </exception>
+    public static MftResult StreamMftFromFile(string filePath, string? filter = null,
+        MatchFlags matchFlags = MatchFlags.None, MftFileScanOptions options = default)
     {
+        ValidateFilter(filter, matchFlags);
         MFTLibNative.EnsureCompatibleNativeAbi();
-        var resultPtr = MFTLibNative._parseMftFromFile(filePath, filter, matchFlags, bufferSizeRecords);
 
-        if (resultPtr == IntPtr.Zero)
-        {
-            throw new InvalidOperationException("ParseMFTFromFile returned null");
-        }
-
-        return new MftResult(resultPtr, string.Empty);
-    }
-
-    static MftRecord[] MaterializeWithTimings(MftResult result, out MftParseTimings timings)
-    {
-        var sw = Stopwatch.StartNew();
-        var records = result.ToArray();
-        sw.Stop();
-        timings = result.Timings.WithMarshalMs(sw.Elapsed.TotalMilliseconds);
-        return records;
+        var bufferSize = options.BufferSizeRecords > 0 ? options.BufferSizeRecords : DefaultBufferSizeRecords;
+        return ParseToResult(
+            (control, callback) => MFTLibNative._parseMftFromFile(
+                filePath, filter, matchFlags, bufferSize, control, callback),
+            "ParseMFTFromFile", string.Empty, options.Progress, options.ParseThreads, options.CancellationToken);
     }
 
     internal static string ExtractDriveLetter(string normalizedPath)

@@ -48,7 +48,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C", 65536);
-        var records = volume.ReadAllRecords();
+        var records = volume.ReadAll();
         Assert.IsTrue(records.Length > 0);
     }
 
@@ -57,7 +57,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAllRecords();
+        var records = volume.ReadAll();
 
         Assert.IsTrue(records.Length > 0, "Expected records on C:");
     }
@@ -67,12 +67,11 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAllRecords(out var timings);
+        var records = volume.ReadAll(out var timings, out var totalRecords);
 
         Assert.IsTrue(records.Length > 0);
-        Assert.IsTrue(timings.TotalRecords > 0);
-        Assert.IsTrue(timings.NativeTotalMs > 0);
-        Assert.IsTrue(timings.MarshalMs >= 0);
+        Assert.IsTrue(totalRecords > 0);
+        Assert.IsTrue(timings.NativeTotal > TimeSpan.Zero);
     }
 
     [TestMethod]
@@ -80,7 +79,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAllRecords(true);
+        var records = volume.ReadAll(true);
 
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
         Assert.IsTrue(withPaths.Length > 0, "Expected some records with resolved paths");
@@ -91,9 +90,9 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var records = volume.ReadAllRecords(true, out var timings);
+        var records = volume.ReadAll(true, out _, out var totalRecords);
 
-        Assert.IsTrue(timings.TotalRecords > 0);
+        Assert.IsTrue(totalRecords > 0);
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
         Assert.IsTrue(withPaths.Length > 0, "Expected some records with resolved paths");
 
@@ -108,12 +107,12 @@ public class MftVolumeAdminTests
         RequireElevation();
         using var volume = MftVolume.Open("C");
         // ntldr or bootmgr should exist on C:
-        var records = volume.FindByName("bootmgr");
+        var records = volume.FindName("bootmgr");
 
         // If bootmgr doesn't exist, try a Windows system file
         if (records.Length == 0)
         {
-            records = volume.FindByName("ntldr");
+            records = volume.FindName("ntldr");
         }
 
         // At minimum, we verified the call didn't throw
@@ -125,7 +124,7 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var records = volume.FindByName(".dll", MatchFlags.Contains);
+        var records = volume.FindName(".dll", MatchFlags.Contains);
 
         Assert.IsTrue(records.Length > 0, "Expected to find some .dll files on C:");
     }
@@ -135,12 +134,12 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        var records = volume.FindByName(".exe", MatchFlags.Contains | MatchFlags.ResolvePaths, out var timings);
+        var records = volume.FindName(".exe", MatchFlags.Contains | MatchFlags.ResolvePaths, out _, out var totalRecords);
 
         Assert.IsTrue(records.Length > 0, "Expected to find some .exe files");
         var withPaths = records.Where(r => r.FullPath != null).ToArray();
         Assert.IsTrue(withPaths.Length > 0, "Expected resolved paths");
-        Assert.IsTrue(timings.TotalRecords > 0);
+        Assert.IsTrue(totalRecords > 0);
     }
 
     [TestMethod]
@@ -176,19 +175,15 @@ public class MftVolumeAdminTests
     }
 
     [TestMethod]
-    public void StreamRecords_FilterWithNoMatchBits_ReturnsEmpty()
+    public void StreamRecords_FilterWithNoMatchBits_Throws()
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords("explorer.exe", MatchFlags.None, null, null, CancellationToken.None);
 
-        var count = 0;
-        foreach (var _ in result)
-        {
-            count++;
-        }
-
-        Assert.AreEqual(0, count, "Expected no results when filter is set but no match bits");
+        // The assertion runs the lambda synchronously.
+        // ReSharper disable once AccessToDisposedClosure
+        Assert.ThrowsException<ArgumentException>(() =>
+            volume.StreamRecords("explorer.exe", MatchFlags.None, null, null, CancellationToken.None));
     }
 
     [TestMethod]

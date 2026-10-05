@@ -132,7 +132,7 @@ public partial class NativeParserCoverageTests
             // this countdown fails.
             NativeTestHooks.NativeSetFailPlatformRead(2);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -164,7 +164,7 @@ public partial class NativeParserCoverageTests
         {
             File.WriteAllBytes(path, []);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -205,7 +205,7 @@ public partial class NativeParserCoverageTests
             // 8=entries, 9=strings, 10=path entries, 11=path strings.
             NativeTestHooks.NativeSetAllocFailCountdown(11);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -269,7 +269,7 @@ public partial class NativeParserCoverageTests
             // 12=path string-pool growth (the initial merge fits).
             NativeTestHooks.NativeSetAllocFailCountdown(12);
 
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 512);
+            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.ResolvePaths, 512, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {

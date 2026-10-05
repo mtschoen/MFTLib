@@ -63,10 +63,10 @@ public class DriveScannerOfflineTests
         var lines = new List<string>();
         uint parsedWith = 0;
         var route = MFTLibNative._parseMftFromFile;
-        MFTLibNative._parseMftFromFile = (filePath, filter, matchFlags, bufferSizeRecords) =>
+        MFTLibNative._parseMftFromFile = (filePath, filter, matchFlags, bufferSizeRecords, control, callback) =>
         {
             parsedWith = bufferSizeRecords;
-            return route(filePath, filter, matchFlags, bufferSizeRecords);
+            return route(filePath, filter, matchFlags, bufferSizeRecords, control, callback);
         };
 
         var arguments = new List<string> { "parse-file", _fixturePath, "--no-paths" };

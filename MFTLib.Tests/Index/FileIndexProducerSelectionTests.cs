@@ -401,7 +401,7 @@ public class FileIndexProducerSelectionTests
             FileName = "tracked.txt",
             Reason = UsnReason.FileCreate,
             Usn = 5000,
-            Timestamp = FixedMoment,
+            TimestampUtc = FixedMoment,
             FileAttributes = FileAttributes.Archive
         });
         var closed = UsnJournalEntry.Create(new UsnJournalEntryOptions
@@ -411,7 +411,7 @@ public class FileIndexProducerSelectionTests
             FileName = "tracked.txt",
             Reason = UsnReason.FileCreate | UsnReason.Close,
             Usn = 5001,
-            Timestamp = FixedMoment,
+            TimestampUtc = FixedMoment,
             FileAttributes = FileAttributes.Archive
         });
 
@@ -422,7 +422,7 @@ public class FileIndexProducerSelectionTests
             FileName = "control.txt",
             Reason = UsnReason.FileCreate,
             Usn = 5000,
-            Timestamp = FixedMoment,
+            TimestampUtc = FixedMoment,
             FileAttributes = FileAttributes.Archive
         });
         var controlClosed = UsnJournalEntry.Create(new UsnJournalEntryOptions
@@ -432,7 +432,7 @@ public class FileIndexProducerSelectionTests
             FileName = "control.txt",
             Reason = UsnReason.FileCreate | UsnReason.Close,
             Usn = 5001,
-            Timestamp = FixedMoment,
+            TimestampUtc = FixedMoment,
             FileAttributes = FileAttributes.Archive
         });
 

@@ -18,7 +18,7 @@ public static class SyntheticJournalEntry
             ParentRecordNumber = options.ParentRecordNumber,
             SequenceNumber = options.SequenceNumber,
             Usn = options.Usn,
-            Timestamp = options.TimestampUtc ?? DateTime.UnixEpoch,
+            TimestampUtc = options.TimestampUtc ?? DateTime.UnixEpoch,
             Reason = options.Reason,
             FileAttributes = options.FileAttributes,
             FileName = options.FileName

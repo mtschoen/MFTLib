@@ -48,7 +48,7 @@ public class MftFixtureTests
             return;
         }
 
-        var records = MftVolume.ParseMFTFromFile(_fixturePath, out _);
+        var records = DirectParse.ParseFile(_fixturePath, out _);
         Assert.AreEqual(8, records.Length);
         CollectionAssert.AreEquivalent(
             new ulong[] { 0, 5, 6, 7, 8, 9, 10, 11 },
@@ -63,7 +63,7 @@ public class MftFixtureTests
             return;
         }
 
-        var records = MftVolume.ParseMFTFromFile(_fixturePath, out _)
+        var records = DirectParse.ParseFile(_fixturePath, out _)
             .ToDictionary(record => record.RecordNumber);
         Assert.AreEqual("resident.txt", records[6].FileName);
         Assert.AreEqual(5ul, records[6].ParentRecordNumber);
@@ -81,7 +81,7 @@ public class MftFixtureTests
             return;
         }
 
-        var records = MftVolume.ParseMFTFromFile(_fixturePath, out _)
+        var records = DirectParse.ParseFile(_fixturePath, out _)
             .ToDictionary(record => record.RecordNumber);
         foreach (var (recordNumber, record) in records)
         {
@@ -99,7 +99,7 @@ public class MftFixtureTests
             return;
         }
 
-        var records = MftVolume.ParseMFTFromFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
+        var records = DirectParse.ParseFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
         Assert.AreEqual(37L, records[6].Size);
         Assert.IsTrue(records[6].SizeKnown);
     }
@@ -112,7 +112,7 @@ public class MftFixtureTests
             return;
         }
 
-        var records = MftVolume.ParseMFTFromFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
+        var records = DirectParse.ParseFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
         Assert.AreEqual(1234567L, records[7].Size);
         // Record 10's first $DATA has a nonzero lowest virtual cluster number, whose file
         // size field is not valid; the parser must take the second one.
@@ -128,7 +128,7 @@ public class MftFixtureTests
             return;
         }
 
-        var records = MftVolume.ParseMFTFromFile(_fixturePath, out _)
+        var records = DirectParse.ParseFile(_fixturePath, out _)
             .ToDictionary(record => record.RecordNumber);
         var record = records[11];
         Assert.AreEqual("negative-size.bin", record.FileName);
@@ -145,7 +145,7 @@ public class MftFixtureTests
             return;
         }
 
-        var records = MftVolume.ParseMFTFromFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
+        var records = DirectParse.ParseFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
         Assert.AreEqual(0L, records[8].Size);
         Assert.IsTrue(records[8].SizeKnown, "a directory has a known size of zero");
         Assert.AreEqual(0L, records[9].Size);

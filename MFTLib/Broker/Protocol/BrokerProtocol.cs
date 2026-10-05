@@ -31,7 +31,7 @@ internal static partial class BrokerProtocol
         offset += 2;
         BinaryPrimitives.WriteInt64LittleEndian(span[offset..], entry.Usn);
         offset += 8;
-        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], entry.Timestamp.Ticks);
+        BinaryPrimitives.WriteInt64LittleEndian(span[offset..], entry.TimestampUtc.Ticks);
         offset += 8;
         BinaryPrimitives.WriteUInt32LittleEndian(span[offset..], (uint)entry.Reason);
         offset += 4;
@@ -72,7 +72,7 @@ internal static partial class BrokerProtocol
             ParentRecordNumber = parentRecordNumber,
             SequenceNumber = sequenceNumber,
             Usn = usn,
-            Timestamp = new DateTime(ticks, DateTimeKind.Utc),
+            TimestampUtc = new DateTime(ticks, DateTimeKind.Utc),
             Reason = (UsnReason)reason,
             FileAttributes = (FileAttributes)attributes,
             FileName = fileName
