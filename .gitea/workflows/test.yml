@@ -64,12 +64,6 @@ jobs:
           }
           "pin_only=$($pinOnly.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - name: Setup .NET 10 SDK
-        if: steps.changed-files.outputs.pin_only != 'true'
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
       - name: Setup MSBuild
         if: steps.changed-files.outputs.pin_only != 'true'
         uses: microsoft/setup-msbuild@v2
@@ -145,13 +139,17 @@ jobs:
       # (AGENTS.md "Cleaning the working tree"): git clean -ffxd must be safe
       # to run, and init.ps1/init.bat must restore the checkout from that
       # state, twice (idempotency), through both entry points, including the
-      # -Build path. Folded into this job rather than a separate one: it
-      # reuses the .NET SDK, MSBuild, and warm NuGet cache already set up
-      # above instead of paying for that setup twice, and it runs after the
-      # job's own build+test have already passed, so the git clean below
-      # only ever discards state this job no longer needs.
+      # -Build path. It runs only on the merge to main, never on a pull
+      # request or a merge-train push: every step carries the same
+      # push-to-main condition (an `if:` on the event, never workflow-level
+      # paths, which leave a required check pending on Gitea, issue 36895).
+      # The steps stay in THIS job and checkout, after the build and tests,
+      # because the first git clean plus the porcelain assertion is what
+      # detects a build or test that modified a tracked file (git clean keeps
+      # tracked modifications; a fresh checkout would reset them). The git
+      # clean only ever discards state this job no longer needs.
       - name: Verify git clean -ffxd leaves a clean tree
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh
         run: |
           git clean -ffxd
@@ -172,7 +170,7 @@ jobs:
           Write-Host "git clean -ffxd left a clean tree."
 
       - name: Run init.ps1 (post-clean restore, first run)
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh
         run: |
           pwsh -NoProfile -File .\init.ps1
@@ -193,7 +191,7 @@ jobs:
           Write-Host "init.ps1 (first run) left a clean tree."
 
       - name: Run init.ps1 again (idempotency)
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh
         run: |
           pwsh -NoProfile -File .\init.ps1
@@ -214,7 +212,7 @@ jobs:
           Write-Host "init.ps1 is idempotent: git status is clean after a second run."
 
       - name: Run init.bat via cmd.exe (documented .\ prefix)
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
         shell: cmd
         # NoDefaultCurrentDirectoryInExePath is a per-machine setting (AGENTS.md
         # documents it for the maintainer's own workstation), so this step
@@ -227,7 +225,7 @@ jobs:
           if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
 
       - name: Verify tree is clean after init.bat
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh
         run: |
           $status = git status --porcelain
@@ -243,7 +241,7 @@ jobs:
           Write-Host "git status is clean after init.bat."
 
       - name: Run init.ps1 -Build (native + managed build path)
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh
         run: |
           pwsh -NoProfile -File .\init.ps1 -Build
@@ -253,7 +251,7 @@ jobs:
           }
 
       - name: Verify tree is clean after the full init path
-        if: steps.changed-files.outputs.pin_only != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changed-files.outputs.pin_only != 'true'
         shell: pwsh
         run: |
           $status = git status --porcelain

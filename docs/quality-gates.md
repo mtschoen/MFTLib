@@ -4,6 +4,10 @@
 
 Gitea Actions workflow at `.gitea/workflows/test.yml` runs `windows` + `linux` jobs on every PR and on push to `main` or to a `pr-crew/merge-train/**` branch (the merge train validates a batch there before landing it). Both run their respective coverage scripts (`scripts/run-coverage.ps1 -NonInteractive` and `scripts/coverage-linux.sh`). Branch protection on `main` requires both `(pull_request)` checks to pass before merge.
 
+The `windows` job also runs the post-clean init verification (`git clean -ffxd`, `init.ps1` twice, `init.bat`, `init.ps1 -Build`, and a clean-tree check after each) described in [checkout maintenance](checkout-maintenance.md). It runs only on the push to `main`: each of those steps is guarded by `github.event_name == 'push' && github.ref == 'refs/heads/main'` (plus the pin-only check), never by workflow-level `paths`, which leaves a required check pending on Gitea (issue 36895). The steps stay in the same job and checkout, after the build and tests, because the first `git clean -ffxd` plus `git status --porcelain` assertion detects a build or test that modified a tracked file. A pull request therefore never proves the clean-tree invariant; the merge to `main` does.
+
+Windows jobs run on the host-mode `windows-latest` runner, where toolchains are provisioned on the host: no `actions/setup-*` step belongs in a job that runs on it (`microsoft/setup-msbuild` only locates MSBuild and is allowed). Only the Linux container job uses `actions/setup-dotnet`.
+
 For Gitea-specific gotchas (act_runner host-mode quirks, VS BuildTools quirks, .NET version mismatch, PS7 + dotnet test comma-splitting, etc.), read `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md` before modifying the workflow. Runner-account environment needs (pwsh on PATH, `DOTNET_INSTALL_DIR`) are fixed at the runner service level - do not add per-workflow bootstrap steps for them.
 
 ## Quality gate: aislop

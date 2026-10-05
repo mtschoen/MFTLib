@@ -70,11 +70,6 @@ jobs:
       # "prepare": "tsdown" script; below that, tsdown dies on
       # Promise.withResolvers. Not aislop's runtime floor, which is still node 18.
 
-      - name: Setup .NET 10 SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
