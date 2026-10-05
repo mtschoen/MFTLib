@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 ///     specification; <see cref="RootRow" /> aligns the 64-bit fields that follow.
 /// </summary>
 [StructLayout(LayoutKind.Explicit, Size = BlockLayout.HeaderFieldBytes)]
-public struct BlockHeader
+internal struct BlockHeader
 {
     /// <summary>Format magic used to recognize a MFTLib index block.</summary>
     [FieldOffset(0)] public uint Magic;

@@ -15,7 +15,7 @@ namespace MFTLib.Index;
 ///     guarantee: their check-then-use pattern protects a single owner, and readers are expected
 ///     to hold a snapshot borrow instead.
 /// </summary>
-public sealed unsafe partial class BlockFile : IDisposable
+internal sealed unsafe partial class BlockFile : IDisposable
 {
     readonly MemoryMappedFile _mappedFile;
     readonly MemoryMappedViewAccessor _view;

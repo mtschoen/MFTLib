@@ -120,6 +120,18 @@ public class DriveScannerModeTests
     }
 
     [TestMethod]
+    public void ResolveDrive_SyntheticDrives_RootAtTheFixtureDirectoryNotARealVolume()
+    {
+        foreach (var letter in new[] { "C", "D", "Z" })
+        {
+            var drive = ResolveDrive(letter);
+
+            Assert.AreEqual(_directory, drive.RootDirectory);
+            Assert.IsTrue(Directory.Exists(drive.RootDirectory));
+        }
+    }
+
+    [TestMethod]
     public async Task ScanDriveThroughBroker_DriveRootMissing_ReportsOfflineWithoutSuccessLines()
     {
         await using var broker = new InProcessBroker(CreateHost());
@@ -359,10 +371,10 @@ public class DriveScannerModeTests
         };
     }
 
-    static IndexedDrive ResolveDrive(string letter)
+    IndexedDrive ResolveDrive(string letter)
     {
         var driveLetter = char.ToUpperInvariant(letter[0]);
-        return new IndexedDrive(driveLetter, $"{driveLetter}:\\", 4242);
+        return new IndexedDrive(driveLetter, _directory, 4242);
     }
 
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> OneBatchThenCancelled(

@@ -645,16 +645,16 @@ per-access check instead.
 
 `DriveStatus.BlockSource` says whether a drive warm-started from cache or was scanned,
 so a rebuild loop can skip the drives an open already scanned, and
-`CacheDirectory.EnumerateCached` lists the drives a cache directory holds without a
+`CacheDirectory.InspectCached` lists the drives a cache directory holds without a
 consumer parsing block file names.
 
 `IsValid` and `IsDisposed` remain readable after disposal, and `ToString()` returns
 a diagnostic string. Reads of mapped entry data throw as described above.
 `DriveStatus.BlockSource` is `None` when no block is available,
 `WarmStartedFromCache` for an adopted cache block, or `ProducedByScan` after a scan.
-`CacheDirectory.EnumerateCached` returns `CachedBlockFile` records containing the
-drive letter, volume serial, full cache-file path, size, and last-write time;
-listing a file does not open or validate its block.
+`CacheDirectory.InspectCached` returns `CachedBlockStatus` records whose `File` is a `CachedBlockFile` containing the
+drive letter, volume serial, full cache-file path, size, and last-write time, plus
+whether the block is available, in use by another index, or invalid.
 
 ## Errors and recovery
 

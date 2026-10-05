@@ -1,76 +1,3 @@
-MFTLib.Index.BlockFile :: method public Dispose() : void
-MFTLib.Index.BlockFile :: method public Flush(System.Action<long>? rangeFlushed) : void
-MFTLib.Index.BlockFile :: method public static Create(MFTLib.Index.BlockFileCreateOptions options) : MFTLib.Index.BlockFile
-MFTLib.Index.BlockFile :: method public static Open(string path, uint expectedVolumeSerial, out MFTLib.Index.BlockValidationResult validation) : MFTLib.Index.BlockFile?
-MFTLib.Index.BlockFile :: property public Header { get; } : ref MFTLib.Index.BlockHeader
-MFTLib.Index.BlockFile :: property public Length { get; } : long
-MFTLib.Index.BlockFile :: property public NamePoolCharacters { get; } : System.Span<char>
-MFTLib.Index.BlockFile :: property public Path { get; } : string
-MFTLib.Index.BlockFile :: property public Rows { get; } : System.Span<MFTLib.Index.FileRow>
-MFTLib.Index.BlockFile :: property public SequenceNumbers { get; } : System.Span<ushort>
-MFTLib.Index.BlockFile :: type public sealed class : System.IDisposable
-MFTLib.Index.BlockFileCreateOptions :: constructor public ()
-MFTLib.Index.BlockFileCreateOptions :: method public <Clone>$() : MFTLib.Index.BlockFileCreateOptions
-MFTLib.Index.BlockFileCreateOptions :: method public Equals(MFTLib.Index.BlockFileCreateOptions? other) : bool
-MFTLib.Index.BlockFileCreateOptions :: method public override Equals(object? obj) : bool
-MFTLib.Index.BlockFileCreateOptions :: method public override GetHashCode() : int
-MFTLib.Index.BlockFileCreateOptions :: method public override ToString() : string
-MFTLib.Index.BlockFileCreateOptions :: method public static op_Equality(MFTLib.Index.BlockFileCreateOptions? left, MFTLib.Index.BlockFileCreateOptions? right) : bool
-MFTLib.Index.BlockFileCreateOptions :: method public static op_Inequality(MFTLib.Index.BlockFileCreateOptions? left, MFTLib.Index.BlockFileCreateOptions? right) : bool
-MFTLib.Index.BlockFileCreateOptions :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
-MFTLib.Index.BlockFileCreateOptions :: property public DeleteOnClose { get; init; } : bool
-MFTLib.Index.BlockFileCreateOptions :: property public Diagnostics { get; init; } : System.Action<string>?
-MFTLib.Index.BlockFileCreateOptions :: property public RootRow { get; init; } : uint
-MFTLib.Index.BlockFileCreateOptions :: property public required NamePoolCapacity { get; init; } : uint
-MFTLib.Index.BlockFileCreateOptions :: property public required Path { get; init; } : string
-MFTLib.Index.BlockFileCreateOptions :: property public required ProducerKind { get; init; } : MFTLib.Index.ProducerKind
-MFTLib.Index.BlockFileCreateOptions :: property public required SlotCapacity { get; init; } : uint
-MFTLib.Index.BlockFileCreateOptions :: property public required VolumeSerial { get; init; } : uint
-MFTLib.Index.BlockFileCreateOptions :: type public sealed class : System.IEquatable<MFTLib.Index.BlockFileCreateOptions>
-MFTLib.Index.BlockFlags :: field public const CompactionNeeded : MFTLib.Index.BlockFlags = 2
-MFTLib.Index.BlockFlags :: field public const Complete : MFTLib.Index.BlockFlags = 1
-MFTLib.Index.BlockFlags :: field public const None : MFTLib.Index.BlockFlags = 0
-MFTLib.Index.BlockFlags :: type public enum : uint, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.Index.BlockHeader :: field public CacheTagFourCc : uint
-MFTLib.Index.BlockHeader :: field public CacheTagVersion : uint
-MFTLib.Index.BlockHeader :: field public Flags : MFTLib.Index.BlockFlags
-MFTLib.Index.BlockHeader :: field public FormatVersion : uint
-MFTLib.Index.BlockHeader :: field public Generation : ulong
-MFTLib.Index.BlockHeader :: field public LiveRowCount : uint
-MFTLib.Index.BlockHeader :: field public Magic : uint
-MFTLib.Index.BlockHeader :: field public NamePoolCapacity : uint
-MFTLib.Index.BlockHeader :: field public NamePoolOffset : ulong
-MFTLib.Index.BlockHeader :: field public NamePoolUsed : uint
-MFTLib.Index.BlockHeader :: field public ProducerKind : MFTLib.Index.ProducerKind
-MFTLib.Index.BlockHeader :: field public RootRow : uint
-MFTLib.Index.BlockHeader :: field public RowCount : uint
-MFTLib.Index.BlockHeader :: field public RowRegionOffset : ulong
-MFTLib.Index.BlockHeader :: field public ScanTimestampTicks : long
-MFTLib.Index.BlockHeader :: field public SequenceRegionOffset : ulong
-MFTLib.Index.BlockHeader :: field public SlotCapacity : uint
-MFTLib.Index.BlockHeader :: field public UsnJournalId : ulong
-MFTLib.Index.BlockHeader :: field public UsnNextUsn : long
-MFTLib.Index.BlockHeader :: field public VolumeSerial : uint
-MFTLib.Index.BlockHeader :: method public static Validate(in MFTLib.Index.BlockHeader header, uint expectedVolumeSerial, long fileLength) : MFTLib.Index.BlockValidationResult
-MFTLib.Index.BlockHeader :: property public readonly CacheTag { get; } : MFTLib.Index.CacheTag
-MFTLib.Index.BlockHeader :: property public readonly IsCompactionNeeded { get; } : bool
-MFTLib.Index.BlockHeader :: property public readonly IsComplete { get; } : bool
-MFTLib.Index.BlockHeader :: property public readonly ScanTimestampUtc { get; } : System.DateTime
-MFTLib.Index.BlockHeader :: type public struct
-MFTLib.Index.BlockLayout :: field public const FormatVersion : uint = 3
-MFTLib.Index.BlockLayout :: field public const HeaderFieldBytes : int = 112
-MFTLib.Index.BlockLayout :: field public const HeaderRegionBytes : int = 4096
-MFTLib.Index.BlockLayout :: field public const Magic : uint = 1481198669
-MFTLib.Index.BlockLayout :: field public const MaximumPathDepth : int = 128
-MFTLib.Index.BlockLayout :: field public const PageSize : int = 4096
-MFTLib.Index.BlockLayout :: field public const RowBytes : int = 32
-MFTLib.Index.BlockLayout :: field public const RowRegionOffset : long = 4096
-MFTLib.Index.BlockLayout :: method public static ComputeNamePoolCapacity(uint estimatedNameBytes) : uint
-MFTLib.Index.BlockLayout :: method public static ComputeSlotCapacity(uint estimatedRowCount) : uint
-MFTLib.Index.BlockLayout :: method public static NamePoolOffset(uint slotCapacity) : long
-MFTLib.Index.BlockLayout :: method public static SequenceRegionOffset(uint slotCapacity) : long
-MFTLib.Index.BlockLayout :: method public static TotalBlockBytes(uint slotCapacity, uint namePoolCapacity) : long
-MFTLib.Index.BlockLayout :: type public static class
 MFTLib.Index.BlockSource :: field public const None : MFTLib.Index.BlockSource = 0
 MFTLib.Index.BlockSource :: field public const ProducedByScan : MFTLib.Index.BlockSource = 2
 MFTLib.Index.BlockSource :: field public const WarmStartedFromCache : MFTLib.Index.BlockSource = 1
@@ -85,25 +12,8 @@ MFTLib.Index.BlockValidationResult :: field public const WrongMagic : MFTLib.Ind
 MFTLib.Index.BlockValidationResult :: field public const WrongRootDirectory : MFTLib.Index.BlockValidationResult = 6
 MFTLib.Index.BlockValidationResult :: field public const WrongVolumeSerial : MFTLib.Index.BlockValidationResult = 4
 MFTLib.Index.BlockValidationResult :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.Index.BlockWriter :: constructor public (MFTLib.Index.BlockFile block)
-MFTLib.Index.BlockWriter :: method public BumpGeneration() : ulong
-MFTLib.Index.BlockWriter :: method public Complete(System.DateTime scanTimestampUtc, System.Action<long>? rangeFlushed) : void
-MFTLib.Index.BlockWriter :: method public MarkCompactionNeeded() : void
-MFTLib.Index.BlockWriter :: method public MarkSubtreeSkipped(uint rowIndex) : void
-MFTLib.Index.BlockWriter :: method public MarkTombstone(uint rowIndex) : void
-MFTLib.Index.BlockWriter :: method public SetJournalCursor(ulong journalId, long nextUsn) : void
-MFTLib.Index.BlockWriter :: method public TryRenameRow(uint rowIndex, System.ReadOnlySpan<char> name, uint parentRow) : bool
-MFTLib.Index.BlockWriter :: method public TryWriteRow(uint rowIndex, System.ReadOnlySpan<char> name, in MFTLib.Index.RowColumns columns) : bool
-MFTLib.Index.BlockWriter :: property public Block { get; } : MFTLib.Index.BlockFile
-MFTLib.Index.BlockWriter :: property public CompactionNeeded { get; } : bool
-MFTLib.Index.BlockWriter :: property public RowCount { get; } : uint
-MFTLib.Index.BlockWriter :: type public sealed class
-MFTLib.Index.CacheDirectory :: method public static BlockFileName(char driveLetter, uint volumeSerial) : string
 MFTLib.Index.CacheDirectory :: method public static DeleteCached(string cacheDirectoryPath, System.Collections.Generic.IReadOnlySet<char>? driveLetters = default, System.Action<string>? diagnostics = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockDeletionResult>
-MFTLib.Index.CacheDirectory :: method public static DeleteCached(string cacheDirectoryPath, System.Collections.Generic.IReadOnlySet<char>? driveLetters, System.Action<string>? diagnostics, System.Action<MFTLib.Index.CachedBlockRejection>? rejectedFile) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockDeletionResult>
 MFTLib.Index.CacheDirectory :: method public static EnsureCreated(string path) : System.IO.DirectoryInfo
-MFTLib.Index.CacheDirectory :: method public static EnumerateCached(string cacheDirectoryPath) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockFile>
-MFTLib.Index.CacheDirectory :: method public static EnumerateCached(string cacheDirectoryPath, System.Action<MFTLib.Index.CachedBlockRejection>? rejectedFile) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockFile>
 MFTLib.Index.CacheDirectory :: method public static InspectCached(string cacheDirectoryPath, System.Collections.Generic.IReadOnlySet<char>? driveLetters = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockStatus>
 MFTLib.Index.CacheDirectory :: method public static InspectCached(string cacheDirectoryPath, System.Collections.Generic.IReadOnlySet<char>? driveLetters, System.Action<MFTLib.Index.CachedBlockRejection>? rejectedFile) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockStatus>
 MFTLib.Index.CacheDirectory :: method public static ResolveDefaultPath() : string
@@ -332,7 +242,6 @@ MFTLib.Index.FileIndex :: method public WaitForCatchUpAsync(System.Collections.G
 MFTLib.Index.FileIndex :: method public WaitForCatchUpAsync(System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MFTLib.Index.DriveOperationResult>>
 MFTLib.Index.FileIndex :: method public WaitForCatchUpAsync(char driveLetter, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task
 MFTLib.Index.FileIndex :: method public static OpenAsync(MFTLib.Index.FileIndexOptions options, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.FileIndex>
-MFTLib.Index.FileIndex :: property public CacheDirectoryPath { get; } : string
 MFTLib.Index.FileIndex :: property public Drives { get; } : System.Collections.Generic.IReadOnlyList<MFTLib.Index.DriveStatus>
 MFTLib.Index.FileIndex :: type public sealed class : System.IAsyncDisposable
 MFTLib.Index.FileIndexOptions :: constructor public ()
@@ -354,20 +263,6 @@ MFTLib.Index.FileIndexOptions :: property public OpenProgress { get; init; } : S
 MFTLib.Index.FileIndexOptions :: property public ProducerPolicy { get; init; } : MFTLib.Index.ProducerPolicy
 MFTLib.Index.FileIndexOptions :: property public Progress { get; init; } : System.IProgress<MFTLib.Index.IndexScanProgress>?
 MFTLib.Index.FileIndexOptions :: type public sealed class : System.IEquatable<MFTLib.Index.FileIndexOptions>
-MFTLib.Index.FileRow :: field public Attributes : uint
-MFTLib.Index.FileRow :: field public Flags : MFTLib.Index.RowFlags
-MFTLib.Index.FileRow :: field public ModifiedTicks : long
-MFTLib.Index.FileRow :: field public NameLengthUnits : ushort
-MFTLib.Index.FileRow :: field public NameOffsetBytes : uint
-MFTLib.Index.FileRow :: field public ParentRow : uint
-MFTLib.Index.FileRow :: field public Size : long
-MFTLib.Index.FileRow :: property public readonly IsDeleted { get; } : bool
-MFTLib.Index.FileRow :: property public readonly IsDirectory { get; } : bool
-MFTLib.Index.FileRow :: property public readonly IsInUse { get; } : bool
-MFTLib.Index.FileRow :: property public readonly ModifiedUtc { get; } : System.DateTime
-MFTLib.Index.FileRow :: property public readonly SizeKnown { get; } : bool
-MFTLib.Index.FileRow :: property public readonly SubtreeSkipped { get; } : bool
-MFTLib.Index.FileRow :: type public struct
 MFTLib.Index.IndexDriveOpened :: constructor public ()
 MFTLib.Index.IndexDriveOpened :: method public <Clone>$() : MFTLib.Index.IndexDriveOpened
 MFTLib.Index.IndexDriveOpened :: method public Equals(MFTLib.Index.IndexDriveOpened? other) : bool
@@ -458,38 +353,12 @@ MFTLib.Index.JournalCheckpointLossDetection :: field public const ScanCatchUp : 
 MFTLib.Index.JournalCheckpointLossDetection :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.MftIndexSource :: method public static Unavailable(string reason) : MFTLib.Index.MftIndexSource
 MFTLib.Index.MftIndexSource :: type public sealed class
-MFTLib.Index.NamePool :: method public static Read(System.ReadOnlySpan<char> pool, uint offsetBytes, ushort lengthUnits) : System.ReadOnlySpan<char>
-MFTLib.Index.NamePool :: method public static ReadRowName(MFTLib.Index.BlockFile block, uint rowIndex) : System.ReadOnlySpan<char>
-MFTLib.Index.NamePool :: method public static TryAppend(System.Span<char> pool, ref uint usedBytes, uint capacityBytes, System.ReadOnlySpan<char> name, out uint offsetBytes) : bool
-MFTLib.Index.NamePool :: type public static class
 MFTLib.Index.ProducerKind :: field public const Enumeration : MFTLib.Index.ProducerKind = 2
 MFTLib.Index.ProducerKind :: field public const Mft : MFTLib.Index.ProducerKind = 1
 MFTLib.Index.ProducerKind :: type public enum : uint, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.ProducerPolicy :: field public const Enumeration : MFTLib.Index.ProducerPolicy = 1
 MFTLib.Index.ProducerPolicy :: field public const Mft : MFTLib.Index.ProducerPolicy = 0
 MFTLib.Index.ProducerPolicy :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.Index.RowColumns :: constructor public (uint ParentRow, MFTLib.Index.RowFlags Flags, uint Attributes, long Size, long ModifiedTicks, ushort SequenceNumber)
-MFTLib.Index.RowColumns :: method public Deconstruct(out uint ParentRow, out MFTLib.Index.RowFlags Flags, out uint Attributes, out long Size, out long ModifiedTicks, out ushort SequenceNumber) : void
-MFTLib.Index.RowColumns :: method public Equals(MFTLib.Index.RowColumns other) : bool
-MFTLib.Index.RowColumns :: method public override Equals(object obj) : bool
-MFTLib.Index.RowColumns :: method public override GetHashCode() : int
-MFTLib.Index.RowColumns :: method public override ToString() : string
-MFTLib.Index.RowColumns :: method public static op_Equality(MFTLib.Index.RowColumns left, MFTLib.Index.RowColumns right) : bool
-MFTLib.Index.RowColumns :: method public static op_Inequality(MFTLib.Index.RowColumns left, MFTLib.Index.RowColumns right) : bool
-MFTLib.Index.RowColumns :: property public Attributes { get; init; } : uint
-MFTLib.Index.RowColumns :: property public Flags { get; init; } : MFTLib.Index.RowFlags
-MFTLib.Index.RowColumns :: property public ModifiedTicks { get; init; } : long
-MFTLib.Index.RowColumns :: property public ParentRow { get; init; } : uint
-MFTLib.Index.RowColumns :: property public SequenceNumber { get; init; } : ushort
-MFTLib.Index.RowColumns :: property public Size { get; init; } : long
-MFTLib.Index.RowColumns :: type public readonly struct : System.IEquatable<MFTLib.Index.RowColumns>
-MFTLib.Index.RowFlags :: field public const Directory : MFTLib.Index.RowFlags = 2
-MFTLib.Index.RowFlags :: field public const InUse : MFTLib.Index.RowFlags = 1
-MFTLib.Index.RowFlags :: field public const None : MFTLib.Index.RowFlags = 0
-MFTLib.Index.RowFlags :: field public const SizeUnknown : MFTLib.Index.RowFlags = 8
-MFTLib.Index.RowFlags :: field public const SubtreeSkipped : MFTLib.Index.RowFlags = 16
-MFTLib.Index.RowFlags :: field public const Tombstone : MFTLib.Index.RowFlags = 4
-MFTLib.Index.RowFlags :: type public enum : ushort, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.SearchQuery :: constructor public (string? NamePattern, bool CaseSensitive = false, MFTLib.Index.FileEntry? Under = default, bool? Directories = default, long? MinimumSize = default, long? MaximumSize = default, System.DateTime? ModifiedAfter = default, System.DateTime? ModifiedBefore = default)
 MFTLib.Index.SearchQuery :: method public <Clone>$() : MFTLib.Index.SearchQuery
 MFTLib.Index.SearchQuery :: method public Deconstruct(out string? NamePattern, out bool CaseSensitive, out MFTLib.Index.FileEntry? Under, out bool? Directories, out long? MinimumSize, out long? MaximumSize, out System.DateTime? ModifiedAfter, out System.DateTime? ModifiedBefore) : void

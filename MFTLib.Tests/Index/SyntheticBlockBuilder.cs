@@ -2,7 +2,7 @@ using MFTLib.Index;
 
 namespace MFTLib.Tests.Index;
 
-public delegate void HeaderMutation(ref BlockHeader header);
+internal delegate void HeaderMutation(ref BlockHeader header);
 
 /// <summary>
 ///     Builds a small, complete block in a fresh temp directory by writing rows and names

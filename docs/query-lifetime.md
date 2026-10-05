@@ -16,7 +16,7 @@
       disposes is therefore safe. The snapshot finalizer path
       is unaffected: a borrow holds the snapshot, so a borrowed snapshot is never collected.
 
-    - **Writer lifetime**: every `BlockWriter` operation holds a `BlockAccessScope` on its
+    - **Writer lifetime**: every internal `BlockWriter` operation holds a `BlockAccessScope` on its
       `BlockFile` for the operation's whole duration. `BlockFile.Dispose` refuses new scopes when
       it begins and waits for outstanding ones before unmapping, so a write racing disposal either
       completes against mapped memory or, if it arrives after disposal began, fails with

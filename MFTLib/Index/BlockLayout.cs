@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     32-byte rows indexed by record number, then an append-only UTF-16 name pool. Every
 ///     region boundary is 4 KB aligned so a mapped view can be paged independently.
 /// </summary>
-public static class BlockLayout
+internal static class BlockLayout
 {
     /// <summary>The ASCII bytes 'M', 'L', 'I', 'X' read as a little-endian unsigned 32-bit value.</summary>
     public const uint Magic = 0x58494C4D;

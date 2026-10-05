@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     swaps the row's offset and length, so a reader sees the old name or the new one and
 ///     never a torn one. Names are not interned in v1.
 /// </summary>
-public static class NamePool
+internal static class NamePool
 {
     /// <summary>The row's name length field is 16 bits, so a name longer than this cannot be stored.</summary>
     internal const int MaximumNameLengthUnits = 32767;

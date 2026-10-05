@@ -10,7 +10,7 @@ namespace MFTLib.Index;
 ///     mapped memory or, when disposal began first, fails with <see cref="ObjectDisposedException" />
 ///     instead of dereferencing an unmapped view.
 /// </summary>
-public sealed class BlockWriter
+internal sealed class BlockWriter
 {
     /// <summary>Initializes a writer for one mapped block.</summary>
     /// <param name="block">Block that receives rows, names, and header updates.</param>

@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 /// </summary>
 [Flags]
 [SuppressMessage("Naming", "CA1711", Justification = "Flags suffix is conventional here; renaming breaks consumers.")]
-public enum BlockFlags : uint
+internal enum BlockFlags : uint
 {
     /// <summary>No header-level state is set.</summary>
     None = 0,

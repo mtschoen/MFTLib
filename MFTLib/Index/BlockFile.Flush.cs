@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace MFTLib.Index;
 
-public sealed unsafe partial class BlockFile
+internal sealed unsafe partial class BlockFile
 {
     /// <summary>
     ///     The number of bytes flushed per native call. An instance field so a test can shrink it

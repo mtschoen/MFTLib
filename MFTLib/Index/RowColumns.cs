@@ -13,7 +13,7 @@ namespace MFTLib.Index;
 /// <param name="Size">Size in bytes. Zero for directories and for size-unknown rows.</param>
 /// <param name="ModifiedTicks">Last modified time as UTC ticks.</param>
 /// <param name="SequenceNumber">NTFS record sequence number, zero when the producer has none.</param>
-public readonly record struct RowColumns(
+internal readonly record struct RowColumns(
     uint ParentRow,
     RowFlags Flags,
     uint Attributes,

@@ -2,7 +2,10 @@
 
 One block file per volume holds the inventory selected by the consumer's scan.
 It is the live index, the on-disk cache, and the producer's write target at the
-same time. A block is rebuildable from the filesystem, so there is no migration
+same time. The format is documented for anyone reading a cache file; the types
+that read and write it (`BlockFile`, `BlockWriter`, `BlockHeader`, `BlockLayout`,
+`FileRow`, `RowColumns`, `RowFlags`, `NamePool`) are internal to MFTLib, and tests
+write blocks through `MFTLibTestExtensions`. A block is rebuildable from the filesystem, so there is no migration
 code: incompatible format, identity, serial, or completeness means reject the
 cache and rescan on a normal open.
 
@@ -24,14 +27,14 @@ compaction flag independently of either count.
 example `C-0BADF00D.mlix`. The serial is part of the name so a re-lettered drive
 never matches the wrong block.
 
-The library owns both directions of this name: `CacheDirectory.BlockFileName`
-writes it and `CacheDirectory.EnumerateCached` reads a directory back into drive
-letters and serials, so a consumer never parses the name itself and a future
+The library owns both directions of this name: it writes the name and reads a
+directory back into drive letters and serials (consumers list a directory with
+`CacheDirectory.InspectCached`), so a consumer never parses the name itself and a future
 format change is one edit rather than one edit per consumer.
 
-The callback overloads of `EnumerateCached`, `InspectCached`, and `DeleteCached` accept an `Action<CachedBlockRejection>? rejectedFile`. Each non-canonical filename encountered by the existing top-level `*.mlix` enumeration is reported with its full `Path` and a human-readable `Reason` (`Invalid block filename.`). The canonical lists returned by these APIs do not include rejected files. Rejections are reported before drive filtering, including when the selected drive set is empty, because a rejected name has no validated drive identity. A lowercase drive letter or lowercase hexadecimal serial is non-canonical even on a case-insensitive filesystem.
+The callback overload of `InspectCached` accepts an `Action<CachedBlockRejection>? rejectedFile`. Each non-canonical filename encountered by the existing top-level `*.mlix` enumeration is reported with its full `Path` and a human-readable `Reason` (`Invalid block filename.`). The canonical lists returned by these APIs do not include rejected files. Rejections are reported before drive filtering, including when the selected drive set is empty, because a rejected name has no validated drive identity. A lowercase drive letter or lowercase hexadecimal serial is non-canonical even on a case-insensitive filesystem.
 
-Reporting does not open, validate, lock, rename, or delete the rejected file. Lock siblings, retired siblings, and subdirectories are not inventory candidates. The callback is synchronous, its ordering is unspecified, and it should return promptly without modifying the enumerated directory. A thrown callback exception aborts the call before any canonical inspection or deletion begins. Missing or empty directories produce no notifications. Existing overloads retain their previous behavior and silently exclude rejected names.
+Reporting does not open, validate, lock, rename, or delete the rejected file. Lock siblings, retired siblings, and subdirectories are not inventory candidates. The callback is synchronous, its ordering is unspecified, and it should return promptly without modifying the enumerated directory. A thrown callback exception aborts the call before any canonical inspection or deletion begins. Missing or empty directories produce no notifications. Overloads without the callback silently exclude rejected names.
 
 ```csharp
 var rejected = new List<CachedBlockRejection>();
@@ -92,7 +95,7 @@ format or native ABI version changes are involved.
 ## Deleting cached blocks
 
 `CacheDirectory.DeleteCached(cacheDirectoryPath, driveLetters = null, diagnostics = null)` is the
-lock-safe way to clear cache blocks: it enumerates the directory the same way `EnumerateCached`
+lock-safe way to clear cache blocks: it enumerates the directory the same way `InspectCached`
 does, then for each candidate takes that block's owner lock non-blockingly and deletes the block
 file only while holding it, so it is bound by the same ownership rule as `FileIndex` itself and
 can never delete, rename, or unlink a block a live index still owns. A block whose lock is held
@@ -110,7 +113,7 @@ optional `diagnostics` callback synchronously, while the block's lock is still h
 same "Deleted block file '...'" shape `FileIndexOptions.Diagnostics` uses elsewhere in the
 library.
 
-To observe rejected filenames while clearing the canonical cache, call `CacheDirectory.DeleteCached(cacheDirectoryPath, driveLetters, diagnostics, rejectedFile)`. The fourth argument is the filename-rejection callback; the third remains the success logger invoked under the canonical block's owner lock. Rejected entries never become deletion results and are always left untouched. Supplying a null rejection callback disables reporting.
+`DeleteCached` has an internal overload that takes the same filename-rejection callback after the success logger, which stays the third argument and is invoked under the canonical block's owner lock. Rejected entries never become deletion results and are always left untouched. Supplying a null rejection callback disables reporting. The public three-argument overload passes null.
 
 ## Layout
 

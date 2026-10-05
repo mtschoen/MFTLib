@@ -13,7 +13,7 @@ namespace MFTLib.Index;
 ///     publish a new name with one atomic store instead of two independent ones.
 /// </summary>
 [StructLayout(LayoutKind.Explicit, Size = BlockLayout.RowBytes)]
-public struct FileRow
+internal struct FileRow
 {
     /// <summary>Row index of the parent directory. The volume root points at itself.</summary>
     [FieldOffset(0)] public uint ParentRow;

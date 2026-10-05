@@ -20,7 +20,7 @@ public static partial class CacheDirectory
     /// <param name="driveLetter">Drive letter for the cached volume.</param>
     /// <param name="volumeSerial">NTFS volume serial number encoded in the filename.</param>
     /// <returns>The filename without a directory component.</returns>
-    public static string BlockFileName(char driveLetter, uint volumeSerial)
+    internal static string BlockFileName(char driveLetter, uint volumeSerial)
     {
         return $"{char.ToUpperInvariant(driveLetter)}-{volumeSerial:X8}{BlockFileExtension}";
     }
@@ -34,7 +34,7 @@ public static partial class CacheDirectory
     ///     directory entry the walk already read, so no per-file stat can fail mid-listing.
     ///     Rejected filenames are silently excluded; use the callback overload to observe them.
     /// </summary>
-    public static IReadOnlyList<CachedBlockFile> EnumerateCached(string cacheDirectoryPath)
+    internal static IReadOnlyList<CachedBlockFile> EnumerateCached(string cacheDirectoryPath)
         => EnumerateCached(cacheDirectoryPath, null);
 
     /// <summary>
@@ -54,7 +54,7 @@ public static partial class CacheDirectory
     ///     immediately, before any canonical inspection or deletion in this call. Return promptly
     ///     and do not mutate the directory during enumeration.
     /// </param>
-    public static IReadOnlyList<CachedBlockFile> EnumerateCached(
+    internal static IReadOnlyList<CachedBlockFile> EnumerateCached(
         string cacheDirectoryPath, Action<CachedBlockRejection>? rejectedFile)
     {
         ArgumentException.ThrowIfNullOrEmpty(cacheDirectoryPath);
@@ -175,7 +175,7 @@ public static partial class CacheDirectory
     ///     I/O and access failures report Failed with a reason, without stopping other attempts.
     ///     Lock files are created when needed and never deleted. Block contents are not validated.
     ///     Results describe each attempt, not a reservation against later cache creation.
-    ///     Rejected filenames are silently excluded; use the callback overload to observe them.
+    ///     Filenames this class did not write are silently excluded.
     /// </summary>
     /// <param name="cacheDirectoryPath">The cache directory to clear.</param>
     /// <param name="driveLetters">Uppercase drive letters to include, or null for all.</param>
@@ -185,7 +185,7 @@ public static partial class CacheDirectory
     /// </param>
     /// <remarks>
     ///     Deleted includes an inventory entry already removed before this attempt. Directory-level
-    ///     enumeration follows EnumerateCached. Filtering precedes lock acquisition. Retired siblings,
+    ///     enumeration lists only files whose name this class wrote. Filtering precedes lock acquisition. Retired siblings,
     ///     unrelated names and subdirectories are not candidates.
     /// </remarks>
     public static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
@@ -219,7 +219,7 @@ public static partial class CacheDirectory
     ///     enumeration follows EnumerateCached. Filtering precedes lock acquisition. Retired siblings,
     ///     unrelated names and subdirectories are not candidates.
     /// </remarks>
-    public static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
+    internal static IReadOnlyList<CachedBlockDeletionResult> DeleteCached(
         string cacheDirectoryPath, IReadOnlySet<char>? driveLetters,
         Action<string>? diagnostics, Action<CachedBlockRejection>? rejectedFile)
     {

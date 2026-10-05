@@ -3,7 +3,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.TestSupport;
 
-public static class BlockFileAssertions
+internal static class BlockFileAssertions
 {
     public static void IsDisposed(BlockFile block)
     {

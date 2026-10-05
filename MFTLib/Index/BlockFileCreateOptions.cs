@@ -4,7 +4,7 @@ namespace MFTLib.Index;
 ///     Everything needed to lay out a new block file. Capacities are final: a block never
 ///     grows, and exhausting either one sets the compaction-needed flag instead.
 /// </summary>
-public sealed record BlockFileCreateOptions
+internal sealed record BlockFileCreateOptions
 {
     /// <summary>Full path of the block file to create.</summary>
     public required string Path { get; init; }

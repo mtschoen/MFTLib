@@ -97,7 +97,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     ///     The directory this index keeps its cache blocks in: the configured cache directory,
     ///     or the resolved default when none was set. It is resolved even when no drive caches.
     /// </summary>
-    public string CacheDirectoryPath { get; }
+    internal string CacheDirectoryPath { get; }
 
     /// <summary>
     ///     Recomputed from the block headers on every read, so it reflects the latest mutation.
