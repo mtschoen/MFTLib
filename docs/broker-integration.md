@@ -133,7 +133,9 @@ await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 connection: the block producer for cold opens and rescans, and the watch
 source, implemented by `BrokerIndexWatchSource`. Each drive watch start
 connects through the callback, opens the drive's pipe, writes its watch
-request, and returns the drive's running `IIndexDriveWatch`.
+request, and returns the drive's running watch. The watch source, the drive
+watch handle and the block producer are internal to MFTLib; a consumer holds
+only the opaque `MftIndexSource`.
 
 A process that cannot scan assigns `MftIndexSource.Unavailable(reason)`
 instead. Every scan of an MFT-backed drive then fails with
@@ -237,7 +239,7 @@ hiding successful siblings.
 
 `StartWatchingAsync` completes when each successful drive has a returned watch
 handle and its pump is reading. It does not wait for the journal backlog.
-`WaitForCatchUpAsync` waits for `DriveCaughtUp` per drive.
+`WaitForCatchUpAsync` waits for the drive's caught-up marker per drive.
 
 `StopWatchingAsync` stops only the requested drive or drives. The single-drive
 form rethrows that watch instance's outstanding fault once. The batched form
@@ -282,7 +284,7 @@ concurrently. The status has already been updated when the event runs.
 | --- | --- |
 | Completed `BrokerProcess.Ended` task | The control connection and elevated process are gone. Stop using the process, close its indexes, and create a new process and new indexes. |
 | `BrokerChannelLostException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
-| `DriveWatchFaultException` | The host reported an `Error` on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
+| Drive watch fault (internal `DriveWatchFaultException`) | The host reported an `Error` on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
 | `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan; a successful rescan starts the watch if it is requested. |
 | `WatchFaultKind.RescanRestart` | A rescan replaced the block but could not start its watch. The scan returns success. The exception and `WatchFailureMessage` identify the rescan; the inner exception is the start failure. No automatic recovery starts. A consumer start or rescan retries it, and stop rethrows the fault once. |
 | `WatchCatchUpState.Recovering` | A drive or apply fault is being recovered, or a lost catch-up is being retried. Queries still use the current complete block, which may be behind the volume. |

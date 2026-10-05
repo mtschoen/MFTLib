@@ -1,7 +1,7 @@
 namespace MFTLib;
 
 /// <summary>Decoded values used to construct a <see cref="UsnJournalEntry" />.</summary>
-public readonly record struct UsnJournalEntryOptions
+internal readonly record struct UsnJournalEntryOptions
 {
     /// <summary>Lower 48-bit NTFS MFT segment index of the changed item.</summary>
     public required ulong RecordNumber { get; init; }

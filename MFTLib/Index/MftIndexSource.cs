@@ -15,7 +15,7 @@ public sealed class MftIndexSource
     ///     <see cref="InvalidOperationException" />.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="producer" /> is null.</exception>
-    public MftIndexSource(MftBlockProducer producer, IIndexWatchSource? watchSource = null)
+    internal MftIndexSource(MftBlockProducer producer, IIndexWatchSource? watchSource = null)
     {
         ArgumentNullException.ThrowIfNull(producer);
         Producer = producer;

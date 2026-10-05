@@ -93,7 +93,7 @@ A test focused on `FileIndex` policy does not need a broker. `ScriptedWatchSourc
 answers every watch start the index asks for with one `ScriptedDriveWatch` for
 that drive, and the test then scripts what the watch yields and how it ends. Hand
 it to the index beside a producer with
-`FileIndexOptions.MftSource = new MftIndexSource(producer, source)`.
+`FileIndexOptions.MftSource = SyntheticIndexSource.Create(producer, source)`.
 
 ```csharp
 using MFTLib;

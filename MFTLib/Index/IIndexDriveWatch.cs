@@ -8,7 +8,7 @@ namespace MFTLib.Index;
 ///     <see cref="IAsyncDisposable.DisposeAsync" /> idempotent, and it completes once nothing
 ///     further for the drive can be read.
 /// </summary>
-public interface IIndexDriveWatch : IAsyncDisposable
+internal interface IIndexDriveWatch : IAsyncDisposable
 {
     /// <summary>Gets the drive the index uses to associate this watch's batches and faults with a drive block.</summary>
     char DriveLetter { get; }

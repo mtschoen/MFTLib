@@ -11,7 +11,7 @@ namespace MFTLib.Index;
     Justification = "Every instance names the drive whose watch failed, which is how FileIndex attributes " +
                     "the fault; the parameterless and message-only overloads the standard set would add " +
                     "construct one that names no drive.")]
-public sealed class DriveWatchFaultException : Exception
+internal sealed class DriveWatchFaultException : Exception
 {
     /// <summary>Initializes a drive-specific watch fault.</summary>
     /// <param name="driveLetter">Drive whose watch failed.</param>

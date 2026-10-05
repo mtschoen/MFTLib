@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 ///     directory level per enumerator, because that is what lets each row know its parent and
 ///     lets an access denial skip exactly one subtree instead of aborting the scan.
 /// </summary>
-public sealed class EnumerationProducer
+internal sealed class EnumerationProducer
 {
     /// <summary>A drive is never sized below this, so a tiny sample cannot starve the block.</summary>
     const uint MinimumEstimatedRowCount = 4096;
@@ -36,7 +36,7 @@ public sealed class EnumerationProducer
     }
 
     /// <summary>The root directory and progress drive letter fixed at construction; they never change during a walk.</summary>
-    public EnumerationProducerOptions Options { get; }
+    EnumerationProducerOptions Options { get; }
 
     /// <summary>
     ///     Samples the first two levels and extrapolates rather than paying for a full

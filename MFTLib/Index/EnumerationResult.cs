@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     <paramref name="AccessDeniedSubtreeCount" /> becomes the drive's warning; a true
 ///     <paramref name="CompactionNeeded" /> means the block was too small and the drive is stale.
 /// </summary>
-public sealed record EnumerationResult(
+internal sealed record EnumerationResult(
     uint RowCount,
     int AccessDeniedSubtreeCount,
     bool CompactionNeeded);

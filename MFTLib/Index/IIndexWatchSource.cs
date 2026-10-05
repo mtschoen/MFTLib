@@ -6,7 +6,7 @@ namespace MFTLib.Index;
 ///     an index watches has its own handle, so nothing one drive does can end, delay, or fault
 ///     another drive's watch.
 /// </summary>
-public interface IIndexWatchSource
+internal interface IIndexWatchSource
 {
     /// <summary>
     ///     Starts watching <paramref name="target" />'s drive from its cursor and returns once the

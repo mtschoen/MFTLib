@@ -8,7 +8,7 @@
       (or `MftIndexSource.Unavailable`) makes `StartWatchingAsync` throw
       `InvalidOperationException`.
     - **Watch and catch-up lifetime**: each MFT-backed drive has an independent
-      `IIndexDriveWatch`, pump, stop source, and catch-up slot. `StartWatchingAsync(X)` begins at
+      internal `IIndexDriveWatch`, pump, stop source, and catch-up slot. `StartWatchingAsync(X)` begins at
       `WatchCatchUpState.CatchingUp`; journal batches through the tip captured at start are applied
       before `DriveCaughtUp` moves X to `CaughtUp`. `WaitForCatchUpAsync(X)` follows that instance:
       it completes when X catches up, faults with X's watch fault, and is cancelled when stop,

@@ -49,8 +49,6 @@ public class NamespaceBoundaryTests
             // The journal batch a JournalMutator applies is a value type, not a substrate. It
             // carries no volume handle and no native dependency.
             .And().DoNotHaveFullName("MFTLib.UsnJournalEntry")
-            // The options record that shapes a UsnJournalEntry. Same reason as above.
-            .And().DoNotHaveFullName("MFTLib.UsnJournalEntryOptions")
             // The journal sizing the index reports but does not own; a plain value record of two longs.
             .And().DoNotHaveFullName("MFTLib.UsnJournalSettings")
             // The reason flags on a journal entry. A plain [Flags] enum of uint.

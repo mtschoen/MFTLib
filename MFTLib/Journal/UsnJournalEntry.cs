@@ -87,7 +87,7 @@ public readonly struct UsnJournalEntry
     /// </summary>
     /// <param name="options">Already-decoded journal values to copy into the entry.</param>
     /// <returns>A journal entry containing the supplied values.</returns>
-    public static UsnJournalEntry Create(UsnJournalEntryOptions options)
+    internal static UsnJournalEntry Create(UsnJournalEntryOptions options)
     {
         return new UsnJournalEntry(options);
     }

@@ -2,7 +2,7 @@
 
 - **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant. MFT record geometry (1024 or 4096-byte records) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through compact ABI version 4 (`MFT_NATIVE_ABI_VERSION`): 50-byte `MftCompactEntry` rows with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, and uint16 sequence number at offset 48, plus separate UTF-16 string pools. Flags bit `0x8000` marks an unknown size; `0x4000` marks an unresolved path whose path-table string is a bare name (path table only). The broker's block path parses without path resolution.
 - **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop. The `MFTLib.Index` namespace provides a substrate-neutral columnar block format and query engine; see `docs/index-format.md`.
-    - **Index namespace boundary**: `MFTLib.Index` depends on nothing in the flat `MFTLib` namespace or in `MFTLib.Interop` beyond an allowlist of journal value types (`UsnJournalEntry`, `UsnJournalEntryOptions`, `UsnJournalSettings`, `UsnReason`). Enforced by `MFTLib.Tests/Index/NamespaceBoundaryTests.cs`, an IL-level ArchUnitNET test over the built assembly, with a mandatory negative-control fixture. Not an aislop rule: the forbidden folders share the flat `MFTLib` namespace, so there is no `using` for an import rule to match. Growing the allowlist is a review decision.
+    - **Index namespace boundary**: `MFTLib.Index` depends on nothing in the flat `MFTLib` namespace or in `MFTLib.Interop` beyond an allowlist of journal value types (`UsnJournalEntry`, `UsnJournalSettings`, `UsnReason`). Enforced by `MFTLib.Tests/Index/NamespaceBoundaryTests.cs`, an IL-level ArchUnitNET test over the built assembly, with a mandatory negative-control fixture. Not an aislop rule: the forbidden folders share the flat `MFTLib` namespace, so there is no `using` for an import rule to match. Growing the allowlist is a review decision.
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
       compares exactly, not as a wildcard. Block format 3 stores the two values
@@ -11,7 +11,7 @@
       keep-list changes. Mismatches report `WrongCacheTag` and cold-scan; a
       cache-only open fails with `DriveFailureKind.CacheTagMismatch`. Both emit
       stored/requested tag diagnostics. `InspectCached` reports tags on available
-      blocks. Tags are initialized before completion; custom MFT producers copy
+      blocks. Tags are initialized before completion; the internal MFT producers copy
       `request.CacheTag` into creation options, and the built-in broker adapter
       forwards it automatically. `CacheTag` has no public component accessors: consumers
       construct and compare whole tags, and `MFTLibTestExtensions.SyntheticCacheTag` reads the
@@ -24,7 +24,9 @@
       different connections. `BrokerMftBlockProducer.CreateIndexSource()` builds the broker-backed
       one; `MftIndexSource.Unavailable(reason)` fails every scan and watch start with
       `Drive {letter}: {reason}.`. A null `MftSource` is a configuration error for
-      `ProducerPolicy.Mft` and is ignored by `ProducerPolicy.Enumeration`.
+      `ProducerPolicy.Mft` and is ignored by `ProducerPolicy.Enumeration`. The block producer
+      delegate, the watch source and drive watch interfaces and their records are internal;
+      only MFTLib implements them, and tests build sources through `MFTLibTestExtensions`.
     - **Watch state events**: `FileIndex.WatchStateChanged` reports every change of a drive's
       derived `WatchCatchUp` with a per-drive `WatchStateVersion`, noted by one helper inside the
       state-lock section that made the change and delivered with neither `_stateLock` nor a write

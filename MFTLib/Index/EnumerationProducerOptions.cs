@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     platform without drive letters the caller assigns one; it is a display and lookup key,
 ///     not a device identifier.
 /// </summary>
-public sealed record EnumerationProducerOptions
+internal sealed record EnumerationProducerOptions
 {
     /// <summary>Directory from which recursive enumeration begins.</summary>
     public required string RootDirectory { get; init; }

@@ -311,7 +311,6 @@ MFTLib.UsnJournalCursorQuery :: method public virtual EndInvoke(System.IAsyncRes
 MFTLib.UsnJournalCursorQuery :: method public virtual Invoke(string driveLetter) : MFTLib.UsnJournalCursor
 MFTLib.UsnJournalCursorQuery :: type public delegate : System.ICloneable, System.Runtime.Serialization.ISerializable
 MFTLib.UsnJournalEntry :: method public override ToString() : string
-MFTLib.UsnJournalEntry :: method public static Create(MFTLib.UsnJournalEntryOptions options) : MFTLib.UsnJournalEntry
 MFTLib.UsnJournalEntry :: property public FileAttributes { get; } : System.IO.FileAttributes
 MFTLib.UsnJournalEntry :: property public FileName { get; } : string
 MFTLib.UsnJournalEntry :: property public IsClose { get; } : bool
@@ -325,21 +324,6 @@ MFTLib.UsnJournalEntry :: property public SequenceNumber { get; } : ushort
 MFTLib.UsnJournalEntry :: property public TimestampUtc { get; } : System.DateTime
 MFTLib.UsnJournalEntry :: property public Usn { get; } : long
 MFTLib.UsnJournalEntry :: type public readonly struct
-MFTLib.UsnJournalEntryOptions :: method public Equals(MFTLib.UsnJournalEntryOptions other) : bool
-MFTLib.UsnJournalEntryOptions :: method public override Equals(object obj) : bool
-MFTLib.UsnJournalEntryOptions :: method public override GetHashCode() : int
-MFTLib.UsnJournalEntryOptions :: method public override ToString() : string
-MFTLib.UsnJournalEntryOptions :: method public static op_Equality(MFTLib.UsnJournalEntryOptions left, MFTLib.UsnJournalEntryOptions right) : bool
-MFTLib.UsnJournalEntryOptions :: method public static op_Inequality(MFTLib.UsnJournalEntryOptions left, MFTLib.UsnJournalEntryOptions right) : bool
-MFTLib.UsnJournalEntryOptions :: property public SequenceNumber { get; init; } : ushort
-MFTLib.UsnJournalEntryOptions :: property public required FileAttributes { get; init; } : System.IO.FileAttributes
-MFTLib.UsnJournalEntryOptions :: property public required FileName { get; init; } : string
-MFTLib.UsnJournalEntryOptions :: property public required ParentRecordNumber { get; init; } : ulong
-MFTLib.UsnJournalEntryOptions :: property public required Reason { get; init; } : MFTLib.UsnReason
-MFTLib.UsnJournalEntryOptions :: property public required RecordNumber { get; init; } : ulong
-MFTLib.UsnJournalEntryOptions :: property public required TimestampUtc { get; init; } : System.DateTime
-MFTLib.UsnJournalEntryOptions :: property public required Usn { get; init; } : long
-MFTLib.UsnJournalEntryOptions :: type public readonly struct : System.IEquatable<MFTLib.UsnJournalEntryOptions>
 MFTLib.UsnJournalSettings :: method public Equals(MFTLib.UsnJournalSettings other) : bool
 MFTLib.UsnJournalSettings :: method public override Equals(object obj) : bool
 MFTLib.UsnJournalSettings :: method public override GetHashCode() : int

@@ -184,18 +184,6 @@ MFTLib.Index.CachedBlockStatus :: property public ProducerKind { get; init; } : 
 MFTLib.Index.CachedBlockStatus :: property public RootDirectory { get; init; } : string?
 MFTLib.Index.CachedBlockStatus :: property public Validation { get; init; } : MFTLib.Index.BlockValidationResult?
 MFTLib.Index.CachedBlockStatus :: type public sealed class : System.IEquatable<MFTLib.Index.CachedBlockStatus>
-MFTLib.Index.DriveCaughtUp :: constructor public ()
-MFTLib.Index.DriveCaughtUp :: method protected override PrintMembers(System.Text.StringBuilder builder) : bool
-MFTLib.Index.DriveCaughtUp :: method public Equals(MFTLib.Index.DriveCaughtUp? other) : bool
-MFTLib.Index.DriveCaughtUp :: method public override Equals(object? obj) : bool
-MFTLib.Index.DriveCaughtUp :: method public override GetHashCode() : int
-MFTLib.Index.DriveCaughtUp :: method public override ToString() : string
-MFTLib.Index.DriveCaughtUp :: method public sealed override Equals(MFTLib.Index.WatchStreamItem? other) : bool
-MFTLib.Index.DriveCaughtUp :: method public static op_Equality(MFTLib.Index.DriveCaughtUp? left, MFTLib.Index.DriveCaughtUp? right) : bool
-MFTLib.Index.DriveCaughtUp :: method public static op_Inequality(MFTLib.Index.DriveCaughtUp? left, MFTLib.Index.DriveCaughtUp? right) : bool
-MFTLib.Index.DriveCaughtUp :: method public virtual <Clone>$() : MFTLib.Index.DriveCaughtUp
-MFTLib.Index.DriveCaughtUp :: property protected override EqualityContract { get; } : System.Type
-MFTLib.Index.DriveCaughtUp :: type public sealed class : MFTLib.Index.WatchStreamItem, System.IEquatable<MFTLib.Index.DriveCaughtUp>, System.IEquatable<MFTLib.Index.WatchStreamItem>
 MFTLib.Index.DriveFailureKind :: field public const CacheDeclined : MFTLib.Index.DriveFailureKind = 1
 MFTLib.Index.DriveFailureKind :: field public const CacheTagMismatch : MFTLib.Index.DriveFailureKind = 4
 MFTLib.Index.DriveFailureKind :: field public const InUse : MFTLib.Index.DriveFailureKind = 3
@@ -251,9 +239,6 @@ MFTLib.Index.DriveStatus :: property public required ScanTimestamp { get; init; 
 MFTLib.Index.DriveStatus :: property public required State { get; init; } : MFTLib.Index.DriveState
 MFTLib.Index.DriveStatus :: property public required WatchSupported { get; init; } : bool
 MFTLib.Index.DriveStatus :: type public sealed class : System.IEquatable<MFTLib.Index.DriveStatus>
-MFTLib.Index.DriveWatchFaultException :: constructor public (char driveLetter, string message, System.Exception? innerException = default)
-MFTLib.Index.DriveWatchFaultException :: property public DriveLetter { get; } : char
-MFTLib.Index.DriveWatchFaultException :: type public sealed class : System.Exception, System.Runtime.Serialization.ISerializable
 MFTLib.Index.DriveWatchState :: constructor public (char DriveLetter, MFTLib.Index.WatchCatchUpState State, long Version, MFTLib.Index.WatchFault? Fault)
 MFTLib.Index.DriveWatchState :: method public <Clone>$() : MFTLib.Index.DriveWatchState
 MFTLib.Index.DriveWatchState :: method public Deconstruct(out char DriveLetter, out MFTLib.Index.WatchCatchUpState State, out long Version, out MFTLib.Index.WatchFault? Fault) : void
@@ -280,36 +265,6 @@ MFTLib.Index.DuplicateGroup :: method public static op_Inequality(MFTLib.Index.D
 MFTLib.Index.DuplicateGroup :: property public Entries { get; init; } : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileEntry>
 MFTLib.Index.DuplicateGroup :: property public Name { get; init; } : string
 MFTLib.Index.DuplicateGroup :: type public sealed class : System.IEquatable<MFTLib.Index.DuplicateGroup>
-MFTLib.Index.EnumerationProducer :: constructor public (MFTLib.Index.EnumerationProducerOptions options)
-MFTLib.Index.EnumerationProducer :: method public Produce(MFTLib.Index.BlockWriter writer, System.IProgress<MFTLib.Index.IndexScanProgress>? progress, System.Threading.CancellationToken cancellationToken) : MFTLib.Index.EnumerationResult
-MFTLib.Index.EnumerationProducer :: method public static EstimateNamePoolBytes(uint estimatedRowCount) : uint
-MFTLib.Index.EnumerationProducer :: method public static EstimateRowCount(string rootDirectory) : uint
-MFTLib.Index.EnumerationProducer :: property public Options { get; } : MFTLib.Index.EnumerationProducerOptions
-MFTLib.Index.EnumerationProducer :: type public sealed class
-MFTLib.Index.EnumerationProducerOptions :: constructor public ()
-MFTLib.Index.EnumerationProducerOptions :: method public <Clone>$() : MFTLib.Index.EnumerationProducerOptions
-MFTLib.Index.EnumerationProducerOptions :: method public Equals(MFTLib.Index.EnumerationProducerOptions? other) : bool
-MFTLib.Index.EnumerationProducerOptions :: method public override Equals(object? obj) : bool
-MFTLib.Index.EnumerationProducerOptions :: method public override GetHashCode() : int
-MFTLib.Index.EnumerationProducerOptions :: method public override ToString() : string
-MFTLib.Index.EnumerationProducerOptions :: method public static op_Equality(MFTLib.Index.EnumerationProducerOptions? left, MFTLib.Index.EnumerationProducerOptions? right) : bool
-MFTLib.Index.EnumerationProducerOptions :: method public static op_Inequality(MFTLib.Index.EnumerationProducerOptions? left, MFTLib.Index.EnumerationProducerOptions? right) : bool
-MFTLib.Index.EnumerationProducerOptions :: property public required DriveLetter { get; init; } : char
-MFTLib.Index.EnumerationProducerOptions :: property public required RootDirectory { get; init; } : string
-MFTLib.Index.EnumerationProducerOptions :: type public sealed class : System.IEquatable<MFTLib.Index.EnumerationProducerOptions>
-MFTLib.Index.EnumerationResult :: constructor public (uint RowCount, int AccessDeniedSubtreeCount, bool CompactionNeeded)
-MFTLib.Index.EnumerationResult :: method public <Clone>$() : MFTLib.Index.EnumerationResult
-MFTLib.Index.EnumerationResult :: method public Deconstruct(out uint RowCount, out int AccessDeniedSubtreeCount, out bool CompactionNeeded) : void
-MFTLib.Index.EnumerationResult :: method public Equals(MFTLib.Index.EnumerationResult? other) : bool
-MFTLib.Index.EnumerationResult :: method public override Equals(object? obj) : bool
-MFTLib.Index.EnumerationResult :: method public override GetHashCode() : int
-MFTLib.Index.EnumerationResult :: method public override ToString() : string
-MFTLib.Index.EnumerationResult :: method public static op_Equality(MFTLib.Index.EnumerationResult? left, MFTLib.Index.EnumerationResult? right) : bool
-MFTLib.Index.EnumerationResult :: method public static op_Inequality(MFTLib.Index.EnumerationResult? left, MFTLib.Index.EnumerationResult? right) : bool
-MFTLib.Index.EnumerationResult :: property public AccessDeniedSubtreeCount { get; init; } : int
-MFTLib.Index.EnumerationResult :: property public CompactionNeeded { get; init; } : bool
-MFTLib.Index.EnumerationResult :: property public RowCount { get; init; } : uint
-MFTLib.Index.EnumerationResult :: type public sealed class : System.IEquatable<MFTLib.Index.EnumerationResult>
 MFTLib.Index.FileChange :: constructor public (MFTLib.Index.FileChangeKind Kind, MFTLib.Index.FileEntry Entry, string Path, System.DateTime Timestamp, string? PreviousPath = default)
 MFTLib.Index.FileChange :: method public <Clone>$() : MFTLib.Index.FileChange
 MFTLib.Index.FileChange :: method public Deconstruct(out MFTLib.Index.FileChangeKind Kind, out MFTLib.Index.FileEntry Entry, out string Path, out System.DateTime Timestamp, out string? PreviousPath) : void
@@ -413,11 +368,6 @@ MFTLib.Index.FileRow :: property public readonly ModifiedUtc { get; } : System.D
 MFTLib.Index.FileRow :: property public readonly SizeKnown { get; } : bool
 MFTLib.Index.FileRow :: property public readonly SubtreeSkipped { get; } : bool
 MFTLib.Index.FileRow :: type public struct
-MFTLib.Index.IIndexDriveWatch :: method public abstract ReadAsync(System.Threading.CancellationToken cancellationToken) : System.Collections.Generic.IAsyncEnumerable<MFTLib.Index.WatchStreamItem>
-MFTLib.Index.IIndexDriveWatch :: property public abstract DriveLetter { get; } : char
-MFTLib.Index.IIndexDriveWatch :: type public interface : System.IAsyncDisposable
-MFTLib.Index.IIndexWatchSource :: method public abstract StartAsync(MFTLib.Index.IndexWatchTarget target, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.IIndexDriveWatch>
-MFTLib.Index.IIndexWatchSource :: type public interface
 MFTLib.Index.IndexDriveOpened :: constructor public ()
 MFTLib.Index.IndexDriveOpened :: method public <Clone>$() : MFTLib.Index.IndexDriveOpened
 MFTLib.Index.IndexDriveOpened :: method public Equals(MFTLib.Index.IndexDriveOpened? other) : bool
@@ -466,19 +416,6 @@ MFTLib.Index.IndexScanProgress :: property public required DriveLetter { get; in
 MFTLib.Index.IndexScanProgress :: property public required Phase { get; init; } : MFTLib.Index.IndexScanPhase
 MFTLib.Index.IndexScanProgress :: property public required RowsWritten { get; init; } : uint
 MFTLib.Index.IndexScanProgress :: type public sealed class : System.IEquatable<MFTLib.Index.IndexScanProgress>
-MFTLib.Index.IndexWatchTarget :: constructor public (char DriveLetter, ulong JournalId, long NextUsn)
-MFTLib.Index.IndexWatchTarget :: method public <Clone>$() : MFTLib.Index.IndexWatchTarget
-MFTLib.Index.IndexWatchTarget :: method public Deconstruct(out char DriveLetter, out ulong JournalId, out long NextUsn) : void
-MFTLib.Index.IndexWatchTarget :: method public Equals(MFTLib.Index.IndexWatchTarget? other) : bool
-MFTLib.Index.IndexWatchTarget :: method public override Equals(object? obj) : bool
-MFTLib.Index.IndexWatchTarget :: method public override GetHashCode() : int
-MFTLib.Index.IndexWatchTarget :: method public override ToString() : string
-MFTLib.Index.IndexWatchTarget :: method public static op_Equality(MFTLib.Index.IndexWatchTarget? left, MFTLib.Index.IndexWatchTarget? right) : bool
-MFTLib.Index.IndexWatchTarget :: method public static op_Inequality(MFTLib.Index.IndexWatchTarget? left, MFTLib.Index.IndexWatchTarget? right) : bool
-MFTLib.Index.IndexWatchTarget :: property public DriveLetter { get; init; } : char
-MFTLib.Index.IndexWatchTarget :: property public JournalId { get; init; } : ulong
-MFTLib.Index.IndexWatchTarget :: property public NextUsn { get; init; } : long
-MFTLib.Index.IndexWatchTarget :: type public sealed class : System.IEquatable<MFTLib.Index.IndexWatchTarget>
 MFTLib.Index.IndexedDrive :: constructor public (char DriveLetter, string RootDirectory, uint VolumeSerial)
 MFTLib.Index.IndexedDrive :: method public <Clone>$() : MFTLib.Index.IndexedDrive
 MFTLib.Index.IndexedDrive :: method public Deconstruct(out char DriveLetter, out string RootDirectory, out uint VolumeSerial) : void
@@ -493,22 +430,6 @@ MFTLib.Index.IndexedDrive :: property public DriveLetter { get; init; } : char
 MFTLib.Index.IndexedDrive :: property public RootDirectory { get; init; } : string
 MFTLib.Index.IndexedDrive :: property public VolumeSerial { get; init; } : uint
 MFTLib.Index.IndexedDrive :: type public sealed class : System.IEquatable<MFTLib.Index.IndexedDrive>
-MFTLib.Index.JournalBatch :: constructor public (System.Collections.Generic.IReadOnlyList<MFTLib.UsnJournalEntry> Entries, ulong JournalId, long NextUsn)
-MFTLib.Index.JournalBatch :: method protected override PrintMembers(System.Text.StringBuilder builder) : bool
-MFTLib.Index.JournalBatch :: method public Deconstruct(out System.Collections.Generic.IReadOnlyList<MFTLib.UsnJournalEntry> Entries, out ulong JournalId, out long NextUsn) : void
-MFTLib.Index.JournalBatch :: method public Equals(MFTLib.Index.JournalBatch? other) : bool
-MFTLib.Index.JournalBatch :: method public override Equals(object? obj) : bool
-MFTLib.Index.JournalBatch :: method public override GetHashCode() : int
-MFTLib.Index.JournalBatch :: method public override ToString() : string
-MFTLib.Index.JournalBatch :: method public sealed override Equals(MFTLib.Index.WatchStreamItem? other) : bool
-MFTLib.Index.JournalBatch :: method public static op_Equality(MFTLib.Index.JournalBatch? left, MFTLib.Index.JournalBatch? right) : bool
-MFTLib.Index.JournalBatch :: method public static op_Inequality(MFTLib.Index.JournalBatch? left, MFTLib.Index.JournalBatch? right) : bool
-MFTLib.Index.JournalBatch :: method public virtual <Clone>$() : MFTLib.Index.JournalBatch
-MFTLib.Index.JournalBatch :: property protected override EqualityContract { get; } : System.Type
-MFTLib.Index.JournalBatch :: property public Entries { get; init; } : System.Collections.Generic.IReadOnlyList<MFTLib.UsnJournalEntry>
-MFTLib.Index.JournalBatch :: property public JournalId { get; init; } : ulong
-MFTLib.Index.JournalBatch :: property public NextUsn { get; init; } : long
-MFTLib.Index.JournalBatch :: type public sealed class : MFTLib.Index.WatchStreamItem, System.IEquatable<MFTLib.Index.JournalBatch>, System.IEquatable<MFTLib.Index.WatchStreamItem>
 MFTLib.Index.JournalCatchUpLostException :: constructor public (bool recoveryStopped, string message)
 MFTLib.Index.JournalCatchUpLostException :: property public RecoveryStopped { get; } : bool
 MFTLib.Index.JournalCatchUpLostException :: type public sealed class : System.Exception, System.Runtime.Serialization.ISerializable
@@ -535,42 +456,6 @@ MFTLib.Index.JournalCheckpointLossDetection :: field public const DriveOpening :
 MFTLib.Index.JournalCheckpointLossDetection :: field public const LiveWatch : MFTLib.Index.JournalCheckpointLossDetection = 1
 MFTLib.Index.JournalCheckpointLossDetection :: field public const ScanCatchUp : MFTLib.Index.JournalCheckpointLossDetection = 2
 MFTLib.Index.JournalCheckpointLossDetection :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.Index.MftBlockProduceRequest :: constructor public ()
-MFTLib.Index.MftBlockProduceRequest :: method public <Clone>$() : MFTLib.Index.MftBlockProduceRequest
-MFTLib.Index.MftBlockProduceRequest :: method public Equals(MFTLib.Index.MftBlockProduceRequest? other) : bool
-MFTLib.Index.MftBlockProduceRequest :: method public override Equals(object? obj) : bool
-MFTLib.Index.MftBlockProduceRequest :: method public override GetHashCode() : int
-MFTLib.Index.MftBlockProduceRequest :: method public override ToString() : string
-MFTLib.Index.MftBlockProduceRequest :: method public static op_Equality(MFTLib.Index.MftBlockProduceRequest? left, MFTLib.Index.MftBlockProduceRequest? right) : bool
-MFTLib.Index.MftBlockProduceRequest :: method public static op_Inequality(MFTLib.Index.MftBlockProduceRequest? left, MFTLib.Index.MftBlockProduceRequest? right) : bool
-MFTLib.Index.MftBlockProduceRequest :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
-MFTLib.Index.MftBlockProduceRequest :: property public DeleteOnClose { get; init; } : bool
-MFTLib.Index.MftBlockProduceRequest :: property public Progress { get; init; } : System.IProgress<MFTLib.Index.IndexScanProgress>?
-MFTLib.Index.MftBlockProduceRequest :: property public required BlockPath { get; init; } : string
-MFTLib.Index.MftBlockProduceRequest :: property public required DriveLetter { get; init; } : char
-MFTLib.Index.MftBlockProduceRequest :: property public required VolumeSerial { get; init; } : uint
-MFTLib.Index.MftBlockProduceRequest :: type public sealed class : System.IEquatable<MFTLib.Index.MftBlockProduceRequest>
-MFTLib.Index.MftBlockProduceResult :: constructor public (MFTLib.Index.BlockFile Block, ulong JournalId, long NextUsn, int SkippedRecordCount)
-MFTLib.Index.MftBlockProduceResult :: method public <Clone>$() : MFTLib.Index.MftBlockProduceResult
-MFTLib.Index.MftBlockProduceResult :: method public Deconstruct(out MFTLib.Index.BlockFile Block, out ulong JournalId, out long NextUsn, out int SkippedRecordCount) : void
-MFTLib.Index.MftBlockProduceResult :: method public Equals(MFTLib.Index.MftBlockProduceResult? other) : bool
-MFTLib.Index.MftBlockProduceResult :: method public override Equals(object? obj) : bool
-MFTLib.Index.MftBlockProduceResult :: method public override GetHashCode() : int
-MFTLib.Index.MftBlockProduceResult :: method public override ToString() : string
-MFTLib.Index.MftBlockProduceResult :: method public static op_Equality(MFTLib.Index.MftBlockProduceResult? left, MFTLib.Index.MftBlockProduceResult? right) : bool
-MFTLib.Index.MftBlockProduceResult :: method public static op_Inequality(MFTLib.Index.MftBlockProduceResult? left, MFTLib.Index.MftBlockProduceResult? right) : bool
-MFTLib.Index.MftBlockProduceResult :: property public Block { get; init; } : MFTLib.Index.BlockFile
-MFTLib.Index.MftBlockProduceResult :: property public CatchUpLoss { get; init; } : MFTLib.Index.JournalCheckpointLoss?
-MFTLib.Index.MftBlockProduceResult :: property public JournalId { get; init; } : ulong
-MFTLib.Index.MftBlockProduceResult :: property public NextUsn { get; init; } : long
-MFTLib.Index.MftBlockProduceResult :: property public SkippedRecordCount { get; init; } : int
-MFTLib.Index.MftBlockProduceResult :: type public sealed class : System.IEquatable<MFTLib.Index.MftBlockProduceResult>
-MFTLib.Index.MftBlockProducer :: constructor public (object object, System.IntPtr method)
-MFTLib.Index.MftBlockProducer :: method public virtual BeginInvoke(MFTLib.Index.MftBlockProduceRequest request, System.Threading.CancellationToken cancellationToken, System.AsyncCallback callback, object object) : System.IAsyncResult
-MFTLib.Index.MftBlockProducer :: method public virtual EndInvoke(System.IAsyncResult result) : System.Threading.Tasks.Task<MFTLib.Index.MftBlockProduceResult>
-MFTLib.Index.MftBlockProducer :: method public virtual Invoke(MFTLib.Index.MftBlockProduceRequest request, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLib.Index.MftBlockProduceResult>
-MFTLib.Index.MftBlockProducer :: type public delegate : System.ICloneable, System.Runtime.Serialization.ISerializable
-MFTLib.Index.MftIndexSource :: constructor public (MFTLib.Index.MftBlockProducer producer, MFTLib.Index.IIndexWatchSource? watchSource = default)
 MFTLib.Index.MftIndexSource :: method public static Unavailable(string reason) : MFTLib.Index.MftIndexSource
 MFTLib.Index.MftIndexSource :: type public sealed class
 MFTLib.Index.NamePool :: method public static Read(System.ReadOnlySpan<char> pool, uint offsetBytes, ushort lengthUnits) : System.ReadOnlySpan<char>
@@ -650,14 +535,3 @@ MFTLib.Index.WatchFaultKind :: field public const Recovery : MFTLib.Index.WatchF
 MFTLib.Index.WatchFaultKind :: field public const RescanRestart : MFTLib.Index.WatchFaultKind = 6
 MFTLib.Index.WatchFaultKind :: field public const Subscriber : MFTLib.Index.WatchFaultKind = 0
 MFTLib.Index.WatchFaultKind :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.Index.WatchStreamItem :: constructor protected (MFTLib.Index.WatchStreamItem original)
-MFTLib.Index.WatchStreamItem :: method protected virtual PrintMembers(System.Text.StringBuilder builder) : bool
-MFTLib.Index.WatchStreamItem :: method public abstract <Clone>$() : MFTLib.Index.WatchStreamItem
-MFTLib.Index.WatchStreamItem :: method public override Equals(object? obj) : bool
-MFTLib.Index.WatchStreamItem :: method public override GetHashCode() : int
-MFTLib.Index.WatchStreamItem :: method public override ToString() : string
-MFTLib.Index.WatchStreamItem :: method public static op_Equality(MFTLib.Index.WatchStreamItem? left, MFTLib.Index.WatchStreamItem? right) : bool
-MFTLib.Index.WatchStreamItem :: method public static op_Inequality(MFTLib.Index.WatchStreamItem? left, MFTLib.Index.WatchStreamItem? right) : bool
-MFTLib.Index.WatchStreamItem :: method public virtual Equals(MFTLib.Index.WatchStreamItem? other) : bool
-MFTLib.Index.WatchStreamItem :: property protected virtual EqualityContract { get; } : System.Type
-MFTLib.Index.WatchStreamItem :: type public abstract class : System.IEquatable<MFTLib.Index.WatchStreamItem>
