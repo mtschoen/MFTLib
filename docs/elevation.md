@@ -24,8 +24,9 @@ the manual-elevation instructions. A dismissal within 0.75 seconds is treated as
 dialog is shown again. A dialog nobody answers for five minutes counts as Cancel, so a run left unattended does not
 hang: no UAC prompt, the manual-elevation fallback, exit code 1.
 
-`scan-drive` stays unelevated and the broker it launches asks for elevation, so its UAC prompt arrives without
-this dialog.
+`scan-drive` stays unelevated and the broker it launches asks for elevation, so an attended, unelevated
+`scan-drive` run shows the same heads-up dialog before the broker launch; Cancel or the five-minute timeout
+skips the launch with the same fallback text and exit code 1.
 
 ## Unattended: the owner said to proceed autonomously, or nobody is at the desktop
 

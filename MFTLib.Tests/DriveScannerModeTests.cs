@@ -361,7 +361,7 @@ public class DriveScannerModeTests
 
     DriveScanner ScannerOverBroker(InProcessBroker broker, List<string> lines)
     {
-        return new DriveScanner
+        var scanner = new DriveScanner
         {
             _isElevated = () => false,
             _getEnvironmentVariable = _ => null,
@@ -372,6 +372,9 @@ public class DriveScannerModeTests
             _cacheDirectory = _directory,
             _writeLine = lines.Add
         };
+        // The run is attended and unelevated, so it shows the heads-up dialog before the broker launch.
+        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        return scanner;
     }
 
     IndexedDrive ResolveDrive(string letter)

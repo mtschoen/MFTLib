@@ -4,13 +4,18 @@ using System.Text;
 
 namespace TestProgram;
 
-// The heads-up dialog shown before the elevated relaunch, so the Windows UAC prompt that follows is expected
-// and a stray key press cannot dismiss it unseen. It lives here, not in MFTLib: a consumer's runtime flow must
-// never gain a dialog. The two native seams are the bare user32 imports, so every flag, text and decision
-// below runs in tests and the only untested lines are the import declarations.
+// The heads-up dialog shown before this run raises a Windows UAC prompt: the elevated relaunch, or the broker
+// launch of an attended, unelevated scan-drive run. The prompt that follows is expected and a stray key press
+// cannot dismiss it unseen. It lives here, not in MFTLib: a consumer's runtime flow must never gain a dialog.
+// The two native seams are the bare user32 imports, so every flag, text and decision below runs in tests and
+// the only untested lines are the import declarations.
 partial class DriveScanner
 {
     internal const string ElevationNoticeTitle = "TestProgram: administrator approval needed next";
+
+    // The one sentence that differs between the two UAC prompts this dialog precedes.
+    const string SelfElevationReason = "TestProgram relaunches itself elevated.";
+    const string BrokerLaunchReason = "TestProgram launches its broker elevated.";
     internal const uint MessageBoxOkCancel = 0x00000001;
     internal const uint MessageBoxIconInformation = 0x00000040;
     internal const uint MessageBoxSystemModal = 0x00001000;
@@ -48,13 +53,13 @@ partial class DriveScanner
     ///     Shows the heads-up dialog until the person answers it deliberately. Returns true for OK, false for
     ///     Cancel, for a dialog that went unanswered too long, or for a dialog the system could not show.
     /// </summary>
-    bool ConfirmElevation(string[] arguments)
+    bool ConfirmElevation(string[] arguments, string reason)
     {
         var previousDismissalTooFast = false;
         while (true)
         {
             _messageBeep(MessageBeepIconExclamation);
-            var outcome = ShowElevationNotice(BuildElevationNotice(arguments, previousDismissalTooFast));
+            var outcome = ShowElevationNotice(BuildElevationNotice(arguments, reason, previousDismissalTooFast));
             if (outcome is not { } answered || answered.AnsweredAt - answered.ShownAt >= ElevationNoticeTimeout)
             {
                 _writeLine("The heads-up dialog was not answered in time; treating it as Cancel.");
@@ -113,7 +118,7 @@ partial class DriveScanner
         return dialog.IsCompleted ? dialog.GetAwaiter().GetResult() : null;
     }
 
-    string BuildElevationNotice(string[] arguments, bool previousDismissalTooFast)
+    string BuildElevationNotice(string[] arguments, string reason, bool previousDismissalTooFast)
     {
         var text = new StringBuilder();
         if (previousDismissalTooFast)
@@ -123,7 +128,7 @@ partial class DriveScanner
         }
 
         text.AppendLine("A Windows elevation (UAC) prompt will appear after you press OK.");
-        text.AppendLine("Reading a volume's MFT needs administrator rights, so TestProgram relaunches itself elevated.");
+        text.AppendLine("Reading a volume's MFT needs administrator rights, so " + reason);
         text.AppendLine();
         text.AppendLine("Executable: " + _getProcessPath());
         text.AppendLine(string.Create(CultureInfo.InvariantCulture, $"Arguments ({arguments.Length}), one per line exactly as received; <empty> marks an empty argument:"));

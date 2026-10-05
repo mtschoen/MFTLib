@@ -31,10 +31,20 @@ partial class DriveScanner
 
         if (!parsed.RequiresElevation)
         {
-            // scan-drive needs no elevation here, but the broker it launches would raise a UAC prompt.
-            if (parsed.Mode == ProgramMode.ScanDrive && IsUnattended() && !_isElevated())
+            // scan-drive needs no elevation here, but the broker it launches raises a UAC prompt, so an attended
+            // run gets the same heads-up dialog the self-elevation path gets before that prompt.
+            if (parsed.Mode == ProgramMode.ScanDrive && !_isElevated())
             {
-                return SkipElevationUnattended(arguments);
+                if (IsUnattended())
+                {
+                    return SkipElevationUnattended(arguments);
+                }
+
+                if (!ConfirmElevation(arguments, BrokerLaunchReason))
+                {
+                    PrintElevationFailure(arguments);
+                    return 1;
+                }
             }
 
             RunOnDrives(parsed);
@@ -49,7 +59,7 @@ partial class DriveScanner
             }
 
             _writeLine("Not running as administrator. Attempting to self-elevate...");
-            if (_canSelfElevate() && ConfirmElevation(arguments) && _tryRunElevated(arguments, parsed.ElevationTimeout))
+            if (_canSelfElevate() && ConfirmElevation(arguments, SelfElevationReason) && _tryRunElevated(arguments, parsed.ElevationTimeout))
             {
                 return 0;
             }

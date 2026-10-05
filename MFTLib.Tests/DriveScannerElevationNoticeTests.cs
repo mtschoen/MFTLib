@@ -4,8 +4,9 @@ using TestProgram;
 
 namespace MFTLib.Tests;
 
-// The heads-up dialog before the elevated relaunch. The dialog and the clock are scripted: each stubbed
-// dialog answers after a chosen amount of fake time, so no test sleeps or reads the real clock.
+// The heads-up dialog before the elevated relaunch or the broker launch of a scan-drive run. The dialog and
+// the clock are scripted: each stubbed dialog answers after a chosen amount of fake time, so no test sleeps
+// or reads the real clock.
 [TestClass]
 public class DriveScannerElevationNoticeTests
 {
@@ -28,48 +29,55 @@ public class DriveScannerElevationNoticeTests
         };
     }
 
-    [TestMethod]
-    public void Run_NotElevated_DeliberateOk_ElevatesExactlyOnceAfterTheDialog()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void Run_NotElevated_DeliberateOk_ElevatesExactlyOnceAfterTheDialog(bool isScanDrive)
     {
         var events = new List<string>();
-        var scanner = Scanner(new List<string>(), events, [Answer(DriveScanner.MessageBoxResultOk, 2)]);
+        var (scanner, args, launchEvent) = CreateScannerForMode(isScanDrive, new List<string>(), events, [Answer(DriveScanner.MessageBoxResultOk, 2)]);
 
-        var result = scanner.Run(["find-name", "C", "--name", "x"]);
+        var result = scanner.Run(args);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, events);
+        CollectionAssert.AreEqual(new[] { "dialog", launchEvent }, events);
     }
 
-    [TestMethod]
-    public void Run_NotElevated_DeliberateCancel_SkipsElevationAndPrintsTheFallback()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void Run_NotElevated_DeliberateCancel_SkipsElevationAndPrintsTheFallback(bool isScanDrive)
     {
         var lines = new List<string>();
         var events = new List<string>();
-        var scanner = Scanner(lines, events, [Answer(DriveScanner.MessageBoxResultCancel, 2)]);
+        var (scanner, args, _) = CreateScannerForMode(isScanDrive, lines, events, [Answer(DriveScanner.MessageBoxResultCancel, 2)]);
 
-        var result = scanner.Run(["C"]);
+        var result = scanner.Run(args);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(new[] { "dialog" }, events);
-        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
-        Assert.IsTrue(lines.Any(line => line.Contains(ProcessPath)));
+        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal) || line.Contains("AUTOMATIC ELEVATION FAILED")));
+        Assert.IsTrue(lines.Any(line => line.Contains(ProcessPath, StringComparison.Ordinal) || line.Contains(ProcessPath)));
     }
 
-    [TestMethod]
-    public void Run_NotElevated_TooFastOk_ShowsAgainAndElevatesOnlyAfterADeliberateAnswer()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void Run_NotElevated_TooFastOk_ShowsAgainAndElevatesOnlyAfterADeliberateAnswer(bool isScanDrive)
     {
         var events = new List<string>();
         var messages = new List<string>();
-        var scanner = Scanner(
+        var (scanner, args, launchEvent) = CreateScannerForMode(
+            isScanDrive,
             new List<string>(),
             events,
             [Answer(DriveScanner.MessageBoxResultOk, 0.2), Answer(DriveScanner.MessageBoxResultOk, 3)],
             messages);
 
-        var result = scanner.Run(["C"]);
+        var result = scanner.Run(args);
 
         Assert.AreEqual(0, result);
-        CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
+        CollectionAssert.AreEqual(new[] { "dialog", "dialog", launchEvent }, events);
         Assert.IsFalse(messages[0].Contains("too fast", StringComparison.Ordinal));
         Assert.IsTrue(messages[1].Contains("too fast", StringComparison.Ordinal));
     }
@@ -190,12 +198,14 @@ public class DriveScannerElevationNoticeTests
         Assert.IsTrue(text.Contains("  a b&c", StringComparison.Ordinal));
     }
 
-    [TestMethod]
-    public void Run_NotElevated_DialogNeverAnswered_TimesOutAsCancelWithoutElevating()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void Run_NotElevated_DialogNeverAnswered_TimesOutAsCancelWithoutElevating(bool isScanDrive)
     {
         var lines = new List<string>();
         var events = new List<string>();
-        var scanner = Scanner(lines, events, []);
+        var (scanner, args, _) = CreateScannerForMode(isScanDrive, lines, events, []);
         var clock = new FakeTimeProvider();
         var neverAnswered = new TaskCompletionSource();
         scanner._timeProvider = clock;
@@ -212,7 +222,7 @@ public class DriveScannerElevationNoticeTests
         int result;
         try
         {
-            result = scanner.Run(["C"]);
+            result = scanner.Run(args);
         }
         finally
         {
@@ -221,8 +231,8 @@ public class DriveScannerElevationNoticeTests
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(new[] { "dialog" }, events);
-        Assert.IsTrue(lines.Any(line => line.Contains("not answered in time")));
-        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
+        Assert.IsTrue(lines.Any(line => line.Contains("not answered in time", StringComparison.Ordinal) || line.Contains("not answered in time")));
+        Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED", StringComparison.Ordinal) || line.Contains("AUTOMATIC ELEVATION FAILED")));
     }
 
     [TestMethod]
@@ -333,6 +343,45 @@ public class DriveScannerElevationNoticeTests
         Assert.AreEqual(0, result);
         Assert.IsTrue(lines.Contains("Error launching the broker: the scan was attempted"));
         Assert.IsFalse(lines.Any(line => line.Contains("Running unattended")));
+    }
+
+
+
+
+
+    [TestMethod]
+    public void Run_ScanDrive_NotElevated_DialogNamesTheBrokerLaunchItPrecedes()
+    {
+        string? text = null;
+        string? title = null;
+        var clock = new FakeTimeProvider();
+        var scanner = new DriveScanner
+        {
+            _isElevated = () => false,
+            _getEnvironmentVariable = _ => null,
+            _getProcessPath = () => ProcessPath,
+            _writeLine = _ => { },
+            _timeProvider = clock,
+            _messageBeep = _ => true,
+            _messageBox = (_, body, caption, _) =>
+            {
+                text = body;
+                title = caption;
+                clock.Advance(TimeSpan.FromSeconds(5));
+                return DriveScanner.MessageBoxResultOk;
+            },
+            _launchBroker = _ => throw new IOException("the scripted launch stands in for the broker"),
+            _canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate."),
+            _tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate.")
+        };
+
+        var result = scanner.Run(["scan-drive", "C"]);
+
+        Assert.AreEqual(0, result);
+        Assert.IsTrue(title!.Contains("TestProgram", StringComparison.Ordinal));
+        Assert.IsTrue(text!.Contains("UAC", StringComparison.Ordinal));
+        Assert.IsTrue(text.Contains("administrator rights", StringComparison.Ordinal));
+        Assert.IsTrue(text.Contains("launches its broker elevated", StringComparison.Ordinal));
     }
 
     // The caller resumes only after the dialog thread is done, so an immediate answer followed by a long delay before
@@ -448,6 +497,29 @@ public class DriveScannerElevationNoticeTests
         protected override IEnumerable<Task> GetScheduledTasks() => [];
     }
 
+    static (DriveScanner Scanner, string[] Arguments, string LaunchEvent) CreateScannerForMode(
+        bool isScanDrive,
+        List<string> lines,
+        List<string> events,
+        (int Result, double SecondsToAnswer)[] answers,
+        List<string>? messages = null)
+    {
+        var scanner = Scanner(lines, events, answers, messages);
+        if (isScanDrive)
+        {
+            scanner._canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate.");
+            scanner._tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate.");
+            scanner._launchBroker = _ =>
+            {
+                events.Add("launch");
+                throw new IOException("the scripted launch stands in for the broker");
+            };
+        }
+        string[] args = isScanDrive ? ["scan-drive", "C"] : ["find-name", "C", "--name", "x"];
+        var launchEvent = isScanDrive ? "launch" : "elevate";
+        return (scanner, args, launchEvent);
+    }
+
     static (int Result, double SecondsToAnswer) Answer(int result, double secondsToAnswer) => (result, secondsToAnswer);
 
     static DriveScanner Scanner(
@@ -482,4 +554,5 @@ public class DriveScannerElevationNoticeTests
             }
         };
     }
+
 }
