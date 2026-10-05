@@ -132,6 +132,17 @@ public sealed class SyntheticBlockEditor
     }
 
     /// <summary>
+    ///     Replaces the cache identity in place, preserving every other header field and all rows.
+    ///     An index opened with a different requested tag rejects the block as a cache-tag mismatch.
+    /// </summary>
+    /// <param name="cacheTag">The identity to store, including the all-zero default.</param>
+    public void SetCacheTag(CacheTag cacheTag)
+    {
+        EnsureOpen();
+        _writer.SetCacheTag(cacheTag);
+    }
+
+    /// <summary>
     ///     Zeroes the header's used name-pool length so the block fails name validation. The
     ///     block is no longer consistent, so nothing else should follow it in the same edit.
     /// </summary>

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using MFTLib.Index;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -148,5 +149,49 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(Moment, SyntheticBlock.ReadHeader(path, Serial).CompletedUtc);
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
         Assert.AreEqual(Moment, index.Drives.Single().ScanTimestamp);
+    }
+
+    [DataTestMethod]
+    [DataRow(false, false, DisplayName = "cache-tag-edit-mft-foreign")]
+    [DataRow(true, false, DisplayName = "cache-tag-edit-enumeration-foreign")]
+    [DataRow(false, true, DisplayName = "cache-tag-edit-mft-zero")]
+    [DataRow(true, true, DisplayName = "cache-tag-edit-enumeration-zero")]
+    public async Task SetCacheTag_PreservesTheBlockAndDeclinesTheOriginalIdentity(
+        bool enumeration, bool clearTag)
+    {
+        var originalTag = new CacheTag("SYNT", 3);
+        var replacementTag = clearTag ? default : new CacheTag("TEST", 7);
+        var options = Options() with
+        {
+            CacheTag = originalTag,
+            ProducerKind = enumeration ? ProducerKind.Enumeration : ProducerKind.Mft,
+            RootRow = enumeration ? 0u : 5u
+        };
+        var path = Seed(enumeration ? EnumerationRows() : SampleRows(), options);
+        var headerBefore = SyntheticBlock.ReadHeader(path, Serial);
+        var rowsBefore = SyntheticBlock.ReadRows(path, Serial).ToArray();
+        var bytesBefore = await File.ReadAllBytesAsync(path, Token);
+
+        SyntheticBlock.Edit(path, Serial, editor => editor.SetCacheTag(replacementTag));
+
+        Assert.AreEqual(headerBefore with { CacheTag = replacementTag },
+            SyntheticBlock.ReadHeader(path, Serial));
+        CollectionAssert.AreEqual(rowsBefore, SyntheticBlock.ReadRows(path, Serial).ToArray());
+        var bytesAfter = await File.ReadAllBytesAsync(path, Token);
+        Assert.AreEqual(bytesBefore.Length, bytesAfter.Length);
+        var tagStart = Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.CacheTagFourCc)).ToInt32();
+        var tagEnd = Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.CacheTagVersion)).ToInt32()
+                     + sizeof(uint);
+        CollectionAssert.AreEqual(bytesBefore[..tagStart], bytesAfter[..tagStart],
+            "Every header field before the tag must be unchanged.");
+        CollectionAssert.AreEqual(bytesBefore[tagEnd..], bytesAfter[tagEnd..],
+            "Header padding, all row slots, sequence numbers and the name pool must be unchanged.");
+
+        await using var index = await FileIndex.OpenAsync(
+            CacheOnly() with { CacheTag = originalTag }, Token);
+        var drive = index.Drives.Single();
+        Assert.AreEqual(DriveState.Failed, drive.State);
+        Assert.AreEqual(DriveFailureKind.CacheTagMismatch, drive.FailureKind);
+        Assert.AreEqual(BlockSource.None, drive.BlockSource);
     }
 }

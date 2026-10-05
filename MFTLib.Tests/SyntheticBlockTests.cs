@@ -265,6 +265,8 @@ public partial class SyntheticBlockTests
         Assert.ThrowsException<InvalidOperationException>(() => kept!.ReadRow(7));
         Assert.ThrowsException<InvalidOperationException>(() => kept!.WriteRow(new SyntheticRow(7, "x", 6)));
         Assert.ThrowsException<InvalidOperationException>(() => kept!.CorruptNamePool());
+        Assert.ThrowsException<InvalidOperationException>(
+            () => kept!.SetCacheTag(new CacheTag("TEST", 7)));
     }
 
     [TestMethod]

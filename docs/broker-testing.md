@@ -200,7 +200,12 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
   journal cursor or scan timestamp (`ReadHeader(...).CompletedUtc` is the stored one,
   so an edit can write it back), `SetProducerKind(ProducerKind.Mft)` turns a block
   written by an enumeration scan into one an index warm-starts without a producer and
-  whose rows accept `FileIndexTestAccess.ApplyJournalEntries`, and `CorruptNamePool` makes the next open reject the block with
+  whose rows accept `FileIndexTestAccess.ApplyJournalEntries`.
+  `SetCacheTag(new CacheTag("TEST", 7))` replaces only the stored cache identity,
+  preserving the scan timestamp, journal cursor, other header fields and every row;
+  passing `default` stores the all-zero identity. A cache-only `FileIndex` opened
+  with a different requested tag reports `DriveFailureKind.CacheTagMismatch`.
+  `CorruptNamePool` makes the next open reject the block with
   `BlockValidationResult.InvalidNameDescriptor`. Using the editor after the edit
   returns throws `InvalidOperationException`.
 - `ReadRows` returns every row in use, tombstones included, in row order.

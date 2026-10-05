@@ -100,6 +100,7 @@ MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkSizesUnknown(Syst
 MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkTombstone(uint row) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public ReadRow(uint row) : MFTLibTestExtensions.SyntheticRow
 MFTLibTestExtensions.SyntheticBlockEditor :: method public SetAttributes(uint row, System.IO.FileAttributes attributes) : void
+MFTLibTestExtensions.SyntheticBlockEditor :: method public SetCacheTag(MFTLib.Index.CacheTag cacheTag) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public SetJournalCursor(MFTLib.UsnJournalCursor cursor) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public SetProducerKind(MFTLib.Index.ProducerKind producerKind) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public WriteRow(MFTLibTestExtensions.SyntheticRow row) : void
