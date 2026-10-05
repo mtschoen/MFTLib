@@ -46,9 +46,7 @@ the normal application. Put this at the beginning of `Program.cs`:
 ```csharp
 using MFTLib;
 
-if (ElevatedEntryPoint.TryHandle(
-        Environment.GetCommandLineArgs(),
-        new DefaultElevatedEntryRunner()))
+if (ElevatedEntryPoint.TryHandle(Environment.GetCommandLineArgs()))
 {
     return;
 }
@@ -75,7 +73,7 @@ _ = broker.Ended.ContinueWith(
 ```
 
 `LaunchAsync` creates the control pipe, invokes `BrokerLauncher.Launch`, and
-waits up to `BrokerProcess.DefaultConnectTimeout` for the elevated child. The
+waits up to 30 seconds for the elevated child. The
 overload taking a `TimeSpan` lets a host choose a different connection timeout.
 A declined UAC prompt throws `InvalidOperationException`; a child that does not
 connect in time throws `TimeoutException`.
@@ -143,14 +141,15 @@ instead. Every scan of an MFT-backed drive then fails with
 and starting a watch throws `InvalidOperationException` with the same
 message. Cached blocks still open.
 
-The producer's optional `BrokerScanOptions` supplies `Profile`,
-`KeepFileNames`, and scan progress. A block that fails validation is disposed
+The producer's optional `BrokerScanOptions` supplies `Profile` and
+`KeepFileNames`; scan progress reaches the application as `IndexScanProgress`
+through `FileIndexOptions.Progress`. A block that fails validation is disposed
 and its scan fails; a block that passes transfers to the index.
 
 ### What a broker scan does
 
-For one drive, `BrokerProcess.ScanDriveAsync` first queries MFT sizing through
-`QueryVolumeAsync`, creates the client-owned block section, and opens a scan
+For one drive, the producer's internal scan first queries MFT sizing from the
+broker, creates the client-owned block section, and opens a scan
 channel. The elevated host:
 
 1. captures the drive's journal cursor;
@@ -160,8 +159,9 @@ channel. The elevated host:
    to the journal's tip, and keeps none of them; and
 5. returns either the cursor that read advanced to or a proven catch-up loss.
 
-`ScanDriveAsync` is available for advanced callers and returns
-`BrokerDriveScanResult`; its block belongs to the caller. A successful result
+The scan's internal result carries the block, the armed cursor and the advanced
+cursor; `DriveStatus` exposes neither cursor, only the block's row and skipped
+counts and, after a proven loss, `CheckpointLoss`. A successful result
 contains the armed cursor and the advanced cursor. The catch-up entries do not
 cross the pipe: a caller that wants them watches from the armed cursor. A proven
 loss still returns the completed block, with `CatchUpLoss` set and
@@ -184,7 +184,7 @@ library's own frames stay far below it: a watch `JournalBatch` from the native
 source is one 64 KiB journal read, and `Error` and `Stalled` text is cut to
 32,768 UTF-16 units. A `BrokerScanOptions.KeepFileNames` list that makes the
 `ArmAndScan` request exceed the limit (32,639 maximum-length names with the
-default section name) is refused by `ScanDriveAsync` with an
+default section name) is refused with an
 `ArgumentException` before anything is sent. A custom `JournalBatchSource`
 batch over the limit fails that watch with an `Error` frame, like any source
 failure.
@@ -384,15 +384,15 @@ Growing the journal does not make the already lost records reappear. The rescan
 is what rebuilds current state; the larger journal reduces the chance that the
 next scan window is lost.
 
-## 7. Direct control operations
+## 7. Growing a journal
 
-`BrokerProcess.QueryVolumeAsync` returns the MFT sizing used by block planning.
-Only `MftValidDataLength` and `BytesPerFileRecordSegment` cross the broker
-protocol; the other geometry fields are zero.
+The broker also answers a volume query for the MFT sizing that block planning
+uses; only `MftValidDataLength` and `BytesPerFileRecordSegment` cross the
+protocol. The query is internal to the producer.
 
 `BrokerProcess.GrowUsnJournalAsync` grows a journal in place. It never shrinks
-one. Both methods are control requests. Cancellation before their request starts
-writing sends nothing. Once writing begins, the process completes the frame so a
+one. It is a control request, like the volume query. Cancellation before its
+request starts writing sends nothing. Once writing begins, the process completes the frame so a
 partial request cannot corrupt the control stream; a cancelled caller stops
 waiting and the eventual reply is discarded. A control write failure ends the
 process. A reply timeout throws `TimeoutException` without reusing that request

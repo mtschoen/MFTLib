@@ -6,7 +6,7 @@ namespace MFTLib;
 ///     handle. <paramref name="operation" /> tells the host's watchdog whether the source is
 ///     waiting on the volume or processing a batch.
 /// </summary>
-public delegate IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> JournalBatchSource(
+internal delegate IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> JournalBatchSource(
     string driveLetter,
     UsnJournalCursor since,
     IBrokerOperationReporter operation,

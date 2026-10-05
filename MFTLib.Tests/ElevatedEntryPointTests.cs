@@ -54,6 +54,15 @@ public class ElevatedEntryPointTests
         Assert.AreEqual(0, runner.TotalCalls);
     }
 
+    [TestMethod]
+    public void TryHandle_WithoutARunner_NormalLaunch_ReturnsFalseWithoutStartingABroker()
+    {
+        // The public overload runs the production runner, which exits the process, so only a
+        // launch that carries no mode flag can be exercised here.
+        Assert.IsFalse(ElevatedEntryPoint.TryHandle(ScanOnlyArgs));
+        Assert.IsFalse(ElevatedEntryPoint.TryHandle([]));
+    }
+
     [TestCleanup]
     public void Cleanup()
     {

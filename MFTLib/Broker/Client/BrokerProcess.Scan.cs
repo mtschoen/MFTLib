@@ -21,7 +21,7 @@ public sealed partial class BrokerProcess
     /// <exception cref="InvalidOperationException">The broker reported the scan failed.</exception>
     /// <exception cref="BrokerChannelLostException">The channel or the process was lost first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer the volume query or the channel open within the reply timeout.</exception>
-    public async Task<BrokerDriveScanResult> ScanDriveAsync(char driveLetter, BlockScanTarget target,
+    internal async Task<BrokerDriveScanResult> ScanDriveAsync(char driveLetter, BlockScanTarget target,
         BrokerScanOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);

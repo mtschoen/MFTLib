@@ -11,5 +11,5 @@ namespace MFTLib;
 /// </summary>
 /// <param name="driveLetter">The bare upper-case drive letter being scanned.</param>
 /// <param name="options">The block's layout, sized from the drive's volume information.</param>
-public delegate (string SectionName, BlockFile Block, IDisposable Lifetime) BrokerBlockSectionFactory(
+internal delegate (string SectionName, BlockFile Block, IDisposable Lifetime) BrokerBlockSectionFactory(
     char driveLetter, BlockFileCreateOptions options);

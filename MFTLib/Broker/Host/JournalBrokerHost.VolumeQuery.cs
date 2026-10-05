@@ -1,7 +1,7 @@
 namespace MFTLib;
 
 /// <summary>Answers one volume sizing query without arming a scan or opening a block section.</summary>
-public sealed partial class JournalBrokerHost
+internal sealed partial class JournalBrokerHost
 {
     // Exactly one reply per request, carrying its id: VolumeInfo on success, Error carrying the
     // failure (access denied, volume closed) otherwise. A reply that cannot reach the client

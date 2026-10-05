@@ -18,7 +18,7 @@ public sealed class BrokerChannelLostException : IOException
     /// <param name="driveLetter">The drive whose channel was lost, or null for the control pipe.</param>
     /// <param name="message">What was lost and why.</param>
     /// <param name="innerException">The read, write or protocol failure behind the loss, if any.</param>
-    public BrokerChannelLostException(char? driveLetter, string message, Exception? innerException = null)
+    internal BrokerChannelLostException(char? driveLetter, string message, Exception? innerException = null)
         : base(message, innerException)
     {
         DriveLetter = driveLetter;

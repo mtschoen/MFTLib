@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>The destination of one drive's client-created packed block.</summary>
-public sealed record BlockScanTarget(string Path, uint VolumeSerial, bool DeleteOnClose)
+internal sealed record BlockScanTarget(string Path, uint VolumeSerial, bool DeleteOnClose)
 {
     /// <summary>
     ///     The consumer identity that a later warm-start attempt must match; the broker writes

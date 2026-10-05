@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 namespace MFTLib;
 
 /// <summary>The production volume seams <see cref="CreateDefault()" /> wires.</summary>
-public sealed partial class JournalBrokerHost
+internal sealed partial class JournalBrokerHost
 {
     /// <summary>The MFT bytes a host scan reads per chunk, so a progress callback lands at least this often.</summary>
     internal const long HostScanChunkBytes = 64L * 1024 * 1024;

@@ -8,7 +8,7 @@ using TestProgram;
 namespace MFTLib.Tests;
 
 // The TestProgram modes behind a command line: argument errors, the unelevated scan-drive mode
-// over an in-process broker, and the volume modes over faked journal and record reads.
+// (a FileIndex over an in-process broker), and the volume modes over faked journal and record reads.
 [TestClass]
 [DoNotParallelize]
 public class DriveScannerModeTests
@@ -56,23 +56,15 @@ public class DriveScannerModeTests
     {
         await using var broker = new InProcessBroker(CreateHost());
         var lines = new List<string>();
-        string? launchedFor = null;
         var scanner = ScannerOverBroker(broker, lines);
-        scanner._createBlockPath = letter =>
-        {
-            launchedFor = letter.ToString();
-            return Path.Combine(_directory, "block.mlix");
-        };
 
         var result = scanner.Run(["scan-drive", "c:"]);
 
         Assert.AreEqual(0, result);
-        Assert.AreEqual("C", launchedFor);
-        Assert.IsTrue(lines.Contains("Block holds 21 rows; 0 records skipped"));
-        Assert.IsTrue(lines.Contains($"Armed cursor: journal {Armed.JournalId} at USN {Armed.NextUsn}"));
-        Assert.IsTrue(lines.Contains("Catch-up held; advanced cursor at USN 1000"));
+        Assert.IsTrue(lines.Contains("Index holds 2 rows; 0 records skipped"), string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(lines.Contains("Catch-up held; watch supported: True"));
+        Assert.IsTrue(lines.Any(line => line.StartsWith("  Finished: ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("=== Drive c: done ==="));
-        Assert.IsFalse(File.Exists(Path.Combine(_directory, "block.mlix")), "The scan's block is deleted on close.");
     }
 
     [TestMethod]
@@ -88,13 +80,12 @@ public class DriveScannerModeTests
             launches++;
             return Task.FromResult(process);
         };
-        scanner._createBlockPath = letter => Path.Combine(_directory, $"block-{letter}.mlix");
 
         var result = scanner.Run(["scan-drive", "C", "D:"]);
 
         Assert.AreEqual(0, result);
         Assert.AreEqual(1, launches);
-        Assert.AreEqual(2, lines.Count(line => line.StartsWith("Block holds ", StringComparison.Ordinal)));
+        Assert.AreEqual(2, lines.Count(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("=== Drive D: done ==="));
     }
 
@@ -109,8 +100,39 @@ public class DriveScannerModeTests
 
         await scanner.ScanDrivesThroughBrokerAsync(["C"], CancellationToken.None);
 
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Block holds ", StringComparison.Ordinal)));
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("Catch-up lost: CheckpointTrimmed"));
+    }
+
+    [TestMethod]
+    public async Task ScanDriveThroughBroker_ScanFailsOnTheBroker_PrintsTheProducerFailure()
+    {
+        await using var broker = new InProcessBroker(CreateHost(
+            scanDrive: (_, _, _, _, _) => throw new IOException("volume unreadable")));
+        var lines = new List<string>();
+        var scanner = ScannerOverBroker(broker, lines);
+
+        await scanner.ScanDrivesThroughBrokerAsync(["C"], CancellationToken.None);
+
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error on drive C: ", StringComparison.Ordinal) &&
+                                        line.Contains("volume unreadable")), string.Join(Environment.NewLine, lines));
+        Assert.IsFalse(lines.Any(line => line.Contains("done")));
+    }
+
+    [TestMethod]
+    public async Task ScanDriveThroughBroker_DriveRootMissing_ReportsOfflineWithoutSuccessLines()
+    {
+        await using var broker = new InProcessBroker(CreateHost());
+        var lines = new List<string>();
+        var scanner = ScannerOverBroker(broker, lines);
+        scanner._resolveDrive = _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242);
+
+        await scanner.ScanDrivesThroughBrokerAsync(["Q"], CancellationToken.None);
+
+        Assert.IsTrue(lines.Contains("Error on drive Q: The drive is offline; nothing was scanned."),
+            string.Join(Environment.NewLine, lines));
+        Assert.IsFalse(lines.Any(line => line.StartsWith("Catch-up", StringComparison.Ordinal) ||
+                                        line.Contains("done")));
     }
 
     [TestMethod]
@@ -120,8 +142,8 @@ public class DriveScannerModeTests
         var scanner = new DriveScanner
         {
             _launchBroker = _ => throw new InvalidOperationException("UAC prompt declined"),
-            _readVolumeSerial = _ => 1,
-            _createBlockPath = _ => Path.Combine(_directory, "never.mlix"),
+            _resolveDrive = ResolveDrive,
+            _cacheDirectory = _directory,
             _writeLine = lines.Add
         };
 
@@ -331,10 +353,16 @@ public class DriveScannerModeTests
             _canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate."),
             _tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate."),
             _launchBroker = _ => Task.FromResult(broker.Process),
-            _readVolumeSerial = _ => 4242,
-            _createBlockPath = _ => Path.Combine(_directory, "block.mlix"),
+            _resolveDrive = ResolveDrive,
+            _cacheDirectory = _directory,
             _writeLine = lines.Add
         };
+    }
+
+    static IndexedDrive ResolveDrive(string letter)
+    {
+        var driveLetter = char.ToUpperInvariant(letter[0]);
+        return new IndexedDrive(driveLetter, $"{driveLetter}:\\", 4242);
     }
 
     static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> OneBatchThenCancelled(
@@ -346,11 +374,11 @@ public class DriveScannerModeTests
         token.ThrowIfCancellationRequested();
     }
 
-    static JournalBrokerHost CreateHost(UsnJournalCatchUpSource? readJournal = null)
+    static JournalBrokerHost CreateHost(UsnJournalCatchUpSource? readJournal = null, MftRecordBatchSource? scanDrive = null)
     {
         return new JournalBrokerHost(
             _ => Armed,
-            (_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]],
+            scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
             readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
             queryVolumeInfo: _ => Volume,
             processorCount: 4);

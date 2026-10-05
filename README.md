@@ -473,9 +473,7 @@ slow, stopped, or failed drive does not end another drive's operation.
 At minimum, the application must dispatch broker mode before normal startup:
 
 ```csharp
-if (ElevatedEntryPoint.TryHandle(
-        Environment.GetCommandLineArgs(),
-        new DefaultElevatedEntryRunner()))
+if (ElevatedEntryPoint.TryHandle(Environment.GetCommandLineArgs()))
 {
     return;
 }
@@ -508,21 +506,10 @@ await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 ```
 
 The adapter's connection callback does not transfer ownership: the application keeps and
-disposes the shared `BrokerProcess`. `BrokerProcess.QueryVolumeAsync`,
-`GrowUsnJournalAsync`, and `ScanDriveAsync` are the direct broker entry points. A block
-returned by `ScanDriveAsync` belongs to the caller and must be disposed:
+disposes the shared `BrokerProcess`. Scans run only through the index source, and
+`BrokerProcess.GrowUsnJournalAsync` is the one direct broker operation:
 
 ```csharp
-NtfsVolumeInformation volume =
-    await broker.QueryVolumeAsync(drive.DriveLetter, cancellationToken);
-
-var scan = await broker.ScanDriveAsync(
-    drive.DriveLetter,
-    new BlockScanTarget(directBlockPath, drive.VolumeSerial, true),
-    new BrokerScanOptions(),
-    cancellationToken);
-using var directBlock = scan.Block.Block;
-
 UsnJournalSettings grown = await broker.GrowUsnJournalAsync(
     drive.DriveLetter,
     requestedMaximumSize,

@@ -8,7 +8,7 @@ namespace MFTLib;
 public sealed partial class BrokerProcess
 {
     /// <summary>How long <see cref="LaunchAsync(Func{string, bool}, CancellationToken)" /> waits for the broker to connect.</summary>
-    public static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromSeconds(30);
+    static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromSeconds(30);
 
     // Internal launch seams let tests drive the connection deadline with fake time.
     internal static TimeSpan _connectTimeout = DefaultConnectTimeout;

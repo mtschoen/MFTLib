@@ -18,5 +18,5 @@ public sealed record BrokerScanOptions
     ///     Receives progress reported while the broker performs the cold scan, or null when
     ///     no progress notifications are required.
     /// </summary>
-    public IProgress<BrokerScanProgress>? Progress { get; init; }
+    internal IProgress<BrokerScanProgress>? Progress { get; init; }
 }

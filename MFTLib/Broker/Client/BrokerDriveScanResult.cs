@@ -11,7 +11,7 @@ namespace MFTLib;
 ///     <see cref="CatchUpLoss" /> is the loss the host proved against the live journal when
 ///     catch-up after the scan failed, and the block is still complete.
 /// </summary>
-public sealed record BrokerDriveScanResult(
+internal sealed record BrokerDriveScanResult(
     char DriveLetter,
     UsnJournalCursor ArmedCursor,
     UsnJournalCursor? AdvancedCursor,

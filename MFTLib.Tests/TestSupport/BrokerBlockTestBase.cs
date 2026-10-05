@@ -11,7 +11,7 @@ public abstract class BrokerBlockTestBase
     protected static readonly NtfsVolumeInformation VolumeInformation = new(1024L * 100000, 1024);
     protected static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
 
-    protected static JournalBrokerHost CreateHost(
+    internal static JournalBrokerHost CreateHost(
         UsnJournalCursorQuery? queryCursor = null,
         MftRecordBatchSource? scanDrive = null,
         UsnJournalCatchUpSource? readJournal = null,
@@ -31,7 +31,7 @@ public abstract class BrokerBlockTestBase
     protected static MftRecord Record(ulong recordNumber, string name, ushort flags = 1) =>
         new(recordNumber, 5, new MftRecordFields(flags), name, null);
 
-    protected static BlockScanTarget Target(uint volumeSerial = 123) => TestBlockSections.Target(volumeSerial);
+    internal static BlockScanTarget Target(uint volumeSerial = 123) => TestBlockSections.Target(volumeSerial);
 
     /// <summary>The connect callback of a producer that always runs on <paramref name="process" />.</summary>
     internal static Func<CancellationToken, Task<BrokerProcess>> Connect(BrokerProcess process) =>

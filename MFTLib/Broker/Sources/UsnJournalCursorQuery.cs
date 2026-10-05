@@ -6,4 +6,4 @@ namespace MFTLib;
 ///     <see cref="JournalBrokerHost" /> can be exercised without a real elevated
 ///     volume handle.
 /// </summary>
-public delegate UsnJournalCursor UsnJournalCursorQuery(string driveLetter);
+internal delegate UsnJournalCursor UsnJournalCursorQuery(string driveLetter);

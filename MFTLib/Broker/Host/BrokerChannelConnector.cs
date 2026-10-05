@@ -5,4 +5,4 @@ namespace MFTLib;
 ///     channel-open request. Production opens a
 ///     <c>NamedPipeClientStream</c> to that pipe; tests return an in-memory stream.
 /// </summary>
-public delegate Task<Stream> BrokerChannelConnector(string pipeName, CancellationToken cancellationToken);
+internal delegate Task<Stream> BrokerChannelConnector(string pipeName, CancellationToken cancellationToken);

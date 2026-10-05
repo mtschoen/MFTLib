@@ -2,7 +2,7 @@ using MFTLib;
 using TestProgram;
 
 // A launch that carries --broker is the elevated child of a scan-drive run, not a normal start.
-if (ElevatedEntryPoint.TryHandle(args, new DefaultElevatedEntryRunner()))
+if (ElevatedEntryPoint.TryHandle(args))
 {
     return 0;
 }

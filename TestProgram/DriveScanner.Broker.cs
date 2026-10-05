@@ -3,15 +3,15 @@ using MFTLib.Index;
 
 namespace TestProgram;
 
-// The scan-drive mode: one drive scanned into a block through BrokerProcess.ScanDriveAsync, with
-// no FileIndex. This process stays unelevated; the broker it launches asks for elevation.
+// The scan-drive mode: one drive at a time opened as a NoCache FileIndex over the broker, the path
+// every consumer ships. This process stays unelevated; the broker it launches asks for elevation.
 partial class DriveScanner
 {
     internal Func<CancellationToken, Task<BrokerProcess>> _launchBroker = LaunchBrokerNative;
-    internal Func<string, uint> _readVolumeSerial = ReadVolumeSerialNative;
+    internal Func<string, IndexedDrive> _resolveDrive = ResolveDriveNative;
 
-    internal Func<char, string> _createBlockPath = letter =>
-        Path.Combine(Path.GetTempPath(), $"mftlib-testprogram-{letter}-{Guid.NewGuid():N}.mlix");
+    // Where the index keeps its cache folder; null selects the library's default location.
+    internal string? _cacheDirectory;
 
     static Task<BrokerProcess> LaunchBrokerNative(CancellationToken cancellationToken)
     {
@@ -20,10 +20,10 @@ partial class DriveScanner
             : throw new PlatformNotSupportedException("The broker is Windows only.");
     }
 
-    static uint ReadVolumeSerialNative(string letter)
+    static IndexedDrive ResolveDriveNative(string letter)
     {
         return OperatingSystem.IsWindows()
-            ? IndexedDrive.FromWindowsVolume(letter).VolumeSerial
+            ? IndexedDrive.FromWindowsVolume(letter)
             : throw new PlatformNotSupportedException("Volume serials are read on Windows only.");
     }
 
@@ -42,31 +42,30 @@ partial class DriveScanner
         }
 
         await using var ownedBroker = broker.ConfigureAwait(false);
+        var source = new BrokerMftBlockProducer(_ => Task.FromResult(broker)).CreateIndexSource();
         foreach (var drive in drives)
         {
-            await ScanDriveThroughBrokerAsync(broker, drive, cancellationToken).ConfigureAwait(false);
+            await ScanDriveThroughIndexAsync(source, drive, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    async Task ScanDriveThroughBrokerAsync(BrokerProcess broker, string drive, CancellationToken cancellationToken)
+    async Task ScanDriveThroughIndexAsync(MftIndexSource source, string drive, CancellationToken cancellationToken)
     {
         var letter = drive.TrimEnd(':');
         _writeLine($"=== Drive {letter}: ===");
         try
         {
-            var target = new BlockScanTarget(_createBlockPath(char.ToUpperInvariant(letter[0])),
-                _readVolumeSerial(letter), DeleteOnClose: true);
-            var options = new BrokerScanOptions { Progress = new PhaseReporter(_writeLine) };
+            var options = new FileIndexOptions
+            {
+                Drives = [_resolveDrive(letter)],
+                NoCache = true,
+                CacheDirectory = _cacheDirectory,
+                MftSource = source,
+                Progress = new PhaseReporter(_writeLine)
+            };
 
-            var result = await broker.ScanDriveAsync(letter[0], target, options, cancellationToken)
-                .ConfigureAwait(false);
-            using var block = result.Block.Block;
-
-            _writeLine($"Block holds {block.Header.RowCount} rows; {result.Block.SkippedRecordCount} records skipped");
-            _writeLine($"Armed cursor: journal {result.ArmedCursor.JournalId} at USN {result.ArmedCursor.NextUsn}");
-            _writeLine(result.AdvancedCursor is { } advanced
-                ? $"Catch-up held; advanced cursor at USN {advanced.NextUsn}"
-                : $"Catch-up lost: {result.CatchUpLoss?.Cause}");
+            await using var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);
+            WriteStatus(index.Drives.Single());
             _writeLine($"=== Drive {letter}: done ===");
         }
         catch (Exception exception)
@@ -77,12 +76,31 @@ partial class DriveScanner
         _writeLine(string.Empty);
     }
 
-    // Reports each scan phase once, on the reporting thread, so the output keeps its order.
-    sealed class PhaseReporter(Action<string> writeLine) : IProgress<BrokerScanProgress>
+    void WriteStatus(DriveStatus status)
     {
-        BrokerScanPhase? _lastPhase;
+        if (status.State == DriveState.Failed)
+        {
+            throw new InvalidOperationException(status.MftProducerFailureMessage ?? $"The drive failed: {status.FailureKind}");
+        }
 
-        public void Report(BrokerScanProgress value)
+        // An offline drive settles without a scan, so there is no catch-up to report.
+        if (status.State == DriveState.Offline)
+        {
+            throw new InvalidOperationException("The drive is offline; nothing was scanned.");
+        }
+
+        _writeLine($"Index holds {status.LiveRowCount} rows; {status.SkippedRecordCount} records skipped");
+        _writeLine(status.CheckpointLoss is { } loss
+            ? $"Catch-up lost: {loss.Cause}"
+            : $"Catch-up held; watch supported: {status.WatchSupported}");
+    }
+
+    // Reports each scan phase once, on the reporting thread, so the output keeps its order.
+    sealed class PhaseReporter(Action<string> writeLine) : IProgress<IndexScanProgress>
+    {
+        IndexScanPhase? _lastPhase;
+
+        public void Report(IndexScanProgress value)
         {
             if (_lastPhase == value.Phase)
             {
@@ -90,7 +108,7 @@ partial class DriveScanner
             }
 
             _lastPhase = value.Phase;
-            writeLine($"  {value.Phase}: {value.RecordsProcessed} records");
+            writeLine($"  {value.Phase}: {value.RowsWritten} rows");
         }
     }
 }

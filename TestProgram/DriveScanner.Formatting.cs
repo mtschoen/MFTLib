@@ -43,7 +43,22 @@ partial class DriveScanner
             entry.IsClose ? "close" : null
         }.OfType<string>();
         return $"  USN {entry.Usn} {entry.TimestampUtc:u} {entry} parent {entry.ParentRecordNumber} " +
-               $"sequence {entry.SequenceNumber} {entry.FileAttributes} flags [{string.Join(" ", flags)}]";
+               $"sequence {entry.SequenceNumber} {entry.FileAttributes} status {DescribeStatus(entry)} " +
+               $"flags [{string.Join(" ", flags)}]";
+    }
+
+    // One word for what the entry records, from the strongest of the create, delete and rename helpers; a
+    // close entry is the file's final record of the change, so it is marked closed.
+    internal static string DescribeStatus(UsnJournalEntry entry)
+    {
+        var change = entry switch
+        {
+            { IsDelete: true } => "deleted",
+            { IsRename: true } => "renamed",
+            { IsCreate: true } => "created",
+            _ => "changed"
+        };
+        return entry.IsClose ? $"{change} (closed)" : change;
     }
 
     internal static string FormatSettings(UsnJournalSettings settings)

@@ -49,7 +49,7 @@ public sealed partial class BrokerProcess
     /// <exception cref="InvalidOperationException">The broker could not query the drive.</exception>
     /// <exception cref="BrokerChannelLostException">The process ended first.</exception>
     /// <exception cref="TimeoutException">The broker did not answer within the reply timeout.</exception>
-    public async Task<NtfsVolumeInformation> QueryVolumeAsync(char driveLetter, CancellationToken cancellationToken)
+    internal async Task<NtfsVolumeInformation> QueryVolumeAsync(char driveLetter, CancellationToken cancellationToken)
     {
         var drive = NormalizeDrive(driveLetter);
         var reply = await RequestAsync((writer, requestId) => BrokerProtocol.WriteQueryVolume(writer, requestId, drive),

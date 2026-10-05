@@ -8,7 +8,7 @@ namespace MFTLib;
 ///     then terminates the elevated child via <see cref="System.Environment.Exit" />,
 ///     since an elevated child exists only to perform one mode.
 /// </summary>
-public sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
+internal sealed class DefaultElevatedEntryRunner : IElevatedEntryRunner
 {
     // How long an exiting broker waits for its queued diagnostics lines to reach the log.
     static readonly TimeSpan DiagnosticsFlushTimeout = TimeSpan.FromSeconds(2);

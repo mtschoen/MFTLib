@@ -3,7 +3,7 @@ namespace MFTLib;
 /// <summary>Producer-side record filter applied when writing cold-scan records into an index block.</summary>
 /// <param name="Profile">Scan profile selecting which records receive block rows.</param>
 /// <param name="KeepFileNames">Optional file names preserved under directory-index mode.</param>
-public readonly record struct MftBlockRowFilter(
+internal readonly record struct MftBlockRowFilter(
     BrokerScanProfile Profile,
     IReadOnlyCollection<string>? KeepFileNames = null)
 {

@@ -420,11 +420,28 @@ public class DriveScannerDirectApiTests
 
         var created = lines.Single(line => line.Contains("made.txt"));
         StringAssert.StartsWith(created, "  USN 1200 1970-01-01 00:00:00Z [FileCreate, Close] made.txt (record 20) parent 5 sequence 0");
-        StringAssert.EndsWith(created, "flags [create close]");
-        StringAssert.EndsWith(lines.Single(line => line.Contains("gone.txt")), "flags [delete]");
+        StringAssert.EndsWith(created, "status created (closed) flags [create close]");
+        StringAssert.EndsWith(lines.Single(line => line.Contains("gone.txt")), "status deleted flags [delete]");
         var moved = lines.Single(line => line.Contains("moved.txt"));
         StringAssert.Contains(moved, " Archive ");
-        StringAssert.EndsWith(moved, "flags [rename]");
+        StringAssert.EndsWith(moved, "status renamed flags [rename]");
+    }
+
+    [DataTestMethod]
+    [DataRow(UsnReason.FileCreate, "created")]
+    [DataRow(UsnReason.FileCreate | UsnReason.Close, "created (closed)")]
+    [DataRow(UsnReason.FileDelete | UsnReason.Close, "deleted (closed)")]
+    [DataRow(UsnReason.RenameOldName, "renamed")]
+    [DataRow(UsnReason.RenameNewName | UsnReason.Close, "renamed (closed)")]
+    [DataRow(UsnReason.FileCreate | UsnReason.RenameNewName, "renamed")]
+    [DataRow(UsnReason.FileCreate | UsnReason.FileDelete, "deleted")]
+    [DataRow(UsnReason.DataOverwrite, "changed")]
+    [DataRow(UsnReason.Close, "changed (closed)")]
+    public void DescribeStatus_NamesTheStrongestChangeAndWhetherTheEntryIsClosed(UsnReason reason, string expected)
+    {
+        var entry = JournalEntries.Create(20, 1200, "file.txt", reason);
+
+        Assert.AreEqual(expected, DriveScanner.DescribeStatus(entry));
     }
 
     [TestMethod]

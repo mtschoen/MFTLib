@@ -6,6 +6,6 @@ namespace MFTLib;
 ///     host rewrites while the scan runs; <paramref name="operation" /> tells the host's watchdog
 ///     what the source is doing.
 /// </summary>
-public delegate IEnumerable<IReadOnlyList<MftRecord>> MftRecordBatchSource(string driveLetter,
+internal delegate IEnumerable<IReadOnlyList<MftRecord>> MftRecordBatchSource(string driveLetter,
     ParseThreadAllowance parseThreads, IBrokerOperationReporter operation, IProgress<BlockWriteProgress>? progress,
     CancellationToken cancellationToken);

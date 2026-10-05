@@ -6,7 +6,7 @@ recovering when the journal outruns scan catch-up.
 
 ## Sizing the block
 
-Before a cold scan, `BrokerProcess.ScanDriveAsync` queries the elevated broker
+Before a cold scan, the producer queries the elevated broker
 for the drive's MFT geometry and creates a file-backed named section at the
 `BlockScanTarget` path. `BrokerMftBlockProducer` creates that target from the
 path, volume serial, delete-on-close choice, and cache tag in the index's
@@ -19,10 +19,8 @@ slot, then name-pool headroom adds 25 percent or one mebibyte, whichever is
 larger. Capacity exhaustion marks the block for compaction and reports skipped
 records. Treat that as a reason to rescan.
 
-A drive's MFT sizing can also be queried without starting a scan through
-`BrokerProcess.QueryVolumeAsync`. The broker protocol returns
-`MftValidDataLength`, `BytesPerFileRecordSegment`, and the derived
-`MftRecordCount`. Code that is already elevated can call
+The broker protocol returns `MftValidDataLength`, `BytesPerFileRecordSegment`,
+and the derived `MftRecordCount` for that query. Code that is already elevated can call
 `NtfsVolumeInformation.Query` directly for the same values.
 
 ## Concurrent scans and parse threads

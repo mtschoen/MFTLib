@@ -7,7 +7,7 @@ namespace MFTLib;
 ///     returns its <paramref name="since" /> cursor unchanged has reached the tip and returns no entries. Tests inject a
 ///     fake so <see cref="JournalBrokerHost" /> can be exercised without a real elevated volume handle.
 /// </summary>
-public delegate (UsnJournalEntry[] Entries, UsnJournalCursor Updated) UsnJournalCatchUpSource(
+internal delegate (UsnJournalEntry[] Entries, UsnJournalCursor Updated) UsnJournalCatchUpSource(
     string driveLetter,
     UsnJournalCursor since,
     int maximumBufferReads);

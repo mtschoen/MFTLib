@@ -3,7 +3,7 @@ namespace MFTLib;
 /// <summary>
 ///     Identifies the phase of a broker drive scan.
 /// </summary>
-public enum BrokerScanPhase : byte
+internal enum BrokerScanPhase : byte
 {
     /// <summary>
     ///     Scanning and parsing raw MFT record structures from disk.

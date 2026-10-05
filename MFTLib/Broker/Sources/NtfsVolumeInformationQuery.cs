@@ -6,4 +6,4 @@ namespace MFTLib;
 ///     fake so <see cref="JournalBrokerHost" /> can be exercised without a real elevated
 ///     volume handle.
 /// </summary>
-public delegate NtfsVolumeInformation NtfsVolumeInformationQuery(string driveLetter);
+internal delegate NtfsVolumeInformation NtfsVolumeInformationQuery(string driveLetter);

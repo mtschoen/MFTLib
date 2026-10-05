@@ -3,7 +3,7 @@ namespace MFTLib;
 /// <summary>
 ///     Progress sample emitted during an elevated broker drive scan.
 /// </summary>
-public readonly record struct BrokerScanProgress
+internal readonly record struct BrokerScanProgress
 {
     /// <summary>The drive this sample describes, as the drive letter the scan was requested with.</summary>
     public required string DriveLetter { get; init; }

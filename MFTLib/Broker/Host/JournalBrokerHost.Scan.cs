@@ -4,7 +4,7 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>Serves one drive's block scan and its journal catch-up on that drive's channel.</summary>
-public sealed partial class JournalBrokerHost
+internal sealed partial class JournalBrokerHost
 {
     // The processing steps a scan publishes, which a Stalled message names.
     const string RecordBatchStep = "block write";

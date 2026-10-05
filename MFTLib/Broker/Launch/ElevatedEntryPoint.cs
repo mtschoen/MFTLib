@@ -2,21 +2,28 @@ namespace MFTLib;
 
 /// <summary>
 ///     Shared dispatch for the elevated broker child-process mode. When the process was
-///     relaunched with <c>--broker</c>, <see cref="TryHandle" /> parses the arguments,
-///     runs the broker via the given <see cref="IElevatedEntryRunner" />, and returns
-///     <c>true</c> so the caller short-circuits its normal startup. A normal launch
-///     matches no mode flag and returns <c>false</c>.
+///     relaunched with <c>--broker</c>, <see cref="TryHandle(string[])" /> parses the arguments,
+///     runs the broker, and returns <c>true</c> so the caller short-circuits its normal
+///     startup. A normal launch matches no mode flag and returns <c>false</c>.
 /// </summary>
 public static class ElevatedEntryPoint
 {
     /// <summary>
-    ///     Dispatch the <c>--broker</c> flag in <paramref name="args" />, if present.
-    ///     Returns <c>true</c> if the broker was handled (the runner was invoked), <c>false</c>
-    ///     for a normal launch. The caller passes the full process arguments; a leading
-    ///     executable path (as in <see cref="System.Environment.GetCommandLineArgs" />) is
-    ///     simply skipped because it matches no flag.
+    ///     Dispatch the <c>--broker</c> flag in <paramref name="args" />, if present, by running the
+    ///     elevated broker. Returns <c>true</c> if the broker was handled, <c>false</c> for a normal
+    ///     launch. The caller passes the full process arguments; a leading executable path (as in
+    ///     <see cref="System.Environment.GetCommandLineArgs" />) is simply skipped because it matches
+    ///     no flag.
     /// </summary>
-    public static bool TryHandle(string[] args, IElevatedEntryRunner runner)
+    /// <param name="args">The process arguments.</param>
+    /// <returns><c>true</c> when the process was relaunched as the broker and has served its session.</returns>
+    public static bool TryHandle(string[] args)
+    {
+        return TryHandle(args, new DefaultElevatedEntryRunner());
+    }
+
+    // The same dispatch with the runner chosen by the caller, so tests substitute it.
+    internal static bool TryHandle(string[] args, IElevatedEntryRunner runner)
     {
         foreach (var arg in args)
         {

@@ -159,7 +159,7 @@ public static class BrokerDiagnostics
     }
 
     /// <summary>Completes once every line logged before this call has been appended or dropped.</summary>
-    public static Task FlushAsync(CancellationToken cancellationToken)
+    internal static Task FlushAsync(CancellationToken cancellationToken)
     {
         return _writer?.FlushAsync(cancellationToken) ?? Task.CompletedTask;
     }
@@ -168,7 +168,7 @@ public static class BrokerDiagnostics
     ///     Queue one line for the log. The caller never waits for the file: the line is
     ///     formatted here (so its timestamp is the call's) and a background task appends it.
     /// </summary>
-    public static void Log(string channel, string message)
+    internal static void Log(string channel, string message)
     {
         if (!Enabled)
         {

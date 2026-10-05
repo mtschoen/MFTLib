@@ -4,7 +4,7 @@ namespace MFTLib.Tests.TestSupport;
 ///     Consumes every batch and counts rows without writing a block, for scans whose block content
 ///     is not under test or that run on several drives at once (a recording writer owns one block).
 /// </summary>
-public sealed class CountingBlockSectionWriter : IBlockSectionWriter
+internal sealed class CountingBlockSectionWriter : IBlockSectionWriter
 {
     public BlockWriteResult Write(string sectionName, UsnJournalCursor cursor,
         IEnumerable<IReadOnlyList<MftRecord>> batches, MftBlockRowFilter filter,

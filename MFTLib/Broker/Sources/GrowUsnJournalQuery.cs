@@ -7,4 +7,4 @@ namespace MFTLib;
 ///     fake so <see cref="JournalBrokerHost" /> can be exercised without a real elevated
 ///     volume handle.
 /// </summary>
-public delegate UsnJournalSettings GrowUsnJournalQuery(string driveLetter, long maximumSize, long allocationDelta);
+internal delegate UsnJournalSettings GrowUsnJournalQuery(string driveLetter, long maximumSize, long allocationDelta);

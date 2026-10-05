@@ -9,7 +9,7 @@ namespace MFTLib;
 ///     are replayed by catch-up. Volume access is injected so the core is testable without real
 ///     elevation; <see cref="CreateDefault()" /> wires the real MFTLib seams.
 /// </summary>
-public sealed partial class JournalBrokerHost
+internal sealed partial class JournalBrokerHost
 {
     /// <summary>How long a closed control pipe waits for every channel to end before the session returns.</summary>
     internal static readonly TimeSpan ControlClosedGracePeriod = TimeSpan.FromSeconds(5);
