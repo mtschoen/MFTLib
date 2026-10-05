@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
 
@@ -64,7 +65,7 @@ internal sealed class WatchStateRecorder
 
             var completion = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
             _waiters.Add((match, completion));
-            return completion.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+            return completion.Task.WaitAsync(ScriptedWatchSource.HangGuard);
         }
     }
 

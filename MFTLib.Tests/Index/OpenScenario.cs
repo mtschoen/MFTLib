@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.Index;
 
@@ -31,7 +32,7 @@ internal sealed class OpenScenario : IDisposable
 
     public string CacheDirectory { get; }
 
-    public FakeIndexWatchSource Source { get; } = new();
+    public ScriptedWatchSource Source { get; } = new();
 
     /// <summary>Producers currently between entering and leaving, so a test can prove none is left running.</summary>
     public int ActiveProducers => Volatile.Read(ref _activeProducers);
@@ -90,7 +91,7 @@ internal sealed class OpenScenario : IDisposable
     /// <summary>Completes when one more report has arrived than this method has already consumed.</summary>
     public async Task WaitForReportAsync()
     {
-        if (!await _reportSignal.WaitAsync(FakeIndexWatchSource.HangGuard))
+        if (!await _reportSignal.WaitAsync(ScriptedWatchSource.HangGuard))
         {
             throw new TimeoutException("No further OpenProgress report arrived.");
         }
@@ -152,7 +153,7 @@ internal sealed class OpenScenario : IDisposable
                 production > _productionsBeforeHold.GetValueOrDefault(driveLetter))
             {
                 gate.MarkEntered();
-                await gate.WaitForReleaseAsync(cancellationToken).WaitAsync(FakeIndexWatchSource.HangGuard, cancellationToken);
+                await gate.WaitForReleaseAsync(cancellationToken).WaitAsync(ScriptedWatchSource.HangGuard, cancellationToken);
             }
 
             if (_failures.TryGetValue(driveLetter, out var failure))

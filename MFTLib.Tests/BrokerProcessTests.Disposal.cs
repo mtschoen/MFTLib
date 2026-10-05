@@ -1,5 +1,6 @@
 using System.Buffers;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -88,7 +89,7 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task HarnessPipe_AfterClose_ReadAndWriteThrowObjectDisposed()
     {
-        var pipes = new MFTLibTestExtensions.InMemoryBrokerPipes(new MFTLibTestExtensions.BrokerTestHarnessOptions(), null);
+        var pipes = new InMemoryBrokerPipes(new BrokerTestHarnessOptions(), null);
         var (client, host) = pipes.CreatePair("pipe");
         await using var hostEnd = host;
         await client.DisposeAsync();

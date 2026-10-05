@@ -37,7 +37,7 @@ public partial class FileIndexWatchRecoveryTests
         Assert.IsNotNull(stop, "the restart read the watch as still requested");
         await stop.WaitAsync(HangGuard);
         Assert.AreEqual(0, registrationsReached, "the start's first step already saw the stop");
-        Assert.AreEqual(1, harness.Source.StartsFor('T').Count, "no watch starts after the stop");
+        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "no watch starts after the stop");
         Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => index.StopWatchingAsync('T', Token), "the stop's cleared request stands").WaitAsync(HangGuard);

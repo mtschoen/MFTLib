@@ -11,7 +11,7 @@ public partial class JournalBrokerHostTests
     public async Task StartWatch_BatchOverTheFrameLimit_EndsThatWatchWithAnErrorFrame()
     {
         var oversized = Enumerable.Range(0, 30_500)
-            .Select(index => JournalEntryFactory.Create((ulong)index, index, new string('e', 255))).ToArray();
+            .Select(index => JournalEntries.Create((ulong)index, index, new string('e', 255))).ToArray();
         var host = CreateWatchHost(
             watchDrive: (_, _, _, _) => FiniteWatch([(oversized, new UsnJournalCursor(7UL, 110L))]));
         await using var harness = new HostChannelHarness(host);

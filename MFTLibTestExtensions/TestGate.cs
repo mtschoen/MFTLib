@@ -1,5 +1,4 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-namespace MFTLib.Tests.TestSupport;
+namespace MFTLibTestExtensions;
 
 /// <summary>
 ///     One held step in a fake: <see cref="Entered" /> completes when the step reaches the gate,
@@ -25,7 +24,7 @@ internal sealed class TestGate
 
     /// <summary>
     ///     The blocking counterpart for a step that runs inside a synchronous callback. Bounded by
-    ///     <see cref="FakeIndexWatchSource.HangGuard" /> so a test that never releases the gate
+    ///     <see cref="ScriptedWatchSource.HangGuard" /> so a test that never releases the gate
     ///     reports a failure instead of wedging the thread that entered it.
     /// </summary>
     internal void WaitForRelease()
@@ -35,9 +34,14 @@ internal sealed class TestGate
 
     internal static void WaitSynchronously(Task task)
     {
-        if (!task.Wait(FakeIndexWatchSource.HangGuard))
+        WaitSynchronously(task, ScriptedWatchSource.HangGuard);
+    }
+
+    internal static void WaitSynchronously(Task task, TimeSpan timeout)
+    {
+        if (!task.Wait(timeout))
         {
-            throw new AssertFailedException("Synchronous wait timed out before the task completed.");
+            throw new TimeoutException("Synchronous wait timed out before the task completed.");
         }
     }
 }

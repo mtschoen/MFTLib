@@ -1,6 +1,7 @@
 using System.Collections;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -36,14 +37,14 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         }
 
         var rescan = harness.Index.RescanAsync('T', Token);
-        await production.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
-        var handle = harness.Source.HandleFor('T');
+        await production.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
+        var handle = harness.Source.WatchFor('T');
         Assert.AreEqual(0, handle.DisposeCount);
         var applyFailure = new IOException("T's in-flight batch could not be applied");
         var applyGate = harness.TrackGate();
         var consumed = handle.Queue(new JournalBatch(new GatedFailingEntries(applyGate, applyFailure),
             WatchHarness.JournalId, WatchHarness.NextUsn + 300));
-        await applyGate.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+        await applyGate.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
         applyGate.Release();
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
         Assert.AreSame(applyFailure, fault.Exception);
@@ -58,16 +59,16 @@ public class FileIndexWatchRescanFaultDuringProductionTests
             await rescan;
         }
 
-        await consumed.WaitAsync(FakeIndexWatchSource.HangGuard);
+        await consumed.WaitAsync(ScriptedWatchSource.HangGuard);
         await harness.WaitForRecoveryAsync('T');
         Assert.AreEqual(scanFails ? 3 : 2, harness.ProductionCount('T'));
         Assert.AreEqual(1, harness.Faults.Count(item => item.Kind == WatchFaultKind.Apply));
         Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
-        Assert.AreEqual(2, harness.Source.StartsFor('T').Count);
-        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 4500));
+        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 4500));
         Assert.AreEqual(4500L, harness.BlockFor('T').Header.UsnNextUsn);
-        await harness.Source.HandleFor('U').Publish(WatchHarness.Batch(9, "sibling.txt"));
+        await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(9, "sibling.txt"));
         await harness.Index.StopWatchingAsync('T', Token);
         await harness.Index.StopWatchingAsync('U', Token);
     }

@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -25,8 +26,8 @@ public class FileIndexWatchCatchUpLinkedWaitTests
         var wait = harness.Index.WaitForCatchUpAsync('T', CancellationToken.None);
         Assert.IsFalse(wait.IsCompleted);
 
-        await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
-        await wait.WaitAsync(FakeIndexWatchSource.HangGuard);
+        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
+        await wait.WaitAsync(ScriptedWatchSource.HangGuard);
 
         Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUp);
         await harness.Index.StopWatchingAsync('T', Token);
@@ -46,7 +47,7 @@ public class FileIndexWatchCatchUpLinkedWaitTests
             await harness.Index.DisposeAsync();
 
             await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(
-                () => wait.WaitAsync(FakeIndexWatchSource.HangGuard));
+                () => wait.WaitAsync(ScriptedWatchSource.HangGuard));
         }
         finally
         {

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -78,7 +79,7 @@ public class FileIndexMidSessionCheckpointLossTests
     static Task<WatchFault> FailDriveAsync(WatchHarness harness, char driveLetter, Exception failure)
     {
         var announced = harness.WaitForFaultAsync(WatchFaultKind.Drive, driveLetter);
-        harness.Source.HandleFor(driveLetter).FailDrive(failure);
+        harness.Source.WatchFor(driveLetter).FailDrive(failure);
         return announced;
     }
 
@@ -123,7 +124,7 @@ public class FileIndexMidSessionCheckpointLossTests
     public async Task WatchFaultAfterAppliedBatches_ReportsThePositionTheWatchReached()
     {
         using var harness = await StartedHarnessAsync();
-        await harness.Source.HandleFor('T').Publish(new JournalBatch(
+        await harness.Source.WatchFor('T').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "applied.txt")],
             JournalId: WatchedJournalId, NextUsn: ArmedUsn + 2_000));
         Assert.AreEqual(ArmedUsn + 2_000, harness.BlockFor('T').Header.UsnNextUsn);
@@ -263,8 +264,8 @@ public class FileIndexMidSessionCheckpointLossTests
         var announcedT = harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
         var announcedU = harness.WaitForFaultAsync(WatchFaultKind.Channel, 'U');
 
-        harness.Source.HandleFor('T').End();
-        harness.Source.HandleFor('U').End();
+        harness.Source.WatchFor('T').End();
+        harness.Source.WatchFor('U').End();
         // Waiting for the announcements, not for time: the report is recorded before the fault
         // is announced.
         await announcedT;
@@ -299,10 +300,10 @@ public class FileIndexMidSessionCheckpointLossTests
             }
         };
 
-        harness.Source.HandleFor('T').FailDrive(
+        harness.Source.WatchFor('T').FailDrive(
             new IOException("USN journal entries have been deleted; full rescan needed"));
 
-        var loss = await seenByHandler.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+        var loss = await seenByHandler.Task.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.IsNotNull(loss, "the handler must see the loss the fault found");
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, loss.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);

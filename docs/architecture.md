@@ -48,6 +48,8 @@
   `SyntheticBlockEditor` and `SyntheticMftProducer` seed, edit and read cache blocks and produce MFT
   blocks through the production block writer, so consumer tests never call the block writer. Ships as the separate
   `MFTLib.TestExtensions` NuGet package at publish time; never folded into the `MFTLib` package.
+  `ScriptedWatchSource` and `ScriptedDriveWatch` script the live watch an index runs beside its scan,
+  and `SyntheticJournalEntry` and `SyntheticMftRecord` mint journal entries and materialized records.
 
 ### Native error messages
 

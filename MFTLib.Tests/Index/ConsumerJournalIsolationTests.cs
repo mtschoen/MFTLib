@@ -99,7 +99,7 @@ public class ConsumerJournalIsolationTests
             drive => windows.TryGetValue(drive, out var window) ? window : null);
         await SeedAsync();
         windows['T'] = Lost(recreated);
-        var source = new FakeIndexWatchSource();
+        var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(cacheOnly, source), Token);
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
@@ -134,7 +134,7 @@ public class ConsumerJournalIsolationTests
     {
         using var scope = JournalIsolation.OverrideJournalWindow(_ => unknown ? null : Healthy);
         await SeedAsync();
-        var source = new FakeIndexWatchSource();
+        var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(true, source), Token);
         Assert.AreEqual(1, _productions);
         Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().BlockSource);
@@ -157,13 +157,13 @@ public class ConsumerJournalIsolationTests
         using var scope = JournalIsolation.OverrideJournalWindow(
             drive => windows.TryGetValue(drive, out var window) ? window : null);
         await SeedAsync();
-        var source = new FakeIndexWatchSource();
+        var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(false, source), Token);
         index.HoldEveryRecovery();
         var announced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.WatchFaulted += _ => announced.TrySetResult();
         await index.StartWatchingAsync('T', Token);
-        var handle = source.HandleFor('T');
+        var handle = source.WatchFor('T');
         await handle.Publish(new JournalBatch([], JournalId: 7, NextUsn: 2_000));
         windows['T'] = observation switch
         {
@@ -172,7 +172,7 @@ public class ConsumerJournalIsolationTests
             _ => Healthy
         };
         handle.FailDrive(new IOException("synthetic fault"));
-        await announced.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+        await announced.Task.WaitAsync(ScriptedWatchSource.HangGuard);
         var status = index.Drives.Single();
         Assert.AreEqual(1, _productions);
         Assert.AreEqual(WatchCatchUpState.Recovering, status.WatchCatchUp);

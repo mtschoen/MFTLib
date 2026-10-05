@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -137,7 +138,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         // block with a fresh armed cursor, and the restarted watch follows it.
         var rearmed = new StrongBox<int>();
         var scanCount = new StrongBox<int>();
-        var watchSource = new FakeIndexWatchSource();
+        var watchSource = new ScriptedWatchSource();
         await using var broker = new InProcessBroker(CreateHost(
             queryCursor: _ => Volatile.Read(ref rearmed.Value) == 0 ? ArmedCursor : RearmedCursor,
             scanDrive: (_, _, _, _, _) => Interlocked.Increment(ref scanCount.Value) == 1
@@ -156,7 +157,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(ArmedCursor, firstBlockCursor);
         Assert.AreNotEqual(AdvancedCursor, firstBlockCursor, "catch-up advanced past the armed cursor");
         var firstStart = watchSource.Starts.Single();
-        Assert.AreEqual(new IndexWatchTarget('C', firstBlockCursor.JournalId, firstBlockCursor.NextUsn), firstStart);
+        Assert.AreEqual(new ScriptedWatchStart('C', firstBlockCursor), firstStart);
 
         Volatile.Write(ref rearmed.Value, 1);
         await index.RescanAsync('C', CancellationToken.None).WaitAsync(HangGuard);
@@ -169,7 +170,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(40UL, index.Find(At("replacement.txt"))!.Value.Id.RecordNumber);
         Assert.IsNull(index.Find(At("documents", "notes.txt")));
         Assert.AreEqual(2, watchSource.Starts.Count);
-        Assert.AreEqual(new IndexWatchTarget('C', RearmedCursor.JournalId, RearmedCursor.NextUsn), watchSource.Starts[1]);
+        Assert.AreEqual(new ScriptedWatchStart('C', RearmedCursor), watchSource.Starts[1]);
         Assert.AreEqual(Path.Combine(_rootDirectory, "documents", "notes.txt"), previous.Path);
         Assert.AreEqual("notes.txt", previous.Name);
         Assert.AreEqual(4096L, previous.Size);

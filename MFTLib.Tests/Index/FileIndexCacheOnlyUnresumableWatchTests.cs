@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
 
@@ -112,7 +113,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var driveU = Drive('U', _secondTreeRoot);
         await SeedCacheAsync(driveT, driveU);
 
-        var source = new FakeIndexWatchSource();
+        var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT, driveU), Token);
@@ -138,7 +139,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.IsNull(healthy.WatchFailureMessage);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, healthy.WatchCatchUp);
 
-        await source.HandleFor('U').Publish(new JournalBatch(
+        await source.WatchFor('U').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalId: CachedJournalId, NextUsn: 9_500));
         Assert.AreEqual(9_500L, index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
 
@@ -157,7 +158,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var driveU = Drive('U', _secondTreeRoot);
         await SeedCacheAsync(driveT, driveU);
 
-        var source = new FakeIndexWatchSource();
+        var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT, driveU), Token);
@@ -168,7 +169,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
 
         await index.RescanAsync('T', Token);
 
-        Assert.AreEqual(new IndexWatchTarget('T', CachedJournalId, CachedNextUsn), source.StartsFor('T').Single(),
+        Assert.AreEqual(new IndexWatchTarget('T', CachedJournalId, CachedNextUsn), source.TargetsFor('T').Single(),
             "the rescan starts the requested watch from the fresh cursor");
         var recovered = index.Drives.Single(drive => drive.DriveLetter == 'T');
         Assert.AreEqual(BlockSource.ProducedByScan, recovered.BlockSource);
@@ -177,7 +178,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.IsTrue(recovered.WatchRequested);
         Assert.AreEqual(WatchCatchUpState.CatchingUp,
             index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUp);
-        await source.HandleFor('T').Publish(new JournalBatch(
+        await source.WatchFor('T').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalId: CachedJournalId, NextUsn: 5_000));
         Assert.AreEqual(5_000L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
 
@@ -207,7 +208,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
                 : ProduceMftShapedBlock(request, token);
         }
 
-        var source = new FakeIndexWatchSource();
+        var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow, ['U'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(Producer, source, cacheOnly: true, driveT, driveU), Token);
@@ -223,7 +224,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             () => index.RescanAsync('T', Token));
 
         Assert.AreSame(scanFailure, thrown.InnerException);
-        Assert.AreEqual(0, source.StartsFor('T').Count,
+        Assert.AreEqual(0, source.TargetsFor('T').Count,
             "a failed rescan must not start the cursor the journal still cannot resume");
 
         var after = index.Drives.Single(drive => drive.DriveLetter == 'T');
@@ -235,7 +236,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.AreEqual(before.CheckpointLoss, after.CheckpointLoss);
 
         // U is unaffected by T's failed rescan.
-        await source.HandleFor('U').Publish(new JournalBatch(
+        await source.WatchFor('U').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "u.txt")], JournalId: CachedJournalId, NextUsn: 9_000));
         Assert.AreEqual(9_000L, index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
 
@@ -252,7 +253,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     {
         var driveT = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(driveT);
-        var source = new FakeIndexWatchSource();
+        var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
         var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
@@ -272,13 +273,13 @@ public class FileIndexCacheOnlyUnresumableWatchTests
 
             Assert.IsNotNull(wait);
             var failure = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
-                () => wait.WaitAsync(FakeIndexWatchSource.HangGuard));
+                () => wait.WaitAsync(ScriptedWatchSource.HangGuard));
             StringAssert.Contains(failure.Message, "no MFT-backed block");
             var status = index.Drives.Single();
             Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
             Assert.IsFalse(status.WatchRequested);
             Assert.AreEqual(WatchCatchUpState.NotStarted, status.WatchCatchUp);
-            Assert.AreEqual(1, source.StartsFor('T').Count);
+            Assert.AreEqual(1, source.TargetsFor('T').Count);
         }
         finally
         {
@@ -297,7 +298,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
     {
         var driveT = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(driveT);
-        var source = new FakeIndexWatchSource();
+        var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
         {
@@ -315,8 +316,8 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             }
         };
         await index.StartWatchingAsync('T', Token);
-        source.HandleFor('T').LoseChannel(new IOException("the channel went away"));
-        await channelFaulted.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+        source.WatchFor('T').LoseChannel(new IOException("the channel went away"));
+        await channelFaulted.Task.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreEqual(WatchCatchUpState.Faulted, index.Drives.Single().WatchCatchUp);
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.RescanAsync('T', Token));
@@ -330,7 +331,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
             () => index.WaitForCatchUpAsync('T', Token));
         StringAssert.Contains(notWatched.Message, "is not being watched");
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => index.StopWatchingAsync('T', Token));
-        Assert.AreEqual(1, source.StartsFor('T').Count);
+        Assert.AreEqual(1, source.TargetsFor('T').Count);
     }
 
     [TestMethod]
@@ -339,7 +340,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         var driveT = Drive('T', _firstTreeRoot);
         await SeedCacheAsync(driveT);
 
-        var source = new FakeIndexWatchSource();
+        var source = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, source, cacheOnly: true, driveT), Token);

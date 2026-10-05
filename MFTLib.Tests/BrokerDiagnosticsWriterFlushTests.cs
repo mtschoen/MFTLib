@@ -1,4 +1,4 @@
-using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -7,7 +7,7 @@ namespace MFTLib.Tests;
 [TestClass]
 public class BrokerDiagnosticsWriterFlushTests
 {
-    static readonly TimeSpan HangGuard = FakeIndexWatchSource.HangGuard;
+    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
 
     [TestMethod]
     public async Task FlushAsync_TakenWhileARecordIsBeingDropped_CompletesOnceTheQueuedRecordsAreAppended()

@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -17,7 +18,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class FileIndexAdmittedOperationDisposalTests
 {
-    static readonly TimeSpan HangGuard = FakeIndexWatchSource.HangGuard;
+    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -53,7 +54,7 @@ public class FileIndexAdmittedOperationDisposalTests
         await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => gateHolder).WaitAsync(HangGuard);
         await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => start).WaitAsync(HangGuard);
         await disposal.WaitAsync(HangGuard);
-        Assert.AreEqual(0, harness.Source.StartsFor('T').Count, "the cancelled start never invoked the source");
+        Assert.AreEqual(0, harness.Source.TargetsFor('T').Count, "the cancelled start never invoked the source");
     }
 
     /// <summary>
@@ -128,7 +129,7 @@ public class FileIndexAdmittedOperationDisposalTests
         await index.DisposeAsync().AsTask().WaitAsync(HangGuard);
 
         await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan).WaitAsync(HangGuard);
-        Assert.AreEqual(1, harness.Source.StartsFor('T').Count, "the restart never invoked the source");
+        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the restart never invoked the source");
     }
 
     /// <summary>
@@ -151,7 +152,7 @@ public class FileIndexAdmittedOperationDisposalTests
             TestGate.WaitSynchronously(flagSet.Task);
         };
         var producedBefore = harness.ProductionCount('T');
-        harness.Source.HandleFor('T').FailDrive(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         await decisionReached.Task.WaitAsync(HangGuard);
         var recovery = harness.RecoveryCompletion('T');
 
@@ -159,7 +160,7 @@ public class FileIndexAdmittedOperationDisposalTests
 
         await recovery.WaitAsync(HangGuard);
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the recovery scanned once");
-        Assert.AreEqual(1, harness.Source.StartsFor('T').Count, "the recovery restarted nothing");
+        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the recovery restarted nothing");
         CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive },
             harness.Faults.Where(fault => fault.DriveLetter == 'T').Select(fault => fault.Kind).ToArray());
     }
@@ -178,7 +179,7 @@ public class FileIndexAdmittedOperationDisposalTests
 
         Assert.IsNotNull(disposal, "the restart decided to start the watch again");
         await disposal.WaitAsync(HangGuard);
-        Assert.AreEqual(1, harness.Source.StartsFor('T').Count, "the restart never invoked the source");
+        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the restart never invoked the source");
     }
 
     [TestMethod]
@@ -199,6 +200,6 @@ public class FileIndexAdmittedOperationDisposalTests
 
         Assert.IsNotNull(disposal, "the restart reached its registration");
         await disposal.WaitAsync(HangGuard);
-        Assert.AreEqual(1, harness.Source.StartsFor('T').Count, "the restart never invoked the source");
+        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the restart never invoked the source");
     }
 }

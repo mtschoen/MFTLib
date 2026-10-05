@@ -115,7 +115,7 @@ public class BrokerLiveWatchErrorTests
         await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteCaughtUp);
         await HostChannelHarness.WriteFrameAsync(host, BrokerProtocol.WriteHeartbeat);
         await HostChannelHarness.WriteFrameAsync(host, writer => BrokerProtocol.WriteJournalBatch(writer,
-            new UsnJournalCursor(7, 110), [JournalEntryFactory.Create(1, 105, "c.txt")]));
+            new UsnJournalCursor(7, 110), [JournalEntries.Create(1, 105, "c.txt")]));
 
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(reader));
         Assert.AreEqual(110L, (await WatchReads.NextBatchAsync(reader)).NextUsn);

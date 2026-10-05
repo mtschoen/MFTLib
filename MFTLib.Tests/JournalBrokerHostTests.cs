@@ -50,7 +50,7 @@ public partial class JournalBrokerHostTests
 
     static UsnJournalEntry ScanEntry()
     {
-        return JournalEntryFactory.Create(100, 110, "a.txt", UsnReason.FileCreate | UsnReason.Close);
+        return JournalEntries.Create(100, 110, "a.txt", UsnReason.FileCreate | UsnReason.Close);
     }
 
     // Opens a scan channel on the drive and returns everything the host writes on it, in order,

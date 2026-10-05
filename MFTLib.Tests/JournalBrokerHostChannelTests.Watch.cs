@@ -40,8 +40,8 @@ public partial class JournalBrokerHostChannelTests
             watchedSince = from;
             await Task.Yield();
             operation.Processing("journal batch");
-            yield return ([JournalEntryFactory.Create(20, 150, "a.txt")], new UsnJournalCursor(7, 200));
-            yield return ([JournalEntryFactory.Create(21, 250, "b.txt")], Tip);
+            yield return ([JournalEntries.Create(20, 150, "a.txt")], new UsnJournalCursor(7, 200));
+            yield return ([JournalEntries.Create(21, 250, "b.txt")], Tip);
         }
     }
 
@@ -196,7 +196,7 @@ public partial class JournalBrokerHostChannelTests
             {
                 await foreach (var cursor in _batches.Reader.ReadAllAsync(cancellationToken))
                 {
-                    yield return ([JournalEntryFactory.Create(30, cursor.NextUsn - 1, "c.txt")], cursor);
+                    yield return ([JournalEntries.Create(30, cursor.NextUsn - 1, "c.txt")], cursor);
                 }
             }
             finally

@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -72,7 +72,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "acquired-before-replacement"));
         try
         {
-            await gate.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+            await gate.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
             for (var index = 0; index < replacementCount; index++)
             {
                 BrokerDiagnostics.ReplaceWriterForTest(
@@ -80,11 +80,11 @@ public class BrokerDiagnosticsWriterReplacementTests
             }
 
             gate.Release();
-            await logging.WaitAsync(FakeIndexWatchSource.HangGuard);
+            await logging.WaitAsync(ScriptedWatchSource.HangGuard);
             await BrokerDiagnostics.FlushAsync(CancellationToken.None)
-                .WaitAsync(FakeIndexWatchSource.HangGuard);
+                .WaitAsync(ScriptedWatchSource.HangGuard);
             await original.FlushAsync(CancellationToken.None)
-                .WaitAsync(FakeIndexWatchSource.HangGuard);
+                .WaitAsync(ScriptedWatchSource.HangGuard);
 
             var delivered = replacementLines.ToArray();
             Assert.AreEqual(1, delivered.Length,
@@ -98,7 +98,7 @@ public class BrokerDiagnosticsWriterReplacementTests
             gate.Release();
             try
             {
-                await logging.WaitAsync(FakeIndexWatchSource.HangGuard);
+                await logging.WaitAsync(ScriptedWatchSource.HangGuard);
             }
             finally
             {

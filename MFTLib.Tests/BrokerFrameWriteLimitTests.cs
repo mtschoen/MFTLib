@@ -31,7 +31,7 @@ public class BrokerFrameWriteLimitTests
     public void WriteJournalBatch_OverTheLimit_ThrowsBeforeWritingAnything()
     {
         var entries = Enumerable.Range(0, 30_500)
-            .Select(index => JournalEntryFactory.Create((ulong)index, index, new string('e', 255))).ToArray();
+            .Select(index => JournalEntries.Create((ulong)index, index, new string('e', 255))).ToArray();
         var buffer = new ArrayBufferWriter<byte>();
 
         Assert.ThrowsException<InvalidOperationException>(() =>

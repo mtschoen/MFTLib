@@ -17,7 +17,7 @@ public partial class FileIndexPerDriveWatchTests
         using var harness = new WatchHarness();
         var index = harness.Index;
         await index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
-        var oldHandle = harness.Source.HandleFor('T');
+        var oldHandle = harness.Source.WatchFor('T');
         var applying = harness.HoldFirstApply('T');
         _ = oldHandle.Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
         await applying.Entered.WaitAsync(HangGuard);
@@ -36,6 +36,6 @@ public partial class FileIndexPerDriveWatchTests
         await rescan.WaitAsync(HangGuard);
         Assert.AreEqual(producedBefore + 1, harness.ProductionCount('T'));
         Assert.AreEqual(1, oldHandle.DisposeCount, "the retiring pump disposed its handle");
-        Assert.AreEqual(1, harness.Source.StartsFor('T').Count, "the stopped watch is not restarted");
+        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the stopped watch is not restarted");
     }
 }

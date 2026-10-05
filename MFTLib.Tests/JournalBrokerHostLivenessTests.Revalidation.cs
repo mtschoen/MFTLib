@@ -1,4 +1,5 @@
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -65,7 +66,7 @@ public partial class JournalBrokerHostLivenessTests
             var gate = calls[call++];
             gate.MarkEntered();
             gate.WaitForRelease();
-            return ([JournalEntryFactory.Create(1, since.NextUsn, "entry.txt")],
+            return ([JournalEntries.Create(1, since.NextUsn, "entry.txt")],
                 since with { NextUsn = since.NextUsn + 100 });
         });
         using var sectionWriter = new RecordingBlockSectionWriter();

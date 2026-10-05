@@ -407,9 +407,9 @@ public class DriveScannerDirectApiTests
         scanner._readJournal = (_, since) =>
         (
             [
-                JournalEntryFactory.Create(20, 1200, "made.txt", UsnReason.FileCreate | UsnReason.Close),
-                JournalEntryFactory.Create(21, 1300, "gone.txt", UsnReason.FileDelete),
-                JournalEntryFactory.Create(22, 1400, "moved.txt", UsnReason.RenameNewName,
+                JournalEntries.Create(20, 1200, "made.txt", UsnReason.FileCreate | UsnReason.Close),
+                JournalEntries.Create(21, 1300, "gone.txt", UsnReason.FileDelete),
+                JournalEntries.Create(22, 1400, "moved.txt", UsnReason.RenameNewName,
                     FileAttributes.Archive)
             ],
             since);

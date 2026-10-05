@@ -36,8 +36,8 @@ public class FileIndexWatchRescanCheckpointLossTests
         harness.Index.HoldEveryRecovery();
         await harness.Index.StartWatchingAsync('T', Token);
         await harness.Index.StartWatchingAsync('U', Token);
-        harness.Source.HandleFor('T').FailDrive(new IOException("T's journal wrapped"));
-        harness.Source.HandleFor('U').FailDrive(
+        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('U').FailDrive(
             new IOException("USN journal entries have been deleted; full rescan needed"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         var uFault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'U');
@@ -49,9 +49,9 @@ public class FileIndexWatchRescanCheckpointLossTests
         harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
-        Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.StartsFor('T')[^1]);
-        Assert.AreEqual(2, harness.Source.StartsFor('T').Count);
-        Assert.AreEqual(1, harness.Source.StartsFor('U').Count, "U's condemned cursor is never started again");
+        Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.TargetsFor('T')[^1]);
+        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        Assert.AreEqual(1, harness.Source.TargetsFor('U').Count, "U's condemned cursor is never started again");
 
         var lostDrive = harness.DriveFor('U');
         Assert.AreEqual(uFault.Exception.Message, lostDrive.WatchFailureMessage);

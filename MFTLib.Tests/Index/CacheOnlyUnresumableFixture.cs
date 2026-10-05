@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
 
 namespace MFTLib.Tests.Index;
@@ -24,7 +25,7 @@ internal sealed class CacheOnlyUnresumableFixture : IDisposable
         Directory.CreateDirectory(_treeRoot);
     }
 
-    public FakeIndexWatchSource Source { get; } = new();
+    public ScriptedWatchSource Source { get; } = new();
 
     public async Task<FileIndex> OpenAdoptingAnUnresumableBlockAsync(CancellationToken cancellationToken)
     {

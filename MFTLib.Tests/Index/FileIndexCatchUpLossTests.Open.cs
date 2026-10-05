@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
@@ -30,7 +31,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUp);
         CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
         await index.StartWatchingAsync('T', Token);
-        Assert.AreEqual(1, cache.Source.StartsFor('T').Count, "the retried block is resumable");
+        Assert.AreEqual(1, cache.Source.TargetsFor('T').Count, "the retried block is resumable");
     }
 
     [TestMethod]
@@ -98,7 +99,7 @@ public partial class FileIndexCatchUpLossTests
         /// <summary>The production number (1-based) whose producer call throws instead of writing a block.</summary>
         public int? FailProductionNumber { get; set; }
 
-        public FakeIndexWatchSource Source { get; } = new();
+        public ScriptedWatchSource Source { get; } = new();
 
         public static string CanonicalBlockName => CacheDirectory.BlockFileName('T', VolumeSerial);
 

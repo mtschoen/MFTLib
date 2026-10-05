@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -83,7 +84,7 @@ public class FileIndexRescanCleanupTests
             var rescan = index.RescanAsync('T', rescanCancellation.Token);
 
             // The rescan has produced its replacement block and is parked at the write gate.
-            await producerReturned.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+            await producerReturned.Task.WaitAsync(ScriptedWatchSource.HangGuard);
             await rescanCancellation.CancelAsync();
 
             await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => rescan);
@@ -196,7 +197,7 @@ public class FileIndexRescanCleanupTests
             using var rescanCancellation = new CancellationTokenSource();
             var rescan = index.RescanAsync('T', rescanCancellation.Token);
 
-            await producerEntered.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+            await producerEntered.Task.WaitAsync(ScriptedWatchSource.HangGuard);
             // Cancel before the producer returns: the scan completes normally, and the
             // cancellation is observed by the commit's write-gate wait.
             await rescanCancellation.CancelAsync();
@@ -232,7 +233,7 @@ public class FileIndexRescanCleanupTests
     {
         using var harness = new WatchHarness();
         await harness.Index.StartWatchingAsync('T', Token);
-        harness.Source.HandleFor('T').End();
+        harness.Source.WatchFor('T').End();
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
         Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
         Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
@@ -245,6 +246,6 @@ public class FileIndexRescanCleanupTests
         Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.WatchCatchUp,
             "the rescan replaced the faulted watch with one started from the fresh cursor");
         Assert.IsNull(drive.WatchFailureMessage);
-        Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.StartsFor('T')[^1]);
+        Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.TargetsFor('T')[^1]);
     }
 }

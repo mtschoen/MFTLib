@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
@@ -15,7 +16,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class FileIndexConcurrentRescanTests
 {
-    static readonly TimeSpan HangGuard = FakeIndexWatchSource.HangGuard;
+    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -164,7 +165,7 @@ public class FileIndexConcurrentRescanTests
         var rescanU = Task.Run(() => index.RescanAsync('U', token));
         await commitOfU.Entered.WaitAsync(HangGuard);
 
-        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(9, "during.txt", nextUsn: 700));
+        await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "during.txt", nextUsn: 700));
 
         Assert.AreEqual(700L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
         Assert.IsFalse(rescanU.IsCompleted, "T's batch applied while U's commit still held U's write gate");
@@ -186,7 +187,7 @@ public class FileIndexConcurrentRescanTests
                 batchOnT.WaitForRelease();
             }
         };
-        var consumed = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
+        var consumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "held.txt", nextUsn: 700));
         await batchOnT.Entered.WaitAsync(HangGuard);
         var snapshotDuringBatch = harness.Index.CurrentSnapshot;
 

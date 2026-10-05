@@ -1,6 +1,7 @@
 // Over 500 lines on purpose: one class pins one guard, and every case is a self-contained handler scenario.
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -18,7 +19,7 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class FileIndexCallbackReentrancyTests
 {
-    static readonly TimeSpan HangGuard = FakeIndexWatchSource.HangGuard;
+    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
 
     [ThreadStatic] static bool _insideHandlerStack;
 
@@ -35,13 +36,13 @@ public class FileIndexCallbackReentrancyTests
         OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(() => index.StopWatchingAsync('U', CancellationToken.None))));
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        var consumed = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        var consumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
         var failure = await outcome.Task.WaitAsync(HangGuard);
         await consumed.WaitAsync(HangGuard);
 
         AssertRejected(failure, "StopWatchingAsync");
-        Assert.AreEqual(0, harness.Source.HandleFor('U').DisposeCount, "Y's watch was not stopped");
-        await harness.Source.HandleFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
+        Assert.AreEqual(0, harness.Source.WatchFor('U').DisposeCount, "Y's watch was not stopped");
+        await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
         Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "u.txt"), "Y still applies batches");
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').WatchCatchUp);
     }
@@ -55,12 +56,12 @@ public class FileIndexCallbackReentrancyTests
         OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(() => index.StopWatchingAsync('T', CancellationToken.None))));
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        var consumed = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        var consumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
         var failure = await outcome.Task.WaitAsync(HangGuard);
         await consumed.WaitAsync(HangGuard);
 
         AssertRejected(failure, "StopWatchingAsync");
-        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(10, "t2.txt", nextUsn: 400));
+        await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(10, "t2.txt", nextUsn: 400));
         Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "t2.txt"), "X's pump is still running");
     }
 
@@ -89,8 +90,8 @@ public class FileIndexCallbackReentrancyTests
             }
         };
         await StartBothAsync(harness).WaitAsync(HangGuard);
-        var tConsumed = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
-        var uConsumed = harness.Source.HandleFor('U').Queue(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
+        var tConsumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        var uConsumed = harness.Source.WatchFor('U').Queue(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
         await tGate.Entered.WaitAsync(HangGuard);
         await uGate.Entered.WaitAsync(HangGuard);
 
@@ -101,8 +102,8 @@ public class FileIndexCallbackReentrancyTests
         AssertRejected(await uOutcome.Task.WaitAsync(HangGuard), "StopWatchingAsync");
         await tConsumed.WaitAsync(HangGuard);
         await uConsumed.WaitAsync(HangGuard);
-        await harness.Source.HandleFor('T').Publish(WatchHarness.Batch(11, "t2.txt", nextUsn: 400));
-        await harness.Source.HandleFor('U').Publish(WatchHarness.Batch(12, "u2.txt", nextUsn: 400));
+        await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(11, "t2.txt", nextUsn: 400));
+        await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(12, "u2.txt", nextUsn: 400));
         Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "t2.txt"), "both pumps continue");
         Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "u2.txt"), "both pumps continue");
     }
@@ -117,7 +118,7 @@ public class FileIndexCallbackReentrancyTests
         OnDriveFault(harness, () => outcome.TrySetResult(BlockOn(() => index.RescanAsync('U', CancellationToken.None))));
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        harness.Source.HandleFor('T').FailDrive(new IOException("the volume went away"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
 
         AssertRejected(await outcome.Task.WaitAsync(HangGuard), "RescanAsync");
     }
@@ -132,10 +133,10 @@ public class FileIndexCallbackReentrancyTests
         OnDriveFault(harness, () => outcome.TrySetResult(BlockOn(() => index.StartWatchingAsync('U', CancellationToken.None))));
         await harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
 
-        harness.Source.HandleFor('T').FailDrive(new IOException("the volume went away"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
 
         AssertRejected(await outcome.Task.WaitAsync(HangGuard), "StartWatchingAsync");
-        Assert.AreEqual(0, harness.Source.StartsFor('U').Count, "the rejected start never reached the source");
+        Assert.AreEqual(0, harness.Source.TargetsFor('U').Count, "the rejected start never reached the source");
     }
 
     [TestMethod]
@@ -147,11 +148,11 @@ public class FileIndexCallbackReentrancyTests
         OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(() => index.DisposeAsync().AsTask())));
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        var consumed = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        var consumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
 
         AssertRejected(await outcome.Task.WaitAsync(HangGuard), "DisposeAsync");
         await consumed.WaitAsync(HangGuard);
-        await harness.Source.HandleFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
+        await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
         Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "u.txt"), "the index was not disposed");
     }
 
@@ -164,7 +165,7 @@ public class FileIndexCallbackReentrancyTests
         OnChanged(harness, "t.txt", () => outcome.TrySetResult(BlockOn(() => index.WaitForCatchUpAsync('U', CancellationToken.None))));
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
 
         AssertRejected(await outcome.Task.WaitAsync(HangGuard), "WaitForCatchUpAsync");
     }
@@ -182,10 +183,10 @@ public class FileIndexCallbackReentrancyTests
             outcome.TrySetResult((single.IsCompleted, BlockOn(() => single), BlockOn(() => batched)));
         });
         await StartBothAsync(harness).WaitAsync(HangGuard);
-        await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         await index.WaitForCatchUpAsync('T', Token).WaitAsync(HangGuard);
 
-        _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
 
         var result = await outcome.Task.WaitAsync(HangGuard);
         Assert.IsTrue(result.Settled, "the wait was already settled when the handler asked");
@@ -219,7 +220,7 @@ public class FileIndexCallbackReentrancyTests
         OnChanged(harness, "t.txt", () => outcome.TrySetResult([.. calls.Select(call => BlockOn(call.Call))]));
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
 
         var failures = await outcome.Task.WaitAsync(HangGuard);
         for (var position = 0; position < calls.Length; position++)
@@ -263,10 +264,10 @@ public class FileIndexCallbackReentrancyTests
         })));
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
 
         AssertRejected(await outcome.Task.WaitAsync(HangGuard), "StopWatchingAsync");
-        Assert.AreEqual(0, harness.Source.HandleFor('U').DisposeCount);
+        Assert.AreEqual(0, harness.Source.WatchFor('U').DisposeCount);
     }
 
     [TestMethod]
@@ -283,14 +284,14 @@ public class FileIndexCallbackReentrancyTests
         })));
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        var consumed = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        var consumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
         await consumed.WaitAsync(HangGuard);
         afterHandler.Release();
         var stop = await queuedStop.Task.WaitAsync(HangGuard);
 
         await stop.WaitAsync(HangGuard);
         Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
-        Assert.AreEqual(1, harness.Source.HandleFor('T').DisposeCount, "X drained");
+        Assert.AreEqual(1, harness.Source.WatchFor('T').DisposeCount, "X drained");
     }
 
     [TestMethod]
@@ -301,11 +302,11 @@ public class FileIndexCallbackReentrancyTests
         OnDriveFault(harness, () => handlerRan.TrySetResult(true));
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        harness.Source.HandleFor('T').FailDrive(new IOException("the volume went away"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
         await handlerRan.Task.WaitAsync(HangGuard);
         await harness.WaitForRecoveryAsync('T');
 
-        Assert.AreEqual(2, harness.Source.StartsFor('T').Count, "the recovery restarted the watch");
+        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count, "the recovery restarted the watch");
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
     }
 
@@ -341,7 +342,7 @@ public class FileIndexCallbackReentrancyTests
         });
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
 
         var result = await outcome.Task.WaitAsync(HangGuard);
         Assert.IsNull(result.Failure);
@@ -362,7 +363,7 @@ public class FileIndexCallbackReentrancyTests
         var wait = index.WaitForCatchUpAsync('U', waitCancellation.Token);
         var awaiter = ObserveCancellationAsync(wait, observedInline, () => index.DisposeAsync().AsTask());
 
-        harness.Source.HandleFor('T').FailDrive(new IOException("the volume went away"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
 
         Assert.IsFalse(await observedInline.Task.WaitAsync(HangGuard), "the continuation ran on the handler's stack");
         await awaiter.WaitAsync(HangGuard);
@@ -390,7 +391,7 @@ public class FileIndexCallbackReentrancyTests
             }
         };
         await StartBothAsync(harness).WaitAsync(HangGuard);
-        var uConsumed = harness.Source.HandleFor('U').Queue(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
+        var uConsumed = harness.Source.WatchFor('U').Queue(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
         await uGate.Entered.WaitAsync(HangGuard);
         harness.SetNextProducedCursor('U', WatchHarness.JournalId, nextUsn: 300);
         var stop = index.StopWatchingAsync('U', stopCancellation.Token);
@@ -398,7 +399,7 @@ public class FileIndexCallbackReentrancyTests
         var token = Token;
         var awaiter = ObserveCancellationAsync(stop, observedInline, () => index.RescanAsync('U', token));
 
-        var tConsumed = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        var tConsumed = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
 
         Assert.IsFalse(await observedInline.Task.WaitAsync(HangGuard), "the caller's catch ran on the handler's stack");
         await tConsumed.WaitAsync(HangGuard);
@@ -436,12 +437,12 @@ public class FileIndexCallbackReentrancyTests
         };
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        harness.Source.HandleFor('T').FailDrive(new IOException("the volume went away"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
         var failure = await outcome.Task.WaitAsync(HangGuard);
         subscriberBGate.Release();
 
         Assert.IsNull(failure, "work subscriber A queued ran after A returned, so it is allowed while B runs");
-        Assert.AreEqual(1, harness.Source.HandleFor('U').DisposeCount);
+        Assert.AreEqual(1, harness.Source.WatchFor('U').DisposeCount);
     }
 
     [TestMethod]
@@ -461,7 +462,7 @@ public class FileIndexCallbackReentrancyTests
             outcome.TrySetResult(BlockOn(() => index.WaitForCatchUpAsync(CancellationToken.None))));
         await StartBothAsync(harness).WaitAsync(HangGuard);
 
-        _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
 
         AssertRejected(await outcome.Task.WaitAsync(HangGuard), "WaitForCatchUpAsync");
         await disposal.AsTask().WaitAsync(HangGuard);
@@ -486,10 +487,10 @@ public class FileIndexCallbackReentrancyTests
             WatchHarness.JournalId, 500));
         await StartBothAsync(outer).WaitAsync(HangGuard);
 
-        _ = outer.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        _ = outer.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
 
         AssertRejected(await outcome.Task.WaitAsync(HangGuard), "StopWatchingAsync");
-        Assert.AreEqual(0, outer.Source.HandleFor('U').DisposeCount);
+        Assert.AreEqual(0, outer.Source.WatchFor('U').DisposeCount);
     }
 
     [TestMethod]
@@ -511,7 +512,7 @@ public class FileIndexCallbackReentrancyTests
             ]);
         });
         await StartBothAsync(harness).WaitAsync(HangGuard);
-        _ = harness.Source.HandleFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
+        _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));
         await gate.Entered.WaitAsync(HangGuard);
         var disposal = index.DisposeAsync().AsTask();
 

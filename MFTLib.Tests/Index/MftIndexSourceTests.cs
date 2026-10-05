@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
 
@@ -77,7 +78,7 @@ public class MftIndexSourceTests
     [TestMethod]
     public void Constructor_KeepsProducerAndWatchSourceTogether()
     {
-        var watchSource = new FakeIndexWatchSource();
+        var watchSource = new ScriptedWatchSource();
 
         var source = new MftIndexSource(ProduceMftShapedBlock, watchSource);
 
@@ -155,7 +156,7 @@ public class MftIndexSourceTests
     public async Task SourceWithWatchSource_StartsTheWatchOnThatSource()
     {
         await SeedCacheAsync();
-        var watchSource = new FakeIndexWatchSource();
+        var watchSource = new ScriptedWatchSource();
         using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(new MftIndexSource(ProduceMftShapedBlock, watchSource)), Token);

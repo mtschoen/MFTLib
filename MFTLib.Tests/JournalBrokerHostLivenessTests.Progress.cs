@@ -46,7 +46,7 @@ public partial class JournalBrokerHostLivenessTests
             reads.Add(maximumBufferReads);
             // Three chunks of one entry each, 100 USNs apart, then the tip.
             return since.NextUsn < Tip.NextUsn + 300
-                ? ([JournalEntryFactory.Create((ulong)since.NextUsn, since.NextUsn, $"{since.NextUsn}.txt")],
+                ? ([JournalEntries.Create((ulong)since.NextUsn, since.NextUsn, $"{since.NextUsn}.txt")],
                     since with { NextUsn = since.NextUsn + 100 })
                 : ([], since);
         });
@@ -78,7 +78,7 @@ public partial class JournalBrokerHostLivenessTests
                 throw new IOException("second catch-up read failed");
             }
 
-            return ([JournalEntryFactory.Create(1, since.NextUsn, "first.txt")], since with { NextUsn = since.NextUsn + 100 });
+            return ([JournalEntries.Create(1, since.NextUsn, "first.txt")], since with { NextUsn = since.NextUsn + 100 });
         });
         var startTime = liveness.Clock.GetUtcNow();
         using var sectionWriter = new RecordingBlockSectionWriter();

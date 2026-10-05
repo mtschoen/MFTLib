@@ -11,7 +11,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     public async Task Produce_AdoptsClientBlockAndReleasesOnlySectionLifetime()
     {
         await using var broker = new InProcessBroker(CreateHost(
-            readJournal: CatchUpSources.ToTip(AdvancedCursor, JournalEntryFactory.Create(20, 12400, "file.txt"))));
+            readJournal: CatchUpSources.ToTip(AdvancedCursor, JournalEntries.Create(20, 12400, "file.txt"))));
         var request = Request(Target());
 
         var result = await ProduceAsync(broker.Process, request).WaitAsync(HangGuard);

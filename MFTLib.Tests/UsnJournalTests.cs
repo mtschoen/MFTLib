@@ -239,24 +239,24 @@ public class UsnJournalTests
     [TestMethod]
     public void UsnJournalEntry_ReasonHelpers_Work()
     {
-        var create = JournalEntryFactory.Create(1, 100, "test.txt", UsnReason.FileCreate);
+        var create = JournalEntries.Create(1, 100, "test.txt", UsnReason.FileCreate);
         Assert.IsTrue(create.IsCreate);
         Assert.IsFalse(create.IsDelete);
         Assert.IsFalse(create.IsClose);
         Assert.IsFalse(create.IsRename);
 
-        var delete = JournalEntryFactory.Create(1, 200, "gone.txt", UsnReason.FileDelete | UsnReason.Close);
+        var delete = JournalEntries.Create(1, 200, "gone.txt", UsnReason.FileDelete | UsnReason.Close);
         Assert.IsTrue(delete.IsDelete);
         Assert.IsTrue(delete.IsClose);
 
-        var rename = JournalEntryFactory.Create(1, 300, "renamed.txt", UsnReason.RenameNewName);
+        var rename = JournalEntries.Create(1, 300, "renamed.txt", UsnReason.RenameNewName);
         Assert.IsTrue(rename.IsRename);
     }
 
     [TestMethod]
     public void UsnJournalEntry_ToString_IncludesReasonAndName()
     {
-        var entry = JournalEntryFactory.Create(42, 100, "test.txt", UsnReason.FileCreate);
+        var entry = JournalEntries.Create(42, 100, "test.txt", UsnReason.FileCreate);
         var text = entry.ToString();
         Assert.IsTrue(text.Contains("FileCreate"));
         Assert.IsTrue(text.Contains("test.txt"));

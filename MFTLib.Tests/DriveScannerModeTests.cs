@@ -186,7 +186,7 @@ public class DriveScannerModeTests
         {
             order.Add("catch-up");
             readSince = since;
-            return ([JournalEntryFactory.Create(20, 1200, "file.txt")], new UsnJournalCursor(7, 1500));
+            return ([JournalEntries.Create(20, 1200, "file.txt")], new UsnJournalCursor(7, 1500));
         };
 
         scanner.Run(["usn-read", "T"]);
@@ -383,7 +383,7 @@ public class DriveScannerModeTests
         CancellationTokenSource cancellation, [EnumeratorCancellation] CancellationToken token)
     {
         await Task.Yield();
-        yield return ([JournalEntryFactory.Create(30, 1100, "created.txt")], new UsnJournalCursor(7, 1100));
+        yield return ([JournalEntries.Create(30, 1100, "created.txt")], new UsnJournalCursor(7, 1100));
         await cancellation.CancelAsync();
         token.ThrowIfCancellationRequested();
     }

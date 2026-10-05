@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using MFTLib.Tests.TestSupport;
 using System.Runtime.CompilerServices;
 using MFTLib.Index;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;

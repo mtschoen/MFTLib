@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
@@ -24,7 +25,7 @@ public partial class FileIndexWatchRecoveryTests
         harness.ScriptScans('T', Lost('T'), Lost('T'), Held());
         var producedBefore = harness.ProductionCount('T');
 
-        harness.Source.HandleFor('T').FailDrive(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         await harness.WaitForRecoveryAsync('T');
 
@@ -39,8 +40,8 @@ public partial class FileIndexWatchRecoveryTests
         var drive = harness.DriveFor('T');
         Assert.AreEqual(0, drive.ConsecutiveLostCatchUps);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.WatchCatchUp);
-        Assert.AreEqual(2, harness.Source.StartsFor('T').Count);
-        await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
+        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
+        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUp);
     }
 
@@ -52,7 +53,7 @@ public partial class FileIndexWatchRecoveryTests
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'), Held());
         var producedBefore = harness.ProductionCount('T');
 
-        harness.Source.HandleFor('T').FailDrive(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         await harness.WaitForRecoveryAsync('T');
 
@@ -69,7 +70,7 @@ public partial class FileIndexWatchRecoveryTests
         var drive = harness.DriveFor('T');
         Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUp);
         Assert.AreEqual(3, drive.ConsecutiveLostCatchUps);
-        Assert.AreEqual(1, harness.Source.StartsFor('T').Count);
+        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
 
         _ = harness.Index.Drives;
         Assert.IsFalse(harness.Index.TryGetRecoveryCompletionForTest('T', out _), "reading the drives queues no recovery");
@@ -85,7 +86,7 @@ public partial class FileIndexWatchRecoveryTests
         var held = harness.TrackGate();
         harness.ScriptScans('T', Lost('T', hold: held), Held());
         var producedBefore = harness.ProductionCount('T');
-        harness.Source.HandleFor('T').FailDrive(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         await held.Entered.WaitAsync(HangGuard);
 
         await ThrowsAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync('T', Token));
@@ -94,7 +95,7 @@ public partial class FileIndexWatchRecoveryTests
 
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the retry re-checks the watch request");
         Assert.AreEqual(1, WatchDeduplicationTestSupport.CatchUpLosses(harness, 'T').Length);
-        Assert.AreEqual(1, harness.Source.StartsFor('T').Count);
+        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
         var drive = harness.DriveFor('T');
         Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUp);
         Assert.AreEqual(1, drive.ConsecutiveLostCatchUps);
@@ -109,8 +110,8 @@ public partial class FileIndexWatchRecoveryTests
         await harness.Index.StartWatchingAsync('U', Token);
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
 
-        harness.Source.HandleFor('T').FailDrive(new IOException("T's journal wrapped"));
-        harness.Source.HandleFor('U').FailDrive(new IOException("U's journal wrapped"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('U').FailDrive(new IOException("U's journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'U');
         await harness.WaitForRecoveryAsync('T');
@@ -123,7 +124,7 @@ public partial class FileIndexWatchRecoveryTests
         var driveU = harness.DriveFor('U');
         Assert.AreEqual(0, driveU.ConsecutiveLostCatchUps);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, driveU.WatchCatchUp);
-        Assert.AreEqual(2, harness.Source.StartsFor('U').Count);
+        Assert.AreEqual(2, harness.Source.TargetsFor('U').Count);
         CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'U'));
     }
 
@@ -133,7 +134,7 @@ public partial class FileIndexWatchRecoveryTests
         using var harness = new WatchHarness('T');
         await harness.Index.StartWatchingAsync('T', Token);
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
-        harness.Source.HandleFor('T').FailDrive(new IOException("T's journal wrapped"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         await harness.WaitForRecoveryAsync('T');
         Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
@@ -144,7 +145,7 @@ public partial class FileIndexWatchRecoveryTests
         Assert.AreEqual(0, drive.ConsecutiveLostCatchUps);
         Assert.IsNull(drive.WatchFailureMessage);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.WatchCatchUp);
-        Assert.AreEqual(2, harness.Source.StartsFor('T').Count);
+        Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
     }
 
     /// <summary>

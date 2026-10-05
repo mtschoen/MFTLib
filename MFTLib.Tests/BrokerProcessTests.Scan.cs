@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -17,7 +18,7 @@ public partial class BrokerProcessTests
     {
         var advanced = new UsnJournalCursor(7, 1500);
         await using var broker = new InProcessBroker(CreateHost(
-            readJournal: CatchUpSources.ToTip(advanced, JournalEntryFactory.Create(20, 1200, "file.txt"))));
+            readJournal: CatchUpSources.ToTip(advanced, JournalEntries.Create(20, 1200, "file.txt"))));
         var target = TestBlockSections.Target() with { CacheTag = new CacheTag("TEST", 3) };
 
         var result = await broker.Process.ScanDriveAsync('c', target, new BrokerScanOptions(), CancellationToken.None)

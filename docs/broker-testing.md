@@ -1,8 +1,9 @@
 # Testing your integration
 
 Reference **`MFTLib.TestExtensions`** from consumer test projects. It provides an
-in-process broker harness and opt-in guards against accidental access to the
-real per-user cache or a real volume's USN journal.
+in-process broker harness, a scripted drive watch and synthetic journal entries and
+records, and opt-in guards against accidental access to the real per-user cache or
+a real volume's USN journal.
 
 ## BrokerTestHarness
 
@@ -70,76 +71,72 @@ fixtures in this repository. Those helpers are repository test types, not part
 of `MFTLib.TestExtensions`; consumer tests implement the same public
 `IBlockSectionWriter` and `BrokerBlockSectionFactory` seams.
 
-## Fake the FileIndex watch boundary directly
+## Script a drive watch
 
-A test focused on `FileIndex` policy does not need a broker. Implement
-`IIndexWatchSource.StartAsync` so each call returns one `IIndexDriveWatch` for
-the requested drive. The handle yields only that drive's `JournalBatch` and
-`DriveCaughtUp` items and completes by throwing a classified failure.
-
-This minimal fake uses a channel as the drive's script:
+A test focused on `FileIndex` policy does not need a broker. `ScriptedWatchSource`
+answers every watch start the index asks for with one `ScriptedDriveWatch` for
+that drive, and the test then scripts what the watch yields and how it ends. Hand
+it to the index beside a producer with
+`FileIndexOptions.MftSource = new MftIndexSource(producer, source)`.
 
 ```csharp
-using System.Threading.Channels;
-using MFTLib.Index;
+using MFTLib;
+using MFTLibTestExtensions;
 
-sealed class FakeWatchSource(Action<FakeDriveWatch> started) : IIndexWatchSource
-{
-    public Task<IIndexDriveWatch> StartAsync(
-        IndexWatchTarget target,
-        CancellationToken cancellationToken)
+var source = new ScriptedWatchSource();
+// ... open the index with the source, then await index.StartWatchingAsync ...
+var watch = source.WatchFor('T');
+
+await watch.PublishBatchAsync(
+    [SyntheticJournalEntry.Create(new SyntheticJournalEntryOptions
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var watch = new FakeDriveWatch(target.DriveLetter);
-        started(watch);
-        return Task.FromResult<IIndexDriveWatch>(watch);
-    }
-}
-
-sealed class FakeDriveWatch(char driveLetter) : IIndexDriveWatch
-{
-    readonly Channel<WatchStreamItem> _items =
-        Channel.CreateUnbounded<WatchStreamItem>();
-
-    public char DriveLetter { get; } = driveLetter;
-
-    public ValueTask EmitAsync(WatchStreamItem item) =>
-        _items.Writer.WriteAsync(item);
-
-    public void Fail(Exception exception) =>
-        _items.Writer.TryComplete(exception);
-
-    public IAsyncEnumerable<WatchStreamItem> ReadAsync(
-        CancellationToken cancellationToken) =>
-        _items.Reader.ReadAllAsync(cancellationToken);
-
-    public ValueTask DisposeAsync()
-    {
-        _items.Writer.TryComplete();
-        return ValueTask.CompletedTask;
-    }
-}
+        RecordNumber = 20,
+        ParentRecordNumber = 5,
+        Usn = 1200,
+        FileName = "new.txt",
+        Reason = UsnReason.FileCreate | UsnReason.Close
+    })],
+    new UsnJournalCursor(watch.StartCursor.JournalId, 1300));
+await watch.PublishCaughtUpAsync();
 ```
 
-Hand the fake to the index beside a producer with
-`FileIndexOptions.MftSource = new MftIndexSource(producer, new FakeWatchSource(...))`.
+The source records every start in `Starts` (the drive and the cursor it resumed
+from, including starts that were then failed) and every watch it handed out in
+`Watches`; `WatchFor` returns the latest watch of one drive and
+`WaitForStartAsync` completes with the next watch handed out for it (register the wait
+before triggering the start). Starts are
+scripted per source:
 
-Return from `StartAsync` only when the handle is ready to be read. The index
-starts one pump per returned handle and disposes that handle exactly once. A
-test can drive the public behavior as follows:
+- `CatchUpOnStart` queues the caught-up marker the moment each watch starts, for a
+  test that only needs every drive to settle;
+- `FailNextStart` and `FailNextStartFor` make one start throw;
+- `StartFailure` is consulted on every start and throws whatever it returns; and
+- a start for a drive whose previous watch has not been disposed throws
+  `InvalidOperationException`, because the index disposes a watch before it
+  restarts one.
 
-- emit `JournalBatch` to apply changes and advance the block cursor;
-- emit `DriveCaughtUp` to settle that drive's catch-up wait;
-- complete with `DriveWatchFaultException` to produce
-  `WatchFaultKind.Drive` and automatic recovery; or
-- complete with another exception to produce `WatchFaultKind.Channel` with no
-  automatic recovery.
+A watch scripts the read the index's pump performs:
 
-A normal end before the index cancels the read is also a channel fault. The
-handle must observe the read token promptly; this is how stop, rescan, and
-dispose end its pump. Keep fakes per drive. Sharing one queue between handles
-would reintroduce cross-drive ordering and failure coupling that the public seam
-is designed to exclude.
+- `PublishBatchAsync` and `QueueBatch` deliver a journal batch that applies its
+  changes and advances the block cursor; the publishing form completes once the
+  pump has taken the item after it and throws `TimeoutException` after ten
+  seconds, and the queueing form returns the task that completes then;
+- `PublishCaughtUpAsync` and `QueueCaughtUp` settle that drive's catch-up wait;
+- `FailDrive` produces `WatchFaultKind.Drive` and automatic recovery;
+- `LoseChannel`, or `End` for a normal end before the index cancels the read,
+  produces `WatchFaultKind.Channel` with no automatic recovery; and
+- `FailOnCancellation` makes a cancelled read throw an I/O failure instead of
+  `OperationCanceledException`.
+
+`ReadStarted`, `ReadEnded` (true when cancellation ended the read), `Disposed`
+and `DisposeCount` report what the index did with the watch. A watch closes when its
+read ends, however it ends, or when it is disposed: every delivery method then throws
+`InvalidOperationException`, and each unread item's task settles once, faulted with
+the read's failure or cancelled, before `ReadEnded` completes. The index disposes a
+watch exactly once, so a second disposal throws. An idle watch is a source nobody
+publishes to. Keep one source per index and one watch per drive: sharing a queue
+between watches would reintroduce cross-drive ordering and failure coupling that
+the public seam is designed to exclude.
 
 ## Seed and edit cache blocks
 

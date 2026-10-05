@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -19,7 +20,7 @@ public class FileIndexWatchRescanCommitTests
         using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync(Token);
         var failure = new IOException("T cannot restart");
-        harness.Source.FailStartFor('T', failure);
+        harness.Source.FailNextStartFor('T', failure);
 
         var results = allDrives
             ? await harness.Index.RescanAsync(Token)
@@ -46,14 +47,14 @@ public class FileIndexWatchRescanCommitTests
         var starting = harness.TrackGate();
         harness.Source.HoldStartFor('T', starting, observeToken: true);
         var rescan = harness.Index.RescanAsync('T', Token);
-        await starting.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+        await starting.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
 
         var stopping = dispose
             ? harness.Index.DisposeAsync().AsTask()
             : harness.Index.StopWatchingAsync('T', Token);
 
         await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => rescan);
-        await stopping.WaitAsync(FakeIndexWatchSource.HangGuard);
+        await stopping.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreEqual(0, harness.Faults.Count);
     }
 
@@ -64,7 +65,7 @@ public class FileIndexWatchRescanCommitTests
     {
         using var harness = new WatchHarness('T');
         await harness.Index.StartWatchingAsync('T', Token);
-        var handle = harness.Source.HandleFor('T');
+        var handle = harness.Source.WatchFor('T');
         var original = harness.Index.Root('T').DriveBlock;
         var caughtUp = harness.Index.WaitForCatchUpAsync('T', Token);
         var production = harness.HoldNextProduction('T');
@@ -75,7 +76,7 @@ public class FileIndexWatchRescanCommitTests
         }
 
         var rescan = harness.Index.RescanAsync('T', cancellation.Token);
-        await production.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+        await production.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreEqual(0, handle.DisposeCount, "production must keep the current watch running");
         Assert.IsFalse(caughtUp.IsCompleted, "production must keep the pending catch-up attached");
         await handle.Publish(WatchHarness.Batch(9, "during.txt", nextUsn: 700));
@@ -92,11 +93,11 @@ public class FileIndexWatchRescanCommitTests
         }
 
         Assert.AreSame(original, harness.Index.Root('T').DriveBlock);
-        Assert.AreSame(handle, harness.Source.HandleFor('T'));
-        Assert.AreEqual(1, harness.Source.StartsFor('T').Count);
+        Assert.AreSame(handle, harness.Source.WatchFor('T'));
+        Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
         Assert.IsFalse(caughtUp.IsCompleted);
         await handle.Publish(new DriveCaughtUp());
-        await caughtUp.WaitAsync(FakeIndexWatchSource.HangGuard);
+        await caughtUp.WaitAsync(ScriptedWatchSource.HangGuard);
         await harness.Index.StopWatchingAsync('T', Token);
     }
 
@@ -110,12 +111,12 @@ public class FileIndexWatchRescanCommitTests
         await harness.Index.StartWatchingAsync('U', Token);
         if (alreadyFaulted)
         {
-            harness.Source.HandleFor('T').LoseChannel(new IOException("old channel failed"));
+            harness.Source.WatchFor('T').LoseChannel(new IOException("old channel failed"));
             await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
         }
 
         var failure = new IOException("new start failed");
-        harness.Source.FailStartFor('T', failure);
+        harness.Source.FailNextStartFor('T', failure);
         harness.SetNextProducedCursor('T', 13, 9000);
         var original = harness.Index.Root('T').DriveBlock;
         await harness.Index.RescanAsync('T', Token);
@@ -135,7 +136,7 @@ public class FileIndexWatchRescanCommitTests
         var secondStop = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
             () => harness.Index.StopWatchingAsync('T', Token));
         Assert.AreNotSame(fault.Exception, secondStop);
-        await harness.Source.HandleFor('U').Publish(WatchHarness.Batch(9, "sibling.txt"));
+        await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(9, "sibling.txt"));
         await harness.Index.StartWatchingAsync('T', Token);
         Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
         await harness.Index.StopWatchingAsync('T', Token);
@@ -156,8 +157,8 @@ public class FileIndexWatchRescanCommitTests
         }
 
         var rescan = harness.Index.RescanAsync('T', Token);
-        await production.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
-        var handle = harness.Source.HandleFor('T');
+        await production.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
+        var handle = harness.Source.WatchFor('T');
         Assert.AreEqual(0, handle.DisposeCount, "a fault during production still belongs to the current watch");
         handle.FailDrive(new IOException("watch failed during production"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');

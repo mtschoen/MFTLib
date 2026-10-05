@@ -1,13 +1,14 @@
 using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.Index;
+using MFTLibTestExtensions;
 
 namespace MFTLib.Tests.TestSupport;
 
 /// <summary>
 ///     Stands one <see cref="FileIndex" /> up over synthetic MFT-shaped blocks, one per drive
 ///     letter (<c>T</c>, <c>U</c> and <c>V</c> unless told otherwise), with a scripted producer
-///     and a <see cref="FakeIndexWatchSource" />, and tears it down again. It collects every
+///     and a <see cref="ScriptedWatchSource" />, and tears it down again. It collects every
 ///     <see cref="FileIndex.Changed" /> change and every <see cref="FileIndex.WatchFaulted" /> fault.
 /// </summary>
 internal sealed class WatchHarness : IDisposable
@@ -82,7 +83,7 @@ internal sealed class WatchHarness : IDisposable
     /// <summary>The owned temporary directory this harness gives the index as its cache directory.</summary>
     public string CacheDirectory => _cacheDirectory;
 
-    public FakeIndexWatchSource Source { get; } = new();
+    public ScriptedWatchSource Source { get; } = new();
 
     public IReadOnlyCollection<FileChange> Changes => _changes;
 
@@ -115,7 +116,7 @@ internal sealed class WatchHarness : IDisposable
 
             var completion = new TaskCompletionSource<WatchFault>(TaskCreationOptions.RunContinuationsAsynchronously);
             _faultWaiters.Add((Match, completion));
-            return completion.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+            return completion.Task.WaitAsync(ScriptedWatchSource.HangGuard);
         }
     }
 
@@ -228,7 +229,7 @@ internal sealed class WatchHarness : IDisposable
             }
         }
 
-        Index.DisposeAsync().AsTask().WaitAsync(FakeIndexWatchSource.HangGuard).GetAwaiter().GetResult();
+        Index.DisposeAsync().AsTask().WaitAsync(ScriptedWatchSource.HangGuard).GetAwaiter().GetResult();
         foreach (var blockBuilder in _blockBuilders.Values)
         {
             blockBuilder.Dispose();
@@ -246,7 +247,7 @@ internal sealed class WatchHarness : IDisposable
         lock (_faults)
         {
             return _recoveriesByDrive.TryGetValue(char.ToUpperInvariant(driveLetter), out var recoveries)
-                ? recoveries[^1].WaitAsync(FakeIndexWatchSource.HangGuard)
+                ? recoveries[^1].WaitAsync(ScriptedWatchSource.HangGuard)
                 : throw new InvalidOperationException($"No recovery of drive {driveLetter} was queued.");
         }
     }

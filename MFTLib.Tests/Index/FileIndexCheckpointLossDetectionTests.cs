@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
 
@@ -110,7 +111,7 @@ public class FileIndexCheckpointLossDetectionTests
     [TestMethod]
     public async Task AnUnrelatedWatchFault_LeavesTheOpensReportIntactAndStillLabelledAsTheOpens()
     {
-        var source = new FakeIndexWatchSource();
+        var source = new ScriptedWatchSource();
         await using var index = await OpenWithAnOpenTimeLossAsync(source);
         index.HoldEveryRecovery();
         var openReport = index.Drives.Single().CheckpointLoss;
@@ -145,7 +146,7 @@ public class FileIndexCheckpointLossDetectionTests
     [TestMethod]
     public async Task AWatchTimeLoss_ReplacesTheOpensReportAndIsLabelledAsTheWatchs()
     {
-        var source = new FakeIndexWatchSource();
+        var source = new ScriptedWatchSource();
         await using var index = await OpenWithAnOpenTimeLossAsync(source);
         index.HoldEveryRecovery();
 
@@ -171,7 +172,7 @@ public class FileIndexCheckpointLossDetectionTests
     ///     Fails drive <c>T</c>'s watch through its handle and returns once the index has
     ///     recorded the fault and announced it, which is after the checkpoint-loss check ran.
     /// </summary>
-    static async Task FailDriveAndWaitForFaultAsync(FileIndex index, FakeIndexWatchSource source,
+    static async Task FailDriveAndWaitForFaultAsync(FileIndex index, ScriptedWatchSource source,
         Exception failure)
     {
         var announced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -179,8 +180,8 @@ public class FileIndexCheckpointLossDetectionTests
         index.WatchFaulted += Observe;
         try
         {
-            source.HandleFor('T').FailDrive(failure);
-            await announced.Task.WaitAsync(FakeIndexWatchSource.HangGuard);
+            source.WatchFor('T').FailDrive(failure);
+            await announced.Task.WaitAsync(ScriptedWatchSource.HangGuard);
         }
         finally
         {
@@ -192,7 +193,7 @@ public class FileIndexCheckpointLossDetectionTests
     [TestMethod]
     public async Task AReportFromTheOpen_IsLabelledAsTheOpens()
     {
-        await using var index = await OpenWithAnOpenTimeLossAsync(new FakeIndexWatchSource());
+        await using var index = await OpenWithAnOpenTimeLossAsync(new ScriptedWatchSource());
 
         Assert.AreEqual(JournalCheckpointLossDetection.DriveOpening,
             index.Drives.Single().CheckpointLoss!.DetectedDuring);

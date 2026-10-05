@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
@@ -17,7 +18,7 @@ public class FileIndexBatchedOperationTests
 {
     [ThreadStatic] static bool _settlingPumpFault;
 
-    static readonly TimeSpan HangGuard = FakeIndexWatchSource.HangGuard;
+    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -47,7 +48,7 @@ public class FileIndexBatchedOperationTests
     {
         using var harness = WatchHarness.WithBlocklessDrives(['V'], 'T', 'U', 'V');
         var failure = new IOException("the broker refused U");
-        harness.Source.FailStartFor('U', failure);
+        harness.Source.FailNextStartFor('U', failure);
 
         var results = await harness.Index.StartWatchingAsync(['T', 'U', 'V'], Token).WaitAsync(HangGuard);
 
@@ -59,7 +60,7 @@ public class FileIndexBatchedOperationTests
         Assert.AreEqual(DriveOperationOutcome.NotApplicable, results[2].Outcome);
         Assert.IsNull(results[2].Failure);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
-        Assert.AreEqual(0, harness.Source.StartsFor('V').Count, "a drive with no block never reaches the source");
+        Assert.AreEqual(0, harness.Source.TargetsFor('V').Count, "a drive with no block never reaches the source");
         Assert.AreEqual(0, harness.Faults.Count, "a failed source start raises no WatchFaulted");
     }
 
@@ -84,8 +85,8 @@ public class FileIndexBatchedOperationTests
             heldStart.Release();
         }
 
-        Assert.AreEqual(1, harness.Source.StartsFor('U').Count, "U's start reached the source and was cancelled there");
-        Assert.AreEqual(0, harness.Source.Handles.Count, "no handle was published");
+        Assert.AreEqual(1, harness.Source.TargetsFor('U').Count, "U's start reached the source and was cancelled there");
+        Assert.AreEqual(0, harness.Source.Watches.Count, "no handle was published");
         Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').WatchCatchUp,
             "a start cancelled in flight leaves the drive with no running watch");
     }
@@ -118,7 +119,7 @@ public class FileIndexBatchedOperationTests
         }
 
         await rescanT.WaitAsync(HangGuard);
-        Assert.AreEqual(0, harness.Source.StartsFor('T').Count, "T's start never left the lifecycle gate");
+        Assert.AreEqual(0, harness.Source.TargetsFor('T').Count, "T's start never left the lifecycle gate");
     }
 
     [TestMethod]
@@ -209,7 +210,7 @@ public class FileIndexBatchedOperationTests
         var waiting = harness.Index.WaitForCatchUpAsync(Token);
         foreach (var letter in expected)
         {
-            await harness.Source.HandleFor(letter).Publish(new DriveCaughtUp());
+            await harness.Source.WatchFor(letter).Publish(new DriveCaughtUp());
         }
 
         var caughtUp = await waiting.WaitAsync(HangGuard);
@@ -232,7 +233,7 @@ public class FileIndexBatchedOperationTests
         harness.Index.HoldEveryRecovery();
         await harness.Index.StartWatchingAsync(['T', 'U'], Token).WaitAsync(HangGuard);
         var faulted = harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
-        harness.Source.HandleFor('T').FailDrive(new IOException("the volume went away"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
         var fault = await faulted.WaitAsync(HangGuard);
 
         var results = await harness.Index.StopWatchingAsync(['T', 'U', 'V'], Token).WaitAsync(HangGuard);
@@ -252,9 +253,9 @@ public class FileIndexBatchedOperationTests
         await harness.Index.StartWatchingAsync(['T', 'U'], Token).WaitAsync(HangGuard);
         var wait = harness.Index.WaitForCatchUpAsync(['T', 'U', 'V'], Token);
 
-        await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.IsFalse(wait.IsCompleted, "U is still catching up");
-        harness.Source.HandleFor('U').FailDrive(new IOException("U's journal wrapped"));
+        harness.Source.WatchFor('U').FailDrive(new IOException("U's journal wrapped"));
 
         var results = await wait.WaitAsync(HangGuard);
         Assert.AreEqual(DriveOperationOutcome.Succeeded, results[0].Outcome);
@@ -283,7 +284,7 @@ public class FileIndexBatchedOperationTests
         };
         var waiter = WaitThenStopOtherDriveAsync(harness.Index);
 
-        harness.Source.HandleFor('T').FailDrive(new IOException("the volume went away"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
 
         Assert.IsFalse(await waiter.WaitAsync(HangGuard), "the waiter's continuation ran on the settling stack");
         Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').WatchCatchUp);

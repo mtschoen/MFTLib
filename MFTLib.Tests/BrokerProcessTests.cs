@@ -1,6 +1,7 @@
 using System.Runtime.Versioning;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
@@ -91,7 +92,7 @@ public partial class BrokerProcessTests
     {
         var attempted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var broker = new InProcessBroker(CreateHost(), new MFTLibTestExtensions.BrokerTestHarnessOptions
+        await using var broker = new InProcessBroker(CreateHost(), new BrokerTestHarnessOptions
         {
             HoldWrites = pipeName =>
             {

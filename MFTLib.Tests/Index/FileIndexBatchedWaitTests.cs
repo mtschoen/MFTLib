@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
@@ -19,7 +20,7 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class FileIndexBatchedWaitTests
 {
-    static readonly TimeSpan HangGuard = FakeIndexWatchSource.HangGuard;
+    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -32,10 +33,10 @@ public class FileIndexBatchedWaitTests
         await harness.Index.StartWatchingAsync(Token).WaitAsync(HangGuard);
 
         var wait = harness.Index.WaitForCatchUpAsync(Token);
-        await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.IsFalse(wait.IsCompleted);
 
-        await harness.Source.HandleFor('U').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('U').Publish(new DriveCaughtUp());
         var results = await wait.WaitAsync(HangGuard);
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
     }
@@ -48,7 +49,7 @@ public class FileIndexBatchedWaitTests
 
         var wait = harness.Index.WaitForCatchUpAsync(Token);
         Assert.IsFalse(wait.IsCompleted);
-        await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
 
         var results = await wait.WaitAsync(HangGuard);
         Assert.AreEqual(DriveOperationOutcome.Succeeded, results.Single().Outcome);
@@ -60,8 +61,8 @@ public class FileIndexBatchedWaitTests
     {
         using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync(Token).WaitAsync(HangGuard);
-        await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
-        await harness.Source.HandleFor('U').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('U').Publish(new DriveCaughtUp());
 
         var wait = harness.Index.WaitForCatchUpAsync(Token);
 
@@ -89,11 +90,11 @@ public class FileIndexBatchedWaitTests
 
         var wait = harness.Index.WaitForCatchUpAsync(Token);
         var failure = new IOException("drive T failed");
-        harness.Source.HandleFor('T').FailDrive(failure);
+        harness.Source.WatchFor('T').FailDrive(failure);
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         Assert.IsFalse(wait.IsCompleted, "the call returns only after every drive has settled");
 
-        await harness.Source.HandleFor('U').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('U').Publish(new DriveCaughtUp());
         var results = await wait.WaitAsync(HangGuard);
         Assert.AreEqual(DriveOperationOutcome.Failed, results[0].Outcome);
         Assert.IsInstanceOfType<DriveWatchFaultException>(results[0].Failure);
@@ -109,14 +110,14 @@ public class FileIndexBatchedWaitTests
         await harness.Index.StartWatchingAsync(Token).WaitAsync(HangGuard);
 
         var wait = harness.Index.WaitForCatchUpAsync(Token);
-        await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.IsFalse(wait.IsCompleted);
 
-        harness.Source.HandleFor('T').FailDrive(new IOException("drive T failed after catchup"));
+        harness.Source.WatchFor('T').FailDrive(new IOException("drive T failed after catchup"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         Assert.IsFalse(wait.IsCompleted, "U is still catching up");
 
-        await harness.Source.HandleFor('U').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('U').Publish(new DriveCaughtUp());
         var results = await wait.WaitAsync(HangGuard);
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
     }
@@ -128,14 +129,14 @@ public class FileIndexBatchedWaitTests
         await harness.Index.StartWatchingAsync(Token).WaitAsync(HangGuard);
 
         var wait = harness.Index.WaitForCatchUpAsync(Token);
-        await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.IsFalse(wait.IsCompleted);
 
         harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
 
-        await harness.Source.HandleFor('U').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('U').Publish(new DriveCaughtUp());
         var results = await wait.WaitAsync(HangGuard);
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
     }
@@ -149,7 +150,7 @@ public class FileIndexBatchedWaitTests
         var wait = harness.Index.WaitForCatchUpAsync(Token);
         harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard);
-        await harness.Source.HandleFor('U').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('U').Publish(new DriveCaughtUp());
 
         var results = await wait.WaitAsync(HangGuard);
         Assert.AreEqual(DriveOperationOutcome.Failed, results[0].Outcome);
@@ -163,9 +164,9 @@ public class FileIndexBatchedWaitTests
         using var harness = new WatchHarness('T');
         harness.Index.HoldEveryRecovery();
         await harness.Index.StartWatchingAsync(Token).WaitAsync(HangGuard);
-        await harness.Source.HandleFor('T').Publish(new DriveCaughtUp());
+        await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         var failure = new IOException("journal wrapped");
-        harness.Source.HandleFor('T').FailDrive(failure);
+        harness.Source.WatchFor('T').FailDrive(failure);
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
 
         var results = await harness.Index.WaitForCatchUpAsync(Token).WaitAsync(HangGuard);

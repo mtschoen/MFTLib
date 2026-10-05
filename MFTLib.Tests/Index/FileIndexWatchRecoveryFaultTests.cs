@@ -28,21 +28,21 @@ public class FileIndexWatchRecoveryFaultTests
         harness.SetNextProducedCursor('C', 13, 9000);
         if (applyFailure)
         {
-            await harness.Source.HandleFor('C').Publish(new JournalBatch(null!, WatchHarness.JournalId, 5000));
+            await harness.Source.WatchFor('C').Publish(new JournalBatch(null!, WatchHarness.JournalId, 5000));
             await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'C');
         }
         else
         {
-            harness.Source.HandleFor('C').FailDrive(new IOException("old C fault"));
+            harness.Source.WatchFor('C').FailDrive(new IOException("old C fault"));
             await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'C');
         }
 
         await harness.WaitForRecoveryAsync('C');
         Assert.IsNull(harness.DriveFor('C').WatchFailureMessage);
-        Assert.AreEqual(new IndexWatchTarget('C', 13, 9000), harness.Source.StartsFor('C')[^1]);
-        Assert.AreEqual(2, harness.Source.StartsFor('C').Count);
-        Assert.AreEqual(1, harness.Source.StartsFor('D').Count);
-        await harness.Source.HandleFor('D').Publish(WatchHarness.Batch(9, "still-watching.txt", nextUsn: 9500));
+        Assert.AreEqual(new IndexWatchTarget('C', 13, 9000), harness.Source.TargetsFor('C')[^1]);
+        Assert.AreEqual(2, harness.Source.TargetsFor('C').Count);
+        Assert.AreEqual(1, harness.Source.TargetsFor('D').Count);
+        await harness.Source.WatchFor('D').Publish(WatchHarness.Batch(9, "still-watching.txt", nextUsn: 9500));
         Assert.AreEqual(9500L, harness.BlockFor('D').Header.UsnNextUsn);
         await harness.Index.StopWatchingAsync('C', Token);
         await harness.Index.StopWatchingAsync('D', Token);
@@ -55,10 +55,10 @@ public class FileIndexWatchRecoveryFaultTests
         var newFailure = new IOException("new C fault");
         await harness.Index.StartWatchingAsync('C', Token);
         await harness.Index.StartWatchingAsync('D', Token);
-        harness.Source.HandleFor('C').FailDrive(new IOException("old C fault"));
+        harness.Source.WatchFor('C').FailDrive(new IOException("old C fault"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'C');
         await harness.WaitForRecoveryAsync('C');
-        harness.Source.HandleFor('C').LoseChannel(newFailure);
+        harness.Source.WatchFor('C').LoseChannel(newFailure);
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'C');
 
         var thrown = await ThrowsAsync<IOException>(() => harness.Index.StopWatchingAsync('C', Token));
@@ -74,20 +74,20 @@ public class FileIndexWatchRecoveryFaultTests
         await harness.Index.StartWatchingAsync('C', Token);
         await harness.Index.StartWatchingAsync('D', Token);
         await harness.Index.StartWatchingAsync('E', Token);
-        harness.Source.HandleFor('C').FailDrive(new IOException("old C fault"));
-        harness.Source.HandleFor('D').LoseChannel(remainingFailure);
+        harness.Source.WatchFor('C').FailDrive(new IOException("old C fault"));
+        harness.Source.WatchFor('D').LoseChannel(remainingFailure);
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'C');
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'D');
         await harness.WaitForRecoveryAsync('C');
-        harness.Source.HandleFor('C').LoseChannel(newFailure);
+        harness.Source.WatchFor('C').LoseChannel(newFailure);
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'C');
 
         var thrown = await ThrowsAsync<IOException>(() => harness.Index.StopWatchingAsync('D', Token));
         Assert.AreSame(remainingFailure, thrown);
         var recoveredThrown = await ThrowsAsync<IOException>(() => harness.Index.StopWatchingAsync('C', Token));
         Assert.AreSame(newFailure, recoveredThrown);
-        Assert.AreEqual(1, harness.Source.StartsFor('D').Count);
-        Assert.AreEqual(1, harness.Source.StartsFor('E').Count);
+        Assert.AreEqual(1, harness.Source.TargetsFor('D').Count);
+        Assert.AreEqual(1, harness.Source.TargetsFor('E').Count);
         await harness.Index.StopWatchingAsync('E', Token);
     }
 
@@ -99,9 +99,9 @@ public class FileIndexWatchRecoveryFaultTests
         harness.Index.Changed += _ => throw subscriberFailure;
         await harness.Index.StartWatchingAsync('C', Token);
         await harness.Index.StartWatchingAsync('D', Token);
-        harness.Source.HandleFor('C').FailDrive(new IOException("old C fault"));
+        harness.Source.WatchFor('C').FailDrive(new IOException("old C fault"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'C');
-        await harness.Source.HandleFor('D').Publish(WatchHarness.Batch(9, "subscriber.txt", nextUsn: 9000));
+        await harness.Source.WatchFor('D').Publish(WatchHarness.Batch(9, "subscriber.txt", nextUsn: 9000));
         await harness.WaitForRecoveryAsync('C');
 
         var thrown = await ThrowsAsync<InvalidOperationException>(() => harness.Index.StopWatchingAsync('D', Token));
@@ -116,8 +116,8 @@ public class FileIndexWatchRecoveryFaultTests
         using var harness = new WatchHarness('C', 'D');
         var restartFailure = new IOException("rearm failed");
         await harness.Index.StartWatchingAsync('C', Token);
-        harness.Source.FailStart(restartFailure);
-        harness.Source.HandleFor('C').FailDrive(new IOException("C never recovered"));
+        harness.Source.FailNextStart(restartFailure);
+        harness.Source.WatchFor('C').FailDrive(new IOException("C never recovered"));
 
         var recoveryFault = await harness.WaitForFaultAsync(WatchFaultKind.Recovery, 'C');
         await harness.WaitForRecoveryAsync('C');

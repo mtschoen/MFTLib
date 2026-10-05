@@ -12,7 +12,7 @@ public partial class JournalBrokerHostTests
     static string DiagOwnLogPath => Path.Combine(BrokerDiagnostics.LogDirectory, "broker-diagnostics.log");
 
     static UsnJournalEntry DiagEntry(ulong recordNumber, string fileName = "broker-diagnostics.log") =>
-        JournalEntryFactory.Create(recordNumber, 110, fileName);
+        JournalEntries.Create(recordNumber, 110, fileName);
 
     // Point diagnostics at a synthetic C:-rooted directory and resolve both log paths to fixed file
     // reference numbers, so no real file system or elevation is involved. The log lines go to a

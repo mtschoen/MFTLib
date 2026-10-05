@@ -34,7 +34,7 @@ public partial class JournalBrokerHostTests
 
     static UsnJournalEntry WatchEntry()
     {
-        return JournalEntryFactory.Create(100, 110, "a.txt", UsnReason.FileCreate | UsnReason.Close);
+        return JournalEntries.Create(100, 110, "a.txt", UsnReason.FileCreate | UsnReason.Close);
     }
 
     // Yields its batches and then stays open until cancelled, the way a live watch does.

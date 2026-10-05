@@ -1,5 +1,6 @@
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -20,7 +21,7 @@ public class FileIndexWatchRescanCacheTests
         var token = TestContext.CancellationTokenSource.Token;
         try
         {
-            var source = new FakeIndexWatchSource();
+            var source = new ScriptedWatchSource();
             await using var index = await FileIndex.OpenAsync(new FileIndexOptions
             {
                 Drives = [new IndexedDrive('T', directory.FullName, 1)],
@@ -44,12 +45,12 @@ public class FileIndexWatchRescanCacheTests
             {
                 await index.StartWatchingAsync('T', token);
                 var original = index.Root('T').DriveBlock;
-                var handle = source.HandleFor('T');
+                var handle = source.WatchFor('T');
                 var catchUp = index.WaitForCatchUpAsync('T', token);
                 using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
                 rescanRequested.SetResult();
                 var rescan = index.RescanAsync('T', cancellation.Token);
-                await production.Entered.WaitAsync(FakeIndexWatchSource.HangGuard);
+                await production.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
                 Assert.AreEqual(0, handle.DisposeCount);
                 Assert.AreEqual(1, Directory.GetFiles(directory.FullName, "*.retired-*").Length);
                 await handle.Publish(WatchHarness.Batch(9, "during.txt", 700));
@@ -65,8 +66,8 @@ public class FileIndexWatchRescanCacheTests
                 }
 
                 Assert.AreSame(original, index.Root('T').DriveBlock);
-                Assert.AreSame(handle, source.HandleFor('T'));
-                Assert.AreEqual(1, source.StartsFor('T').Count);
+                Assert.AreSame(handle, source.WatchFor('T'));
+                Assert.AreEqual(1, source.TargetsFor('T').Count);
                 Assert.IsFalse(catchUp.IsCompleted);
                 Assert.AreEqual(1, index.FindByName("during.txt", token).Count);
                 Assert.AreEqual(0, Directory.GetFiles(directory.FullName, "*.retired-*").Length);
@@ -74,7 +75,7 @@ public class FileIndexWatchRescanCacheTests
                 Assert.IsNotNull(restored, validation.ToString());
                 Assert.AreEqual(700L, restored.Header.UsnNextUsn);
                 await handle.Publish(new DriveCaughtUp());
-                await catchUp.WaitAsync(FakeIndexWatchSource.HangGuard);
+                await catchUp.WaitAsync(ScriptedWatchSource.HangGuard);
                 await index.StopWatchingAsync('T', token);
             }
             finally

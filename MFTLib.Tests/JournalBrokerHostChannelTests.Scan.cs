@@ -22,7 +22,7 @@ public partial class JournalBrokerHostChannelTests
             {
                 caughtUpFrom ??= since;
                 var tip = new UsnJournalCursor(7, 1500);
-                return since == tip ? ([], since) : ([JournalEntryFactory.Create(20, 1200, "file.txt")], tip);
+                return since == tip ? ([], since) : ([JournalEntries.Create(20, 1200, "file.txt")], tip);
             });
         await using var harness = new HostChannelHarness(host, sectionWriter);
 
@@ -138,7 +138,7 @@ public partial class JournalBrokerHostChannelTests
     {
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
         var tip = new UsnJournalCursor(7, 1500);
-        var host = CreateHost(readJournal: (_, _, _) => ([JournalEntryFactory.Create(20, 1200, "file.txt")], tip));
+        var host = CreateHost(readJournal: (_, _, _) => ([JournalEntries.Create(20, 1200, "file.txt")], tip));
         await using var harness = new HostChannelHarness(host, new CountingBlockSectionWriter());
 
         var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C'));

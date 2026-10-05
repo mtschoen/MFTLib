@@ -228,8 +228,8 @@ public partial class BrokerProtocolTests
     {
         var entries = new[]
         {
-            JournalEntryFactory.Create(1, 10, "a"),
-            JournalEntryFactory.Create(2, 20, "b", UsnReason.FileDelete | UsnReason.Close)
+            JournalEntries.Create(1, 10, "a"),
+            JournalEntries.Create(2, 20, "b", UsnReason.FileDelete | UsnReason.Close)
         };
         var cursor = new UsnJournalCursor(99UL, 20L);
 
@@ -442,7 +442,7 @@ public partial class BrokerProtocolTests
     public void Factory_JournalBatch_PopulatesCursorAndEntries()
     {
         var cursor = new UsnJournalCursor(7UL, 110L);
-        var entries = new[] { JournalEntryFactory.Create(1, 10, "a") };
+        var entries = new[] { JournalEntries.Create(1, 10, "a") };
 
         var frame = BrokerFrame.JournalBatch(cursor, entries);
 

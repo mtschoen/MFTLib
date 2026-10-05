@@ -1,4 +1,5 @@
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.WatchDeduplicationTestSupport;
 
@@ -12,7 +13,7 @@ namespace MFTLib.Tests.Index;
 [TestClass]
 public class FileIndexDisposalOrderTests
 {
-    static readonly TimeSpan HangGuard = FakeIndexWatchSource.HangGuard;
+    static readonly TimeSpan HangGuard = ScriptedWatchSource.HangGuard;
 
     public TestContext TestContext { get; set; } = null!;
 
@@ -23,7 +24,7 @@ public class FileIndexDisposalOrderTests
     {
         using var harness = new WatchHarness('T', 'U', 'V');
         await harness.Index.StartWatchingAsync('V', Token);
-        var watchOfV = harness.Source.HandleFor('V');
+        var watchOfV = harness.Source.WatchFor('V');
         var heldT = harness.HoldNextProduction('T');
         var heldU = harness.HoldNextProduction('U');
         var rescanT = harness.Index.RescanAsync('T', Token);

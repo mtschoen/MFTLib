@@ -29,7 +29,7 @@ public class BrokerDiagnosticsLogFilterTests
     }
 
     static UsnJournalEntry Entry(ulong recordNumber, string fileName) =>
-        JournalEntryFactory.Create(recordNumber, 110, fileName);
+        JournalEntries.Create(recordNumber, 110, fileName);
 
     [TestMethod]
     public void Filter_DropsBothLogEntries_KeepsUnrelated()
