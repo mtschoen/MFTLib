@@ -124,8 +124,7 @@ public sealed partial class FileIndex
             return;
         }
 
-        var (instance, target) = registered;
-        await RunRegisteredStartAsync(runtime, source, instance, target, restart, recovery, cancellationToken)
+        await RunRegisteredStartAsync(runtime, source, registered, restart, recovery, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -183,21 +182,24 @@ public sealed partial class FileIndex
         }
     }
 
+    readonly record struct RegisteredWatchStart(WatchInstance Instance, IndexWatchTarget Target);
+
     /// <summary>
     ///     Invokes the source for a registered instance and publishes the handle it returns, or
     ///     settles the start when the source throws or a stop or disposal retired the instance
     ///     while the source ran.
     /// </summary>
-    async Task RunRegisteredStartAsync(DriveRuntime runtime, IIndexWatchSource source, WatchInstance instance,
-        IndexWatchTarget target, bool restart, RecoveryTicket? recovery, CancellationToken cancellationToken)
+    async Task RunRegisteredStartAsync(DriveRuntime runtime, IIndexWatchSource source, RegisteredWatchStart registration,
+        bool restart, RecoveryTicket? recovery, CancellationToken cancellationToken)
     {
+        var instance = registration.Instance;
         var driveLetter = runtime.DriveLetter;
         IIndexDriveWatch handle;
         try
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(
                 instance.StartCancellation.Token, cancellationToken);
-            handle = await source.StartAsync(target, linked.Token).ConfigureAwait(false) ??
+            handle = await source.StartAsync(registration.Target, linked.Token).ConfigureAwait(false) ??
                      throw new InvalidOperationException(
                          $"The watch source returned no handle for drive {driveLetter}.");
         }
@@ -245,7 +247,7 @@ public sealed partial class FileIndex
     ///     ticket, since the restart read it, this registers nothing and returns null, so a stop
     ///     that returned in that interval wins.
     /// </summary>
-    (WatchInstance Instance, IndexWatchTarget Target)? RegisterStartingInstance(DriveRuntime runtime,
+    RegisteredWatchStart? RegisterStartingInstance(DriveRuntime runtime,
         DriveBlock armedBlock, bool restart, RecoveryTicket? recovery)
     {
         lock (_stateLock)
@@ -283,7 +285,7 @@ public sealed partial class FileIndex
                 : RecoveryState.None;
             _watchFailureMessagesByOrdinal.Remove(armedBlock.DriveOrdinal);
             NoteWatchStateLocked(runtime);
-            return (instance, BuildWatchTarget(armedBlock));
+            return new RegisteredWatchStart(instance, BuildWatchTarget(armedBlock));
         }
     }
 

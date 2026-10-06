@@ -71,13 +71,13 @@ internal static class ExternalAsyncHelper
 
 internal static class ExternalAsyncHelperSeamReferenceFixture
 {
-    public static async Task Reference() => await ExternalAsyncHelper.ResetAsync();
+    public static Task Reference() => ExternalAsyncHelper.ResetAsync();
 }
 
 [DoNotParallelize]
 internal static class IsolatedExternalAsyncHelperSeamReferenceFixture
 {
-    public static async Task Reference() => await ExternalAsyncHelper.ResetAsync();
+    public static Task Reference() => ExternalAsyncHelper.ResetAsync();
 }
 
 internal static class ExternalIteratorHelper

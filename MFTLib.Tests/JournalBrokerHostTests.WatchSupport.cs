@@ -18,12 +18,12 @@ public partial class JournalBrokerHostTests
         MftRecordBatchSource? scanDrive = null)
     {
         return new JournalBrokerHost(
-            queryCursor ?? (_ => new UsnJournalCursor(7, 1000)),
-            scanDrive ?? ((_, _, _, _, _) => [[WatchRecord(5, ".", 3)]]),
-            readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-            watchDrive,
-            _ => WatchVolume,
-            null,
+            new JournalBrokerHost.VolumeSources(
+                queryCursor ?? (_ => new UsnJournalCursor(7, 1000)),
+                scanDrive ?? ((_, _, _, _, _) => [[WatchRecord(5, ".", 3)]]),
+                readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+                watchDrive,
+                _ => WatchVolume),
             4);
     }
 

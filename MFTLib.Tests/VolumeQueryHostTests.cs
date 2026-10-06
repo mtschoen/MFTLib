@@ -68,9 +68,10 @@ public class VolumeQueryHostTests
     static JournalBrokerHost CreateHost(NtfsVolumeInformationQuery? queryVolumeInfo = null)
     {
         return new JournalBrokerHost(
-            _ => new UsnJournalCursor(7UL, 0L),
-            (_, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]],
-            (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
-            queryVolumeInfo: queryVolumeInfo);
+            new JournalBrokerHost.VolumeSources(
+                _ => new UsnJournalCursor(7UL, 0L),
+                (_, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]],
+                (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
+                QueryVolumeInformation: queryVolumeInfo));
     }
 }

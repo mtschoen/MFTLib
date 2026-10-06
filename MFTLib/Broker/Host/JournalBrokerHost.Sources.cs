@@ -19,12 +19,13 @@ internal sealed partial class JournalBrokerHost
     internal static JournalBrokerHost CreateDefault(TimeProvider? timeProvider)
     {
         return new JournalBrokerHost(
-            QueryCursor,
-            ScanDriveRecordBatches,
-            ReadJournal,
-            WatchAndDisposeAsync,
-            QueryVolumeInfo,
-            GrowUsnJournal,
+            new VolumeSources(
+                LiveQueryCursor,
+                ScanDriveRecordBatches,
+                LiveReadJournal,
+                WatchAndDisposeAsync,
+                LiveQueryVolumeInfo,
+                LiveGrowUsnJournal),
             timeProvider: timeProvider);
     }
 
@@ -43,7 +44,7 @@ internal sealed partial class JournalBrokerHost
         CancellationToken cancellationToken)
     {
         operation.WaitingOnVolume();
-        var bytesPerFileRecordSegment = QueryVolumeInfo(driveLetter).BytesPerFileRecordSegment;
+        var bytesPerFileRecordSegment = LiveQueryVolumeInfo(driveLetter).BytesPerFileRecordSegment;
         using var volume = MftVolume.Open(Bare(driveLetter), HostScanChunkRecords(bytesPerFileRecordSegment));
         operation.Processing("MFT parse");
         var mftProgress = CreateMftProgressAdapter(operation, progress);
@@ -102,13 +103,13 @@ internal sealed partial class JournalBrokerHost
         }
     }
 
-    static UsnJournalSettings GrowUsnJournal(string drive, long maximumSize, long allocationDelta)
+    static UsnJournalSettings LiveGrowUsnJournal(string drive, long maximumSize, long allocationDelta)
     {
         using var volume = MftVolume.Open(Bare(drive));
         return volume.GrowUsnJournal(maximumSize, allocationDelta);
     }
 
-    static UsnJournalCursor QueryCursor(string drive)
+    static UsnJournalCursor LiveQueryCursor(string drive)
     {
         using var volume = MftVolume.Open(Bare(drive));
         return volume.QueryUsnJournalCursor();
@@ -118,7 +119,7 @@ internal sealed partial class JournalBrokerHost
     // OperatingSystem.IsWindows() guard (rather than marking this method or its callers
     // windows-only) lets a broker built for this cross-platform library still throw a clear
     // PlatformNotSupportedException on a non-Windows host instead of failing to compile there.
-    static NtfsVolumeInformation QueryVolumeInfo(string drive)
+    static NtfsVolumeInformation LiveQueryVolumeInfo(string drive)
     {
         return OperatingSystem.IsWindows()
             ? NtfsVolumeInformation.Query(Bare(drive))
@@ -126,7 +127,7 @@ internal sealed partial class JournalBrokerHost
                 "NTFS volume information queries require Windows (FSCTL_GET_NTFS_VOLUME_DATA).");
     }
 
-    static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) ReadJournal(string drive, UsnJournalCursor since,
+    static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) LiveReadJournal(string drive, UsnJournalCursor since,
         int maximumBufferReads)
     {
         using var volume = MftVolume.Open(Bare(drive));

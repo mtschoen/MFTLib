@@ -315,12 +315,13 @@ public partial class BrokerProcessTests
         TimeProvider? timeProvider = null)
     {
         return new JournalBrokerHost(
-            queryCursor ?? (_ => Armed),
-            scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
-            readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-            watchDrive,
-            queryVolumeInfo ?? (_ => Volume),
-            growUsnJournal,
+            new JournalBrokerHost.VolumeSources(
+                queryCursor ?? (_ => Armed),
+                scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
+                readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+                watchDrive,
+                queryVolumeInfo ?? (_ => Volume),
+                growUsnJournal),
             processorCount: 4,
             timeProvider: timeProvider);
     }

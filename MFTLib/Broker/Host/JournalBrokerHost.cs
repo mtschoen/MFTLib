@@ -34,32 +34,39 @@ internal sealed partial class JournalBrokerHost
     readonly ParseThreadAllocator _parseThreads;
 
     /// <summary>Builds a host over injected volume access, so it runs without real elevation in tests.</summary>
-    /// <param name="queryCursor">Arms a drive's journal cursor before its scan, and bounds a watch's backlog.</param>
-    /// <param name="scanDrive">Streams one drive's MFT records for a scan; null refuses every scan.</param>
-    /// <param name="readJournal">Replays the journal from a scan's armed cursor after the scan; null refuses every scan.</param>
-    /// <param name="watchDrive">Streams a drive's journal for a watch; null refuses every watch.</param>
-    /// <param name="queryVolumeInfo">Answers volume sizing queries; null refuses every query.</param>
-    /// <param name="growUsnJournal">Grows a drive's journal; null refuses every grow request.</param>
+    /// <param name="volumeSources">The volume operations this host can serve.</param>
     /// <param name="processorCount">The parse-thread budget every running scan shares; null is <see cref="Environment.ProcessorCount" />.</param>
     /// <param name="timeProvider">The clock of every host timeout; null is <see cref="TimeProvider.System" />.</param>
     public JournalBrokerHost(
-        UsnJournalCursorQuery queryCursor,
-        MftRecordBatchSource? scanDrive = null,
-        UsnJournalCatchUpSource? readJournal = null,
-        JournalBatchSource? watchDrive = null,
-        NtfsVolumeInformationQuery? queryVolumeInfo = null,
-        GrowUsnJournalQuery? growUsnJournal = null,
+        VolumeSources volumeSources,
         int? processorCount = null,
         TimeProvider? timeProvider = null)
     {
-        _queryCursor = queryCursor;
-        _scanSources = scanDrive != null && readJournal != null ? new ScanSources(scanDrive, readJournal) : null;
-        _watchDrive = watchDrive;
-        _queryVolumeInfo = queryVolumeInfo;
-        _growUsnJournal = growUsnJournal;
+        _queryCursor = volumeSources.QueryCursor;
+        _scanSources = volumeSources.ScanDrive != null && volumeSources.ReadJournal != null
+            ? new ScanSources(volumeSources.ScanDrive, volumeSources.ReadJournal)
+            : null;
+        _watchDrive = volumeSources.WatchDrive;
+        _queryVolumeInfo = volumeSources.QueryVolumeInformation;
+        _growUsnJournal = volumeSources.GrowUsnJournal;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _parseThreads = new ParseThreadAllocator(processorCount ?? Environment.ProcessorCount);
     }
+
+    /// <summary>The volume operations a host serves, independent of its clock and parse-thread budget.</summary>
+    /// <param name="QueryCursor">Arms a drive's journal cursor before its scan, and bounds a watch's backlog.</param>
+    /// <param name="ScanDrive">Streams one drive's MFT records for a scan; null refuses every scan.</param>
+    /// <param name="ReadJournal">Replays the journal from a scan's armed cursor after the scan; null refuses every scan.</param>
+    /// <param name="WatchDrive">Streams a drive's journal for a watch; null refuses every watch.</param>
+    /// <param name="QueryVolumeInformation">Answers volume sizing queries; null refuses every query.</param>
+    /// <param name="GrowUsnJournal">Grows a drive's journal; null refuses every grow request.</param>
+    internal sealed record VolumeSources(
+        UsnJournalCursorQuery QueryCursor,
+        MftRecordBatchSource? ScanDrive = null,
+        UsnJournalCatchUpSource? ReadJournal = null,
+        JournalBatchSource? WatchDrive = null,
+        NtfsVolumeInformationQuery? QueryVolumeInformation = null,
+        GrowUsnJournalQuery? GrowUsnJournal = null);
 
     // A scan needs both sources; a host missing either refuses every scan.
     readonly record struct ScanSources(MftRecordBatchSource ScanDrive, UsnJournalCatchUpSource JournalReader);

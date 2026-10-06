@@ -141,10 +141,11 @@ public class BrokerProcessLaunchTests
                 // A minimal fake host over the real control pipe, real drive pipes and the
                 // client-created named block section.
                 var host = new JournalBrokerHost(
-                    _ => new UsnJournalCursor(7UL, 0L),
-                    (_, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]],
-                    (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
-                    queryVolumeInfo: _ => new NtfsVolumeInformation(1024 * 1000, 1024));
+                    new JournalBrokerHost.VolumeSources(
+                        _ => new UsnJournalCursor(7UL, 0L),
+                        (_, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]],
+                        (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
+                        QueryVolumeInformation: _ => new NtfsVolumeInformation(1024 * 1000, 1024)));
                 await host.ServeAsync(pipe, DefaultElevatedEntryRunner.ConnectDrivePipeAsync,
                     new RealBlockSectionWriter(), CancellationToken.None);
             });

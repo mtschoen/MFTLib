@@ -60,9 +60,10 @@ public class GrowUsnJournalHostTests
     static JournalBrokerHost CreateHost(GrowUsnJournalQuery? growUsnJournal = null)
     {
         return new JournalBrokerHost(
-            _ => default,
-            (_, _, _, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
-            (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
-            growUsnJournal: growUsnJournal);
+            new JournalBrokerHost.VolumeSources(
+                _ => default,
+                (_, _, _, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
+                (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
+                GrowUsnJournal: growUsnJournal));
     }
 }

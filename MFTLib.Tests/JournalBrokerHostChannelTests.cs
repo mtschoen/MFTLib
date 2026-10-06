@@ -261,12 +261,13 @@ public partial class JournalBrokerHostChannelTests
         TimeProvider? timeProvider = null)
     {
         return new JournalBrokerHost(
-            queryCursor ?? (_ => Armed),
-            scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)]]),
-            readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-            watchDrive,
-            queryVolumeInfo,
-            growUsnJournal,
+            new JournalBrokerHost.VolumeSources(
+                queryCursor ?? (_ => Armed),
+                scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)]]),
+                readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+                watchDrive,
+                queryVolumeInfo,
+                growUsnJournal),
             processorCount,
             timeProvider);
     }

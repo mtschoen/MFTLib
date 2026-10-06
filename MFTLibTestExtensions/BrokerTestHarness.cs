@@ -55,17 +55,18 @@ public static class BrokerTestHarness
         var queryVolume = volumes.QueryVolume ?? SmallVolume;
         var grow = volumes.GrowUsnJournal;
         return new JournalBrokerHost(
-            driveLetter => queryCursor(driveLetter),
-            scan is null
-                ? null
-                : (driveLetter, parseThreads, operation, progress, cancellationToken) =>
-                    scan(new ScriptedScan(driveLetter, parseThreads, operation, progress, cancellationToken)),
-            scan is null ? null : (driveLetter, since, maximumBufferReads) => readJournal(driveLetter, since, maximumBufferReads),
-            watch is null
-                ? null
-                : (driveLetter, since, _, cancellationToken) => watch(driveLetter, since, cancellationToken),
-            driveLetter => queryVolume(driveLetter),
-            grow is null ? null : (driveLetter, maximumSize, allocationDelta) => grow(driveLetter, maximumSize, allocationDelta));
+            new JournalBrokerHost.VolumeSources(
+                driveLetter => queryCursor(driveLetter),
+                scan is null
+                    ? null
+                    : (driveLetter, parseThreads, operation, progress, cancellationToken) =>
+                        scan(new ScriptedScan(driveLetter, parseThreads, operation, progress, cancellationToken)),
+                scan is null ? null : (driveLetter, since, maximumBufferReads) => readJournal(driveLetter, since, maximumBufferReads),
+                watch is null
+                    ? null
+                    : (driveLetter, since, _, cancellationToken) => watch(driveLetter, since, cancellationToken),
+                driveLetter => queryVolume(driveLetter),
+                grow is null ? null : (driveLetter, maximumSize, allocationDelta) => grow(driveLetter, maximumSize, allocationDelta)));
     }
 
     static (UsnJournalEntry[] Entries, UsnJournalCursor Updated) NothingNew(string driveLetter, UsnJournalCursor since,

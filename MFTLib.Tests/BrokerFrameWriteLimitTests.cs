@@ -111,10 +111,11 @@ public class BrokerFrameWriteLimitTests
     static JournalBrokerHost CreateHost()
     {
         return new JournalBrokerHost(
-            _ => Armed,
-            (_, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]],
-            (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
-            queryVolumeInfo: _ => Volume,
+            new JournalBrokerHost.VolumeSources(
+                _ => Armed,
+                (_, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]],
+                (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
+                QueryVolumeInformation: _ => Volume),
             processorCount: 2);
     }
 }

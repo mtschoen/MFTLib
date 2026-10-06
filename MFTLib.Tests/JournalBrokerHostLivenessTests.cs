@@ -216,10 +216,11 @@ public partial class JournalBrokerHostLivenessTests
             MftRecordBatchSource? scanDrive = null, int processorCount = 4)
         {
             return new JournalBrokerHost(
-                _ => Tip,
-                scanDrive ?? ((_, _, _, _, _) => []),
-                readJournal ?? ((_, since, _) => ([], since)),
-                watchDrive,
+                new JournalBrokerHost.VolumeSources(
+                    _ => Tip,
+                    scanDrive ?? ((_, _, _, _, _) => []),
+                    readJournal ?? ((_, since, _) => ([], since)),
+                    watchDrive),
                 processorCount: processorCount,
                 timeProvider: Clock)
             {

@@ -19,12 +19,13 @@ public abstract class BrokerBlockTestBase
         GrowUsnJournalQuery? growUsnJournal = null)
     {
         return new JournalBrokerHost(
-            queryCursor ?? (_ => ArmedCursor),
-            scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
-            readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-            null,
-            queryVolumeInfo ?? (_ => VolumeInformation),
-            growUsnJournal,
+            new JournalBrokerHost.VolumeSources(
+                queryCursor ?? (_ => ArmedCursor),
+                scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
+                readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+                null,
+                queryVolumeInfo ?? (_ => VolumeInformation),
+                growUsnJournal),
             processorCount: 4);
     }
 

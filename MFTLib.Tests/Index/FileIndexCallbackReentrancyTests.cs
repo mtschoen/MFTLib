@@ -316,13 +316,14 @@ public class FileIndexCallbackReentrancyTests
         using var harness = new WatchHarness('T', 'U');
         var index = harness.Index;
         await using var broker = new InProcessBroker(new JournalBrokerHost(
-            _ => new UsnJournalCursor(7, 1000),
-            (_, _, _, _, _) => [],
-            (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
-            null,
-            _ => new NtfsVolumeInformation(1024 * 1000, 1024),
-            (_, maximumSize, allocationDelta) =>
-                new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta },
+            new JournalBrokerHost.VolumeSources(
+                _ => new UsnJournalCursor(7, 1000),
+                (_, _, _, _, _) => [],
+                (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
+                null,
+                _ => new NtfsVolumeInformation(1024 * 1000, 1024),
+                (_, maximumSize, allocationDelta) =>
+                    new UsnJournalSettings { MaximumSize = maximumSize * 2, AllocationDelta = allocationDelta }),
             processorCount: 4));
         var process = broker.Process;
         var outcome = NewSignal<(int DriveCount, long GrownSize, Exception? Failure)>();

@@ -35,11 +35,12 @@ internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
     {
         seams ??= new ScriptedBrokerSeams();
         var journalTip = tip ?? DefaultTip;
-        var host = new JournalBrokerHost(drive => _tips.GetValueOrDefault(drive[0], journalTip),
-            scanDrive ?? ((_, _, _, _, _) => throw new InvalidOperationException("A scan is not expected.")),
-            seams.ReadJournal ?? ((_, since, _) => ([], since)),
-            (drive, since, operation, token) => Watch(drive[0]).RunAsync(since, operation, token),
-            queryVolumeInfo: _ => new NtfsVolumeInformation(1024 * 100, 1024),
+        var host = new JournalBrokerHost(
+            new JournalBrokerHost.VolumeSources(drive => _tips.GetValueOrDefault(drive[0], journalTip),
+                scanDrive ?? ((_, _, _, _, _) => throw new InvalidOperationException("A scan is not expected.")),
+                seams.ReadJournal ?? ((_, since, _) => ([], since)),
+                (drive, since, operation, token) => Watch(drive[0]).RunAsync(since, operation, token),
+                QueryVolumeInformation: _ => new NtfsVolumeInformation(1024 * 100, 1024)),
             processorCount: 4,
             timeProvider: seams.HostClock)
         {

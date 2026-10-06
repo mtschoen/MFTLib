@@ -413,10 +413,11 @@ public class DriveScannerModeTests
     static JournalBrokerHost CreateHost(UsnJournalCatchUpSource? readJournal = null, MftRecordBatchSource? scanDrive = null)
     {
         return new JournalBrokerHost(
-            _ => Armed,
-            scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
-            readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
-            queryVolumeInfo: _ => Volume,
+            new JournalBrokerHost.VolumeSources(
+                _ => Armed,
+                scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
+                readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
+                QueryVolumeInformation: _ => Volume),
             processorCount: 4);
     }
 

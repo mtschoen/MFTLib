@@ -48,7 +48,11 @@ public class JournalBrokerHostSessionTasksTests
     [TestMethod]
     public async Task Drain_FaultedTask_IsRetainedAndRethrown()
     {
-        var host = new JournalBrokerHost(_ => default, (_, _, _, _, _) => [], (_, since, _) => ([], since),
+        var host = new JournalBrokerHost(
+            new JournalBrokerHost.VolumeSources(
+                _ => default,
+                (_, _, _, _, _) => [],
+                (_, since, _) => ([], since)),
             timeProvider: new FakeTimeProvider());
         var tasks = new JournalBrokerHost.SessionTasks();
         var failure = new InvalidOperationException("request failed");
