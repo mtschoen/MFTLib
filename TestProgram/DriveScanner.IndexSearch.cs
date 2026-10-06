@@ -68,7 +68,7 @@ partial class DriveScanner
     {
         if (verb.Has("--exact"))
         {
-            var name = verb.Text("--name")!;
+            var name = verb.RequiredText("--name");
             _writeLine($"Exact name match through FindByName({name}).");
             PrintFileEntries(index.FindByName(name, cancellationToken), LimitOf(verb));
             return;

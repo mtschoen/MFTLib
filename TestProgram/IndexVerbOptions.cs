@@ -40,7 +40,7 @@ internal sealed record OptionSpecification(
             OptionKind.Letters => IndexVerbArguments.TryParseLetters(value, out _),
             OptionKind.CacheTag => IndexVerbArguments.TryParseCacheTag(value, out _),
             OptionKind.RecordKey => IndexVerbArguments.TryParseRecordKey(value, out _),
-            OptionKind.Choice => Choices!.Contains(value, StringComparer.Ordinal),
+            OptionKind.Choice => (Choices ?? []).Contains(value, StringComparer.Ordinal),
             _ => true
         };
     }
@@ -65,7 +65,7 @@ internal sealed record OptionSpecification(
             OptionKind.Letters => "drive letters such as G or G,H",
             OptionKind.CacheTag => "FOURCC:VERSION such as TEST:1 (four ASCII characters)",
             OptionKind.RecordKey => "DRIVE:ROW:PRODUCER such as G:5:Mft (producer Mft or Enumeration)",
-            OptionKind.Choice => "one of " + string.Join(", ", Choices!),
+            OptionKind.Choice => "one of " + string.Join(", ", Choices ?? []),
             _ => "no value"
         };
     }
@@ -95,6 +95,9 @@ internal sealed record VerbSpecification(
     IReadOnlyList<OptionSpecification> Options,
     Func<IndexVerbArguments, string?> Validate)
 {
+    /// <summary>True for a verb that opens a FileIndex, which is every verb that takes --source.</summary>
+    internal bool OpensIndex => Options.Any(option => option.Name == "--source");
+
     internal IndexVerbArguments WithDefaultDrive(IndexVerbArguments arguments)
     {
         return Drives == DriveRule.DefaultsToSampleDrive && arguments.Drives.Count == 0

@@ -36,6 +36,12 @@ partial class DriveScanner
             _writeLine($"{verb.Verb} stopped: the {verb.Number("--timeout-seconds")} second limit ended it.");
             return 1;
         }
+        catch (BrokerChannelLostException lost)
+        {
+            _writeLine($"Error in {verb.Verb}: the broker connection was lost ({lost.Message}); the elevated broker " +
+                       "ended or its pipe closed, so start the verb again.");
+            return 1;
+        }
         catch (Exception exception)
         {
             _writeLine($"Error in {verb.Verb}: {exception.GetType().Name}: {exception.Message}");
@@ -49,7 +55,7 @@ partial class DriveScanner
     static bool VerbLaunchesBroker(IndexVerbArguments verb)
     {
         return verb.Verb == "journal-grow" ||
-               (IndexVerbSpecifications.Find(verb.Verb)!.Options.Any(option => option.Name == "--source") &&
+               (IndexVerbSpecifications.Find(verb.Verb) is { OpensIndex: true } &&
                 verb.Source == IndexVerbArguments.BrokerSource);
     }
 

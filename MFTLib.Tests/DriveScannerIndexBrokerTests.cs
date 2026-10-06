@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using MFTLib.Index;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -9,6 +10,7 @@ namespace MFTLib.Tests;
 // dialog is scripted to a deliberate OK, as it is for scan-drive.
 [TestClass]
 [DoNotParallelize]
+[SupportedOSPlatform("windows")] // The journal sizing seam is Windows-only, as are these TestProgram tests.
 public class DriveScannerIndexBrokerTests
 {
     static readonly UsnJournalCursor Armed = new(7, 1000);

@@ -85,7 +85,8 @@ internal sealed partial record TestProgramArguments
         }
 
         parsed = new TestProgramArguments(ProgramMode.IndexVerb, verb.Drives.Select(letter => letter.ToString()).ToArray(),
-            DefaultWatchSeconds) { Index = verb };
+            DefaultWatchSeconds)
+        { Index = verb };
         return true;
     }
 

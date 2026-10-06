@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
 using MFTLib.Index;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -9,6 +10,7 @@ namespace MFTLib.Tests;
 // broker. Each test runs one command line through DriveScanner.Run and reads the lines it printed.
 [TestClass]
 [DoNotParallelize]
+[SupportedOSPlatform("windows")] // The journal sizing seam is Windows-only, as are these TestProgram tests.
 public class DriveScannerIndexVerbTests
 {
     const string Drive = "S";

@@ -48,7 +48,7 @@ partial class DriveScanner
         {
             _writeLine($"Selecting record key {FormatKey(key)} from the inventory.");
             return index.Enumerate(new SearchQuery(null), cancellationToken).FirstOrDefault(entry => entry.Id == key) is
-                { IsValid: true } selected
+            { IsValid: true } selected
                 ? selected
                 : throw new InvalidOperationException($"No entry in the index has the key {FormatKey(key)}.");
         }
@@ -84,7 +84,7 @@ partial class DriveScanner
 
     void OpenEntry(FileIndex index, IndexVerbArguments verb, CancellationToken cancellationToken)
     {
-        var path = verb.Text("--path")!;
+        var path = verb.RequiredText("--path");
         var entry = index.Find(path, cancellationToken) ?? throw new InvalidOperationException($"{path} is not in the index.");
         if (entry.IsDirectory)
         {

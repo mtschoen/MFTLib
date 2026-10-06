@@ -229,7 +229,7 @@ internal static class IndexVerbSpecifications
             return "--drive-scope needs one of the opened drive letters.";
         }
 
-        return arguments.Letters("--drive-list") is { } list && list.Any(letter => !arguments.Drives.Contains(letter))
+        return arguments.Letters("--drive-list") is { } list && list.Any(listed => !arguments.Drives.Contains(listed))
             ? "--drive-list names a drive that is not opened."
             : null;
     }

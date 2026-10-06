@@ -43,24 +43,22 @@ partial class DriveScanner
         }
     }
 
-    UsnJournalSettings? PrintJournalSettings(FileIndex index, char driveLetter)
+    void PrintJournalSettings(FileIndex index, char driveLetter)
     {
         if (!OperatingSystem.IsWindows())
         {
             _writeLine($"  drive {driveLetter}: journal sizing needs Windows.");
-            return null;
+            return;
         }
 
         try
         {
             var settings = index.QueryUsnJournalSettings(driveLetter);
             _writeLine($"  drive {driveLetter}: {FormatSettings(settings)}");
-            return settings;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             _writeLine($"  drive {driveLetter}: journal sizing unavailable: {exception.GetType().Name}: {exception.Message}");
-            return null;
         }
     }
 
@@ -72,8 +70,8 @@ partial class DriveScanner
         }
 
         var letter = verb.Drives[0];
-        var maximumSize = verb.Number("--maximum-size")!.Value;
-        var allocationDelta = verb.Number("--allocation-delta")!.Value;
+        var maximumSize = verb.RequiredNumber("--maximum-size");
+        var allocationDelta = verb.RequiredNumber("--allocation-delta");
 
         // The index exists only to read sizing before and after: it opens cache-only with no cache, so no scan runs.
         var opened = await OpenIndexAsync(verb, cancellationToken, queryOnly: true).ConfigureAwait(false);
@@ -82,7 +80,8 @@ partial class DriveScanner
         PrintJournalSettings(opened.Index, letter);
 
         _writeLine($"Growing drive {letter}: to maximum size {maximumSize} bytes with allocation delta {allocationDelta} bytes.");
-        var grown = await opened.Session!.GrowUsnJournalAsync(letter, maximumSize, allocationDelta, cancellationToken)
+        var session = opened.Session ?? throw new InvalidOperationException("The broker source always opens a session.");
+        var grown = await session.GrowUsnJournalAsync(letter, maximumSize, allocationDelta, cancellationToken)
             .ConfigureAwait(false);
         _writeLine($"The broker reports {FormatSettings(grown)}");
 

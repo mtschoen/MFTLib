@@ -36,16 +36,18 @@ public class TestProgramIndexVerbArgumentsTests
     [TestMethod]
     public void TryParse_NoDrive_DefaultsToTheSampleDriveForOpeningVerbs()
     {
-        IndexVerbArguments.TryParse(["largest", "--source", "enumeration", "--root", "x"], out var arguments, out _);
+        var parsed = IndexVerbArguments.TryParse(["largest", "--source", "enumeration", "--root", "x"], out var arguments, out var error);
 
+        Assert.IsTrue(parsed, error);
         CollectionAssert.AreEqual(new[] { 'G' }, arguments!.Drives.ToArray());
     }
 
     [TestMethod]
     public void TryParse_CacheVerbsWithoutDrives_MeanEveryDrive()
     {
-        IndexVerbArguments.TryParse(["cache-inspect"], out var arguments, out _);
+        var parsed = IndexVerbArguments.TryParse(["cache-inspect"], out var arguments, out var error);
 
+        Assert.IsTrue(parsed, error);
         Assert.AreEqual(0, arguments!.Drives.Count);
     }
 
@@ -70,18 +72,20 @@ public class TestProgramIndexVerbArgumentsTests
     [TestMethod]
     public void TryParse_RecordKey_BuildsTheKeyThroughThePublicConstructor()
     {
-        IndexVerbArguments.TryParse(["tree", "s", "--source", "enumeration", "--root", "r", "--record-key", "s:42:enumeration"],
+        var parsed = IndexVerbArguments.TryParse(["tree", "s", "--source", "enumeration", "--root", "r", "--record-key", "s:42:enumeration"],
             out var arguments, out var error);
 
+        Assert.IsTrue(parsed, error);
         Assert.AreEqual(new IndexRecordKey('S', 42, ProducerKind.Enumeration), arguments!.RecordKey(), error);
     }
 
     [TestMethod]
     public void TryParse_RepeatedKeepName_CollectsEveryName()
     {
-        IndexVerbArguments.TryParse(["search", "c", "--profile", "directories", "--keep-name", "a.txt", "--keep-name", "b.txt"],
+        var parsed = IndexVerbArguments.TryParse(["search", "c", "--profile", "directories", "--keep-name", "a.txt", "--keep-name", "b.txt"],
             out var arguments, out var error);
 
+        Assert.IsTrue(parsed, error);
         CollectionAssert.AreEqual(new[] { "a.txt", "b.txt" }, arguments!.TextList("--keep-name").ToArray(), error);
         Assert.IsTrue(arguments.Has("--profile"));
         Assert.IsFalse(arguments.Has("--no-cache"));
@@ -90,9 +94,11 @@ public class TestProgramIndexVerbArgumentsTests
     [TestMethod]
     public void TryParse_DriveListScope_ReadsTheLetters()
     {
-        IndexVerbArguments.TryParse(["rescan", "c", "d", "--source", "enumeration", "--root", "x"], out _, out var rootError);
-        IndexVerbArguments.TryParse(["rescan", "c", "d", "--drive-list", "d,c"], out var arguments, out var error);
+        var rootParsed = IndexVerbArguments.TryParse(["rescan", "c", "d", "--source", "enumeration", "--root", "x"], out _, out var rootError);
+        var parsed = IndexVerbArguments.TryParse(["rescan", "c", "d", "--drive-list", "d,c"], out var arguments, out var error);
 
+        Assert.IsFalse(rootParsed);
+        Assert.IsTrue(parsed, error);
         Assert.AreEqual("--root names one directory, so it takes one drive letter.", rootError);
         CollectionAssert.AreEqual(new[] { 'D', 'C' }, arguments!.Letters("--drive-list")!.ToArray(), error);
         Assert.IsNull(arguments.Letters("--drive-scope"));
