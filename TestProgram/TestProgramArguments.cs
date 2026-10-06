@@ -36,7 +36,10 @@ internal enum ProgramMode
     VolumeInfo,
 
     /// <summary>Grows the USN journal to sizes given on the command line.</summary>
-    UsnGrow
+    UsnGrow,
+
+    /// <summary>One of the FileIndex verbs, which <see cref="IndexVerbArguments" /> parses.</summary>
+    IndexVerb
 }
 
 /// <summary>
@@ -53,6 +56,9 @@ internal sealed partial record TestProgramArguments(ProgramMode Mode, IReadOnlyL
     /// <summary>The other mode options; each is rejected on a mode it does not apply to.</summary>
     internal ModeOptions Options { get; init; } = new();
 
+    /// <summary>The parsed Index verb when <see cref="Mode" /> is <see cref="ProgramMode.IndexVerb" />.</summary>
+    internal IndexVerbArguments? Index { get; init; }
+
     internal static string Usage =>
         "Usage: TestProgram [mode] [drive ...] [options]" + Environment.NewLine +
         "  modes: " + string.Join(", ", ProgramModes.Names.Keys) + " (default find-git)" + Environment.NewLine +
@@ -68,13 +74,14 @@ internal sealed partial record TestProgramArguments(ProgramMode Mode, IReadOnlyL
         "             [--buffer-size N] [--batch-size N]  (needs no elevation)" + Environment.NewLine +
         "  read-records <drive> [--no-paths] [--timings] [--buffer-size N]" + Environment.NewLine +
         "  find-git and usn-read accept --buffer-size N" + Environment.NewLine +
-        "  usn-grow <drive> --maximum-size BYTES --allocation-delta BYTES  (changes the volume; never shrinks)";
+        "  usn-grow <drive> --maximum-size BYTES --allocation-delta BYTES  (changes the volume; never shrinks)" +
+        Environment.NewLine + IndexVerbArguments.Usage;
 
     /// <summary>
     ///     Scanning through the broker runs unelevated because the broker is the elevated process and
     ///     asks for elevation itself; parsing a saved MFT image touches no volume.
     /// </summary>
-    internal bool RequiresElevation => Mode is not (ProgramMode.ScanDrive or ProgramMode.ParseFile);
+    internal bool RequiresElevation => Mode is not (ProgramMode.ScanDrive or ProgramMode.ParseFile or ProgramMode.IndexVerb);
 
     /// <summary>
     ///     The wait for the elevated copy: the completion allowance plus every drive's requested

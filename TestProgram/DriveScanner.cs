@@ -29,6 +29,11 @@ partial class DriveScanner
             return 2;
         }
 
+        if (parsed.Index is { } indexVerb)
+        {
+            return RunIndexVerb(indexVerb, arguments);
+        }
+
         if (!parsed.RequiresElevation)
         {
             // scan-drive needs no elevation here, but the broker it launches raises a UAC prompt, so an attended

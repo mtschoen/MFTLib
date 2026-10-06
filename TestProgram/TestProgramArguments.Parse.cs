@@ -8,6 +8,11 @@ internal sealed partial record TestProgramArguments
     internal static bool TryParse(string[] arguments, out TestProgramArguments parsed,
         [NotNullWhen(false)] out string? error)
     {
+        if (arguments.Length > 0 && IndexVerbArguments.IsVerb(arguments[0]))
+        {
+            return TryParseIndexVerb(arguments, out parsed, out error);
+        }
+
         var mode = ProgramMode.FindGit;
         var start = 0;
         if (arguments.Length > 0 && ProgramModes.Names.TryGetValue(arguments[0], out var named))
@@ -68,6 +73,19 @@ internal sealed partial record TestProgramArguments
 
         parsed = new TestProgramArguments(mode, positionals, watchSeconds) { Options = options };
         error = null;
+        return true;
+    }
+
+    static bool TryParseIndexVerb(string[] arguments, out TestProgramArguments parsed,
+        [NotNullWhen(false)] out string? error)
+    {
+        if (!IndexVerbArguments.TryParse(arguments, out var verb, out error))
+        {
+            return Fail(error, out parsed, out error);
+        }
+
+        parsed = new TestProgramArguments(ProgramMode.IndexVerb, verb.Drives.Select(letter => letter.ToString()).ToArray(),
+            DefaultWatchSeconds) { Index = verb };
         return true;
     }
 

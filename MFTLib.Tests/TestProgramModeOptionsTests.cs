@@ -159,7 +159,8 @@ public class TestProgramModeOptionsTests
     [TestMethod]
     public void NameOf_EveryMode_RoundTripsThroughTheModeTable()
     {
-        foreach (var mode in Enum.GetValues<ProgramMode>())
+        // The Index verbs are named by IndexVerbSpecifications, not by this table.
+        foreach (var mode in Enum.GetValues<ProgramMode>().Where(candidate => candidate != ProgramMode.IndexVerb))
         {
             Assert.AreEqual(mode, ProgramModes.Names[ProgramModes.NameOf(mode)]);
         }
