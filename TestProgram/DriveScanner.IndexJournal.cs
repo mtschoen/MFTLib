@@ -1,4 +1,3 @@
-using MFTLib;
 using MFTLib.Index;
 
 namespace TestProgram;
