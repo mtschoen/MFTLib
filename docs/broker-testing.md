@@ -1,8 +1,8 @@
 # Testing your integration
 
 Reference **`MFTLib.TestExtensions`** from consumer test projects. It provides an
-in-process broker harness, a scripted drive watch and synthetic journal entries and
-records, and opt-in guards against accidental access to the real per-user cache or
+in-process broker harness, a scripted drive watch, synthetic journal entries and
+records, synthetic cache blocks and their editor, and opt-in guards against accidental access to the real per-user cache or
 a real volume's USN journal.
 
 ## BrokerTestHarness
@@ -15,6 +15,10 @@ request routing, per-drive channels, frame decoding, timeouts, producer, and wat
 used in production. The harness supplies everything except the volumes: the client creates
 real block sections, and each scan's records are written through the production row writer
 and filter.
+
+`BrokerTestHarness.CreateSession(launchAsync)` returns a `BrokerSession` whose launch callback hands it
+the `BrokerProcess` of an in-process broker (for example `StartInProcess(...).Process`), so a test of
+code that takes a `BrokerSession` needs no elevation either.
 
 `ScriptedBrokerVolumes` is the fake volumes the host serves. Only `QueryJournalCursor` is
 required; a null source refuses that operation as the real host does.
@@ -221,8 +225,8 @@ callback returns for each drive through the same writer and reports a real
 `MftBlockProduceResult` carrying the request's cache tag. Its settings model what a
 test needs from a scan:
 
-- `JournalCursor`, `CompletedUtc` and `SkippedRecordCount` are stamped into every
-  block and reported;
+- `JournalCursor` and `CompletedUtc` are stamped into every block and
+  `SkippedRecordCount` is reported on the produce result;
 - `BeforeProduceAsync` is awaited before each production, so a test holds a scan or
   rescan in progress and releases it when ready;
 - `CatchUpLoss` returns the proven catch-up loss a production reports, which the

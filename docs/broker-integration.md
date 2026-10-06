@@ -159,7 +159,7 @@ await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 `BrokerSession.CreateIndexSource()` returns the `MftIndexSource` that
 `FileIndexOptions.MftSource` takes. The source carries both halves of the
 connection: the block producer for cold opens and rescans, and the watch
-source, implemented by `BrokerIndexWatchSource`. Each drive watch start
+source, implemented by an internal MFTLib type. Each drive watch start
 connects through the session, opens the drive's pipe, writes its watch
 request, and returns the drive's running watch. The watch source, the drive
 watch handle and the block producer are internal to MFTLib; a consumer holds
@@ -213,10 +213,10 @@ writer before a frame is sent and by the reader before it is allocated. The
 library's own frames stay far below it: a watch `JournalBatch` from the native
 source is one 64 KiB journal read, and `Error` and `Stalled` text is cut to
 32,768 UTF-16 units. A `BrokerScanOptions.KeepFileNames` list that makes the
-`ArmAndScan` request exceed the limit (32,639 maximum-length names with the
+`ArmAndScan` request exceed the limit (32,640 maximum-length names with the
 default section name) is refused with an
-`ArgumentException` before anything is sent. A custom `JournalBatchSource`
-batch over the limit fails that watch with an `Error` frame, like any source
+`ArgumentException` before anything is sent. A journal batch over the limit
+fails that watch with an `Error` frame, like any source
 failure.
 
 ### Concurrent open progress
@@ -390,7 +390,7 @@ scan resets the count. A manual or recovery rescan retries until success or
 watch from that block. At open, the same retries happen before the drive settles;
 the open returns the unresumable block instead of throwing at the limit.
 
-The exception's `CheckpointLoss` has
+The drive's `DriveStatus.CheckpointLoss` report has
 `DetectedDuring == JournalCheckpointLossDetection.ScanCatchUp`. If its `Cause`
 is `JournalCheckpointLossCause.CheckpointTrimmed` and
 `SizeThatWouldHaveRetained` has a value, offer that value as the minimum journal
@@ -438,8 +438,10 @@ BrokerDiagnostics.Enable("client");
 ```
 
 Alternatively, set `MFTLIB_BROKER_DIAG=1` before launching. MFTLib propagates
-diagnostics arguments across the `runas` boundary. Both processes append to
-`broker-diagnostics.log` in `BrokerDiagnostics.LogDirectory`.
+diagnostics arguments across the `runas` boundary. Each process appends to
+`broker-diagnostics.log` in its own `BrokerDiagnostics.LogDirectory`; the
+consumer's setting does not cross the boundary, so the elevated broker's file
+lands in its default, the OS temp directory.
 
 Diagnostics are best effort and disabled by default. Writes are queued so disk
 logging does not block a channel. Each line carries its control or drive-channel

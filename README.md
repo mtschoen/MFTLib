@@ -63,7 +63,14 @@ The NuGet package includes `MFTLibNative.dll` under `runtimes/win-x64/native` an
 transitive build target that copies it to the consumer's output directory.
 `MFTLib.TestExtensions` is a separate package for consumer test assemblies. It depends
 on the matching `MFTLib` version and contains `MFTLibTestExtensions.dll`; it is not part
-of the `MFTLib` package.
+of the `MFTLib` package. It provides test hooks and scripted types: `BrokerDiagnosticsIsolation`,
+`BrokerTestHarness`, `CacheDirectoryIsolation`, `FileIndexTestAccess`, `InProcessBrokerHandle`,
+`InProcessBrokerScan`, `JournalIsolation`, `ScriptedBrokerVolumes`, `ScriptedDriveWatch`,
+`ScriptedScan`, `ScriptedWatchSource`, `ScriptedWatchStart`, `SyntheticBlock`,
+`SyntheticBlockEditor`, `SyntheticBlockOptions`, `SyntheticCacheTag`, `SyntheticCheckpointLoss`,
+`SyntheticDriveHeader`, `SyntheticIndexInspection`, `SyntheticIndexSource`, `SyntheticJournalEntry`,
+`SyntheticJournalEntryOptions`, `SyntheticJournalWindow`, `SyntheticMftProducer`,
+`SyntheticMftRecord`, `SyntheticMftRecordOptions`, and `SyntheticRow`.
 
 ## Install
 

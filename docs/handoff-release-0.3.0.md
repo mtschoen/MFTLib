@@ -1,13 +1,13 @@
 # Handoff: MFTLib 0.3.0 Release
 
-Updated 2026-10-03. `CHANGELOG.md` is the authoritative description of 0.3.0;
+Updated 2026-10-05. `CHANGELOG.md` is the authoritative description of 0.3.0;
 this document tracks the remaining release sequence.
 
 ## Status
 
-The pre-ship simplification pass (pull requests 339 through 352) is merged; its last
-code commit on `gitea/main` is `67f05d9`. The remote named `origin`
-in some checkouts is a stale GitHub mirror; Gitea `main` is canonical. Merged to `main`:
+The pre-ship simplification pass and consumer API migrations are merged. The remote named `origin`
+in some checkouts is a stale GitHub mirror; Gitea `main` is canonical. MFTLib main is `d827b99`
+(the last code commit, merged in pull request 388). Merged to `main`:
 
 - Per-drive watch channels ([MFTLib issue 265, per-drive channels](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/265), merged in pull request 301):
   `BrokerProcess` owns one control pipe plus one channel per scan or watch
@@ -18,26 +18,40 @@ in some checkouts is a stale GitHub mirror; Gitea `main` is canonical. Merged to
   `scripts/Test-ReleasePackages.ps1`, and on `-Publish` pushes `MFTLib` first,
   then `MFTLib.TestExtensions`.
 - `MatchFlags.IncludeFreed` opt-in scan of freed MFT records ([MFTLib issue 292, include-freed scan](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/292)); the
-  native ABI is version 3.
+  native ABI is version 4.
 - Pre-ship simplification pass: 17 types made internal and public members with no
   caller deleted; `DriveStatus.AccessDeniedSubtreeCount` and `SkippedRecordCount`
   split by producer; the broker scan frame trimmed to the advanced cursor;
   `FileId` renamed to `IndexRecordKey`; managed test hook declarations moved into
   `MFTLib.Tests`; every public member documented, with `MFTLib.xml` in the package.
+- Public API internalization pass: test-only API is internal and reached through the `MFTLib.TestExtensions` package.
+- The public `BrokerSession` type owns a consumer session's elevated broker; both consumers use it.
+- `SyntheticBlockEditor.SetCacheTag` replaces a cached block's cache tag in place.
+- TestProgram shows a heads-up dialog before its self-elevating relaunch, and an attended unelevated `scan-drive` run shows one before the broker's UAC prompt; `MFTLIB_TESTPROGRAM_UNATTENDED=1` skips the dialog and every elevation request.
+- `scripts/build-windows.ps1` is the one Windows native and managed build recipe.
+- `BrokerMftBlockProducer`, both `BrokerProcess.LaunchAsync` overloads and `BrokerProcess.GrowUsnJournalAsync` are internal ([pull request 385](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/385)); consumers reach the broker through `BrokerSession`.
+- The post-clean init verification in `.gitea/workflows/test.yml` runs on pushes to `main` only, not on pull requests, and the host-mode Windows CI jobs no longer use `actions/setup-dotnet` ([pull request 386](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/386), [MFTLib issue 380](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/380)).
+- MFTLib.Tests runs test classes in parallel (`Parallelize`, class level); classes that touch process-global seams carry `[DoNotParallelize]`, a guard test enforces it, and tests hold any finalizable snapshot they assert on (pull requests [387](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/387) and [388](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/388), [MFTLib issue 382](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/382)).
 
 The 0.3.0 NuGet artifact set is:
 
 - `MFTLib` version 0.3.0, including `MFTLibNative.dll` for Windows x64; and
 - `MFTLib.TestExtensions` version 0.3.0, a pure managed test package with an
   exact-version dependency on `MFTLib` 0.3.0. It contains
-  `BrokerTestHarness`, `ScriptedBrokerVolumes`, `CacheDirectoryIsolation`,
-  `JournalIsolation`, and `SyntheticJournalWindow`.
+  `BrokerDiagnosticsIsolation`, `BrokerTestHarness`, `CacheDirectoryIsolation`,
+  `FileIndexTestAccess`, `InProcessBrokerHandle`, `InProcessBrokerScan`, `JournalIsolation`,
+  `ScriptedBrokerVolumes`, `ScriptedDriveWatch`, `ScriptedScan`, `ScriptedWatchSource`,
+  `ScriptedWatchStart`, `SyntheticBlock`, `SyntheticBlockEditor`, `SyntheticBlockOptions`,
+  `SyntheticCacheTag`, `SyntheticCheckpointLoss`, `SyntheticDriveHeader`,
+  `SyntheticIndexInspection`, `SyntheticIndexSource`, `SyntheticJournalEntry`,
+  `SyntheticJournalEntryOptions`, `SyntheticJournalWindow`, `SyntheticMftProducer`,
+  `SyntheticMftRecord`, `SyntheticMftRecordOptions`, and `SyntheticRow`.
 
-Gate 1, [MFTLib issue 330, consumer API gaps](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/330),
-landed in pull requests 333 through 338. Consumers have migrated to per-drive
-watch channels and to the post-simplification API, and both pin MFTLib `67f05d9`:
-file-wizard at `5a59eed` and git-wizard `gitea/main` at `d03adec`. No attended
-smoke has run against these commits; the attended consumer runtime smokes remain
+Consumers have migrated to per-drive watch channels, the post-simplification API, and `BrokerSession`.
+Both consumers pin MFTLib `d827b99` through their `external/MFTLib` submodule (the C4 round):
+file-wizard main `cf631ca` (file-wizard pull request 546) and git-wizard main `9c8710c` (git-wizard
+pull request 296).
+No attended smoke has run against the C4 pin; the attended consumer runtime smokes remain
 part of gate 2.
 
 Not yet done: 0.3.0 is not published to nuget.org and `v0.3.0` is not tagged.
@@ -73,9 +87,11 @@ administrator tests), Windows native instrumentation coverage, and
 
 Ensure the exact merged history on Gitea `main` is mirrored to GitHub so SourceLink
 (`PublishRepositoryUrl=true` + `SourceLink.GitHub`) can resolve the commit that will be packed.
-A Gitea push mirror to GitHub now syncs `main` on every commit (with an 8 hour fallback
-sync), and `scripts/release.ps1` refuses to run unless the release commit is present on
-GitHub `main`, so this step is a manual fallback rather than the only line of defense.
+`schoen/MFTLib` on Gitea has a push mirror to `https://github.com/mtschoen/MFTLib.git` that syncs on
+every commit and every 8 hours; it synced at the last `main` merge with no error. Before running
+`scripts/release.ps1`, confirm the mirror's last sync covers the release commit (`scripts/release.ps1`
+refuses to run unless the release commit is present on GitHub `main`). The manual push below is the
+fallback when the mirror is behind or failing:
 Note: remote names for Gitea and GitHub vary per checkout, and
 `scripts/release.ps1` pushes the release tag directly to the Gitea and GitHub
 URLs rather than through a local remote name, so use the URLs directly here
@@ -89,21 +105,21 @@ git push https://github.com/mtschoen/MFTLib.git main
 
 ### 2. Validate downstream consumers (pre-publish sanity check)
 
-Run after the gate 1 pin bumps, against MFTLib `main`. Both consumers build MFTLib
+Run against the C4 pin, MFTLib `d827b99`, and the C4 consumer commits named in Status
+(file-wizard `cf631ca`, git-wizard `9c8710c`). Both consumers build MFTLib
 from the `external/MFTLib` submodule until 0.3.0 ships.
 
 - **file-wizard broker and index smoke**: launch the elevated broker through
-  `BrokerProcess` (`BrokerSessionHost`) and open a `FileIndex` with
-  `BrokerMftBlockProducer`; run a cold scan into a file-backed block section and
+  `BrokerSession` and open a `FileIndex` with
+  `BrokerSession.CreateIndexSource()`; run a cold scan into a file-backed block section and
   verify `MFTLib.Index` query evaluation. Start watches through
-  `FileIndex.StartWatchingAsync` (per-drive `IIndexDriveWatch` from the producer's
-  watch source): modify files on two drives and verify `FileChange` events arrive
+  `FileIndex.StartWatchingAsync` (one watch per drive from the index source): modify files on two drives and verify `FileChange` events arrive
   per drive, exercise `RescanAsync` and stop-and-restart of one drive while the other
   keeps running, and confirm one UAC prompt covers the whole session. Kill the broker
   mid-watch and verify every watched drive reports a terminal `WatchFaultKind.Channel`
   fault that does not recover on its own; a broker restart needs a fresh session.
 - **git-wizard watch smoke**: open the index through `MftIndexSession` and
-  `BrokerProcess` (`MftBrokerConnection`); run `git-wizard --watch`, modify files
+  `BrokerSession`; run `git-wizard --watch`, modify files
   within a tracked repository, and verify live notifications via `FileChange`
   (`IndexVolumeChangeSource`). Kill the broker mid-watch and verify the watch
   reports a terminal `WatchFaultKind.Channel` fault that does not recover on its
@@ -199,7 +215,7 @@ The release notes in `CHANGELOG.md` and GitHub Release must match `CHANGELOG.md`
 - **`MFTLib.Index` namespace**: indexed query and file snapshot model (`FileIndex`, `Snapshot`, `FileEntry`, `FileChange`) with low-latency query evaluation and direct directory traversal.
 - **Broker block write path**: the elevated broker writes cold scan blocks directly into a client-owned file-backed block section; cold scans return packed blocks only.
 - **Per-drive watch channels**: `BrokerProcess` runs one control pipe and one channel per drive operation; `FileIndex` start, stop, rescan and catch-up are per drive with concurrent list and all-drive overloads, automatic per-drive recovery, and bounded catch-up-loss recovery.
-- **Include-freed scan**: `MatchFlags.IncludeFreed` returns validated freed MFT base records with `InUse == false`; native ABI version 3.
+- **Include-freed scan**: `MatchFlags.IncludeFreed` returns validated freed MFT base records with `InUse == false`; native ABI version 4.
 - **`MFTLib.TestExtensions` package**: `BrokerTestHarness` and the cache and journal isolation guards ship as a separate package.
 - **Documented public API**: the package ships `MFTLib.xml`, so IntelliSense documents every public member.
 
