@@ -37,6 +37,10 @@ public class BrokerIndexWatchSourceCaughtUpTests
         var first = await source.StartAsync(new IndexWatchTarget('C', 7, 100), token);
         var firstReader = first.ReadAsync(token).GetAsyncEnumerator(token);
         Assert.IsInstanceOfType<DriveCaughtUp>(await WatchReads.NextAsync(firstReader));
+
+        // The host writes the marker before it starts the watch source, so a watch closed on the
+        // marker alone may never start one and would shift the numbering of the restarted watch's run.
+        await harness.Watch('C').RunAsync(1);
         await firstReader.DisposeAsync();
         await first.DisposeAsync();
 
