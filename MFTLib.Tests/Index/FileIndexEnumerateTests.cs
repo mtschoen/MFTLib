@@ -266,7 +266,6 @@ public class FileIndexEnumerateTests
         var index = await OpenSyntheticIndexAsync(64);
 
         StartAndAbandonAnEnumeration(index);
-        Assert.AreEqual(1, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
 
         GC.Collect();
         GC.WaitForPendingFinalizers();
@@ -284,6 +283,8 @@ public class FileIndexEnumerateTests
         var getEnumerator = typeof(System.Collections.IEnumerable).GetMethod(nameof(System.Collections.IEnumerable.GetEnumerator))!;
         var enumerator = (System.Collections.IEnumerator)getEnumerator.Invoke(enumerable, null)!;
         _ = enumerator.MoveNext();
+        Assert.AreEqual(1, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
+        GC.KeepAlive(enumerator);
     }
 
     /// <summary>

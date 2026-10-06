@@ -284,8 +284,13 @@ public partial class FileIndexResilienceTests
         return index.CurrentSnapshot.GetDriveBlock(driveOrdinal).Block.Path;
     }
 
+    /// <summary>
+    ///     The superseded snapshot is held by the test: only a held snapshot keeps its block mapped
+    ///     (see docs/query-lifetime.md), and an unheld one is released by its finalizer whenever a
+    ///     collection happens to run, which parallel test classes make frequent.
+    /// </summary>
     [TestMethod]
-    public async Task DisposeAsync_NoCacheMode_DeletesEveryUnheldTempBlockImmediately()
+    public async Task DisposeAsync_NoCacheMode_DeletesEveryTempBlockIncludingAHeldSupersededOne()
     {
         var index = await FileIndex.OpenAsync(Options(noCache: true), CancellationToken.None);
         string firstPath;
@@ -293,7 +298,8 @@ public partial class FileIndexResilienceTests
         try
         {
             Assert.IsTrue(index.TryGetDriveOrdinal('T', out var driveOrdinal));
-            firstPath = GetCurrentBlockPath(index, driveOrdinal);
+            var firstSnapshot = index.CurrentSnapshot;
+            firstPath = firstSnapshot.GetDriveBlock(driveOrdinal).Block.Path;
             Assert.IsTrue(File.Exists(firstPath));
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
@@ -301,7 +307,8 @@ public partial class FileIndexResilienceTests
             secondPath = GetCurrentBlockPath(index, driveOrdinal);
 
             Assert.AreNotEqual(firstPath, secondPath);
-            Assert.IsTrue(File.Exists(firstPath), "the superseded temp block is still mapped until dispose");
+            Assert.IsTrue(File.Exists(firstPath), "a superseded temp block stays mapped while its snapshot is held");
+            GC.KeepAlive(firstSnapshot);
         }
         finally
         {
@@ -310,6 +317,32 @@ public partial class FileIndexResilienceTests
 
         Assert.IsFalse(File.Exists(firstPath));
         Assert.IsFalse(File.Exists(secondPath));
+    }
+
+    [TestMethod]
+    public async Task RescanAsync_NoCacheMode_UnheldSupersededTempBlockIsDeletedByFinalization()
+    {
+        var index = await FileIndex.OpenAsync(Options(noCache: true), CancellationToken.None);
+        try
+        {
+            Assert.IsTrue(index.TryGetDriveOrdinal('T', out var driveOrdinal));
+            var firstPath = GetCurrentBlockPath(index, driveOrdinal);
+            Assert.IsTrue(File.Exists(firstPath));
+
+            await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
+            await index.RescanAsync('T', CancellationToken.None);
+            Assert.AreNotEqual(firstPath, GetCurrentBlockPath(index, driveOrdinal));
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            Assert.IsFalse(File.Exists(firstPath), "nothing holds the superseded snapshot, so finalization releases it");
+        }
+        finally
+        {
+            await index.DisposeAsync();
+        }
     }
 
     [TestMethod]

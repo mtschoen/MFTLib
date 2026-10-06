@@ -167,7 +167,8 @@ public class FileIndexBlockReleaseTests
         {
             var index = await FileIndex.OpenAsync(TwoDriveOptions(secondTreeRoot, secondVolumeSerial),
                 CancellationToken.None);
-            var retiredRelease = index.CurrentSnapshot.ReleaseState;
+            var retiredSnapshot = index.CurrentSnapshot;
+            var retiredRelease = retiredSnapshot.ReleaseState;
             retiredRelease._releaseStartedForTest = () =>
             {
                 reachedTheGate.MarkEntered();
@@ -190,6 +191,7 @@ public class FileIndexBlockReleaseTests
             gate.Release();
             Assert.IsTrue(await competingRelease);
             await disposal;
+            GC.KeepAlive(retiredSnapshot);
 
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(_cacheDirectory,
                 CacheDirectory.BlockFileName('U', secondVolumeSerial)));
@@ -389,7 +391,8 @@ public class FileIndexBlockReleaseTests
         try
         {
             var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-            var retiredRelease = index.CurrentSnapshot.ReleaseState;
+            var retiredSnapshot = index.CurrentSnapshot;
+            var retiredRelease = retiredSnapshot.ReleaseState;
             retiredRelease._releaseStartedForTest = () =>
             {
                 reachedTheGate.MarkEntered();
@@ -413,6 +416,7 @@ public class FileIndexBlockReleaseTests
             gate.Release();
             Assert.IsTrue(await competingRelease);
             await disposal;
+            GC.KeepAlive(retiredSnapshot);
 
             BlockFileHoldAssertions.AssertNotHeld(Path.Combine(_cacheDirectory,
                 CacheDirectory.BlockFileName('T', _volumeSerial)));

@@ -115,3 +115,17 @@ per-test synchronization and is not part of the native delegate seam family.
 A test whose subject really is a real volume overrides with
 `JournalCheckpointCheck.ReadLiveJournal`, which bypasses the guard; three tests
 in `UsnJournalVolumeInteropTests` do.
+
+## Object lifetime
+
+Parallel classes allocate concurrently, so a garbage collection can land at any
+point in a test. A test that asserts on a side effect a finalizable object
+controls (a delete-on-close block file existing, a mapping open, a release
+started, a retired file present) must hold a strong reference to that object
+through the assertion: keep it in a local and end with `GC.KeepAlive(local)`
+after the last assertion, because the Release JIT treats a local as dead after
+its last use. Reading a block path or `ReleaseState` through a helper or an
+unstored property read holds nothing. `[DoNotParallelize]` does not help: the
+hazard is object lifetime, not shared state. The finalizer's own behavior is
+tested by dropping the reference in a `NoInlining` helper, then
+`GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();`.

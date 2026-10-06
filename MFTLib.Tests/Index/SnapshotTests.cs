@@ -27,6 +27,7 @@ public class SnapshotTests
     static WeakReference<Snapshot> CreateUnrootedSnapshot(DriveBlock driveBlock)
     {
         var snapshot = Snapshot.Create([driveBlock]);
+        Assert.AreEqual(1, driveBlock.ReferenceCount);
         return new WeakReference<Snapshot>(snapshot);
     }
 
@@ -36,7 +37,6 @@ public class SnapshotTests
         using var builder = CompletedBuilder('T');
         var driveBlock = OpenDriveBlock(builder, 0);
         var weakSnapshot = CreateUnrootedSnapshot(driveBlock);
-        Assert.AreEqual(1, driveBlock.ReferenceCount);
 
         GC.Collect();
         GC.WaitForPendingFinalizers();

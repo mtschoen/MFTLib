@@ -190,7 +190,6 @@ public class SnapshotBorrowTests
         try
         {
             TakeAndAbandonABorrow(snapshot);
-            Assert.AreEqual(1, snapshot.ReleaseState.OutstandingBorrowCount);
 
             GC.Collect();
             GC.WaitForPendingFinalizers();
@@ -204,10 +203,16 @@ public class SnapshotBorrowTests
         }
     }
 
-    /// <summary>No-inlined so the abandoned borrow is not kept reachable by this frame.</summary>
+    /// <summary>
+    ///     No-inlined so the abandoned borrow is not kept reachable by this frame. The count is
+    ///     asserted while the borrow is still held, so no collection can return it first.
+    /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     static void TakeAndAbandonABorrow(Snapshot snapshot)
     {
-        _ = snapshot.Borrow();
+        // aislop-ignore-next-line dotnet/IDISP001 -- the abandoned, undisposed borrow is the subject: its finalizer must return it
+        var borrow = snapshot.Borrow();
+        Assert.AreEqual(1, snapshot.ReleaseState.OutstandingBorrowCount);
+        GC.KeepAlive(borrow);
     }
 }
