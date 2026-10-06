@@ -59,12 +59,7 @@ public sealed partial class FileIndex
             settledCount = _settledCountsByLetter[driveLetter];
         }
 
-        openProgress.Report(new IndexDriveOpened
-        {
-            DriveLetter = driveLetter,
-            SettledCount = settledCount,
-            Total = total
-        });
+        openProgress.Report(new IndexDriveOpened(driveLetter, settledCount, total));
     }
 
     /// <summary>

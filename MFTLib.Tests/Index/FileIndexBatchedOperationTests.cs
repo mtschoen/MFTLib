@@ -24,16 +24,12 @@ public class FileIndexBatchedOperationTests
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    static JournalCheckpointLoss Loss(char driveLetter) => new()
+    static JournalCheckpointLoss Loss(char driveLetter) => new JournalCheckpointLoss(driveLetter, JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
+        4096, 32768)
     {
-        DriveLetter = driveLetter,
-        DetectedDuring = JournalCheckpointLossDetection.ScanCatchUp,
-        Cause = JournalCheckpointLossCause.CheckpointTrimmed,
         CheckpointUsn = 1000,
         FirstUsn = 5000,
         NextUsn = 9000,
-        AllocationDelta = 4096,
-        MaximumSize = 32768,
         BytesBehind = 4000,
         SizeThatWouldHaveRetained = 12288
     };

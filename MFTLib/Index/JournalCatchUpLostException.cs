@@ -20,9 +20,10 @@ public sealed class JournalCatchUpLostException : Exception
     /// <summary>Records one lost catch-up.</summary>
     /// <param name="recoveryStopped">Whether the scan operation stopped retrying at this loss.</param>
     /// <param name="message">What was lost and what happens next.</param>
-    public JournalCatchUpLostException(bool recoveryStopped, string message)
+    internal JournalCatchUpLostException(bool recoveryStopped, string message)
         : base(message)
     {
+        ArgumentNullException.ThrowIfNull(message);
         RecoveryStopped = recoveryStopped;
     }
 

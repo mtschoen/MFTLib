@@ -42,16 +42,12 @@ internal sealed class OpenScenario : IDisposable
     /// <summary>Runs inside the progress callback after the report is kept and signalled; may park or throw.</summary>
     public Action<IndexDriveOpened>? OnReport { get; set; }
 
-    public static JournalCheckpointLoss Loss(char driveLetter) => new()
+    public static JournalCheckpointLoss Loss(char driveLetter) => new JournalCheckpointLoss(driveLetter, JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
+        4096, 32768)
     {
-        DriveLetter = driveLetter,
-        DetectedDuring = JournalCheckpointLossDetection.ScanCatchUp,
-        Cause = JournalCheckpointLossCause.CheckpointTrimmed,
         CheckpointUsn = 1000,
         FirstUsn = 5000,
         NextUsn = 9000,
-        AllocationDelta = 4096,
-        MaximumSize = 32768,
         BytesBehind = 4000,
         SizeThatWouldHaveRetained = 12288
     };

@@ -9,16 +9,12 @@ namespace MFTLib.Tests;
 // writes back on it. A drive pipe names no drive: the channel is the drive.
 public partial class BrokerProtocolTests
 {
-    static readonly JournalCheckpointLoss FullLoss = new()
+    static readonly JournalCheckpointLoss FullLoss = new JournalCheckpointLoss('C', JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
+        4096, 32768)
     {
-        DriveLetter = 'C',
-        DetectedDuring = JournalCheckpointLossDetection.ScanCatchUp,
-        Cause = JournalCheckpointLossCause.CheckpointTrimmed,
         CheckpointUsn = 1000,
         FirstUsn = 5000,
         NextUsn = 9000,
-        AllocationDelta = 4096,
-        MaximumSize = 32768,
         BytesBehind = 4000,
         SizeThatWouldHaveRetained = 12288
     };

@@ -207,6 +207,18 @@ MFTLibTestExtensions.SyntheticMftRecordOptions :: property public required FileN
 MFTLibTestExtensions.SyntheticMftRecordOptions :: property public required ParentRecordNumber { get; init; } : ulong
 MFTLibTestExtensions.SyntheticMftRecordOptions :: property public required RecordNumber { get; init; } : ulong
 MFTLibTestExtensions.SyntheticMftRecordOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticMftRecordOptions>
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockDeletionResult(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockDeletionOutcome outcome, string? failureReason) : MFTLib.Index.CachedBlockDeletionResult
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockFile(char driveLetter, uint volumeSerial, string path, long sizeBytes, System.DateTime lastWriteTime) : MFTLib.Index.CachedBlockFile
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockRejection(string path, string reason) : MFTLib.Index.CachedBlockRejection
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockStatus(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockAvailability availability, MFTLib.Index.BlockValidationResult? validation, MFTLib.Index.ProducerKind? producerKind, string? rootDirectory, MFTLib.Index.CacheTag? cacheTag = default) : MFTLib.Index.CachedBlockStatus
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateDriveStatus(char driveLetter, MFTLib.Index.DriveState state, MFTLib.Index.BlockSource blockSource, uint liveRowCount, bool compactionNeeded, System.DateTime scanTimestamp) : MFTLib.Index.DriveStatus
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateFileChange(MFTLib.Index.FileChangeKind kind, MFTLib.Index.FileEntry entry, string path, System.DateTime timestamp, string? previousPath = default) : MFTLib.Index.FileChange
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexDriveOpened(char driveLetter, int settledDriveCount, int totalDriveCount) : MFTLib.Index.IndexDriveOpened
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexScanProgress(char driveLetter, MFTLib.Index.IndexScanPhase phase, uint rowsWritten, uint? totalRows = default, string? currentDirectory = default, MFTLib.Index.IndexScanOutcome? outcome = default) : MFTLib.Index.IndexScanProgress
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCatchUpLostException(bool recoveryStopped, string message) : MFTLib.Index.JournalCatchUpLostException
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCheckpointLoss(char driveLetter, MFTLib.Index.JournalCheckpointLossCause cause, MFTLib.Index.JournalCheckpointLossDetection detectedDuring, long allocationDelta, long maximumSize) : MFTLib.Index.JournalCheckpointLoss
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchFault(MFTLib.Index.WatchFaultKind kind, char driveLetter, System.Exception exception) : MFTLib.Index.WatchFault
+MFTLibTestExtensions.SyntheticNotifications :: type public static class
 MFTLibTestExtensions.SyntheticRow :: constructor public (uint Row, string Name, uint ParentRow)
 MFTLibTestExtensions.SyntheticRow :: method public <Clone>$() : MFTLibTestExtensions.SyntheticRow
 MFTLibTestExtensions.SyntheticRow :: method public Deconstruct(out uint Row, out string Name, out uint ParentRow) : void

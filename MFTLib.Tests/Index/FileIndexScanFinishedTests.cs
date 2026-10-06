@@ -70,12 +70,7 @@ public class FileIndexScanFinishedTests
 
     static Task<MftBlockProduceResult> ProduceBlock(MftBlockProduceRequest request)
     {
-        request.Progress?.Report(new IndexScanProgress
-        {
-            DriveLetter = request.DriveLetter,
-            Phase = IndexScanPhase.ParsingMft,
-            RowsWritten = 1
-        });
+        request.Progress?.Report(new IndexScanProgress(request.DriveLetter, IndexScanPhase.ParsingMft, 1));
         return Task.FromResult(new MftBlockProduceResult(
             SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment),
             JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));

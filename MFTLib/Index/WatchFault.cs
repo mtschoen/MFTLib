@@ -62,4 +62,26 @@ public enum WatchFaultKind
 ///     A fault observed by one drive's watch pump, or by a scan that lost its catch-up or could
 ///     not start its replacement watch. Every fault names its drive.
 /// </summary>
-public sealed record WatchFault(WatchFaultKind Kind, char DriveLetter, Exception Exception);
+public sealed record WatchFault
+{
+    /// <summary>Creates a fault report.</summary>
+    /// <param name="kind">Which boundary raised the fault.</param>
+    /// <param name="driveLetter">The drive the fault names.</param>
+    /// <param name="exception">The exception that ended or disturbed the watch.</param>
+    internal WatchFault(WatchFaultKind kind, char driveLetter, Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        Kind = kind;
+        DriveLetter = driveLetter;
+        Exception = exception;
+    }
+
+    /// <summary>Which boundary raised the fault.</summary>
+    public WatchFaultKind Kind { get; init; }
+
+    /// <summary>The drive whose watch or scan faulted; a fault always names one drive.</summary>
+    public char DriveLetter { get; init; }
+
+    /// <summary>The failure itself; its type depends on <see cref="Kind" />, for example a <see cref="JournalCatchUpLostException" /> for a lost catch-up.</summary>
+    public Exception Exception { get; init; }
+}

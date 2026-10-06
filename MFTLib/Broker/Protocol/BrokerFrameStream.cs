@@ -12,7 +12,7 @@ internal static class BrokerFrameStream
     // smaller than the native USN_RECORD_V2 it was read from (60 fixed bytes plus the name, 8-byte
     // aligned), so such a batch is under 64 KiB plus its 21-byte header. ArmAndScan carries the
     // caller's keep list: an NTFS name is at most 255 UTF-16 units (510 bytes) plus a 4-byte
-    // length prefix, so 16 MiB holds 32,639 maximum-length names with the default section name,
+    // length prefix, so 16 MiB holds 32,640 maximum-length names with the default section name,
     // and far more of the short ones a keep list names. Error and Stalled text is cut to 32,768
     // units. A keep list over the limit is refused by ScanDriveAsync before anything is sent, and
     // a custom journal source's batch over the limit ends that watch with an Error frame. 16 MiB

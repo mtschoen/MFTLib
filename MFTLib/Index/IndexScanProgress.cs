@@ -10,14 +10,25 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed record IndexScanProgress
 {
+    /// <summary>Creates one progress sample.</summary>
+    /// <param name="driveLetter">The drive whose block is being produced.</param>
+    /// <param name="phase">The current stage of the scan.</param>
+    /// <param name="rowsWritten">Rows written so far, or the final row count on a successful finished sample.</param>
+    internal IndexScanProgress(char driveLetter, IndexScanPhase phase, uint rowsWritten)
+    {
+        DriveLetter = driveLetter;
+        Phase = phase;
+        RowsWritten = rowsWritten;
+    }
+
     /// <summary>Drive whose block is being produced.</summary>
-    public required char DriveLetter { get; init; }
+    public char DriveLetter { get; init; }
 
     /// <summary>Current stage of the scan.</summary>
-    public required IndexScanPhase Phase { get; init; }
+    public IndexScanPhase Phase { get; init; }
 
     /// <summary>Number of rows written so far, or final row count on a successful completion sample.</summary>
-    public required uint RowsWritten { get; init; }
+    public uint RowsWritten { get; init; }
 
     /// <summary>Expected total rows when known; otherwise, null.</summary>
     public uint? TotalRows { get; init; }

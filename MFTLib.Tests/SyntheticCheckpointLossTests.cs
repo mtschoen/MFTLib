@@ -13,13 +13,9 @@ namespace MFTLib.Tests;
 [TestClass]
 public class SyntheticCheckpointLossTests
 {
-    static JournalCheckpointLoss PositionLess() => new()
+    static JournalCheckpointLoss PositionLess() => new JournalCheckpointLoss('T', JournalCheckpointLossDetection.LiveWatch, JournalCheckpointLossCause.CheckpointTrimmed,
+        4096, 32768)
     {
-        DriveLetter = 'T',
-        DetectedDuring = JournalCheckpointLossDetection.LiveWatch,
-        Cause = JournalCheckpointLossCause.CheckpointTrimmed,
-        AllocationDelta = 4096,
-        MaximumSize = 32768,
         BytesBehind = 4000,
         SizeThatWouldHaveRetained = 12288
     };

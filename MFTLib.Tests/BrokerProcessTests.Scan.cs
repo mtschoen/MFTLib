@@ -458,16 +458,12 @@ public partial class BrokerProcessTests
 
     static JournalCheckpointLoss TrimmedLoss()
     {
-        return new JournalCheckpointLoss
+        return new JournalCheckpointLoss('C', JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
+            4096, 32768)
         {
-            DriveLetter = 'C',
-            DetectedDuring = JournalCheckpointLossDetection.ScanCatchUp,
-            Cause = JournalCheckpointLossCause.CheckpointTrimmed,
             CheckpointUsn = Armed.NextUsn,
             FirstUsn = 5000,
             NextUsn = 9000,
-            AllocationDelta = 4096,
-            MaximumSize = 32768,
             BytesBehind = 4000,
             SizeThatWouldHaveRetained = 12288
         };

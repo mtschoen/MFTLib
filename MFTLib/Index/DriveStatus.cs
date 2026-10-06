@@ -6,15 +6,33 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed record DriveStatus
 {
+    /// <summary>Creates a status with the values every drive has, whether or not it has a block.</summary>
+    /// <param name="driveLetter">The drive.</param>
+    /// <param name="state">Whether the drive can answer queries, needs a rescan, or has no block.</param>
+    /// <param name="blockSource">Where the block behind this status came from.</param>
+    /// <param name="liveRowCount">Rows a query can return; zero for a drive with no block.</param>
+    /// <param name="compactionNeeded">The block header's compaction flag.</param>
+    /// <param name="scanTimestamp">When the current block's production completed.</param>
+    internal DriveStatus(char driveLetter, DriveState state, BlockSource blockSource, uint liveRowCount,
+        bool compactionNeeded, DateTime scanTimestamp)
+    {
+        DriveLetter = driveLetter;
+        State = state;
+        BlockSource = blockSource;
+        LiveRowCount = liveRowCount;
+        CompactionNeeded = compactionNeeded;
+        ScanTimestamp = scanTimestamp;
+    }
+
     /// <summary>Identifies the drive in every per-drive <see cref="FileIndex" /> call; one status exists per configured drive, including failed and offline ones.</summary>
-    public required char DriveLetter { get; init; }
+    public char DriveLetter { get; init; }
 
     /// <summary>
     ///     Where the block behind this status came from. <see cref="BlockSource.None" /> for a
     ///     drive with no block. Reads <see cref="BlockSource.ProducedByScan" /> after a successful
     ///     rescan, because that rescan is what produced the current block.
     /// </summary>
-    public required BlockSource BlockSource { get; init; }
+    public BlockSource BlockSource { get; init; }
 
     /// <summary>
     ///     The current block's cache-slot backing, captured with this status. Read
@@ -27,29 +45,29 @@ public sealed record DriveStatus
     public CacheSlotState CacheSlot { get; init; }
 
     /// <summary>Whether the drive can answer queries, needs a rescan, or has no block.</summary>
-    public required DriveState State { get; init; }
+    public DriveState State { get; init; }
 
     /// <summary>
     ///     Rows that are in use and not tombstoned: the rows a query can return. Zero for a
     ///     drive with no block.
     /// </summary>
-    public required uint LiveRowCount { get; init; }
+    public uint LiveRowCount { get; init; }
 
     /// <summary>
     ///     UTC time at which the current block's production completed, stamped into its header.
     ///     A block adopted from the cache keeps its original time, so this is the block's age,
     ///     not the time the index opened. <see cref="DateTime.MinValue" /> for a drive with no block.
     /// </summary>
-    public required DateTime ScanTimestamp { get; init; }
+    public DateTime ScanTimestamp { get; init; }
 
     /// <summary>
     ///     The block header's compaction flag: a mutation or a producer write could not fit, so
     ///     the block is incomplete or stale and only a rescan repairs it.
     /// </summary>
-    public required bool CompactionNeeded { get; init; }
+    public bool CompactionNeeded { get; init; }
 
     /// <summary>True only for an MFT-backed drive with a block and a live-watch cursor.</summary>
-    public required bool WatchSupported { get; init; }
+    public bool WatchSupported { get; init; }
 
     /// <summary>
     ///     The enumeration producer's count of subtrees it could not enter during the latest

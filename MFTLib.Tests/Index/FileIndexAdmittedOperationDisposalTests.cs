@@ -67,16 +67,12 @@ public class FileIndexAdmittedOperationDisposalTests
         using var harness = new WatchHarness('T');
         var index = harness.Index;
         await index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
-        harness.ScriptScans('T', new WatchHarnessScan(new JournalCheckpointLoss
+        harness.ScriptScans('T', new WatchHarnessScan(new JournalCheckpointLoss('T', JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
+            4096, 32768)
         {
-            DriveLetter = 'T',
-            DetectedDuring = JournalCheckpointLossDetection.ScanCatchUp,
-            Cause = JournalCheckpointLossCause.CheckpointTrimmed,
             CheckpointUsn = 1000,
             FirstUsn = 5000,
             NextUsn = 9000,
-            AllocationDelta = 4096,
-            MaximumSize = 32768,
             BytesBehind = 4000,
             SizeThatWouldHaveRetained = 12288
         }), new WatchHarnessScan());

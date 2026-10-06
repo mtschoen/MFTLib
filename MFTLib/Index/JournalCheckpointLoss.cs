@@ -67,24 +67,24 @@ public enum JournalCheckpointLossCause
 /// </summary>
 public sealed record JournalCheckpointLoss
 {
-    /// <summary>Creates a report for a consumer to fill in, with no journal positions.</summary>
-    public JournalCheckpointLoss()
+    /// <summary>Creates a report with its identifying values and no journal positions.</summary>
+    /// <param name="driveLetter">The drive, in upper case.</param>
+    /// <param name="detectedDuring">Which check found the loss.</param>
+    /// <param name="cause">Which situation the loss was.</param>
+    /// <param name="allocationDelta">The journal's allocation unit.</param>
+    /// <param name="maximumSize">The journal's configured maximum size.</param>
+    internal JournalCheckpointLoss(char driveLetter, JournalCheckpointLossDetection detectedDuring,
+        JournalCheckpointLossCause cause, long allocationDelta, long maximumSize)
     {
-    }
-
-    /// <summary>Creates a report that carries the three raw journal positions MFTLib observed.</summary>
-    /// <param name="checkpointUsn">The position the drive's block left off at.</param>
-    /// <param name="firstUsn">The oldest USN the journal still retained.</param>
-    /// <param name="nextUsn">The USN the journal's next record would be written at.</param>
-    internal JournalCheckpointLoss(long checkpointUsn, long firstUsn, long nextUsn)
-    {
-        CheckpointUsn = checkpointUsn;
-        FirstUsn = firstUsn;
-        NextUsn = nextUsn;
+        DriveLetter = driveLetter;
+        DetectedDuring = detectedDuring;
+        Cause = cause;
+        AllocationDelta = allocationDelta;
+        MaximumSize = maximumSize;
     }
 
     /// <summary>Upper case, matching the letter this drive was configured with.</summary>
-    public required char DriveLetter { get; init; }
+    public char DriveLetter { get; init; }
 
     /// <summary>
     ///     Which check found this, and so whether the drive still needs anything done about it.
@@ -93,13 +93,13 @@ public sealed record JournalCheckpointLoss
     ///     so a handler that acts on a loss reads this before deciding the fault it is handling
     ///     was the journal's doing.
     /// </summary>
-    public required JournalCheckpointLossDetection DetectedDuring { get; init; }
+    public JournalCheckpointLossDetection DetectedDuring { get; init; }
 
     /// <summary>
     ///     Which of the two situations this was, and therefore whether a journal size is
     ///     offered at all. MFTLib reports only causes it can detect from the journal itself.
     /// </summary>
-    public required JournalCheckpointLossCause Cause { get; init; }
+    public JournalCheckpointLossCause Cause { get; init; }
 
     /// <summary>
     ///     Where the drive's block left off, and so the point the journal would have had to
@@ -117,10 +117,10 @@ public sealed record JournalCheckpointLoss
     internal long NextUsn { get; init; }
 
     /// <summary>The journal's allocation unit, which sizes are rounded up to.</summary>
-    public required long AllocationDelta { get; init; }
+    public long AllocationDelta { get; init; }
 
     /// <summary>The journal's configured maximum size when the loss was detected.</summary>
-    public required long MaximumSize { get; init; }
+    public long MaximumSize { get; init; }
 
     /// <summary>
     ///     How far behind the journal the checkpoint had fallen, in bytes:
