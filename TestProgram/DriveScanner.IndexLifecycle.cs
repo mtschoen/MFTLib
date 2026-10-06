@@ -16,15 +16,16 @@ partial class DriveScanner
     {
         try
         {
-            if (verb.Text("--drive-scope") is { Length: 1 } letter)
+            if (verb.Text("--drive-scope") is { } letterText)
             {
-                await single(char.ToUpperInvariant(letter[0])).ConfigureAwait(false);
+                var letter = letterText[0];
+                await single(letter).ConfigureAwait(false);
                 _writeLine($"  {call} {letter}: done");
                 return;
             }
 
             var results = verb.Text("--drive-list") is { } letters
-                ? await list(letters.Split(',').Select(text => char.ToUpperInvariant(text[0])).ToArray()).ConfigureAwait(false)
+                ? await list(letters.Split(',').Select(text => text[0]).ToArray()).ConfigureAwait(false)
                 : await all().ConfigureAwait(false);
             results.ToList().ForEach(result => _writeLine($"  {call} {result.DriveLetter}: {result.Outcome} {result.Failure?.Message}"));
         }

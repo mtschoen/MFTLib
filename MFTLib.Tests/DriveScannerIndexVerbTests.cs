@@ -56,6 +56,18 @@ public class DriveScannerIndexVerbTests
         Assert.AreEqual(0, result, Joined(lines));
         StringAssert.Contains(Joined(lines), $"Query: name *.md (a glob with * or ?, else a substring), case sensitive True, under {docs}, directories False, size 1..100");
         Assert.IsTrue(lines.Contains("1 entries (limit 20)"), Joined(lines));
+
+        var exact = Run(Enumerate("search", "--exact", "--name", "readme.md", "--case-sensitive", "--under", docs, "--files",
+            "--min-size", "1", "--max-size", "100"), out var exactResult);
+        Assert.AreEqual(0, exactResult, Joined(exact));
+        StringAssert.Contains(Joined(exact), $"Query: name readme.md (a glob with * or ?, else a substring), case sensitive True, under {docs}, directories False, size 1..100");
+        Assert.IsTrue(exact.Contains("1 entries (limit 20)"), Joined(exact));
+
+        var emptyExact = Run(Enumerate("search", "--exact", "--name", "readme.md", "--directories", "--under", docs, "--min-size", "9999"), out _);
+        Assert.IsTrue(emptyExact.Contains("0 entries (limit 20)"), Joined(emptyExact));
+
+        var caseMismatch = Run(Enumerate("search", "--exact", "--name", "README.MD", "--case-sensitive"), out _);
+        Assert.IsTrue(caseMismatch.Contains("0 entries (limit 20)"), Joined(caseMismatch));
     }
 
     [TestMethod]
@@ -63,6 +75,7 @@ public class DriveScannerIndexVerbTests
     {
         Assert.IsTrue(Run(Enumerate("search", "--exact", "--name", "readme.md"), out _).Contains("2 entries (limit 20)"));
         Assert.IsTrue(Run(Enumerate("search", "--name", "readme", "--stream", "--limit", "1"), out _).Contains("1 entries streamed (limit 1)"));
+        Assert.IsTrue(Run(Enumerate("search", "--exact", "--name", "readme.md", "--stream", "--limit", "1"), out _).Contains("1 entries streamed (limit 1)"));
         Assert.IsTrue(Run(Enumerate("search", "--name", "readme"), out _).Contains("2 entries (limit 20)"));
     }
 
@@ -80,6 +93,14 @@ public class DriveScannerIndexVerbTests
         Assert.IsTrue(byKey.Any(line => line.StartsWith($"Start: {readme} [{key}", StringComparison.Ordinal)), Joined(byKey));
         Assert.AreEqual(5, fromRoot.Count(line => line.StartsWith("  ", StringComparison.Ordinal) && line.Contains(" [S:", StringComparison.Ordinal)), Joined(fromRoot));
         Assert.IsTrue(Run(Enumerate("tree", "--path", Path.Combine(_tree, "none")), out _).Contains("Nothing found at that path or key."));
+
+        SyntheticBlock.WriteCached(_cache, 'S', 1,
+            new SyntheticBlockOptions { ProducerKind = ProducerKind.Enumeration, RootRow = 0, CompletedUtc = DateTime.UtcNow },
+            [new SyntheticRow(0, _tree, 0) { IsDirectory = true }, new SyntheticRow(1, "a", 2) { IsDirectory = true }, new SyntheticRow(2, "b", 1) { IsDirectory = true }]);
+
+        var cyclic = Run(["tree", "S", "--source", "enumeration", "--root", _tree, "--cache-directory", _cache, "--cache-only", "--record-key", "S:1:Enumeration"], out var cyclicResult);
+        Assert.AreEqual(0, cyclicResult, Joined(cyclic));
+        Assert.AreEqual(1, cyclic.Count(line => line.StartsWith("  parent:", StringComparison.Ordinal)), Joined(cyclic));
     }
 
     [TestMethod]
@@ -121,10 +142,18 @@ public class DriveScannerIndexVerbTests
     {
         UsnJournalSettingsQuery._queryOverride = _ => new UsnJournalSettings { MaximumSize = 1000, AllocationDelta = 100 };
 
-        var lines = Run(Enumerate("journal"), out var result);
+        var lines = Run(["journal", "S"], out var result, scanner =>
+        {
+            scanner._isElevated = () => false;
+            scanner._getEnvironmentVariable = name => name == DriveScanner.UnattendedVariableName ? "1" : null;
+            scanner._resolveDrive = letter => new IndexedDrive(char.ToUpperInvariant(letter[0]), _directory, 4242);
+        });
 
         Assert.AreEqual(0, result, Joined(lines));
         Assert.IsTrue(lines.Contains("Journal S: maximum 1000, allocation delta 100"), Joined(lines));
+        Assert.IsFalse(lines.Any(line => line.StartsWith("Running unattended", StringComparison.Ordinal)), Joined(lines));
+        Assert.IsFalse(lines.Any(line => line.Contains("broker connected") || line.Contains("broker connecting")), Joined(lines));
+        Assert.IsFalse(lines.Any(line => line.StartsWith("  scan S", StringComparison.Ordinal)), Joined(lines));
     }
 
     [TestMethod]
@@ -250,6 +279,18 @@ public class DriveScannerIndexVerbTests
     [DataTestMethod]
     [DataRow(new[] { "search", "S", "--name" }, "--name needs a value.")]
     [DataRow(new[] { "search", "SS" }, "SS is not an option of an Index verb or a drive letter.")]
+    [DataRow(new[] { "rescan", "S", "--drive-scope", "TT" }, "--drive-scope needs a single drive letter.")]
+    [DataRow(new[] { "rescan", "S", "--drive-scope", "1" }, "--drive-scope needs a single drive letter.")]
+    [DataRow(new[] { "rescan", "S", "--drive-scope", "S", "--drive-list", "S" }, "--drive-scope and --drive-list cannot be used together.")]
+    [DataRow(new[] { "rescan", "S", "--drive-list", "ST" }, "--drive-list contains an invalid drive letter.")]
+    [DataRow(new[] { "rescan", "S", "--drive-list", "S,," }, "--drive-list contains an invalid drive letter.")]
+    [DataRow(new[] { "rescan", "S", "--drive-list", "S,S" }, "--drive-list contains duplicate drive letters.")]
+    [DataRow(new[] { "rescan", "S", "--drive-scope", "T" }, "--drive-scope T is not a configured drive.")]
+    [DataRow(new[] { "rescan", "S", "--drive-list", "T" }, "--drive-list contains unconfigured drive T.")]
+    [DataRow(new[] { "search", "S", "T", "--root", "dir" }, "--root supports only one drive.")]
+    [DataRow(new[] { "search", "S", "--maximum-size", "5000" }, "--maximum-size does not apply to search.")]
+    [DataRow(new[] { "search", "S", "--allocation-delta", "500" }, "--allocation-delta does not apply to search.")]
+    [DataRow(new[] { "elevation-status", "--clear" }, "--clear does not apply to elevation-status.")]
     public void Parse_Invalid_NamesTheProblem(string[] commandLine, string expected)
     {
         Assert.IsFalse(IndexVerbArguments.TryParse(commandLine, out _, out var error));

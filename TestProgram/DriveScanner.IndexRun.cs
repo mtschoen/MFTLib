@@ -41,9 +41,9 @@ partial class DriveScanner
 
     int RunIndexVerb(IndexVerbArguments verb, string[] commandLine)
     {
-        var launchesBroker = verb.Verb == "journal" && verb.Has("--maximum-size") ||
-                             verb.Verb is not ("cache" or "elevation-status") &&
-                             (verb.Text("--source") ?? "broker") == "broker";
+        var launchesBroker = verb.Verb == "journal"
+            ? verb.Has("--maximum-size")
+            : verb.Verb is not ("cache" or "elevation-status") && (verb.Text("--source") ?? "broker") == "broker";
         if (launchesBroker && !_isElevated())
         {
             // The broker raises a UAC prompt, so an attended run gets the same heads-up dialog scan-drive shows.
@@ -91,7 +91,8 @@ partial class DriveScanner
             throw new ArgumentException("Growing the journal needs exactly one drive letter; it never defaults to a drive.");
         }
 
-        var opened = await OpenIndexAsync(verb, CancellationToken.None, verb.Has("--maximum-size")).ConfigureAwait(false);
+        var isJournal = verb.Verb == "journal";
+        var opened = await OpenIndexAsync(verb, CancellationToken.None, queryOnly: isJournal).ConfigureAwait(false);
         await using var ownedIndex = opened.ConfigureAwait(false);
         var index = opened.Index;
         switch (verb.Verb)
@@ -132,7 +133,14 @@ partial class DriveScanner
             throw new ArgumentException("--source is broker, unavailable, or enumeration with --root DIRECTORY.");
         }
 
-        var session = source == "broker" ? CreateSession(verb) : null;
+        if (root is not null && verb.OpenedDrives.Count != 1)
+        {
+            throw new ArgumentException("--root supports only one drive.");
+        }
+
+        var session = !queryOnly && source == "broker" || verb.Verb == "journal" && verb.Has("--maximum-size")
+            ? CreateSession(verb)
+            : null;
         try
         {
             var scan = new BrokerScanOptions
@@ -146,7 +154,9 @@ partial class DriveScanner
                     ? verb.OpenedDrives.Select(letter => _resolveDrive(letter.ToString())).ToArray()
                     : [new IndexedDrive(verb.OpenedDrives[0], root, 1)],
                 ProducerPolicy = source == "enumeration" ? ProducerPolicy.Enumeration : ProducerPolicy.Mft,
-                MftSource = source == "unavailable" ? MftIndexSource.Unavailable("the sample scans nothing") : session?.CreateIndexSource(scan),
+                MftSource = source == "unavailable" || queryOnly && session is null
+                    ? MftIndexSource.Unavailable("the sample scans nothing")
+                    : session?.CreateIndexSource(scan),
                 NoCache = queryOnly || verb.Has("--no-cache"),
                 InitialOpenCacheOnly = queryOnly || verb.Has("--cache-only"),
                 CacheTag = verb.Text("--cache-tag") is { } tag ? ParseCacheTag(tag) : default,

@@ -20,6 +20,30 @@ internal sealed partial record IndexVerbArguments
         "--maximum-size", "--allocation-delta"
     ];
 
+    static readonly HashSet<string> CommonIndexOptions =
+    [
+        "--source", "--root", "--cache-only", "--no-cache", "--profile", "--keep-name", "--cache-tag",
+        "--cache-directory", "--diagnostics", "--connection-timeout"
+    ];
+
+    static readonly Dictionary<string, HashSet<string>> AllowedOptionsByVerb = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["search"] =
+        [
+            .. CommonIndexOptions, "--name", "--exact", "--case-sensitive", "--under", "--directories", "--files",
+            "--min-size", "--max-size", "--after", "--before", "--stream", "--limit"
+        ],
+        ["tree"] = [.. CommonIndexOptions, "--path", "--record-key", "--depth"],
+        ["open"] = [.. CommonIndexOptions, "--path", "--count"],
+        ["largest"] = [.. CommonIndexOptions, "--count", "--under"],
+        ["duplicate-names"] = [.. CommonIndexOptions, "--limit"],
+        ["rescan"] = [.. CommonIndexOptions, "--drive-scope", "--drive-list"],
+        ["watch"] = [.. CommonIndexOptions, "--drive-scope", "--drive-list", "--seconds", "--inspect-session"],
+        ["journal"] = [.. CommonIndexOptions, "--maximum-size", "--allocation-delta"],
+        ["cache"] = ["--cache-directory", "--cache-tag", "--ensure-created", "--clear"],
+        ["elevation-status"] = []
+    };
+
     internal static string Usage =>
         "Index verbs: " + string.Join(", ", Verbs) + " [drive ...] [options]" + Environment.NewLine +
         "  index options: --source broker|enumeration|unavailable --root DIR --cache-only --no-cache" + Environment.NewLine +

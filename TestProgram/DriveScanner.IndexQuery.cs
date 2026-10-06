@@ -50,20 +50,42 @@ partial class DriveScanner
             : null;
     }
 
+    const int MaximumPathDepth = 128;
+
     void Search(FileIndex index, IndexVerbArguments verb)
     {
-        if (verb.Has("--exact"))
-        {
-            Show(index.FindByName(verb.Require("--name"), CancellationToken.None), verb);
-            return;
-        }
-
         var query = new SearchQuery(verb.Text("--name"), verb.Has("--case-sensitive"), UnderOf(index, verb),
             verb.Has("--directories") ? true : verb.Has("--files") ? false : null,
             verb.Number("--min-size"), verb.Number("--max-size"), verb.Date("--after"), verb.Date("--before"));
         _writeLine($"Query: name {query.NamePattern} (a glob with * or ?, else a substring), case sensitive " +
                    $"{query.CaseSensitive}, under {query.Under?.Path}, directories {query.Directories}, size " +
                    $"{query.MinimumSize}..{query.MaximumSize}, modified {query.ModifiedAfter:u}..{query.ModifiedBefore:u}");
+
+        if (verb.Has("--exact"))
+        {
+            var exactName = verb.Require("--name");
+            if (verb.Has("--stream"))
+            {
+                using var enumerator = index.Enumerate(query, CancellationToken.None)
+                    .Where(entry => MatchesExact(entry, query, exactName))
+                    .GetEnumerator();
+                var shownExact = 0;
+                while (shownExact < Limit(verb) && enumerator.MoveNext())
+                {
+                    shownExact++;
+                    _writeLine($"  {Describe(enumerator.Current)}");
+                }
+
+                _writeLine($"{shownExact} entries streamed (limit {Limit(verb)})");
+                return;
+            }
+
+            var candidates = index.FindByName(exactName, CancellationToken.None)
+                .Where(entry => MatchesExact(entry, query, exactName));
+            Show(candidates, verb);
+            return;
+        }
+
         if (!verb.Has("--stream"))
         {
             Show(index.Search(query, CancellationToken.None), verb);
@@ -71,15 +93,83 @@ partial class DriveScanner
         }
 
         // Streaming stops at the limit; leaving the scope disposes the enumerator with matches unread.
-        using var enumerator = index.Enumerate(query, CancellationToken.None).GetEnumerator();
+        using var enumeratorDefault = index.Enumerate(query, CancellationToken.None).GetEnumerator();
         var shown = 0;
-        while (shown < Limit(verb) && enumerator.MoveNext())
+        while (shown < Limit(verb) && enumeratorDefault.MoveNext())
         {
             shown++;
-            _writeLine($"  {Describe(enumerator.Current)}");
+            _writeLine($"  {Describe(enumeratorDefault.Current)}");
         }
 
         _writeLine($"{shown} entries streamed (limit {Limit(verb)})");
+    }
+
+    static bool MatchesExact(FileEntry entry, SearchQuery query, string exactName)
+    {
+        var comparison = query.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        if (!string.Equals(entry.Name, exactName, comparison))
+        {
+            return false;
+        }
+
+        if (query.Directories is { } directories && entry.IsDirectory != directories)
+        {
+            return false;
+        }
+
+        if (query.Under is { } under && !IsUnder(entry, under))
+        {
+            return false;
+        }
+
+        if (query.MinimumSize is { } minimumSize && (!entry.SizeKnown || entry.Size < minimumSize))
+        {
+            return false;
+        }
+
+        if (query.MaximumSize is { } maximumSize && (!entry.SizeKnown || entry.Size > maximumSize))
+        {
+            return false;
+        }
+
+        if (query.ModifiedAfter is { } after && entry.Modified < after)
+        {
+            return false;
+        }
+
+        if (query.ModifiedBefore is { } before && entry.Modified > before)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    static bool IsUnder(FileEntry candidate, FileEntry ancestor)
+    {
+        if (candidate.Id.DriveLetter != ancestor.Id.DriveLetter)
+        {
+            return false;
+        }
+
+        var visited = new HashSet<IndexRecordKey> { candidate.Id };
+        var hops = 0;
+        for (var current = candidate; hops < MaximumPathDepth; hops++)
+        {
+            if (current.Id == ancestor.Id)
+            {
+                return true;
+            }
+
+            if (current.Parent is not { } parent || !visited.Add(parent.Id))
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        return false;
     }
 
     void ShowTree(FileIndex index, IndexVerbArguments verb)
@@ -105,22 +195,71 @@ partial class DriveScanner
         }
 
         _writeLine($"Start: {Describe(entryAtStart)}");
-        for (var parent = entryAtStart.Parent; parent is { } ancestor; parent = ancestor.Parent)
+        var visitedAncestors = new HashSet<IndexRecordKey> { entryAtStart.Id };
+        var hops = 0;
+        for (var parent = entryAtStart.Parent;
+             parent is { } ancestor && hops < MaximumPathDepth && visitedAncestors.Add(ancestor.Id);
+             parent = ancestor.Parent, hops++)
         {
             _writeLine($"  parent: {Describe(ancestor)}");
         }
 
-        PrintChildren(entryAtStart, (int)(verb.Number("--depth") ?? 1), 1);
+        var depth = (int)(verb.Number("--depth") ?? 1);
+        var directChildren = entryAtStart.Children(CancellationToken.None);
+        if (depth <= 1)
+        {
+            foreach (var child in directChildren)
+            {
+                _writeLine($"  {Describe(child)}");
+            }
+
+            return;
+        }
+
+        var subtree = index.Search(new SearchQuery(null, Under: entryAtStart), CancellationToken.None);
+        Dictionary<IndexRecordKey, List<FileEntry>> groupedByParent = [];
+        foreach (var entry in subtree)
+        {
+            if (entry.Parent is { } parentEntry)
+            {
+                if (!groupedByParent.TryGetValue(parentEntry.Id, out var list))
+                {
+                    list = [];
+                    groupedByParent[parentEntry.Id] = list;
+                }
+
+                list.Add(entry);
+            }
+        }
+
+        var visited = new HashSet<IndexRecordKey> { entryAtStart.Id };
+        foreach (var child in directChildren)
+        {
+            _writeLine($"  {Describe(child)}");
+            if (child.IsDirectory)
+            {
+                PrintSubtree(child, depth, 1, groupedByParent, visited);
+            }
+        }
     }
 
-    void PrintChildren(FileEntry parent, int depth, int level)
+    void PrintSubtree(FileEntry parent, int maximumDepth, int currentLevel,
+        Dictionary<IndexRecordKey, List<FileEntry>> groupedByParent, HashSet<IndexRecordKey> visited)
     {
-        foreach (var child in parent.Children(CancellationToken.None))
+        if (currentLevel >= maximumDepth || !visited.Add(parent.Id))
         {
-            _writeLine($"{new string(' ', level * 2)}{Describe(child)}");
-            if (level < depth && child.IsDirectory)
+            return;
+        }
+
+        if (groupedByParent.TryGetValue(parent.Id, out var children))
+        {
+            foreach (var child in children)
             {
-                PrintChildren(child, depth, level + 1);
+                _writeLine($"{new string(' ', (currentLevel + 1) * 2)}{Describe(child)}");
+                if (child.IsDirectory)
+                {
+                    PrintSubtree(child, maximumDepth, currentLevel + 1, groupedByParent, visited);
+                }
             }
         }
     }
