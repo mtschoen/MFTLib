@@ -34,13 +34,13 @@ internal sealed class BrokerProgressAdapter(MftBlockProduceRequest request,
             return;
         }
 
-        request.Progress.Report(new IndexScanProgress
-        {
-            DriveLetter = request.DriveLetter,
-            Phase = sample.Phase == BrokerScanPhase.Parsing
+        request.Progress.Report(new IndexScanProgress(
+            request.DriveLetter,
+            sample.Phase == BrokerScanPhase.Parsing
                 ? IndexScanPhase.ParsingMft
                 : IndexScanPhase.Transferring,
-            RowsWritten = (uint)Math.Min(sample.RecordsProcessed, uint.MaxValue),
+            (uint)Math.Min(sample.RecordsProcessed, uint.MaxValue))
+        {
             TotalRows = sample.TotalRecords is { } total
                 ? (uint)Math.Min(total, uint.MaxValue)
                 : null

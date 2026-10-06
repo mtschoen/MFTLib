@@ -24,16 +24,8 @@ public class QueryContractTests
     [TestMethod]
     public void DriveStatus_DefaultsMatchThePublishedContract()
     {
-        var status = new DriveStatus
-        {
-            BlockSource = BlockSource.None,
-            DriveLetter = 'T',
-            State = DriveState.Ready,
-            LiveRowCount = 40,
-            ScanTimestamp = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
-            CompactionNeeded = false,
-            WatchSupported = false
-        };
+        var status = new DriveStatus('T', DriveState.Ready, BlockSource.None, 40, false,
+            new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc));
 
         Assert.AreEqual(0, status.AccessDeniedSubtreeCount);
         Assert.IsNull(status.WatchFailureMessage);

@@ -11,8 +11,19 @@ namespace MFTLib.Index;
 /// </summary>
 public sealed record IndexDriveOpened
 {
+    /// <summary>Creates a report that one drive has settled.</summary>
+    /// <param name="driveLetter">The settled drive, in upper case.</param>
+    /// <param name="settledCount">The settle order of this drive, counted from 1.</param>
+    /// <param name="totalDriveCount">How many drives the open was configured with.</param>
+    internal IndexDriveOpened(char driveLetter, int settledCount, int totalDriveCount)
+    {
+        DriveLetter = driveLetter;
+        SettledCount = settledCount;
+        Total = totalDriveCount;
+    }
+
     /// <summary>The settled drive, in upper case, so it matches <see cref="DriveStatus.DriveLetter" /> of a drive configured with an upper-case letter.</summary>
-    public required char DriveLetter { get; init; }
+    public char DriveLetter { get; init; }
 
     /// <summary>
     ///     This drive was the <see cref="SettledCount" />-th of the open's drives to settle, counted
@@ -20,8 +31,8 @@ public sealed record IndexDriveOpened
     ///     and for drives with a block it is also block ordinal order. It is not the drive's
     ///     position in <see cref="FileIndexOptions.Drives" />.
     /// </summary>
-    public required int SettledCount { get; init; }
+    public int SettledCount { get; init; }
 
     /// <summary>How many drives this open was configured with.</summary>
-    public required int Total { get; init; }
+    public int Total { get; init; }
 }

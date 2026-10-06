@@ -46,11 +46,8 @@ public sealed partial class FileIndex
     {
         try
         {
-            _options.Progress?.Report(new IndexScanProgress
+            _options.Progress?.Report(new IndexScanProgress(driveLetter, IndexScanPhase.Finished, rowsWritten)
             {
-                DriveLetter = driveLetter,
-                Phase = IndexScanPhase.Finished,
-                RowsWritten = rowsWritten,
                 Outcome = outcome
             });
         }
