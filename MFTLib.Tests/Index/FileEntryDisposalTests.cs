@@ -66,7 +66,7 @@ public class FileEntryDisposalTests
         var text = _entry.ToString();
 
         StringAssert.Contains(text, "readme.md");
-        StringAssert.Contains(text, _entry.Id.ToString());
+        StringAssert.Contains(text, _entry.RecordKey.ToString());
     }
 
     [TestMethod]
@@ -89,7 +89,7 @@ public class FileEntryDisposalTests
             var entry = FileEntry.Create(snapshot, 0, deepest);
             Assert.ThrowsException<InvalidDataException>(() => entry.Path);
 
-            Assert.AreEqual($"deep.txt ({entry.Id})", entry.ToString());
+            Assert.AreEqual($"deep.txt ({entry.RecordKey})", entry.ToString());
             StringAssert.Contains(new SearchQuery("x", Under: entry).ToString(), "deep.txt");
         }
         finally
@@ -111,7 +111,7 @@ public class FileEntryDisposalTests
             var entry = FileEntry.Create(snapshot, 0, file);
             Assert.ThrowsException<InvalidOperationException>(() => entry.Path);
 
-            Assert.AreEqual($"rootless.txt ({entry.Id})", entry.ToString());
+            Assert.AreEqual($"rootless.txt ({entry.RecordKey})", entry.ToString());
         }
         finally
         {
@@ -158,12 +158,12 @@ public class FileEntryDisposalTests
 
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Name);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Size);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.SizeKnown);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Modified);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.IsSizeKnown);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.LastWriteTime);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Attributes);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.IsDirectory);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.IsDeleted);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Id);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.RecordKey);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Path);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Parent);
         Assert.ThrowsException<ObjectDisposedException>(() => entry.Children());

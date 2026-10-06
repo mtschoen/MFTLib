@@ -8,17 +8,17 @@ public sealed partial class FileIndex
     ///     down from that block's root row, one name per level. This is the inverse of
     ///     <see cref="FileEntry.Path" />: whatever that emits, this accepts.
     /// </summary>
-    /// <param name="nativePath">The path to resolve, in the form <see cref="FileEntry.Path" /> emits.</param>
+    /// <param name="path">The path to resolve, in the form <see cref="FileEntry.Path" /> emits.</param>
     /// <param name="cancellationToken">
     ///     Stops the walk. Observed before the first row is read and at least every 4096 rows
     ///     thereafter, so a cancelled query leaves the mapping promptly.
     /// </param>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
-    public FileEntry? Find(string nativePath, CancellationToken cancellationToken = default)
+    public FileEntry? Find(string path, CancellationToken cancellationToken = default)
     {
         using var query = BeginQuery(cancellationToken);
-        return LookupEngine.Find(query.Snapshot, nativePath, query.CancellationToken);
+        return LookupEngine.Find(query.Snapshot, path, query.CancellationToken);
     }
 
     /// <summary>
@@ -133,14 +133,14 @@ public sealed partial class FileIndex
     ///     The entry for the drive block's root row, which is the indexed root directory rather
     ///     than the volume root: a block indexed from a subdirectory roots there.
     /// </summary>
-    /// <param name="drive">The drive letter, as configured in <see cref="FileIndexOptions.Drives" />.</param>
+    /// <param name="driveLetter">The drive letter, as configured in <see cref="FileIndexOptions.Drives" />.</param>
     /// <param name="cancellationToken">Stops the lookup before it resolves the root row.</param>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
-    public FileEntry Root(char drive, CancellationToken cancellationToken = default)
+    public FileEntry Root(char driveLetter, CancellationToken cancellationToken = default)
     {
         using var query = BeginQuery(cancellationToken);
-        return LookupEngine.Root(query.Snapshot, drive, query.CancellationToken);
+        return LookupEngine.Root(query.Snapshot, driveLetter, query.CancellationToken);
     }
 
     /// <summary>

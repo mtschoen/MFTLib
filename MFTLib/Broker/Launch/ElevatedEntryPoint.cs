@@ -9,23 +9,23 @@ namespace MFTLib;
 public static class ElevatedEntryPoint
 {
     /// <summary>
-    ///     Dispatch the <c>--broker</c> flag in <paramref name="args" />, if present, by running the
+    ///     Dispatch the <c>--broker</c> flag in <paramref name="arguments" />, if present, by running the
     ///     elevated broker. Returns <c>true</c> if the broker was handled, <c>false</c> for a normal
     ///     launch. The caller passes the full process arguments; a leading executable path (as in
     ///     <see cref="System.Environment.GetCommandLineArgs" />) is simply skipped because it matches
     ///     no flag.
     /// </summary>
-    /// <param name="args">The process arguments.</param>
+    /// <param name="arguments">The process arguments.</param>
     /// <returns><c>true</c> when the process was relaunched as the broker and has served its session.</returns>
-    public static bool TryHandle(string[] args)
+    public static bool TryHandle(string[] arguments)
     {
-        return TryHandle(args, new DefaultElevatedEntryRunner());
+        return TryHandle(arguments, new DefaultElevatedEntryRunner());
     }
 
     // The same dispatch with the runner chosen by the caller, so tests substitute it.
-    internal static bool TryHandle(string[] args, IElevatedEntryRunner runner)
+    internal static bool TryHandle(string[] arguments, IElevatedEntryRunner runner)
     {
-        foreach (var arg in args)
+        foreach (var arg in arguments)
         {
             switch (arg)
             {
@@ -38,14 +38,14 @@ public static class ElevatedEntryPoint
                     // --diag-include-self the opt-in to keep the logs' own journal
                     // entries, for the same reason. Without --diag they are meaningless:
                     // diagnostics are off, so nothing is filtered anyway.
-                    if (HasFlag(args, "--diag"))
+                    if (HasFlag(arguments, "--diag"))
                     {
                         BrokerDiagnostics.Enable("broker");
-                        BrokerDiagnostics.ClientLogPath = FindOption(args, "--diag-log");
-                        BrokerDiagnostics.IncludeSelfEntries = HasFlag(args, "--diag-include-self");
+                        BrokerDiagnostics.ClientLogPath = FindOption(arguments, "--diag-log");
+                        BrokerDiagnostics.IncludeSelfEntries = HasFlag(arguments, "--diag-include-self");
                     }
 
-                    runner.RunBroker(FindOption(args, "--pipe"));
+                    runner.RunBroker(FindOption(arguments, "--pipe"));
                     return true;
             }
         }
@@ -54,14 +54,14 @@ public static class ElevatedEntryPoint
     }
 
     // Return the value following the first occurrence of name, or null if absent / last.
-    static string? FindOption(string[] args, string name)
+    static string? FindOption(string[] arguments, string name)
     {
-        var index = Array.IndexOf(args, name);
-        return index >= 0 && index < args.Length - 1 ? args[index + 1] : null;
+        var index = Array.IndexOf(arguments, name);
+        return index >= 0 && index < arguments.Length - 1 ? arguments[index + 1] : null;
     }
 
-    static bool HasFlag(string[] args, string name)
+    static bool HasFlag(string[] arguments, string name)
     {
-        return Array.IndexOf(args, name) >= 0;
+        return Array.IndexOf(arguments, name) >= 0;
     }
 }

@@ -31,8 +31,8 @@ public class FileIndexWatchRescanCommitTests
         var fault = harness.Faults.Single();
         Assert.AreEqual(WatchFaultKind.RescanRestart, fault.Kind);
         Assert.AreSame(failure, fault.Exception.InnerException);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').WatchCatchUpState);
         var stopped = await harness.Index.StopWatchingAsync(Token);
         Assert.AreSame(fault.Exception, stopped.Single(result => result.DriveLetter == 'T').Failure);
     }
@@ -127,7 +127,7 @@ public class FileIndexWatchRescanCommitTests
         StringAssert.Contains(fault.Exception.Message, "rescan replaced");
         StringAssert.Contains(fault.Exception.Message, "watch could not be started");
         Assert.AreEqual(fault.Exception.Message, harness.DriveFor('T').WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUpState);
         Assert.AreEqual(0, harness.RecoveryCount('T'));
         Assert.AreEqual(2, harness.ProductionCount('T'));
         var stopped = await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
@@ -174,7 +174,7 @@ public class FileIndexWatchRescanCommitTests
 
         await harness.WaitForRecoveryAsync('T');
         Assert.AreEqual(scanFails ? 3 : 2, harness.ProductionCount('T'));
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
         Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
         await harness.Index.StopWatchingAsync('T', Token);
     }

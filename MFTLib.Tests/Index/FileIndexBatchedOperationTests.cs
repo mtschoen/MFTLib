@@ -55,7 +55,7 @@ public class FileIndexBatchedOperationTests
         Assert.AreSame(failure, results[1].Failure);
         Assert.AreEqual(DriveOperationOutcome.NotApplicable, results[2].Outcome);
         Assert.IsNull(results[2].Failure);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
         Assert.AreEqual(0, harness.Source.TargetsFor('V').Count, "a drive with no block never reaches the source");
         Assert.AreEqual(0, harness.Faults.Count, "a failed source start raises no WatchFaulted");
     }
@@ -83,7 +83,7 @@ public class FileIndexBatchedOperationTests
 
         Assert.AreEqual(1, harness.Source.TargetsFor('U').Count, "U's start reached the source and was cancelled there");
         Assert.AreEqual(0, harness.Source.Watches.Count, "no handle was published");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').WatchCatchUp,
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').WatchCatchUpState,
             "a start cancelled in flight leaves the drive with no running watch");
     }
 
@@ -238,7 +238,7 @@ public class FileIndexBatchedOperationTests
         Assert.AreSame(fault.Exception, results[0].Failure, "stop carries the fault that had ended T's watch");
         Assert.AreEqual(DriveOperationOutcome.Succeeded, results[1].Outcome);
         Assert.AreEqual(DriveOperationOutcome.NotApplicable, results[2].Outcome, "V was never watching");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUpState);
     }
 
     [TestMethod]
@@ -283,7 +283,7 @@ public class FileIndexBatchedOperationTests
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
 
         Assert.IsFalse(await waiter.WaitAsync(HangGuard), "the waiter's continuation ran on the settling stack");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').WatchCatchUpState);
         return;
 
         async Task<bool> WaitThenStopOtherDriveAsync(FileIndex index)

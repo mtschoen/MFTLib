@@ -28,7 +28,7 @@
       delegate, the watch source and drive watch interfaces and their records are internal;
       only MFTLib implements them, and tests build sources through `MFTLibTestExtensions`.
     - **Watch state events**: `FileIndex.WatchStateChanged` reports every change of a drive's
-      derived `WatchCatchUp` with a per-drive `WatchStateVersion`, noted by one helper inside the
+      derived `WatchCatchUpState` with a per-drive `WatchStateVersion`, noted by one helper inside the
       state-lock section that made the change and delivered with neither `_stateLock` nor a write
       gate held, one drive at a time in version order, before the `WatchFaulted` of the fault
       that caused it. Handlers follow the `Changed`/`WatchFaulted` reentrancy rules. The full

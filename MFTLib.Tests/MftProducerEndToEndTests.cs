@@ -40,12 +40,12 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(24u, index.HeaderOf('C').RowCount);
         Assert.AreEqual(_rootDirectory, index.Root('C').Path);
         var notes = index.Find(At("documents", "notes.txt"))!.Value;
-        Assert.AreEqual(20UL, notes.Id.RecordNumber);
+        Assert.AreEqual(20UL, notes.RecordKey.RecordNumber);
         Assert.AreEqual(4096L, notes.Size);
-        Assert.IsTrue(notes.SizeKnown);
-        Assert.AreEqual(Modified, notes.Modified);
+        Assert.IsTrue(notes.IsSizeKnown);
+        Assert.AreEqual(Modified, notes.LastWriteTime);
         CollectionAssert.AreEquivalent(new ulong[] { 20, 22 }, index.Search(new SearchQuery("notes.txt"))
-            .Select(entry => entry.Id.RecordNumber).ToArray());
+            .Select(entry => entry.RecordKey.RecordNumber).ToArray());
         var duplicates = index.DuplicateNames().Single();
         Assert.AreEqual("notes.txt", duplicates.Name);
         Assert.AreEqual(2, duplicates.Entries.Count);
@@ -60,12 +60,12 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
 
         CollectionAssert.AreEqual(new[] { FileChangeKind.Created, FileChangeKind.Deleted, FileChangeKind.Renamed },
             changes.Select(change => change.Kind).ToArray());
-        Assert.AreEqual(30UL, index.Find(At("documents", "created.txt"))!.Value.Id.RecordNumber);
+        Assert.AreEqual(30UL, index.Find(At("documents", "created.txt"))!.Value.RecordKey.RecordNumber);
         Assert.IsTrue(deleted.IsDeleted);
         Assert.IsTrue(block.Rows[21].IsDeleted);
         Assert.IsNull(index.Find(At("documents", "obsolete.txt")));
         Assert.AreEqual("published.txt", renamed.Name);
-        Assert.AreEqual(23UL, index.Find(At("documents", "published.txt"))!.Value.Id.RecordNumber);
+        Assert.AreEqual(23UL, index.Find(At("documents", "published.txt"))!.Value.RecordKey.RecordNumber);
         Assert.IsNull(index.Find(At("documents", "draft.txt")));
         Assert.AreEqual(AdvancedCursor.JournalId, block.Header.UsnJournalId);
         Assert.AreEqual(AdvancedCursor.NextUsn, block.Header.UsnNextUsn);
@@ -167,14 +167,14 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreNotSame(previousBlock, replacementBlock);
         Assert.AreEqual(RearmedCursor.NextUsn, replacementBlock.Header.UsnNextUsn);
-        Assert.AreEqual(40UL, index.Find(At("replacement.txt"))!.Value.Id.RecordNumber);
+        Assert.AreEqual(40UL, index.Find(At("replacement.txt"))!.Value.RecordKey.RecordNumber);
         Assert.IsNull(index.Find(At("documents", "notes.txt")));
         Assert.AreEqual(2, watchSource.Starts.Count);
         Assert.AreEqual(new ScriptedWatchStart('C', RearmedCursor.ToSynthetic()), watchSource.Starts[1]);
         Assert.AreEqual(Path.Combine(_rootDirectory, "documents", "notes.txt"), previous.Path);
         Assert.AreEqual("notes.txt", previous.Name);
         Assert.AreEqual(4096L, previous.Size);
-        Assert.AreEqual(Modified, previous.Modified);
+        Assert.AreEqual(Modified, previous.LastWriteTime);
         Assert.IsFalse(previous.IsDeleted);
     }
 

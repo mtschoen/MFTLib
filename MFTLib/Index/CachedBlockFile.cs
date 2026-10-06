@@ -22,7 +22,7 @@ public sealed record CachedBlockFile
         VolumeSerial = volumeSerial;
         Path = path;
         SizeBytes = sizeBytes;
-        LastWriteTimeUtc = lastWriteTimeUtc;
+        LastWriteTime = lastWriteTimeUtc;
     }
 
     /// <summary>The drive this block belongs to, parsed from the file name as an uppercase ASCII letter.</summary>
@@ -37,6 +37,6 @@ public sealed record CachedBlockFile
     /// <summary>The on-disk length at enumeration time, which a concurrent writer may since have changed.</summary>
     public long SizeBytes { get; init; }
 
-    /// <summary>The file's last-write time in UTC.</summary>
-    public DateTime LastWriteTimeUtc { get; init; }
+    /// <summary>The file's last-write time, always in UTC.</summary>
+    public DateTime LastWriteTime { get; init; }
 }

@@ -58,7 +58,7 @@ public class LookupEngineTests
 
         Assert.IsTrue(roundTripped.HasValue);
         Assert.AreEqual(report.Path, roundTripped.Value.Path);
-        Assert.AreEqual(report.Id, roundTripped.Value.Id);
+        Assert.AreEqual(report.RecordKey, roundTripped.Value.RecordKey);
     }
 
     [TestMethod]
@@ -101,7 +101,7 @@ public class LookupEngineTests
     {
         var results = SearchEngine.Search(_snapshot, new SearchQuery("readme.md", NameMatchMode.Exact));
         Assert.AreEqual(2, results.Count);
-        CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, results.Select(entry => entry.Id.DriveLetter).ToArray());
+        CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, results.Select(entry => entry.RecordKey.DriveLetter).ToArray());
     }
 
     [TestMethod]
@@ -259,10 +259,10 @@ public class LookupEngineTests
             Assert.AreEqual(5, partitioned.Count);
             CollectionAssert.AreEqual(
                 new[] { ('T', 100u), ('T', 16000u), ('T', 33000u), ('U', 42u), ('U', 20000u) },
-                partitioned.Select(entry => (entry.Id.DriveLetter, entry.RowIndex)).ToArray());
+                partitioned.Select(entry => (entry.RecordKey.DriveLetter, entry.RowIndex)).ToArray());
             CollectionAssert.AreEqual(
-                reference.Select(entry => (entry.Id.DriveLetter, entry.RowIndex)).ToArray(),
-                partitioned.Select(entry => (entry.Id.DriveLetter, entry.RowIndex)).ToArray());
+                reference.Select(entry => (entry.RecordKey.DriveLetter, entry.RowIndex)).ToArray(),
+                partitioned.Select(entry => (entry.RecordKey.DriveLetter, entry.RowIndex)).ToArray());
         }
         finally
         {

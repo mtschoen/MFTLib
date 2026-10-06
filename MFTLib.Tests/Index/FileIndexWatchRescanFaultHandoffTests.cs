@@ -165,7 +165,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         }
 
         Assert.AreEqual(1, handle.DisposeCount);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, index.Drives.Single().WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, index.Drives.Single().WatchCatchUpState);
         await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(
             () => index.StopWatchingAsync('T', Token));
     }
@@ -223,7 +223,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         index.WatchFaulted += _ => HoldSynchronously(faultHandler);
         handle.FailDrive(new IOException("watch failed during production"));
         await faultHandler.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
-        Assert.AreEqual(WatchCatchUpState.Recovering, index.Drives.Single().WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Recovering, index.Drives.Single().WatchCatchUpState);
         Assert.IsTrue(index.TryGetRecoveryCompletionForTest('T', out var recovery));
         var publishing = harness.TrackGate();
         index.PublishInsideWriteGateForTest = _ => publishing.MarkEntered();
@@ -236,7 +236,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         Assert.AreNotSame(original, index.Root('T').DriveBlock);
         Assert.AreEqual(0, handle.DisposeCount, "the fault handler still holds the old pump");
         Assert.IsFalse(rescan.IsCompleted);
-        Assert.AreEqual(WatchCatchUpState.Faulted, index.Drives.Single().WatchCatchUp,
+        Assert.AreEqual(WatchCatchUpState.Faulted, index.Drives.Single().WatchCatchUpState,
             "a recovery for the replaced block cannot remain published during the drain");
         Assert.IsFalse(index.TryGetRecoveryCompletionForTest('T', out _));
         Assert.IsFalse(recovery.IsCompleted, "the superseded ticket still has to finish its own teardown");
@@ -244,7 +244,7 @@ public class FileIndexWatchRescanFaultHandoffTests
         await rescan.WaitAsync(ScriptedWatchSource.HangGuard);
         await recovery.WaitAsync(ScriptedWatchSource.HangGuard);
         Assert.AreEqual(2, harness.ProductionCount('T'), "the stale recovery never scans the replacement");
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, index.Drives.Single().WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, index.Drives.Single().WatchCatchUpState);
         await index.StopWatchingAsync('T', Token);
     }
 

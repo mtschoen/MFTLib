@@ -123,7 +123,7 @@ public class ConsumerJournalIsolationTests
             status = index.Drives.Single();
             Assert.IsNotNull(status.WatchFailureMessage);
             StringAssert.Contains(status.WatchFailureMessage, "RescanAsync");
-            Assert.AreEqual(WatchCatchUpState.Faulted, status.WatchCatchUp);
+            Assert.AreEqual(WatchCatchUpState.Faulted, status.WatchCatchUpState);
         }
     }
 
@@ -141,7 +141,7 @@ public class ConsumerJournalIsolationTests
         Assert.IsNull(index.Drives.Single().CheckpointLoss);
         await index.StartWatchingAsync('T', Token);
         Assert.AreEqual('T', source.Starts.Single().DriveLetter);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, index.Drives.Single().WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, index.Drives.Single().WatchCatchUpState);
         Assert.IsNull(index.Drives.Single().WatchFailureMessage);
         await index.StopWatchingAsync('T', Token);
     }
@@ -175,7 +175,7 @@ public class ConsumerJournalIsolationTests
         await announced.Task.WaitAsync(ScriptedWatchSource.HangGuard);
         var status = index.Drives.Single();
         Assert.AreEqual(1, _productions);
-        Assert.AreEqual(WatchCatchUpState.Recovering, status.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Recovering, status.WatchCatchUpState);
         Assert.IsNotNull(status.WatchFailureMessage);
         if (observation == 0)
         {

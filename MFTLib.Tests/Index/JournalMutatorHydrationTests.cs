@@ -26,7 +26,7 @@ public class JournalMutatorHydrationTests
 
         Assert.AreEqual(FileChangeKind.Modified, change.Kind);
         Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "documents", "source.cs"), change.Path);
-        Assert.IsTrue(change.Entry.SizeKnown == false);
+        Assert.IsTrue(change.Entry.IsSizeKnown == false);
         Assert.AreEqual((ushort)3, fixture.Block.SequenceNumbers[20]);
     }
 

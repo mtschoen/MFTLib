@@ -50,7 +50,7 @@ public partial class FileIndexCatchUpLossTests
             if (fault.Kind == WatchFaultKind.CatchUpLost)
             {
                 retiredAtFirstLoss = oldHandle.DisposeCount == 1;
-                stateSeenByHandler = index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUp;
+                stateSeenByHandler = index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUpState;
             }
         };
         var producedBefore = harness.ProductionCount('T');
@@ -75,7 +75,7 @@ public partial class FileIndexCatchUpLossTests
         var drive = harness.DriveFor('T');
         Assert.AreEqual(0, drive.ConsecutiveLostCatchUps);
         Assert.AreEqual(WatchDeduplicationTestSupport.StandardCatchUpLoss('T'), drive.CheckpointLoss, "the retry keeps the report the loss produced");
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.WatchCatchUpState);
         Assert.AreSame(harness.BlockFor('T'), index.Root('T').DriveBlock.Block, "the second block is published");
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9500), harness.Source.TargetsFor('T')[^1],
             "the watch starts from the second block's cursor");
@@ -105,7 +105,7 @@ public partial class FileIndexCatchUpLossTests
             "the drive keeps its third block, queryable");
         var drive = harness.DriveFor('T');
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUpState);
         Assert.AreEqual(thrown.Message, drive.WatchFailureMessage);
         StringAssert.Contains(drive.WatchFailureMessage, "T");
         StringAssert.Contains(drive.WatchFailureMessage, "3");
@@ -158,7 +158,7 @@ public partial class FileIndexCatchUpLossTests
         var drive = harness.DriveFor('T');
         Assert.AreEqual(0, drive.ConsecutiveLostCatchUps);
         Assert.IsNull(drive.WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUpState);
         await harness.Index.StartWatchingAsync('T', Token);
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the unresumable mark is cleared");
     }
@@ -270,11 +270,11 @@ public partial class FileIndexCatchUpLossTests
         var driveT = harness.DriveFor('T');
         var driveU = harness.DriveFor('U');
         Assert.AreEqual(3, driveT.ConsecutiveLostCatchUps);
-        Assert.AreEqual(WatchCatchUpState.Faulted, driveT.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Faulted, driveT.WatchCatchUpState);
         Assert.AreEqual(DriveState.Ready, driveU.State);
         Assert.AreEqual(0, driveU.ConsecutiveLostCatchUps);
         Assert.IsNull(driveU.WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, driveU.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, driveU.WatchCatchUpState);
     }
 
     [TestMethod]
@@ -317,7 +317,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the lost block's cursor is never started");
         var drive = harness.DriveFor('T');
         Assert.AreEqual(1, drive.ConsecutiveLostCatchUps);
-        Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Faulted, drive.WatchCatchUpState);
         StringAssert.Contains(drive.WatchFailureMessage, "RescanAsync");
         Assert.AreEqual(WatchDeduplicationTestSupport.StandardCatchUpLoss('T'), drive.CheckpointLoss);
     }

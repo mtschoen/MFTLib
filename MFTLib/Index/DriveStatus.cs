@@ -152,7 +152,7 @@ public sealed record DriveStatus
     ///     running after a <see cref="WatchFaultKind.Drive" /> or <see cref="WatchFaultKind.Apply" />
     ///     fault, or a scan of a watched drive retries after a lost catch-up.
     /// </summary>
-    public WatchCatchUpState WatchCatchUp { get; init; }
+    public WatchCatchUpState WatchCatchUpState { get; init; }
 
     /// <summary>
     ///     True while this drive's watch is requested: from a
@@ -167,13 +167,13 @@ public sealed record DriveStatus
     public bool WatchRequested { get; init; }
 
     /// <summary>
-    ///     How many times this drive's <see cref="WatchCatchUp" /> has changed since the index
+    ///     How many times this drive's <see cref="WatchCatchUpState" /> has changed since the index
     ///     opened: zero while it has never changed (a cold open whose scans reach the catch-up-loss
     ///     limit opens in <see cref="WatchCatchUpState.Faulted" /> with version 1), and one more
     ///     with every change, each of which <see cref="FileIndex.WatchStateChanged" /> delivers with
-    ///     this same number. Read together with <see cref="WatchCatchUp" /> from one
+    ///     this same number. Read together with <see cref="WatchCatchUpState" /> from one
     ///     <see cref="FileIndex.Drives" /> snapshot, it seeds a subscriber that joins late: an event
-    ///     whose <see cref="DriveWatchState.Version" /> is not larger than the one already applied
+    ///     whose <see cref="DriveWatchState.WatchStateVersion" /> is not larger than the one already applied
     ///     for the drive is older news and is dropped. Versions of different drives are
     ///     independent.
     /// </summary>

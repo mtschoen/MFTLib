@@ -54,7 +54,7 @@ public class CacheDirectoryEnumerationTests
         Assert.AreEqual(0x0BADF00Du, cached[0].VolumeSerial);
         Assert.AreEqual(first, cached[0].Path);
         Assert.AreEqual(new FileInfo(first).Length, cached[0].SizeBytes);
-        Assert.AreEqual(File.GetLastWriteTimeUtc(first), cached[0].LastWriteTimeUtc);
+        Assert.AreEqual(File.GetLastWriteTimeUtc(first), cached[0].LastWriteTime);
         Assert.AreEqual('D', cached[1].DriveLetter);
         Assert.AreEqual(0x12345678u, cached[1].VolumeSerial);
         Assert.AreEqual(second, cached[1].Path);

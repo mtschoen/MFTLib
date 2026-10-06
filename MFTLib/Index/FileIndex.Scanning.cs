@@ -39,7 +39,7 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Settles one drive, then reports its settled state to
     ///     <see cref="FileIndexOptions.OpenProgress" /> synchronously on the calling thread with no
-    ///     lock held. The drive's <see cref="IndexDriveOpened.SettledCount" /> was claimed under
+    ///     lock held. The drive's <see cref="IndexDriveOpened.SettledDriveCount" /> was claimed under
     ///     <see cref="_stateLock" /> when its final state was recorded, so a callback that is slow
     ///     or blocked holds up no other drive, and reports may overlap and arrive out of count order.
     /// </summary>

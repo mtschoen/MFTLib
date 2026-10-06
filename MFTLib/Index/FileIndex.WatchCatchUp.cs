@@ -3,7 +3,7 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     The drive's <see cref="DriveStatus.WatchCatchUp" />, from its watch records:
+    ///     The drive's <see cref="DriveStatus.WatchCatchUpState" />, from its watch records:
     ///     <see cref="WatchCatchUpState.Recovering" /> while a recovery of the drive is queued or
     ///     running or a scan of the watched drive retries after a lost catch-up, the current
     ///     instance's slot while it runs,

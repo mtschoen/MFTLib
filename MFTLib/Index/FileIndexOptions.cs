@@ -75,7 +75,7 @@ public sealed record FileIndexOptions
     ///     cancelled does not settle and reports nothing, so a cancelled or failed open may have
     ///     reported only some of the configured drives. Drives settle concurrently and no lock is held while a handler runs,
     ///     so reports can overlap and can arrive out of order; a handler that blocks holds up no
-    ///     other drive. <see cref="IndexDriveOpened.SettledCount" /> gives each report's place in
+    ///     other drive. <see cref="IndexDriveOpened.SettledDriveCount" /> gives each report's place in
     ///     settle order, so keep the report with the largest count rather than the last one
     ///     received. A declined or failed drive still counts toward the total and still reports.
     ///     Null (the default) reports and allocates nothing. Only the initial open reports;

@@ -306,7 +306,7 @@ public class ScriptedWatchSourceTests
 
         if (closeMode == "open")
         {
-            var queued = watch.QueueBatch([entry], cursor);
+            var queued = watch.QueueBatchAsync([entry], cursor);
             Assert.IsFalse(queued.IsCompleted);
             return;
         }
@@ -318,7 +318,7 @@ public class ScriptedWatchSourceTests
         }
         else
         {
-            Assert.ThrowsException<InvalidOperationException>(() => watch.QueueBatch([entry], cursor));
+            Assert.ThrowsException<InvalidOperationException>(() => watch.QueueBatchAsync([entry], cursor));
             Assert.ThrowsException<InvalidOperationException>(() => watch.PublishBatchAsync([entry], cursor));
         }
     }
@@ -346,13 +346,13 @@ public class ScriptedWatchSourceTests
         Task unreadTask;
         if (unreadIsMarker)
         {
-            yieldedTask = watch.QueueBatch([batchEntry], batchCursor);
+            yieldedTask = watch.QueueBatchAsync([batchEntry], batchCursor);
             unreadTask = watch.QueueCaughtUp();
         }
         else
         {
             yieldedTask = watch.QueueCaughtUp();
-            unreadTask = watch.QueueBatch([batchEntry], batchCursor);
+            unreadTask = watch.QueueBatchAsync([batchEntry], batchCursor);
         }
 
         Assert.IsTrue(await enumerator.MoveNextAsync());
@@ -484,7 +484,7 @@ public class ScriptedWatchSourceTests
     {
         var entry = JournalEntries.CreateSynthetic(22, 260, "c.txt");
         var cursor = new SyntheticJournalCursor(7, 400);
-        Assert.ThrowsException<InvalidOperationException>(() => watch.QueueBatch([entry], cursor));
+        Assert.ThrowsException<InvalidOperationException>(() => watch.QueueBatchAsync([entry], cursor));
         Assert.ThrowsException<InvalidOperationException>(() => watch.PublishBatchAsync([entry], cursor));
         Assert.ThrowsException<InvalidOperationException>(() => watch.QueueCaughtUp());
         Assert.ThrowsException<InvalidOperationException>(() => watch.PublishCaughtUpAsync());

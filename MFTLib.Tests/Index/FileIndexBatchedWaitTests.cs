@@ -53,7 +53,7 @@ public class FileIndexBatchedWaitTests
 
         var results = await wait.WaitAsync(HangGuard);
         Assert.AreEqual(DriveOperationOutcome.Succeeded, results.Single().Outcome);
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUpState);
     }
 
     [TestMethod]
@@ -134,7 +134,7 @@ public class FileIndexBatchedWaitTests
 
         harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
 
         await harness.Source.WatchFor('U').Publish(new DriveCaughtUp());
         var results = await wait.WaitAsync(HangGuard);
@@ -198,8 +198,8 @@ public class FileIndexBatchedWaitTests
         await cancellation.CancelAsync().WaitAsync(HangGuard);
 
         await ThrowsAsync<OperationCanceledException>(() => wait.WaitAsync(HangGuard));
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp,
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState,
             "cancelling the wait leaves the drives' watches alone");
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').WatchCatchUpState);
     }
 }

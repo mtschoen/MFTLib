@@ -155,7 +155,7 @@ public class EnumerationProducerTests
         try
         {
             var entry = EnumerationLookupTestAccess.FindByPath(snapshot, Path.Combine(_treeRoot, "Pictures", "holiday.jpg"));
-            Assert.AreEqual(ProducerKind.Enumeration, entry!.Value.Id.ProducerKind);
+            Assert.AreEqual(ProducerKind.Enumeration, entry!.Value.RecordKey.ProducerKind);
         }
         finally
         {

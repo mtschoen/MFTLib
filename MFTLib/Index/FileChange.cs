@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 ///     produced this change, captured at the mutation like <see cref="Path" />: it does
 ///     not move when a later record in the same batch (including a coalesced close record)
 ///     restamps the row, and a delete's timestamp survives the tombstone, so it is the when of
-///     the change rather than the row's current <see cref="FileEntry.Modified" />.
+///     the change rather than the row's current <see cref="FileEntry.LastWriteTime" />.
 /// </summary>
 public sealed record FileChange
 {

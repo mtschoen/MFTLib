@@ -90,7 +90,7 @@ public partial class FileIndexCatchUpLossTests
         await rescan.WaitAsync(HangGuard);
         await start.WaitAsync(HangGuard);
         Assert.AreEqual(new IndexWatchTarget('T', 21, 7700), harness.Source.TargetsFor('T').Single());
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
     }
 
     [TestMethod]

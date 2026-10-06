@@ -322,7 +322,7 @@ untouched.
 The source captures the journal tip for the arm. Backlog batches between the persisted
 cursor and that tip are streamed and applied to the block in place, advancing the header's
 `USN next USN` and updating `LiveRowCount` and file rows under the drive's write gate. A
-`DriveCaughtUp` item transitions `DriveStatus.WatchCatchUp` from
+`DriveCaughtUp` item transitions `DriveStatus.WatchCatchUpState` from
 `WatchCatchUpState.CatchingUp` to `WatchCatchUpState.CaughtUp`. Live mutations continue on
 the same handle.
 
@@ -360,7 +360,7 @@ index's disposal token.
 
 Calling either wait form is optional. The index observes each handle's failure even when
 no caller waits; faults still reach `WatchFaulted`, `DriveStatus.WatchFailureMessage`, and
-`DriveStatus.WatchCatchUp`.
+`DriveStatus.WatchCatchUpState`.
 
 ## Sidecars
 

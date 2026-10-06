@@ -73,7 +73,7 @@ public partial class FileIndexPerDriveWatchTests
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "fresh.txt"));
 
         Assert.AreEqual(0, harness.Faults.Count);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
         Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
     }
 
@@ -90,7 +90,7 @@ public partial class FileIndexPerDriveWatchTests
         Assert.AreEqual(0, harness.Faults.Count, "a stopped watch's last error belongs to no current watch");
         var drive = harness.DriveFor('T');
         Assert.IsNull(drive.WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUpState);
         Assert.AreEqual(1, handle.DisposeCount);
     }
 
@@ -112,7 +112,7 @@ public partial class FileIndexPerDriveWatchTests
         var starts = harness.Source.TargetsFor('T');
         Assert.AreEqual(2, starts.Count, "cancellation after commit does not abandon the replacement watch");
         Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn), starts[1]);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
     }
 
     [TestMethod]
@@ -198,7 +198,7 @@ public partial class FileIndexPerDriveWatchTests
         held.Release();
         await start.WaitAsync(HangGuard);
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
         await harness.Index.StopWatchingAsync('T', Token);
     }
 
@@ -220,7 +220,7 @@ public partial class FileIndexPerDriveWatchTests
 
         CollectionAssert.AreEqual(new[] { new IndexWatchTarget('T', 13, 9000) }, harness.Source.Targets.ToArray());
         Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
         await harness.Index.StopWatchingAsync('T', Token);
     }
 
@@ -238,7 +238,7 @@ public partial class FileIndexPerDriveWatchTests
         producing.Release();
         await rescan.WaitAsync(HangGuard);
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUpState);
     }
 
     [TestMethod]
@@ -255,7 +255,7 @@ public partial class FileIndexPerDriveWatchTests
         Assert.AreEqual(2, starts.Count);
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), starts[1]);
         Assert.AreEqual(1, firstHandle.DisposeCount);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
     }
 
     [TestMethod]
@@ -333,9 +333,9 @@ public partial class FileIndexPerDriveWatchTests
         await disposalCancellation.CancelAsync();
 
         await ThrowsAsync<OperationCanceledException>(() => wait);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUpState);
     }
 
     [TestMethod]
@@ -361,7 +361,7 @@ public partial class FileIndexPerDriveWatchTests
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
 
         Assert.IsFalse(await waiter.WaitAsync(HangGuard), "the waiter's continuation ran on the settling stack");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').WatchCatchUpState);
         return;
 
         async Task<bool> WaitThenStopOtherDriveAsync(FileIndex index)

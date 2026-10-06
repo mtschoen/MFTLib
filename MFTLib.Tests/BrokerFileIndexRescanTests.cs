@@ -123,7 +123,7 @@ public sealed class BrokerFileIndexRescanTests
         var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<IOException>(() => index.StartWatchingAsync('T', token));
 
         Assert.AreSame(connectionFailure, thrown);
-        Assert.AreEqual(WatchCatchUpState.Faulted, index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Faulted, index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUpState);
         await index.StopWatchingAsync('T', token);
         await index.StartWatchingAsync('T', token);
         await index.RescanAsync('T', token);

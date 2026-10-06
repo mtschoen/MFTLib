@@ -49,7 +49,7 @@ MFTLibTestExtensions.ScriptedDriveWatch :: method public FailDrive(System.Except
 MFTLibTestExtensions.ScriptedDriveWatch :: method public LoseChannel(System.Exception exception) : void
 MFTLibTestExtensions.ScriptedDriveWatch :: method public PublishBatchAsync(System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task
 MFTLibTestExtensions.ScriptedDriveWatch :: method public PublishCaughtUpAsync() : System.Threading.Tasks.Task
-MFTLibTestExtensions.ScriptedDriveWatch :: method public QueueBatch(System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task
+MFTLibTestExtensions.ScriptedDriveWatch :: method public QueueBatchAsync(System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task
 MFTLibTestExtensions.ScriptedDriveWatch :: property public DriveLetter { get; } : char
 MFTLibTestExtensions.ScriptedDriveWatch :: property public ReadEnded { get; } : System.Threading.Tasks.Task<bool>
 MFTLibTestExtensions.ScriptedDriveWatch :: type public sealed class : MFTLib.Index.IIndexDriveWatch, System.IAsyncDisposable

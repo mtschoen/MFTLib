@@ -64,7 +64,7 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         Assert.AreEqual(scanFails ? 3 : 2, harness.ProductionCount('T'));
         Assert.AreEqual(1, harness.Faults.Count(item => item.Kind == WatchFaultKind.Apply));
         Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
         Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 4500));
         Assert.AreEqual(4500L, harness.BlockFor('T').Header.UsnNextUsn);

@@ -78,7 +78,7 @@ public readonly partial record struct FileEntry
     /// <summary>Gets the row key of this entry: its drive plus its row number in that drive's block. It is not an NTFS file identifier and is not sufficient for an open by id; NTFS reuses record numbers, so it does not identify a file over time. See <see cref="IndexRecordKey" />.</summary>
     /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
     /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
-    public IndexRecordKey Id
+    public IndexRecordKey RecordKey
     {
         get
         {
@@ -96,10 +96,10 @@ public readonly partial record struct FileEntry
     public long Size => Row.Size;
 
     /// <summary>Determines whether <see cref="Size" /> is known.</summary>
-    public bool SizeKnown => Row.SizeKnown;
+    public bool IsSizeKnown => Row.SizeKnown;
 
     /// <summary>Gets the last-write time in UTC.</summary>
-    public DateTime Modified => Row.ModifiedUtc;
+    public DateTime LastWriteTime => Row.ModifiedUtc;
 
     /// <summary>Gets the attribute flags captured in this snapshot, which can be stale after a later change.</summary>
     public FileAttributes Attributes => (FileAttributes)Row.Attributes;
@@ -124,7 +124,7 @@ public readonly partial record struct FileEntry
 
         try
         {
-            var key = Id;
+            var key = RecordKey;
             var name = Name;
             return $"{TryBuildPath() ?? name} ({key})";
         }
@@ -144,8 +144,14 @@ public readonly partial record struct FileEntry
         {
             return Path;
         }
-        catch (Exception)
+        catch (InvalidDataException)
         {
+            // The parent chain is deeper than the path depth limit.
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            // No configured root, or a release racing the read (ObjectDisposedException derives from this).
             return null;
         }
     }

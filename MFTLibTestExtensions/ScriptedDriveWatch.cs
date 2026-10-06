@@ -70,7 +70,7 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
     /// <param name="cursor">The journal position after the batch.</param>
     /// <returns>A task that completes when the pump is done with the batch.</returns>
     /// <exception cref="InvalidOperationException">The watch is closed.</exception>
-    public Task QueueBatch(IReadOnlyList<SyntheticJournalRecord> entries, SyntheticJournalCursor cursor) =>
+    public Task QueueBatchAsync(IReadOnlyList<SyntheticJournalRecord> entries, SyntheticJournalCursor cursor) =>
         Queue(ToBatch(entries, cursor));
 
     static JournalBatch ToBatch(IReadOnlyList<SyntheticJournalRecord> entries, SyntheticJournalCursor cursor) =>

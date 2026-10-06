@@ -71,7 +71,7 @@ public partial class JournalMutatorTests
         Assert.AreEqual(1u, _block.Rows[5].ParentRow);
         Assert.IsTrue(_block.Rows[5].IsInUse);
         Assert.IsFalse(_block.Rows[5].SizeKnown);
-        Assert.IsFalse(changes[0].Entry.SizeKnown);
+        Assert.IsFalse(changes[0].Entry.IsSizeKnown);
         Assert.AreEqual(ChangeMoment.Ticks, _block.Rows[5].ModifiedTicks);
     }
 

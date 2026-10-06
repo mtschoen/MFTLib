@@ -141,7 +141,7 @@ scripted per source:
 
 A watch scripts the read the index's pump performs:
 
-- `PublishBatchAsync` and `QueueBatch` deliver a journal batch that applies its
+- `PublishBatchAsync` and `QueueBatchAsync` deliver a journal batch that applies its
   changes and advances the block cursor; the publishing form completes once the
   pump has taken the item after it and throws `TimeoutException` after ten
   seconds, and the queueing form returns the task that completes then;

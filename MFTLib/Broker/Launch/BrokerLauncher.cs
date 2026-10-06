@@ -26,17 +26,17 @@ public static class BrokerLauncher
     }
 
     /// <summary>
-    ///     Start the broker with <paramref name="brokerArgs" /> (e.g. "--broker --pipe NAME").
+    ///     Start the broker with <paramref name="brokerArguments" /> (e.g. "--broker --pipe NAME").
     ///     Returns true if the process started, false if the user declined the UAC prompt.
     /// </summary>
     [SupportedOSPlatform("windows")]
-    public static bool Launch(string brokerArgs)
+    public static bool Launch(string brokerArguments)
     {
         var exePath = _getProcessPathFunc()
                       ?? throw new InvalidOperationException(
                           "Cannot determine the current executable path to launch the broker");
 
-        var startInfo = new ProcessStartInfo(exePath, brokerArgs)
+        var startInfo = new ProcessStartInfo(exePath, brokerArguments)
         {
             // UseShellExecute is required to request the "runas" verb (UAC elevation);
             // the elevated child runs without a window of its own.

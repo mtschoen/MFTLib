@@ -229,7 +229,7 @@ but the block is unresumable and watching it is refused until a successful
 
 `FileIndexOptions.OpenProgress` reports once for each drive that settles, on the
 thread that settled it and with no index lock held. Callbacks can overlap and can
-arrive out of order. `IndexDriveOpened.SettledCount` records settle order, so a
+arrive out of order. `IndexDriveOpened.SettledDriveCount` records settle order, so a
 consumer tracking overall progress keeps the report with the largest count. A
 drive whose settle is cancelled reports nothing; a cancelled or failed open may
 therefore have reported only part of the configured drive set.
@@ -303,7 +303,7 @@ index.WatchFaulted += fault =>
         drive => drive.DriveLetter == fault.DriveLetter);
 
     Console.Error.WriteLine(
-        $"Drive {fault.DriveLetter}: {fault.Kind}, {status.WatchCatchUp}");
+        $"Drive {fault.DriveLetter}: {fault.Kind}, {status.WatchCatchUpState}");
 };
 ```
 
@@ -332,7 +332,7 @@ restarting the watch and reports the stopped watch instance's outstanding fault
 once.
 
 To follow a drive's state without polling `Drives`, subscribe to
-`WatchStateChanged`. It delivers every change of a drive's `WatchCatchUp` once,
+`WatchStateChanged`. It delivers every change of a drive's `WatchCatchUpState` once,
 with that drive's next `WatchStateVersion`, before the `WatchFaulted` of the
 fault that caused it (`DriveWatchState.Fault`). A finished automatic recovery is
 `Recovering`, then `CatchingUp` when the restarted watch registers, then
@@ -350,13 +350,13 @@ index.WatchStateChanged += state =>
     // delivered concurrently can never publish after a newer one.
     lock (gate)
     {
-        if (applied.GetValueOrDefault(state.DriveLetter) >= state.Version)
+        if (applied.GetValueOrDefault(state.DriveLetter) >= state.WatchStateVersion)
         {
             return;
         }
 
-        applied[state.DriveLetter] = state.Version;
-        Publish(state.DriveLetter, state.State);
+        applied[state.DriveLetter] = state.WatchStateVersion;
+        Publish(state.DriveLetter, state.WatchCatchUpState);
     }
 };
 ```

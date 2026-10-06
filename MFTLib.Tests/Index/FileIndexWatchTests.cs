@@ -192,7 +192,7 @@ public class FileIndexWatchTests
     public void ApplyJournalEntries_DeleteMakesTheEntryReadAsDeletedButKeepsItsName()
     {
         var target = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
-        var recordNumber = target.Id.RecordNumber;
+        var recordNumber = target.RecordKey.RecordNumber;
 
         var applied = _index.ApplyJournalEntries('T',
             [Entry(recordNumber, 0, "readme.md", UsnReason.FileDelete | UsnReason.Close)],
@@ -213,7 +213,7 @@ public class FileIndexWatchTests
     public async Task ApplyJournalEntries_ConcurrentHeldHandleReaderSeesOnlyCompleteNames()
     {
         var target = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
-        var recordNumber = target.Id.RecordNumber;
+        var recordNumber = target.RecordKey.RecordNumber;
         const string shortName = "x";
         const string longName = "journal-renamed-document.txt";
         var state = new ConcurrentReaderState();
@@ -363,7 +363,7 @@ public class FileIndexWatchTests
     public void ApplyJournalEntries_CloseCarryingAnUnreportedReason_StillRaisesOneChange()
     {
         var target = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
-        var recordNumber = target.Id.RecordNumber;
+        var recordNumber = target.RecordKey.RecordNumber;
         _index.ApplyJournalEntries('T',
             [Entry(recordNumber, 1, "readme.md", UsnReason.DataExtend)], journalId: 5, nextUsn: 100);
 

@@ -376,7 +376,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             SkippedRecordCount = _skippedRecordCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             MftProducerFailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             WatchFailureMessage = _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            WatchCatchUp = GetWatchCatchUpStateLocked(driveBlock.DriveLetter),
+            WatchCatchUpState = GetWatchCatchUpStateLocked(driveBlock.DriveLetter),
             CheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,
             WatchRequested = runtime.WatchRequested,

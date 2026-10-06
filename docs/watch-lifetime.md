@@ -45,12 +45,12 @@
       never starts a drive nobody asked to watch. A batched start answering `NotApplicable`
       records no request. A restart whose rescan replaced the block with one that cannot be
       watched withdraws the request and supersedes any retained faulted watch with its failure
-      message, so the drive reads `NotStarted` either way. `WatchCatchUp` derives, in order: `Recovering`; the current instance's
+      message, so the drive reads `NotStarted` either way. `WatchCatchUpState` derives, in order: `Recovering`; the current instance's
       state; `Faulted` for a failed or refused start; `CatchingUp` while requested with no
       instance; otherwise `NotStarted`.
     - **Watch state events**: `FileIndex.WatchStateChanged` delivers a `DriveWatchState`
-      (`DriveLetter`, `State`, `Version`, `Fault`) for every change of a drive's derived
-      `WatchCatchUp`, and `DriveStatus.WatchStateVersion` carries the same per-drive counter: zero
+      (`DriveLetter`, `WatchCatchUpState`, `WatchStateVersion`, `Fault`) for every change of a drive's derived
+      `WatchCatchUpState`, and `DriveStatus.WatchStateVersion` carries the same per-drive counter: zero
       at open unless open-time scans exhausted catch-up retries (which leaves the drive `Faulted`
       with version 1), one more per change, independent across drives. Every section that changes an
       input of `GetWatchCatchUpStateLocked` (start registration, a start whose source threw or its
@@ -113,7 +113,7 @@
     - **Concurrent open**: `OpenAsync` settles every configured drive concurrently and waits for
       them all before publishing the first snapshot or throwing. `FileIndexOptions.OpenProgress`
       reports once for each drive that settles, from that drive's settling thread with no lock
-      held. Callbacks may overlap and arrive out of `IndexDriveOpened.SettledCount` order, so a
+      held. Callbacks may overlap and arrive out of `IndexDriveOpened.SettledDriveCount` order, so a
       consumer keeps the report with the largest count. A cancelled settle claims no count and
       reports nothing; a cancelled or failed open may therefore have reported only some drives.
     - **Lock order**: for drive X the order is X's lifecycle gate, X's write gate, then

@@ -8,7 +8,7 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     <see cref="FileIndexOptions.OpenProgress" />'s contract: one report per configured drive
 ///     from <see cref="FileIndex.OpenAsync" />, after that drive settles, whatever the outcome,
-///     numbered by <see cref="IndexDriveOpened.SettledCount" /> in settle order. Drives settle
+///     numbered by <see cref="IndexDriveOpened.SettledDriveCount" /> in settle order. Drives settle
 ///     concurrently, so these cases assert on each drive's report by letter and on the set of
 ///     counts, never on which drive settled first. <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> stays silent.
 /// </summary>
@@ -62,7 +62,7 @@ public class FileIndexOpenProgressTests
     static void AssertReport(IndexDriveOpened report, char driveLetter, int total)
     {
         Assert.AreEqual(driveLetter, report.DriveLetter);
-        Assert.AreEqual(total, report.Total);
+        Assert.AreEqual(total, report.TotalDriveCount);
     }
 
     /// <summary>The drive's settled outcome, which the open report no longer repeats.</summary>
@@ -76,7 +76,7 @@ public class FileIndexOpenProgressTests
     /// <summary>The one report a drive made, and proof that the counts are exactly 1 to the total.</summary>
     static IndexDriveOpened ReportOf(ConcurrentQueue<IndexDriveOpened> reports, char driveLetter)
     {
-        var settledCounts = reports.Select(report => report.SettledCount).Order().ToArray();
+        var settledCounts = reports.Select(report => report.SettledDriveCount).Order().ToArray();
         CollectionAssert.AreEqual(Enumerable.Range(1, reports.Count).ToArray(), settledCounts,
             "every settle takes the next count once");
         return reports.Single(report => report.DriveLetter == driveLetter);
@@ -156,7 +156,7 @@ public class FileIndexOpenProgressTests
         Assert.AreEqual(1, reports.Count);
         AssertReport(reports.Single(), 'T', 1);
         AssertSettled(index, 'T', BlockSource.ProducedByScan, DriveState.Ready);
-        Assert.AreEqual(1, reports.Single().SettledCount);
+        Assert.AreEqual(1, reports.Single().SettledDriveCount);
     }
 
     [TestMethod]
@@ -172,7 +172,7 @@ public class FileIndexOpenProgressTests
         Assert.AreEqual(1, reports.Count);
         AssertReport(reports.Single(), 'Z', 1);
         AssertSettled(index, 'Z', BlockSource.None, DriveState.Offline);
-        Assert.AreEqual(1, reports.Single().SettledCount);
+        Assert.AreEqual(1, reports.Single().SettledDriveCount);
     }
 
     [TestMethod]

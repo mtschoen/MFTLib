@@ -113,6 +113,10 @@ cat .\TestProgram\bin\x64\Release\net10.0\output.log
 
 [Native error helper](docs/architecture.md): use `SetErrorMessage` in `MFTLibNative/internal.h` for native result `wchar_t errorMessage[256]` buffers. Windows truncation uses `_snwprintf_s(..., _TRUNCATE, ...)`; Debug asserts overflow. Avoid direct `swprintf_s` / `snprintf_s` calls at error-write sites.
 
+## Naming
+
+Full words in identifiers; `Mft` and `Usn` are NTFS names and stay.
+
 ## Roadmap
 
 See `.plan` for details. Current release is **0.3.0** with USN journal support. Primary consumers are file-wizard and git-wizard.

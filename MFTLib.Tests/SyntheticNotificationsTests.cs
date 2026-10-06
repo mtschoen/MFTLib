@@ -27,7 +27,7 @@ public class SyntheticNotificationsTests
         Assert.AreEqual(7u, file.VolumeSerial);
         Assert.AreEqual(@"C:\cache\T-7.mlix", file.Path);
         Assert.AreEqual(4096L, file.SizeBytes);
-        Assert.AreEqual(Moment, file.LastWriteTimeUtc);
+        Assert.AreEqual(Moment, file.LastWriteTime);
     }
 
     [TestMethod]
@@ -192,8 +192,8 @@ public class SyntheticNotificationsTests
 
         Assert.AreEqual(new IndexDriveOpened('T', 2, 5), opened);
         Assert.AreEqual('T', opened.DriveLetter);
-        Assert.AreEqual(2, opened.SettledCount);
-        Assert.AreEqual(5, opened.Total);
+        Assert.AreEqual(2, opened.SettledDriveCount);
+        Assert.AreEqual(5, opened.TotalDriveCount);
     }
 
     [TestMethod]

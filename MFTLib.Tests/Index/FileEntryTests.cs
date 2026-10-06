@@ -58,8 +58,8 @@ public class FileEntryTests
 
         Assert.AreEqual("report.pdf", entry.Name);
         Assert.AreEqual(4096L, entry.Size);
-        Assert.IsTrue(entry.SizeKnown);
-        Assert.AreEqual(FileMoment, entry.Modified);
+        Assert.IsTrue(entry.IsSizeKnown);
+        Assert.AreEqual(FileMoment, entry.LastWriteTime);
         Assert.AreEqual(FileAttributes.Archive, entry.Attributes);
         Assert.IsFalse(entry.IsDirectory);
         Assert.IsFalse(entry.IsDeleted);
@@ -87,7 +87,7 @@ public class FileEntryTests
     public void Id_CarriesDriveLetterRowNumberAndProducerKind()
     {
         var entry = FileEntry.Create(_snapshot, 0, _fileRow);
-        var id = entry.Id;
+        var id = entry.RecordKey;
 
         Assert.AreEqual('T', id.DriveLetter);
         Assert.AreEqual(_fileRow, id.RecordNumber);
@@ -107,7 +107,7 @@ public class FileEntryTests
         try
         {
             var entry = FileEntry.Create(snapshot, 0, row);
-            Assert.IsFalse(entry.SizeKnown);
+            Assert.IsFalse(entry.IsSizeKnown);
             Assert.AreEqual(0L, entry.Size);
         }
         finally

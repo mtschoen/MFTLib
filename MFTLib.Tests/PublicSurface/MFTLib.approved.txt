@@ -1,7 +1,7 @@
 MFTLib.BrokerDiagnostics :: method public static Enable(string role) : void
 MFTLib.BrokerDiagnostics :: property public static LogDirectory { get; set; } : string
 MFTLib.BrokerDiagnostics :: type public static class
-MFTLib.BrokerLauncher :: method public static Launch(string brokerArgs) : bool
+MFTLib.BrokerLauncher :: method public static Launch(string brokerArguments) : bool
 MFTLib.BrokerLauncher :: type public static class
 MFTLib.BrokerScanOptions :: constructor public ()
 MFTLib.BrokerScanOptions :: method public <Clone>$() : MFTLib.BrokerScanOptions
@@ -27,7 +27,7 @@ MFTLib.BrokerSession :: method public GrowUsnJournalAsync(char driveLetter, long
 MFTLib.BrokerSession :: property public Ended { get; } : System.Threading.Tasks.Task<string>
 MFTLib.BrokerSession :: property public HasEnded { get; } : bool
 MFTLib.BrokerSession :: type public sealed class : System.IAsyncDisposable
-MFTLib.ElevatedEntryPoint :: method public static TryHandle(string[] args) : bool
+MFTLib.ElevatedEntryPoint :: method public static TryHandle(string[] arguments) : bool
 MFTLib.ElevatedEntryPoint :: type public static class
 MFTLib.ElevationUtilities :: field public static readonly DefaultElevatedTimeout : System.TimeSpan
 MFTLib.ElevationUtilities :: method public static CanSelfElevate() : bool

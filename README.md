@@ -398,7 +398,7 @@ the report and the refusal. The refused start retains the watch request, so the
 successful rescan starts the watch from the fresh cursor.
 
 A loss found mid-session sits alongside `WatchFailureMessage` and
-`WatchCatchUp`. It answers the question those two cannot: the watch did not
+`WatchCatchUpState`. It answers the question those two cannot: the watch did not
 merely stop, the journal moved past where it had reached. `Drive` and `Apply`
 faults recover by rescanning automatically; `Channel` faults do not. A scan-time
 loss records `JournalCheckpointLossDetection.ScanCatchUp`, publishes the complete
@@ -605,10 +605,10 @@ thread that settled it: warm-started from cache, cold-scanned, declined by
 `InitialOpenCacheOnly`, offline, or failed. A cancelled or failed open may have
 reported only some of the drives. `OpenAsync` settles its
 drives concurrently and runs no lock around a handler, so reports can overlap and
-arrive out of order; `SettledCount` gives the order. The report
-carries the drive letter, `SettledCount` (this drive was the n-th to settle,
+arrive out of order; `SettledDriveCount` gives the order. The report
+carries the drive letter, `SettledDriveCount` (this drive was the n-th to settle,
 counted from 1), and the total configured drive count, so a consumer can render "3 of 9 drives settled" while the open
-is still in flight. Keep the report with the largest `SettledCount`, not simply
+is still in flight. Keep the report with the largest `SettledDriveCount`, not simply
 the last callback to arrive. A declined or failed drive still counts toward the total and
 still reports. Block ordinals follow the same order for drives with a block;
 `FileIndex.Drives` keeps the configured order. It defaults to null, which reports
@@ -623,7 +623,7 @@ up to `FileIndex.LostCatchUpRecoveryLimit` times in a row, and settles `Ready`
 with its last block unresumable if every attempt lost it. `OpenAsync` raises no
 `WatchFaulted` event because the caller cannot subscribe before it returns; inspect
 `DriveStatus.ConsecutiveLostCatchUps`, `CheckpointLoss`, `WatchFailureMessage`, and
-`WatchCatchUp` instead. The drive's watch is refused until a manual `RescanAsync`
+`WatchCatchUpState` instead. The drive's watch is refused until a manual `RescanAsync`
 produces a resumable block. The refusal retains the watch request, so a successful
 rescan clears the refusal and starts the watch.
 
@@ -714,7 +714,7 @@ index.WatchFaulted += fault =>
         case WatchFaultKind.Drive:
         case WatchFaultKind.Apply:
             Console.WriteLine(
-                $"Drive {fault.DriveLetter}: {status.WatchCatchUp == WatchCatchUpState.Recovering}");
+                $"Drive {fault.DriveLetter}: {status.WatchCatchUpState == WatchCatchUpState.Recovering}");
             break;
 
         case WatchFaultKind.CatchUpLost
@@ -745,7 +745,7 @@ catch-up. Queries can lag until the new watch reports `CaughtUp`.
 
 During automatic recovery, a catch-up wait faults immediately with the fault that started
 the recovery. To observe the replacement watch reaching `CaughtUp`, subscribe to
-`FileIndex.WatchStateChanged`: it reports every change of a drive's `WatchCatchUp` with the
+`FileIndex.WatchStateChanged`: it reports every change of a drive's `WatchCatchUpState` with the
 drive's next `DriveStatus.WatchStateVersion`, before the `WatchFaulted` of the fault that
 caused it, so a recovery reads `Recovering`, then `CatchingUp`, then `CaughtUp` with no
 polling. One drive's events arrive in version order; a consumer that also reads `Drives`

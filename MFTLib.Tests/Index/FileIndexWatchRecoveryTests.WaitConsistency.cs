@@ -57,7 +57,7 @@ public partial class FileIndexWatchRecoveryTests
         Assert.IsNotNull(observation.Status, "the rescan reached its restart decision");
         Assert.IsNull(observation.WaitRefusal, "a requested drive between watches still has a catch-up to wait for");
         Assert.IsTrue(observation.Status.WatchRequested);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, observation.Status.WatchCatchUp,
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, observation.Status.WatchCatchUpState,
             "a requested drive between its retired watch and the replacement is not NotStarted");
         Assert.IsNotNull(observation.Wait);
     }
@@ -88,7 +88,7 @@ public partial class FileIndexWatchRecoveryTests
 
         Assert.IsFalse(faultVisibleDuringCheckpointCheck, "the wait faulted before the drive read Recovering");
         Assert.IsTrue(wait.IsFaulted);
-        Assert.AreEqual(WatchCatchUpState.Recovering, observed.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Recovering, observed.WatchCatchUpState);
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, observed.CheckpointLoss?.DetectedDuring);
         Assert.AreEqual("T's journal wrapped", observed.WatchFailureMessage);
         held.Release();
@@ -111,7 +111,7 @@ public partial class FileIndexWatchRecoveryTests
         Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         await observation.Wait.WaitAsync(HangGuard);
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUpState);
         await harness.Index.StopWatchingAsync('T', Token);
     }
 
@@ -129,7 +129,7 @@ public partial class FileIndexWatchRecoveryTests
         AssertWaitFollowsTheReplacement(observation);
         var failure = await ThrowsAsync<InvalidOperationException>(() => observation.Wait!.WaitAsync(HangGuard));
         Assert.AreSame(startFailure, failure.InnerException);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUpState);
         await ThrowsAsync<InvalidOperationException>(() => harness.Index.StopWatchingAsync('T', Token));
     }
 
@@ -150,7 +150,7 @@ public partial class FileIndexWatchRecoveryTests
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "the stop withdrew the request");
         var drive = harness.DriveFor('T');
         Assert.IsFalse(drive.WatchRequested);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, drive.WatchCatchUpState);
     }
 
     [TestMethod]
@@ -200,7 +200,7 @@ public partial class FileIndexWatchRecoveryTests
         Assert.AreSame(waitFault, stopFault, "the wait and the stop report the same watch fault");
         Assert.AreEqual(0, harness.RecoveryCount('T'));
         Assert.AreEqual(0, harness.ProductionCount('T') - producedBefore);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUpState);
     }
 
     /// <summary>
@@ -232,9 +232,9 @@ public partial class FileIndexWatchRecoveryTests
         harness.SetNextProducedCursor('T', WatchHarness.JournalId, nextUsn: 9000);
 
         var rescan = index.RescanAsync('T', Token);
-        await UntilAsync(() => harness.DriveFor('T').WatchCatchUp != WatchCatchUpState.CaughtUp);
+        await UntilAsync(() => harness.DriveFor('T').WatchCatchUpState != WatchCatchUpState.CaughtUp);
         var status = harness.DriveFor('T');
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, status.WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, status.WatchCatchUpState);
         var wait = index.WaitForCatchUpAsync('T', Token);
         pumpParked.Release();
         await rescan.WaitAsync(HangGuard);

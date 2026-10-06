@@ -167,7 +167,7 @@ public class FileIndexLifetimeTests
         Assert.IsTrue(entry.IsValid);
         Assert.IsTrue(entry.IsDisposed);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Name);
-        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Id);
+        Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.RecordKey);
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Path);
     }
 }

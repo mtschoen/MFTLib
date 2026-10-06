@@ -56,7 +56,7 @@ public partial class SyntheticBlockTests
         FileIndexTestAccess.ApplyJournalEntries(index, 'T',
             [new SyntheticJournalRecord
             {
-                RecordNumber = zebra.Id.RecordNumber,
+                RecordNumber = zebra.RecordKey.RecordNumber,
                 ParentRecordNumber = 0,
                 UpdateSequenceNumber = 1,
                 FileName = "zebra.txt",
@@ -93,9 +93,9 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(Moment.AddHours(1), rows["report.txt"].ModifiedUtc, "only the size changes");
         Assert.AreEqual(FileAttributes.ReadOnly | FileAttributes.Archive, rows["report.txt"].Attributes);
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
-        Assert.IsFalse(index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().SizeKnown);
+        Assert.IsFalse(index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().IsSizeKnown);
         Assert.AreEqual(0, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().Size);
-        Assert.IsTrue(index.Search(new SearchQuery("$MFT", NameMatchMode.Exact)).Single().SizeKnown);
+        Assert.IsTrue(index.Search(new SearchQuery("$MFT", NameMatchMode.Exact)).Single().IsSizeKnown);
     }
 
     [TestMethod]

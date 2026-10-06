@@ -35,7 +35,7 @@ public class FileIndexWatchFaultTests
         Assert.IsInstanceOfType<ArgumentNullException>(fault.Exception);
         Assert.IsNull(harness.DriveFor('T').WatchFailureMessage, "the recovery replaced the faulted watch");
         Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
         Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
         Assert.AreEqual(1, harness.Source.TargetsFor('U').Count);
         Assert.IsNull(harness.DriveFor('U').WatchFailureMessage);
@@ -91,9 +91,9 @@ public class FileIndexWatchFaultTests
         Assert.AreEqual('T', fault.DriveLetter);
         Assert.AreSame(lost, fault.Exception);
         Assert.AreEqual("the broker died", harness.DriveFor('T').WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUpState);
         Assert.IsNull(harness.DriveFor('U').WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').WatchCatchUpState);
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
 
         var thrown = await Assert.ThrowsExceptionAsync<IOException>(
@@ -177,7 +177,7 @@ public class FileIndexWatchFaultTests
         await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => start);
         Assert.AreEqual(0, harness.Faults.Count);
         Assert.AreEqual(0, harness.Source.Watches.Count);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUpState);
         Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => harness.Index.StopWatchingAsync('T', Token),

@@ -7,19 +7,19 @@ namespace MFTLib.Index;
 public readonly record struct CacheTag
 {
     /// <summary>Initializes a consumer identity from a four-character ASCII code and version.</summary>
-    /// <param name="fourCc">Exactly four ASCII characters identifying the consumer.</param>
+    /// <param name="fourCharacterCode">Exactly four ASCII characters identifying the consumer.</param>
     /// <param name="version">Consumer-defined version, including zero.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="fourCc" /> is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="fourCc" /> is not exactly four ASCII characters.</exception>
-    public CacheTag(string fourCc, uint version)
+    /// <exception cref="ArgumentNullException"><paramref name="fourCharacterCode" /> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="fourCharacterCode" /> is not exactly four ASCII characters.</exception>
+    public CacheTag(string fourCharacterCode, uint version)
     {
-        ArgumentNullException.ThrowIfNull(fourCc);
-        if (fourCc.Length != 4 || fourCc.Any(character => character > 0x7f))
+        ArgumentNullException.ThrowIfNull(fourCharacterCode);
+        if (fourCharacterCode.Length != 4 || fourCharacterCode.Any(character => character > 0x7f))
         {
-            throw new ArgumentException("A cache FourCC must contain exactly four ASCII characters.", nameof(fourCc));
+            throw new ArgumentException("A cache FourCC must contain exactly four ASCII characters.", nameof(fourCharacterCode));
         }
-        PackedFourCc = fourCc[0] | ((uint)fourCc[1] << 8) |
-            ((uint)fourCc[2] << 16) | ((uint)fourCc[3] << 24);
+        PackedFourCc = fourCharacterCode[0] | ((uint)fourCharacterCode[1] << 8) |
+            ((uint)fourCharacterCode[2] << 16) | ((uint)fourCharacterCode[3] << 24);
         Version = version;
     }
 

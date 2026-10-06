@@ -107,7 +107,7 @@ public sealed partial class FileIndex
     ///     lost its journal catch-up. Resuming from that cursor would read a position the journal no
     ///     longer holds. Reported the way any other start failure is, through
     ///     <see cref="DriveStatus.WatchFailureMessage" /> and a faulted
-    ///     <see cref="DriveStatus.WatchCatchUp" />, and returned for the start to throw. Like a
+    ///     <see cref="DriveStatus.WatchCatchUpState" />, and returned for the start to throw. Like a
     ///     start whose source threw, the refusal records the watch as requested and faults any
     ///     restart-pending wait. A rescan whose catch-up holds writes a fresh cursor, which clears
     ///     the drive's entry in <see cref="_unresumableCheckpointsByOrdinal" /> and this refusal,

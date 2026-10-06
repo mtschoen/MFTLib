@@ -235,7 +235,7 @@ public class FileIndexRescanCleanupTests
         await harness.Index.StartWatchingAsync('T', Token);
         harness.Source.WatchFor('T').End();
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUp);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUpState);
         Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
 
         harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
@@ -243,7 +243,7 @@ public class FileIndexRescanCleanupTests
 
         var drive = harness.DriveFor('T');
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.WatchCatchUp,
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.WatchCatchUpState,
             "the rescan replaced the faulted watch with one started from the fresh cursor");
         Assert.IsNull(drive.WatchFailureMessage);
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.TargetsFor('T')[^1]);

@@ -129,7 +129,7 @@ public partial class SyntheticBlockTests
         var report = index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single();
         Assert.AreEqual(1234, report.Size);
         Assert.AreEqual(FileAttributes.ReadOnly | FileAttributes.Archive, report.Attributes);
-        Assert.IsFalse(index.Search(new SearchQuery("unsized.bin", NameMatchMode.Exact)).Single().SizeKnown);
+        Assert.IsFalse(index.Search(new SearchQuery("unsized.bin", NameMatchMode.Exact)).Single().IsSizeKnown);
     }
 
     [TestMethod]
