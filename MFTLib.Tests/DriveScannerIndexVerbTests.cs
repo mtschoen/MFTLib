@@ -68,6 +68,18 @@ public class DriveScannerIndexVerbTests
 
         var caseMismatch = Run(Enumerate("search", "--exact", "--name", "README.MD", "--case-sensitive"), out _);
         Assert.IsTrue(caseMismatch.Contains("0 entries (limit 20)"), Joined(caseMismatch));
+
+        // A file exactly MaximumPathDepth parent hops below --under is inside the subtree:
+        // IndexNavigation.IsUnder checks the ancestor the final supported hop reaches.
+        var deepCache = Path.Combine(_directory, "deep-cache");
+        WriteDeepCache(deepCache, (uint)SyntheticBlock.MaximumPathDepth);
+
+        var deep = Run(DeepCache("search", deepCache, "--name", "deep", "--under", _tree), out _);
+        Assert.IsTrue(deep.Contains("1 entries (limit 20)"), Joined(deep));
+
+        var deepExact = Run(DeepCache("search", deepCache, "--exact", "--name", "deep.md", "--under", _tree), out var deepExactResult);
+        Assert.AreEqual(0, deepExactResult, Joined(deepExact));
+        Assert.IsTrue(deepExact.Contains("1 entries (limit 20)"), Joined(deepExact));
     }
 
     [TestMethod]
@@ -77,6 +89,17 @@ public class DriveScannerIndexVerbTests
         Assert.IsTrue(Run(Enumerate("search", "--name", "readme", "--stream", "--limit", "1"), out _).Contains("1 entries streamed (limit 1)"));
         Assert.IsTrue(Run(Enumerate("search", "--exact", "--name", "readme.md", "--stream", "--limit", "1"), out _).Contains("1 entries streamed (limit 1)"));
         Assert.IsTrue(Run(Enumerate("search", "--name", "readme"), out _).Contains("2 entries (limit 20)"));
+
+        // The supported-depth boundary: a file MaximumPathDepth parent hops below --under streams
+        // once whether or not --exact narrows the name match.
+        var deepCache = Path.Combine(_directory, "deep-cache");
+        WriteDeepCache(deepCache, (uint)SyntheticBlock.MaximumPathDepth);
+
+        var deepSubstring = Run(DeepCache("search", deepCache, "--name", "deep", "--under", _tree, "--stream"), out _);
+        Assert.IsTrue(deepSubstring.Contains("1 entries streamed (limit 20)"), Joined(deepSubstring));
+
+        var deepExact = Run(DeepCache("search", deepCache, "--exact", "--name", "deep.md", "--under", _tree, "--stream"), out _);
+        Assert.IsTrue(deepExact.Contains("1 entries streamed (limit 20)"), Joined(deepExact));
     }
 
     [TestMethod]
@@ -101,6 +124,16 @@ public class DriveScannerIndexVerbTests
         var cyclic = Run(["tree", "S", "--source", "enumeration", "--root", _tree, "--cache-directory", _cache, "--cache-only", "--record-key", "S:1:Enumeration"], out var cyclicResult);
         Assert.AreEqual(0, cyclicResult, Joined(cyclic));
         Assert.AreEqual(1, cyclic.Count(line => line.StartsWith("  parent:", StringComparison.Ordinal)), Joined(cyclic));
+
+        // An undisplayed descendant past the supported depth must not abort a shallow listing:
+        // the parent map is built without the subtree predicate that would walk its chain.
+        var deepCache = Path.Combine(_directory, "deep-cache");
+        WriteDeepCache(deepCache, (uint)SyntheticBlock.MaximumPathDepth + 1);
+
+        var overDepth = Run(DeepCache("tree", deepCache, "--depth", "2"), out var overDepthResult);
+        Assert.AreEqual(0, overDepthResult, Joined(overDepth));
+        Assert.AreEqual(2, overDepth.Count(line => line.StartsWith("  ", StringComparison.Ordinal) && line.Contains(" [S:", StringComparison.Ordinal)), Joined(overDepth));
+        Assert.IsFalse(overDepth.Any(line => line.Contains("deep.md", StringComparison.Ordinal)), Joined(overDepth));
     }
 
     [TestMethod]
@@ -307,6 +340,27 @@ public class DriveScannerIndexVerbTests
     string[] Enumerate(string verb, params string[] extra)
     {
         return [verb, "S", "--source", "enumeration", "--root", _tree, "--no-cache", .. extra];
+    }
+
+    string[] DeepCache(string verb, string cacheDirectory, params string[] extra)
+    {
+        return [verb, "S", "--source", "enumeration", "--root", _tree, "--cache-directory", cacheDirectory, "--cache-only", .. extra];
+    }
+
+    // Writes a synthetic cache whose one file sits exactly fileRow parent hops below the root, one
+    // directory row per hop between them. MaximumPathDepth hops is the deepest chain the index
+    // still resolves; one more exceeds it.
+    void WriteDeepCache(string cacheDirectory, uint fileRow)
+    {
+        var rows = new List<SyntheticRow> { new(0, _tree, 0) { IsDirectory = true } };
+        for (var row = 1u; row < fileRow; row++)
+        {
+            rows.Add(new SyntheticRow(row, $"d{row}", row - 1) { IsDirectory = true });
+        }
+
+        rows.Add(new SyntheticRow(fileRow, "deep.md", fileRow - 1));
+        SyntheticBlock.WriteCached(cacheDirectory, 'S', 1,
+            new SyntheticBlockOptions { ProducerKind = ProducerKind.Enumeration, RootRow = 0, CompletedUtc = DateTime.UtcNow }, rows);
     }
 
     static void NoDelay(DriveScanner scanner)

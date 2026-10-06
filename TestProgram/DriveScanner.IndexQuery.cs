@@ -66,8 +66,10 @@ partial class DriveScanner
             var exactName = verb.Require("--name");
             if (verb.Has("--stream"))
             {
+                // Enumerate already applied every query predicate, so --exact adds name equality only;
+                // re-applying the subtree predicate here would repeat a walk the query just did.
                 using var enumerator = index.Enumerate(query, CancellationToken.None)
-                    .Where(entry => MatchesExact(entry, query, exactName))
+                    .Where(entry => NameMatchesExactly(entry, query, exactName))
                     .GetEnumerator();
                 var shownExact = 0;
                 while (shownExact < Limit(verb) && enumerator.MoveNext())
@@ -106,8 +108,7 @@ partial class DriveScanner
 
     static bool MatchesExact(FileEntry entry, SearchQuery query, string exactName)
     {
-        var comparison = query.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-        if (!string.Equals(entry.Name, exactName, comparison))
+        if (!NameMatchesExactly(entry, query, exactName))
         {
             return false;
         }
@@ -145,6 +146,12 @@ partial class DriveScanner
         return true;
     }
 
+    static bool NameMatchesExactly(FileEntry entry, SearchQuery query, string exactName)
+    {
+        var comparison = query.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        return string.Equals(entry.Name, exactName, comparison);
+    }
+
     static bool IsUnder(FileEntry candidate, FileEntry ancestor)
     {
         if (candidate.Id.DriveLetter != ancestor.Id.DriveLetter)
@@ -152,24 +159,24 @@ partial class DriveScanner
             return false;
         }
 
+        // Mirrors IndexNavigation.IsUnder: the ancestor reached by the final supported hop is
+        // checked too, so a candidate exactly MaximumPathDepth hops below still matches.
         var visited = new HashSet<IndexRecordKey> { candidate.Id };
-        var hops = 0;
-        for (var current = candidate; hops < MaximumPathDepth; hops++)
+        var current = candidate;
+        for (var hops = 0; ; hops++)
         {
             if (current.Id == ancestor.Id)
             {
                 return true;
             }
 
-            if (current.Parent is not { } parent || !visited.Add(parent.Id))
+            if (hops == MaximumPathDepth || current.Parent is not { } parent || !visited.Add(parent.Id))
             {
-                break;
+                return false;
             }
 
             current = parent;
         }
-
-        return false;
     }
 
     void ShowTree(FileIndex index, IndexVerbArguments verb)
@@ -216,9 +223,12 @@ partial class DriveScanner
             return;
         }
 
-        var subtree = index.Search(new SearchQuery(null, Under: entryAtStart), CancellationToken.None);
+        // Group every live row by parent in one pass, without an Under predicate: the subtree
+        // walk behind it throws on a parent chain past MaximumPathDepth, which would abort a
+        // shallow listing over an undisplayed deep descendant. Traversal below reaches only rows
+        // connected under the start entry, bounded by the requested depth and the visited set.
         Dictionary<IndexRecordKey, List<FileEntry>> groupedByParent = [];
-        foreach (var entry in subtree)
+        foreach (var entry in index.Enumerate(new SearchQuery(null), CancellationToken.None))
         {
             if (entry.Parent is { } parentEntry)
             {
