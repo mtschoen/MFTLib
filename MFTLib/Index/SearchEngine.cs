@@ -14,6 +14,7 @@ internal static class SearchEngine
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(query);
+        NameMatching.ThrowIfUndefined(query);
         cancellationToken.ThrowIfCancellationRequested();
 
         if (query.Under is { } underAncestor && !underAncestor.IsValid)
@@ -108,7 +109,7 @@ internal static class SearchEngine
             return false;
         }
 
-        return query.NamePattern is null || NameMatching.Matches(name, query.NamePattern, query.CaseSensitive);
+        return query.NamePattern is null || NameMatching.Matches(name, query.NamePattern, query.MatchMode, query.CaseSensitive);
     }
 
     [SuppressMessage("Roslynator", "RCS1242",

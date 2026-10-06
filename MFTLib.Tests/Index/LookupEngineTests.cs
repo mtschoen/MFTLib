@@ -97,19 +97,19 @@ public class LookupEngineTests
 
 
     [TestMethod]
-    public void FindByName_SpansEveryDriveInTheSnapshot()
+    public void SearchExact_SpansEveryDriveInTheSnapshot()
     {
-        var results = LookupEngine.FindByName(_snapshot, "readme.md", caseSensitive: false);
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("readme.md", NameMatchMode.Exact));
         Assert.AreEqual(2, results.Count);
         CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, results.Select(entry => entry.Id.DriveLetter).ToArray());
     }
 
     [TestMethod]
-    public void FindByName_IsAnExactNameMatchNotASubstring()
+    public void SearchExact_IsAnExactNameMatchNotASubstring()
     {
-        Assert.AreEqual(0, LookupEngine.FindByName(_snapshot, "readme", caseSensitive: false).Count);
-        Assert.AreEqual(2, LookupEngine.FindByName(_snapshot, "README.MD", caseSensitive: false).Count);
-        Assert.AreEqual(0, LookupEngine.FindByName(_snapshot, "README.MD", caseSensitive: true).Count);
+        Assert.AreEqual(0, SearchEngine.Search(_snapshot, new SearchQuery("readme", NameMatchMode.Exact)).Count);
+        Assert.AreEqual(2, SearchEngine.Search(_snapshot, new SearchQuery("README.MD", NameMatchMode.Exact)).Count);
+        Assert.AreEqual(0, SearchEngine.Search(_snapshot, new SearchQuery("README.MD", NameMatchMode.Exact, CaseSensitive: true)).Count);
     }
 
     [TestMethod]
@@ -190,7 +190,7 @@ public class LookupEngineTests
     ///     The sequential reference the partitioned scan is held to: one drive at a time in
     ///     snapshot order, rows ascending within each drive.
     /// </summary>
-    static List<FileEntry> SequentialFindByName(Snapshot snapshot, string name, bool caseSensitive)
+    static List<FileEntry> SequentialExactName(Snapshot snapshot, string name, bool caseSensitive)
     {
         var reference = new List<FileEntry>();
         foreach (var driveBlock in snapshot.DriveBlocks)
@@ -212,7 +212,7 @@ public class LookupEngineTests
     }
 
     [TestMethod]
-    public async Task FindByName_OverPartitionedBlocks_MatchesTheSequentialScanExactly()
+    public async Task SearchExact_OverPartitionedBlocks_MatchesTheSequentialScanExactly()
     {
         const int fileCount = (int)ScanPartitioning.SingleThreadedRowThreshold + 1024;
         using var firstBuilder = new SyntheticBlockBuilder(slotCapacity: (uint)fileCount + 8,
@@ -253,9 +253,8 @@ public class LookupEngineTests
         ]);
         try
         {
-            var partitioned = LookupEngine.FindByName(snapshot, "needle.txt",
-                caseSensitive: false);
-            var reference = SequentialFindByName(snapshot, "needle.txt", caseSensitive: false);
+            var partitioned = SearchEngine.Search(snapshot, new SearchQuery("needle.txt", NameMatchMode.Exact));
+            var reference = SequentialExactName(snapshot, "needle.txt", caseSensitive: false);
 
             Assert.AreEqual(5, partitioned.Count);
             CollectionAssert.AreEqual(
@@ -276,14 +275,14 @@ public class LookupEngineTests
     ///     before any work begins.
     /// </summary>
     [TestMethod]
-    public void FindByName_WithACancelledToken_ThrowsOperationCanceled()
+    public void SearchExact_WithACancelledToken_ThrowsOperationCanceled()
     {
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(
-            () => LookupEngine.FindByName(_snapshot, "needle.txt", caseSensitive: false, token));
+            () => SearchEngine.Search(_snapshot, new SearchQuery("needle.txt", NameMatchMode.Exact), token));
     }
 
     /// <summary>
@@ -292,7 +291,7 @@ public class LookupEngineTests
     ///     touching the partition machinery.
     /// </summary>
     [TestMethod]
-    public async Task FindByName_OverAnEmptyDriveBlock_ReturnsNoResults()
+    public async Task SearchExact_OverAnEmptyDriveBlock_ReturnsNoResults()
     {
         using var builder = new SyntheticBlockBuilder('Y');
         var snapshot = Snapshot.Create([new DriveBlock('Y', 0, builder.OpenForWriting())]);
@@ -300,7 +299,7 @@ public class LookupEngineTests
         {
             Assert.AreEqual(0u, builder.OpenForWriting().Header.RowCount);
             Assert.AreEqual(0,
-                LookupEngine.FindByName(snapshot, "needle.txt", caseSensitive: false).Count);
+                SearchEngine.Search(snapshot, new SearchQuery("needle.txt", NameMatchMode.Exact)).Count);
         }
         finally
         {

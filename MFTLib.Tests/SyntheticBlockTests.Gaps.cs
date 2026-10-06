@@ -30,7 +30,7 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(11u, SyntheticBlock.ReadHeader(path, Serial).RowCount, "a free slot below the highest row still counts");
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        Assert.AreEqual(0, index.FindByName("stale.bin").Count);
+        Assert.AreEqual(0, index.Search(new SearchQuery("stale.bin", NameMatchMode.Exact)).Count);
         Assert.AreEqual(5u, index.Drives.Single().LiveRowCount, "the tombstone and the free slot are not live");
     }
 
@@ -52,21 +52,21 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(ProducerKind.Mft, SyntheticBlock.ReadHeader(path, Serial).ProducerKind);
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
-        var zebra = index.FindByName("zebra.txt").Single();
+        var zebra = index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact)).Single();
         FileIndexTestAccess.ApplyJournalEntries(index, 'T',
-            [SyntheticJournalEntry.Create(new SyntheticJournalEntryOptions
+            [new SyntheticJournalRecord
             {
                 RecordNumber = zebra.Id.RecordNumber,
                 ParentRecordNumber = 0,
-                Usn = 1,
+                UpdateSequenceNumber = 1,
                 FileName = "zebra.txt",
-                Reason = UsnReason.FileDelete | UsnReason.Close
-            })], journalId: 0, nextUsn: 0);
+                Reason = SyntheticJournalReason.FileDelete | SyntheticJournalReason.Close
+            }], journalIdentifier: 0, nextUpdateSequenceNumber: 0);
 
         Assert.IsTrue(index.Drives.Single().WatchSupported);
         Assert.IsTrue(zebra.IsDeleted);
-        Assert.AreEqual(0, index.FindByName("zebra.txt").Count);
-        Assert.AreEqual(1, index.FindByName("keep.txt").Count);
+        Assert.AreEqual(0, index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact)).Count);
+        Assert.AreEqual(1, index.Search(new SearchQuery("keep.txt", NameMatchMode.Exact)).Count);
     }
 
     [TestMethod]
@@ -93,9 +93,9 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(Moment.AddHours(1), rows["report.txt"].ModifiedUtc, "only the size changes");
         Assert.AreEqual(FileAttributes.ReadOnly | FileAttributes.Archive, rows["report.txt"].Attributes);
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
-        Assert.IsFalse(index.FindByName("report.txt").Single().SizeKnown);
-        Assert.AreEqual(0, index.FindByName("report.txt").Single().Size);
-        Assert.IsTrue(index.FindByName("$MFT").Single().SizeKnown);
+        Assert.IsFalse(index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().SizeKnown);
+        Assert.AreEqual(0, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().Size);
+        Assert.IsTrue(index.Search(new SearchQuery("$MFT", NameMatchMode.Exact)).Single().SizeKnown);
     }
 
     [TestMethod]

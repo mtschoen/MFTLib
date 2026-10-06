@@ -1,4 +1,3 @@
-using MFTLib;
 using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
@@ -23,7 +22,7 @@ public sealed class SyntheticMftProducer
     }
 
     /// <summary>A watch started after the scan resumes from this position, so set it to what the test's watch source expects.</summary>
-    public UsnJournalCursor JournalCursor { get; set; }
+    public SyntheticJournalCursor JournalCursor { get; set; }
 
     /// <summary>Becomes <see cref="DriveStatus.ScanTimestamp" />, so a test about scan age sets it explicitly.</summary>
     public DateTime CompletedUtc { get; set; }
@@ -38,7 +37,7 @@ public sealed class SyntheticMftProducer
     public Func<char, JournalCheckpointLoss?>? CatchUpLoss { get; set; }
 
     /// <summary>Every drive whose production has started, in order, including repeats and productions held by <see cref="BeforeProduceAsync" />.</summary>
-    public IReadOnlyList<char> ProducedDrives
+    internal IReadOnlyList<char> ProducedDrives
     {
         get
         {
@@ -78,11 +77,11 @@ public sealed class SyntheticMftProducer
     }
 
     /// <summary>Wraps the built block, closing it when the catch-up loss callback throws so no handle leaks.</summary>
-    MftBlockProduceResult Describe(BlockFile block, UsnJournalCursor cursor, char driveLetter)
+    MftBlockProduceResult Describe(BlockFile block, SyntheticJournalCursor cursor, char driveLetter)
     {
         try
         {
-            return new MftBlockProduceResult(block, cursor.JournalId, cursor.NextUsn, SkippedRecordCount)
+            return new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUpdateSequenceNumber, SkippedRecordCount)
             {
                 CatchUpLoss = CatchUpLoss?.Invoke(driveLetter)
             };

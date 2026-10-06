@@ -46,10 +46,11 @@ public partial class NativeParserCoverageTests
     }
 
     [TestMethod]
-    [DataRow(MatchFlags.None, "3c7fcbd3d39ca2ae78a8b79379da1d1bb3cc0a51c563826cd2060d1a1ad4d22f")]
-    [DataRow(MatchFlags.ResolvePaths, "351f03a11f9c3f36e9db0f508242bfcdb7b8e99aa8c0614debbe6fe4c168e9d1")]
-    public void IncludeFreed_DefaultFixtureRowsAndStrings_AreByteIdentical(MatchFlags flags, string expectedHash)
+    [DataRow((uint)(MatchFlags.None), "3c7fcbd3d39ca2ae78a8b79379da1d1bb3cc0a51c563826cd2060d1a1ad4d22f")]
+    [DataRow((uint)(MatchFlags.ResolvePaths), "351f03a11f9c3f36e9db0f508242bfcdb7b8e99aa8c0614debbe6fe4c168e9d1")]
+    public void IncludeFreed_DefaultFixtureRowsAndStrings_AreByteIdentical(uint flagsValue, string expectedHash)
     {
+        var flags = (MatchFlags)flagsValue;
         var path = Path.GetTempFileName();
         try
         {

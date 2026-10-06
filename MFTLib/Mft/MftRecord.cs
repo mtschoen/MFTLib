@@ -27,7 +27,9 @@ internal sealed record MftRecordTestValues
 {
     public required ulong RecordNumber { get; init; }
     public required ulong ParentRecordNumber { get; init; }
-    public required ushort Flags { get; init; }
+    public bool InUse { get; init; } = true;
+    public bool IsDirectory { get; init; }
+    public bool SizeKnown { get; init; } = true;
     public required string FileName { get; init; }
     public string? FullPath { get; init; }
     public FileAttributes FileAttributes { get; init; }
@@ -42,7 +44,7 @@ internal sealed record MftRecordTestValues
 ///     disposed; call <see cref="Materialize" /> to keep one longer. Records from the batch and
 ///     array APIs are already materialized.
 /// </summary>
-public readonly struct MftRecord
+internal readonly struct MftRecord
 {
     readonly ushort _flags;
     readonly ushort _nameLength;
@@ -53,6 +55,8 @@ public readonly struct MftRecord
     readonly long _modifiedFileTime;
     readonly ushort _sequenceNumber;
 
+    const ushort InUseFlag = 1;
+    const ushort DirectoryFlag = 2;
     const ushort SizeUnknownFlag = 0x8000;
     const ushort PathUnresolvedFlag = 0x4000;
 
@@ -87,9 +91,9 @@ public readonly struct MftRecord
     ///     Whether the record is allocated. Freed base records returned with
     ///     <see cref="MatchFlags.IncludeFreed" /> have this value set to false.
     /// </summary>
-    public bool InUse => (_flags & 1) != 0;
+    public bool InUse => (_flags & InUseFlag) != 0;
     /// <summary>Whether the record header marks a directory.</summary>
-    public bool IsDirectory => (_flags & 2) != 0;
+    public bool IsDirectory => (_flags & DirectoryFlag) != 0;
 
     /// <summary>The Win32 file attributes the record carries; the directory bit also appears in <see cref="IsDirectory" />.</summary>
     public FileAttributes FileAttributes { get; }
@@ -266,7 +270,10 @@ public readonly struct MftRecord
 
     internal static MftRecord CreateForTest(MftRecordTestValues values)
     {
-        var fields = new MftRecordFields(values.Flags, values.FileAttributes, values.Size, values.ModifiedFileTime,
+        var flags = (ushort)((values.InUse ? InUseFlag : 0)
+                             | (values.IsDirectory ? DirectoryFlag : 0)
+                             | (values.SizeKnown ? 0 : SizeUnknownFlag));
+        var fields = new MftRecordFields(flags, values.FileAttributes, values.Size, values.ModifiedFileTime,
             values.SequenceNumber);
         return new MftRecord(values.RecordNumber, values.ParentRecordNumber, fields, values.FileName, values.FullPath);
     }

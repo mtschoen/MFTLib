@@ -9,7 +9,7 @@ namespace MFTLib;
 ///     parse still holds it throws <see cref="InvalidOperationException" />. It can be reused once
 ///     that parse has returned, and several parses that run together each need their own.
 /// </summary>
-public sealed class ParseThreadAllowance
+internal sealed class ParseThreadAllowance
 {
     readonly Lock _gate = new();
     int _count;

@@ -120,7 +120,6 @@ public class MftRecordTests
         {
             RecordNumber = 99,
             ParentRecordNumber = 7,
-            Flags = 1,
             FileName = "record",
             SequenceNumber = 37
         });

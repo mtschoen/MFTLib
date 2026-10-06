@@ -110,8 +110,11 @@ public readonly partial record struct FileEntry
     /// <summary>Determines whether the entry is a retained deletion tombstone.</summary>
     public bool IsDeleted => Row.IsDeleted;
 
-    /// <summary>Formats this entry for diagnostics without allocating its name when invalid or disposed.</summary>
-    /// <returns>An invalid, disposed, or name-and-identifier representation.</returns>
+    /// <summary>Formats this entry for logs and debugger watches. It never throws, whatever state the handle is in.</summary>
+    /// <returns>
+    ///     The path and row key of a live entry, or its name and row key when no path can be built, or a marker
+    ///     naming the default or disposed state.
+    /// </returns>
     public override string ToString()
     {
         if (!IsValid)
@@ -119,6 +122,31 @@ public readonly partial record struct FileEntry
             return "<invalid FileEntry>";
         }
 
-        return IsDisposed ? "<disposed FileEntry>" : $"{Name} ({Id})";
+        try
+        {
+            var key = Id;
+            var name = Name;
+            return $"{TryBuildPath() ?? name} ({key})";
+        }
+        catch (ObjectDisposedException)
+        {
+            return "<disposed FileEntry>";
+        }
+    }
+
+    /// <summary>
+    ///     The path for diagnostics, or null when none can be built: a parent chain past the depth limit, a drive
+    ///     with no configured root, or a release that raced the read. Formatting must not fail for any of them.
+    /// </summary>
+    string? TryBuildPath()
+    {
+        try
+        {
+            return Path;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 }

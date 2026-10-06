@@ -66,10 +66,11 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    [DataRow(MatchFlags.None, 2)]
-    [DataRow(MatchFlags.ResolvePaths, 6)]
-    public void ParseFromFile_AllocFailOnBuffers_ReturnsErrorMessage(MatchFlags matchFlags, int allocationToFail)
+    [DataRow((uint)(MatchFlags.None), 2)]
+    [DataRow((uint)(MatchFlags.ResolvePaths), 6)]
+    public void ParseFromFile_AllocFailOnBuffers_ReturnsErrorMessage(uint matchFlagsValue, int allocationToFail)
     {
+        var matchFlags = (MatchFlags)matchFlagsValue;
         var path = Path.GetTempFileName();
         try
         {
@@ -100,10 +101,11 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    [DataRow(MatchFlags.None, 4)]
-    [DataRow(MatchFlags.ResolvePaths, 8)]
-    public void ParseFromFile_AllocFailOnEntries_ReturnsErrorMessage(MatchFlags matchFlags, int allocationToFail)
+    [DataRow((uint)(MatchFlags.None), 4)]
+    [DataRow((uint)(MatchFlags.ResolvePaths), 8)]
+    public void ParseFromFile_AllocFailOnEntries_ReturnsErrorMessage(uint matchFlagsValue, int allocationToFail)
     {
+        var matchFlags = (MatchFlags)matchFlagsValue;
         var path = Path.GetTempFileName();
         try
         {
@@ -134,10 +136,11 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    [DataRow(MatchFlags.None, 5)]
-    [DataRow(MatchFlags.ResolvePaths, 9)]
-    public void ParseFromFile_AllocFailOnStrings_ReturnsErrorMessage(MatchFlags matchFlags, int allocationToFail)
+    [DataRow((uint)(MatchFlags.None), 5)]
+    [DataRow((uint)(MatchFlags.ResolvePaths), 9)]
+    public void ParseFromFile_AllocFailOnStrings_ReturnsErrorMessage(uint matchFlagsValue, int allocationToFail)
     {
+        var matchFlags = (MatchFlags)matchFlagsValue;
         var path = Path.GetTempFileName();
         try
         {
@@ -168,10 +171,11 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    [DataRow(MatchFlags.None, 6)]
-    [DataRow(MatchFlags.ResolvePaths, 10)]
-    public void ParseFromFile_AllocFailOnMergeGrow_ReturnsErrorMessage(MatchFlags matchFlags, int allocationToFail)
+    [DataRow((uint)(MatchFlags.None), 6)]
+    [DataRow((uint)(MatchFlags.ResolvePaths), 10)]
+    public void ParseFromFile_AllocFailOnMergeGrow_ReturnsErrorMessage(uint matchFlagsValue, int allocationToFail)
     {
+        var matchFlags = (MatchFlags)matchFlagsValue;
         var path = Path.GetTempFileName();
         try
         {

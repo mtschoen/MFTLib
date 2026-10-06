@@ -12,7 +12,7 @@ namespace MFTLib;
 /// <param name="ParseThreads">The thread count the parse reads at every chunk; null uses every processor.</param>
 /// <param name="BufferSizeRecords">Records the native parser reads per chunk; defaults to <see cref="MftVolume.DefaultBufferSizeRecords" />.</param>
 /// <param name="CancellationToken">Stops the native parse; a stopped parse throws <see cref="OperationCanceledException" />.</param>
-public readonly record struct MftFileScanOptions(
+internal readonly record struct MftFileScanOptions(
     IProgress<MftScanProgress>? Progress = null,
     ParseThreadAllowance? ParseThreads = null,
     uint BufferSizeRecords = MftVolume.DefaultBufferSizeRecords,
@@ -23,7 +23,7 @@ public readonly record struct MftFileScanOptions(
 ///     opens the volume device itself. Dispose releases the handle. The scan members here parse
 ///     the MFT natively; the USN journal members live in the same type.
 /// </summary>
-public sealed partial class MftVolume : IDisposable
+internal sealed partial class MftVolume : IDisposable
 {
     /// <summary>The records the native parser reads per chunk when the caller names no buffer size: 262144.</summary>
     public const uint DefaultBufferSizeRecords = 262144;

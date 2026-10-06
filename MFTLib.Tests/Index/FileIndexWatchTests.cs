@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using MFTLib.Index;
 using MFTLib.Tests.TestSupport;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -141,8 +142,22 @@ public class FileIndexWatchTests
         _index.Changed += observed.Add;
 
         UsnJournalEntry[] entries = [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)];
+        SyntheticJournalRecord[] synthetic =
+        [
+            new()
+            {
+                RecordNumber = 20,
+                ParentRecordNumber = 0,
+                UpdateSequenceNumber = 1,
+                Timestamp = ChangeMoment,
+                Reason = SyntheticJournalReason.FileCreate | SyntheticJournalReason.Close,
+                FileAttributes = FileAttributes.Archive,
+                FileName = "injected.txt"
+            }
+        ];
         var applied = throughTestExtensions
-            ? MFTLibTestExtensions.FileIndexTestAccess.ApplyJournalEntries(_index, 'T', entries, journalId: 5, nextUsn: 100)
+            ? FileIndexTestAccess.ApplyJournalEntries(_index, 'T', synthetic, journalIdentifier: 5,
+                nextUpdateSequenceNumber: 100)
             : _index.ApplyJournalEntries('T', entries, journalId: 5, nextUsn: 100);
 
         Assert.AreEqual(1, applied.Count);
@@ -160,7 +175,7 @@ public class FileIndexWatchTests
     public void ApplyJournalEntries_TestExtensionRejectsNullIndex()
     {
         Assert.ThrowsException<ArgumentNullException>(() =>
-            MFTLibTestExtensions.FileIndexTestAccess.ApplyJournalEntries(null!, 'T', [], 5, 100));
+            FileIndexTestAccess.ApplyJournalEntries(null!, 'T', [], 5, 100));
     }
 
     [TestMethod]

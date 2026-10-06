@@ -36,7 +36,6 @@ public class MftRecordSizeAndTimeTests
         {
             RecordNumber = 1,
             ParentRecordNumber = 5,
-            Flags = 1,
             FileName = "x",
             ModifiedFileTime = long.MinValue
         });
@@ -51,7 +50,6 @@ public class MftRecordSizeAndTimeTests
         {
             RecordNumber = 1,
             ParentRecordNumber = 5,
-            Flags = 1,
             FileName = "x",
             FullPath = @"C:\x",
             FileAttributes = FileAttributes.Archive,
@@ -69,7 +67,7 @@ public class MftRecordSizeAndTimeTests
         {
             RecordNumber = 1,
             ParentRecordNumber = 5,
-            Flags = 0x8001,
+            SizeKnown = false,
             FileName = "x",
             Size = 42
         });

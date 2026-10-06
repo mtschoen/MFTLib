@@ -13,7 +13,7 @@ readonly record struct NativeUsnJournalEntryData
 }
 
 /// <summary>One decoded NTFS USN change-journal record.</summary>
-public readonly struct UsnJournalEntry
+internal readonly struct UsnJournalEntry
 {
     /// <summary>
     ///     MFT segment index (the lower 48 bits of the file reference number). Matches MftRecord.RecordNumber.

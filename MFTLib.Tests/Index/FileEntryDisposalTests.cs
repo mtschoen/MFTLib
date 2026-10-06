@@ -61,6 +61,87 @@ public class FileEntryDisposalTests
     }
 
     [TestMethod]
+    public void ToString_OnALiveEntry_NamesThePathAndTheRowKey()
+    {
+        var text = _entry.ToString();
+
+        StringAssert.Contains(text, "readme.md");
+        StringAssert.Contains(text, _entry.Id.ToString());
+    }
+
+    [TestMethod]
+    public async Task ToString_OnAnEntryPastTheMaximumPathDepth_FallsBackToTheNameAndKey()
+    {
+        using var builder = new SyntheticBlockBuilder();
+        var parent = builder.AddRoot();
+        for (var depth = 0; depth <= BlockLayout.MaximumPathDepth; depth++)
+        {
+            parent = builder.AddRow("d" + depth, parent, RowFlags.InUse | RowFlags.Directory, 0, Moment,
+                sequenceNumber: 0);
+        }
+
+        var deepest = builder.AddRow("deep.txt", parent, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
+        builder.Complete(Moment);
+        var snapshot = Snapshot.Create([new DriveBlock('T', 0, builder.OpenForReading(out _)!,
+            rootDirectoryPath: TestDriveRoot.For('T'))]);
+        try
+        {
+            var entry = FileEntry.Create(snapshot, 0, deepest);
+            Assert.ThrowsException<InvalidDataException>(() => entry.Path);
+
+            Assert.AreEqual($"deep.txt ({entry.Id})", entry.ToString());
+            StringAssert.Contains(new SearchQuery("x", Under: entry).ToString(), "deep.txt");
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
+    public async Task ToString_OnAnEntryWhoseDriveHasNoRootDirectory_FallsBackToTheNameAndKey()
+    {
+        using var builder = new SyntheticBlockBuilder();
+        var root = builder.AddRoot();
+        var file = builder.AddRow("rootless.txt", root, RowFlags.InUse, 1, Moment, sequenceNumber: 0);
+        builder.Complete(Moment);
+        var snapshot = Snapshot.Create([new DriveBlock('T', 0, builder.OpenForReading(out _)!)]);
+        try
+        {
+            var entry = FileEntry.Create(snapshot, 0, file);
+            Assert.ThrowsException<InvalidOperationException>(() => entry.Path);
+
+            Assert.AreEqual($"rootless.txt ({entry.Id})", entry.ToString());
+        }
+        finally
+        {
+            await snapshot.ReleaseNowAsync();
+        }
+    }
+
+    [TestMethod]
+    public void ToString_OnTheDefaultValue_DoesNotThrow()
+    {
+        Assert.AreEqual("<invalid FileEntry>", default(FileEntry).ToString());
+    }
+
+    [TestMethod]
+    public async Task ToString_AfterTheSnapshotIsReleased_DoesNotThrow()
+    {
+        await _snapshot.ReleaseNowAsync();
+
+        Assert.AreEqual("<disposed FileEntry>", _entry.ToString());
+    }
+
+    [TestMethod]
+    public void SearchQueryToString_WithADefaultUnder_DoesNotThrow()
+    {
+        var query = new SearchQuery("readme", Under: default(FileEntry));
+
+        StringAssert.Contains(query.ToString(), "<invalid FileEntry>");
+    }
+
+    [TestMethod]
     public void IsDisposed_IsFalseForTheDefaultValue()
     {
         var defaultEntry = default(FileEntry);
@@ -87,14 +168,5 @@ public class FileEntryDisposalTests
         Assert.ThrowsException<ObjectDisposedException>(() => _ = entry.Parent);
         Assert.ThrowsException<ObjectDisposedException>(() => entry.Children());
         Assert.ThrowsException<ObjectDisposedException>(() => entry.Open(FileAccess.Read));
-    }
-
-    [TestMethod]
-    public async Task ToString_DoesNotThrowOnADisposedHandle()
-    {
-        await _snapshot.ReleaseNowAsync();
-
-        Assert.AreEqual("<disposed FileEntry>", _entry.ToString());
-        Assert.AreEqual("<invalid FileEntry>", default(FileEntry).ToString());
     }
 }

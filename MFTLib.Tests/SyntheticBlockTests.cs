@@ -15,7 +15,7 @@ public partial class SyntheticBlockTests
 {
     const uint Serial = 0x1234;
     static readonly DateTime Moment = new(2026, 10, 4, 0, 0, 0, DateTimeKind.Utc);
-    static readonly UsnJournalCursor Cursor = new(7, 4096);
+    static readonly SyntheticJournalCursor Cursor = new(7, 4096);
 
     OwnedIndexDirectories _directories = null!;
 
@@ -126,10 +126,10 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(Moment, drive.ScanTimestamp);
         Assert.AreEqual(10u, index.HeaderOf().RowCount);
         Assert.AreEqual(5u, drive.LiveRowCount);
-        var report = index.FindByName("report.txt").Single();
+        var report = index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single();
         Assert.AreEqual(1234, report.Size);
         Assert.AreEqual(FileAttributes.ReadOnly | FileAttributes.Archive, report.Attributes);
-        Assert.IsFalse(index.FindByName("unsized.bin").Single().SizeKnown);
+        Assert.IsFalse(index.Search(new SearchQuery("unsized.bin", NameMatchMode.Exact)).Single().SizeKnown);
     }
 
     [TestMethod]
@@ -156,8 +156,8 @@ public partial class SyntheticBlockTests
 
         Assert.AreEqual(tag, CacheDirectory.InspectCached(CacheDirectoryPath).Single().CacheTag);
         using var block = BlockFile.Open(path, Serial, out _)!;
-        Assert.AreEqual(Cursor.JournalId, block.Header.UsnJournalId);
-        Assert.AreEqual(Cursor.NextUsn, block.Header.UsnNextUsn);
+        Assert.AreEqual(Cursor.JournalIdentifier, block.Header.UsnJournalId);
+        Assert.AreEqual(Cursor.NextUpdateSequenceNumber, block.Header.UsnNextUsn);
     }
 
     [DataTestMethod]
@@ -187,10 +187,10 @@ public partial class SyntheticBlockTests
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        Assert.AreEqual(0, index.FindByName("report.txt").Count);
-        Assert.AreEqual(77, index.FindByName("renamed.txt").Single().Size);
-        Assert.AreEqual(1, index.FindByName("added.txt").Single().Size);
-        Assert.AreEqual(FileAttributes.Hidden | FileAttributes.Directory, index.FindByName("docs").Single().Attributes);
+        Assert.AreEqual(0, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Count);
+        Assert.AreEqual(77, index.Search(new SearchQuery("renamed.txt", NameMatchMode.Exact)).Single().Size);
+        Assert.AreEqual(1, index.Search(new SearchQuery("added.txt", NameMatchMode.Exact)).Single().Size);
+        Assert.AreEqual(FileAttributes.Hidden | FileAttributes.Directory, index.Search(new SearchQuery("docs", NameMatchMode.Exact)).Single().Attributes);
     }
 
     [TestMethod]
@@ -225,7 +225,7 @@ public partial class SyntheticBlockTests
         var later = Moment.AddDays(1);
         SyntheticBlock.Edit(path, Serial, editor =>
         {
-            editor.SetJournalCursor(new UsnJournalCursor(8, 9000));
+            editor.SetJournalCursor(new SyntheticJournalCursor(8, 9000));
             editor.Complete(later);
         });
 
@@ -355,14 +355,14 @@ public partial class SyntheticBlockTests
             Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
             Assert.AreEqual(3, drive.SkippedRecordCount);
             Assert.AreEqual(Moment, drive.ScanTimestamp);
-            Assert.AreEqual(1234, index.FindByName("report.txt").Single().Size);
+            Assert.AreEqual(1234, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().Size);
         }
 
         var status = CacheDirectory.InspectCached(CacheDirectoryPath).Single();
         Assert.AreEqual(tag, status.CacheTag, "the producer copies the request's cache tag");
         using var block = BlockFile.Open(SyntheticBlock.CachedPath(CacheDirectoryPath, 'T', Serial), Serial, out _)!;
-        Assert.AreEqual(Cursor.JournalId, block.Header.UsnJournalId);
-        Assert.AreEqual(Cursor.NextUsn, block.Header.UsnNextUsn);
+        Assert.AreEqual(Cursor.JournalIdentifier, block.Header.UsnJournalId);
+        Assert.AreEqual(Cursor.NextUpdateSequenceNumber, block.Header.UsnNextUsn);
     }
 
     [TestMethod]

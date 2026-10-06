@@ -2,9 +2,7 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     Point lookups. <see cref="Find" /> resolves a native path by matching the longest indexed
-///     root, then walks one name per level. <see cref="FindByName" /> is an exact-name column
-///     scan across every current drive block, partitioned per block the way
-///     <see cref="SearchEngine" /> partitions its search.
+///     root, then walks one name per level.
 /// </summary>
 internal static class LookupEngine
 {
@@ -163,87 +161,5 @@ internal static class LookupEngine
 
         childRow = 0;
         return false;
-    }
-
-    internal static List<FileEntry> FindByName(Snapshot snapshot, string name, bool caseSensitive,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        ArgumentNullException.ThrowIfNull(name);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var results = new List<FileEntry>();
-        foreach (var driveBlock in snapshot.DriveBlocks)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            FindByNameOneDrive(snapshot, driveBlock.DriveOrdinal, name, caseSensitive, results,
-                cancellationToken);
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        return results;
-    }
-
-    /// <summary>
-    ///     One drive's half of the scan, partitioned the way <see cref="SearchEngine" />
-    ///     partitions its search: per-partition result lists merged in partition order, so the
-    ///     merged list holds the drive's matches in ascending row order exactly as a sequential
-    ///     scan did.
-    /// </summary>
-    static void FindByNameOneDrive(Snapshot snapshot, ushort driveOrdinal, string name,
-        bool caseSensitive, List<FileEntry> results, CancellationToken cancellationToken)
-    {
-        var rowCount = snapshot.GetDriveBlock(driveOrdinal).Block.Header.RowCount;
-        var partitions = ScanPartitioning.Partition(rowCount,
-            ScanPartitioning.DefaultPartitionCount(rowCount));
-        if (partitions.Count == 0)
-        {
-            return;
-        }
-
-        if (partitions.Count == 1)
-        {
-            CollectPartition(snapshot, driveOrdinal, name, caseSensitive, partitions[0], results,
-                cancellationToken);
-            return;
-        }
-
-        var perPartition = new List<FileEntry>[partitions.Count];
-
-        // The token goes on the loop as well as into every partition's scanner, so cancellation
-        // reaches the caller as one OperationCanceledException for the query rather than an
-        // AggregateException holding one per partition for it to unwrap.
-        var options = new ParallelOptions { CancellationToken = cancellationToken };
-        Parallel.For(0, partitions.Count, options, index =>
-        {
-            var local = new List<FileEntry>();
-            CollectPartition(snapshot, driveOrdinal, name, caseSensitive, partitions[index], local,
-                cancellationToken);
-            perPartition[index] = local;
-        });
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        foreach (var local in perPartition)
-        {
-            results.AddRange(local);
-        }
-    }
-
-    static void CollectPartition(Snapshot snapshot, ushort driveOrdinal, string name,
-        bool caseSensitive, (uint StartRow, uint EndRowExclusive) partition,
-        List<FileEntry> destination, CancellationToken cancellationToken)
-    {
-        var scanner = new RowScanner(snapshot, driveOrdinal, partition.StartRow,
-            partition.EndRowExclusive, cancellationToken);
-        while (scanner.MoveNext())
-        {
-            ref readonly var row = ref scanner.Current;
-            if (row.IsInUse && !row.IsDeleted &&
-                NameMatching.EqualsName(scanner.CurrentName, name, caseSensitive))
-            {
-                destination.Add(FileEntry.Create(snapshot, driveOrdinal, scanner.CurrentRowIndex));
-            }
-        }
     }
 }

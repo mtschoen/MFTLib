@@ -3,7 +3,7 @@ using System.Buffers;
 namespace MFTLib;
 
 /// <summary>Opens a drive pipe for one operation through the control pipe's channel handshake.</summary>
-public sealed partial class BrokerProcess
+internal sealed partial class BrokerProcess
 {
     // One owned operation: create the pipe server, register the request, write OpenChannel, then
     // take the host's connection and the ChannelOpened reply in either order, then write the

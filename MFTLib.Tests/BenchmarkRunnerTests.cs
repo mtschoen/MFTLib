@@ -45,8 +45,8 @@ public class BenchmarkRunnerTests
         StringAssert.Contains(output, "File bytes:");
         StringAssert.Contains(output, "Name-pool bytes:");
         StringAssert.Contains(output, "Name-pool capacity bytes:");
-        StringAssert.Contains(output, "FindByName median: " + (iterations == 3 ? "5.000" : "4.000") + " ms");
-        StringAssert.Contains(output, "Search median: " + (iterations == 3 ? "4.000" : "5.000") + " ms");
+        StringAssert.Contains(output, "Exact median: " + (iterations == 3 ? "5.000" : "4.000") + " ms");
+        StringAssert.Contains(output, "Substring median: " + (iterations == 3 ? "4.000" : "5.000") + " ms");
         StringAssert.Contains(output, $"Matches: {(rows == 1 ? 0 : 1)}");
         Assert.AreEqual(0, samples.Count);
     }

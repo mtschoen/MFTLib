@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>Scans one drive into a client-created block section on a channel of its own.</summary>
-public sealed partial class BrokerProcess
+internal sealed partial class BrokerProcess
 {
     /// <summary>
     ///     Scans one drive: sizes its block from the broker's volume query, creates the section,

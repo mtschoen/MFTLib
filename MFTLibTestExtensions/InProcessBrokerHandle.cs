@@ -3,8 +3,8 @@ using MFTLib;
 namespace MFTLibTestExtensions;
 
 /// <summary>
-///     An in-process broker started by <see cref="BrokerTestHarness" />: the production
-///     <see cref="BrokerProcess" /> a test drives, and the means to kill the host side of it.
+///     An in-process broker started by <see cref="BrokerTestHarness" />: the production client a test drives
+///     through <see cref="BrokerTestHarness.CreateSession" />, and the means to kill the host side of it.
 /// </summary>
 public sealed class InProcessBrokerHandle : IAsyncDisposable
 {
@@ -26,14 +26,17 @@ public sealed class InProcessBrokerHandle : IAsyncDisposable
     }
 
     /// <summary>The client connected to the in-process host.</summary>
-    public BrokerProcess Process { get; }
+    internal BrokerProcess Process { get; }
+
+    /// <summary>Completes with the reason the client's session ended, when it does.</summary>
+    public Task<string> Ended => Process.Ended;
 
     /// <summary>
     ///     Simulates the broker process dying: every pipe end the host holds closes at once, without
     ///     the client's cooperation and without a graceful session end, so the client reads EOF on
     ///     the control pipe and on every drive channel, exactly as it does when an elevated broker
-    ///     exits. The client's <see cref="BrokerProcess.Ended" /> then reports the loss, and every
-    ///     pending or later request fails with <see cref="BrokerChannelLostException" />. Idempotent;
+    ///     exits. <see cref="Ended" /> then reports the loss, and every
+    ///     pending or later request fails with an <see cref="IOException" />. Idempotent;
     ///     the handle still disposes normally afterwards.
     /// </summary>
     public void Crash() => _crash();
@@ -48,7 +51,7 @@ public sealed class InProcessBrokerHandle : IAsyncDisposable
     Task? _disposeTask;
 
     /// <summary>
-    ///     Disposes <see cref="Process" />, which ends the host's session and waits for it to return, then
+    ///     Disposes the client, which ends the host's session and waits for it to return, then
     ///     releases the block sections the scans wrote into. Safe to call more than once.
     /// </summary>
     public ValueTask DisposeAsync()

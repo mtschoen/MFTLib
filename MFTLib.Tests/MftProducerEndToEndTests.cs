@@ -157,7 +157,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(ArmedCursor, firstBlockCursor);
         Assert.AreNotEqual(AdvancedCursor, firstBlockCursor, "catch-up advanced past the armed cursor");
         var firstStart = watchSource.Starts.Single();
-        Assert.AreEqual(new ScriptedWatchStart('C', firstBlockCursor), firstStart);
+        Assert.AreEqual(new ScriptedWatchStart('C', firstBlockCursor.ToSynthetic()), firstStart);
 
         Volatile.Write(ref rearmed.Value, 1);
         await index.RescanAsync('C', CancellationToken.None).WaitAsync(HangGuard);
@@ -170,7 +170,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(40UL, index.Find(At("replacement.txt"))!.Value.Id.RecordNumber);
         Assert.IsNull(index.Find(At("documents", "notes.txt")));
         Assert.AreEqual(2, watchSource.Starts.Count);
-        Assert.AreEqual(new ScriptedWatchStart('C', RearmedCursor), watchSource.Starts[1]);
+        Assert.AreEqual(new ScriptedWatchStart('C', RearmedCursor.ToSynthetic()), watchSource.Starts[1]);
         Assert.AreEqual(Path.Combine(_rootDirectory, "documents", "notes.txt"), previous.Path);
         Assert.AreEqual("notes.txt", previous.Name);
         Assert.AreEqual(4096L, previous.Size);

@@ -22,7 +22,7 @@ public sealed class ScriptedScan
     public string DriveLetter { get; }
 
     /// <summary>The scan's share of the host's parse threads.</summary>
-    public ParseThreadAllowance ParseThreads { get; }
+    internal ParseThreadAllowance ParseThreads { get; }
 
     /// <summary>Cancelled when the client cancels the scan or its pipe closes.</summary>
     public CancellationToken CancellationToken { get; }

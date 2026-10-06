@@ -62,7 +62,7 @@ public class FileIndexQueryCancellationTests
         var readme = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"), token);
 
         Assert.IsTrue(readme.HasValue);
-        Assert.AreEqual(1, _index.FindByName("readme.md", token).Count);
+        Assert.AreEqual(1, _index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token).Count);
         Assert.AreEqual(1, _index.Search(new SearchQuery("report"), token).Count);
         Assert.AreEqual(1, _index.Largest(1, under: null, token).Count);
         Assert.AreEqual(0, _index.DuplicateNames(token).Count);
@@ -81,13 +81,13 @@ public class FileIndexQueryCancellationTests
     }
 
     [TestMethod]
-    public void FindByName_WithACancelledToken_Throws()
+    public void Search_ExactMode_WithACancelledToken_Throws()
     {
         using var cancellation = Cancelled();
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(
-            () => _index.FindByName("readme.md", token));
+            () => _index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token));
         Assert.AreEqual(0, _index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
     }
 
@@ -185,7 +185,7 @@ public class FileIndexQueryCancellationTests
     [TestMethod]
     public void AQueryThatReturned_LeavesNoBorrowOutstanding()
     {
-        _ = _index.FindByName("readme.md");
+        _ = _index.Search(new SearchQuery("readme.md", NameMatchMode.Exact));
 
         Assert.AreEqual(0, _index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
     }

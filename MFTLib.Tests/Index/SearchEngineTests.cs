@@ -65,7 +65,7 @@ public class SearchEngineTests
     [TestMethod]
     public void Search_GlobPatternMatchesTheWholeName()
     {
-        var results = SearchEngine.Search(_snapshot, new SearchQuery("*.pdf"));
+        var results = SearchEngine.Search(_snapshot, new SearchQuery("*.pdf", NameMatchMode.Glob));
         CollectionAssert.AreEqual(new[] { "report.pdf" }, NamesOf(results));
     }
 
@@ -224,7 +224,7 @@ public class SearchEngineTests
         try
         {
             var ancestor = FileEntry.Create(snapshot, 0, root);
-            var results = SearchEngine.Search(snapshot, new SearchQuery("*.txt", Under: ancestor));
+            var results = SearchEngine.Search(snapshot, new SearchQuery("*.txt", NameMatchMode.Glob, Under: ancestor));
             Assert.AreEqual(1, results.Count);
             Assert.AreEqual("valid.txt", results[0].Name);
         }
@@ -251,7 +251,7 @@ public class SearchEngineTests
         var snapshot = Snapshot.Create([new DriveBlock('Y', 0, block)]);
         try
         {
-            var results = SearchEngine.Search(snapshot, new SearchQuery("*.dat"));
+            var results = SearchEngine.Search(snapshot, new SearchQuery("*.dat", NameMatchMode.Glob));
             Assert.AreEqual(fileCount, results.Count);
         }
         finally
@@ -272,7 +272,7 @@ public class SearchEngineTests
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(
-            () => SearchEngine.Search(_snapshot, new SearchQuery("*.dat"), token));
+            () => SearchEngine.Search(_snapshot, new SearchQuery("*.dat", NameMatchMode.Glob), token));
     }
 
     [TestMethod]

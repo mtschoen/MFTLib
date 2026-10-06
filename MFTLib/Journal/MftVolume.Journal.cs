@@ -4,7 +4,7 @@ using MFTLib.Interop;
 
 namespace MFTLib;
 
-public sealed partial class MftVolume
+internal sealed partial class MftVolume
 {
     // Native UsnJournalEntry layout (pack 1):
     //   recordNumber(8) + parentRecordNumber(8) + usn(8) + timestamp(8) +

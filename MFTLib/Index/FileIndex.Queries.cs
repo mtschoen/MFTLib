@@ -21,17 +21,6 @@ public sealed partial class FileIndex
         return LookupEngine.Find(query.Snapshot, nativePath, query.CancellationToken);
     }
 
-    /// <summary>Exact-name matches across every current drive block, folding case the way NTFS does.</summary>
-    /// <param name="name">The name to match in full.</param>
-    /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
-    public IReadOnlyList<FileEntry> FindByName(string name, CancellationToken cancellationToken = default)
-    {
-        using var query = BeginQuery(cancellationToken);
-        return LookupEngine.FindByName(query.Snapshot, name, caseSensitive: false, query.CancellationToken);
-    }
-
     /// <summary>
     ///     The whole match set, materialized. Callers page by slicing the returned list, which is
     ///     why the count is available up front and there is no cursor.
@@ -43,6 +32,7 @@ public sealed partial class FileIndex
     ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops while applying the subtree restriction
     ///     (<see cref="SearchQuery.Under" />).
     /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="query" /> has an undefined <see cref="SearchQuery.MatchMode" />.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     /// <seealso cref="Enumerate" />
@@ -77,12 +67,14 @@ public sealed partial class FileIndex
     ///     it before returning, the streaming form throws it from the MoveNext that reaches
     ///     the candidate.
     /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="query" /> has an undefined <see cref="SearchQuery.MatchMode" />.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
     /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
     /// <seealso cref="Search" />
     public IEnumerable<FileEntry> Enumerate(SearchQuery query, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
+        NameMatching.ThrowIfUndefined(query);
         ObjectDisposedException.ThrowIf(_disposed, this);
         return EnumerateCore(query, cancellationToken);
     }

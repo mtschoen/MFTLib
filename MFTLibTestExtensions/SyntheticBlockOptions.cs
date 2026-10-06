@@ -1,4 +1,3 @@
-using MFTLib;
 using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
@@ -13,7 +12,7 @@ public sealed record SyntheticBlockOptions
     public uint RootRow { get; init; } = 5;
 
     /// <summary>The journal position stamped into the header, from which a watch would resume.</summary>
-    public UsnJournalCursor JournalCursor { get; init; }
+    public SyntheticJournalCursor JournalCursor { get; init; }
 
     /// <summary>Becomes <see cref="DriveStatus.ScanTimestamp" /> when an index adopts the block, so a test about scan age sets it explicitly.</summary>
     public DateTime CompletedUtc { get; init; }

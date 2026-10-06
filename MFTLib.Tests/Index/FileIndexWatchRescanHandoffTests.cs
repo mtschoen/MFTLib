@@ -49,7 +49,7 @@ public class FileIndexWatchRescanHandoffTests
                 Assert.AreNotSame(original, index.Root('T').DriveBlock,
                     "publication need not wait for an already applied change's delivery");
                 Assert.AreEqual(0, changes.Count);
-                Assert.AreEqual(0, index.FindByName("replayed.txt", Token).Count, "queries await the new catch-up");
+                Assert.AreEqual(0, index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token).Count, "queries await the new catch-up");
                 delivering.Release();
                 await rescan.WaitAsync(ScriptedWatchSource.HangGuard);
                 await delivered.WaitAsync(ScriptedWatchSource.HangGuard);
@@ -59,7 +59,7 @@ public class FileIndexWatchRescanHandoffTests
                 Assert.AreEqual(WatchCatchUpState.CatchingUp, index.Drives.Single().WatchCatchUp);
                 await source.WatchFor('T').Publish(new DriveCaughtUp());
                 await index.WaitForCatchUpAsync('T', Token);
-                Assert.AreEqual(1, index.FindByName("replayed.txt", Token).Count);
+                Assert.AreEqual(1, index.Search(new SearchQuery("replayed.txt", NameMatchMode.Exact), Token).Count);
                 await index.StopWatchingAsync('T', Token);
             }
             finally

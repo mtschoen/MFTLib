@@ -7,7 +7,7 @@ namespace MFTLib;
 ///     Adds USN journal management to an open volume while preserving the disposal and handle
 ///     ownership contract of the MFT reader partial type.
 /// </summary>
-public sealed partial class MftVolume
+internal sealed partial class MftVolume
 {
     /// <summary>
     ///     Grows this volume's USN change journal in place via

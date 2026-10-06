@@ -1,4 +1,3 @@
-using MFTLib;
 using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
@@ -21,7 +20,7 @@ public sealed class SyntheticBlockEditor
     }
 
     /// <summary>The highest row written plus one, including tombstones and gaps.</summary>
-    public uint RowCount
+    internal uint RowCount
     {
         get
         {
@@ -33,7 +32,7 @@ public sealed class SyntheticBlockEditor
     /// <summary>Reads one stored row.</summary>
     /// <param name="row">The row number; it must be in use.</param>
     /// <returns>The row as stored.</returns>
-    public SyntheticRow ReadRow(uint row)
+    internal SyntheticRow ReadRow(uint row)
     {
         RequireRow(row);
         return SyntheticBlock.ReadRow(_block, row);
@@ -41,7 +40,7 @@ public sealed class SyntheticBlockEditor
 
     /// <summary>Writes a row, appending its name. Fails when the block's capacity is exhausted.</summary>
     /// <param name="row">The row to write; it replaces any row with the same number.</param>
-    public void WriteRow(SyntheticRow row)
+    internal void WriteRow(SyntheticRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
         EnsureOpen();
@@ -62,7 +61,7 @@ public sealed class SyntheticBlockEditor
     ///     stat: the unknown flag is set and the stored size becomes zero. The name is not rewritten.
     /// </summary>
     /// <param name="row">The row number; it must be in use.</param>
-    public void MarkSizeUnknown(uint row)
+    internal void MarkSizeUnknown(uint row)
     {
         RequireRow(row);
         WriteSizeUnknown(row);
@@ -90,7 +89,7 @@ public sealed class SyntheticBlockEditor
 
     /// <summary>Marks a row deleted, keeping its name.</summary>
     /// <param name="row">The row number.</param>
-    public void MarkTombstone(uint row)
+    internal void MarkTombstone(uint row)
     {
         RequireRow(row);
         _writer.MarkTombstone(row);
@@ -105,10 +104,10 @@ public sealed class SyntheticBlockEditor
 
     /// <summary>Replaces the journal position from which a watch would resume.</summary>
     /// <param name="cursor">The new position.</param>
-    public void SetJournalCursor(UsnJournalCursor cursor)
+    internal void SetJournalCursor(SyntheticJournalCursor cursor)
     {
         EnsureOpen();
-        _writer.SetJournalCursor(cursor.JournalId, cursor.NextUsn);
+        _writer.SetJournalCursor(cursor.JournalIdentifier, cursor.NextUpdateSequenceNumber);
     }
 
     /// <summary>Replaces the scan timestamp and flushes the block.</summary>

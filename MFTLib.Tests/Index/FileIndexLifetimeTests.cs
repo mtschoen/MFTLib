@@ -159,7 +159,7 @@ public class FileIndexLifetimeTests
     public async Task DisposeAsync_AHeldFileEntryBecomesDisposedAndThrows()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var entry = index.FindByName("readme.md").Single();
+        var entry = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)).Single();
         Assert.AreEqual("readme.md", entry.Name);
 
         await index.DisposeAsync();

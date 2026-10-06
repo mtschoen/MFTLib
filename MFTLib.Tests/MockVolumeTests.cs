@@ -284,11 +284,12 @@ public class MockVolumeTests
     }
 
     [DataTestMethod]
-    [DataRow(MatchFlags.None)]
-    [DataRow(MatchFlags.ResolvePaths)]
-    [DataRow(MatchFlags.IncludeFreed | MatchFlags.ResolvePaths)]
-    public void StreamRecords_FilterWithoutAMatchBit_ThrowsBeforeAnyNativeCall(MatchFlags matchFlags)
+    [DataRow((uint)(MatchFlags.None))]
+    [DataRow((uint)(MatchFlags.ResolvePaths))]
+    [DataRow((uint)(MatchFlags.IncludeFreed | MatchFlags.ResolvePaths))]
+    public void StreamRecords_FilterWithoutAMatchBit_ThrowsBeforeAnyNativeCall(uint matchFlagsValue)
     {
+        var matchFlags = (MatchFlags)matchFlagsValue;
         FileUtilities._getVolumeHandle = _ => FakeHandle();
         MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) =>
             throw new AssertFailedException("No native call is made.");
@@ -305,11 +306,12 @@ public class MockVolumeTests
     }
 
     [DataTestMethod]
-    [DataRow(MatchFlags.ExactMatch)]
-    [DataRow(MatchFlags.Contains)]
-    [DataRow(MatchFlags.None)]
-    public void StreamRecords_FilterWithAMatchBitOrNoFilter_CallsTheNativeParser(MatchFlags matchFlags)
+    [DataRow((uint)(MatchFlags.ExactMatch))]
+    [DataRow((uint)(MatchFlags.Contains))]
+    [DataRow((uint)(MatchFlags.None))]
+    public void StreamRecords_FilterWithAMatchBitOrNoFilter_CallsTheNativeParser(uint matchFlagsValue)
     {
+        var matchFlags = (MatchFlags)matchFlagsValue;
         SetupMocks();
         using var volume = MftVolume.Open("C");
 

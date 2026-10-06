@@ -141,13 +141,14 @@ public partial class BenchmarkRunner
         _writeLineToConsole(string.Create(CultureInfo.InvariantCulture,
             $"  Name-pool bytes: {header.NamePoolUsed} ({100.0 * header.NamePoolUsed / bytes:F2}% of file)"));
         _writeLineToConsole($"  Name-pool capacity bytes: {header.NamePoolCapacity}");
-        _writeLineToConsole($"  Query: {IndexQueryName} (exact FindByName, substring Search; median of {iterations} runs)");
+        _writeLineToConsole($"  Query: {IndexQueryName} (exact and substring searches; median of {iterations} runs)");
         // Touch the mapped pages and initialize both query paths before collecting warm samples.
-        index.FindByName(IndexQueryName);
-        var query = new SearchQuery(IndexQueryName);
-        index.Search(query);
-        PrintIndexMedian("FindByName", () => index.FindByName(IndexQueryName), iterations);
-        PrintIndexMedian("Search", () => index.Search(query), iterations);
+        var exactQuery = new SearchQuery(IndexQueryName, NameMatchMode.Exact);
+        var substringQuery = new SearchQuery(IndexQueryName);
+        index.Search(exactQuery);
+        index.Search(substringQuery);
+        PrintIndexMedian("Exact", () => index.Search(exactQuery), iterations);
+        PrintIndexMedian("Substring", () => index.Search(substringQuery), iterations);
     }
 
     void PrintIndexMedian(string label, Func<IReadOnlyList<FileEntry>> query, int iterations)

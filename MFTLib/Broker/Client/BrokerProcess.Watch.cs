@@ -3,7 +3,7 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>Opens the drive pipe one drive's live watch runs on.</summary>
-public sealed partial class BrokerProcess
+internal sealed partial class BrokerProcess
 {
     // The watch owns its pipe from the moment the channel is open: a start that fails or is
     // cancelled closes the pipe in OpenChannelAsync, and the host reads that EOF as the end of the

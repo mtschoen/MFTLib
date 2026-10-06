@@ -5,7 +5,7 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>
-///     Owns one elevated <see cref="BrokerProcess" /> for a consumer session: launches it on first use,
+///     Owns one elevated broker process for a consumer session: launches it on first use,
 ///     reports its end and disposes it. Each scan or watch opens its own drive channel on the process.
 /// </summary>
 /// <remarks>
@@ -147,7 +147,7 @@ public sealed class BrokerSession : IAsyncDisposable
     /// <param name="cancellationToken">Ends this call's wait; it does not abort a launch other callers share.</param>
     /// <exception cref="InvalidOperationException">The process ended, the launch did not start, or the broker refused the change.</exception>
     /// <exception cref="ObjectDisposedException">The session was disposed.</exception>
-    /// <exception cref="BrokerChannelLostException">The process ended first.</exception>
+    /// <exception cref="IOException">The process ended first. <see cref="Ended" /> says why.</exception>
     /// <exception cref="TimeoutException">The broker never connected, or did not answer within the reply timeout.</exception>
     public async Task<UsnJournalSettings> GrowUsnJournalAsync(char driveLetter, long maximumSize,
         long allocationDelta, CancellationToken cancellationToken)

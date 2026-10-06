@@ -11,7 +11,7 @@ namespace MFTLib;
 ///     memory, so they and any open enumerator must not outlive <see cref="Dispose" />; use
 ///     <see cref="MaterializeBatches" /> or <see cref="ToArray" /> for records that do.
 /// </summary>
-public sealed class MftResult : IDisposable, IEnumerable<MftRecord>
+internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 {
     readonly char _driveLetter;
     readonly MftParseResult _result;

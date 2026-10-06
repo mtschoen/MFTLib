@@ -69,7 +69,7 @@ public class FileIndexBlockReleaseTests
     {
         var blockPath = Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial));
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var entry = index.FindByName("readme.md").Single();
+        var entry = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)).Single();
         Assert.IsFalse(entry.IsDisposed);
 
         await index.DisposeAsync();
@@ -86,10 +86,10 @@ public class FileIndexBlockReleaseTests
     public async Task DisposeAsync_AfterARescan_ReleasesTheRetiredBlockToo()
     {
         var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        var retiredHandle = index.FindByName("readme.md").Single();
+        var retiredHandle = index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)).Single();
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
         await index.RescanAsync('T', CancellationToken.None);
-        var currentHandle = index.FindByName("second.md").Single();
+        var currentHandle = index.Search(new SearchQuery("second.md", NameMatchMode.Exact)).Single();
 
         await index.DisposeAsync();
 
@@ -254,7 +254,7 @@ public class FileIndexBlockReleaseTests
         var token = cancellation.Token;
         cancellation.Dispose();
 
-        Assert.AreEqual(1, index.FindByName("readme.md", token).Count);
+        Assert.AreEqual(1, index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token).Count);
 
         // Asserted before the disposal below, which is what a stranded borrow would hang forever.
         Assert.AreEqual(0, release.OutstandingBorrowCount,
@@ -280,8 +280,8 @@ public class FileIndexBlockReleaseTests
         var token = cancellation.Token;
         await index.DisposeAsync();
 
-        Assert.ThrowsException<ObjectDisposedException>(() => index.FindByName("readme.md"));
-        Assert.ThrowsException<ObjectDisposedException>(() => index.FindByName("readme.md", token));
+        Assert.ThrowsException<ObjectDisposedException>(() => index.Search(new SearchQuery("readme.md", NameMatchMode.Exact)));
+        Assert.ThrowsException<ObjectDisposedException>(() => index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token));
 
         Assert.AreEqual(0, release.OutstandingBorrowCount);
     }

@@ -47,8 +47,10 @@ public class FileIndexEnumerateTests
 
         AssertStreamingMatchesSearch(index, new SearchQuery(null));
         AssertStreamingMatchesSearch(index, new SearchQuery(null, Directories: false));
-        AssertStreamingMatchesSearch(index, new SearchQuery("*.md"));
+        AssertStreamingMatchesSearch(index, new SearchQuery("*.md", NameMatchMode.Glob));
         AssertStreamingMatchesSearch(index, new SearchQuery("readme"));
+        AssertStreamingMatchesSearch(index, new SearchQuery("readme.md", NameMatchMode.Exact));
+        AssertStreamingMatchesSearch(index, new SearchQuery("re*.p?f", NameMatchMode.Glob));
         AssertStreamingMatchesSearch(index, new SearchQuery(null, MinimumSize: 100));
 
         var documents = index.Find(Path.Combine(FirstRoot, "Documents"))!.Value;
@@ -58,6 +60,21 @@ public class FileIndexEnumerateTests
         AssertStreamingMatchesSearch(index, new SearchQuery(null, Under: pictures));
 
         AssertStreamingMatchesSearch(index, new SearchQuery(null, Under: default(FileEntry)));
+    }
+
+    [TestMethod]
+    public async Task EnumerateAndSearch_UndefinedMatchMode_ThrowAtCallTime()
+    {
+        await using var index = await OpenTwoDriveIndexAsync();
+        var query = new SearchQuery("readme", (NameMatchMode)99);
+
+        var enumerateFailure = CaptureOutOfRange(index, query, static (target, search) => target.Enumerate(search));
+        var searchFailure = CaptureOutOfRange(index, query, static (target, search) => target.Search(search));
+
+        Assert.AreEqual("query", enumerateFailure.ParamName);
+        Assert.AreEqual("query", searchFailure.ParamName);
+        StringAssert.StartsWith(enumerateFailure.Message, "Unknown name match mode.");
+        Assert.AreEqual(0, index.CurrentSnapshot.ReleaseState.OutstandingBorrowCount);
     }
 
     [TestMethod]
@@ -215,11 +232,27 @@ public class FileIndexEnumerateTests
     ///     Parity is order as well as set: the point of the swap is that a consumer sees no
     ///     change but memory, so the path sequence has to match exactly.
     /// </summary>
+    static ArgumentOutOfRangeException CaptureOutOfRange(FileIndex index, SearchQuery query,
+        Func<FileIndex, SearchQuery, object> call)
+    {
+        try
+        {
+            call(index, query);
+        }
+        catch (ArgumentOutOfRangeException failure)
+        {
+            return failure;
+        }
+
+        throw new AssertFailedException("The call did not throw ArgumentOutOfRangeException.");
+    }
+
     static void AssertStreamingMatchesSearch(FileIndex index, SearchQuery query)
     {
         var expected = index.Search(query).Select(entry => entry.Path).ToArray();
         var actual = index.Enumerate(query).Select(entry => entry.Path).ToArray();
-        CollectionAssert.AreEqual(expected, actual, $"streaming disagreed with Search for {query}");
+        CollectionAssert.AreEqual(expected, actual,
+            $"streaming disagreed with Search for {query.NamePattern} in {query.MatchMode} mode");
     }
 
     async Task<FileIndex> OpenTwoDriveIndexAsync()

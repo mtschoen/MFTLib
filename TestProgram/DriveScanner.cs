@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using MFTLib;
 
@@ -13,9 +12,10 @@ partial class DriveScanner
     internal Func<bool> _canSelfElevate = Elevation.CanSelfElevate;
     internal Func<string?> _getProcessPath = () => Environment.ProcessPath;
     internal Func<bool> _isElevated = Elevation.IsElevated;
-    internal Func<string, MftVolume> _openVolume = letter => MftVolume.Open(letter);
-    internal Func<string, uint, MftVolume> _openVolumeWithBuffer = MftVolume.Open;
 
+    // Whether a run must be elevated itself. Scanning through the broker never must, because the broker is the
+    // elevated process; the seam keeps the self-elevation path testable.
+    internal Func<TestProgramArguments, bool> _requiresElevation = parsed => parsed.RequiresElevation;
     internal Func<IReadOnlyList<string>, TimeSpan, bool> _tryRunElevated = Elevation.TryRunElevated;
     internal Func<string, string, IntPtr, IntPtr> _wFreopen = WFreopenNative;
     internal Action<string> _writeLine = Console.WriteLine;
@@ -29,11 +29,11 @@ partial class DriveScanner
             return 2;
         }
 
-        if (!parsed.RequiresElevation)
+        if (!_requiresElevation(parsed))
         {
             // scan-drive needs no elevation here, but the broker it launches raises a UAC prompt, so an attended
             // run gets the same heads-up dialog the self-elevation path gets before that prompt.
-            if (parsed.Mode == ProgramMode.ScanDrive && !_isElevated())
+            if (!_isElevated())
             {
                 if (IsUnattended())
                 {
@@ -59,7 +59,7 @@ partial class DriveScanner
             }
 
             _writeLine("Not running as administrator. Attempting to self-elevate...");
-            if (_canSelfElevate() && ConfirmElevation(arguments, SelfElevationReason) && _tryRunElevated(arguments, parsed.ElevationTimeout))
+            if (_canSelfElevate() && ConfirmElevation(arguments, SelfElevationReason) && _tryRunElevated(arguments, ElevationUtilities.DefaultElevatedTimeout))
             {
                 return 0;
             }
@@ -77,96 +77,9 @@ partial class DriveScanner
 
     void RunOnDrives(TestProgramArguments parsed)
     {
-        if (parsed.Mode == ProgramMode.ScanDrive)
-        {
-            // The console entry point has no synchronization context, so blocking here cannot deadlock.
-            ScanDrivesThroughBrokerAsync(parsed.Drives, CancellationToken.None).GetAwaiter().GetResult();
-            _writeLine($"Completed at {DateTime.Now}");
-            return;
-        }
-
-        if (parsed.Mode == ProgramMode.ParseFile)
-        {
-            ParseFile(parsed.Options);
-            _writeLine($"Completed at {DateTime.Now}");
-            return;
-        }
-
-        foreach (var drive in parsed.Drives)
-        {
-            switch (parsed.Mode)
-            {
-                case ProgramMode.ReadRecords:
-                    ReadRecords(drive, parsed.Options);
-                    break;
-                case ProgramMode.FindName:
-                    FindName(drive, parsed.Options);
-                    break;
-                case ProgramMode.StreamRecords:
-                    StreamRecords(drive, parsed.Options);
-                    break;
-                case ProgramMode.VolumeInfo:
-                    QueryVolumeInformation(drive);
-                    break;
-                case ProgramMode.UsnGrow:
-                    GrowJournal(drive, parsed.Options);
-                    break;
-                case ProgramMode.UsnQuery:
-                    QueryJournal(drive);
-                    break;
-                case ProgramMode.UsnRead:
-                    ReadJournal(drive, parsed.Options);
-                    break;
-                case ProgramMode.UsnWatch:
-                    // The console entry point has no synchronization context, so blocking here cannot deadlock.
-                    WatchJournalAsync(drive, parsed.WatchSeconds).GetAwaiter().GetResult();
-                    break;
-                default:
-                    ScanDrive(drive, parsed.Options);
-                    break;
-            }
-        }
-
+        // The console entry point has no synchronization context, so blocking here cannot deadlock.
+        ScanDrivesThroughBrokerAsync(parsed.Drives, CancellationToken.None).GetAwaiter().GetResult();
         _writeLine($"Completed at {DateTime.Now}");
-    }
-
-    internal void ScanDrive(string drive, ModeOptions options)
-    {
-        var letter = drive.TrimEnd(':');
-        _writeLine($"=== Drive {letter}: ===");
-        try
-        {
-            using var volume = OpenVolume(letter, options);
-
-            var stopwatch = Stopwatch.StartNew();
-            using var result = volume.StreamRecords(
-                ".git", MatchFlags.ExactMatch | MatchFlags.ResolvePaths, null, null, CancellationToken.None);
-            var records = result.ToArray();
-            stopwatch.Stop();
-
-            var gitDirectories = records.Where(record => record.IsDirectory).ToArray();
-
-            _writeLine($"Found {gitDirectories.Length} .git directories in {stopwatch.Elapsed}");
-            _writeLine(string.Empty);
-            _writeLine("Performance breakdown:");
-            _writeLine($"  {result.Timings}");
-            _writeLine($"  Wall clock: {stopwatch.Elapsed.TotalMilliseconds:F1}ms");
-            _writeLine($"  Matched {records.Length} records (marshalled), {gitDirectories.Length} directories");
-            _writeLine(string.Empty);
-
-            foreach (var directory in gitDirectories)
-            {
-                _writeLine($"  {directory.FullPath}");
-            }
-
-            _writeLine($"=== Drive {letter}: done ===");
-        }
-        catch (Exception exception)
-        {
-            _writeLine($"Error on drive {letter}: {exception.Message}");
-        }
-
-        _writeLine(string.Empty);
     }
 
     /// <summary>

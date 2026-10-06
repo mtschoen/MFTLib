@@ -56,8 +56,8 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
         var drive = scenario.DriveOf('T');
         Assert.AreEqual(3, drive.ConsecutiveLostCatchUps);
-        Assert.AreEqual(1, index.FindByName("scan-T-4.txt", token).Count, "T keeps its third block, the fourth scan");
-        Assert.AreEqual(0, index.FindByName("scan-T-3.txt", token).Count);
+        Assert.AreEqual(1, index.Search(new SearchQuery("scan-T-4.txt", NameMatchMode.Exact), token).Count, "T keeps its third block, the fourth scan");
+        Assert.AreEqual(0, index.Search(new SearchQuery("scan-T-3.txt", NameMatchMode.Exact), token).Count);
         var report = drive.CheckpointLoss;
         Assert.IsNotNull(report);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, report.DetectedDuring);
@@ -70,7 +70,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
 
         // U completed normally in the same run.
         Assert.AreEqual(2, scenario.ScansOf('U'));
-        Assert.AreEqual(1, index.FindByName("scan-U-2.txt", token).Count);
+        Assert.AreEqual(1, index.Search(new SearchQuery("scan-U-2.txt", NameMatchMode.Exact), token).Count);
         Assert.AreEqual(0, scenario.FaultsOf('U').Count);
         Assert.AreEqual(0, scenario.DriveOf('U').ConsecutiveLostCatchUps);
         Assert.IsNull(scenario.DriveOf('U').CheckpointLoss);
@@ -114,8 +114,8 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(0, drive.ConsecutiveLostCatchUps);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, drive.CheckpointLoss?.DetectedDuring,
             "the report the lost scan produced is kept");
-        Assert.AreEqual(1, index.FindByName("scan-T-3.txt", token).Count, "T's block is the second scan's");
-        Assert.AreEqual(0, index.FindByName("scan-T-2.txt", token).Count);
+        Assert.AreEqual(1, index.Search(new SearchQuery("scan-T-3.txt", NameMatchMode.Exact), token).Count, "T's block is the second scan's");
+        Assert.AreEqual(0, index.Search(new SearchQuery("scan-T-2.txt", NameMatchMode.Exact), token).Count);
         await index.StartWatchingAsync('T', token);
         Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(1)).Since,
             "the watch starts from the second block's cursor");
@@ -147,7 +147,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(0, drive.ConsecutiveLostCatchUps);
         Assert.IsNull(drive.CheckpointLoss);
         Assert.AreEqual(0, scenario.Faults.Count, "no CatchUpLost fault");
-        Assert.AreEqual(1, index.FindByName("scan-T-1.txt", token).Count, "the open's block stays");
+        Assert.AreEqual(1, index.Search(new SearchQuery("scan-T-1.txt", NameMatchMode.Exact), token).Count, "the open's block stays");
     }
 
     /// <summary>The host's catch-up source: T's reads throw as scripted, U's hold at the cursor they are given.</summary>

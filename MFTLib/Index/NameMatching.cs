@@ -7,6 +7,8 @@ namespace MFTLib.Index;
 /// </summary>
 internal static class NameMatching
 {
+    const string UnknownModeMessage = "Unknown name match mode.";
+
     public static bool EqualsName(ReadOnlySpan<char> left, ReadOnlySpan<char> right, bool caseSensitive)
     {
         return left.Equals(right, caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
@@ -22,21 +24,28 @@ internal static class NameMatching
         return name.Contains(substring, caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
     }
 
-    public static bool IsGlobPattern(ReadOnlySpan<char> pattern)
+    /// <summary>Compares one name with a pattern under the given mode.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="mode" /> is not a defined mode.</exception>
+    public static bool Matches(ReadOnlySpan<char> name, ReadOnlySpan<char> pattern, NameMatchMode mode,
+        bool caseSensitive)
     {
-        return pattern.IndexOfAny('*', '?') >= 0;
+        return mode switch
+        {
+            NameMatchMode.Exact => EqualsName(name, pattern, caseSensitive),
+            NameMatchMode.Substring => ContainsSubstring(name, pattern, caseSensitive),
+            NameMatchMode.Glob => MatchesGlob(name, pattern, caseSensitive),
+            _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, UnknownModeMessage),
+        };
     }
 
-    /// <summary>
-    ///     Routes a caller-supplied pattern: anything containing a wildcard is a glob and must
-    ///     match the whole name, anything else is a substring match. This is the rule the
-    ///     public <c>SearchQuery.NamePattern</c> documents.
-    /// </summary>
-    public static bool Matches(ReadOnlySpan<char> name, ReadOnlySpan<char> pattern, bool caseSensitive)
+    /// <summary>Rejects a query whose mode is undefined before any row is read.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The query's mode is not a defined mode.</exception>
+    public static void ThrowIfUndefined(SearchQuery query)
     {
-        return IsGlobPattern(pattern)
-            ? MatchesGlob(name, pattern, caseSensitive)
-            : ContainsSubstring(name, pattern, caseSensitive);
+        if (!Enum.IsDefined(query.MatchMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(query), UnknownModeMessage);
+        }
     }
 
     /// <summary>

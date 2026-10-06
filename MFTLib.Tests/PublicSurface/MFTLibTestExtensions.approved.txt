@@ -2,16 +2,16 @@ MFTLibTestExtensions.BrokerDiagnosticsIsolation :: method public static FlushAsy
 MFTLibTestExtensions.BrokerDiagnosticsIsolation :: method public static Log(string channel, string message) : void
 MFTLibTestExtensions.BrokerDiagnosticsIsolation :: method public static Reset() : void
 MFTLibTestExtensions.BrokerDiagnosticsIsolation :: type public static class
-MFTLibTestExtensions.BrokerTestHarness :: method public static CreateSession(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<MFTLib.BrokerProcess>> launchAsync) : MFTLib.BrokerSession
+MFTLibTestExtensions.BrokerTestHarness :: method public static CreateSession(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<MFTLibTestExtensions.InProcessBrokerHandle>> launchAsync) : MFTLib.BrokerSession
 MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLibTestExtensions.ScriptedBrokerVolumes volumes) : MFTLibTestExtensions.InProcessBrokerHandle
 MFTLibTestExtensions.BrokerTestHarness :: type public static class
 MFTLibTestExtensions.CacheDirectoryIsolation :: method public static ForbidDefaultCacheDirectory() : void
 MFTLibTestExtensions.CacheDirectoryIsolation :: type public static class
-MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, char driveLetter, System.Collections.Generic.IReadOnlyList<MFTLib.UsnJournalEntry> entries, ulong journalId, long nextUsn) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
+MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, char driveLetter, System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, ulong journalIdentifier, long nextUpdateSequenceNumber) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
 MFTLibTestExtensions.FileIndexTestAccess :: type public static class
 MFTLibTestExtensions.InProcessBrokerHandle :: method public Crash() : void
 MFTLibTestExtensions.InProcessBrokerHandle :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
-MFTLibTestExtensions.InProcessBrokerHandle :: property public Process { get; } : MFTLib.BrokerProcess
+MFTLibTestExtensions.InProcessBrokerHandle :: property public Ended { get; } : System.Threading.Tasks.Task<string>
 MFTLibTestExtensions.InProcessBrokerHandle :: property public Scans { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.InProcessBrokerScan>
 MFTLibTestExtensions.InProcessBrokerHandle :: type public sealed class : System.IAsyncDisposable
 MFTLibTestExtensions.InProcessBrokerScan :: constructor public (string DriveLetter, MFTLib.BrokerScanProfile Profile, System.Collections.Generic.IReadOnlyCollection<string>? KeepFileNames)
@@ -39,35 +39,25 @@ MFTLibTestExtensions.ScriptedBrokerVolumes :: method public override ToString() 
 MFTLibTestExtensions.ScriptedBrokerVolumes :: method public static op_Equality(MFTLibTestExtensions.ScriptedBrokerVolumes? left, MFTLibTestExtensions.ScriptedBrokerVolumes? right) : bool
 MFTLibTestExtensions.ScriptedBrokerVolumes :: method public static op_Inequality(MFTLibTestExtensions.ScriptedBrokerVolumes? left, MFTLibTestExtensions.ScriptedBrokerVolumes? right) : bool
 MFTLibTestExtensions.ScriptedBrokerVolumes :: property public GrowUsnJournal { get; init; } : System.Func<string, long, long, MFTLib.UsnJournalSettings>?
-MFTLibTestExtensions.ScriptedBrokerVolumes :: property public QueryVolume { get; init; } : System.Func<string, MFTLib.NtfsVolumeInformation>?
-MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ReadJournal { get; init; } : System.Func<string, MFTLib.UsnJournalCursor, int, System.ValueTuple<MFTLib.UsnJournalEntry[], MFTLib.UsnJournalCursor>>?
-MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ScanDrive { get; init; } : System.Func<MFTLibTestExtensions.ScriptedScan, System.Collections.Generic.IEnumerable<System.Collections.Generic.IReadOnlyList<MFTLib.MftRecord>>>?
-MFTLibTestExtensions.ScriptedBrokerVolumes :: property public WatchDrive { get; init; } : System.Func<string, MFTLib.UsnJournalCursor, System.Threading.CancellationToken, System.Collections.Generic.IAsyncEnumerable<System.ValueTuple<MFTLib.UsnJournalEntry[], MFTLib.UsnJournalCursor>>>?
-MFTLibTestExtensions.ScriptedBrokerVolumes :: property public required QueryJournalCursor { get; init; } : System.Func<string, MFTLib.UsnJournalCursor>
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ReadJournal { get; init; } : System.Func<string, MFTLibTestExtensions.SyntheticJournalCursor, int, System.ValueTuple<MFTLibTestExtensions.SyntheticJournalRecord[], MFTLibTestExtensions.SyntheticJournalCursor>>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public ScanDrive { get; init; } : System.Func<MFTLibTestExtensions.ScriptedScan, System.Collections.Generic.IEnumerable<System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticScanRecord>>>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public WatchDrive { get; init; } : System.Func<string, MFTLibTestExtensions.SyntheticJournalCursor, System.Threading.CancellationToken, System.Collections.Generic.IAsyncEnumerable<System.ValueTuple<MFTLibTestExtensions.SyntheticJournalRecord[], MFTLibTestExtensions.SyntheticJournalCursor>>>?
+MFTLibTestExtensions.ScriptedBrokerVolumes :: property public required QueryJournalCursor { get; init; } : System.Func<string, MFTLibTestExtensions.SyntheticJournalCursor>
 MFTLibTestExtensions.ScriptedBrokerVolumes :: type public sealed class : System.IEquatable<MFTLibTestExtensions.ScriptedBrokerVolumes>
 MFTLibTestExtensions.ScriptedDriveWatch :: method public End() : void
 MFTLibTestExtensions.ScriptedDriveWatch :: method public FailDrive(System.Exception exception) : void
-MFTLibTestExtensions.ScriptedDriveWatch :: method public FailOnCancellation(System.Exception exception) : void
 MFTLibTestExtensions.ScriptedDriveWatch :: method public LoseChannel(System.Exception exception) : void
-MFTLibTestExtensions.ScriptedDriveWatch :: method public PublishBatchAsync(System.Collections.Generic.IReadOnlyList<MFTLib.UsnJournalEntry> entries, MFTLib.UsnJournalCursor cursor) : System.Threading.Tasks.Task
+MFTLibTestExtensions.ScriptedDriveWatch :: method public PublishBatchAsync(System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task
 MFTLibTestExtensions.ScriptedDriveWatch :: method public PublishCaughtUpAsync() : System.Threading.Tasks.Task
-MFTLibTestExtensions.ScriptedDriveWatch :: method public QueueBatch(System.Collections.Generic.IReadOnlyList<MFTLib.UsnJournalEntry> entries, MFTLib.UsnJournalCursor cursor) : System.Threading.Tasks.Task
-MFTLibTestExtensions.ScriptedDriveWatch :: method public QueueCaughtUp() : System.Threading.Tasks.Task
-MFTLibTestExtensions.ScriptedDriveWatch :: property public DisposeCount { get; } : int
-MFTLibTestExtensions.ScriptedDriveWatch :: property public Disposed { get; } : System.Threading.Tasks.Task
+MFTLibTestExtensions.ScriptedDriveWatch :: method public QueueBatch(System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task
 MFTLibTestExtensions.ScriptedDriveWatch :: property public DriveLetter { get; } : char
 MFTLibTestExtensions.ScriptedDriveWatch :: property public ReadEnded { get; } : System.Threading.Tasks.Task<bool>
-MFTLibTestExtensions.ScriptedDriveWatch :: property public ReadStarted { get; } : bool
-MFTLibTestExtensions.ScriptedDriveWatch :: property public StartCursor { get; } : MFTLib.UsnJournalCursor
 MFTLibTestExtensions.ScriptedDriveWatch :: type public sealed class : MFTLib.Index.IIndexDriveWatch, System.IAsyncDisposable
 MFTLibTestExtensions.ScriptedScan :: method public ReportParsed(long recordsProcessed, long? totalRecords) : void
 MFTLibTestExtensions.ScriptedScan :: property public CancellationToken { get; } : System.Threading.CancellationToken
 MFTLibTestExtensions.ScriptedScan :: property public DriveLetter { get; } : string
-MFTLibTestExtensions.ScriptedScan :: property public ParseThreads { get; } : MFTLib.ParseThreadAllowance
 MFTLibTestExtensions.ScriptedScan :: type public sealed class
 MFTLibTestExtensions.ScriptedWatchSource :: constructor public ()
-MFTLibTestExtensions.ScriptedWatchSource :: method public FailNextStart(System.Exception failure) : void
-MFTLibTestExtensions.ScriptedWatchSource :: method public FailNextStartFor(char driveLetter, System.Exception failure) : void
 MFTLibTestExtensions.ScriptedWatchSource :: method public WaitForStartAsync(char driveLetter, int startNumber, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<MFTLibTestExtensions.ScriptedDriveWatch>
 MFTLibTestExtensions.ScriptedWatchSource :: method public WatchFor(char driveLetter) : MFTLibTestExtensions.ScriptedDriveWatch
 MFTLibTestExtensions.ScriptedWatchSource :: property public CatchUpOnStart { get; init; } : bool
@@ -75,37 +65,29 @@ MFTLibTestExtensions.ScriptedWatchSource :: property public StartFailure { get; 
 MFTLibTestExtensions.ScriptedWatchSource :: property public Starts { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.ScriptedWatchStart>
 MFTLibTestExtensions.ScriptedWatchSource :: property public Watches { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.ScriptedDriveWatch>
 MFTLibTestExtensions.ScriptedWatchSource :: type public sealed class : MFTLib.Index.IIndexWatchSource
-MFTLibTestExtensions.ScriptedWatchStart :: constructor public (char DriveLetter, MFTLib.UsnJournalCursor Cursor)
-MFTLibTestExtensions.ScriptedWatchStart :: method public Deconstruct(out char DriveLetter, out MFTLib.UsnJournalCursor Cursor) : void
+MFTLibTestExtensions.ScriptedWatchStart :: constructor public (char DriveLetter, MFTLibTestExtensions.SyntheticJournalCursor Cursor)
+MFTLibTestExtensions.ScriptedWatchStart :: method public Deconstruct(out char DriveLetter, out MFTLibTestExtensions.SyntheticJournalCursor Cursor) : void
 MFTLibTestExtensions.ScriptedWatchStart :: method public Equals(MFTLibTestExtensions.ScriptedWatchStart other) : bool
 MFTLibTestExtensions.ScriptedWatchStart :: method public override Equals(object obj) : bool
 MFTLibTestExtensions.ScriptedWatchStart :: method public override GetHashCode() : int
 MFTLibTestExtensions.ScriptedWatchStart :: method public override ToString() : string
 MFTLibTestExtensions.ScriptedWatchStart :: method public static op_Equality(MFTLibTestExtensions.ScriptedWatchStart left, MFTLibTestExtensions.ScriptedWatchStart right) : bool
 MFTLibTestExtensions.ScriptedWatchStart :: method public static op_Inequality(MFTLibTestExtensions.ScriptedWatchStart left, MFTLibTestExtensions.ScriptedWatchStart right) : bool
-MFTLibTestExtensions.ScriptedWatchStart :: property public Cursor { get; init; } : MFTLib.UsnJournalCursor
+MFTLibTestExtensions.ScriptedWatchStart :: property public Cursor { get; init; } : MFTLibTestExtensions.SyntheticJournalCursor
 MFTLibTestExtensions.ScriptedWatchStart :: property public DriveLetter { get; init; } : char
 MFTLibTestExtensions.ScriptedWatchStart :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.ScriptedWatchStart>
 MFTLibTestExtensions.SyntheticBlock :: method public static CachedPath(string cacheDirectory, char driveLetter, uint volumeSerial) : string
 MFTLibTestExtensions.SyntheticBlock :: method public static Edit(string blockPath, uint volumeSerial, System.Action<MFTLibTestExtensions.SyntheticBlockEditor> edit) : void
-MFTLibTestExtensions.SyntheticBlock :: method public static ReadHeader(string blockPath, uint volumeSerial) : MFTLibTestExtensions.SyntheticDriveHeader
-MFTLibTestExtensions.SyntheticBlock :: method public static ReadRows(string blockPath, uint volumeSerial) : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticRow>
 MFTLibTestExtensions.SyntheticBlock :: method public static WriteCached(string cacheDirectory, char driveLetter, uint volumeSerial, MFTLibTestExtensions.SyntheticBlockOptions options, System.Collections.Generic.IEnumerable<MFTLibTestExtensions.SyntheticRow> rows) : string
 MFTLibTestExtensions.SyntheticBlock :: property public static MaximumPathDepth { get; } : int
 MFTLibTestExtensions.SyntheticBlock :: type public static class
 MFTLibTestExtensions.SyntheticBlockEditor :: method public Complete(System.DateTime completedUtc) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public CorruptNamePool() : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkCompactionNeeded() : void
-MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkSizeUnknown(uint row) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkSizesUnknown(System.Func<MFTLibTestExtensions.SyntheticRow, bool> matches) : int
-MFTLibTestExtensions.SyntheticBlockEditor :: method public MarkTombstone(uint row) : void
-MFTLibTestExtensions.SyntheticBlockEditor :: method public ReadRow(uint row) : MFTLibTestExtensions.SyntheticRow
 MFTLibTestExtensions.SyntheticBlockEditor :: method public SetAttributes(uint row, System.IO.FileAttributes attributes) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public SetCacheTag(MFTLib.Index.CacheTag cacheTag) : void
-MFTLibTestExtensions.SyntheticBlockEditor :: method public SetJournalCursor(MFTLib.UsnJournalCursor cursor) : void
 MFTLibTestExtensions.SyntheticBlockEditor :: method public SetProducerKind(MFTLib.Index.ProducerKind producerKind) : void
-MFTLibTestExtensions.SyntheticBlockEditor :: method public WriteRow(MFTLibTestExtensions.SyntheticRow row) : void
-MFTLibTestExtensions.SyntheticBlockEditor :: property public RowCount { get; } : uint
 MFTLibTestExtensions.SyntheticBlockEditor :: type public sealed class
 MFTLibTestExtensions.SyntheticBlockOptions :: constructor public ()
 MFTLibTestExtensions.SyntheticBlockOptions :: method public <Clone>$() : MFTLibTestExtensions.SyntheticBlockOptions
@@ -117,7 +99,7 @@ MFTLibTestExtensions.SyntheticBlockOptions :: method public static op_Equality(M
 MFTLibTestExtensions.SyntheticBlockOptions :: method public static op_Inequality(MFTLibTestExtensions.SyntheticBlockOptions? left, MFTLibTestExtensions.SyntheticBlockOptions? right) : bool
 MFTLibTestExtensions.SyntheticBlockOptions :: property public CacheTag { get; init; } : MFTLib.Index.CacheTag
 MFTLibTestExtensions.SyntheticBlockOptions :: property public CompletedUtc { get; init; } : System.DateTime
-MFTLibTestExtensions.SyntheticBlockOptions :: property public JournalCursor { get; init; } : MFTLib.UsnJournalCursor
+MFTLibTestExtensions.SyntheticBlockOptions :: property public JournalCursor { get; init; } : MFTLibTestExtensions.SyntheticJournalCursor
 MFTLibTestExtensions.SyntheticBlockOptions :: property public ProducerKind { get; init; } : MFTLib.Index.ProducerKind
 MFTLibTestExtensions.SyntheticBlockOptions :: property public RootRow { get; init; } : uint
 MFTLibTestExtensions.SyntheticBlockOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticBlockOptions>
@@ -144,25 +126,59 @@ MFTLibTestExtensions.SyntheticIndexInspection :: method public static ReadHeader
 MFTLibTestExtensions.SyntheticIndexInspection :: type public static class
 MFTLibTestExtensions.SyntheticIndexSource :: method public static Create(MFTLibTestExtensions.SyntheticMftProducer? producer = default, MFTLibTestExtensions.ScriptedWatchSource? watches = default) : MFTLib.Index.MftIndexSource
 MFTLibTestExtensions.SyntheticIndexSource :: type public static class
-MFTLibTestExtensions.SyntheticJournalEntry :: method public static Create(MFTLibTestExtensions.SyntheticJournalEntryOptions options) : MFTLib.UsnJournalEntry
-MFTLibTestExtensions.SyntheticJournalEntry :: type public static class
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: constructor public ()
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: method public <Clone>$() : MFTLibTestExtensions.SyntheticJournalEntryOptions
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: method public Equals(MFTLibTestExtensions.SyntheticJournalEntryOptions? other) : bool
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: method public override Equals(object? obj) : bool
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: method public override GetHashCode() : int
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: method public override ToString() : string
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: method public static op_Equality(MFTLibTestExtensions.SyntheticJournalEntryOptions? left, MFTLibTestExtensions.SyntheticJournalEntryOptions? right) : bool
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: method public static op_Inequality(MFTLibTestExtensions.SyntheticJournalEntryOptions? left, MFTLibTestExtensions.SyntheticJournalEntryOptions? right) : bool
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: property public FileAttributes { get; init; } : System.IO.FileAttributes
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: property public Reason { get; init; } : MFTLib.UsnReason
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: property public SequenceNumber { get; init; } : ushort
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: property public TimestampUtc { get; init; } : System.DateTime?
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: property public required FileName { get; init; } : string
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: property public required ParentRecordNumber { get; init; } : ulong
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: property public required RecordNumber { get; init; } : ulong
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: property public required Usn { get; init; } : long
-MFTLibTestExtensions.SyntheticJournalEntryOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticJournalEntryOptions>
+MFTLibTestExtensions.SyntheticJournalCursor :: constructor public (ulong JournalIdentifier, long NextUpdateSequenceNumber)
+MFTLibTestExtensions.SyntheticJournalCursor :: method public Deconstruct(out ulong JournalIdentifier, out long NextUpdateSequenceNumber) : void
+MFTLibTestExtensions.SyntheticJournalCursor :: method public Equals(MFTLibTestExtensions.SyntheticJournalCursor other) : bool
+MFTLibTestExtensions.SyntheticJournalCursor :: method public override Equals(object obj) : bool
+MFTLibTestExtensions.SyntheticJournalCursor :: method public override GetHashCode() : int
+MFTLibTestExtensions.SyntheticJournalCursor :: method public override ToString() : string
+MFTLibTestExtensions.SyntheticJournalCursor :: method public static op_Equality(MFTLibTestExtensions.SyntheticJournalCursor left, MFTLibTestExtensions.SyntheticJournalCursor right) : bool
+MFTLibTestExtensions.SyntheticJournalCursor :: method public static op_Inequality(MFTLibTestExtensions.SyntheticJournalCursor left, MFTLibTestExtensions.SyntheticJournalCursor right) : bool
+MFTLibTestExtensions.SyntheticJournalCursor :: property public JournalIdentifier { get; init; } : ulong
+MFTLibTestExtensions.SyntheticJournalCursor :: property public NextUpdateSequenceNumber { get; init; } : long
+MFTLibTestExtensions.SyntheticJournalCursor :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.SyntheticJournalCursor>
+MFTLibTestExtensions.SyntheticJournalReason :: field public const BasicInformationChange : MFTLibTestExtensions.SyntheticJournalReason = 32768
+MFTLibTestExtensions.SyntheticJournalReason :: field public const Close : MFTLibTestExtensions.SyntheticJournalReason = 2147483648
+MFTLibTestExtensions.SyntheticJournalReason :: field public const CompressionChange : MFTLibTestExtensions.SyntheticJournalReason = 131072
+MFTLibTestExtensions.SyntheticJournalReason :: field public const DataExtend : MFTLibTestExtensions.SyntheticJournalReason = 2
+MFTLibTestExtensions.SyntheticJournalReason :: field public const DataOverwrite : MFTLibTestExtensions.SyntheticJournalReason = 1
+MFTLibTestExtensions.SyntheticJournalReason :: field public const DataTruncation : MFTLibTestExtensions.SyntheticJournalReason = 4
+MFTLibTestExtensions.SyntheticJournalReason :: field public const EncryptionChange : MFTLibTestExtensions.SyntheticJournalReason = 262144
+MFTLibTestExtensions.SyntheticJournalReason :: field public const ExtendedAttributeChange : MFTLibTestExtensions.SyntheticJournalReason = 1024
+MFTLibTestExtensions.SyntheticJournalReason :: field public const FileCreate : MFTLibTestExtensions.SyntheticJournalReason = 256
+MFTLibTestExtensions.SyntheticJournalReason :: field public const FileDelete : MFTLibTestExtensions.SyntheticJournalReason = 512
+MFTLibTestExtensions.SyntheticJournalReason :: field public const HardLinkChange : MFTLibTestExtensions.SyntheticJournalReason = 65536
+MFTLibTestExtensions.SyntheticJournalReason :: field public const IndexableChange : MFTLibTestExtensions.SyntheticJournalReason = 16384
+MFTLibTestExtensions.SyntheticJournalReason :: field public const IntegrityChange : MFTLibTestExtensions.SyntheticJournalReason = 8388608
+MFTLibTestExtensions.SyntheticJournalReason :: field public const NamedDataExtend : MFTLibTestExtensions.SyntheticJournalReason = 32
+MFTLibTestExtensions.SyntheticJournalReason :: field public const NamedDataOverwrite : MFTLibTestExtensions.SyntheticJournalReason = 16
+MFTLibTestExtensions.SyntheticJournalReason :: field public const NamedDataTruncation : MFTLibTestExtensions.SyntheticJournalReason = 64
+MFTLibTestExtensions.SyntheticJournalReason :: field public const None : MFTLibTestExtensions.SyntheticJournalReason = 0
+MFTLibTestExtensions.SyntheticJournalReason :: field public const ObjectIdChange : MFTLibTestExtensions.SyntheticJournalReason = 524288
+MFTLibTestExtensions.SyntheticJournalReason :: field public const RenameNewName : MFTLibTestExtensions.SyntheticJournalReason = 8192
+MFTLibTestExtensions.SyntheticJournalReason :: field public const RenameOldName : MFTLibTestExtensions.SyntheticJournalReason = 4096
+MFTLibTestExtensions.SyntheticJournalReason :: field public const ReparsePointChange : MFTLibTestExtensions.SyntheticJournalReason = 1048576
+MFTLibTestExtensions.SyntheticJournalReason :: field public const SecurityChange : MFTLibTestExtensions.SyntheticJournalReason = 2048
+MFTLibTestExtensions.SyntheticJournalReason :: field public const StreamChange : MFTLibTestExtensions.SyntheticJournalReason = 2097152
+MFTLibTestExtensions.SyntheticJournalReason :: field public const TransactedChange : MFTLibTestExtensions.SyntheticJournalReason = 4194304
+MFTLibTestExtensions.SyntheticJournalReason :: type public enum : uint, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+MFTLibTestExtensions.SyntheticJournalRecord :: constructor public ()
+MFTLibTestExtensions.SyntheticJournalRecord :: method public <Clone>$() : MFTLibTestExtensions.SyntheticJournalRecord
+MFTLibTestExtensions.SyntheticJournalRecord :: method public Equals(MFTLibTestExtensions.SyntheticJournalRecord? other) : bool
+MFTLibTestExtensions.SyntheticJournalRecord :: method public override Equals(object? obj) : bool
+MFTLibTestExtensions.SyntheticJournalRecord :: method public override GetHashCode() : int
+MFTLibTestExtensions.SyntheticJournalRecord :: method public override ToString() : string
+MFTLibTestExtensions.SyntheticJournalRecord :: method public static op_Equality(MFTLibTestExtensions.SyntheticJournalRecord? left, MFTLibTestExtensions.SyntheticJournalRecord? right) : bool
+MFTLibTestExtensions.SyntheticJournalRecord :: method public static op_Inequality(MFTLibTestExtensions.SyntheticJournalRecord? left, MFTLibTestExtensions.SyntheticJournalRecord? right) : bool
+MFTLibTestExtensions.SyntheticJournalRecord :: property public FileAttributes { get; init; } : System.IO.FileAttributes
+MFTLibTestExtensions.SyntheticJournalRecord :: property public Reason { get; init; } : MFTLibTestExtensions.SyntheticJournalReason
+MFTLibTestExtensions.SyntheticJournalRecord :: property public SequenceNumber { get; init; } : ushort
+MFTLibTestExtensions.SyntheticJournalRecord :: property public Timestamp { get; init; } : System.DateTime?
+MFTLibTestExtensions.SyntheticJournalRecord :: property public required FileName { get; init; } : string
+MFTLibTestExtensions.SyntheticJournalRecord :: property public required ParentRecordNumber { get; init; } : ulong
+MFTLibTestExtensions.SyntheticJournalRecord :: property public required RecordNumber { get; init; } : ulong
+MFTLibTestExtensions.SyntheticJournalRecord :: property public required UpdateSequenceNumber { get; init; } : long
+MFTLibTestExtensions.SyntheticJournalRecord :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticJournalRecord>
 MFTLibTestExtensions.SyntheticJournalWindow :: constructor public (ulong JournalId, long FirstUsn, long NextUsn, long AllocationDelta, long MaximumSize)
 MFTLibTestExtensions.SyntheticJournalWindow :: method public Deconstruct(out ulong JournalId, out long FirstUsn, out long NextUsn, out long AllocationDelta, out long MaximumSize) : void
 MFTLibTestExtensions.SyntheticJournalWindow :: method public Equals(MFTLibTestExtensions.SyntheticJournalWindow other) : bool
@@ -181,32 +197,9 @@ MFTLibTestExtensions.SyntheticMftProducer :: constructor public (System.Func<cha
 MFTLibTestExtensions.SyntheticMftProducer :: property public BeforeProduceAsync { get; set; } : System.Func<char, System.Threading.CancellationToken, System.Threading.Tasks.Task>?
 MFTLibTestExtensions.SyntheticMftProducer :: property public CatchUpLoss { get; set; } : System.Func<char, MFTLib.Index.JournalCheckpointLoss?>?
 MFTLibTestExtensions.SyntheticMftProducer :: property public CompletedUtc { get; set; } : System.DateTime
-MFTLibTestExtensions.SyntheticMftProducer :: property public JournalCursor { get; set; } : MFTLib.UsnJournalCursor
-MFTLibTestExtensions.SyntheticMftProducer :: property public ProducedDrives { get; } : System.Collections.Generic.IReadOnlyList<char>
+MFTLibTestExtensions.SyntheticMftProducer :: property public JournalCursor { get; set; } : MFTLibTestExtensions.SyntheticJournalCursor
 MFTLibTestExtensions.SyntheticMftProducer :: property public SkippedRecordCount { get; set; } : int
 MFTLibTestExtensions.SyntheticMftProducer :: type public sealed class
-MFTLibTestExtensions.SyntheticMftRecord :: method public static Create(MFTLibTestExtensions.SyntheticMftRecordOptions options) : MFTLib.MftRecord
-MFTLibTestExtensions.SyntheticMftRecord :: type public static class
-MFTLibTestExtensions.SyntheticMftRecordOptions :: constructor public ()
-MFTLibTestExtensions.SyntheticMftRecordOptions :: method public <Clone>$() : MFTLibTestExtensions.SyntheticMftRecordOptions
-MFTLibTestExtensions.SyntheticMftRecordOptions :: method public Equals(MFTLibTestExtensions.SyntheticMftRecordOptions? other) : bool
-MFTLibTestExtensions.SyntheticMftRecordOptions :: method public override Equals(object? obj) : bool
-MFTLibTestExtensions.SyntheticMftRecordOptions :: method public override GetHashCode() : int
-MFTLibTestExtensions.SyntheticMftRecordOptions :: method public override ToString() : string
-MFTLibTestExtensions.SyntheticMftRecordOptions :: method public static op_Equality(MFTLibTestExtensions.SyntheticMftRecordOptions? left, MFTLibTestExtensions.SyntheticMftRecordOptions? right) : bool
-MFTLibTestExtensions.SyntheticMftRecordOptions :: method public static op_Inequality(MFTLibTestExtensions.SyntheticMftRecordOptions? left, MFTLibTestExtensions.SyntheticMftRecordOptions? right) : bool
-MFTLibTestExtensions.SyntheticMftRecordOptions :: property public FileAttributes { get; init; } : System.IO.FileAttributes?
-MFTLibTestExtensions.SyntheticMftRecordOptions :: property public FullPath { get; init; } : string?
-MFTLibTestExtensions.SyntheticMftRecordOptions :: property public InUse { get; init; } : bool
-MFTLibTestExtensions.SyntheticMftRecordOptions :: property public IsDirectory { get; init; } : bool
-MFTLibTestExtensions.SyntheticMftRecordOptions :: property public ModifiedUtc { get; init; } : System.DateTime?
-MFTLibTestExtensions.SyntheticMftRecordOptions :: property public SequenceNumber { get; init; } : ushort
-MFTLibTestExtensions.SyntheticMftRecordOptions :: property public Size { get; init; } : long
-MFTLibTestExtensions.SyntheticMftRecordOptions :: property public SizeKnown { get; init; } : bool
-MFTLibTestExtensions.SyntheticMftRecordOptions :: property public required FileName { get; init; } : string
-MFTLibTestExtensions.SyntheticMftRecordOptions :: property public required ParentRecordNumber { get; init; } : ulong
-MFTLibTestExtensions.SyntheticMftRecordOptions :: property public required RecordNumber { get; init; } : ulong
-MFTLibTestExtensions.SyntheticMftRecordOptions :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticMftRecordOptions>
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockDeletionResult(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockDeletionOutcome outcome, string? failureReason) : MFTLib.Index.CachedBlockDeletionResult
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockFile(char driveLetter, uint volumeSerial, string path, long sizeBytes, System.DateTime lastWriteTime) : MFTLib.Index.CachedBlockFile
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockRejection(string path, string reason) : MFTLib.Index.CachedBlockRejection
@@ -239,3 +232,16 @@ MFTLibTestExtensions.SyntheticRow :: property public Row { get; init; } : uint
 MFTLibTestExtensions.SyntheticRow :: property public SequenceNumber { get; init; } : ushort
 MFTLibTestExtensions.SyntheticRow :: property public Size { get; init; } : long?
 MFTLibTestExtensions.SyntheticRow :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticRow>
+MFTLibTestExtensions.SyntheticScanRecord :: constructor public ()
+MFTLibTestExtensions.SyntheticScanRecord :: method public <Clone>$() : MFTLibTestExtensions.SyntheticScanRecord
+MFTLibTestExtensions.SyntheticScanRecord :: method public Equals(MFTLibTestExtensions.SyntheticScanRecord? other) : bool
+MFTLibTestExtensions.SyntheticScanRecord :: method public override Equals(object? obj) : bool
+MFTLibTestExtensions.SyntheticScanRecord :: method public override GetHashCode() : int
+MFTLibTestExtensions.SyntheticScanRecord :: method public override ToString() : string
+MFTLibTestExtensions.SyntheticScanRecord :: method public static op_Equality(MFTLibTestExtensions.SyntheticScanRecord? left, MFTLibTestExtensions.SyntheticScanRecord? right) : bool
+MFTLibTestExtensions.SyntheticScanRecord :: method public static op_Inequality(MFTLibTestExtensions.SyntheticScanRecord? left, MFTLibTestExtensions.SyntheticScanRecord? right) : bool
+MFTLibTestExtensions.SyntheticScanRecord :: property public IsDirectory { get; init; } : bool
+MFTLibTestExtensions.SyntheticScanRecord :: property public required FileName { get; init; } : string
+MFTLibTestExtensions.SyntheticScanRecord :: property public required ParentRecordNumber { get; init; } : ulong
+MFTLibTestExtensions.SyntheticScanRecord :: property public required RecordNumber { get; init; } : ulong
+MFTLibTestExtensions.SyntheticScanRecord :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticScanRecord>

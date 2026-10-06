@@ -69,7 +69,7 @@ public class FileIndexWatchRescanCacheTests
                 Assert.AreSame(handle, source.WatchFor('T'));
                 Assert.AreEqual(1, source.TargetsFor('T').Count);
                 Assert.IsFalse(catchUp.IsCompleted);
-                Assert.AreEqual(1, index.FindByName("during.txt", token).Count);
+                Assert.AreEqual(1, index.Search(new SearchQuery("during.txt", NameMatchMode.Exact), token).Count);
                 Assert.AreEqual(0, Directory.GetFiles(directory.FullName, "*.retired-*").Length);
                 using var restored = BlockFile.Open(original.Block.Path, 1, out var validation);
                 Assert.IsNotNull(restored, validation.ToString());

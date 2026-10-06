@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using MFTLib.Index;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -7,8 +6,8 @@ using TestProgram;
 
 namespace MFTLib.Tests;
 
-// The TestProgram modes behind a command line: argument errors, the unelevated scan-drive mode
-// (a FileIndex over an in-process broker), and the volume modes over faked journal and record reads.
+// The TestProgram scan-drive mode behind a command line: argument errors, the unelevated scan (a FileIndex over an
+// in-process broker) and the self-elevation relaunch.
 [TestClass]
 [DoNotParallelize]
 public class DriveScannerModeTests
@@ -44,7 +43,7 @@ public class DriveScannerModeTests
             _writeLine = lines.Add
         };
 
-        var result = scanner.Run(["usn-read", "--verbose"]);
+        var result = scanner.Run(["scan-drive", "--verbose"]);
 
         Assert.AreEqual(2, result);
         Assert.IsTrue(lines.Any(line => line.Contains("Unknown option --verbose")));
@@ -74,11 +73,11 @@ public class DriveScannerModeTests
         var lines = new List<string>();
         var launches = 0;
         var scanner = ScannerOverBroker(broker, lines);
-        var process = broker.Process;
+        var handle = broker.Handle;
         scanner._createBrokerSession = () => BrokerTestHarness.CreateSession(_ =>
         {
             Interlocked.Increment(ref launches);
-            return Task.FromResult(process);
+            return Task.FromResult(handle);
         });
 
         var result = scanner.Run(["scan-drive", "C", "D:"]);
@@ -87,7 +86,7 @@ public class DriveScannerModeTests
         Assert.AreEqual(1, launches);
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("=== Drive D: done ==="));
-        Assert.IsTrue(process.Ended.IsCompleted,
+        Assert.IsTrue(handle.Ended.IsCompleted,
             "The scanner must dispose its session before returning.");
     }
 
@@ -140,11 +139,11 @@ public class DriveScannerModeTests
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
         var launches = 0;
-        var process = broker.Process;
+        var handle = broker.Handle;
         scanner._createBrokerSession = () => BrokerTestHarness.CreateSession(_ =>
         {
             Interlocked.Increment(ref launches);
-            return Task.FromResult(process);
+            return Task.FromResult(handle);
         });
         scanner._resolveDrive = _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242);
 
@@ -184,130 +183,14 @@ public class DriveScannerModeTests
     }
 
     [TestMethod]
-    public void Run_ReadRecords_Elevated_PrintsTheRecordCountAndPaths()
+    public void Run_NotElevated_WhenTheRunRequiresElevation_SelfElevatesWithTheOriginalArguments()
     {
-        var lines = new List<string>();
-        var scanner = ElevatedScanner(lines);
-        scanner._readAllRecords = (_, _, _) =>
-            ([new MftRecord(5, 5, new MftRecordFields(3), "root", null), new MftRecord(20, 5, new MftRecordFields(1), "file.txt", null)], null);
-
-        var result = scanner.Run(["read-records", "T"]);
-
-        Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Read 2 records (1 directories) in ", StringComparison.Ordinal)));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("  root [record 5 ", StringComparison.Ordinal) &&
-                                        line.Contains("directory in use")));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("  file.txt [record 20 ", StringComparison.Ordinal) &&
-                                        line.Contains("file in use")));
-        Assert.IsTrue(lines.Contains("=== Drive T: done ==="));
-    }
-
-    [TestMethod]
-    public void Run_UsnQuery_Elevated_PrintsTheCursorAndSizing()
-    {
-        var lines = new List<string>();
-        var scanner = ElevatedScanner(lines);
-        scanner._queryJournal = _ => Armed;
-        scanner._queryJournalSettings = _ => new UsnJournalSettings { MaximumSize = 32768, AllocationDelta = 4096 };
-
-        scanner.Run(["usn-query", "T"]);
-
-        Assert.IsTrue(lines.Contains("Journal 7, next USN 1000"));
-        Assert.IsTrue(lines.Contains("  maximum size 32768 bytes, allocation delta 4096 bytes"));
-    }
-
-    [TestMethod]
-    public void Run_UsnRead_Elevated_ReadsTheJournalFromTheCursorArmedBeforeTheScan()
-    {
-        var lines = new List<string>();
-        var order = new List<string>();
-        UsnJournalCursor? readSince = null;
-        var scanner = ElevatedScanner(lines);
-        scanner._queryJournal = _ =>
-        {
-            order.Add("arm");
-            return Armed;
-        };
-        scanner._readAllRecords = (_, _, _) =>
-        {
-            order.Add("scan");
-            return ([new MftRecord(5, 5, new MftRecordFields(3), "root", null)], null);
-        };
-        scanner._readJournal = (_, since) =>
-        {
-            order.Add("catch-up");
-            readSince = since;
-            return ([JournalEntries.Create(20, 1200, "file.txt")], new UsnJournalCursor(7, 1500));
-        };
-
-        scanner.Run(["usn-read", "T"]);
-
-        CollectionAssert.AreEqual(new[] { "arm", "scan", "catch-up" }, order);
-        Assert.AreEqual(Armed, readSince);
-        Assert.IsTrue(lines.Contains("Catch-up read 1 entries, cursor now 1500"));
-        Assert.IsTrue(lines.Any(line => line.Contains("file.txt")));
-    }
-
-    [TestMethod]
-    public void Run_UsnWatch_Elevated_PrintsBatchesUntilTheWatchIsCancelled()
-    {
-        var lines = new List<string>();
-        var scanner = ElevatedScanner(lines);
-        scanner._queryJournal = _ => Armed;
-        var cancellation = new CancellationTokenSource();
-        TimeSpan? requestedDuration = null;
-        UsnJournalCursor? watchedFrom = null;
-        scanner._createTimedCancellation = duration =>
-        {
-            requestedDuration = duration;
-            return cancellation;
-        };
-        scanner._watchJournal = (_, since, token) =>
-        {
-            watchedFrom = since;
-            return OneBatchThenCancelled(cancellation, token);
-        };
-
-        scanner.Run(["usn-watch", "T", "--seconds", "3"]);
-
-        Assert.AreEqual(TimeSpan.FromSeconds(3), requestedDuration);
-        Assert.AreEqual(Armed, watchedFrom);
-        Assert.IsTrue(lines.Contains("Batch of 1 entries, cursor now 1100"));
-        Assert.IsTrue(lines.Contains("Watch ended."));
-        Assert.IsTrue(lines.Contains("=== Drive T: done ==="));
-    }
-
-    [DataTestMethod]
-    [DataRow("read-records")]
-    [DataRow("usn-query")]
-    [DataRow("usn-read")]
-    [DataRow("usn-watch")]
-    public void Run_VolumeMode_VolumeOpenFails_PrintsTheErrorAndCarriesOn(string mode)
-    {
-        var lines = new List<string>();
-        var scanner = ElevatedScanner(lines);
-        scanner._openVolume = _ => throw new IOException("Access denied");
-
-        var result = scanner.Run([mode, "T"]);
-
-        Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Contains("Error on drive T: Access denied"));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Completed at ", StringComparison.Ordinal)));
-    }
-
-    [DataTestMethod]
-    [DataRow(new[] { "usn-watch", "C", "--seconds", "5" }, 60000 + 5000,
-        DisplayName = "the elevation wait covers the requested watch time")]
-    [DataRow(new[] { "stream-records", "C", "D", "--timeout-seconds", "120" }, 60000 + 240_000,
-        DisplayName = "the elevation wait covers every drive's requested streaming timeout")]
-    [DataRow(new[] { "stream-records", "C" }, -1,
-        DisplayName = "streaming without a requested timeout waits without a limit (Timeout.Infinite)")]
-    public void Run_VolumeMode_NotElevated_SelfElevatesWithTheOriginalArguments(string[] arguments, int expectedTimeoutMilliseconds)
-    {
+        string[] arguments = ["scan-drive", "C", "D"];
         IReadOnlyList<string>? relaunchedWith = null;
         var elevationTimeout = TimeSpan.Zero;
         var scanner = new DriveScanner
         {
+            _requiresElevation = _ => true,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (relaunchArguments, timeout) =>
@@ -324,30 +207,29 @@ public class DriveScannerModeTests
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(arguments, relaunchedWith!.ToArray());
-        Assert.AreEqual(TimeSpan.FromMilliseconds(expectedTimeoutMilliseconds), elevationTimeout,
-            "The elevation wait covers the requested duration.");
+        Assert.AreEqual(ElevationUtilities.DefaultElevatedTimeout, elevationTimeout);
     }
 
     // The library quotes each element for the child's command line, so the scanner hands over the
     // arguments exactly as it accepted them, whatever whitespace or quotes they hold.
     [DataTestMethod]
-    [DataRow(new[] { "usn-grow", "--maximum-size", "8000", "--allocation-delta", "2048", "C\" --maximum-size 9000 --allocation-delta 4096" },
+    [DataRow(new[] { "C\" --maximum-size 9000 --allocation-delta 4096" },
         DisplayName = "an option-injection positional stays one argument")]
-    [DataRow(new[] { "find-name", "C", "--name", "a\"b" }, DisplayName = "a literal quote survives")]
-    [DataRow(new[] { "find-name", "C", "--name", "a\\\"b" }, DisplayName = "a backslash before a quote survives")]
-    [DataRow(new[] { "find-name", "C", "--name", "" }, DisplayName = "an empty value last survives")]
-    [DataRow(new[] { "find-name", "C", "--name", "", "--include-freed" },
-        DisplayName = "an empty value before another option survives")]
-    [DataRow(new[] { "find-name", "C", "--name", "a\tb.txt" }, DisplayName = "a tab inside a value survives")]
-    [DataRow(new[] { "find-name", "C", "--name", "C:\\spaced directory\\" },
+    [DataRow(new[] { "scan-drive", "a\"b" }, DisplayName = "a literal quote survives")]
+    [DataRow(new[] { "scan-drive", "a\\\"b" }, DisplayName = "a backslash before a quote survives")]
+    [DataRow(new[] { "scan-drive", "C", "" }, DisplayName = "an empty value last survives")]
+    [DataRow(new[] { "scan-drive", "", "C" }, DisplayName = "an empty value before another drive survives")]
+    [DataRow(new[] { "scan-drive", "a\tb.txt" }, DisplayName = "a tab inside a value survives")]
+    [DataRow(new[] { "scan-drive", "C:\\spaced directory\\" },
         DisplayName = "a trailing backslash last survives")]
-    [DataRow(new[] { "find-name", "C", "--name", "C:\\spaced directory\\", "--include-freed" },
-        DisplayName = "a trailing backslash before another option survives")]
+    [DataRow(new[] { "scan-drive", "C:\\spaced directory\\", "D" },
+        DisplayName = "a trailing backslash before another drive survives")]
     public void Run_NotElevated_RelaunchesWithEachArgumentVerbatim(string[] arguments)
     {
         IReadOnlyList<string>? relaunchedWith = null;
         var scanner = new DriveScanner
         {
+            _requiresElevation = _ => true,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (relaunchArguments, _) =>
@@ -365,18 +247,6 @@ public class DriveScannerModeTests
             "The child must receive exactly the arguments the parent accepted.");
     }
 
-    static DriveScanner ElevatedScanner(List<string> lines)
-    {
-        return new DriveScanner
-        {
-            _isElevated = () => true,
-            _acrtIobFunc = _ => IntPtr.Zero,
-            _wFreopen = (_, _, _) => IntPtr.Zero,
-            _openVolume = letter => MftVolume.Open(letter),
-            _writeLine = lines.Add
-        };
-    }
-
     DriveScanner ScannerOverBroker(InProcessBroker broker, List<string> lines)
     {
         var scanner = new DriveScanner
@@ -385,7 +255,7 @@ public class DriveScannerModeTests
             _getEnvironmentVariable = _ => null,
             _canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate."),
             _tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate."),
-            _createBrokerSession = () => BrokerTestHarness.CreateSession(_ => Task.FromResult(broker.Process)),
+            _createBrokerSession = () => BrokerTestHarness.CreateSession(_ => Task.FromResult(broker.Handle)),
             _resolveDrive = ResolveDrive,
             _cacheDirectory = _directory,
             _writeLine = lines.Add
@@ -399,15 +269,6 @@ public class DriveScannerModeTests
     {
         var driveLetter = char.ToUpperInvariant(letter[0]);
         return new IndexedDrive(driveLetter, _directory, 4242);
-    }
-
-    static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> OneBatchThenCancelled(
-        CancellationTokenSource cancellation, [EnumeratorCancellation] CancellationToken token)
-    {
-        await Task.Yield();
-        yield return ([JournalEntries.Create(30, 1100, "created.txt")], new UsnJournalCursor(7, 1100));
-        await cancellation.CancelAsync();
-        token.ThrowIfCancellationRequested();
     }
 
     static JournalBrokerHost CreateHost(UsnJournalCatchUpSource? readJournal = null, MftRecordBatchSource? scanDrive = null)

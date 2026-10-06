@@ -12,10 +12,22 @@ public partial class BrokerProcessTests
         public override DateTimeOffset GetUtcNow() => throw failure;
     }
 
-    static ScriptedBrokerVolumes ScriptedVolumes(
-        Func<ScriptedScan, IEnumerable<IReadOnlyList<MftRecord>>>? scanDrive = null) => new()
+    static SyntheticJournalCursor ArmedSynthetic => Armed.ToSynthetic();
+
+    static SyntheticScanRecord SyntheticRecord(ulong recordNumber, string name, ushort flags = 1) =>
+        new()
         {
-            QueryJournalCursor = _ => Armed,
+            RecordNumber = recordNumber,
+            ParentRecordNumber = 5,
+            FileName = name,
+            InUse = (flags & 1) != 0,
+            IsDirectory = (flags & 2) != 0
+        };
+
+    static ScriptedBrokerVolumes ScriptedVolumes(
+        Func<ScriptedScan, IEnumerable<IReadOnlyList<SyntheticScanRecord>>>? scanDrive = null) => new()
+        {
+            QueryJournalCursor = _ => ArmedSynthetic,
             ScanDrive = scanDrive
         };
 
@@ -26,7 +38,7 @@ public partial class BrokerProcessTests
         ProcessFirst
     }
 
-    static IEnumerable<IReadOnlyList<MftRecord>> BatchesWithHeldCleanup(TestGate scanStarted,
+    static IEnumerable<IReadOnlyList<SyntheticScanRecord>> BatchesWithHeldCleanup(TestGate scanStarted,
         TestGate cleanupGate, CancellationToken cancellationToken)
     {
         scanStarted.MarkEntered();
@@ -208,7 +220,7 @@ public partial class BrokerProcessTests
             var firstCallbackRelease = new TestGate();
             await using var handle = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
             {
-                QueryJournalCursor = _ => Armed,
+                QueryJournalCursor = _ => ArmedSynthetic,
                 ScanDrive = scan =>
                 {
                     if (scan.DriveLetter == "C")
@@ -217,7 +229,7 @@ public partial class BrokerProcessTests
                         firstCallbackRelease.WaitForRelease();
                     }
 
-                    return [[Record(5, ".", 3)]];
+                    return [[SyntheticRecord(5, ".", 3)]];
                 }
             });
 
@@ -240,14 +252,14 @@ public partial class BrokerProcessTests
             return;
         }
 
-        Func<string, UsnJournalCursor> queryCursor = recordingCase == ScanRecordingCase.CursorQueryFailure
+        Func<string, SyntheticJournalCursor> queryCursor = recordingCase == ScanRecordingCase.CursorQueryFailure
             ? _ => throw new InvalidOperationException("scripted cursor failure")
-            : _ => Armed;
+            : _ => ArmedSynthetic;
 
-        Func<ScriptedScan, IEnumerable<IReadOnlyList<MftRecord>>> scanDrive = recordingCase switch
+        Func<ScriptedScan, IEnumerable<IReadOnlyList<SyntheticScanRecord>>> scanDrive = recordingCase switch
         {
             ScanRecordingCase.SynchronousSourceFailure => _ => throw new InvalidOperationException("scripted scan failure"),
-            _ => _ => [[Record(5, ".", 3)], [Record(20, "file.txt")]]
+            _ => _ => [[SyntheticRecord(5, ".", 3)], [SyntheticRecord(20, "file.txt")]]
         };
 
         var volumes = new ScriptedBrokerVolumes
@@ -300,7 +312,7 @@ public partial class BrokerProcessTests
             seen.Add((scan.DriveLetter, scan.ParseThreads.Count, scan.CancellationToken.IsCancellationRequested));
             scan.ReportParsed(2, 2);
             parsedSeen.Task.Wait(HangGuard);
-            return [[Record(5, ".", 3)], [Record(20, "file.txt")]];
+            return [[SyntheticRecord(5, ".", 3)], [SyntheticRecord(20, "file.txt")]];
         }));
         var options = new BrokerScanOptions
         {
@@ -357,8 +369,8 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task ScriptedVolumes_ReadJournalAndGrowAreServed()
     {
-        var advanced = new UsnJournalCursor(7, 1500);
-        var volumes = ScriptedVolumes(_ => [[Record(5, ".", 3)]]) with
+        var advanced = new SyntheticJournalCursor(7, 1500);
+        var volumes = ScriptedVolumes(_ => [[SyntheticRecord(5, ".", 3)]]) with
         {
             ReadJournal = (_, since, _) => since == advanced ? ([], since) : ([], advanced),
             GrowUsnJournal = (_, maximumSize, allocationDelta) => new UsnJournalSettings
@@ -374,7 +386,7 @@ public partial class BrokerProcessTests
         var settings = await handle.Process.GrowUsnJournalAsync('C', 0x08000000, 0x01000000, CancellationToken.None)
             .WaitAsync(HangGuard);
 
-        Assert.AreEqual(advanced, scan.AdvancedCursor);
+        Assert.AreEqual(advanced.ToProduction(), scan.AdvancedCursor);
         Assert.AreEqual(0x08000000L, settings.MaximumSize);
         Assert.AreEqual(0x01000000L, settings.AllocationDelta);
     }
@@ -389,25 +401,33 @@ public partial class BrokerProcessTests
                 .WaitAsync(HangGuard));
     }
 
-    static async IAsyncEnumerable<(UsnJournalEntry[] Entries, UsnJournalCursor Cursor)> OneBatchThenQuiet(
-        UsnJournalEntry[] entries, UsnJournalCursor cursor, [System.Runtime.CompilerServices.EnumeratorCancellation]
+    static async IAsyncEnumerable<(SyntheticJournalRecord[] Entries, SyntheticJournalCursor Cursor)> OneBatchThenQuiet(
+        SyntheticJournalRecord[] entries, SyntheticJournalCursor cursor, [System.Runtime.CompilerServices.EnumeratorCancellation]
         CancellationToken cancellationToken)
     {
         yield return (entries, cursor);
         await Task.Delay(Timeout.Infinite, cancellationToken);
     }
 
+    static async IAsyncEnumerable<(SyntheticJournalRecord[] Entries, SyntheticJournalCursor Cursor)> OneBatchThenEnd(
+        SyntheticJournalRecord[] entries, SyntheticJournalCursor cursor, TaskCompletionSource ended)
+    {
+        yield return (entries, cursor);
+        await Task.Yield();
+        ended.SetResult();
+    }
+
     [TestMethod]
     public async Task ScriptedVolumes_WatchDriveStreamsItsBatchesToTheClient()
     {
-        var entry = SyntheticJournalEntry.Create(new SyntheticJournalEntryOptions
+        var entry = new SyntheticJournalRecord
         {
             RecordNumber = 20,
             ParentRecordNumber = 5,
-            Usn = 1200,
+            UpdateSequenceNumber = 1200,
             FileName = "file.txt"
-        });
-        var cursor = new UsnJournalCursor(7, 1500);
+        };
+        var cursor = new SyntheticJournalCursor(7, 1500);
         var volumes = ScriptedVolumes() with
         {
             WatchDrive = (_, _, cancellationToken) => OneBatchThenQuiet([entry], cursor, cancellationToken)
@@ -427,7 +447,32 @@ public partial class BrokerProcessTests
 
         Assert.IsNotNull(batch);
         Assert.AreEqual(1, batch.Entries.Count);
-        Assert.AreEqual(cursor.NextUsn, batch.NextUsn);
+        Assert.AreEqual(cursor.NextUpdateSequenceNumber, batch.NextUsn);
+    }
+
+    [TestMethod]
+    public async Task ScriptedVolumes_WatchDriveThatEndsAfterItsBatchIsEnumeratedToTheEnd()
+    {
+        var entry = new SyntheticJournalRecord
+        {
+            RecordNumber = 20,
+            ParentRecordNumber = 5,
+            UpdateSequenceNumber = 1200,
+            FileName = "file.txt"
+        };
+        var cursor = new SyntheticJournalCursor(7, 1500);
+        var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var volumes = ScriptedVolumes() with
+        {
+            WatchDrive = (_, _, _) => OneBatchThenEnd([entry], cursor, ended)
+        };
+        await using var handle = BrokerTestHarness.StartInProcess(volumes);
+        using var deadline = new CancellationTokenSource(HangGuard);
+
+        await using var channel = await handle.Process.OpenWatchChannelAsync(new IndexWatchTarget('C', 7, 1000),
+            deadline.Token);
+
+        await ended.Task.WaitAsync(HangGuard);
     }
 
     [TestMethod]

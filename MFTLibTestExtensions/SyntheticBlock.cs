@@ -75,7 +75,7 @@ public static class SyntheticBlock
     /// <param name="volumeSerial">The volume serial number the block was written for.</param>
     /// <returns>The rows as they are stored.</returns>
     /// <exception cref="InvalidOperationException">The block is missing, fails validation, or is owned by an open index.</exception>
-    public static IReadOnlyList<SyntheticRow> ReadRows(string blockPath, uint volumeSerial)
+    internal static IReadOnlyList<SyntheticRow> ReadRows(string blockPath, uint volumeSerial)
     {
         RequireExists(blockPath);
         using var owner = AcquireSlot(blockPath);
@@ -97,7 +97,7 @@ public static class SyntheticBlock
     /// <param name="volumeSerial">The volume serial number the block was written for.</param>
     /// <returns>The producer, row count and cache tag the header stores.</returns>
     /// <exception cref="InvalidOperationException">The block is missing, fails validation, or is owned by an open index.</exception>
-    public static SyntheticDriveHeader ReadHeader(string blockPath, uint volumeSerial)
+    internal static SyntheticDriveHeader ReadHeader(string blockPath, uint volumeSerial)
     {
         RequireExists(blockPath);
         using var owner = AcquireSlot(blockPath);
@@ -135,7 +135,7 @@ public static class SyntheticBlock
                 WriteRow(writer, row);
             }
 
-            writer.SetJournalCursor(options.JournalCursor.JournalId, options.JournalCursor.NextUsn);
+            writer.SetJournalCursor(options.JournalCursor.JournalIdentifier, options.JournalCursor.NextUpdateSequenceNumber);
             writer.Complete(options.CompletedUtc, null);
             return block;
         }

@@ -5,7 +5,7 @@ using MFTLib.Index;
 namespace MFTLib;
 
 /// <summary>Creates the control pipe, launches the elevated broker against it, and waits for it to connect.</summary>
-public sealed partial class BrokerProcess
+internal sealed partial class BrokerProcess
 {
     /// <summary>How long <see cref="LaunchAsync(Func{string, bool}, CancellationToken)" /> waits for the broker to connect.</summary>
     static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromSeconds(30);

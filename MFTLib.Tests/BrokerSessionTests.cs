@@ -642,14 +642,14 @@ public class BrokerSessionTests
         {
             await using var handle = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
             {
-                QueryJournalCursor = _ => new UsnJournalCursor(7, 1000),
+                QueryJournalCursor = _ => new SyntheticJournalCursor(7, 1000),
                 ScanDrive = _ =>
                 [
                     [
-                        SyntheticMftRecord.Create(new SyntheticMftRecordOptions
+                        new SyntheticScanRecord
                         {
                             RecordNumber = 5, ParentRecordNumber = 5, FileName = ".", IsDirectory = true
-                        })
+                        }
                     ]
                 ]
             });
@@ -757,7 +757,7 @@ public class BrokerSessionTests
         });
 
     static BrokerSession CreateSession(Func<CancellationToken, Task<BrokerProcess>> launchAsync) =>
-        BrokerTestHarness.CreateSession(launchAsync);
+        new(launchAsync);
 
     /// <summary>A launcher the test holds open, finishes or fails, and whose token it can inspect.</summary>
     sealed class LaunchGate

@@ -3,7 +3,7 @@ namespace MFTLib;
 /// <summary>
 ///     Identifies the phase of an MFT volume scan.
 /// </summary>
-public enum MftScanPhase : byte
+internal enum MftScanPhase : byte
 {
     /// <summary>
     ///     Scanning and parsing raw MFT record structures from disk.

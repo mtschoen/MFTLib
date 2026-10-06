@@ -4,7 +4,7 @@ using System.Globalization;
 namespace MFTLib;
 
 /// <summary>Control requests: request ids, the serialized control writes, and the one control reader.</summary>
-public sealed partial class BrokerProcess
+internal sealed partial class BrokerProcess
 {
     // Every request whose reply has not arrived, keyed by request id, including requests whose
     // caller stopped waiting: an entry leaves only when its reply arrives or the process ends, so

@@ -1,7 +1,7 @@
 namespace MFTLib;
 
 /// <summary>Native timing breakdown for one MFT parse operation.</summary>
-public readonly struct MftParseTimings
+internal readonly struct MftParseTimings
 {
     /// <summary>Native disk I/O duration.</summary>
     public TimeSpan NativeIo { get; }

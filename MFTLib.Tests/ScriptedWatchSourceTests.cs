@@ -33,8 +33,8 @@ public class ScriptedWatchSourceTests
 
         var watch = await StartAsync(source, Target('t', 9, 250));
 
-        Assert.AreEqual(new ScriptedWatchStart('t', new UsnJournalCursor(9, 250)), source.Starts.Single());
-        Assert.AreEqual(new UsnJournalCursor(9, 250), source.Starts.Single().Cursor);
+        Assert.AreEqual(new ScriptedWatchStart('t', new SyntheticJournalCursor(9, 250)), source.Starts.Single());
+        Assert.AreEqual(new SyntheticJournalCursor(9, 250), source.Starts.Single().Cursor);
         Assert.AreSame(watch, source.Watches.Single());
         Assert.AreSame(watch, source.WatchFor('T'));
         Assert.AreEqual(new UsnJournalCursor(9, 250), watch.StartCursor);
@@ -236,9 +236,9 @@ public class ScriptedWatchSourceTests
         var source = new ScriptedWatchSource();
         var watch = await StartAsync(source, Target('T'));
         await using var enumerator = Read(watch, Token);
-        var entry = JournalEntries.Create(20, 150, "a.txt");
+        var entry = JournalEntries.CreateSynthetic(20, 150, "a.txt");
 
-        var published = watch.PublishBatchAsync([entry], new UsnJournalCursor(7, 200));
+        var published = watch.PublishBatchAsync([entry], new SyntheticJournalCursor(7, 200));
         Assert.IsTrue(await enumerator.MoveNextAsync());
 
         var batch = (JournalBatch)enumerator.Current;
@@ -301,8 +301,8 @@ public class ScriptedWatchSourceTests
                 break;
         }
 
-        var entry = JournalEntries.Create(21, 250, "b.txt");
-        var cursor = new UsnJournalCursor(7, 300);
+        var entry = JournalEntries.CreateSynthetic(21, 250, "b.txt");
+        var cursor = new SyntheticJournalCursor(7, 300);
 
         if (closeMode == "open")
         {
@@ -339,8 +339,8 @@ public class ScriptedWatchSourceTests
         using var cancellation = new CancellationTokenSource();
         var enumerator = Read(watch, cancellation.Token);
 
-        var batchEntry = JournalEntries.Create(21, 250, "b.txt");
-        var batchCursor = new UsnJournalCursor(7, 300);
+        var batchEntry = JournalEntries.CreateSynthetic(21, 250, "b.txt");
+        var batchCursor = new SyntheticJournalCursor(7, 300);
 
         Task yieldedTask;
         Task unreadTask;
@@ -482,8 +482,8 @@ public class ScriptedWatchSourceTests
 
     static void AssertDeliveryRejected(ScriptedDriveWatch watch)
     {
-        var entry = JournalEntries.Create(22, 260, "c.txt");
-        var cursor = new UsnJournalCursor(7, 400);
+        var entry = JournalEntries.CreateSynthetic(22, 260, "c.txt");
+        var cursor = new SyntheticJournalCursor(7, 400);
         Assert.ThrowsException<InvalidOperationException>(() => watch.QueueBatch([entry], cursor));
         Assert.ThrowsException<InvalidOperationException>(() => watch.PublishBatchAsync([entry], cursor));
         Assert.ThrowsException<InvalidOperationException>(() => watch.QueueCaughtUp());
@@ -635,121 +635,6 @@ public class ScriptedWatchSourceTests
         var source = new ScriptedWatchSource();
 
         Assert.ThrowsException<InvalidOperationException>(() => source.WatchFor('T'));
-    }
-
-    [TestMethod]
-    public void SyntheticJournalEntry_CarriesEveryOptionIntoTheEntry()
-    {
-        var timestamp = new DateTime(2026, 3, 4, 5, 6, 7, DateTimeKind.Utc);
-
-        var entry = SyntheticJournalEntry.Create(new SyntheticJournalEntryOptions
-        {
-            RecordNumber = 42,
-            ParentRecordNumber = 17,
-            Usn = 900,
-            FileName = "x.txt",
-            Reason = UsnReason.FileCreate,
-            FileAttributes = FileAttributes.Hidden,
-            TimestampUtc = timestamp,
-            SequenceNumber = 3
-        });
-
-        Assert.AreEqual(42UL, entry.RecordNumber);
-        Assert.AreEqual(17UL, entry.ParentRecordNumber);
-        Assert.AreEqual(900L, entry.Usn);
-        Assert.AreEqual("x.txt", entry.FileName);
-        Assert.AreEqual(UsnReason.FileCreate, entry.Reason);
-        Assert.AreEqual(FileAttributes.Hidden, entry.FileAttributes);
-        Assert.AreEqual(timestamp, entry.TimestampUtc);
-        Assert.AreEqual((ushort)3, entry.SequenceNumber);
-    }
-
-    [TestMethod]
-    public void SyntheticJournalEntry_DefaultsToCloseNormalAndTheUnixEpoch()
-    {
-        var entry = SyntheticJournalEntry.Create(new SyntheticJournalEntryOptions
-        {
-            RecordNumber = 1,
-            ParentRecordNumber = 5,
-            Usn = 2,
-            FileName = "d.txt"
-        });
-
-        Assert.AreEqual(UsnReason.Close, entry.Reason);
-        Assert.AreEqual(FileAttributes.Normal, entry.FileAttributes);
-        Assert.AreEqual(DateTime.UnixEpoch, entry.TimestampUtc);
-        Assert.AreEqual((ushort)0, entry.SequenceNumber);
-    }
-
-    [TestMethod]
-    public void SyntheticJournalEntry_RejectsNullOptions()
-    {
-        Assert.ThrowsException<ArgumentNullException>(() => SyntheticJournalEntry.Create(null!));
-    }
-
-    [TestMethod]
-    public void SyntheticMftRecord_CarriesEveryOptionIntoTheRecord()
-    {
-        var modified = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
-
-        var record = SyntheticMftRecord.Create(new SyntheticMftRecordOptions
-        {
-            RecordNumber = 31,
-            ParentRecordNumber = 30,
-            FileName = "a.txt",
-            FullPath = @"C:\docs.txt",
-            IsDirectory = true,
-            InUse = false,
-            SizeKnown = false,
-            FileAttributes = FileAttributes.Hidden,
-            Size = 4096,
-            ModifiedUtc = modified,
-            SequenceNumber = 2
-        });
-
-        Assert.AreEqual(31UL, record.RecordNumber);
-        Assert.AreEqual(30UL, record.ParentRecordNumber);
-        Assert.AreEqual("a.txt", record.FileName);
-        Assert.AreEqual(@"C:\docs.txt", record.FullPath);
-        Assert.IsTrue(record.IsDirectory);
-        Assert.IsFalse(record.InUse);
-        Assert.IsFalse(record.SizeKnown);
-        Assert.AreEqual(FileAttributes.Hidden, record.FileAttributes);
-        Assert.AreEqual(4096L, record.Size);
-        Assert.AreEqual(modified, record.ModifiedUtc);
-        Assert.AreEqual((ushort)2, record.SequenceNumber);
-    }
-
-    [TestMethod]
-    public void SyntheticMftRecord_DefaultsToAnInUseKnownSizeNormalFile()
-    {
-        var file = SyntheticMftRecord.Create(new SyntheticMftRecordOptions
-        {
-            RecordNumber = 31,
-            ParentRecordNumber = 30,
-            FileName = "a.txt"
-        });
-        var directory = SyntheticMftRecord.Create(new SyntheticMftRecordOptions
-        {
-            RecordNumber = 30,
-            ParentRecordNumber = 5,
-            FileName = "docs",
-            IsDirectory = true
-        });
-
-        Assert.IsTrue(file.InUse);
-        Assert.IsTrue(file.SizeKnown);
-        Assert.IsFalse(file.IsDirectory);
-        Assert.AreEqual(FileAttributes.Normal, file.FileAttributes);
-        Assert.AreEqual(DateTime.UnixEpoch, file.ModifiedUtc);
-        Assert.IsTrue(directory.IsDirectory);
-        Assert.AreEqual(FileAttributes.Directory, directory.FileAttributes);
-    }
-
-    [TestMethod]
-    public void SyntheticMftRecord_RejectsNullOptions()
-    {
-        Assert.ThrowsException<ArgumentNullException>(() => SyntheticMftRecord.Create(null!));
     }
 
     [TestMethod]

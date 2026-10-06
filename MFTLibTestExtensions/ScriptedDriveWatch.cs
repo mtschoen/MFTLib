@@ -34,16 +34,16 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
     public char DriveLetter => Target.DriveLetter;
 
     /// <summary>The journal position the index resumed this watch from: the cursor of the block it started on.</summary>
-    public UsnJournalCursor StartCursor => new(Target.JournalId, Target.NextUsn);
+    internal UsnJournalCursor StartCursor => new(Target.JournalId, Target.NextUsn);
 
     /// <summary>How many times the index disposed this watch; the index owes exactly one, and a second disposal throws.</summary>
-    public int DisposeCount => Volatile.Read(ref _disposeCount);
+    internal int DisposeCount => Volatile.Read(ref _disposeCount);
 
     /// <summary>True once anything has started reading this watch, which only the index's pump does.</summary>
-    public bool ReadStarted => _readStarted;
+    internal bool ReadStarted => _readStarted;
 
     /// <summary>Completes on the first disposal.</summary>
-    public Task Disposed => _disposed.Task;
+    internal Task Disposed => _disposed.Task;
 
     /// <summary>
     ///     Completes when the index's read of this watch ends; true when cancellation ended it. By then
@@ -62,16 +62,19 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
     /// <returns>A task that completes when the pump is done with the batch.</returns>
     /// <exception cref="InvalidOperationException">The watch is closed.</exception>
     /// <exception cref="TimeoutException">The pump did not take the batch within the hang guard.</exception>
-    public Task PublishBatchAsync(IReadOnlyList<UsnJournalEntry> entries, UsnJournalCursor cursor) =>
-        Publish(new JournalBatch(entries, cursor.JournalId, cursor.NextUsn));
+    public Task PublishBatchAsync(IReadOnlyList<SyntheticJournalRecord> entries, SyntheticJournalCursor cursor) =>
+        Publish(ToBatch(entries, cursor));
 
     /// <summary>Queues one journal batch without waiting; the returned task completes when the pump is done with it.</summary>
     /// <param name="entries">The journal entries the batch carries.</param>
     /// <param name="cursor">The journal position after the batch.</param>
     /// <returns>A task that completes when the pump is done with the batch.</returns>
     /// <exception cref="InvalidOperationException">The watch is closed.</exception>
-    public Task QueueBatch(IReadOnlyList<UsnJournalEntry> entries, UsnJournalCursor cursor) =>
-        Queue(new JournalBatch(entries, cursor.JournalId, cursor.NextUsn));
+    public Task QueueBatch(IReadOnlyList<SyntheticJournalRecord> entries, SyntheticJournalCursor cursor) =>
+        Queue(ToBatch(entries, cursor));
+
+    static JournalBatch ToBatch(IReadOnlyList<SyntheticJournalRecord> entries, SyntheticJournalCursor cursor) =>
+        new(entries.ToProduction(), cursor.JournalIdentifier, cursor.NextUpdateSequenceNumber);
 
     /// <summary>Delivers the caught-up marker and completes once the index's pump has taken the item after it.</summary>
     /// <returns>A task that completes when the pump is done with the marker.</returns>
@@ -82,7 +85,7 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
     /// <summary>Queues the caught-up marker without waiting; the returned task completes when the pump is done with it.</summary>
     /// <returns>A task that completes when the pump is done with the marker.</returns>
     /// <exception cref="InvalidOperationException">The watch is closed.</exception>
-    public Task QueueCaughtUp() => Queue(new DriveCaughtUp());
+    internal Task QueueCaughtUp() => Queue(new DriveCaughtUp());
 
     /// <summary>The drive's own watch fails: the index reports <see cref="WatchFaultKind.Drive" />.</summary>
     /// <param name="exception">The failure the drive's watch reports.</param>
@@ -112,7 +115,7 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
     ///     surfaces as an I/O error.
     /// </summary>
     /// <param name="exception">The failure a cancelled read throws.</param>
-    public void FailOnCancellation(Exception exception) => _cancellationFailure = exception;
+    internal void FailOnCancellation(Exception exception) => _cancellationFailure = exception;
 
     /// <summary>Writes one item and waits until the pump has finished with it.</summary>
     internal Task Publish(WatchStreamItem item) => Queue(item).WaitAsync(ScriptedWatchSource.HangGuard);

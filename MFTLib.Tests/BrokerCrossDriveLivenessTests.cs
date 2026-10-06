@@ -249,8 +249,8 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.IsNull(scenario.DriveOf('T').WatchFailureMessage);
         CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive },
             scenario.FaultsOf('T').Select(other => other.Kind).ToArray(), "recovered: no Recovery fault");
-        Assert.AreEqual(1, index.FindByName("scan-T-2.txt", token).Count, "T's block is the recovery's");
-        Assert.AreEqual(0, index.FindByName("scan-T-1.txt", token).Count);
+        Assert.AreEqual(1, index.Search(new SearchQuery("scan-T-2.txt", NameMatchMode.Exact), token).Count, "T's block is the recovery's");
+        Assert.AreEqual(0, index.Search(new SearchQuery("scan-T-1.txt", NameMatchMode.Exact), token).Count);
         Assert.AreEqual(1, scenario.ScansOf('U'), "U was not rescanned");
         Assert.AreEqual(1, scenario.Broker.Watch('U').StartedCount, "U's pipe was not reopened");
         Assert.IsFalse(runOfU.Cancelled.IsCompleted);

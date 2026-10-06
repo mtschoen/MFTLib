@@ -28,14 +28,6 @@ public class NameMatchingTests
     }
 
     [TestMethod]
-    public void IsGlobPattern_DetectsStarAndQuestionMark()
-    {
-        Assert.IsTrue(NameMatching.IsGlobPattern("*.log"));
-        Assert.IsTrue(NameMatching.IsGlobPattern("file?.txt"));
-        Assert.IsFalse(NameMatching.IsGlobPattern("plain.txt"));
-    }
-
-    [TestMethod]
     public void MatchesGlob_HandlesStarPrefixAndSuffix()
     {
         Assert.IsTrue(NameMatching.MatchesGlob("build.log", "*.log", caseSensitive: false));
@@ -64,11 +56,54 @@ public class NameMatchingTests
     }
 
     [TestMethod]
-    public void Matches_RoutesGlobPatternsToGlobAndPlainPatternsToSubstring()
+    public void Matches_RoutesEachModeToItsComparison()
     {
-        Assert.IsTrue(NameMatching.Matches("build.log", "*.log", caseSensitive: false));
-        Assert.IsTrue(NameMatching.Matches("build.log", "uild", caseSensitive: false));
-        Assert.IsFalse(NameMatching.Matches("build.log", "*uild", caseSensitive: false));
+        Assert.IsTrue(NameMatching.Matches("build.log", "BUILD.LOG", NameMatchMode.Exact, caseSensitive: false));
+        Assert.IsFalse(NameMatching.Matches("build.log", "uild", NameMatchMode.Exact, caseSensitive: false));
+        Assert.IsTrue(NameMatching.Matches("build.log", "uild", NameMatchMode.Substring, caseSensitive: false));
+        Assert.IsTrue(NameMatching.Matches("build.log", "*.log", NameMatchMode.Glob, caseSensitive: false));
+        Assert.IsFalse(NameMatching.Matches("build.log", "*uild", NameMatchMode.Glob, caseSensitive: false));
+    }
+
+    [TestMethod]
+    public void Matches_ExactAndSubstring_TreatWildcardsAsOrdinaryCharacters()
+    {
+        Assert.IsTrue(NameMatching.Matches("a*b?.txt", "a*b?", NameMatchMode.Substring, caseSensitive: true));
+        Assert.IsFalse(NameMatching.Matches("axxb1.txt", "a*b?", NameMatchMode.Substring, caseSensitive: true));
+        Assert.IsTrue(NameMatching.Matches("a*b?", "a*b?", NameMatchMode.Exact, caseSensitive: true));
+        Assert.IsFalse(NameMatching.Matches("axb1", "a*b?", NameMatchMode.Exact, caseSensitive: true));
+    }
+
+    [TestMethod]
+    public void Matches_EmptyPattern_FollowsTheModesContract()
+    {
+        Assert.IsTrue(NameMatching.Matches("", "", NameMatchMode.Exact, caseSensitive: false));
+        Assert.IsFalse(NameMatching.Matches("a", "", NameMatchMode.Exact, caseSensitive: false));
+        Assert.IsTrue(NameMatching.Matches("a", "", NameMatchMode.Substring, caseSensitive: false));
+        Assert.IsTrue(NameMatching.Matches("", "", NameMatchMode.Glob, caseSensitive: false));
+        Assert.IsFalse(NameMatching.Matches("a", "", NameMatchMode.Glob, caseSensitive: false));
+    }
+
+    [TestMethod]
+    public void Matches_UndefinedMode_Throws()
+    {
+        var exception = Assert.ThrowsException<ArgumentOutOfRangeException>(
+            () => NameMatching.Matches("a", "a", (NameMatchMode)99, caseSensitive: false));
+
+        Assert.AreEqual("mode", exception.ParamName);
+        StringAssert.StartsWith(exception.Message, "Unknown name match mode.");
+    }
+
+    [TestMethod]
+    public void ThrowIfUndefined_NamesTheQueryParameter()
+    {
+        NameMatching.ThrowIfUndefined(new SearchQuery("a", NameMatchMode.Glob));
+
+        var exception = Assert.ThrowsException<ArgumentOutOfRangeException>(
+            () => NameMatching.ThrowIfUndefined(new SearchQuery("a", (NameMatchMode)99)));
+
+        Assert.AreEqual("query", exception.ParamName);
+        StringAssert.StartsWith(exception.Message, "Unknown name match mode.");
     }
 
     [TestMethod]

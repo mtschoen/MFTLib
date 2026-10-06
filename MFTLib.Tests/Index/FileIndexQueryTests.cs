@@ -56,9 +56,9 @@ public class FileIndexQueryTests
     }
 
     [TestMethod]
-    public void FindByName_SpansTheWholeDrive()
+    public void Search_ExactMode_SpansTheWholeDrive()
     {
-        var results = _index.FindByName("readme.md");
+        var results = _index.Search(new SearchQuery("readme.md", NameMatchMode.Exact));
         Assert.AreEqual(2, results.Count);
     }
 

@@ -6,9 +6,9 @@ namespace MFTLib.Tests.TestSupport;
 
 public abstract class BrokerBlockTestBase
 {
-    protected static readonly UsnJournalCursor ArmedCursor = new(71, 12345);
-    protected static readonly UsnJournalCursor AdvancedCursor = new(71, 12500);
-    protected static readonly NtfsVolumeInformation VolumeInformation = new(1024L * 100000, 1024);
+    internal static readonly UsnJournalCursor ArmedCursor = new(71, 12345);
+    internal static readonly UsnJournalCursor AdvancedCursor = new(71, 12500);
+    internal static readonly NtfsVolumeInformation VolumeInformation = new(1024L * 100000, 1024);
     protected static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
 
     internal static JournalBrokerHost CreateHost(
@@ -29,7 +29,7 @@ public abstract class BrokerBlockTestBase
             processorCount: 4);
     }
 
-    protected static MftRecord Record(ulong recordNumber, string name, ushort flags = 1) =>
+    internal static MftRecord Record(ulong recordNumber, string name, ushort flags = 1) =>
         new(recordNumber, 5, new MftRecordFields(flags), name, null);
 
     internal static BlockScanTarget Target(uint volumeSerial = 123) => TestBlockSections.Target(volumeSerial);

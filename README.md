@@ -635,7 +635,7 @@ holds, so the `.mlix` files are closed at a point the caller chooses; a `FileEnt
 held across that disposal reports `IsDisposed` and throws `ObjectDisposedException`
 on every read.
 
-Eight entry points scan rows: `Find`, `FindByName`, `Search`, `Enumerate`, `Largest`,
+Seven entry points scan rows: `Find`, `Search`, `Enumerate`, `Largest`,
 `DuplicateNames` and `Root` on `FileIndex`, and `Children()` on a `FileEntry`. Each
 takes an optional `CancellationToken`, read before the first row and then at least
 every 4096 rows, and each holds the snapshot it reads for its whole duration.

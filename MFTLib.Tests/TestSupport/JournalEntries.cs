@@ -14,14 +14,34 @@ static class JournalEntries
         UsnReason reason = UsnReason.Close,
         FileAttributes fileAttributes = FileAttributes.Normal)
     {
-        return SyntheticJournalEntry.Create(new SyntheticJournalEntryOptions
+        return UsnJournalEntry.Create(new UsnJournalEntryOptions
         {
             RecordNumber = recordNumber,
             ParentRecordNumber = RootRecordNumber,
             Usn = usn,
+            TimestampUtc = DateTime.UnixEpoch,
             FileName = fileName,
             Reason = reason,
             FileAttributes = fileAttributes
         });
+    }
+
+    /// <summary>The same entry as a public synthetic record, for the test package's scripted watches and volumes.</summary>
+    public static SyntheticJournalRecord CreateSynthetic(
+        ulong recordNumber,
+        long usn,
+        string fileName,
+        SyntheticJournalReason reason = SyntheticJournalReason.Close,
+        FileAttributes fileAttributes = FileAttributes.Normal)
+    {
+        return new SyntheticJournalRecord
+        {
+            RecordNumber = recordNumber,
+            ParentRecordNumber = RootRecordNumber,
+            UpdateSequenceNumber = usn,
+            FileName = fileName,
+            Reason = reason,
+            FileAttributes = fileAttributes
+        };
     }
 }

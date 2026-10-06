@@ -75,12 +75,13 @@ public class JournalMutatorHydrationTests
     }
 
     [DataTestMethod]
-    [DataRow(22ul, "orphan.cs", UsnReason.DataOverwrite)]
-    [DataRow(25ul, "orphan-delete.cs", UsnReason.FileDelete)]
-    [DataRow(26ul, "orphan-rename.cs", UsnReason.RenameNewName)]
+    [DataRow(22ul, "orphan.cs", (uint)UsnReason.DataOverwrite)]
+    [DataRow(25ul, "orphan-delete.cs", (uint)UsnReason.FileDelete)]
+    [DataRow(26ul, "orphan-rename.cs", (uint)UsnReason.RenameNewName)]
     public async Task Hydration_RefusesAnOutOfRangeParentAndMarksCompactionNeeded(
-        ulong recordNumber, string fileName, UsnReason reason)
+        ulong recordNumber, string fileName, uint reasonValue)
     {
+        var reason = (UsnReason)reasonValue;
         await using var fixture = new MutatorFixture();
         var bad = UsnJournalEntry.Create(new UsnJournalEntryOptions
         {

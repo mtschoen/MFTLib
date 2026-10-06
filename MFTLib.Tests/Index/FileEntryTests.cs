@@ -135,13 +135,6 @@ public class FileEntryTests
     }
 
     [TestMethod]
-    public void ToString_NamesTheEntryAndItsRow()
-    {
-        var entry = FileEntry.Create(_snapshot, 0, _fileRow);
-        StringAssert.Contains(entry.ToString(), "report.pdf");
-    }
-
-    [TestMethod]
     public async Task Open_MftProducerNoRootDirectoryConfigured_ThrowsInvalidOperation()
     {
         using var builder = new SyntheticBlockBuilder('M');

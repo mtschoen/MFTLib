@@ -8,12 +8,4 @@ namespace MFTLib.Index;
 ///     it with the sequence number to identify a file. For an enumeration block it is the
 ///     row index the producer assigned in traversal order; <see cref="ProducerKind" /> says which.
 /// </summary>
-public readonly record struct IndexRecordKey(char DriveLetter, ulong RecordNumber, ProducerKind ProducerKind)
-{
-    /// <summary>Formats this key as a drive letter and unsigned record number.</summary>
-    /// <returns>A diagnostic representation of this key.</returns>
-    public override string ToString()
-    {
-        return $"{DriveLetter}:{RecordNumber}";
-    }
-}
+public readonly record struct IndexRecordKey(char DriveLetter, ulong RecordNumber, ProducerKind ProducerKind);

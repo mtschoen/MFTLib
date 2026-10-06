@@ -131,8 +131,9 @@ public class DriveScannerElevationNoticeTests
         scanner._isElevated = () => true;
         scanner._acrtIobFunc = _ => IntPtr.Zero;
         scanner._wFreopen = (_, _, _) => IntPtr.Zero;
+        scanner._createBrokerSession = () => throw new IOException("no broker in this test");
 
-        scanner.Run(["parse-file", "missing.bin"]);
+        scanner.Run(["scan-drive", "T"]);
 
         CollectionAssert.AreEqual(Array.Empty<string>(), events);
     }
@@ -182,7 +183,7 @@ public class DriveScannerElevationNoticeTests
             }
         };
 
-        scanner.Run(["find-name", "C", "--name", "", "--name", "a b&c"]);
+        scanner.Run(["scan-drive", "C", "", "a b&c"]);
 
         Assert.AreEqual(DriveScanner.MessageBeepIconExclamation, beep);
         Assert.IsTrue(title!.Contains("TestProgram", StringComparison.Ordinal));
@@ -192,8 +193,8 @@ public class DriveScannerElevationNoticeTests
         Assert.IsTrue(text!.Contains("UAC", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("administrator rights", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains($"Executable: {ProcessPath}", StringComparison.Ordinal));
-        Assert.IsTrue(text.Contains("Arguments (6)", StringComparison.Ordinal));
-        Assert.IsTrue(text.Contains("  find-name", StringComparison.Ordinal));
+        Assert.IsTrue(text.Contains("Arguments (4)", StringComparison.Ordinal));
+        Assert.IsTrue(text.Contains("  scan-drive", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("  <empty>", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("  a b&c", StringComparison.Ordinal));
     }
@@ -243,13 +244,13 @@ public class DriveScannerElevationNoticeTests
         var scanner = Scanner(lines, events, []);
         scanner._getEnvironmentVariable = Unattended;
 
-        var result = scanner.Run(["find-name", "C", "--name", "x"]);
+        var result = scanner.Run(["scan-drive", "C"]);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(Array.Empty<string>(), events);
         Assert.IsTrue(lines.Any(line => line.Contains("Running unattended (MFTLIB_TESTPROGRAM_UNATTENDED=1): elevation skipped")));
         Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
-        Assert.IsTrue(lines.Contains("  find-name"));
+        Assert.IsTrue(lines.Contains("  scan-drive"));
     }
 
     [TestMethod]
@@ -291,10 +292,10 @@ public class DriveScannerElevationNoticeTests
         scanner._acrtIobFunc = _ => IntPtr.Zero;
         scanner._wFreopen = (_, _, _) => IntPtr.Zero;
         scanner._getEnvironmentVariable = Unattended;
-        scanner._openVolume = _ => throw new IOException("no volume in this test");
-        scanner._openVolumeWithBuffer = (_, _) => throw new IOException("no volume in this test");
+        scanner._requiresElevation = _ => true;
+        scanner._createBrokerSession = () => throw new IOException("no broker in this test");
 
-        var result = scanner.Run(["find-name", "T", "--name", "x"]);
+        var result = scanner.Run(["scan-drive", "T"]);
 
         Assert.AreEqual(0, result);
         Assert.IsFalse(lines.Any(line => line.Contains("Running unattended")));
@@ -507,6 +508,7 @@ public class DriveScannerElevationNoticeTests
         var scanner = Scanner(lines, events, answers, messages);
         if (isScanDrive)
         {
+            scanner._requiresElevation = parsed => parsed.RequiresElevation;
             scanner._canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate.");
             scanner._tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate.");
             scanner._createBrokerSession = () =>
@@ -515,7 +517,7 @@ public class DriveScannerElevationNoticeTests
                 throw new IOException("the scripted launch stands in for the broker");
             };
         }
-        string[] args = isScanDrive ? ["scan-drive", "C"] : ["find-name", "C", "--name", "x"];
+        string[] args = ["scan-drive", "C"];
         var launchEvent = isScanDrive ? "create-session" : "elevate";
         return (scanner, args, launchEvent);
     }
@@ -530,8 +532,10 @@ public class DriveScannerElevationNoticeTests
     {
         var clock = new FakeTimeProvider();
         var next = 0;
+        // The scanner of a run that must itself be elevated; the scan-drive tests turn that off, as the real scan is.
         return new DriveScanner
         {
+            _requiresElevation = _ => true,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _getProcessPath = () => ProcessPath,

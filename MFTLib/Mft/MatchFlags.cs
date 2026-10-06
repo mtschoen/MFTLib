@@ -5,7 +5,7 @@ namespace MFTLib;
 /// <summary>Controls name matching and record materialization when reading the NTFS MFT.</summary>
 [Flags]
 [SuppressMessage("Naming", "CA1711", Justification = "Flags suffix is conventional here; renaming breaks consumers.")]
-public enum MatchFlags : uint
+internal enum MatchFlags : uint
 {
     /// <summary>
     ///     Default flags: enables no optional matching or materialization behavior. If a name

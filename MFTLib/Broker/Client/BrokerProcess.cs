@@ -8,7 +8,7 @@ namespace MFTLib;
 ///     pending request fails with <see cref="BrokerChannelLostException" /> and <see cref="Ended" />
 ///     completes with the reason.
 /// </summary>
-public sealed partial class BrokerProcess : IAsyncDisposable
+internal sealed partial class BrokerProcess : IAsyncDisposable
 {
     /// <summary>
     ///     Bounds a control request frame once it has started writing, a control request's reply once

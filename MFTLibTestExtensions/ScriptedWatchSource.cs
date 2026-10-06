@@ -1,4 +1,3 @@
-using MFTLib;
 using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
@@ -35,7 +34,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
             lock (_stateLock)
             {
                 return [.. _targets.Select(target =>
-                    new ScriptedWatchStart(target.DriveLetter, new UsnJournalCursor(target.JournalId, target.NextUsn)))];
+                    new ScriptedWatchStart(target.DriveLetter, new SyntheticJournalCursor(target.JournalId, target.NextUsn)))];
             }
         }
     }
@@ -111,7 +110,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
 
     /// <summary>Makes the next start throw <paramref name="failure" />.</summary>
     /// <param name="failure">The exception the start throws.</param>
-    public void FailNextStart(Exception failure)
+    internal void FailNextStart(Exception failure)
     {
         lock (_stateLock)
         {
@@ -122,7 +121,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
     /// <summary>Makes the next start of one drive throw <paramref name="failure" />, whichever call order the starts arrive in.</summary>
     /// <param name="driveLetter">The drive whose next start fails.</param>
     /// <param name="failure">The exception the start throws.</param>
-    public void FailNextStartFor(char driveLetter, Exception failure)
+    internal void FailNextStartFor(char driveLetter, Exception failure)
     {
         lock (_stateLock)
         {

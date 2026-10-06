@@ -1,12 +1,8 @@
-MFTLib.BrokerChannelLostException :: type public sealed class : System.IO.IOException, System.Runtime.Serialization.ISerializable
 MFTLib.BrokerDiagnostics :: method public static Enable(string role) : void
 MFTLib.BrokerDiagnostics :: property public static LogDirectory { get; set; } : string
 MFTLib.BrokerDiagnostics :: type public static class
 MFTLib.BrokerLauncher :: method public static Launch(string brokerArgs) : bool
 MFTLib.BrokerLauncher :: type public static class
-MFTLib.BrokerProcess :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
-MFTLib.BrokerProcess :: property public Ended { get; } : System.Threading.Tasks.Task<string>
-MFTLib.BrokerProcess :: type public sealed class : System.IAsyncDisposable
 MFTLib.BrokerScanOptions :: constructor public ()
 MFTLib.BrokerScanOptions :: method public <Clone>$() : MFTLib.BrokerScanOptions
 MFTLib.BrokerScanOptions :: method public Equals(MFTLib.BrokerScanOptions? other) : bool
@@ -43,122 +39,6 @@ MFTLib.IElevationProvider :: method public abstract CanSelfElevate() : bool
 MFTLib.IElevationProvider :: method public abstract IsElevated() : bool
 MFTLib.IElevationProvider :: method public abstract TryRunElevated(System.Collections.Generic.IReadOnlyList<string> arguments, System.TimeSpan timeout) : bool
 MFTLib.IElevationProvider :: type public interface
-MFTLib.MatchFlags :: field public const Contains : MFTLib.MatchFlags = 2
-MFTLib.MatchFlags :: field public const ExactMatch : MFTLib.MatchFlags = 1
-MFTLib.MatchFlags :: field public const IncludeFreed : MFTLib.MatchFlags = 8
-MFTLib.MatchFlags :: field public const None : MFTLib.MatchFlags = 0
-MFTLib.MatchFlags :: field public const ResolvePaths : MFTLib.MatchFlags = 4
-MFTLib.MatchFlags :: type public enum : uint, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.MftFileScanOptions :: constructor public (System.IProgress<MFTLib.MftScanProgress>? Progress = default, MFTLib.ParseThreadAllowance? ParseThreads = default, uint BufferSizeRecords = 262144, System.Threading.CancellationToken CancellationToken = default)
-MFTLib.MftFileScanOptions :: method public Deconstruct(out System.IProgress<MFTLib.MftScanProgress>? Progress, out MFTLib.ParseThreadAllowance? ParseThreads, out uint BufferSizeRecords, out System.Threading.CancellationToken CancellationToken) : void
-MFTLib.MftFileScanOptions :: method public Equals(MFTLib.MftFileScanOptions other) : bool
-MFTLib.MftFileScanOptions :: method public override Equals(object obj) : bool
-MFTLib.MftFileScanOptions :: method public override GetHashCode() : int
-MFTLib.MftFileScanOptions :: method public override ToString() : string
-MFTLib.MftFileScanOptions :: method public static op_Equality(MFTLib.MftFileScanOptions left, MFTLib.MftFileScanOptions right) : bool
-MFTLib.MftFileScanOptions :: method public static op_Inequality(MFTLib.MftFileScanOptions left, MFTLib.MftFileScanOptions right) : bool
-MFTLib.MftFileScanOptions :: property public BufferSizeRecords { get; init; } : uint
-MFTLib.MftFileScanOptions :: property public CancellationToken { get; init; } : System.Threading.CancellationToken
-MFTLib.MftFileScanOptions :: property public ParseThreads { get; init; } : MFTLib.ParseThreadAllowance?
-MFTLib.MftFileScanOptions :: property public Progress { get; init; } : System.IProgress<MFTLib.MftScanProgress>?
-MFTLib.MftFileScanOptions :: type public readonly struct : System.IEquatable<MFTLib.MftFileScanOptions>
-MFTLib.MftParseTimings :: method public override ToString() : string
-MFTLib.MftParseTimings :: property public NativeFixup { get; } : System.TimeSpan
-MFTLib.MftParseTimings :: property public NativeIo { get; } : System.TimeSpan
-MFTLib.MftParseTimings :: property public NativeParse { get; } : System.TimeSpan
-MFTLib.MftParseTimings :: property public NativeTotal { get; } : System.TimeSpan
-MFTLib.MftParseTimings :: type public readonly struct
-MFTLib.MftRecord :: method public Materialize() : MFTLib.MftRecord
-MFTLib.MftRecord :: method public override ToString() : string
-MFTLib.MftRecord :: property public FileAttributes { get; } : System.IO.FileAttributes
-MFTLib.MftRecord :: property public FileName { get; } : string
-MFTLib.MftRecord :: property public FullPath { get; } : string?
-MFTLib.MftRecord :: property public InUse { get; } : bool
-MFTLib.MftRecord :: property public IsDirectory { get; } : bool
-MFTLib.MftRecord :: property public ModifiedUtc { get; } : System.DateTime
-MFTLib.MftRecord :: property public ParentRecordNumber { get; } : ulong
-MFTLib.MftRecord :: property public RecordNumber { get; } : ulong
-MFTLib.MftRecord :: property public SequenceNumber { get; } : ushort
-MFTLib.MftRecord :: property public Size { get; } : long
-MFTLib.MftRecord :: property public SizeKnown { get; } : bool
-MFTLib.MftRecord :: type public readonly struct
-MFTLib.MftResult :: method public Dispose() : void
-MFTLib.MftResult :: method public GetEnumerator() : System.Collections.Generic.IEnumerator<MFTLib.MftRecord>
-MFTLib.MftResult :: method public MaterializeBatches(int batchSize = 4096) : System.Collections.Generic.IEnumerable<MFTLib.MftRecord[]>
-MFTLib.MftResult :: method public ToArray() : MFTLib.MftRecord[]
-MFTLib.MftResult :: property public NativeCompactBytes { get; } : ulong
-MFTLib.MftResult :: property public Timings { get; } : MFTLib.MftParseTimings
-MFTLib.MftResult :: property public TotalRecords { get; } : ulong
-MFTLib.MftResult :: property public UsedRecords { get; } : ulong
-MFTLib.MftResult :: type public sealed class : System.Collections.Generic.IEnumerable<MFTLib.MftRecord>, System.Collections.IEnumerable, System.IDisposable
-MFTLib.MftScanPhase :: field public const Parsing : MFTLib.MftScanPhase = 0
-MFTLib.MftScanPhase :: field public const ResolvingPaths : MFTLib.MftScanPhase = 1
-MFTLib.MftScanPhase :: type public enum : byte, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.MftScanProgress :: constructor public (MFTLib.MftScanPhase Phase, long RecordsScanned, long TotalRecords, System.TimeSpan Elapsed)
-MFTLib.MftScanProgress :: method public Deconstruct(out MFTLib.MftScanPhase Phase, out long RecordsScanned, out long TotalRecords, out System.TimeSpan Elapsed) : void
-MFTLib.MftScanProgress :: method public Equals(MFTLib.MftScanProgress other) : bool
-MFTLib.MftScanProgress :: method public override Equals(object obj) : bool
-MFTLib.MftScanProgress :: method public override GetHashCode() : int
-MFTLib.MftScanProgress :: method public override ToString() : string
-MFTLib.MftScanProgress :: method public static op_Equality(MFTLib.MftScanProgress left, MFTLib.MftScanProgress right) : bool
-MFTLib.MftScanProgress :: method public static op_Inequality(MFTLib.MftScanProgress left, MFTLib.MftScanProgress right) : bool
-MFTLib.MftScanProgress :: property public Elapsed { get; init; } : System.TimeSpan
-MFTLib.MftScanProgress :: property public Phase { get; init; } : MFTLib.MftScanPhase
-MFTLib.MftScanProgress :: property public RecordsScanned { get; init; } : long
-MFTLib.MftScanProgress :: property public TotalRecords { get; init; } : long
-MFTLib.MftScanProgress :: type public readonly struct : System.IEquatable<MFTLib.MftScanProgress>
-MFTLib.MftVolume :: field public const DefaultBufferSizeRecords : uint = 262144
-MFTLib.MftVolume :: method public Dispose() : void
-MFTLib.MftVolume :: method public GrowUsnJournal(long maximumSize, long allocationDelta) : MFTLib.UsnJournalSettings
-MFTLib.MftVolume :: method public QueryUsnJournalCursor() : MFTLib.UsnJournalCursor
-MFTLib.MftVolume :: method public QueryUsnJournalSettings() : MFTLib.UsnJournalSettings
-MFTLib.MftVolume :: method public ReadUsnJournal(MFTLib.UsnJournalCursor since) : System.ValueTuple<MFTLib.UsnJournalEntry[], MFTLib.UsnJournalCursor>
-MFTLib.MftVolume :: method public StreamRecords(string? filter, MFTLib.MatchFlags matchFlags, System.IProgress<MFTLib.MftScanProgress>? progress, MFTLib.ParseThreadAllowance? parseThreads, System.Threading.CancellationToken cancellationToken) : MFTLib.MftResult
-MFTLib.MftVolume :: method public WatchUsnJournal(MFTLib.UsnJournalCursor since, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IAsyncEnumerable<System.ValueTuple<MFTLib.UsnJournalEntry[], MFTLib.UsnJournalCursor>>
-MFTLib.MftVolume :: method public static Open(string volumePath, uint bufferSizeRecords = 262144) : MFTLib.MftVolume
-MFTLib.MftVolume :: method public static StreamMftFromFile(string filePath, string? filter = default, MFTLib.MatchFlags matchFlags = 0, MFTLib.MftFileScanOptions options = default) : MFTLib.MftResult
-MFTLib.MftVolume :: type public sealed class : System.IDisposable
-MFTLib.NtfsVolumeInformation :: constructor public (long MftValidDataLength, uint BytesPerFileRecordSegment)
-MFTLib.NtfsVolumeInformation :: method public Deconstruct(out long MftValidDataLength, out uint BytesPerFileRecordSegment) : void
-MFTLib.NtfsVolumeInformation :: method public Equals(MFTLib.NtfsVolumeInformation other) : bool
-MFTLib.NtfsVolumeInformation :: method public override Equals(object obj) : bool
-MFTLib.NtfsVolumeInformation :: method public override GetHashCode() : int
-MFTLib.NtfsVolumeInformation :: method public override ToString() : string
-MFTLib.NtfsVolumeInformation :: method public static Query(string volumePath) : MFTLib.NtfsVolumeInformation
-MFTLib.NtfsVolumeInformation :: method public static op_Equality(MFTLib.NtfsVolumeInformation left, MFTLib.NtfsVolumeInformation right) : bool
-MFTLib.NtfsVolumeInformation :: method public static op_Inequality(MFTLib.NtfsVolumeInformation left, MFTLib.NtfsVolumeInformation right) : bool
-MFTLib.NtfsVolumeInformation :: property public BytesPerFileRecordSegment { get; init; } : uint
-MFTLib.NtfsVolumeInformation :: property public MftRecordCount { get; } : long
-MFTLib.NtfsVolumeInformation :: property public MftValidDataLength { get; init; } : long
-MFTLib.NtfsVolumeInformation :: type public readonly struct : System.IEquatable<MFTLib.NtfsVolumeInformation>
-MFTLib.ParseThreadAllowance :: constructor public (int count)
-MFTLib.ParseThreadAllowance :: property public Count { get; set; } : int
-MFTLib.ParseThreadAllowance :: type public sealed class
-MFTLib.UsnJournalCursor :: constructor public (ulong JournalId, long NextUsn)
-MFTLib.UsnJournalCursor :: method public Deconstruct(out ulong JournalId, out long NextUsn) : void
-MFTLib.UsnJournalCursor :: method public Equals(MFTLib.UsnJournalCursor other) : bool
-MFTLib.UsnJournalCursor :: method public override Equals(object obj) : bool
-MFTLib.UsnJournalCursor :: method public override GetHashCode() : int
-MFTLib.UsnJournalCursor :: method public override ToString() : string
-MFTLib.UsnJournalCursor :: method public static op_Equality(MFTLib.UsnJournalCursor left, MFTLib.UsnJournalCursor right) : bool
-MFTLib.UsnJournalCursor :: method public static op_Inequality(MFTLib.UsnJournalCursor left, MFTLib.UsnJournalCursor right) : bool
-MFTLib.UsnJournalCursor :: property public JournalId { get; init; } : ulong
-MFTLib.UsnJournalCursor :: property public NextUsn { get; init; } : long
-MFTLib.UsnJournalCursor :: type public readonly struct : System.IEquatable<MFTLib.UsnJournalCursor>
-MFTLib.UsnJournalEntry :: method public override ToString() : string
-MFTLib.UsnJournalEntry :: property public FileAttributes { get; } : System.IO.FileAttributes
-MFTLib.UsnJournalEntry :: property public FileName { get; } : string
-MFTLib.UsnJournalEntry :: property public IsClose { get; } : bool
-MFTLib.UsnJournalEntry :: property public IsCreate { get; } : bool
-MFTLib.UsnJournalEntry :: property public IsDelete { get; } : bool
-MFTLib.UsnJournalEntry :: property public IsRename { get; } : bool
-MFTLib.UsnJournalEntry :: property public ParentRecordNumber { get; } : ulong
-MFTLib.UsnJournalEntry :: property public Reason { get; } : MFTLib.UsnReason
-MFTLib.UsnJournalEntry :: property public RecordNumber { get; } : ulong
-MFTLib.UsnJournalEntry :: property public SequenceNumber { get; } : ushort
-MFTLib.UsnJournalEntry :: property public TimestampUtc { get; } : System.DateTime
-MFTLib.UsnJournalEntry :: property public Usn { get; } : long
-MFTLib.UsnJournalEntry :: type public readonly struct
 MFTLib.UsnJournalSettings :: method public Equals(MFTLib.UsnJournalSettings other) : bool
 MFTLib.UsnJournalSettings :: method public override Equals(object obj) : bool
 MFTLib.UsnJournalSettings :: method public override GetHashCode() : int
@@ -168,28 +48,3 @@ MFTLib.UsnJournalSettings :: method public static op_Inequality(MFTLib.UsnJourna
 MFTLib.UsnJournalSettings :: property public required AllocationDelta { get; init; } : long
 MFTLib.UsnJournalSettings :: property public required MaximumSize { get; init; } : long
 MFTLib.UsnJournalSettings :: type public readonly struct : System.IEquatable<MFTLib.UsnJournalSettings>
-MFTLib.UsnReason :: field public const BasicInfoChange : MFTLib.UsnReason = 32768
-MFTLib.UsnReason :: field public const Close : MFTLib.UsnReason = 2147483648
-MFTLib.UsnReason :: field public const CompressionChange : MFTLib.UsnReason = 131072
-MFTLib.UsnReason :: field public const DataExtend : MFTLib.UsnReason = 2
-MFTLib.UsnReason :: field public const DataOverwrite : MFTLib.UsnReason = 1
-MFTLib.UsnReason :: field public const DataTruncation : MFTLib.UsnReason = 4
-MFTLib.UsnReason :: field public const EaChange : MFTLib.UsnReason = 1024
-MFTLib.UsnReason :: field public const EncryptionChange : MFTLib.UsnReason = 262144
-MFTLib.UsnReason :: field public const FileCreate : MFTLib.UsnReason = 256
-MFTLib.UsnReason :: field public const FileDelete : MFTLib.UsnReason = 512
-MFTLib.UsnReason :: field public const HardLinkChange : MFTLib.UsnReason = 65536
-MFTLib.UsnReason :: field public const IndexableChange : MFTLib.UsnReason = 16384
-MFTLib.UsnReason :: field public const IntegrityChange : MFTLib.UsnReason = 8388608
-MFTLib.UsnReason :: field public const NamedDataExtend : MFTLib.UsnReason = 32
-MFTLib.UsnReason :: field public const NamedDataOverwrite : MFTLib.UsnReason = 16
-MFTLib.UsnReason :: field public const NamedDataTruncation : MFTLib.UsnReason = 64
-MFTLib.UsnReason :: field public const None : MFTLib.UsnReason = 0
-MFTLib.UsnReason :: field public const ObjectIdChange : MFTLib.UsnReason = 524288
-MFTLib.UsnReason :: field public const RenameNewName : MFTLib.UsnReason = 8192
-MFTLib.UsnReason :: field public const RenameOldName : MFTLib.UsnReason = 4096
-MFTLib.UsnReason :: field public const ReparsePointChange : MFTLib.UsnReason = 1048576
-MFTLib.UsnReason :: field public const SecurityChange : MFTLib.UsnReason = 2048
-MFTLib.UsnReason :: field public const StreamChange : MFTLib.UsnReason = 2097152
-MFTLib.UsnReason :: field public const TransactedChange : MFTLib.UsnReason = 4194304
-MFTLib.UsnReason :: type public enum : uint, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable

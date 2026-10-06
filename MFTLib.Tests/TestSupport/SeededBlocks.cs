@@ -60,7 +60,7 @@ internal static class SeededBlocks
     {
         return SyntheticBlock.Build(path, volumeSerial, deleteOnClose, new SyntheticBlockOptions
         {
-            JournalCursor = new UsnJournalCursor(journalId, nextUsn),
+            JournalCursor = new SyntheticJournalCursor(journalId, nextUsn),
             CompletedUtc = moment,
             CacheTag = cacheTag
         }, rows);

@@ -165,10 +165,11 @@ public partial class MftVolumeTests
     }
 
     [DataTestMethod]
-    [DataRow(MatchFlags.ExactMatch)]
-    [DataRow(MatchFlags.Contains)]
-    public void StreamMftFromFile_FilterWithAMatchBit_Parses(MatchFlags matchFlags)
+    [DataRow((uint)(MatchFlags.ExactMatch))]
+    [DataRow((uint)(MatchFlags.Contains))]
+    public void StreamMftFromFile_FilterWithAMatchBit_Parses(uint matchFlagsValue)
     {
+        var matchFlags = (MatchFlags)matchFlagsValue;
         Assert.IsNotNull(_tempMftPath);
 
         using var result = MftVolume.StreamMftFromFile(
