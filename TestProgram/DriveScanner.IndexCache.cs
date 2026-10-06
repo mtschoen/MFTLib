@@ -1,114 +1,58 @@
+using MFTLib;
 using MFTLib.Index;
 
 namespace TestProgram;
 
-// The cache verbs: cache-inspect lists what is on disk without opening an index; cache-clear deletes
-// from an explicitly named cache directory and says what happened to every file.
+// The cache and elevation verbs, which open no index.
 partial class DriveScanner
 {
-    static HashSet<char>? DriveFilter(IndexVerbArguments verb)
+    void InspectOrClearCache(IndexVerbArguments verb)
     {
-        return verb.Drives.Count == 0 ? null : verb.Drives.ToHashSet();
-    }
-
-    void InspectCache(IndexVerbArguments verb)
-    {
-        var path = verb.Text("--cache-directory") ?? _cacheDirectory;
-        if (path is null)
+        var clear = verb.Has("--clear");
+        var named = verb.Text("--cache-directory");
+        if (clear && named is null)
         {
-            path = CacheDirectory.ResolveDefaultPath();
-            _writeLine($"No directory given; using the default cache path {path}");
+            throw new ArgumentException("--clear needs an explicit --cache-directory.");
         }
 
-        _writeLine($"Inspecting {path}");
+        var path = named ?? CacheDirectory.ResolveDefaultPath();
         if (verb.Has("--ensure-created"))
         {
-            var created = CacheDirectory.EnsureCreated(path);
-            _writeLine($"EnsureCreated returned {created.FullName}; it exists: {Directory.Exists(created.FullName)}");
+            _writeLine($"Cache directory {CacheDirectory.EnsureCreated(path).FullName}");
         }
 
-        var drives = DriveFilter(verb);
-        var plain = CacheDirectory.InspectCached(path, drives);
-        var rejections = new List<CachedBlockRejection>();
-        var statuses = CacheDirectory.InspectCached(path, drives, rejections.Add);
-        _writeLine($"InspectCached over {(drives is null ? "every drive" : $"drives [{string.Join(", ", drives)}]")} " +
-                   $"returned {plain.Count} blocks; with the rejection callback {statuses.Count} blocks and " +
-                   $"{rejections.Count} rejected files.");
-        var expected = verb.Tag();
-        foreach (var status in statuses)
+        var drives = verb.Drives.Count > 0 ? verb.Drives.ToHashSet() : null;
+        if (clear)
         {
-            PrintCachedStatus(status, expected);
-        }
+            foreach (var result in CacheDirectory.DeleteCached(path, drives, line => _writeLine($"  {line}")))
+            {
+                _writeLine($"  {result.File.Path}: {result.Outcome} {result.FailureReason}");
+            }
 
-        foreach (var rejection in rejections)
-        {
-            _writeLine($"  rejected {rejection.Path}: {rejection.Reason}");
-        }
-    }
-
-    void PrintCachedStatus(CachedBlockStatus status, CacheTag? expected)
-    {
-        _writeLine($"  {FormatCachedFile(status.File)}");
-        _writeLine($"    availability {status.Availability}; validation " +
-                   (status.Validation is { } validation ? $"{validation} ({DescribeValidation(validation)})" : "not checked") +
-                   $"; producer {status.ProducerKind?.ToString() ?? "unknown"}; root {status.RootDirectory ?? "unknown"}");
-        if (status.CacheTag is not { } tag)
-        {
-            _writeLine("    cache tag: none readable");
             return;
         }
 
-        if (expected is not { } wanted)
+        var rejected = new List<CachedBlockRejection>();
+        var expected = verb.Text("--cache-tag") is { } tag ? ParseCacheTag(tag) : (CacheTag?)null;
+        _writeLine($"{CacheDirectory.InspectCached(path, drives).Count} cached blocks in {path}");
+        foreach (var status in CacheDirectory.InspectCached(path, drives, rejected.Add))
         {
-            _writeLine($"    cache tag {tag}");
-            return;
+            var file = status.File;
+            _writeLine($"  {file.Path}: drive {file.DriveLetter} serial {file.VolumeSerial} {file.SizeBytes} bytes " +
+                       $"{file.LastWriteTimeUtc:u}; {status.Availability} {status.Validation} {status.ProducerKind} root " +
+                       $"{status.RootDirectory} tag {status.CacheTag}" +
+                       (expected is { } wanted && status.CacheTag is { } actual ? $" (equals {wanted}: {actual == wanted})" : string.Empty));
         }
 
-        _writeLine($"    cache tag {tag} against expected {wanted}: == {tag == wanted}; != {tag != wanted}; " +
-                   $"Equals {tag.Equals((object)wanted)}");
+        rejected.ForEach(rejection => _writeLine($"  rejected {rejection.Path}: {rejection.Reason}"));
     }
 
-    internal static string FormatCachedFile(CachedBlockFile file)
+    void ShowElevationStatus()
     {
-        return $"{file.Path} [drive {file.DriveLetter}; volume serial {file.VolumeSerial}; {file.SizeBytes} bytes; " +
-               $"last written {file.LastWriteTimeUtc:u}]";
-    }
-
-    /// <summary>The reason a block failed validation, in words.</summary>
-    internal static string DescribeValidation(BlockValidationResult result)
-    {
-        return result switch
-        {
-            BlockValidationResult.Valid => "the block is complete and consistent",
-            BlockValidationResult.WrongMagic => "the file does not start with the block signature",
-            BlockValidationResult.WrongFormatVersion => "the block was written in a different format version",
-            BlockValidationResult.Incomplete => "the block was never finished or is truncated",
-            BlockValidationResult.WrongVolumeSerial => "the block belongs to another volume",
-            BlockValidationResult.InconsistentRegions => "the block regions disagree about their sizes",
-            BlockValidationResult.WrongRootDirectory => "the block indexes a different root directory",
-            BlockValidationResult.InvalidNameDescriptor => "a name descriptor points outside the name pool",
-            BlockValidationResult.WrongCacheTag => "the block carries another consumer cache tag",
-            _ => "unrecognized result"
-        };
-    }
-
-    void ClearCache(IndexVerbArguments verb)
-    {
-        var path = verb.Text("--cache-directory") ?? _cacheDirectory ?? CacheDirectory.ResolveDefaultPath();
-        var drives = DriveFilter(verb);
-        _writeLine($"Deleting cached blocks under {path} for " +
-                   (drives is null ? "every drive." : $"drives [{string.Join(", ", drives)}]."));
-        var results = CacheDirectory.DeleteCached(path, drives, line => _writeLine($"  deletion diagnostics: {line}"));
-        foreach (var result in results)
-        {
-            _writeLine($"  {FormatCachedFile(result.File)}: {result.Outcome}; failure {result.FailureReason ?? "none"}");
-        }
-
-        foreach (var group in results.GroupBy(result => result.Outcome))
-        {
-            _writeLine($"{group.Count()} files: {group.Key}");
-        }
-
-        _writeLine($"{results.Count} cached blocks examined.");
+        IElevationProvider provider = ElevationUtilities.DefaultProvider;
+        _writeLine($"Elevated {ElevationUtilities.IsElevated()} (provider {provider.IsElevated()}); can relaunch " +
+                   $"elevated {ElevationUtilities.CanSelfElevate()} (provider {provider.CanSelfElevate()}); an elevated " +
+                   $"relaunch is waited for up to {ElevationUtilities.DefaultElevatedTimeout}. Broker verbs raise one UAC " +
+                   "prompt; the enumeration source needs none.");
     }
 }
