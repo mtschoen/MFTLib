@@ -1,14 +1,60 @@
 # Test isolation
 
+MFTLib.Tests runs eligible test classes in parallel by default. Its
+`MSTestSettings.cs` assembly declaration uses `ExecutionScope.ClassLevel` and
+`Workers = 0` (the machine's logical processor count); methods within a class
+remain sequential. Classes marked `[DoNotParallelize]` run in the isolated
+nonparallel set.
+
+MSTest runs the parallel set first and the `[DoNotParallelize]` set afterwards,
+one test at a time, so a nonparallel class never overlaps any other class (MSTest
+`TestExecutionManager`: parallel tasks, `Task.WaitAll`, then the nonparallel set;
+[v3.1.1 source](https://github.com/microsoft/testfx/blob/v3.1.1/src/Adapter/MSTest.TestAdapter/Execution/TestExecutionManager.cs),
+and the [Microsoft Learn description](https://learn.microsoft.com/dotnet/core/testing/unit-testing-mstest-writing-tests-controlling-execution)
+of the deferred set). That phase order is an MSTest implementation detail, which is
+why every change to scheduling is re-qualified as below. A class that only reads
+shared state (for example `PlatformBranchTests` resolving a relative path) stays
+parallel because every class that writes that state is nonparallel.
+
+A test class must carry class-level `[DoNotParallelize]` when any of its code
+(including helpers, nested types and async state machines) does one of these:
+
+- calls a process-wide seam or its `ResetToDefaults` (the native delegate seams below, and
+  any other static mutable field, static property setter, `ResetToDefaults`, `Enable`,
+  `OverrideJournalWindow` or `ReplaceWriterForTest` in MFTLib, MFTLibTestExtensions,
+  TestProgram or Benchmark, for example `BrokerLauncher`, `ElevationUtilities`,
+  `BrokerDiagnostics`);
+- changes `Environment.CurrentDirectory`, an environment variable, `Console` output,
+  error or input, `Environment.ExitCode`, an `AppContext` switch, the default thread
+  culture or the thread pool size;
+- uses a fixed, non-unique file, directory, pipe, mutex or port name. Use `Guid` or
+  `TestVolumeSerial.GetNext()` names instead; none of the current tests need an exception.
+
+`NativeSeamIsolationTests.NativeSeamReferences_RequireClassLevelDoNotParallelize`
+enforces the first two bullets from compiled IL and fails with the class and member
+named; its fixtures include non-executed violation controls and isolated or read-only
+controls. The third bullet is not detectable from IL and is a review rule.
+
+Qualify scheduling changes with three consecutive green runs using 32 ClassLevel
+workers on both Windows and Linux, plus normal pull-request CI. Pass
+`-- MSTest.Parallelize.Workers=32 MSTest.Parallelize.Scope=ClassLevel` to
+`dotnet test`, retaining the existing platform filters, and record serial-before
+and parallel-after wall clock and per-run results in the pull request. A code
+change after a qualifying run invalidates it on both operating systems. Fix
+missing class isolation or genuine isolation defects; never add exclusions to
+hide failures. If the runs cannot stay green, revert the scheduling change
+and name the failing classes in the issue. Tests that need administrator rights
+(`TestCategory=RequiresAdmin`) are not part of the unelevated runs and are
+qualified only by the elevated coverage job.
+
 Tests that reference the process-wide native delegate seams in `MFTLibNative`
 or `FileUtilities`, including calls to either `ResetToDefaults`, must carry
 class-level `[DoNotParallelize]`. Keep cleanup resets, but do not rely on them
 for isolation from concurrently running test classes. The same rule applies to
 any member of `NativeTestHooks` (the native failure-injection and observation
-hooks), whose calls mutate process-global native state. `NativeSeamIsolationTests`
-checks compiled IL references, including nested generated methods and local
-test helpers, and includes non-executed violation controls. Run this guard on
-Windows as well as Linux: Linux compilation excludes several Windows-only test
+hooks), whose calls mutate process-global native state. The guard checks compiled
+IL references, including nested generated methods and local test helpers. Run it
+on Windows as well as Linux: Linux compilation excludes several Windows-only test
 classes. For stress validation, use 32 ClassLevel MSTest workers with the
 existing Linux platform exclusions in `scripts/coverage-linux.sh`; do not add
 new exclusions to hide seam races.

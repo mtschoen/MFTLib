@@ -9,6 +9,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
+[DoNotParallelize] // changes Environment.CurrentDirectory and PATH, which every concurrently running test class shares
 public class BenchmarkRunnerTests
 {
     [TestMethod]

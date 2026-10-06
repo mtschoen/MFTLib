@@ -40,6 +40,12 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(ExternalAsyncHelperSeamReferenceFixture), "MFTLibNative.ResetToDefaults")]
     [DataRow(typeof(ExternalIteratorHelperSeamReferenceFixture), "MFTLibNative.ResetToDefaults")]
     [DataRow(typeof(NativeHookReferenceFixture), "NativeTestHooks.NativeSetAllocFailCountdown")]
+    [DataRow(typeof(EnvironmentVariableReferenceFixture), "Environment.SetEnvironmentVariable")]
+    [DataRow(typeof(CurrentDirectoryReferenceFixture), "Environment.set_CurrentDirectory")]
+    [DataRow(typeof(ConsoleRedirectReferenceFixture), "Console.SetOut")]
+    [DataRow(typeof(ProductionStaticFieldReferenceFixture), "BrokerLauncher._startProcess")]
+    [DataRow(typeof(ProductionStaticSetterReferenceFixture), "BrokerDiagnostics.set_LogDirectory")]
+    [DataRow(typeof(ProductionResetReferenceFixture), "BrokerLauncher.ResetToDefaults")]
     public void Detector_ReportsUnmarkedReferences(Type fixture, string member)
     {
         var violations = FindViolations([fixture]);
@@ -54,6 +60,8 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(IsolatedExternalAsyncHelperSeamReferenceFixture))]
     [DataRow(typeof(HarmlessReferenceFixture))]
     [DataRow(typeof(IsolatedNativeHookReferenceFixture))]
+    [DataRow(typeof(IsolatedEnvironmentVariableReferenceFixture))]
+    [DataRow(typeof(ReadOnlyEnvironmentReferenceFixture))]
     public void Detector_AcceptsIsolatedAndUnrelatedTypes(Type fixture)
     {
         Assert.AreEqual(0, FindViolations([fixture]).Length);
@@ -144,16 +152,44 @@ public class NativeSeamIsolationTests
             return member is MethodInfo { IsStatic: true };
         }
 
-        if (member.DeclaringType != typeof(MFTLibNative) &&
-            member.DeclaringType != typeof(FileUtilities))
+        if (member.DeclaringType is not { } declaringType)
         {
             return false;
         }
 
-        return member is FieldInfo { IsStatic: true, IsInitOnly: false } field &&
-               typeof(Delegate).IsAssignableFrom(field.FieldType) ||
-               member is MethodInfo { IsStatic: true, Name: "ResetToDefaults" };
+        if (IsRepositoryAssembly(declaringType.Assembly))
+        {
+            return member is FieldInfo { IsStatic: true, IsInitOnly: false, IsLiteral: false } ||
+                   member is MethodInfo { IsStatic: true, IsSpecialName: true } setter &&
+                   setter.Name.StartsWith("set_", StringComparison.Ordinal) ||
+                   member is MethodInfo { IsStatic: true } method && ProductionMutators.Contains(method.Name);
+        }
+
+        return member is MethodInfo { IsStatic: true } call &&
+               ProcessGlobalFrameworkCalls.Contains($"{declaringType.FullName}.{call.Name}");
     }
+
+    // Production assemblies whose static state a test can change for the whole process.
+    static bool IsRepositoryAssembly(Assembly assembly) =>
+        assembly.GetName().Name is "MFTLib" or "MFTLibTestExtensions" or "TestProgram" or "Benchmark";
+
+    // Static methods in the repository assemblies that install process-wide overrides or reset them.
+    static readonly HashSet<string> ProductionMutators = new(StringComparer.Ordinal)
+    {
+        "ResetToDefaults", "Enable", "OverrideJournalWindow", "ReplaceWriterForTest"
+    };
+
+    // Framework members that change state shared by every concurrently running test class.
+    static readonly HashSet<string> ProcessGlobalFrameworkCalls = new(StringComparer.Ordinal)
+    {
+        "System.Environment.set_CurrentDirectory", "System.Environment.set_ExitCode",
+        "System.Environment.SetEnvironmentVariable", "System.IO.Directory.SetCurrentDirectory",
+        "System.Console.SetOut", "System.Console.SetError", "System.Console.SetIn",
+        "System.AppContext.SetSwitch", "System.Threading.ThreadPool.SetMinThreads",
+        "System.Threading.ThreadPool.SetMaxThreads",
+        "System.Globalization.CultureInfo.set_DefaultThreadCurrentCulture",
+        "System.Globalization.CultureInfo.set_DefaultThreadCurrentUICulture"
+    };
 
     static IEnumerable<MemberInfo> ReferencedMembers(MethodBase method)
     {

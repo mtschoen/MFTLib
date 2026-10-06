@@ -109,3 +109,44 @@ internal static class IsolatedNativeHookReferenceFixture
 {
     public static void Reference() => NativeTestHooks.NativeSetAllocFailCountdown(1);
 }
+
+internal static class EnvironmentVariableReferenceFixture
+{
+    public static void Reference() => Environment.SetEnvironmentVariable("MFTLIB_FIXTURE", null);
+}
+
+[DoNotParallelize]
+internal static class IsolatedEnvironmentVariableReferenceFixture
+{
+    public static void Reference() => Environment.SetEnvironmentVariable("MFTLIB_FIXTURE", null);
+}
+
+internal static class CurrentDirectoryReferenceFixture
+{
+    public static void Reference() => Environment.CurrentDirectory = Path.GetTempPath();
+}
+
+internal static class ConsoleRedirectReferenceFixture
+{
+    public static void Reference() => Console.SetOut(TextWriter.Null);
+}
+
+internal static class ProductionStaticFieldReferenceFixture
+{
+    public static void Reference() => BrokerLauncher._startProcess = _ => null;
+}
+
+internal static class ProductionStaticSetterReferenceFixture
+{
+    public static void Reference() => BrokerDiagnostics.LogDirectory = Path.GetTempPath();
+}
+
+internal static class ProductionResetReferenceFixture
+{
+    public static void Reference() => BrokerLauncher.ResetToDefaults();
+}
+
+internal static class ReadOnlyEnvironmentReferenceFixture
+{
+    public static string Reference() => Environment.GetEnvironmentVariable("MFTLIB_FIXTURE") ?? Environment.CurrentDirectory;
+}

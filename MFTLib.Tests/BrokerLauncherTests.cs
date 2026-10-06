@@ -6,6 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace MFTLib.Tests;
 
 [TestClass]
+[DoNotParallelize] // replaces the process-wide BrokerLauncher seams
 public class BrokerLauncherTests
 {
     [TestCleanup]
