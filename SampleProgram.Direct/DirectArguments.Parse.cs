@@ -34,10 +34,10 @@ internal sealed partial record DirectArguments
             Before = reader.Date("--before"),
             Stream = reader.Flag("--stream"),
             IncludeFreed = reader.Flag("--include-freed"),
-            Limit = (int?)reader.Number("--limit") ?? DefaultLimit,
+            Limit = reader.Integer("--limit") ?? DefaultLimit,
             Path = reader.Text("--path"),
-            Depth = (int?)reader.Number("--depth") ?? DefaultDepth,
-            Count = (int?)reader.Number("--count") ?? DefaultCount
+            Depth = reader.Integer("--depth") ?? DefaultDepth,
+            Count = reader.Integer("--count") ?? DefaultCount
         };
         var positionals = reader.Positionals();
         error = reader.Error ?? Validate(candidate, source, directories && files, positionals);
@@ -46,8 +46,13 @@ internal sealed partial record DirectArguments
             return false;
         }
 
-        parsed = candidate with { Drive = positionals[0] };
+        parsed = candidate with { Drive = char.ToUpperInvariant(positionals[0][0]).ToString() };
         return true;
+    }
+
+    static bool IsDriveLetter(string text)
+    {
+        return char.IsAsciiLetter(text[0]) && (text.Length == 1 || (text.Length == 2 && text[1] == ':'));
     }
 
     static string? Validate(DirectArguments candidate, string source, bool bothKinds, IReadOnlyList<string> positionals)
@@ -55,7 +60,7 @@ internal sealed partial record DirectArguments
         return positionals switch
         {
             not { Count: 1 } => "Expected exactly one drive letter.",
-            _ when !char.IsAsciiLetter(positionals[0][0]) => $"'{positionals[0]}' is not a drive letter.",
+            _ when !IsDriveLetter(positionals[0]) => $"'{positionals[0]}' is not a drive letter.",
             _ when candidate.Source is SourceKind.Local && !source.Equals("local", StringComparison.OrdinalIgnoreCase) => $"Unknown source {source}.",
             _ when candidate.Source is SourceKind.Dump && candidate.DumpFile is null => "--source dump needs --dump-file PATH.",
             _ when candidate.Source is SourceKind.Local && candidate.DumpFile is not null => "--dump-file needs --source dump.",

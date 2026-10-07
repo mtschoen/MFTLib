@@ -30,7 +30,7 @@ public class DirectArgumentsTests
             "--stream", "--limit", "7", "--include-freed");
 
         Assert.AreEqual(DirectVerb.Search, parsed.Verb);
-        Assert.AreEqual("c:", parsed.Drive);
+        Assert.AreEqual("C", parsed.Drive);
         Assert.AreEqual("*.log", parsed.Name);
         Assert.IsTrue(parsed.Exact);
         Assert.IsTrue(parsed.CaseSensitive);
@@ -96,6 +96,10 @@ public class DirectArgumentsTests
     [DataRow(new[] { "search" }, "Expected exactly one drive letter.")]
     [DataRow(new[] { "search", "C", "D" }, "Expected exactly one drive letter.")]
     [DataRow(new[] { "search", "1" }, "'1' is not a drive letter.")]
+    [DataRow(new[] { "search", "Cjunk" }, "'Cjunk' is not a drive letter.")]
+    [DataRow(new[] { "search", "C:\\" }, "'C:\\' is not a drive letter.")]
+    [DataRow(new[] { "search", "C", "--limit", "99999999999" }, "Option --limit must be at most 2147483647.")]
+    [DataRow(new[] { "tree", "C", "--depth", "-1" }, "Option --depth needs a whole number, not '-1'.")]
     [DataRow(new[] { "search", "C", "--verbose" }, "Unknown option --verbose.")]
     [DataRow(new[] { "search", "C", "--limit" }, "Option --limit needs a value.")]
     [DataRow(new[] { "search", "C", "--limit", "many" }, "Option --limit needs a whole number, not 'many'.")]
