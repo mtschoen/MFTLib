@@ -3,9 +3,9 @@ namespace MFTLib.Index;
 public readonly partial record struct FileEntry
 {
     /// <summary>
-    ///     Opens the underlying file. Enumeration entries open by path. MFT entries open through
-    ///     the NTFS file id against a handle on the target volume, which needs no elevation; the
-    ///     route is here, in <see cref="DefaultOpenById" /> below.
+    ///     Opens the underlying file. Enumeration entries open by path. For MFT entries,
+    ///     the route is the NTFS file id opened against a handle on the target volume,
+    ///     which needs no elevation.
     /// </summary>
     /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's snapshot released.</exception>
     /// <exception cref="InvalidOperationException">The entry belongs to an MFT dump, whose files exist only as index rows.</exception>

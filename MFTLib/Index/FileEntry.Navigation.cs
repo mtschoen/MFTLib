@@ -7,11 +7,11 @@ public readonly partial record struct FileEntry
     ///     using the host separator, openable and accepted by <see cref="FileIndex.Find" />.
     ///     Built once per call by walking the parent column upward. This allocates; nothing else
     ///     on the handle except <see cref="Name" /> does. The parent walk is limited to
-    ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops.
+    ///     128 parent hops.
     /// </summary>
     /// <exception cref="InvalidDataException">
     ///     The parent chain does not reach the volume root within
-    ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops.
+    ///     128 parent hops.
     /// </exception>
     /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's snapshot released.</exception>
     /// <exception cref="InvalidOperationException">The drive block has no configured root directory.</exception>

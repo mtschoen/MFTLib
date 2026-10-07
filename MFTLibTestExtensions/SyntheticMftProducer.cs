@@ -4,7 +4,7 @@ namespace MFTLibTestExtensions;
 
 /// <summary>
 ///     The MFT block producer of a test index: writes the rows a test names through the real
-///     block writer and returns a real <see cref="MftBlockProduceResult" />, copying the
+///     block writer and returns a real produce result, copying the
 ///     request's cache tag as every custom producer must.
 /// </summary>
 public sealed class SyntheticMftProducer

@@ -13,7 +13,7 @@ public static class BrokerTestHarness
     /// <summary>
     ///     Starts an in-process broker that serves <paramref name="volumes" />, over an in-memory control
     ///     pipe; every drive pipe the returned process opens is connected in memory by name. The
-    ///     host is the real <see cref="JournalBrokerHost" />, the client creates real block sections, and each
+    ///     host is the real broker host, the client creates real block sections, and each
     ///     scan's records are written through the production row writer and filter. Disposing the handle
     ///     disposes the process, which ends the host's session and waits for it to return, then releases the
     ///     sections.

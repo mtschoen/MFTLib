@@ -11,7 +11,7 @@ namespace MFTLib;
 ///     env var, because a <c>runas</c> launch does not reliably inherit the parent's
 ///     environment. Used to reveal, on an on-hardware run, whether the cold scan used the
 ///     broker or fell back to a direct scan, what cursor the broker captured vs.
-///     persisted, and - via <see cref="LogFrame" /> - the kind and byte length of every
+///     persisted, and the kind and byte length of every
 ///     frame on the wire, which is what localizes a pipe desync.
 ///     While diagnostics are enabled, the broker drops journal entries for the diagnostics
 ///     log files (its own and the client's, whose path arrives as <c>--diag-log</c>) before
