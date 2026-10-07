@@ -9,25 +9,25 @@ public class JournalBrokerHostSourcesTests
     [TestMethod]
     public void HostScanChunk_OneKilobyteRecords_Is65536()
     {
-        Assert.AreEqual(65536u, JournalBrokerHost.HostScanChunkRecords(1024));
+        Assert.AreEqual(65536u, LiveVolumeSources.HostScanChunkRecords(1024));
     }
 
     [TestMethod]
     public void HostScanChunk_FourKilobyteRecords_Is16384()
     {
-        Assert.AreEqual(16384u, JournalBrokerHost.HostScanChunkRecords(4096));
+        Assert.AreEqual(16384u, LiveVolumeSources.HostScanChunkRecords(4096));
     }
 
     [TestMethod]
     public void HostScanChunk_RecordLargerThanChunk_IsOneRecord()
     {
-        Assert.AreEqual(1u, JournalBrokerHost.HostScanChunkRecords(JournalBrokerHost.HostScanChunkBytes * 2));
+        Assert.AreEqual(1u, LiveVolumeSources.HostScanChunkRecords(LiveVolumeSources.HostScanChunkBytes * 2));
     }
 
     [TestMethod]
     public void HostScanChunk_NoRecordSize_Throws()
     {
-        Assert.ThrowsException<ArgumentOutOfRangeException>(() => JournalBrokerHost.HostScanChunkRecords(0));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => LiveVolumeSources.HostScanChunkRecords(0));
     }
 
     [TestMethod]

@@ -134,7 +134,7 @@ public partial class JournalBrokerHostLivenessTests
             Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
             Assert.AreEqual(ranges, liveness.Published.Count(entry =>
                 entry.Tag == DriveTag('C', 1) && entry.State is
-                { Kind: ChannelOperationKind.Processing, Step: RealBlockSectionWriter.FlushStep }),
+                { Kind: ChannelOperationKind.Processing, Step: MftBlockScan.FlushStep }),
                 "Each flushed range republishes the scan pipe's state.");
         }
     }

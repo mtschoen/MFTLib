@@ -199,14 +199,4 @@ internal sealed partial class JournalBrokerHost
                $"{exception.Message}. The records between that cursor and the current journal position " +
                "are gone, so this drive needs a rescan before it can be watched again.";
     }
-
-    sealed class DirectProgress<T>(Action<T> handler) : IProgress<T>
-    {
-        readonly Action<T> _handler = handler ?? throw new ArgumentNullException(nameof(handler));
-
-        public void Report(T value)
-        {
-            _handler(value);
-        }
-    }
 }

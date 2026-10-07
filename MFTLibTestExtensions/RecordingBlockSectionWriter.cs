@@ -31,11 +31,9 @@ internal sealed class RecordingBlockSectionWriter(Func<string, BlockFile?>? reso
     {
         LastSectionName = sectionName;
         LastFilter = filter;
-        var writer = new BlockWriter(resolveSection?.Invoke(sectionName) ?? Block);
-        var result = MftBlockRowWriter.WriteBatches(writer, batches, filter, reporting.Progress, cancellationToken);
-        writer.SetJournalCursor(cursor.JournalId, cursor.NextUsn);
-        writer.Complete(CompletedUtc, null);
-        return result;
+        return MftBlockScan.WriteToBlock(resolveSection?.Invoke(sectionName) ?? Block,
+            new BlockStamp(cursor, () => CompletedUtc), batches, filter, reporting with { Operation = null },
+            cancellationToken);
     }
 
     public void Dispose() => Block.Dispose();

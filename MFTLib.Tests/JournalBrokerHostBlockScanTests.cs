@@ -175,6 +175,82 @@ public class JournalBrokerHostBlockScanTests
     }
 
     // Scans drive C into a section named "section-C" and returns every frame the drive pipe carried.
+    [TestMethod]
+    public async Task ScanChannel_AndSharedScanFunction_ProduceIdenticalBlocksAndSkippedCounts()
+    {
+        MftRecord[][] batches =
+        [
+            [Record(5, ".", 3), Record(20, "file.txt"), Record(21, "")],
+            [Record(30, "other.txt"), new MftRecord(1UL << 33, 5, new MftRecordFields(1), "huge", null)]
+        ];
+        var completedUtc = new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc);
+        using var hostWriter = new RecordingBlockSectionWriter();
+        var hostFrames = await ScanAsync(CreateHost((_, _, _, _, _) => batches), hostWriter);
+        var skippedByHost = hostFrames.Single(frame => frame.Kind == BrokerFrameKind.ScanReady).SkippedRecordCount;
+
+        using var directBlock = BlockFile.Create(new BlockFileCreateOptions
+        {
+            Path = Path.Combine(Path.GetTempPath(), $"mft-block-direct-{Guid.NewGuid():N}.bin"),
+            VolumeSerial = 123,
+            ProducerKind = ProducerKind.Mft,
+            RootRow = 5,
+            SlotCapacity = 256,
+            NamePoolCapacity = 4096,
+            DeleteOnClose = true
+        });
+        var result = MftBlockScan.WriteToBlock(directBlock, new BlockStamp(ArmedCursor, () => completedUtc), batches,
+            MftBlockRowFilter.Full, default, CancellationToken.None);
+
+        Assert.AreEqual(skippedByHost, result.SkippedRecordCount);
+        Assert.AreEqual(2L, result.SkippedRecordCount);
+        CollectionAssert.AreEqual(BlockBytes(hostWriter.Block), BlockBytes(directBlock));
+    }
+
+    [TestMethod]
+    public void WriteToBlock_ReadsTheClockAfterTheLastBatchIsWritten()
+    {
+        var batchesEnumerated = 0;
+        var batchesEnumeratedAtClockRead = -1;
+        IEnumerable<IReadOnlyList<MftRecord>> Batches()
+        {
+            foreach (var batch in new[] { Record(5, ".", 3), Record(20, "file.txt") })
+            {
+                batchesEnumerated++;
+                yield return [batch];
+            }
+        }
+
+        using var block = BlockFile.Create(new BlockFileCreateOptions
+        {
+            Path = Path.Combine(Path.GetTempPath(), $"mft-block-clock-{Guid.NewGuid():N}.bin"),
+            VolumeSerial = 123,
+            ProducerKind = ProducerKind.Mft,
+            RootRow = 5,
+            SlotCapacity = 256,
+            NamePoolCapacity = 4096,
+            DeleteOnClose = true
+        });
+        MftBlockScan.WriteToBlock(block, new BlockStamp(ArmedCursor, () =>
+        {
+            batchesEnumeratedAtClockRead = batchesEnumerated;
+            return DateTime.UnixEpoch;
+        }), Batches(), MftBlockRowFilter.Full, default, CancellationToken.None);
+
+        Assert.AreEqual(2, batchesEnumeratedAtClockRead);
+    }
+
+    static byte[] BlockBytes(BlockFile block)
+    {
+        var header = block.Header;
+        return
+        [
+            .. System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<BlockHeader>(in header)),
+            .. System.Runtime.InteropServices.MemoryMarshal.AsBytes(block.Rows),
+            .. System.Runtime.InteropServices.MemoryMarshal.AsBytes(block.SequenceNumbers),
+            .. System.Runtime.InteropServices.MemoryMarshal.AsBytes(block.NamePoolCharacters)
+        ];
+    }
+
     static async Task<List<BrokerFrame>> ScanAsync(JournalBrokerHost host, IBlockSectionWriter? blockWriter,
         BrokerScanProfile profile = BrokerScanProfile.Full, IReadOnlyCollection<string>? keepFileNames = null)
     {
