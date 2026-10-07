@@ -10,6 +10,9 @@ partial class SampleHost
     internal Func<DirectArguments, MftIndexSource> _createSource = CreateSourceNative;
     internal Func<string, IndexedDrive> _resolveDrive = ResolveDriveNative;
 
+    // The elevation flow is Windows only (UAC and its dialog), so elsewhere the verb runs straight into its platform check.
+    internal Func<bool> _isWindows = OperatingSystem.IsWindows;
+
     // Where the index keeps its cache folder; the NoCache open still resolves one, so a test names its own.
     internal string? _cacheDirectory;
 
@@ -22,7 +25,7 @@ partial class SampleHost
             return 2;
         }
 
-        var need = parsed.RequiresElevation ? ElevationNeed.SelfElevate : ElevationNeed.None;
+        var need = parsed.RequiresElevation && _isWindows() ? ElevationNeed.SelfElevate : ElevationNeed.None;
         return RunWithElevation(arguments, need, () => RunVerb(parsed));
     }
 
