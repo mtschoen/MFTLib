@@ -34,7 +34,7 @@ partial class SampleHost
     }
 
     // Reports each scan phase once, on the reporting thread, so the output keeps its order.
-    sealed class PhaseReporter(Action<string> writeLine) : IProgress<IndexScanProgress>
+    internal sealed class PhaseReporter(Action<string> writeLine) : IProgress<IndexScanProgress>
     {
         IndexScanPhase? _lastPhase;
 
