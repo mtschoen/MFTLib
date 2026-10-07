@@ -145,6 +145,26 @@ public class WatchArgumentsTests
         Assert.AreEqual(BrokerScanProfile.DirectoryIndex, parsed.Profile);
     }
 
+    [DataTestMethod]
+    [DataRow("directory-index", "Aa", "directory-index", "BB")]
+    [DataRow("full", "b", "directory-index", "a")]
+    public void CacheTag_SettingsThatCollidedUnderAnAdditiveFingerprint_AreDistinct(string profileOne, string keepOne, string profileTwo, string keepTwo)
+    {
+        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--profile", profileOne, "--keep-name", keepOne], out var one, out _));
+        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--profile", profileTwo, "--keep-name", keepTwo], out var two, out _));
+
+        Assert.AreNotEqual(one.CacheTag, two.CacheTag);
+    }
+
+    [TestMethod]
+    public void CacheTag_SameKeepNamesInAnotherOrder_AreTheSameTag()
+    {
+        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "a.txt,b.txt"], out var one, out _));
+        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "b.txt, a.txt"], out var two, out _));
+
+        Assert.AreEqual(one.CacheTag, two.CacheTag);
+    }
+
     [TestMethod]
     public void TryParse_CacheAndElevationStatus_NeedNoBrokerAndKeepAnEmptyDriveList()
     {
