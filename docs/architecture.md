@@ -205,33 +205,39 @@ scoped parameters, control characters in literals, and nullability on base types
 implementations, generic constraints and accessor flow attributes. That is a stated limit of the
 method, not a defect.
 
-Caller gate: `MFTLib.Tests/PublicMemberCallerTests.cs` proves every authored public or protected
-member and type of `MFTLib` and `MFTLib.Index` has a real caller, as owner decisions 10 and 22
-require. `MFTLib.Tests/MetadataSurfaceReader.cs` reads the compiled assemblies with
-`System.Reflection.Metadata`, never loading them. One side is the library's surface; the other is
-the set of member, generic-method and type references in the IL of `SampleProgram.Direct` and
-`SampleProgram.Watch`. Both sides key a member by declaring type, name and a signature decoded
-by one provider, so overloads stay apart. An enum is referenced by its type, and its literals ride
-with it. A property or event is referenced when any accessor is. Record-generated members
-(equality, `Deconstruct`, the clone method, copy and primary constructors, positional properties)
-and compiler-generated members are not surface. The failure message lists each unreferenced
-member by type, name and parameters.
+Caller gate: every authored public or protected member and type of `MFTLib` and `MFTLib.Index`
+needs a real caller, and `MFTLib.Tests/PublicMemberCallerTests.cs` proves it. The caller is a use in
+`SampleProgram.Direct` or `SampleProgram.Watch`, or, for the narrow exceptions below, a consumer
+production caller. `MFTLib.Tests/MetadataSurfaceReader.cs` and `MetadataSurfaceReader.IL.cs` read
+the compiled assemblies with `System.Reflection.Metadata`, never loading them. One side is the
+library's surface; the other is the set of member, generic-method and type references in the IL of
+the two samples. Both sides key a member by declaring type, name and a signature decoded by one
+provider, so overloads stay apart. An enum is referenced by its type, and its literals ride with
+it. A property or event is referenced when any accessor is. Record-generated members (equality,
+`Deconstruct`, the clone method, copy and primary constructors, positional properties) and
+compiler-generated members are not surface. A public type outside those two namespaces fails the
+gate by name, so a new namespace cannot escape it. The failure message lists each unreferenced
+member by type, name, parameters and result.
 
-Two lists are the only exceptions, both in the test, one entry per member and each with a reason.
-The exempt list holds members with no sample caller that a consumer production caller uses; each
-reason names the consumer repository and file, never a line number. This is a deliberate narrow
-exception to decision 22's "no consumer manifest", justified by decision 10. A member with no
-sample caller and no consumer production caller is internalized or given a sample use in
-`SampleProgram.Shared`, never given a contrived call. The constant list covers the `const` fields
-the compiler inlines, which leave no IL reference; a second test requires it to equal the
-literal fields the library metadata declares, in both directions. An entry that names no member,
-or whose member gained a sample caller, fails the gate.
+A new public member is admitted by a sample use, which belongs in `SampleProgram.Shared` when the
+verb files are full, and never by a contrived call. A member with no sample use and no consumer
+production caller is internalized. Two lists in the test are the only exceptions, one entry per
+member, each with a reason. The exempt list holds members with no sample use that a consumer
+production caller needs; each reason names the consumer repository and file, never a line number,
+and each key is the member's full display text, with generic arity, parameters and result, so an
+entry cannot cover a sibling overload. The constant list covers the `const` fields the compiler
+inlines, which leave no IL reference; a second test requires it to equal the literal fields the
+library metadata declares, in both directions. An entry that names no member, or whose member
+gained a sample use, fails the gate.
 
-The full gate runs only where `SampleProgram.Watch.dll` is built, which is Windows, and reports
-Inconclusive elsewhere. Two negative controls run on every platform and assert member identity,
-never counts: the real sample references with one known member removed must report exactly that
-member, and `MFTLib.Tests/CallerGateFixtureCaller.cs`, whose IL calls one `InspectCached`
-overload, must be found by the type-scoped collector with its sibling overload absent.
+The full gate runs on Windows, where `SampleProgram.Watch.dll` is built, and a missing assembly
+there fails the test. Elsewhere it reports Inconclusive. Controls run on every platform and assert
+member identity, never counts: the real sample references with one known member removed must
+report exactly that member; `MFTLib.Tests/CallerGateFixtureCaller.cs`, whose IL calls one
+`InspectCached` overload, must be found by the type-scoped collector with its sibling absent;
+fixture types prove a positional record with a second `Deconstruct` keeps its authored members,
+that overloads differing only by arity or indexer parameter get distinct keys, and that the
+namespace check fires.
 
 To update an approved file, set `MFTLIB_PUBLIC_SURFACE_REGENERATE_TO` to a scratch directory
 and run `PublicSurfaceTests`: the tests write the current surface there and fail on purpose.
