@@ -157,7 +157,7 @@ public partial class NativeParserCoverageTests
     // --- mft.parse.cpp lines 244-245: empty-file fast path. ---
 
     [TestMethod]
-    public void ParseFromFile_EmptyFile_ReturnsEmptyResultWithNoError()
+    public void ParseFromFile_EmptyFile_IsRejectedAsInvalidInput()
     {
         var path = Path.GetTempFileName();
         try
@@ -171,7 +171,8 @@ public partial class NativeParserCoverageTests
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
                 Assert.AreEqual(0UL, result.TotalRecords);
                 Assert.AreEqual(0UL, result.UsedRecords);
-                Assert.AreEqual(string.Empty, result.ErrorMessage);
+                Assert.AreEqual("The dump file is empty.", result.ErrorMessage);
+                Assert.AreEqual(1u, result.InvalidInput);
             }
             finally
             {

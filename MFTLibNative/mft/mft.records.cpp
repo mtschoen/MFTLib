@@ -330,7 +330,7 @@ struct CapacityMessages {
 };
 
 template <typename Element>
-bool EnsureCapacity(Element*& data, uint64_t& capacity, uint64_t used, uint64_t extra, wchar_t* errorMessage,
+bool EnsureCapacity(Element*& data, uint64_t& capacity, uint64_t used, uint64_t extra, MftMessageChar* errorMessage,
                     const CapacityMessages& messages) {
     if (used + extra <= capacity) {
         return true;
@@ -361,7 +361,7 @@ bool EnsureCapacity(Element*& data, uint64_t& capacity, uint64_t used, uint64_t 
 
 }  // namespace
 
-bool AppendSlice(CompactOutput& output, const SliceResult& slice, wchar_t* errorMessage) {
+bool AppendSlice(CompactOutput& output, const SliceResult& slice, MftMessageChar* errorMessage) {
     if (slice.entries.empty()) {
         return true;
     }

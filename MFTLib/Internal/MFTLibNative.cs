@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using MFTLib.Interop;
 
 namespace MFTLib;
 
@@ -9,7 +10,7 @@ static class MFTLibNative
     //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
-    internal const uint ExpectedMftNativeAbiVersion = 4;
+    internal const uint ExpectedMftNativeAbiVersion = 5;
     internal const uint NativeCompactEntrySize = 50;
 
     // Swappable function pointers - default to the native P/Invoke implementations.
@@ -77,6 +78,19 @@ static class MFTLibNative
         CharSet = CharSet.Unicode)]
     static extern IntPtr NativeParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags,
         uint bufferSizeRecords, IntPtr control, NativeMftProgressCallback? callback, IntPtr context);
+
+    // The dump input exports exist on every platform and take the path as null-terminated UTF-8
+    // bytes. They have no swappable field: a dump is exercised with real files, never a
+    // substituted native call.
+    [DllImport(LibraryName, EntryPoint = "OpenMftDumpInput", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern MftDumpInputHandle OpenMftDumpInput(byte[] filePathUtf8, out MftDumpInputInfo info);
+
+    [DllImport(LibraryName, EntryPoint = "ParseMftDumpInput", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr ParseMftDumpInput(MftDumpInputHandle input, uint bufferSizeRecords, IntPtr control,
+        NativeMftProgressCallback? callback, IntPtr context);
+
+    [DllImport(LibraryName, EntryPoint = "CloseMftDumpInput", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void CloseMftDumpInput(IntPtr input);
 
     [DllImport(LibraryName, EntryPoint = "QueryUsnJournal", CallingConvention = CallingConvention.Cdecl)]
     static extern IntPtr NativeQueryUsnJournal(SafeHandle volumeHandle);

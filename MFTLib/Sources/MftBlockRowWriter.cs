@@ -29,6 +29,11 @@ internal static class MftBlockRowWriter
         foreach (var batch in batches)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (batch is MftOmittedRecords omitted)
+            {
+                skippedRecordCount += omitted.OmittedCount;
+            }
+
             foreach (var record in batch)
             {
                 cancellationToken.ThrowIfCancellationRequested();

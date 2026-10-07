@@ -3,50 +3,21 @@
     #error "mft.parse.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
-#include <array>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
-#include <string>
 #include <vector>
 
 #include "../framework.h"
 #include "../ntfs.h"
 #include "../mft_api.h"
 #include "../internal.h"
-#include "../core/platform.h"
 #include "mft.internal.h"
 
 using namespace mftlib::ntfs;
 using namespace mftlib::ntfs::detail;
 
 namespace {
-
-MftParseResult* CreateEmptyResult() {
-    auto* result = ShouldFailAlloc() ? nullptr : static_cast<MftParseResult*>(calloc(1, sizeof(MftParseResult)));
-    if (result != nullptr) {
-        result->abiVersion = MFT_NATIVE_ABI_VERSION;
-        result->entryStride = sizeof(MftCompactEntry);
-    }
-    return result;
-}
-
-MftParseResult* CreateErrorResult(const wchar_t* message) {
-    auto* result = CreateEmptyResult();
-    if (result != nullptr && message != nullptr) {
-        SetErrorMessage(result->errorMessage, message);
-    }
-    return result;
-}
-
-std::optional<ParseGeometry> DetectRecordSizeFromHeader(const uint8_t* header, size_t headerLength) {
-    if (headerLength < 0x20 || memcmp(header, "FILE", 4) != 0) {
-        return std::nullopt;
-    }
-    uint32_t recordSize = 0;
-    memcpy(&recordSize, header + 0x1C, sizeof(recordSize));
-    return IsSupportedRecordSize(recordSize) ? std::optional<ParseGeometry>(ParseGeometry{recordSize}) : std::nullopt;
-}
 
 #ifdef _WIN32
 std::optional<ParseGeometry> QueryVolumeRecordSize(HANDLE volumeHandle) {
@@ -183,92 +154,6 @@ void MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrLi
 }
 #endif  // _WIN32
 
-struct FileReadContext {
-    mftlib::platform::File* file = nullptr;
-    uint64_t recordsRemaining = 0;
-    uint32_t bufferSizeRecords = 0;
-    int64_t fileOffset = 0;  // current read position in bytes
-    ParseGeometry geometry{};
-};
-
-uint64_t FileReadChunk(void* ctx, uint8_t* targetBuffer, double& ioMs) {
-    auto* fileCtx = static_cast<FileReadContext*>(ctx);
-    if (fileCtx->recordsRemaining == 0) {
-        return 0;
-    }
-    uint64_t filesToLoad = (std::min)(fileCtx->recordsRemaining, static_cast<uint64_t>(fileCtx->bufferSizeRecords));
-    auto byteCount = static_cast<size_t>(filesToLoad * fileCtx->geometry.recordSize);
-    auto ioStart = SteadyClock::now();
-    if (ShouldFailRead()) {
-        return 0;
-    }
-    int64_t bytesRead = mftlib::platform::pread_at(fileCtx->file, targetBuffer, byteCount,
-                                                   mftlib::platform::FileOffset{fileCtx->fileOffset});
-    if (bytesRead <= 0) {
-        return 0;
-    }
-    ioMs += ElapsedMs(ioStart, SteadyClock::now());
-    uint64_t recordsRead = static_cast<uint64_t>(bytesRead) / fileCtx->geometry.recordSize;
-    fileCtx->fileOffset += static_cast<int64_t>(recordsRead * fileCtx->geometry.recordSize);
-    fileCtx->recordsRemaining -= recordsRead;
-    return recordsRead;
-}
-
-// Core implementation that takes a UTF-8 file path.
-MftParseResult* ParseMFTFromFileImpl(const char* path_utf8, const wchar_t* filter, uint32_t matchFlags,
-                                     uint32_t bufferSizeRecords, const MftParseControl* control,
-                                     MftProgressCallback callback, void* context) {
-#ifndef _WIN32
-    if (filter != nullptr) {
-        return CreateErrorResult(L"Filter not supported on Linux yet");
-    }
-#endif
-
-    auto* file = mftlib::platform::open_read(path_utf8);
-    if (file == nullptr) {
-        auto* result = CreateEmptyResult();
-        if (result != nullptr) {
-            SetErrorMessage(result->errorMessage, L"Failed to open file. Error: %lu",
-                            static_cast<unsigned long>(mftlib::platform::last_error()));
-        }
-        return result;
-    }
-
-    int64_t fileSize = ShouldFailFileSize() ? -1 : mftlib::platform::size_of(file);
-    if (fileSize < 0) {
-        mftlib::platform::close_file(file);
-        return CreateErrorResult(L"Failed to get file size");
-    }
-
-    if (fileSize == 0) {
-        mftlib::platform::close_file(file);
-        return CreateEmptyResult();
-    }
-
-    std::array<uint8_t, 0x20> header{};
-    int64_t headerBytesRead =
-        mftlib::platform::pread_at(file, header.data(), header.size(), mftlib::platform::FileOffset{0});
-    auto geometry = (headerBytesRead >= static_cast<int64_t>(header.size()))
-                        ? DetectRecordSizeFromHeader(header.data(), header.size())
-                        : std::nullopt;
-    if (!geometry.has_value()) {
-        mftlib::platform::close_file(file);
-        return CreateErrorResult(L"Invalid or unsupported MFT record size");
-    }
-
-    if (static_cast<uint64_t>(fileSize) % geometry->recordSize != 0) {
-        mftlib::platform::close_file(file);
-        return CreateErrorResult(L"File size is not a whole multiple of record size");
-    }
-
-    uint64_t totalRecords = static_cast<uint64_t>(fileSize) / geometry->recordSize;
-    FileReadContext ctx = {file, totalRecords, bufferSizeRecords, 0, *geometry};
-    auto* result = ParseMFTImpl(FileReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords,
-                                *geometry, control, callback, context);
-    mftlib::platform::close_file(file);
-    return result;
-}
-
 }  // namespace
 
 extern "C" {
@@ -288,7 +173,7 @@ EXPORT void FreeMftResult(MftParseResult* result) {
 EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags,
                                                    uint32_t bufferSizeRecords, const MftParseControl* control,
                                                    MftProgressCallback callback, void* context) {
-    auto* result = CreateEmptyResult();
+    auto* result = CreateParseResult();
     if (result == nullptr) {
         return nullptr;
     }
@@ -325,11 +210,14 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wc
         return result;
     }
 
-    ApplyFixup(record0.data(), geometry->recordSize);
-
     const auto* fileRecord0 = reinterpret_cast<const PFILE_RECORD_SEGMENT_HEADER>(record0.data());
     if (fileRecord0->MultiSectorHeader.Magic != kFileRecordMagic) {
         SetErrorMessage(result->errorMessage, L"Invalid MFT record 0 magic");
+        return result;
+    }
+
+    if (!ApplyFixup(record0.data(), geometry->recordSize)) {
+        SetErrorMessage(result->errorMessage, L"MFT record 0 has an invalid fixup");
         return result;
     }
 
@@ -364,27 +252,9 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wc
     ctx.geometry = *geometry;
 
     free(result);
-    return ParseMFTImpl(VolumeReadChunk, &ctx, totalRecords, FilterSpec{filter, 0, matchFlags}, bufferSizeRecords,
-                        *geometry, control, callback, context);
-}
-
-// C-ABI export; (filePath, filter) order is fixed by the C# P/Invoke signature.
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* filter, uint32_t matchFlags,
-                                        uint32_t bufferSizeRecords, const MftParseControl* control,
-                                        MftProgressCallback callback, void* context) {
-    int u8len =
-        ShouldFailPathConversion() ? 0 : WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
-    if (u8len <= 0) {
-        auto* result = CreateEmptyResult();
-        if (result != nullptr) {
-            SetErrorMessage(result->errorMessage, L"Failed to convert path to UTF-8");
-        }
-        return result;
-    }
-    std::string utf8(static_cast<size_t>(u8len - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, filePath, -1, utf8.data(), u8len, nullptr, nullptr);
-    return ParseMFTFromFileImpl(utf8.c_str(), filter, matchFlags, bufferSizeRecords, control, callback, context);
+    const ParseSource source{VolumeReadChunk, &ctx, totalRecords, *geometry};
+    return ParseMFTImpl(source,
+                        ParseRequest{FilterSpec{filter, 0, matchFlags}, bufferSizeRecords, control, callback, context});
 }
 #endif  // _WIN32
 
@@ -393,19 +263,7 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(void* /*volumeHandle*/, const
                                                    uint32_t /*matchFlags*/, uint32_t /*bufferSizeRecords*/,
                                                    const MftParseControl* /*control*/, MftProgressCallback /*callback*/,
                                                    void* /*context*/) {
-    return CreateErrorResult(L"Direct volume parsing is not supported on Linux");
-}
-
-EXPORT MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,
-                                            uint32_t bufferSizeRecords) {
-    return ParseMFTFromFileImpl(filePath, filter, matchFlags, bufferSizeRecords, nullptr, nullptr, nullptr);
-}
-
-EXPORT MftParseResult* ParseMFTFromFileUtf8WithProgress(const char* filePath, const wchar_t* filter,
-                                                        uint32_t matchFlags, uint32_t bufferSizeRecords,
-                                                        const MftParseControl* control, MftProgressCallback callback,
-                                                        void* context) {
-    return ParseMFTFromFileImpl(filePath, filter, matchFlags, bufferSizeRecords, control, callback, context);
+    return CreateParseResult(L"Direct volume parsing is not supported on Linux");
 }
 #endif
 }

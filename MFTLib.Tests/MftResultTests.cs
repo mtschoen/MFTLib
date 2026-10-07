@@ -91,10 +91,10 @@ public partial class MftResultTests
     }
 
     [TestMethod]
-    public void GetMftNativeAbiVersion_ReturnsVersion4()
+    public void GetMftNativeAbiVersion_ReturnsVersion5()
     {
         var version = MFTLibNative._getMftNativeAbiVersion();
-        Assert.AreEqual(4U, version);
+        Assert.AreEqual(5U, version);
     }
 
     [TestMethod]
@@ -102,8 +102,12 @@ public partial class MftResultTests
     {
         var entryStrideOffset = (int)Marshal.OffsetOf<MftParseResult>(nameof(MftParseResult.EntryStride));
         var cancelledOffset = (int)Marshal.OffsetOf<MftParseResult>(nameof(MftParseResult.Cancelled));
+        var invalidInputOffset = (int)Marshal.OffsetOf<MftParseResult>(nameof(MftParseResult.InvalidInput));
         Assert.AreEqual(entryStrideOffset + sizeof(uint), cancelledOffset);
-        Assert.AreEqual(cancelledOffset + sizeof(uint), Marshal.SizeOf<MftParseResult>());
+        Assert.AreEqual(cancelledOffset + sizeof(uint), invalidInputOffset);
+        var invalidFixupOffset = (int)Marshal.OffsetOf<MftParseResult>(nameof(MftParseResult.InvalidFixupRecords));
+        Assert.AreEqual(invalidInputOffset + sizeof(uint), invalidFixupOffset);
+        Assert.AreEqual(invalidFixupOffset + sizeof(ulong), Marshal.SizeOf<MftParseResult>());
 
         // A native cancelled result carries the stride and the cancelled flag exactly where the
         // managed layout reads them.

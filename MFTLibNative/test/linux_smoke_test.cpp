@@ -25,6 +25,11 @@ extern "C" MftParseResult* ParseMFTFromFileUtf8WithProgress(const char* filePath
                                                             const MftParseControl* control,
                                                             MftProgressCallback callback, void* context);
 extern "C" void FreeMftResult(MftParseResult* result);
+extern "C" MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo* info);
+extern "C" MftParseResult* ParseMftDumpInput(const MftDumpInput* input, uint32_t bufferSizeRecords,
+                                             const MftParseControl* control, MftProgressCallback callback,
+                                             void* context);
+extern "C" void CloseMftDumpInput(MftDumpInput* input);
 extern "C" void SetAllocFailCountdown(int countdown);
 extern "C" void SetReadFailCountdown(int countdown);
 extern "C" void SetMaxThreads(unsigned maxThreads);
@@ -41,6 +46,15 @@ bool generate_fixture() {
 }
 
 void remove_fixture() { std::remove(kFixturePath); }
+
+// True when a result's UTF-16 message is exactly the ASCII text expected.
+bool message_is(const MftMessageChar* message, const char* expected) {
+    size_t index = 0;
+    while (expected[index] != '\0' && message[index] == static_cast<MftMessageChar>(expected[index])) {
+        index++;
+    }
+    return expected[index] == '\0' && message[index] == 0;
+}
 
 // --- Tests ---
 
@@ -149,7 +163,8 @@ bool test_parse_empty_file() {
     std::fclose(fileHandle);
 
     MftParseResult* parseResult = ParseMFTFromFileUtf8(path, nullptr, 0, kDefaultBufferRecords);
-    bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 &&
+    bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 && parseResult->invalidInput == 1 &&
+                      message_is(parseResult->errorMessage, "The dump file is empty.") &&
                       parseResult->abiVersion == MFT_NATIVE_ABI_VERSION && parseResult->entryStride == 50;
     if (!testPassed && parseResult != nullptr) {
         std::fprintf(stderr, "  FAIL: empty file got totalRecords=%llu\n",
@@ -306,7 +321,7 @@ bool test_string_pool_alloc_failure() {
     SetAllocFailCountdown(5);
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
     bool testPassed =
-        (parseResult != nullptr) && std::wcscmp(parseResult->errorMessage, L"Failed to allocate string pool") == 0;
+        (parseResult != nullptr) && message_is(parseResult->errorMessage, "Failed to allocate string pool");
     if (parseResult != nullptr) {
         FreeMftResult(parseResult);
     }
@@ -322,10 +337,11 @@ bool test_read_failure_path() {
     }
     SetReadFailCountdown(1);  // fail the next read
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
-    bool testPassed = (parseResult == nullptr) || parseResult->usedRecords == 0;
-    if (!testPassed) {
-        std::fprintf(stderr, "  FAIL: read failure produced usedRecords=%llu\n",
-                     static_cast<unsigned long long>(parseResult->usedRecords));
+    bool testPassed = (parseResult != nullptr) && parseResult->usedRecords == 0 && parseResult->invalidInput == 1 &&
+                      message_is(parseResult->errorMessage, "The dump file could not be read completely.");
+    if (!testPassed && parseResult != nullptr) {
+        std::fprintf(stderr, "  FAIL: read failure produced usedRecords=%llu invalidInput=%u\n",
+                     static_cast<unsigned long long>(parseResult->usedRecords), parseResult->invalidInput);
     }
     if (parseResult != nullptr) {
         FreeMftResult(parseResult);
@@ -366,6 +382,7 @@ bool test_max_threads_clamping() {
 
 #include "linux_smoke_test.paths.cpp"
 #include "linux_smoke_test.freed.cpp"
+#include "linux_smoke_test.dump.cpp"
 
 struct TestCase {
     const char* name;
@@ -375,7 +392,7 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 22> tests = {{
+    const std::array<TestCase, 27> tests = {{
         {"abi_version", test_abi_version},
         {"include_freed", testIncludeFreed},
         {"round_trip", test_round_trip},
@@ -398,6 +415,11 @@ int main() {
         {"progress_callback", test_progress_callback},
         {"file_parse_control_block", test_file_parse_control_block},
         {"parallel_progress_monotonicity", test_parallel_progress_monotonicity},
+        {"dump_input_round_trip", test_dump_input_round_trip},
+        {"dump_input_rejections", test_dump_input_rejections},
+        {"dump_input_hostile_fixups", test_dump_input_hostile_fixups},
+        {"dump_input_changed_length", test_dump_input_changed_length},
+        {"dump_input_null_arguments", test_dump_input_null_arguments},
     }};
 
     int passedCount = 0;

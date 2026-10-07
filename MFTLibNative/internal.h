@@ -1,10 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cassert>
 #include <cstdio>
 #include <cstdint>
+#include <vector>
 
 #include "mft_api.h"
 
@@ -31,9 +33,23 @@ void SetErrorMessageBuffer(wchar_t* buffer, size_t bufferLength, const wchar_t* 
     assert(written >= 0 && "error message truncated");
 }
 
-template <size_t N, typename... Args>
+#ifndef _WIN32
+// A parse message buffer holds UTF-16 units and wchar_t is wider here, so the text is formatted
+// as wchar_t and narrowed unit by unit. Every message is ASCII text and numbers.
+template <typename... Args>
+void SetErrorMessageBuffer(char16_t* buffer, size_t bufferLength, const wchar_t* format, Args... arguments) {
+    if (buffer == nullptr || bufferLength == 0) {
+        return;
+    }
+    std::vector<wchar_t> wide(bufferLength);
+    SetErrorMessageBuffer(wide.data(), bufferLength, format, arguments...);
+    std::transform(wide.begin(), wide.end(), buffer, [](wchar_t unit) { return static_cast<char16_t>(unit); });
+}
+#endif
+
+template <typename Unit, size_t N, typename... Args>
 // NOLINTNEXTLINE(modernize-avoid-c-arrays): array-reference parameter deduces the fixed C-ABI buffer size
-void SetErrorMessage(wchar_t (&buffer)[N], const wchar_t* format, Args... arguments) {
+void SetErrorMessage(Unit (&buffer)[N], const wchar_t* format, Args... arguments) {
     SetErrorMessageBuffer(buffer, N, format, arguments...);
 }
 

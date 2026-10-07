@@ -85,12 +85,18 @@ internal sealed partial class MftVolume : IDisposable
     ///     <paramref name="parseThreads" /> is attached to another parse that is still running. The
     ///     parse starts on the first enumeration, so that is when this is thrown.
     /// </exception>
+    /// <remarks>
+    ///     <c>unreadableRecords</c> is told, once the parse ends and before the first batch, how many
+    ///     allocated records the scan passed over because their fixup was invalid.
+    /// </remarks>
     internal IEnumerable<MftRecord[]> ReadRecordBatches(bool resolvePaths, int batchSize,
-        IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads, CancellationToken cancellationToken)
+        IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads, CancellationToken cancellationToken,
+        Action<ulong>? unreadableRecords = null)
     {
         using var result = StreamRecords(
             null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None, progress, parseThreads,
             cancellationToken);
+        unreadableRecords?.Invoke(result.InvalidFixupRecordCount);
         foreach (var batch in result.MaterializeBatches(batchSize))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -157,7 +163,7 @@ internal sealed partial class MftVolume : IDisposable
     // The one place a streaming parse is assembled, for a volume or a saved file alike: the
     // progress adapter, the control block and its allowance and cancellation hooks, the null
     // check and the result wrapper. Only the native call differs.
-    static MftResult ParseToResult(
+    internal static MftResult ParseToResult(
         Func<IntPtr, MFTLibNative.NativeMftProgressCallback?, IntPtr> nativeParse, string nativeName,
         string driveLetter, IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads,
         CancellationToken cancellationToken)
@@ -272,8 +278,12 @@ internal sealed partial class MftVolume : IDisposable
     /// <param name="options">Progress, thread allowance, cancellation, and chunk buffer size controls.</param>
     /// <returns>The native result, which the caller disposes.</returns>
     /// <exception cref="ArgumentException"><paramref name="filter" /> is set and <paramref name="matchFlags" /> has neither <see cref="MatchFlags.ExactMatch" /> nor <see cref="MatchFlags.Contains" />.</exception>
+    /// <exception cref="InvalidDataException">
+    ///     The file's content was rejected: it is empty, its record size is unsupported, its length is not a whole
+    ///     number of records, an allocated record has an invalid fixup, or it could not be read completely.
+    /// </exception>
     /// <exception cref="InvalidOperationException">
-    ///     The native parser rejected the file, or <see cref="MftFileScanOptions.ParseThreads" /> is attached to another parse that is still running.
+    ///     The file could not be opened, or <see cref="MftFileScanOptions.ParseThreads" /> is attached to another parse that is still running.
     /// </exception>
     public static MftResult StreamMftFromFile(string filePath, string? filter = null,
         MatchFlags matchFlags = MatchFlags.None, MftFileScanOptions options = default)

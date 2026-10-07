@@ -30,6 +30,10 @@ struct VolumeOffset {
 // shared declaration here. An anonymous namespace in a header is an ODR hazard
 // (each including TU would get its own internal-linkage copy).
 namespace detail {
+// Checks the update sequence array before reading or writing through it, then restores each
+// sector's last word. False when the array does not sit inside the first sector after the fixed
+// header, does not cover exactly the record's sectors, or a sector's last word is not the update
+// sequence number. A rejected record is left unmodified and must not be decoded.
 bool ApplyFixup(uint8_t* record, uint32_t recordSize);
 std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr);
 PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type);
@@ -177,6 +181,8 @@ struct ParsedEntry {
 struct SliceResult {
     std::vector<MftCompactEntry> entries;
     std::vector<uint16_t> strings;
+    // Allocated records this worker passed over because their fixup was invalid.
+    uint64_t invalidFixupRecords = 0;
 
     void append(const ParsedEntry& entry) {
         uint64_t stringOffset = strings.size();
@@ -206,26 +212,54 @@ struct CompactOutput {
 // count. Threaded through the scan pipeline as one const& instead of three
 // same-purpose arguments that could be transposed at a call site. control is the
 // caller's cancellation flag and thread allowance (null when the caller supplied none).
+// rejectInvalidFixup fails the parse on an allocated record whose fixup is invalid.
 struct ScanContext {
     FilterSpec filter{};
     PathLookup* lookup = nullptr;
     uint64_t totalRecords = 0;
     ParseGeometry geometry{};
     const MftParseControl* control = nullptr;
+    bool rejectInvalidFixup = false;
 };
 
 constexpr uint32_t MAX_NTFS_PATH_UNITS = 32767;
 
 bool ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalRecords, std::vector<uint16_t>& path);
-bool AppendSlice(CompactOutput& output, const SliceResult& slice, wchar_t* errorMessage);
+bool AppendSlice(CompactOutput& output, const SliceResult& slice, MftMessageChar* errorMessage);
 void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
                         const ScanContext& scan);
 
 using ReadChunkFn = uint64_t (*)(void* context, uint8_t* targetBuffer, double& ioMs);
+using InputIncompleteFn = bool (*)(const void* context);
 
-// control may be null (every processor, never cancelled). A parse stopped by
-// control->cancelRequested returns a result with no entries, cancelled set to 1 and
-// errorMessage "Parse cancelled".
-MftParseResult* ParseMFTImpl(ReadChunkFn readChunk, void* readContext, uint64_t totalRecords, FilterSpec filter,
-                             uint32_t bufferSizeRecords, ParseGeometry geometry, const MftParseControl* control,
-                             MftProgressCallback callback, void* progressContext);
+// Where a parse reads its records and how far it trusts them.
+struct ParseSource {
+    ReadChunkFn readChunk = nullptr;
+    void* context = nullptr;
+    uint64_t totalRecords = 0;
+    ParseGeometry geometry{};
+    // Asked once the last chunk is read: true when the input ended early, failed or changed
+    // size, which fails the parse. Null for a source that cannot tell.
+    InputIncompleteFn incomplete = nullptr;
+    // True for a file, which is untrusted: an allocated record with an invalid fixup fails the
+    // parse. A volume only passes over such a record.
+    bool rejectInvalidFixup = false;
+};
+
+// What the caller asked of one parse. control may be null (every processor, never cancelled).
+struct ParseRequest {
+    FilterSpec filter{};
+    uint32_t bufferSizeRecords = 0;
+    const MftParseControl* control = nullptr;
+    MftProgressCallback callback = nullptr;
+    void* progressContext = nullptr;
+};
+
+// A zeroed result carrying the ABI version and entry stride, and message when one is given.
+// Null when the allocation fails.
+MftParseResult* CreateParseResult(const wchar_t* message = nullptr);
+
+// A parse stopped by control->cancelRequested returns a result with no entries, cancelled set
+// to 1 and errorMessage "Parse cancelled". A parse whose source reports incomplete input, or
+// that rejects an invalid fixup, returns a result with invalidInput set to 1.
+MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& request);

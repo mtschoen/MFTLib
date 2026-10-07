@@ -124,7 +124,7 @@ public partial class NativeCoverageTests
     // --- Fixup mismatch path ---
 
     [TestMethod]
-    public void ParseFromFile_CorruptedFixup_StillParses()
+    public void ParseFromFile_CorruptedFixupOnAnAllocatedRecord_IsRejectedAsInvalidInput()
     {
         // Generate a synthetic MFT, then corrupt a sector-end checksum
         var path = Path.GetTempFileName();
@@ -152,9 +152,10 @@ public partial class NativeCoverageTests
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
-                // The parse should still complete  -  the corrupted record is skipped
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.AreEqual(20UL, result.TotalRecords);
+                Assert.AreEqual("The dump contains an invalid MFT record fixup.", result.ErrorMessage);
+                Assert.AreEqual(1u, result.InvalidInput);
+                Assert.AreEqual(0u, result.Cancelled);
             }
             finally
             {
@@ -198,7 +199,7 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    public void ParseFromFile_OversizedUsaStopsAtRecordBoundary()
+    public void ParseFromFile_OversizedUsaOnAnAllocatedRecord_IsRejectedAsInvalidInput()
     {
         var path = Path.GetTempFileName();
         try
@@ -213,7 +214,16 @@ public partial class NativeCoverageTests
 
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            MFTLibNative._freeMftResult(resultPointer);
+            try
+            {
+                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
+                Assert.AreEqual("The dump contains an invalid MFT record fixup.", result.ErrorMessage);
+                Assert.AreEqual(1u, result.InvalidInput);
+            }
+            finally
+            {
+                MFTLibNative._freeMftResult(resultPointer);
+            }
         }
         finally
         {

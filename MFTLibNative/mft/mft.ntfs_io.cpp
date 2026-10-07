@@ -3,6 +3,8 @@
     #error "mft.ntfs_io.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
+#include <cstddef>
+#include <cstring>
 #include <vector>
 
 #include "../framework.h"
@@ -24,29 +26,29 @@ BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD by
 #endif  // _WIN32
 
 bool ApplyFixup(uint8_t* record, uint32_t recordSize) {
-    auto* header = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(record);
-    uint16_t usaOffset = header->MultiSectorHeader.UpdateSequenceArrayOffset;
-    uint16_t usaSize = header->MultiSectorHeader.UpdateSequenceArraySize;
+    constexpr uint32_t kSectorSize = 512;
+    constexpr uint32_t kWordSize = sizeof(uint16_t);
+    const auto* header = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(record);
+    const uint32_t usaOffset = header->MultiSectorHeader.UpdateSequenceArrayOffset;
+    const uint32_t usaSize = header->MultiSectorHeader.UpdateSequenceArraySize;
+    const uint32_t sectorCount = recordSize / kSectorSize;
 
-    if (usaSize < 2) {
-        return true;
+    // One entry for the update sequence number plus one per sector; the array lies after the
+    // fixed header and ends before the first sector's last word, which it replaces.
+    if (sectorCount == 0 || usaSize != sectorCount + 1 ||
+        usaOffset < offsetof(FILE_RECORD_SEGMENT_HEADER, UpdateSequenceArray) ||
+        usaOffset + (usaSize * kWordSize) > kSectorSize - kWordSize) {
+        return false;
     }
-    uint16_t sectorCount = usaSize - 1;
 
-    auto* usa = reinterpret_cast<uint16_t*>(record + usaOffset);
-    uint16_t usn = usa[0];
-
-    for (uint16_t i = 0; i < sectorCount; i++) {
-        uint32_t sectorEnd = ((i + 1) * 512) - 2;
-        if (sectorEnd + 2 > recordSize) {
-            break;
-        }
-
-        auto* sectorLastWord = reinterpret_cast<uint16_t*>(record + sectorEnd);
-        if (*sectorLastWord != usn) {
+    const uint8_t* usa = record + usaOffset;
+    for (uint32_t sector = 1; sector <= sectorCount; sector++) {
+        if (memcmp(record + (sector * kSectorSize) - kWordSize, usa, kWordSize) != 0) {
             return false;
         }
-        *sectorLastWord = usa[i + 1];
+    }
+    for (uint32_t sector = 1; sector <= sectorCount; sector++) {
+        memcpy(record + (sector * kSectorSize) - kWordSize, usa + (sector * kWordSize), kWordSize);
     }
     return true;
 }

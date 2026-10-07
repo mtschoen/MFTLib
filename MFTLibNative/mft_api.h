@@ -10,7 +10,16 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 4;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 5;
+
+// One UTF-16 code unit of a parse error message. wchar_t is 16 bits on Windows and 32 bits
+// elsewhere, so the parse structs declare their message buffers in this type and keep one
+// layout on every platform.
+#ifdef _WIN32
+using MftMessageChar = wchar_t;
+#else
+using MftMessageChar = char16_t;
+#endif
 
 // Parser-synthesized, not an on-disk NTFS record flag. The flags field carries the
 // raw FILE_RECORD_SEGMENT_HEADER flags in the low bits; the parser sets this top
@@ -71,7 +80,7 @@ struct MftParseResult {
     uint64_t usedRecords;
     MftCompactEntry* entries;
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)
-    wchar_t errorMessage[256];
+    MftMessageChar errorMessage[256];
     // Performance counters (milliseconds)
     double ioTimeMs;
     double fixupTimeMs;
@@ -85,6 +94,27 @@ struct MftParseResult {
     uint32_t abiVersion;
     uint32_t entryStride;
     uint32_t cancelled;  // 1 when the parse stopped because MftParseControl::cancelRequested was set
+    // 1 when the content of a file input was rejected and errorMessage says why: an empty file, an
+    // unsupported record size, a partial final record, an invalid fixup on an allocated record, or
+    // input that could not be read completely.
+    uint32_t invalidInput;
+    // Allocated FILE records a volume scan passed over because their fixup was invalid. They have
+    // no row in the result. Always 0 for a file input, where one such record fails the parse.
+    uint64_t invalidFixupRecords;
+};
+
+// An opened MFT dump file: created by OpenMftDumpInput, read by ParseMftDumpInput, released by
+// CloseMftDumpInput. Opaque to the caller.
+struct MftDumpInput;
+
+// What OpenMftDumpInput found. errorMessage is empty exactly when the open returned an input;
+// invalidInput is 1 when the file opened but its content was rejected.
+struct MftDumpInputInfo {
+    uint64_t lengthBytes;
+    uint32_t recordSize;
+    uint32_t invalidInput;
+    // NOLINTNEXTLINE(modernize-avoid-c-arrays)
+    MftMessageChar errorMessage[256];
 };
 
 struct UsnJournalInfo {

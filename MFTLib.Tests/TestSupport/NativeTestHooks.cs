@@ -71,6 +71,15 @@ internal static class NativeTestHooks
     static extern IntPtr NativeParseMFTRecordsWithProgressRaw(IntPtr volumeHandle, string? filter, uint matchFlags,
         uint bufferSizeRecords, IntPtr control, IntPtr callback, IntPtr context);
 
+    // The dump input exports with raw pointers, for calls the typed bindings cannot express:
+    // no info block, no input, and a zero buffer size.
+    [DllImport(LibraryName, EntryPoint = "OpenMftDumpInput", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr NativeOpenMftDumpInputRaw(byte[] filePathUtf8, IntPtr info);
+
+    [DllImport(LibraryName, EntryPoint = "ParseMftDumpInput", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr NativeParseMftDumpInputRaw(IntPtr input, uint bufferSizeRecords, IntPtr control,
+        IntPtr callback, IntPtr context);
+
     // Parse entry that takes a raw IntPtr handle and no progress control (for testing with invalid handles)
     internal static IntPtr NativeParseMFTRecordsRaw(IntPtr volumeHandle, string? filter, uint matchFlags,
         uint bufferSizeRecords)

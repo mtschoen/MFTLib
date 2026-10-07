@@ -1,6 +1,6 @@
 # Architecture contracts
 
-- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant. MFT record geometry (1024 or 4096-byte records) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through compact ABI version 4 (`MFT_NATIVE_ABI_VERSION`): 50-byte `MftCompactEntry` rows with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, and uint16 sequence number at offset 48, plus separate UTF-16 string pools. Flags bit `0x8000` marks an unknown size; `0x4000` marks an unresolved path whose path-table string is a bare name (path table only). The broker's block path parses without path resolution.
+- **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant. MFT record geometry (1024 or 4096-byte records) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through compact ABI version 5 (`MFT_NATIVE_ABI_VERSION`): 50-byte `MftCompactEntry` rows with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, and uint16 sequence number at offset 48, plus separate UTF-16 string pools. Flags bit `0x8000` marks an unknown size; `0x4000` marks an unresolved path whose path-table string is a bare name (path table only). The broker's block path parses without path resolution.
 - **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop. The `MFTLib.Index` namespace provides a substrate-neutral columnar block format and query engine; see `docs/index-format.md`.
     - **Index namespace boundary**: `MFTLib.Index` depends on nothing in the flat `MFTLib` namespace or in `MFTLib.Interop` beyond an allowlist of journal value types (`UsnJournalEntry`, `UsnJournalSettings`, `UsnReason`). Enforced by `MFTLib.Tests/Index/NamespaceBoundaryTests.cs`, an IL-level ArchUnitNET test over the built assembly, with a mandatory negative-control fixture. Not an aislop rule: the forbidden folders share the flat `MFTLib` namespace, so there is no `using` for an import rule to match. Growing the allowlist is a review decision.
     - **MFT dump drives**: a source built with a dump identity (`MftDumpSourceIdentity`) makes its drive a virtual
@@ -14,6 +14,40 @@
       letter, root `dump:/{DRIVE}`, `VolumeSerial` zero, `NoCache`, no cache directory, tag or cache-only open, and
       `ProducerPolicy.Mft`; a dump block is never written to or adopted from a cache. `DriveStatus.WatchSupported` is false for
       a dump drive and for any drive whose source has no watch source, the same fact a watch start's refusal uses.
+    - **MFT dump source**: `MftIndexSources.FromMftDumpFile(filePath, driveLetter)` is the only way to build a dump
+      source. It checks its arguments (`A dump file path is required.`, `The logical drive key must be an ASCII
+      letter.`), makes the path absolute once and never opens the file; every scan and rescan opens the path anew, so
+      a missing or rejected dump is a `ProducerFailed` drive, or a failed rescan that keeps the last block, with the
+      reason in `MftProducerFailureMessage`. `MftDumpBlockProducer` is a direct producer with no broker, pipe or
+      session: one `MftDumpInput` per request sizes the block (`NtfsVolumeInformation(fileLength, recordSize)`, never
+      the live volume sharing the letter) and supplies every record, the shared `MftBlockScan.WriteToBlock` writes a
+      plain `BlockFile` with the full profile, and the block carries a zero journal cursor. Record size is 1024 or
+      4096 only. `MftDumpRecordValidation` runs before the block is completed: the root row 5 must be an allocated
+      directory whose parent is 5 (`The dump has no valid allocated root record.`), no base record number repeats
+      (`The dump contains duplicate base record numbers.`), and every parent a record names fits the planned block
+      (`The dump contains required record numbers outside the index range.`). A record whose own number does not fit
+      is skipped and counted by the row writer; a record the parser omits for a malformed attribute is not counted.
+      Import is allocated records only. Content rejections are `InvalidDataException`, an open failure is `IOException`
+      carrying the platform error code, cancellation stays `OperationCanceledException`.
+    - **Dump files are untrusted input**: every file parse runs on one native core in `mft/mft.dump_input.cpp`
+      (`OpenMftDumpInput`, `ParseMftDumpInput`, `CloseMftDumpInput`, UTF-8 paths, exported on every platform; the
+      path-based exports open, parse and close through the same code). The file is opened once and sized, and its
+      geometry is read from record zero, before anything is parsed: `The dump file is empty.`, `Invalid or
+      unsupported MFT record size.`, `File size is not a whole multiple of record size.`. A file cut inside its first header, a failed or short read, or
+      a file whose length changed since the open, fails the parse with `The dump file could not be read completely.`
+      instead of ending it early; an opened input protects against a replaced path, not against a writer changing
+      the file in place. `ApplyFixup` validates the update sequence array before reading or writing through it: the
+      array lies after the fixed header and before the first sector's last word, holds exactly one entry per
+      512-byte sector plus the sequence number, and every sector's last word equals that number. A record that
+      fails is never decoded; on a file an allocated one fails the parse with `The dump contains an invalid MFT
+      record fixup.`, on a live volume it is passed over and counted: the parse reports the allocated ones in
+      `MftParseResult.invalidFixupRecords`, and the live record source hands that count to the shared block scan
+      (an `MftOmittedRecords` batch), which adds it to `DriveStatus.SkippedRecordCount`, so no record disappears
+      without a trace. A live volume's record zero is the exception: its decoded `$DATA` runs locate every other
+      record, so an invalid fixup there fails the scan with `MFT record 0 has an invalid fixup` before any
+      attribute is read. These rejections set `MftParseResult.invalidInput`, which
+      `MftResult` throws as `InvalidDataException`; no caller classifies a failure by its text. Message buffers are
+      UTF-16 (`MftMessageChar`) on every platform, so the managed struct layouts match the native ones on Linux.
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
       compares exactly, not as a wildcard. Block format 3 stores the two values
@@ -28,7 +62,7 @@
       construct and compare whole tags, and `MFTLibTestExtensions.SyntheticCacheTag` reads the
       components for policy tests. See `docs/index-format.md` for the contract.
 
-    - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory.
+    - **ABI versioning**: `MFTLibNative.EnsureCompatibleNativeAbi()` / `MftResult`'s constructor check the native ABI version and entry stride before parsing, and throw `InvalidOperationException` immediately on a managed/native mismatch instead of decoding mismatched memory. `MftDumpInput.Open` makes the same check before it opens a file.
 
     - **MFT source**: `FileIndexOptions.MftSource` is one `MftIndexSource` carrying the block
       producer and the watch source of every MFT-backed drive, so the two cannot come from

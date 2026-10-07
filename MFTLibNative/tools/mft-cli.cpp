@@ -72,11 +72,11 @@ std::string utf16_to_utf8(const uint16_t* utf16Units, size_t unitCount) {
     return out;
 }
 
-std::string wide_to_utf8(const wchar_t* wideStr, size_t maximumLength) {
+std::string wide_to_utf8(const MftMessageChar* wideStr, size_t maximumLength) {
     std::string out;
     out.reserve(maximumLength);
     for (size_t i = 0; i < maximumLength; i++) {
-        auto codePoint = static_cast<uint32_t>(static_cast<std::make_unsigned_t<wchar_t>>(wideStr[i]));
+        auto codePoint = static_cast<uint32_t>(static_cast<std::make_unsigned_t<MftMessageChar>>(wideStr[i]));
         if (codePoint == 0) {
             break;
         }

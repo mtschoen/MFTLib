@@ -18,7 +18,7 @@ in some checkouts is a stale GitHub mirror; Gitea `main` is canonical. MFTLib ma
   `scripts/Test-ReleasePackages.ps1`, and on `-Publish` pushes `MFTLib` first,
   then `MFTLib.TestExtensions`.
 - `MatchFlags.IncludeFreed` opt-in scan of freed MFT records ([MFTLib issue 292, include-freed scan](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/292)); the
-  native ABI is version 4.
+  native ABI is version 5.
 - Pre-ship simplification pass: 17 types made internal and public members with no
   caller deleted; `DriveStatus.AccessDeniedSubtreeCount` and `SkippedRecordCount`
   split by producer; the broker scan frame trimmed to the advanced cursor;
@@ -215,7 +215,7 @@ The release notes in `CHANGELOG.md` and GitHub Release must match `CHANGELOG.md`
 - **`MFTLib.Index` namespace**: indexed query and file snapshot model (`FileIndex`, `Snapshot`, `FileEntry`, `FileChange`) with low-latency query evaluation and direct directory traversal.
 - **Broker block write path**: the elevated broker writes cold scan blocks directly into a client-owned file-backed block section; cold scans return packed blocks only.
 - **Per-drive watch channels**: `BrokerProcess` runs one control pipe and one channel per drive operation; `FileIndex` start, stop, rescan and catch-up are per drive with concurrent list and all-drive overloads, automatic per-drive recovery, and bounded catch-up-loss recovery.
-- **Include-freed scan**: `MatchFlags.IncludeFreed` returns validated freed MFT base records with `InUse == false`; native ABI version 4.
+- **Include-freed scan**: `MatchFlags.IncludeFreed` returns validated freed MFT base records with `InUse == false`; native ABI version 5.
 - **`MFTLib.TestExtensions` package**: `BrokerTestHarness` and the cache and journal isolation guards ship as a separate package.
 - **Documented public API**: the package ships `MFTLib.xml`, so IntelliSense documents every public member.
 

@@ -26,4 +26,6 @@ struct MftParseResult
     public uint AbiVersion;
     public uint EntryStride;
     public uint Cancelled; // 1 when MftParseControl.CancelRequested stopped the parse
+    public uint InvalidInput; // 1 when a file input's content was rejected; ErrorMessage says why
+    public ulong InvalidFixupRecords; // allocated records a volume scan passed over for an invalid fixup
 }

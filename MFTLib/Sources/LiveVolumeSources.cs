@@ -27,8 +27,9 @@ internal static class LiveVolumeSources
         using var volume = MftVolume.Open(Bare(driveLetter), HostScanChunkRecords(bytesPerFileRecordSegment));
         operation.Processing("MFT parse");
         var mftProgress = CreateMftProgressAdapter(operation, progress);
+        ulong unreadableRecords = 0;
         foreach (var batch in volume.ReadRecordBatches(resolvePaths: false, 4096, mftProgress, parseThreads,
-                     cancellationToken))
+                     cancellationToken, count => unreadableRecords = count))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var records = Array.FindAll(batch, record => record.InUse);
@@ -36,6 +37,12 @@ internal static class LiveVolumeSources
             {
                 yield return records;
             }
+        }
+
+        // A record the parser could not trust has no row, so it is counted with the skipped ones.
+        if (unreadableRecords > 0)
+        {
+            yield return new MftOmittedRecords(checked((long)unreadableRecords));
         }
     }
 

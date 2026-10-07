@@ -268,7 +268,7 @@ public partial class NativeCoverageTests
     // --- Read failure paths ---
 
     [TestMethod]
-    public void ParseFromFile_ReadFail_ReturnsZeroRecords()
+    public void ParseFromFile_ReadFail_IsRejectedAsIncompleteInput()
     {
         var path = Path.GetTempFileName();
         try
@@ -276,7 +276,7 @@ public partial class NativeCoverageTests
             File.Delete(path);
             MftVolume.GenerateSyntheticMFT(path, 100, 256);
 
-            // Fail the first ReadFile in FileReadChunk
+            // Fail the first chunk read: a failed read is not the end of the file.
             NativeTestHooks.NativeSetReadFailCountdown(1);
             var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
@@ -284,6 +284,9 @@ public partial class NativeCoverageTests
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
                 Assert.AreEqual(0UL, result.UsedRecords);
+                Assert.AreEqual(IntPtr.Zero, result.Entries);
+                Assert.AreEqual("The dump file could not be read completely.", result.ErrorMessage);
+                Assert.AreEqual(1u, result.InvalidInput);
             }
             finally
             {

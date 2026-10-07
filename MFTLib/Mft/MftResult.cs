@@ -19,7 +19,8 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     IntPtr _resultPtr;
 
     // cancellationToken is the token that could have stopped the parse; a cancelled result throws
-    // OperationCanceledException carrying it.
+    // OperationCanceledException carrying it. A result whose file input was rejected for its
+    // content throws InvalidDataException; any other native failure throws InvalidOperationException.
     internal MftResult(IntPtr resultPtr, string driveLetter,
         CancellationToken cancellationToken = default)
     {
@@ -38,7 +39,9 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         {
             MFTLibNative._freeMftResult(resultPtr);
             _resultPtr = IntPtr.Zero;
-            throw new InvalidOperationException(_result.ErrorMessage);
+            throw _result.InvalidInput != 0
+                ? new InvalidDataException(_result.ErrorMessage)
+                : new InvalidOperationException(_result.ErrorMessage);
         }
 
         if (_result.AbiVersion != MFTLibNative.ExpectedMftNativeAbiVersion)
@@ -72,6 +75,12 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     ///     Remains readable after <see cref="Dispose" />.
     /// </summary>
     public ulong UsedRecords => _result.UsedRecords;
+
+    /// <summary>
+    ///     Allocated records a volume scan passed over because their fixup was invalid. They are not
+    ///     among the records returned. Always zero for a file, where one such record fails the parse.
+    /// </summary>
+    public ulong InvalidFixupRecordCount => _result.InvalidFixupRecords;
 
     /// <summary>
     ///     Detailed phase timings for the parse pass.
