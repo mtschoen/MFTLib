@@ -37,14 +37,13 @@ partial class SampleHost
 
     /// <summary>
     ///     Runs a verb once the process has what <paramref name="need" /> asks for. Returns 1 when elevation was
-    ///     required and could not be had, and 0 once the verb ran or the elevated relaunch took over.
+    ///     required and could not be had, the verb's own code once it ran, and 0 once the elevated relaunch took over.
     /// </summary>
-    internal int RunWithElevation(string[] arguments, ElevationNeed need, Action run)
+    internal int RunWithElevation(string[] arguments, ElevationNeed need, Func<int> run)
     {
         if (need is ElevationNeed.None)
         {
-            run();
-            return 0;
+            return run();
         }
 
         if (_isElevated())
@@ -55,8 +54,7 @@ partial class SampleHost
                 RedirectStdout(Path.Combine(AppContext.BaseDirectory, "output.log"));
             }
 
-            run();
-            return 0;
+            return run();
         }
 
         if (IsUnattended())
@@ -74,8 +72,7 @@ partial class SampleHost
                 return 1;
             }
 
-            run();
-            return 0;
+            return run();
         }
 
         _writeLine("Not running as administrator. Attempting to self-elevate...");
