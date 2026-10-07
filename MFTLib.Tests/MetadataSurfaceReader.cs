@@ -167,8 +167,9 @@ internal static partial class MetadataSurfaceReader
         $"`{signature.GenericParameterCount}({string.Join(",", signature.ParameterTypes)}):{signature.ReturnType}";
 
     /// <summary>Reads the authored public and protected surface of the library assembly file.</summary>
-    public static Surface ReadSurface(string libraryPath)
+    public static Surface ReadSurface(string libraryPath, IReadOnlyCollection<string>? surfaceNamespaces = null)
     {
+        surfaceNamespaces ??= SurfaceNamespaces;
         using var peReader = new PEReader(new MemoryStream(File.ReadAllBytes(libraryPath)));
         var reader = peReader.GetMetadataReader();
         var provider = new SignatureProvider(eraseInstantiation: false);
@@ -178,7 +179,7 @@ internal static partial class MetadataSurfaceReader
         {
             var type = reader.GetTypeDefinition(handle);
             if (type.GetDeclaringType().IsNil && IsExposed(reader, type) &&
-                SurfaceNamespaces.Contains(reader.GetString(type.Namespace)))
+                surfaceNamespaces.Contains(reader.GetString(type.Namespace)))
             {
                 AddType(reader, provider, handle, members, literals);
             }
@@ -367,19 +368,26 @@ internal static partial class MetadataSurfaceReader
         return MemberKey(typeName, reader.GetString(method.Name), FormatMethod(method.DecodeSignature(provider, null)));
     }
 
-    // The primary constructor of a positional record is the constructor whose parameter names match Deconstruct's.
+    // The primary constructor of a positional record is a constructor whose parameter names match a Deconstruct's.
+    // An authored Deconstruct overload may exist too, so take the matching pair with the most parameters; a record
+    // with no such pair is not positional and has no generated properties.
     static List<string> PrimaryParameterNames(MetadataReader reader, TypeDefinition type)
     {
-        foreach (var handle in type.GetMethods())
+        var methods = type.GetMethods().Select(reader.GetMethodDefinition).ToList();
+        var constructors = methods.Where(method => reader.GetString(method.Name) == ".ctor")
+            .Select(method => ParameterNames(reader, method)).ToList();
+        List<string> primary = [];
+        foreach (var method in methods.Where(method => reader.GetString(method.Name) == "Deconstruct"))
         {
-            var method = reader.GetMethodDefinition(handle);
-            if (reader.GetString(method.Name) == "Deconstruct")
+            var names = ParameterNames(reader, method);
+            if (names.Count > primary.Count &&
+                constructors.Any(constructor => constructor.SequenceEqual(names, StringComparer.OrdinalIgnoreCase)))
             {
-                return ParameterNames(reader, method);
+                primary = names;
             }
         }
 
-        return [];
+        return primary;
     }
 
     static List<string> ParameterNames(MetadataReader reader, MethodDefinition method) =>

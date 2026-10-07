@@ -183,4 +183,21 @@ public class PublicMemberCallerTests
         Assert.IsTrue(called.Keys.Any(references.Contains), "the overload the fixture calls must be found");
         Assert.IsFalse(sibling.Keys.Any(references.Contains), "the sibling overload no IL names must not be found");
     }
+
+    /// <summary>
+    ///     A positional record that also declares its own Deconstruct overload and property: the generated
+    ///     positional properties stay off the surface, the authored property stays on it.
+    /// </summary>
+    [TestMethod]
+    public void TheReader_KeepsAuthoredMembersOfAPositionalRecordWithASecondDeconstruct()
+    {
+        var surface = ReadSurface(typeof(PublicMemberCallerTests).Assembly.Location,
+            ["MFTLib.Tests.CallerGateFixtures"]);
+        var displays = surface.Members.Select(member => member.Display).ToList();
+
+        Assert.IsTrue(displays.Any(display => display.StartsWith("property MFTLib.Tests.CallerGateFixtures.CallerGatePositionalRecord.Extra", StringComparison.Ordinal)),
+            string.Join("; ", displays));
+        Assert.IsFalse(displays.Any(display => display.Contains("CallerGatePositionalRecord.First", StringComparison.Ordinal)));
+        Assert.IsFalse(displays.Any(display => display.Contains("CallerGatePositionalRecord.Second", StringComparison.Ordinal)));
+    }
 }
