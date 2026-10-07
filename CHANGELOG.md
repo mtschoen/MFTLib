@@ -11,6 +11,7 @@
 
 ### Public API cleanup
 
+- `TestProgram` is now two samples that between them call the public API: `SampleProgram.Direct` (`search`, `tree`, `open`, `largest`, `duplicate-names` and `scan`, over a live volume or a saved MFT dump, on Windows and Linux) and `SampleProgram.Watch` (`scan-drive`, `watch`, `rescan`, `journal`, `cache` and `elevation-status` over the broker). The elevation notice, unattended check and elevation flow compile into both from `SampleProgram.Shared`. `MFTLIB_TESTPROGRAM_UNATTENDED` is `MFTLIB_SAMPLE_UNATTENDED`. No library change.
 - `BrokerMftBlockProducer`, its constructor and `CreateIndexSource`, both `BrokerProcess.LaunchAsync` overloads and `BrokerProcess.GrowUsnJournalAsync` are internal after both consumers adopted `BrokerSession`. Production callers use `BrokerSession.CreateIndexSource` and `BrokerSession.GrowUsnJournalAsync`. `BrokerProcess` remains public for the test-package signatures. TestProgram `scan-drive` owns one lazy session for the run and disposes it after its indexes.
 - Remove legacy progress constructors and explicit deconstruction overloads. Use phase-bearing `MftScanProgress` construction, `BrokerScanProgress` property initialization, and the current `BlockWriteProgress` shape.
 - Keep broker wire types, snapshot and mutation machinery, matching and file-open helpers, capacity planning, row writing, shared-memory implementations, and synthetic MFT generators internal. `MftPathUtilities` lives in test support; `ElevationUtilities.GetProcessPath` is internal.

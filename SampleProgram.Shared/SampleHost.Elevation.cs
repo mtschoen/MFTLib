@@ -1,9 +1,19 @@
 using System.Runtime.InteropServices;
 using MFTLib;
 
-namespace TestProgram;
+#if SAMPLE_WATCH
+namespace SampleProgram.Watch;
+#else
+namespace SampleProgram.Direct;
+#endif
 
-partial class DriveScanner
+// What a verb needs from the process before it runs: nothing, the elevated broker (which raises the UAC prompt
+// itself), or this process elevated because the verb reads a volume directly.
+internal enum ElevationNeed { None, BrokerLaunch, SelfElevate }
+
+// The elevation flow both samples share: the heads-up dialog, the self-elevating relaunch, the unattended skip and
+// the output.log redirect of an elevated run. Each sample compiles this file as linked source.
+partial class SampleHost
 {
     internal Func<uint, IntPtr> _acrtIobFunc = AcrtIobFuncNative;
     // The provider is the library's injectable face of the same three elevation calls.
@@ -12,74 +22,58 @@ partial class DriveScanner
     internal Func<bool> _canSelfElevate = Elevation.CanSelfElevate;
     internal Func<string?> _getProcessPath = () => Environment.ProcessPath;
     internal Func<bool> _isElevated = Elevation.IsElevated;
-
-    // Whether a run must be elevated itself. Scanning through the broker never must, because the broker is the
-    // elevated process; the seam keeps the self-elevation path testable.
-    internal Func<TestProgramArguments, bool> _requiresElevation = parsed => parsed.RequiresElevation;
     internal Func<IReadOnlyList<string>, TimeSpan, bool> _tryRunElevated = Elevation.TryRunElevated;
     internal Func<string, string, IntPtr, IntPtr> _wFreopen = WFreopenNative;
     internal Action<string> _writeLine = Console.WriteLine;
 
-    internal int Run(string[] arguments)
+    /// <summary>
+    ///     Runs a verb once the process has what <paramref name="need" /> asks for. Returns 1 when elevation was
+    ///     required and could not be had, the verb's own code once it ran, and 0 once the elevated relaunch took over.
+    /// </summary>
+    internal int RunWithElevation(string[] arguments, ElevationNeed need, Func<int> run)
     {
-        if (!TestProgramArguments.TryParse(arguments, out var parsed, out var error))
+        if (need is ElevationNeed.None)
         {
-            _writeLine(error);
-            _writeLine(TestProgramArguments.Usage);
-            return 2;
+            return run();
         }
 
-        if (!_requiresElevation(parsed))
+        if (_isElevated())
         {
-            // scan-drive needs no elevation here, but the broker it launches raises a UAC prompt, so an attended
-            // run gets the same heads-up dialog the self-elevation path gets before that prompt.
-            if (!_isElevated())
+            // An elevated self-elevating run is the relaunched child, so its output goes to a file.
+            if (need is ElevationNeed.SelfElevate)
             {
-                if (IsUnattended())
-                {
-                    return SkipElevationUnattended(arguments);
-                }
-
-                if (!ConfirmElevation(arguments, BrokerLaunchReason))
-                {
-                    PrintElevationFailure(arguments);
-                    return 1;
-                }
+                RedirectStdout(Path.Combine(AppContext.BaseDirectory, "output.log"));
             }
 
-            RunOnDrives(parsed);
+            return run();
+        }
+
+        if (IsUnattended())
+        {
+            return SkipElevationUnattended(arguments);
+        }
+
+        if (need is ElevationNeed.BrokerLaunch)
+        {
+            // The broker raises a UAC prompt, so an attended run gets the same heads-up dialog the
+            // self-elevation path gets before that prompt.
+            if (!ConfirmElevation(arguments, BrokerLaunchReason))
+            {
+                PrintElevationFailure(arguments);
+                return 1;
+            }
+
+            return run();
+        }
+
+        _writeLine("Not running as administrator. Attempting to self-elevate...");
+        if (_canSelfElevate() && ConfirmElevation(arguments, SelfElevationReason) && _tryRunElevated(arguments, ElevationUtilities.DefaultElevatedTimeout))
+        {
             return 0;
         }
 
-        if (!_isElevated())
-        {
-            if (IsUnattended())
-            {
-                return SkipElevationUnattended(arguments);
-            }
-
-            _writeLine("Not running as administrator. Attempting to self-elevate...");
-            if (_canSelfElevate() && ConfirmElevation(arguments, SelfElevationReason) && _tryRunElevated(arguments, ElevationUtilities.DefaultElevatedTimeout))
-            {
-                return 0;
-            }
-
-            PrintElevationFailure(arguments);
-            return 1;
-        }
-
-        var logPath = Path.Combine(AppContext.BaseDirectory, "output.log");
-        RedirectStdout(logPath);
-
-        RunOnDrives(parsed);
-        return 0;
-    }
-
-    void RunOnDrives(TestProgramArguments parsed)
-    {
-        // The console entry point has no synchronization context, so blocking here cannot deadlock.
-        ScanDrivesThroughBrokerAsync(parsed.Drives, CancellationToken.None).GetAwaiter().GetResult();
-        _writeLine($"Completed at {DateTime.Now}");
+        PrintElevationFailure(arguments);
+        return 1;
     }
 
     /// <summary>

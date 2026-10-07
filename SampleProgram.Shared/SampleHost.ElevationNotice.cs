@@ -2,20 +2,24 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace TestProgram;
+#if SAMPLE_WATCH
+namespace SampleProgram.Watch;
+#else
+namespace SampleProgram.Direct;
+#endif
 
 // The heads-up dialog shown before this run raises a Windows UAC prompt: the elevated relaunch, or the broker
 // launch of an attended, unelevated scan-drive run. The prompt that follows is expected and a stray key press
 // cannot dismiss it unseen. It lives here, not in MFTLib: a consumer's runtime flow must never gain a dialog.
 // The two native seams are the bare user32 imports, so every flag, text and decision below runs in tests and
 // the only untested lines are the import declarations.
-partial class DriveScanner
+partial class SampleHost
 {
-    internal const string ElevationNoticeTitle = "TestProgram: administrator approval needed next";
+    internal const string ElevationNoticeTitle = "SampleProgram: administrator approval needed next";
 
     // The one sentence that differs between the two UAC prompts this dialog precedes.
-    const string SelfElevationReason = "TestProgram relaunches itself elevated.";
-    const string BrokerLaunchReason = "TestProgram launches its broker elevated.";
+    const string SelfElevationReason = "SampleProgram relaunches itself elevated.";
+    const string BrokerLaunchReason = "SampleProgram launches its broker elevated.";
     internal const uint MessageBoxOkCancel = 0x00000001;
     internal const uint MessageBoxIconInformation = 0x00000040;
     internal const uint MessageBoxSystemModal = 0x00001000;

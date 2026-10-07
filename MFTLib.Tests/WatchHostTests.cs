@@ -1,12 +1,12 @@
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using TestProgram;
+using SampleProgram.Watch;
 
 namespace MFTLib.Tests;
 
 [TestClass]
 [DoNotParallelize]
-public class DriveScannerTests
+public class WatchHostTests
 {
     // A session that never launches: every test here fails before a broker would be needed.
     static BrokerSession UnusedSession() =>
@@ -18,49 +18,50 @@ public class DriveScannerTests
     public void Run_NotElevated_SelfElevateSucceeds_ReturnsZero()
     {
         var lines = new List<string>();
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (_, _) => true,
             _writeLine = lines.Add
         };
-        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
 
         var result = scanner.Run([]);
         Assert.AreEqual(0, result);
     }
 
     [DataTestMethod]
-    [DataRow(new[] { "C" }, DisplayName = "default-drive")]
-    [DataRow(new[] { "" }, DisplayName = "empty-drive")]
-    [DataRow(new[] { "x&echo(123" }, DisplayName = "cmd-ampersand")]
-    [DataRow(new[] { "x;echo(123);#" }, DisplayName = "powershell-separator")]
-    [DataRow(new[] { "$(Get-Date)" }, DisplayName = "powershell-subexpression")]
-    [DataRow(new[] { "%USERNAME%" }, DisplayName = "cmd-variable")]
-    [DataRow(new[] { "$env:USERNAME" }, DisplayName = "powershell-variable")]
-    [DataRow(new[] { "`n" }, DisplayName = "backtick-n")]
-    [DataRow(new[] { "a'b" }, DisplayName = "single-quote")]
-    [DataRow(new[] { "say\"hi" }, DisplayName = "embedded-quote")]
-    [DataRow(new[] { @"C:\spaced directory\" }, DisplayName = "trailing-backslash")]
-    public void Run_NotElevated_CannotSelfElevate_PrintsEachArgumentVerbatimOnItsOwnLine(string[] arguments)
+    [DataRow("C", DisplayName = "default-drive")]
+    [DataRow("", DisplayName = "empty-drive")]
+    [DataRow("x&echo(123", DisplayName = "cmd-ampersand")]
+    [DataRow("x;echo(123);#", DisplayName = "powershell-separator")]
+    [DataRow("$(Get-Date)", DisplayName = "powershell-subexpression")]
+    [DataRow("%USERNAME%", DisplayName = "cmd-variable")]
+    [DataRow("$env:USERNAME", DisplayName = "powershell-variable")]
+    [DataRow("`n", DisplayName = "backtick-n")]
+    [DataRow("a'b", DisplayName = "single-quote")]
+    [DataRow("say\"hi", DisplayName = "embedded-quote")]
+    [DataRow(@"C:\spaced directory\", DisplayName = "trailing-backslash")]
+    public void Run_NotElevated_CannotSelfElevate_PrintsEachArgumentVerbatimOnItsOwnLine(string value)
     {
+        string[] arguments = ["watch", "--cache-directory", value];
         var lines = new List<string>();
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => false,
             _getEnvironmentVariable = _ => null,
-            _getProcessPath = () => @"C:pp\TestProgram.exe",
+            _getProcessPath = () => @"C:pp\SampleProgram.Watch.exe",
             _writeLine = lines.Add
         };
 
         var result = scanner.Run(arguments);
         Assert.AreEqual(1, result);
         Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
-        Assert.IsTrue(lines.Any(line => line.Contains(@"C:pp\TestProgram.exe")));
+        Assert.IsTrue(lines.Any(line => line.Contains(@"C:pp\SampleProgram.Watch.exe")));
 
         var headerIndex = lines.FindIndex(line => line.StartsWith($"Arguments ({arguments.Length})", StringComparison.Ordinal));
         Assert.IsTrue(headerIndex >= 0, "argument count header missing");
@@ -74,16 +75,16 @@ public class DriveScannerTests
     public void Run_NotElevated_CanSelfElevateButFails_PrintsFailureAndReturnsOne()
     {
         var lines = new List<string>();
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (_, _) => false,
             _getProcessPath = () => "/some/path",
             _writeLine = lines.Add
         };
-        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
 
         var result = scanner.Run(["C"]);
         Assert.AreEqual(1, result);
@@ -140,12 +141,12 @@ public class DriveScannerTests
 
     // --- Entry point ---
 
-    // The entry point builds a DriveScanner with every default seam, so it must be given a command line the parser
+    // The entry point builds a SampleHost with every default seam, so it must be given a command line the parser
     // refuses: any scan would launch the elevated broker.
     [TestMethod]
-    public void TestProgram_EntryPoint_UnknownOption_PrintsUsageAndReturnsTwo()
+    public void SampleProgramWatch_EntryPoint_UnknownOption_PrintsUsageAndReturnsTwo()
     {
-        var entryPoint = typeof(DriveScanner).Assembly.EntryPoint!;
+        var entryPoint = typeof(SampleHost).Assembly.EntryPoint!;
         var originalOut = Console.Out;
         using var captured = new StringWriter();
         object? exitCode;
@@ -169,11 +170,11 @@ public class DriveScannerTests
 
     // An elevated run that needs elevation itself, over a drive resolver that records each drive and then fails, so
     // no volume or broker is touched.
-    static DriveScanner ElevatedScanner(List<string> scannedDrives, List<string> lines)
+    static SampleHost ElevatedScanner(List<string> scannedDrives, List<string> lines)
     {
-        return new DriveScanner
+        return new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => true,
             _acrtIobFunc = _ => IntPtr.Zero,
             _wFreopen = (_, _, _) => IntPtr.Zero,

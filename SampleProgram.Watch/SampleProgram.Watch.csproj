@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64;x86</Platforms>
+    <DefineConstants>$(DefineConstants);SAMPLE_WATCH</DefineConstants>
   </PropertyGroup>
 
   <!-- Windows: build native DLL via MSBuild vcxproj -->
@@ -16,6 +17,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MFTLib\MFTLib.csproj" />
+  </ItemGroup>
+
+  <!-- The elevation flow and the unattended switch live once and compile into both samples. -->
+  <ItemGroup>
+    <Compile Include="..\SampleProgram.Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

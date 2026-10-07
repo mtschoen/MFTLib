@@ -2,15 +2,15 @@ using MFTLib.Index;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
-using TestProgram;
+using SampleProgram.Watch;
 
 namespace MFTLib.Tests;
 
-// The TestProgram scan-drive mode behind a command line: argument errors, the unelevated scan (a FileIndex over an
+// The SampleProgram.Watch scan-drive mode behind a command line: argument errors, the unelevated scan (a FileIndex over an
 // in-process broker) and the self-elevation relaunch.
 [TestClass]
 [DoNotParallelize]
-public class DriveScannerModeTests
+public class WatchHostModeTests
 {
     static readonly UsnJournalCursor Armed = new(7, 1000);
     static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024);
@@ -20,7 +20,7 @@ public class DriveScannerModeTests
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"driveScannerModes-{Guid.NewGuid():N}");
+        _directory = Path.Combine(Path.GetTempPath(), $"watchHostModes-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
     }
@@ -37,7 +37,7 @@ public class DriveScannerModeTests
     public void Run_UnknownOption_PrintsUsageAndReturnsTwoWithoutTouchingElevation()
     {
         var lines = new List<string>();
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
             _isElevated = () => throw new AssertFailedException("A bad command line must not reach elevation."),
             _writeLine = lines.Add
@@ -63,7 +63,7 @@ public class DriveScannerModeTests
         Assert.IsTrue(lines.Contains("Index holds 2 rows; 0 records skipped"), string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.Contains("Catch-up held; watch supported: True"));
         Assert.IsTrue(lines.Any(line => line.StartsWith("  Finished: ", StringComparison.Ordinal)));
-        Assert.IsTrue(lines.Contains("=== Drive c: done ==="));
+        Assert.IsTrue(lines.Contains("=== Drive C: done ==="));
     }
 
     [TestMethod]
@@ -99,7 +99,7 @@ public class DriveScannerModeTests
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
 
-        await scanner.ScanDrivesThroughBrokerAsync(["C"], CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["C"]), CancellationToken.None);
 
         Assert.IsTrue(lines.Any(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("Catch-up lost: CheckpointTrimmed"));
@@ -113,7 +113,7 @@ public class DriveScannerModeTests
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
 
-        await scanner.ScanDrivesThroughBrokerAsync(["C"], CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["C"]), CancellationToken.None);
 
         Assert.IsTrue(lines.Any(line => line.StartsWith("Error on drive C: ", StringComparison.Ordinal) &&
                                         line.Contains("volume unreadable")), string.Join(Environment.NewLine, lines));
@@ -147,7 +147,7 @@ public class DriveScannerModeTests
         });
         scanner._resolveDrive = _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242);
 
-        await scanner.ScanDrivesThroughBrokerAsync(["Q"], CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["Q"]), CancellationToken.None);
 
         Assert.AreEqual(0, launches, "An offline drive needs no elevated broker.");
         Assert.IsTrue(lines.Contains("Error on drive Q: The drive is offline; nothing was scanned."),
@@ -162,7 +162,7 @@ public class DriveScannerModeTests
     public async Task ScanDriveThroughBroker_LaunchDeclined_PrintsTheError(bool failAtCreation)
     {
         var lines = new List<string>();
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
             _createBrokerSession = () => failAtCreation
                 ? throw new InvalidOperationException("UAC prompt declined")
@@ -173,7 +173,7 @@ public class DriveScannerModeTests
             _writeLine = lines.Add
         };
 
-        await scanner.ScanDrivesThroughBrokerAsync(["C"], CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["C"]), CancellationToken.None);
 
         var prefix = failAtCreation ? "Error creating broker session: " : "Error on drive C: ";
         Assert.IsTrue(lines.Any(line => line.StartsWith(prefix, StringComparison.Ordinal) &&
@@ -183,14 +183,32 @@ public class DriveScannerModeTests
     }
 
     [TestMethod]
+    public void Run_BrokerSessionCannotBeCreated_ReturnsOneAndNeverReportsCompletion()
+    {
+        var lines = new List<string>();
+        var scanner = new SampleHost
+        {
+            _elevationNeed = _ => ElevationNeed.None,
+            _createBrokerSession = () => throw new InvalidOperationException("UAC prompt declined"),
+            _writeLine = lines.Add
+        };
+
+        var result = scanner.Run(["scan-drive", "C"]);
+
+        Assert.AreEqual(1, result);
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error creating broker session: ", StringComparison.Ordinal)));
+        Assert.IsFalse(lines.Any(line => line.StartsWith("Completed at", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
     public void Run_NotElevated_WhenTheRunRequiresElevation_SelfElevatesWithTheOriginalArguments()
     {
         string[] arguments = ["scan-drive", "C", "D"];
         IReadOnlyList<string>? relaunchedWith = null;
         var elevationTimeout = TimeSpan.Zero;
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (relaunchArguments, timeout) =>
@@ -201,7 +219,7 @@ public class DriveScannerModeTests
             },
             _writeLine = _ => { }
         };
-        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
 
         var result = scanner.Run(arguments);
 
@@ -213,23 +231,28 @@ public class DriveScannerModeTests
     // The library quotes each element for the child's command line, so the scanner hands over the
     // arguments exactly as it accepted them, whatever whitespace or quotes they hold.
     [DataTestMethod]
-    [DataRow(new[] { "C\" --maximum-size 9000 --allocation-delta 4096" },
-        DisplayName = "an option-injection positional stays one argument")]
-    [DataRow(new[] { "scan-drive", "a\"b" }, DisplayName = "a literal quote survives")]
-    [DataRow(new[] { "scan-drive", "a\\\"b" }, DisplayName = "a backslash before a quote survives")]
-    [DataRow(new[] { "scan-drive", "C", "" }, DisplayName = "an empty value last survives")]
-    [DataRow(new[] { "scan-drive", "", "C" }, DisplayName = "an empty value before another drive survives")]
-    [DataRow(new[] { "scan-drive", "a\tb.txt" }, DisplayName = "a tab inside a value survives")]
-    [DataRow(new[] { "scan-drive", "C:\\spaced directory\\" },
+    [DataRow(new[] { "scan-drive", "--cache-directory", "C\" --maximum-size 9000 --allocation-delta 4096" },
+        DisplayName = "an option-injection value stays one argument")]
+    [DataRow(new[] { "scan-drive", "--cache-directory", "a\"b" },
+        DisplayName = "a literal quote survives")]
+    [DataRow(new[] { "scan-drive", "--cache-directory", "a\\\"b" },
+        DisplayName = "a backslash before a quote survives")]
+    [DataRow(new[] { "scan-drive", "C", "--cache-directory", "" },
+        DisplayName = "an empty value last survives")]
+    [DataRow(new[] { "scan-drive", "--cache-directory", "", "C" },
+        DisplayName = "an empty value before another drive survives")]
+    [DataRow(new[] { "scan-drive", "--cache-directory", "a\tb.txt" },
+        DisplayName = "a tab inside a value survives")]
+    [DataRow(new[] { "scan-drive", "--cache-directory", "C:\\spaced directory\\" },
         DisplayName = "a trailing backslash last survives")]
-    [DataRow(new[] { "scan-drive", "C:\\spaced directory\\", "D" },
+    [DataRow(new[] { "scan-drive", "--cache-directory", "C:\\spaced directory\\", "D" },
         DisplayName = "a trailing backslash before another drive survives")]
     public void Run_NotElevated_RelaunchesWithEachArgumentVerbatim(string[] arguments)
     {
         IReadOnlyList<string>? relaunchedWith = null;
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (relaunchArguments, _) =>
@@ -239,7 +262,7 @@ public class DriveScannerModeTests
             },
             _writeLine = _ => { }
         };
-        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
 
         Assert.AreEqual(0, scanner.Run(arguments));
 
@@ -247,9 +270,9 @@ public class DriveScannerModeTests
             "The child must receive exactly the arguments the parent accepted.");
     }
 
-    DriveScanner ScannerOverBroker(InProcessBroker broker, List<string> lines)
+    SampleHost ScannerOverBroker(InProcessBroker broker, List<string> lines)
     {
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
             _isElevated = () => false,
             _getEnvironmentVariable = _ => null,
@@ -261,7 +284,7 @@ public class DriveScannerModeTests
             _writeLine = lines.Add
         };
         // The run is attended and unelevated, so it shows the heads-up dialog before the broker launch.
-        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
         return scanner;
     }
 
