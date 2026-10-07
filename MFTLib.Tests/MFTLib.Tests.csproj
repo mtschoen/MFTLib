@@ -73,7 +73,6 @@
   <ItemGroup Condition="'$(OS)' != 'Windows_NT'">
     <Compile Remove="BenchmarkRunnerTests.cs" />
     <Compile Remove="SystemInfoTests.cs" />
-    <Compile Remove="SampleHostElevationNoticeTests.cs" />
     <Compile Remove="Watch*Tests.cs" />
     <Compile Remove="MftResultTests*.cs" />
     <Compile Remove="MftVolumeTests*.cs" />

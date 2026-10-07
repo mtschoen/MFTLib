@@ -160,7 +160,7 @@ public class WatchVerbTests
             _cacheDirectory = Path.Combine(_directory, "cache"),
             _writeLine = writeLine
         };
-        SampleHostElevationNoticeTests.AcknowledgeDeliberately(host);
+        WatchNoticeSupport.AcknowledgeDeliberately(host);
         return host;
     }
 
