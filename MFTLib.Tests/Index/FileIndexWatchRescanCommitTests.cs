@@ -23,7 +23,7 @@ public class FileIndexWatchRescanCommitTests
         harness.Source.FailNextStartFor('T', failure);
 
         var results = allDrives
-            ? await harness.Index.RescanAsync(Token)
+            ? await harness.Index.RescanAsync([.. harness.Index.Drives.Select(drive => drive.DriveLetter)], Token)
             : await harness.Index.RescanAsync(['T', 'U'], Token);
 
         Assert.AreEqual(2, results.Count);

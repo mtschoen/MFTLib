@@ -74,17 +74,6 @@ public sealed partial class FileIndex
             cancellationToken);
     }
 
-    /// <summary>Rescans every drive, in <see cref="FileIndexOptions.Drives" /> order.</summary>
-    internal Task<IReadOnlyList<DriveOperationResult>> RescanAsync(CancellationToken cancellationToken)
-    {
-        if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(RescanAsync)) is { } rejected)
-        {
-            return rejected;
-        }
-
-        return RescanAsync(AllDriveLetters(), cancellationToken);
-    }
-
     /// <summary>
     ///     Waits for the initial catch-up of each listed drive; see
     ///     <see cref="WaitForCatchUpAsync(char, CancellationToken)" />. A drive whose watch faults
