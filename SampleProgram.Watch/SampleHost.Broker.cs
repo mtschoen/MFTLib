@@ -15,8 +15,8 @@ partial class SampleHost
             : throw new PlatformNotSupportedException("The broker is Windows only.");
     }
 
-    // One broker, so one elevation prompt, serves every drive of the run.
-    internal async Task RunThroughBrokerAsync(WatchArguments parsed, CancellationToken cancellationToken)
+    // One broker, so one elevation prompt, serves every drive of the run. False means no broker session could be created, so nothing ran.
+    internal async Task<bool> RunThroughBrokerAsync(WatchArguments parsed, CancellationToken cancellationToken)
     {
         BrokerSession session;
         try
@@ -26,7 +26,7 @@ partial class SampleHost
         catch (Exception exception)
         {
             _writeLine($"Error creating broker session: {exception.Message}");
-            return;
+            return false;
         }
 
         await using var ownedSession = session.ConfigureAwait(false);
@@ -46,6 +46,8 @@ partial class SampleHost
         {
             _writeLine($"Broker ended: {await session.Ended.ConfigureAwait(false)}");
         }
+
+        return true;
     }
 
     async Task RunOnDriveAsync(BrokerSession session, MftIndexSource source, WatchArguments parsed, string drive, CancellationToken cancellationToken)
