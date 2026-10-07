@@ -1,5 +1,6 @@
 <Project>
-    <ItemGroup>
+    <!-- Windows hosts only: a Linux consumer resolves libMFTLibNative.so from runtimes/linux-x64/native. -->
+    <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
         <None Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\MFTLibNative.dll"
               CopyToOutputDirectory="PreserveNewest"
               Link="MFTLibNative.dll" />

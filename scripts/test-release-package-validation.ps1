@@ -43,6 +43,7 @@ try {
         'lib/net10.0/MFTLib.dll',
         'lib/net10.0/MFTLib.xml',
         'runtimes/win-x64/native/MFTLibNative.dll',
+        'runtimes/linux-x64/native/libMFTLibNative.so',
         'build/MFTLib.targets',
         'buildTransitive/MFTLib.targets',
         'LICENSE.txt',

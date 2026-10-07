@@ -1,5 +1,5 @@
 # Release script for MFTLib.
-# Runs coverage, packs the NuGet packages, tags the release, and publishes.
+# Runs coverage, builds the linux-x64 library in WSL, packs the NuGet packages, tags the release, and publishes.
 #
 # Usage:
 #   .\scripts\release.ps1          # dry run (build + test + pack only)
@@ -160,9 +160,22 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ""
 
+# --- Build the linux-x64 native library ---
+# Gitea lists no downloadable CI artifact, so the library is built here in WSL from the clean HEAD checked above.
+Write-Host "Building the linux-x64 native library..." -ForegroundColor Cyan
+try {
+    $linuxNativeLibrary = & "$PSScriptRoot\build-linux-native.ps1"
+}
+catch {
+    Write-Host "Linux native library build failed: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ""
+
 # --- Pack NuGet ---
 Write-Host "Packing NuGet packages..." -ForegroundColor Cyan
-& $msbuild "$repoRoot\MFTLib\MFTLib.csproj" -t:Pack -p:Configuration=Release -p:Platform=x64 -p:ContinuousIntegrationBuild=true -v:q -nologo
+& $msbuild "$repoRoot\MFTLib\MFTLib.csproj" -t:Pack -p:Configuration=Release -p:Platform=x64 "-p:MFTLibLinuxNativeLibrary=$linuxNativeLibrary" -p:ContinuousIntegrationBuild=true -v:q -nologo
 if ($LASTEXITCODE -ne 0) {
     Write-Host "MFTLib pack failed." -ForegroundColor Red
     exit 1

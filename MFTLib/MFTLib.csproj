@@ -12,11 +12,11 @@
     <!-- NuGet package metadata -->
     <PackageId>MFTLib</PackageId>
     <Authors>Matt Schoen</Authors>
-    <Description>Fast NTFS file indexing and change tracking for .NET 10 on Windows x64. Reads the Master File Table (MFT) through a native C++ core, resolves paths, filters filenames, follows the USN journal, and can isolate elevated volume access in one reusable broker process.</Description>
+    <Description>Fast NTFS file indexing and change tracking for .NET 10 on Windows x64 and Linux x64. Reads the Master File Table (MFT) through a native C++ core, resolves paths, filters filenames, follows the USN journal, and can isolate elevated volume access in one reusable broker process.</Description>
     <PackageProjectUrl>https://github.com/mtschoen/MFTLib</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mtschoen/MFTLib</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>ntfs;mft;usn-journal;filesystem;windows;file-indexing;file-enumeration</PackageTags>
+    <PackageTags>ntfs;mft;usn-journal;filesystem;windows;linux;file-indexing;file-enumeration</PackageTags>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
@@ -56,9 +56,16 @@
     </None>
   </ItemGroup>
 
-  <!-- Pack native DLL into the NuGet package (Windows only; Linux package not yet built) -->
+  <!-- Pack the native DLL into the NuGet package (Windows only: the vcxproj output) -->
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <None Include="..\x64\$(Configuration)\MFTLibNative.dll" Pack="true" PackagePath="runtimes/win-x64/native" Visible="false" />
+  </ItemGroup>
+
+  <!-- Pack the Release linux-x64 library that scripts/build-linux-native.ps1 or the CI linux-package job builds and
+       passes in as MFTLibLinuxNativeLibrary. Never the coverage build. Test-ReleasePackages.ps1 rejects a release
+       package that lacks it. -->
+  <ItemGroup Condition="'$(MFTLibLinuxNativeLibrary)' != ''">
+    <None Include="$(MFTLibLinuxNativeLibrary)" Pack="true" PackagePath="runtimes/linux-x64/native/libMFTLibNative.so" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

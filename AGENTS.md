@@ -35,10 +35,8 @@ dotnet build TestProgram\TestProgram.csproj -c Release -p:Platform=x64
 ### NuGet packaging
 
 ```bash
-# Build Release and pack the NuGet packages
-.\init.ps1 -Build
-dotnet pack MFTLib\MFTLib.csproj -c Release -p:Platform=x64
-dotnet pack MFTLibTestExtensions\MFTLibTestExtensions.csproj -c Release -p:Platform=x64
+# Pack through .\scripts\release.ps1 (dry run first): it builds the linux-x64 library in WSL, which a bare
+# dotnet pack lacks and Test-ReleasePackages.ps1 rejects ([Linux package](docs/linux-package.md))
 
 # Publish to nuget.org, with MFTLib before its exact-version test dependency
 dotnet nuget push "MFTLib\bin\x64\Release\MFTLib.*.nupkg" --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json

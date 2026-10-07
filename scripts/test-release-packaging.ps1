@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Test-ReleasePackages.ps1"
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
+$linuxNativeLibrary = & "$PSScriptRoot\build-linux-native.ps1"
 $packageOutputDirectory = Join-Path ([IO.Path]::GetTempPath()) ("MFTLib-release-packaging-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $packageOutputDirectory | Out-Null
 
@@ -16,7 +17,7 @@ try {
         (Join-Path $repositoryRoot 'MFTLib\MFTLib.csproj'),
         (Join-Path $repositoryRoot 'MFTLibTestExtensions\MFTLibTestExtensions.csproj')
     )) {
-        dotnet pack $projectPath -c Release -p:Platform=x64 "-p:PackageOutputPath=$packageOutputDirectory" --nologo
+        dotnet pack $projectPath -c Release -p:Platform=x64 "-p:MFTLibLinuxNativeLibrary=$linuxNativeLibrary" "-p:PackageOutputPath=$packageOutputDirectory" --nologo
         if ($LASTEXITCODE -ne 0) {
             throw "dotnet pack failed for $projectPath with exit code $LASTEXITCODE."
         }

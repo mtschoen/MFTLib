@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A consumer of the MFTLib package. scripts/smoke-package-linux.sh packs MFTLib into a local feed and restores
+       it here, so the native library must come from the package's runtimes folder: nothing here copies it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MFTLib" Version="$(MFTLibPackageVersion)" />
+    <Compile Include="..\..\MFTLib.Tests\TestSupport\MftDumpFixture.cs" Link="MftDumpFixture.cs" />
+  </ItemGroup>
+
+</Project>

@@ -60,7 +60,11 @@ volume size, filtering, path resolution, and hardware.
 - x64 process architecture
 
 The NuGet package includes `MFTLibNative.dll` under `runtimes/win-x64/native` and a
-transitive build target that copies it to the consumer's output directory.
+transitive build target that copies it to a Windows consumer's output directory. It also
+includes `libMFTLibNative.so` under `runtimes/linux-x64/native`, which the .NET host
+resolves on Linux x64 for the MFT dump source. The Linux
+library is built on Ubuntu 24.04 and requires glibc 2.33 and GLIBCXX_3.4.22 (measured on the
+released library by `scripts/check-linux-native.sh`).
 `MFTLib.TestExtensions` is a separate package for consumer test assemblies. It depends
 on the matching `MFTLib` version and contains `MFTLibTestExtensions.dll`; it is not part
 of the `MFTLib` package. It provides test hooks and scripted types: `BrokerDiagnosticsIsolation`,

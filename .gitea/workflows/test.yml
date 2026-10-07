@@ -268,6 +268,9 @@ jobs:
 
   linux:
     runs-on: ubuntu-latest
+    container:
+      image: gitea.fleet.sticktoitive.net/schoen/runner-images:latest
+      options: --ulimit nofile=65536:65536
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -317,24 +320,6 @@ jobs:
         if: steps.changed-files.outputs.pin_only != 'true'
         run: bash scripts/sync_consumers.tests.sh
 
-      - name: Install build deps
-        if: steps.changed-files.outputs.pin_only != 'true'
-        # gcovr from apt (universe) instead of pip: the runner's egress to
-        # pypi.org goes through a TLS-intercepting proxy whose CA isn't in pip's
-        # bundled certifi, so `pip install gcovr` fails cert verification. apt
-        # uses the system trust store (which has the proxy CA) and works. Ubuntu
-        # noble ships gcovr 7.x, which supports the value form of
-        # --gcov-ignore-parse-errors that coverage-linux.sh relies on.
-        run: |
-          apt-get update
-          apt-get install -y cmake ninja-build gcovr
-
-      - name: Setup .NET 10 SDK
-        if: steps.changed-files.outputs.pin_only != 'true'
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
       # The hash is computed in the shell: hashFiles() can evaluate to an empty
       # string on act_runner, which freezes the cache at its first snapshot
       # (project-ci-setup.md, "hashFiles silently evaluates empty").
@@ -362,3 +347,40 @@ jobs:
         with:
           name: linux-coverage
           path: coverage-report/
+
+  # Builds the Release linux-x64 library the 0.3.0 package ships, runs the acceptance checks on it,
+  # and proves a package user on Linux can load an MFT dump with the library resolved from the
+  # package. Gitea lists no uploaded artifact over REST, so a release rebuilds the library with
+  # scripts/build-linux-native.ps1 on Ubuntu 24.04 under WSL; this job enforces the same checks on
+  # every pull request. The coverage build in the linux job above is never shipped.
+  linux-package:
+    runs-on: ubuntu-latest
+    container:
+      image: gitea.fleet.sticktoitive.net/schoen/runner-images:latest
+      options: --ulimit nofile=65536:65536
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the Release library and run its smoke test
+        run: bash scripts/build-linux.sh
+
+      # Explicit bash with pipefail: the container default is sh -e, which would return tee's status and let a failing check pass.
+      - name: Check the library
+        shell: bash
+        run: |
+          set -o pipefail
+          bash scripts/check-linux-native.sh build/linux/libMFTLibNative.so | tee build/linux/native-check.txt
+
+      - name: Smoke test the package
+        run: bash scripts/smoke-package-linux.sh build/linux/libMFTLibNative.so
+
+      # For a person to download from the run page; the REST artifacts endpoint does not list v3 uploads.
+      - name: Upload library artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: linux-native-${{ github.sha }}
+          path: |
+            build/linux/libMFTLibNative.so
+            build/linux/native-check.txt
