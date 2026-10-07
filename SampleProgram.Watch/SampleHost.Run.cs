@@ -19,10 +19,11 @@ partial class SampleHost
         return RunWithElevation(arguments, need, () => RunOnDrives(parsed));
     }
 
-    void RunOnDrives(WatchArguments parsed)
+    int RunOnDrives(WatchArguments parsed)
     {
         // The console entry point has no synchronization context, so blocking here cannot deadlock.
         ScanDrivesThroughBrokerAsync(parsed.Drives, CancellationToken.None).GetAwaiter().GetResult();
         _writeLine($"Completed at {DateTime.Now}");
+        return 0;
     }
 }
