@@ -9,12 +9,22 @@ namespace SampleProgram.Direct;
 internal sealed partial class ArgumentReader(IEnumerable<string> arguments)
 {
     readonly List<string> _remaining = [.. arguments];
+    readonly List<string> _supplied = [];
+
+    /// <summary>The options the command line carried, in the order they were read, so a parser can refuse one the chosen verb never uses.</summary>
+    internal IReadOnlyList<string> Supplied => _supplied;
 
     internal string? Error { get; private set; }
 
     internal bool Flag(string name)
     {
-        return _remaining.RemoveAll(argument => string.Equals(argument, name, StringComparison.OrdinalIgnoreCase)) > 0;
+        var present = _remaining.RemoveAll(argument => string.Equals(argument, name, StringComparison.OrdinalIgnoreCase)) > 0;
+        if (present)
+        {
+            _supplied.Add(name);
+        }
+
+        return present;
     }
 
     internal string? Text(string name)
@@ -25,6 +35,7 @@ internal sealed partial class ArgumentReader(IEnumerable<string> arguments)
             return null;
         }
 
+        _supplied.Add(name);
         if (index + 1 >= _remaining.Count || _remaining[index + 1].StartsWith("--", StringComparison.Ordinal))
         {
             Error ??= $"Option {name} needs a value.";

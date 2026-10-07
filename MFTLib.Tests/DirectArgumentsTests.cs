@@ -114,6 +114,36 @@ public class DirectArgumentsTests
         Assert.AreEqual(expected, Refused(arguments));
     }
 
+    [DataTestMethod]
+    [DataRow(new[] { "largest", "C", "--path", "C:\a" }, "Option --path does not apply to largest.")]
+    [DataRow(new[] { "search", "C", "--path", "C:\a" }, "Option --path does not apply to search.")]
+    [DataRow(new[] { "duplicate-names", "C", "--name", "foo", "--limit", "3" }, "Option --name does not apply to duplicate-names.")]
+    [DataRow(new[] { "scan", "C", "--limit", "3" }, "Option --limit does not apply to scan.")]
+    [DataRow(new[] { "tree", "C", "--under", "C:\a" }, "Option --under does not apply to tree.")]
+    [DataRow(new[] { "tree", "C", "--count", "3" }, "Option --count does not apply to tree.")]
+    [DataRow(new[] { "open", "C", "--path", "C:\a", "--depth", "2" }, "Option --depth does not apply to open.")]
+    [DataRow(new[] { "largest", "C", "--stream" }, "Option --stream does not apply to largest.")]
+    [DataRow(new[] { "OPEN", "C", "--path", "C:\a", "--exact" }, "Option --exact does not apply to open.")]
+    public void TryParse_FlagTheVerbNeverReads_IsRefusedWithTheFlagAndTheVerbNamed(string[] arguments, string expected)
+    {
+        Assert.AreEqual(expected, Refused(arguments));
+    }
+
+    [DataTestMethod]
+    [DataRow("scan")]
+    [DataRow("search")]
+    [DataRow("tree")]
+    [DataRow("largest")]
+    [DataRow("duplicate-names")]
+    public void TryParse_TheSourceAndScanFlags_ApplyToEveryVerb(string verb)
+    {
+        var parsed = Parse(verb, "D", "--source", "dump", "--dump-file", "volume.mft");
+        var freed = Parse(verb, "D", "--include-freed");
+
+        Assert.AreEqual("volume.mft", parsed.DumpFile);
+        Assert.IsTrue(freed.IncludeFreed);
+    }
+
     [TestMethod]
     public void TryParse_IncludeFreedOnADump_IsRefusedBecauseADumpNeverYieldsFreedRows()
     {

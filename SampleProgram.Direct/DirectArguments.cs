@@ -28,7 +28,20 @@ internal sealed partial record DirectArguments(DirectVerb Verb, string Drive)
         "               [--min-size N] [--max-size N] [--after D] [--before D] [--stream] [--limit N] [--include-freed]",
         "  tree DRIVE [--path P] [--depth N]    open DRIVE --path P    largest DRIVE [--count N] [--under P]",
         "  duplicate-names DRIVE [--count N]    scan DRIVE",
-        "  A flag not listed for a verb is accepted and ignored.");
+        "  --source, --dump-file and --include-freed apply to every verb; any other flag a verb does not list is refused.");
+
+    // The flags every verb reads (the source and the scan it asks for), and the ones each verb adds.
+    static readonly string[] CommonFlags = ["--source", "--dump-file", "--include-freed"];
+
+    static readonly Dictionary<DirectVerb, string[]> VerbFlags = new()
+    {
+        [DirectVerb.Scan] = [],
+        [DirectVerb.Search] = ["--name", "--exact", "--case-sensitive", "--under", "--directories", "--files", "--min-size", "--max-size", "--after", "--before", "--stream", "--limit"],
+        [DirectVerb.Tree] = ["--path", "--depth"],
+        [DirectVerb.Open] = ["--path"],
+        [DirectVerb.Largest] = ["--count", "--under"],
+        [DirectVerb.DuplicateNames] = ["--count"]
+    };
 
     internal SourceKind Source { get; init; } = SourceKind.Local;
     internal string? DumpFile { get; init; }

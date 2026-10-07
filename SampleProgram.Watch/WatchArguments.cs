@@ -19,6 +19,17 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
         "  modes: " + string.Join(", ", ProgramModes.Names.Keys) + " (default scan-drive); drive defaults to " + DefaultDrive + Environment.NewLine +
         "  watch [--seconds N]  journal [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]";
 
+    // The flags each mode reads; any other flag on the command line is a usage error rather than silently ignored.
+    static readonly Dictionary<ProgramMode, string[]> ModeFlags = new()
+    {
+        [ProgramMode.ScanDrive] = ["--keep-name", "--profile", "--cache-directory"],
+        [ProgramMode.Watch] = ["--keep-name", "--profile", "--cache-directory", "--seconds"],
+        [ProgramMode.Rescan] = ["--keep-name", "--profile", "--cache-directory"],
+        [ProgramMode.Journal] = ["--keep-name", "--profile", "--cache-directory", "--maximum-size", "--allocation-delta"],
+        [ProgramMode.Cache] = ["--cache-directory", "--clear"],
+        [ProgramMode.ElevationStatus] = []
+    };
+
     internal IReadOnlyList<string>? KeepNames { get; init; }
     internal BrokerScanProfile Profile { get; init; }
     internal int Seconds { get; init; } = DefaultSeconds;
