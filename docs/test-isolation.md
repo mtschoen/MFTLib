@@ -22,7 +22,7 @@ A test class must carry class-level `[DoNotParallelize]` when any of its code
 - calls a process-wide seam or its `ResetToDefaults` (the native delegate seams below, and
   any other static mutable field, static property setter, `ResetToDefaults`, `Enable`,
   `OverrideJournalWindow` or `ReplaceWriterForTest` in MFTLib, MFTLibTestExtensions,
-  TestProgram or Benchmark, for example `BrokerLauncher`, `ElevationUtilities`,
+  the samples or Benchmark, for example `BrokerLauncher`, `ElevationUtilities`,
   `BrokerDiagnostics`);
 - changes `Environment.CurrentDirectory`, an environment variable, `Console` output,
   error or input, `Environment.ExitCode`, an `AppContext` switch, the default thread

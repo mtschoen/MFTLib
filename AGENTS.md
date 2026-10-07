@@ -25,9 +25,9 @@ MFTLib has never shipped to an external consumer. file-wizard and git-wizard are
 # Build only (restore + native + managed, without checkout initialization)
 .\scripts\build-windows.ps1
 
-# Build managed projects (or test program)
+# Build managed projects (or one sample)
 dotnet build -c Release -p:Platform=x64
-dotnet build TestProgram\TestProgram.csproj -c Release -p:Platform=x64
+dotnet build SampleProgram.Watch\SampleProgram.Watch.csproj -c Release -p:Platform=x64
 ```
 
 `dotnet build` cannot build `.vcxproj`. `scripts/build-windows.ps1` owns the Windows recipe used by init, coverage and CI: amd64 MSBuild, an absolute trailing-backslash `SolutionDir`, then managed builds. Native output lands in root `x64\Release` for managed copying.
@@ -43,27 +43,27 @@ dotnet nuget push "MFTLib\bin\x64\Release\MFTLib.*.nupkg" --api-key YOUR_API_KEY
 dotnet nuget push "MFTLibTestExtensions\bin\x64\Release\MFTLib.TestExtensions.*.nupkg" --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json
 ```
 
-### Running the test program
+### Running the sample programs
 
-The test program requires admin elevation (raw volume access). It includes **self-elevation logic** via `ElevationUtilities`.
+Both samples need admin elevation (raw volume access); they **self-elevate** via `ElevationUtilities`.
 
 For the most reliable experience (proper UAC prompt handling), **run the compiled .exe directly**:
 
 ```bash
 # Launch directly (will trigger UAC prompt if not already elevated)
-.\TestProgram\bin\x64\Release\net10.0\TestProgram.exe C:
+.\SampleProgram.Watch\bin\x64\Release\net10.0\SampleProgram.Watch.exe scan-drive C:
 
 # Results are written to output.log in the same directory
-cat .\TestProgram\bin\x64\Release\net10.0\output.log
+cat .\SampleProgram.Watch\bin\x64\Release\net10.0\output.log
 ```
 
-`dotnet TestProgram.dll` cannot self-elevate; run the `.exe`. [Attended and unattended runs](docs/elevation.md): `MFTLIB_TESTPROGRAM_UNATTENDED=1` skips every prompt.
+`dotnet <sample>.dll` cannot self-elevate; run the `.exe`. [Attended and unattended runs](docs/elevation.md): `MFTLIB_SAMPLE_UNATTENDED=1` skips every prompt.
 
 ### Test coverage
 
 [Coverage procedures](docs/development-coverage.md): run `.\scripts\run-coverage.ps1` (admin/UAC) or `.\scripts\run-coverage.ps1 -NonInteractive` (headless). Native coverage: `.\scripts\native-coverage.ps1` or `.\scripts\native-coverage.ps1 -HtmlReport`; instrument Debug|x64 with `/PROFILE`, using `native-coverage.runsettings`. USN tests need admin; `scripts/native-coverage-elevated.ps1` self-elevates and streams `native-coverage-elevated.log`.
 
-[Coverage status gate](docs/development-coverage.md): a drop of more than 10 percentage points from the nearest successful main-line measurement, or zero covered executable lines in a tested namespace, fails with a nonnumeric error status. Failed collection, missing/malformed reports and unavailable baseline lookup fail closed. Check MFTLib, MFTLib.Index, TestProgram, Benchmark and MFTLibTestExtensions; extend the namespace list and regression fixtures for new tested executable namespaces. Run `pwsh -NoProfile -File scripts/test-coverage-status.ps1`. On rejection, preserve and inspect `windows-coverage` (`MFTLib.Tests/coverage.xml`, `coverage-report/`, `coverage-run.stdout.log`, `coverage-run.stderr.log`) and rerun CI; an error still blocks the gate and is not a trusted low-coverage measurement.
+[Coverage status gate](docs/development-coverage.md): a drop of more than 10 percentage points from the nearest successful main-line measurement, or zero covered executable lines in a tested namespace, fails with a nonnumeric error status. Failed collection, missing/malformed reports and unavailable baseline lookup fail closed. Check MFTLib, MFTLib.Index, both samples, Benchmark and MFTLibTestExtensions; extend the namespace list and regression fixtures for new tested executable namespaces. Run `pwsh -NoProfile -File scripts/test-coverage-status.ps1`. On rejection, preserve and inspect `windows-coverage` (`MFTLib.Tests/coverage.xml`, `coverage-report/`, `coverage-run.stdout.log`, `coverage-run.stderr.log`) and rerun CI; an error still blocks the gate and is not a trusted low-coverage measurement.
 
 ### Test isolation
 
@@ -89,7 +89,7 @@ cat .\TestProgram\bin\x64\Release\net10.0\output.log
 
 ## Architecture
 
-[Components and ABI](docs/architecture.md): preserve native thread safety, runtime record geometry and validated compact ABI/stride before parsing. Materialize lazy native-backed strings before freeing buffers. Preserve streaming/batched APIs and elevation dispatch. TestProgram self-elevates; Benchmark uses synthetic data. `MFTLibTestExtensions` ships separately, never inside MFTLib; its harness exposes production process/channel outcomes. The linked contracts specify layouts and component responsibilities.
+[Components and ABI](docs/architecture.md): preserve native thread safety, runtime record geometry and validated compact ABI/stride before parsing. Materialize lazy native-backed strings before freeing buffers. Preserve streaming/batched APIs and elevation dispatch. The samples self-elevate; Benchmark uses synthetic data. `MFTLibTestExtensions` ships separately, never inside MFTLib; its harness exposes production process/channel outcomes. The linked contracts specify layouts and component responsibilities.
 
 [Public surface](docs/architecture.md): `PublicSurfaceTests` pins every public type and member of MFTLib and MFTLibTestExtensions to `MFTLib.Tests/PublicSurface/*.approved.txt`; update the file in the same pull request. A member is public only when a consumer needs it in production code. Test-only access goes through `MFTLibTestExtensions`, which forwards to internal code and never re-implements it. `InternalsVisibleTo` never names a consumer assembly. A pull request that grows an approved file names, in its body, the consumer production caller of every added member.
 

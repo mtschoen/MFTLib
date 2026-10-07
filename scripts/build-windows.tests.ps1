@@ -51,7 +51,8 @@ function Get-ExpectedBuildCommands([string] $Configuration, [bool] $NoRestore) {
     foreach ($project in @(
         'MFTLib/MFTLib.csproj',
         'MFTLibTestExtensions/MFTLibTestExtensions.csproj',
-        'TestProgram/TestProgram.csproj',
+        'SampleProgram.Direct/SampleProgram.Direct.csproj',
+        'SampleProgram.Watch/SampleProgram.Watch.csproj',
         'Benchmark/Benchmark.csproj',
         'MFTLib.Tests/MFTLib.Tests.csproj'
     )) {

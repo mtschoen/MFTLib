@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SampleProgram.Direct": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}

@@ -2,15 +2,15 @@ using MFTLib.Index;
 using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Win32.SafeHandles;
-using TestProgram;
+using SampleProgram.Watch;
 
 namespace MFTLib.Tests;
 
-// The TestProgram scan-drive mode behind a command line: argument errors, the unelevated scan (a FileIndex over an
+// The SampleProgram.Watch scan-drive mode behind a command line: argument errors, the unelevated scan (a FileIndex over an
 // in-process broker) and the self-elevation relaunch.
 [TestClass]
 [DoNotParallelize]
-public class DriveScannerModeTests
+public class WatchHostModeTests
 {
     static readonly UsnJournalCursor Armed = new(7, 1000);
     static readonly NtfsVolumeInformation Volume = new(1024 * 1000, 1024);
@@ -20,7 +20,7 @@ public class DriveScannerModeTests
     [TestInitialize]
     public void Initialize()
     {
-        _directory = Path.Combine(Path.GetTempPath(), $"driveScannerModes-{Guid.NewGuid():N}");
+        _directory = Path.Combine(Path.GetTempPath(), $"watchHostModes-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
     }
@@ -37,7 +37,7 @@ public class DriveScannerModeTests
     public void Run_UnknownOption_PrintsUsageAndReturnsTwoWithoutTouchingElevation()
     {
         var lines = new List<string>();
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
             _isElevated = () => throw new AssertFailedException("A bad command line must not reach elevation."),
             _writeLine = lines.Add
@@ -162,7 +162,7 @@ public class DriveScannerModeTests
     public async Task ScanDriveThroughBroker_LaunchDeclined_PrintsTheError(bool failAtCreation)
     {
         var lines = new List<string>();
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
             _createBrokerSession = () => failAtCreation
                 ? throw new InvalidOperationException("UAC prompt declined")
@@ -188,7 +188,7 @@ public class DriveScannerModeTests
         string[] arguments = ["scan-drive", "C", "D"];
         IReadOnlyList<string>? relaunchedWith = null;
         var elevationTimeout = TimeSpan.Zero;
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
             _requiresElevation = _ => true,
             _isElevated = () => false,
@@ -201,7 +201,7 @@ public class DriveScannerModeTests
             },
             _writeLine = _ => { }
         };
-        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        SampleHostElevationNoticeTests.AcknowledgeDeliberately(scanner);
 
         var result = scanner.Run(arguments);
 
@@ -227,7 +227,7 @@ public class DriveScannerModeTests
     public void Run_NotElevated_RelaunchesWithEachArgumentVerbatim(string[] arguments)
     {
         IReadOnlyList<string>? relaunchedWith = null;
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
             _requiresElevation = _ => true,
             _isElevated = () => false,
@@ -239,7 +239,7 @@ public class DriveScannerModeTests
             },
             _writeLine = _ => { }
         };
-        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        SampleHostElevationNoticeTests.AcknowledgeDeliberately(scanner);
 
         Assert.AreEqual(0, scanner.Run(arguments));
 
@@ -247,9 +247,9 @@ public class DriveScannerModeTests
             "The child must receive exactly the arguments the parent accepted.");
     }
 
-    DriveScanner ScannerOverBroker(InProcessBroker broker, List<string> lines)
+    SampleHost ScannerOverBroker(InProcessBroker broker, List<string> lines)
     {
-        var scanner = new DriveScanner
+        var scanner = new SampleHost
         {
             _isElevated = () => false,
             _getEnvironmentVariable = _ => null,
@@ -261,7 +261,7 @@ public class DriveScannerModeTests
             _writeLine = lines.Add
         };
         // The run is attended and unelevated, so it shows the heads-up dialog before the broker launch.
-        DriveScannerElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        SampleHostElevationNoticeTests.AcknowledgeDeliberately(scanner);
         return scanner;
     }
 

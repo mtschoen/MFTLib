@@ -1,11 +1,15 @@
-namespace TestProgram;
+#if SAMPLE_WATCH
+namespace SampleProgram.Watch;
+#else
+namespace SampleProgram.Direct;
+#endif
 
 // The unattended switch: an agent working while nobody is at the desktop sets it once for the whole session, and
-// TestProgram then neither shows the heads-up dialog nor requests elevation. It lives here, not in MFTLib, so a
+// the sample then neither shows the heads-up dialog nor requests elevation. It lives here, not in MFTLib, so a
 // consumer's runtime flow gains no new behavior.
-partial class DriveScanner
+partial class SampleHost
 {
-    internal const string UnattendedVariableName = "MFTLIB_TESTPROGRAM_UNATTENDED";
+    internal const string UnattendedVariableName = "MFTLIB_SAMPLE_UNATTENDED";
 
     internal Func<string, string?> _getEnvironmentVariable = Environment.GetEnvironmentVariable;
 

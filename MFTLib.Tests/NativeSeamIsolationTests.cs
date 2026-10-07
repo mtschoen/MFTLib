@@ -171,7 +171,7 @@ public class NativeSeamIsolationTests
 
     // Production assemblies whose static state a test can change for the whole process.
     static bool IsRepositoryAssembly(Assembly assembly) =>
-        assembly.GetName().Name is "MFTLib" or "MFTLibTestExtensions" or "TestProgram" or "Benchmark";
+        assembly.GetName().Name is "MFTLib" or "MFTLibTestExtensions" or "SampleProgram.Direct" or "SampleProgram.Watch" or "Benchmark";
 
     // Static methods in the repository assemblies that install process-wide overrides or reset them.
     static readonly HashSet<string> ProductionMutators = new(StringComparer.Ordinal)
