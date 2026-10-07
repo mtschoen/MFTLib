@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using MFTLib;
 using MFTLib.Index;
 
@@ -46,13 +47,12 @@ partial class SampleHost
     }
 
     // With both sizes it grows the journal through the broker; with neither it reports the settings the drive has.
+    [SuppressMessage("Interoperability", "CA1416", Justification = "A broker session, which the journal needs first, is only created on Windows")]
     async Task WriteJournalAsync(BrokerSession session, FileIndex index, char letter, WatchArguments parsed, CancellationToken cancellationToken)
     {
         var settings = parsed.MaximumSize is { } maximum && parsed.AllocationDelta is { } delta
             ? await session.GrowUsnJournalAsync(letter, maximum, delta, cancellationToken).ConfigureAwait(false)
-            : OperatingSystem.IsWindows()
-                ? index.QueryUsnJournalSettings(letter)
-                : throw new PlatformNotSupportedException("The journal settings are read on Windows only.");
+            : index.QueryUsnJournalSettings(letter);
         _writeLine($"Journal {letter}: maximum size {settings.MaximumSize}, allocation delta {settings.AllocationDelta}");
     }
 
