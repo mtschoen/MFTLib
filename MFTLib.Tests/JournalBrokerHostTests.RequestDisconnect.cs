@@ -16,7 +16,7 @@ public partial class JournalBrokerHostTests
     {
         var scanParked = new TestGate();
         var host = ScanHost(
-            scanDrive: (_, _, _, _, _) =>
+            scanDrive: (_, _, _, _, _, _) =>
             {
                 scanParked.MarkEntered();
                 scanParked.WaitForRelease();

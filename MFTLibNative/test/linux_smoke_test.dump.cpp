@@ -48,7 +48,7 @@ bool test_dump_input_round_trip() {
         MftParseResult* parseResult = ParseMftDumpInput(input, 4, nullptr, nullptr, nullptr);
         testPassed = parseResult != nullptr && parseResult->errorMessage[0] == 0 && parseResult->invalidInput == 0 &&
                      parseResult->totalRecords == kDumpInputRecords && parseResult->usedRecords > 0 &&
-                     parseResult->abiVersion == MFT_NATIVE_ABI_VERSION && parseResult->entryStride == 50;
+                     parseResult->abiVersion == MFT_NATIVE_ABI_VERSION && parseResult->entryStride == 52;
         if (parseResult != nullptr) {
             FreeMftResult(parseResult);
         }

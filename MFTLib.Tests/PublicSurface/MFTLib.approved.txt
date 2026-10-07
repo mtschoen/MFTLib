@@ -11,6 +11,7 @@ MFTLib.BrokerScanOptions :: method public override GetHashCode() : int
 MFTLib.BrokerScanOptions :: method public override ToString() : string
 MFTLib.BrokerScanOptions :: method public static op_Equality(MFTLib.BrokerScanOptions? left, MFTLib.BrokerScanOptions? right) : bool
 MFTLib.BrokerScanOptions :: method public static op_Inequality(MFTLib.BrokerScanOptions? left, MFTLib.BrokerScanOptions? right) : bool
+MFTLib.BrokerScanOptions :: property public IncludeFreed { get; init; } : bool
 MFTLib.BrokerScanOptions :: property public KeepFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
 MFTLib.BrokerScanOptions :: property public Profile { get; init; } : MFTLib.BrokerScanProfile
 MFTLib.BrokerScanOptions :: type public sealed class : System.IEquatable<MFTLib.BrokerScanOptions>

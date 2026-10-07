@@ -14,9 +14,9 @@ public class BrokerFrameLengthTests
     static readonly TimeSpan HangGuard = HostChannelHarness.HangGuard;
 
     // The cap's arithmetic (BrokerFrameStream.MaximumFrameLength): the largest legitimate frame is an
-    // ArmAndScan keep list. With the 107 bytes of kind, default section name, profile and count around it and 514
-    // bytes per maximum-length NTFS name (255 UTF-16 units plus a 4-byte prefix), 32,640 names make
-    // 107 + 514 * 32,640 = 16,777,067 bytes and fit; 32,641 names make 16,777,581 and do not.
+    // ArmAndScan keep list. With the 111 bytes of kind, default section name, profile, include-freed flag and count
+    // around it and 514 bytes per maximum-length NTFS name (255 UTF-16 units plus a 4-byte prefix), 32,640 names make
+    // 111 + 514 * 32,640 = 16,777,071 bytes and fit; 32,641 names make 16,777,585 and do not.
     const int MaximumNameCount = 32_640;
 
     // The shape of a name NamedBlockSection builds: "mftlib-block-", a drive letter, a dash and 32 hex digits.
@@ -32,7 +32,7 @@ public class BrokerFrameLengthTests
         BrokerProtocol.WriteArmAndScan(buffer, sectionName, BrokerScanProfile.DirectoryIndex, names);
 
         var totalLength = BinaryPrimitives.ReadInt32LittleEndian(buffer.WrittenSpan);
-        Assert.AreEqual(16_777_067, totalLength);
+        Assert.AreEqual(16_777_071, totalLength);
         Assert.IsTrue(totalLength <= BrokerFrameStream.MaximumFrameLength);
         Assert.AreEqual(names.Length, BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _).KeepFileNames.Count);
     }
@@ -44,7 +44,7 @@ public class BrokerFrameLengthTests
         var sectionName = DefaultSectionName;
         var buffer = new ArrayBufferWriter<byte>();
 
-        Assert.AreEqual(16_777_581L, BrokerProtocol.ArmAndScanFrameLength(sectionName, names));
+        Assert.AreEqual(16_777_585L, BrokerProtocol.ArmAndScanFrameLength(sectionName, names));
         Assert.ThrowsException<InvalidOperationException>(() =>
             BrokerProtocol.WriteArmAndScan(buffer, sectionName, BrokerScanProfile.DirectoryIndex, names));
         Assert.AreEqual(0, buffer.WrittenCount, "No length prefix is emitted for a frame over the limit.");
@@ -135,7 +135,7 @@ public class BrokerFrameLengthTests
         return new JournalBrokerHost(
             new JournalBrokerHost.VolumeSources(
                 _ => new UsnJournalCursor(7, 1000),
-                (_, _, _, _, _) => [],
+                (_, _, _, _, _, _) => [],
                 (_, since, _) => (Array.Empty<UsnJournalEntry>(), since),
                 QueryVolumeInformation: _ => new NtfsVolumeInformation(1024 * 1000, 1024)));
     }

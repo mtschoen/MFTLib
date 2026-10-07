@@ -13,7 +13,7 @@ public partial class BrokerProcessTests
         var scanning = new TestGate();
         var sourceCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var broker = new InProcessBroker(CreateHost(
-            scanDrive: (_, _, _, _, cancellationToken) => WaitForCancellation(scanning, sourceCancelled, cancellationToken)));
+            scanDrive: (_, _, _, _, _, cancellationToken) => WaitForCancellation(scanning, sourceCancelled, cancellationToken)));
 
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), new BrokerScanOptions(),
             CancellationToken.None);
@@ -37,7 +37,7 @@ public partial class BrokerProcessTests
         var scanning = new TestGate();
         var hostClock = new TimerSignalingClock();
         await using var broker = new InProcessBroker(CreateHost(timeProvider: hostClock,
-            scanDrive: (_, _, _, _, _) =>
+            scanDrive: (_, _, _, _, _, _) =>
             {
                 scanning.MarkEntered();
                 scanning.WaitForRelease();

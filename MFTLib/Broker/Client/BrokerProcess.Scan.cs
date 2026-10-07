@@ -74,7 +74,7 @@ internal sealed partial class BrokerProcess
         }
 
         var channel = await OpenChannelAsync(letter, writer => BrokerProtocol.WriteArmAndScan(writer, sectionName,
-            options.Profile, options.KeepFileNames), cancellationToken).ConfigureAwait(false);
+            options.Profile, options.KeepFileNames, options.IncludeFreed), cancellationToken).ConfigureAwait(false);
         await using var ownedChannel = channel.ConfigureAwait(false);
         var collector = new ScanFrames(channel, options.Progress);
         var armed = await collector.ReadArmedCursorAsync(cancellationToken).ConfigureAwait(false);

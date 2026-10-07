@@ -76,14 +76,15 @@ bool test_round_trip() {
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
                       parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
-                      parseResult->entryStride == 50 && parseResult->entries != nullptr &&
+                      parseResult->entryStride == 52 && parseResult->entries != nullptr &&
                       parseResult->entryStrings != nullptr &&
                       parseResult->entryStringUnits < parseResult->usedRecords * 260;
     if (testPassed) {
-        // The fixture writes SequenceNumber = recordIndex + 1 for every record.
+        // The fixture writes SequenceNumber = recordIndex + 1 and parent sequence 0 for every record.
         for (uint64_t index = 0; index < parseResult->usedRecords; ++index) {
             const MftCompactEntry& entry = parseResult->entries[index];
-            if (entry.sequenceNumber != static_cast<uint16_t>(entry.recordNumber + 1)) {
+            if (entry.sequenceNumber != static_cast<uint16_t>(entry.recordNumber + 1) ||
+                entry.parentSequenceNumber != 0) {
                 std::fprintf(stderr, "  FAIL: record %llu sequenceNumber %u, expected %llu\n",
                              static_cast<unsigned long long>(entry.recordNumber),
                              static_cast<unsigned>(entry.sequenceNumber),
@@ -119,7 +120,7 @@ bool test_round_trip_4096() {
     MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixture4096Path, nullptr, 0, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
                       parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
-                      parseResult->entryStride == 50;
+                      parseResult->entryStride == 52;
     if (testPassed) {
         std::printf("  4096: total=%llu used=%llu ioMs=%.2f parseMs=%.2f totalMs=%.2f\n",
                     static_cast<unsigned long long>(parseResult->totalRecords),
@@ -142,7 +143,7 @@ bool test_parse_missing_file() {
         ParseMFTFromFileUtf8("/tmp/does_not_exist_4f8e7c.mft", nullptr, 0, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->errorMessage[0] != L'\0' &&
                       parseResult->usedRecords == 0 && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
-                      parseResult->entryStride == 50;
+                      parseResult->entryStride == 52;
     if (!testPassed) {
         std::fprintf(stderr, "  FAIL: expected errorMessage set; got result=%p err[0]=%d\n",
                      static_cast<void*>(parseResult),
@@ -165,7 +166,7 @@ bool test_parse_empty_file() {
     MftParseResult* parseResult = ParseMFTFromFileUtf8(path, nullptr, 0, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 && parseResult->invalidInput == 1 &&
                       message_is(parseResult->errorMessage, "The dump file is empty.") &&
-                      parseResult->abiVersion == MFT_NATIVE_ABI_VERSION && parseResult->entryStride == 50;
+                      parseResult->abiVersion == MFT_NATIVE_ABI_VERSION && parseResult->entryStride == 52;
     if (!testPassed && parseResult != nullptr) {
         std::fprintf(stderr, "  FAIL: empty file got totalRecords=%llu\n",
                      static_cast<unsigned long long>(parseResult->totalRecords));

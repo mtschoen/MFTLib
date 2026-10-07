@@ -86,17 +86,17 @@ internal sealed partial class MftVolume : IDisposable
     ///     parse starts on the first enumeration, so that is when this is thrown.
     /// </exception>
     /// <remarks>
-    ///     <c>unreadableRecords</c> is told, once the parse ends and before the first batch, how many
-    ///     allocated records the scan passed over because their fixup was invalid.
+    ///     <see cref="MftBatchReadOptions.UnreadableRecords" /> is told, once the parse ends and before the first
+    ///     batch, how many allocated records the scan passed over because their fixup was invalid.
     /// </remarks>
     internal IEnumerable<MftRecord[]> ReadRecordBatches(bool resolvePaths, int batchSize,
         IProgress<MftScanProgress>? progress, ParseThreadAllowance? parseThreads, CancellationToken cancellationToken,
-        Action<ulong>? unreadableRecords = null)
+        MftBatchReadOptions options = default)
     {
-        using var result = StreamRecords(
-            null, resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None, progress, parseThreads,
-            cancellationToken);
-        unreadableRecords?.Invoke(result.InvalidFixupRecordCount);
+        var flags = (resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None)
+                    | (options.IncludeFreed ? MatchFlags.IncludeFreed : MatchFlags.None);
+        using var result = StreamRecords(null, flags, progress, parseThreads, cancellationToken);
+        options.UnreadableRecords?.Invoke(result.InvalidFixupRecordCount);
         foreach (var batch in result.MaterializeBatches(batchSize))
         {
             cancellationToken.ThrowIfCancellationRequested();

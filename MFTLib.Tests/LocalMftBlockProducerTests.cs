@@ -41,7 +41,7 @@ public class LocalMftBlockProducerTests
 
     static LocalMftBlockProducer.Seams Scripted(
         Func<string, NtfsVolumeInformation>? query = null, MftRecordBatchSource? scan = null) => new(
-        query ?? (_ => Volume), scan ?? ((_, _, _, _, _) => Batches()), () => FixedMoment);
+        query ?? (_ => Volume), scan ?? ((_, _, _, _, _, _) => Batches()), () => FixedMoment);
 
     MftBlockProduceRequest Request(bool deleteOnClose = true, IProgress<IndexScanProgress>? progress = null,
         char driveLetter = 'T') => new()
@@ -91,7 +91,7 @@ public class LocalMftBlockProducerTests
         {
             calls++;
             return Volume;
-        }, (_, _, _, _, _) =>
+        }, (_, _, _, _, _, _) =>
         {
             calls++;
             return Batches();
@@ -137,7 +137,7 @@ public class LocalMftBlockProducerTests
     [TestMethod]
     public async Task Produce_GivesTheSourceAnOperationReporterThatNeedsNoHost()
     {
-        var producer = new LocalMftBlockProducer(null, Scripted(scan: (_, _, operation, _, _) =>
+        var producer = new LocalMftBlockProducer(null, Scripted(scan: (_, _, operation, _, _, _) =>
         {
             operation.WaitingOnVolume();
             operation.Processing("MFT parse");
@@ -159,7 +159,7 @@ public class LocalMftBlockProducerTests
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(
             _ => new JournalWindow(99, 1000, 2000, 4096, 32768));
         var scanCalls = 0;
-        var producer = new LocalMftBlockProducer(null, Scripted(scan: (_, _, _, _, _) =>
+        var producer = new LocalMftBlockProducer(null, Scripted(scan: (_, _, _, _, _, _) =>
         {
             Interlocked.Increment(ref scanCalls);
             return Batches();
@@ -220,7 +220,7 @@ public class LocalMftBlockProducerTests
         ParseThreadAllowance? allowanceT = null;
         ParseThreadAllowance? allowanceU = null;
 
-        var producer = new LocalMftBlockProducer(null, Scripted(scan: (drive, allowance, _, _, token) =>
+        var producer = new LocalMftBlockProducer(null, Scripted(scan: (drive, allowance, _, _, _, token) =>
         {
             if (drive == "T")
             {
@@ -316,7 +316,7 @@ public class LocalMftBlockProducerTests
     }
 
     static MftRecordBatchSource CancellingScan(CancellationTokenSource cancellation) =>
-        (_, _, _, _, token) => Cancelling(cancellation, token);
+        (_, _, _, _, _, token) => Cancelling(cancellation, token);
 
     static IEnumerable<IReadOnlyList<MftRecord>> Cancelling(CancellationTokenSource cancellation,
         CancellationToken token)
@@ -348,7 +348,7 @@ public class LocalMftBlockProducerTests
         const string message = "Unable to open volume \\\\.\\T:";
         var request = Request();
         var producer = new LocalMftBlockProducer(null,
-            Scripted(scan: (_, _, _, _, _) => throw new IOException(message)));
+            Scripted(scan: (_, _, _, _, _, _) => throw new IOException(message)));
 
         var failure = await Assert.ThrowsExceptionAsync<IOException>(
             () => ProducerOf(producer)(request, TestContext.CancellationTokenSource.Token));
@@ -361,7 +361,7 @@ public class LocalMftBlockProducerTests
     public async Task Produce_ABlockWithNoRowsFailsValidationAndIsDisposed()
     {
         var request = Request();
-        var producer = new LocalMftBlockProducer(null, Scripted(scan: (_, _, _, _, _) => []));
+        var producer = new LocalMftBlockProducer(null, Scripted(scan: (_, _, _, _, _, _) => []));
 
         var failure = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => ProducerOf(producer)(request, TestContext.CancellationTokenSource.Token));

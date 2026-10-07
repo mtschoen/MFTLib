@@ -215,28 +215,34 @@ using var containing = volume.StreamRecords(
 `ArgumentException` before any native call. Add `ResolvePaths` only when full paths
 are needed; path resolution has additional CPU and memory cost.
 
-`MatchFlags.IncludeFreed` opts a scan into returning freed base records whose
-attributes still validate. These rows have `InUse == false` and retain the stored
-`SequenceNumber`; extension records are skipped. The default scan returns only
-in-use records.
+Freed MFT records are opt-in. `BrokerScanOptions.IncludeFreed` (default false) makes a cold scan
+of a live volume, direct or through the broker, also import the records NTFS has freed; the
+dump source offers no such option. Each freed record becomes a row whose `FileEntry.IsDeleted`
+is true and which exists for that scan only: a later watch applies journal events to live rows
+and never edits, renames or resurrects it.
 
-Combine it with `MatchFlags.ResolvePaths` to resolve freed records' paths. Every
-parent reference, including the root, must name a directory record and match its
-stored sequence. A freed parent also accepts a reference one sequence behind, with
-16-bit wraparound. Missing or non-directory parents, reused records, cycles, and
-chains longer than 128 components leave `FullPath` null and preserve the bare
-`FileName`. Live records
-keep their existing path behavior. Name filters work with `IncludeFreed`.
+A freed row keeps its parent and full path only when its parent chain verifies. Every parent
+through the root must be a directory whose stored sequence equals the sequence the child's name
+referenced, or is one higher when that parent was freed too (16-bit wraparound), within 128
+components and without a cycle. Any other freed row is detached: its path is its bare name, it
+has no parent, and it is no directory's child. A cached block carries the rows of the scan that
+produced it, so a consumer that changes `IncludeFreed` also changes its `CacheTag` version.
 
 ```csharp
-using var result = MftVolume.StreamMftFromFile(mftFilePath, null,
-    MatchFlags.IncludeFreed | MatchFlags.ResolvePaths);
+var options = new FileIndexOptions
+{
+    Drives = [new IndexedDrive('C', @"C:\", volumeSerial)],
+    MftSource = MftIndexSources.FromLocalVolumes(new BrokerScanOptions { IncludeFreed = true }),
+    CacheTag = new CacheTag("APPX", 2)
+};
+await using var index = await FileIndex.OpenAsync(options);
+var deleted = index.Search(new SearchQuery("report", IncludeDeleted: true))
+    .Where(entry => entry.IsDeleted);
 ```
 
-The flag is available through the two streaming scan APIs, `StreamRecords` and
-`StreamMftFromFile`. Both accept progress, thread allowance, and cancellation
-execution controls (`StreamMftFromFile` via `MftFileScanOptions`). `MFTLib.Index`
-and the broker block scan remain a live-files index.
+`SearchQuery.IncludeDeleted` (default false) makes a search return deleted rows as well, whether
+the journal deleted them or a scan imported them freed. Lookup, children, largest and duplicate
+names stay live only.
 
 ### Stream to reduce managed allocations
 

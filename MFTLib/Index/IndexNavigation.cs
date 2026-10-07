@@ -14,6 +14,15 @@ internal static class IndexNavigation
     }
 
     /// <summary>
+    ///     True for a deleted row whose parent chain could not be verified or whose ancestor slot was reused;
+    ///     see <see cref="BlockLayout.DetachedParentRow" />.
+    /// </summary>
+    internal static bool IsDetached(BlockFile block, uint rowIndex)
+    {
+        return block.Rows[(int)rowIndex].ParentRow == BlockLayout.DetachedParentRow;
+    }
+
+    /// <summary>
     ///     Reads the parent row without regard to whether either row is tombstoned. A deleted
     ///     row keeps its name and parent link so the upward walk can still resolve a full path
     ///     for a deleted file, or for a live file under a deleted directory; only <see cref="GetChildren" />
@@ -40,6 +49,13 @@ internal static class IndexNavigation
     internal static string BuildPath(Snapshot snapshot, ushort driveOrdinal, uint rowIndex)
     {
         var driveBlock = snapshot.GetDriveBlock(driveOrdinal);
+
+        // A detached row has no verified ancestor, so a root prefix would invent one.
+        if (rowIndex < driveBlock.Block.Header.RowCount && IsDetached(driveBlock.Block, rowIndex))
+        {
+            return new string(NamePool.ReadRowName(driveBlock.Block, rowIndex));
+        }
+
         if (driveBlock.RootDirectoryPath is not { } rootDirectoryPath)
         {
             throw new InvalidOperationException(

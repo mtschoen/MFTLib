@@ -90,6 +90,7 @@ internal sealed class BlockWriter
         ref var row = ref Block.Rows[(int)rowIndex];
         _rowCapturedForTest?.Invoke();
         var previousFlags = FileRow.DescriptorFlags(FileRow.ReadDescriptorWord(in row));
+        var previousParentRow = row.ParentRow;
         var wasLive = (previousFlags & RowFlags.InUse) != 0 && (previousFlags & RowFlags.Tombstone) == 0;
         var isLive = (columns.Flags & RowFlags.InUse) != 0 && (columns.Flags & RowFlags.Tombstone) == 0;
         row.ParentRow = columns.ParentRow;
@@ -111,6 +112,21 @@ internal sealed class BlockWriter
         if (rowIndex >= header.RowCount)
         {
             header.RowCount = rowIndex + 1;
+        }
+
+        if (Block.DeletedChildren is { } links)
+        {
+            // A create can reuse a deleted row's slot: drop the row's old link before linking its
+            // new shape, so the links always mirror the rows as written.
+            if ((previousFlags & RowFlags.Tombstone) != 0)
+            {
+                links.RemoveDeletedRow(rowIndex, previousParentRow);
+            }
+
+            if ((columns.Flags & RowFlags.Tombstone) != 0)
+            {
+                links.AddDeletedRow(rowIndex, columns.ParentRow);
+            }
         }
 
         return true;
@@ -141,9 +157,12 @@ internal sealed class BlockWriter
 
         var currentName = NamePool.ReadRowName(Block, rowIndex);
         ref var row = ref Block.Rows[(int)rowIndex];
+        var previousParentRow = row.ParentRow;
+        var wasDeleted = row.IsDeleted;
         if (NameMatching.EqualsName(name, currentName, caseSensitive: true))
         {
             row.ParentRow = parentRow;
+            RelinkDeletedRow(rowIndex, wasDeleted, previousParentRow, parentRow);
             return true;
         }
 
@@ -154,8 +173,26 @@ internal sealed class BlockWriter
 
         var flags = FileRow.DescriptorFlags(FileRow.ReadDescriptorWord(in row));
         row.ParentRow = parentRow;
+        RelinkDeletedRow(rowIndex, wasDeleted, previousParentRow, parentRow);
         FileRow.WriteDescriptorWord(ref row, nameOffsetBytes, (ushort)name.Length, flags);
         return true;
+    }
+
+    /// <summary>
+    ///     Keeps the block's deleted-child links consistent across a parent change. Only a deleted
+    ///     row is linked, and only a create, delete, or detach changes whether a row is deleted;
+    ///     the journal never renames a deleted row, but a direct writer call can, so the relink is
+    ///     unconditional rather than assumed away.
+    /// </summary>
+    void RelinkDeletedRow(uint rowIndex, bool wasDeleted, uint previousParentRow, uint parentRow)
+    {
+        if (!wasDeleted || previousParentRow == parentRow || Block.DeletedChildren is not { } links)
+        {
+            return;
+        }
+
+        links.RemoveDeletedRow(rowIndex, previousParentRow);
+        links.AddDeletedRow(rowIndex, parentRow);
     }
 
     /// <summary>Marks an allocated row deleted while retaining its name for change reporting.</summary>
@@ -164,6 +201,55 @@ internal sealed class BlockWriter
     {
         using var access = Block.TakeAccess();
         AddRowFlags(rowIndex, RowFlags.Tombstone);
+    }
+
+    /// <summary>
+    ///     Points a row at <see cref="BlockLayout.DetachedParentRow" />: its parent could not be verified, so it is
+    ///     nobody's child and its path is its bare name. The parent column is a plain 32-bit field, so the store
+    ///     is atomic by itself and leaves the descriptor word alone.
+    /// </summary>
+    /// <param name="rowIndex">Zero-based row slot to detach.</param>
+    public void DetachRow(uint rowIndex)
+    {
+        using var access = Block.TakeAccess();
+        if (rowIndex >= Block.Header.SlotCapacity)
+        {
+            MarkCompactionNeededCore();
+            return;
+        }
+
+        ref var row = ref Block.Rows[(int)rowIndex];
+        var previousParentRow = row.ParentRow;
+        row.ParentRow = BlockLayout.DetachedParentRow;
+        if (row.IsDeleted)
+        {
+            // The row's own deleted children stay linked under it: reusing its slot must still
+            // find them. Only the link from its old parent is out of reach now.
+            Block.DeletedChildren?.RemoveDeletedRow(rowIndex, previousParentRow);
+        }
+    }
+
+    /// <summary>
+    ///     Invalidates affected deleted descendant links when journal creation reuses an ancestor slot:
+    ///     detaches any deleted row whose parent chain reaches <paramref name="ancestorRow" />
+    ///     through deleted rows, so its path becomes its bare name, its parent is null, and subtree
+    ///     queries exclude it. The work is proportional to those descendants, not to the block's
+    ///     row count: <see cref="DeletedChildLinks" /> indexes deleted rows by parent once per
+    ///     block and every writer mutation keeps the index current, so a create on a fresh slot or
+    ///     on an all-live index costs one lookup. A deleted row whose chain reaches the slot only
+    ///     through a live row keeps its parent; a live row that names a deleted or never-written
+    ///     slot as its parent is a shape only a corrupt image or journal produces.
+    /// </summary>
+    public void InvalidateDeletedDescendants(uint ancestorRow)
+    {
+        using var access = Block.TakeAccess();
+        if (ancestorRow >= Block.Header.RowCount)
+        {
+            return;
+        }
+
+        var links = Block.DeletedChildren ??= DeletedChildLinks.Build(Block);
+        links.DetachDescendants(Block, ancestorRow);
     }
 
     /// <summary>Marks a directory whose subtree enumeration was skipped after an access denial.</summary>
@@ -261,6 +347,11 @@ internal sealed class BlockWriter
             (flags & RowFlags.InUse) != 0 && (flags & RowFlags.Tombstone) == 0)
         {
             Block.Header.LiveRowCount--;
+        }
+
+        if (additionalFlags.HasFlag(RowFlags.Tombstone) && (flags & RowFlags.Tombstone) == 0)
+        {
+            Block.DeletedChildren?.AddDeletedRow(rowIndex, row.ParentRow);
         }
 
         FileRow.WriteDescriptorWord(ref row,

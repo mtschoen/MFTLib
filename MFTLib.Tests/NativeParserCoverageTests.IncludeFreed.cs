@@ -46,8 +46,8 @@ public partial class NativeParserCoverageTests
     }
 
     [TestMethod]
-    [DataRow((uint)(MatchFlags.None), "3c7fcbd3d39ca2ae78a8b79379da1d1bb3cc0a51c563826cd2060d1a1ad4d22f")]
-    [DataRow((uint)(MatchFlags.ResolvePaths), "351f03a11f9c3f36e9db0f508242bfcdb7b8e99aa8c0614debbe6fe4c168e9d1")]
+    [DataRow((uint)(MatchFlags.None), "127f37afbc6b8c338f51aacaca1714029a90ebde340830f9b544267d44574906")]
+    [DataRow((uint)(MatchFlags.ResolvePaths), "6bd128d90b688ecc06f066782c6f8fa39d95111c82c0e9f873f7b3fdc62e549e")]
     public void IncludeFreed_DefaultFixtureRowsAndStrings_AreByteIdentical(uint flagsValue, string expectedHash)
     {
         var flags = (MatchFlags)flagsValue;

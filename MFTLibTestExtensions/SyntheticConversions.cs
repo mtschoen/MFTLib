@@ -29,7 +29,8 @@ internal static class SyntheticConversions
                              ?? (record.IsDirectory ? FileAttributes.Directory : FileAttributes.Normal),
             Size = record.Size,
             ModifiedFileTime = (record.LastWriteTime ?? DateTime.UnixEpoch).ToFileTimeUtc(),
-            SequenceNumber = record.SequenceNumber
+            SequenceNumber = record.SequenceNumber,
+            ParentSequenceNumber = record.ParentSequenceNumber
         });
     }
 

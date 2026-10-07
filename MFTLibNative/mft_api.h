@@ -10,7 +10,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 5;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 6;
 
 // One UTF-16 code unit of a parse error message. wchar_t is 16 bits on Windows and 32 bits
 // elsewhere, so the parse structs declare their message buffers in this type and keep one
@@ -73,6 +73,9 @@ struct MftCompactEntry {
     int64_t size;             // bytes; zero for a directory or a size-unknown record
     int64_t modifiedTime;     // FILETIME, 100-nanosecond intervals since 1601-01-01 UTC
     uint16_t sequenceNumber;  // NTFS record sequence; combined with recordNumber it is the file reference
+    // Sequence the record's chosen name attribute stores in its parent reference; the parent record
+    // number is parentRecordNumber. Emitted for every entry, whatever the scan flags.
+    uint16_t parentSequenceNumber;
 };
 
 struct MftParseResult {

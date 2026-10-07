@@ -131,6 +131,12 @@ internal static partial class BrokerProtocol
             throw new InvalidDataException($"Unknown broker scan profile: {(int)profile}");
         }
 
+        var includeFreedValue = payload.Int32();
+        if (includeFreedValue is not (0 or 1))
+        {
+            throw new InvalidDataException($"Unknown broker include-freed value: {includeFreedValue}");
+        }
+
         var nameCount = payload.Count(minimumItemBytes: 4);
         var keepFileNames = new List<string>(nameCount);
         while (keepFileNames.Count < nameCount)
@@ -138,7 +144,7 @@ internal static partial class BrokerProtocol
             keepFileNames.Add(payload.String());
         }
 
-        return BrokerFrame.ArmAndScan(sectionName, profile, keepFileNames);
+        return BrokerFrame.ArmAndScan(sectionName, profile, keepFileNames, includeFreedValue == 1);
     }
 
     static BrokerFrame ReadJournalBatchFrame(ref PayloadReader payload)

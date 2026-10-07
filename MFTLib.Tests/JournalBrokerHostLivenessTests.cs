@@ -47,7 +47,7 @@ public partial class JournalBrokerHostLivenessTests
         var liveness = new Liveness();
         var entered = new TestGate();
         using var sectionWriter = new RecordingBlockSectionWriter();
-        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, operation, _, token) =>
+        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, operation, _, _, token) =>
         {
             operation.Processing("wedged step");
             entered.MarkEntered();
@@ -80,7 +80,7 @@ public partial class JournalBrokerHostLivenessTests
         var liveness = new Liveness();
         var steps = Enumerable.Range(0, 12).Select(_ => new TestGate()).ToArray();
         using var sectionWriter = new RecordingBlockSectionWriter();
-        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, operation, _, _) =>
+        await using var harness = new HostChannelHarness(liveness.Host(scanDrive: (_, _, operation, _, _, _) =>
         {
             foreach (var step in steps)
             {
@@ -113,7 +113,7 @@ public partial class JournalBrokerHostLivenessTests
     {
         var liveness = new Liveness();
         var admitted = new TestGate();
-        var host = liveness.Host(processorCount: 1, scanDrive: (drive, _, operation, _, token) =>
+        var host = liveness.Host(processorCount: 1, scanDrive: (drive, _, operation, _, _, token) =>
         {
             if (drive == "C")
             {
@@ -218,7 +218,7 @@ public partial class JournalBrokerHostLivenessTests
             return new JournalBrokerHost(
                 new JournalBrokerHost.VolumeSources(
                     _ => Tip,
-                    scanDrive ?? ((_, _, _, _, _) => []),
+                    scanDrive ?? ((_, _, _, _, _, _) => []),
                     readJournal ?? ((_, since, _) => ([], since)),
                     watchDrive),
                 processorCount: processorCount,

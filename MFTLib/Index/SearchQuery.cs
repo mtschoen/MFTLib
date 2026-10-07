@@ -19,6 +19,10 @@ namespace MFTLib.Index;
 /// <param name="MaximumSize">Inclusive upper bound on the size column.</param>
 /// <param name="ModifiedAfter">Inclusive lower bound on the modified column.</param>
 /// <param name="ModifiedBefore">Inclusive upper bound on the modified column.</param>
+/// <param name="IncludeDeleted">
+///     True also returns deleted rows: those the journal deleted and those a scan imported as freed records.
+///     Every other filter still applies. The default returns live rows only.
+/// </param>
 public sealed record SearchQuery(
     string? NamePattern,
     NameMatchMode MatchMode = NameMatchMode.Substring,
@@ -28,4 +32,5 @@ public sealed record SearchQuery(
     long? MinimumSize = null,
     long? MaximumSize = null,
     DateTime? ModifiedAfter = null,
-    DateTime? ModifiedBefore = null);
+    DateTime? ModifiedBefore = null,
+    bool IncludeDeleted = false);

@@ -30,4 +30,6 @@ public sealed record SyntheticScanRecord
     internal DateTime? LastWriteTime { get; init; }
 
     internal ushort SequenceNumber { get; init; }
+
+    internal ushort ParentSequenceNumber { get; init; }
 }

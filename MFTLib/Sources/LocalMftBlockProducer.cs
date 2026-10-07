@@ -35,7 +35,7 @@ internal sealed class LocalMftBlockProducer
 
     /// <summary>The native calls and clock a scan uses; tests replace them.</summary>
     /// <param name="QueryVolumeInformation">Reads the volume geometry that sizes the block.</param>
-    /// <param name="ScanDriveRecordBatches">Streams the in-use records of a drive.</param>
+    /// <param name="ScanDriveRecordBatches">Streams the records of a drive, the in-use ones unless the scan options ask for freed records too.</param>
     /// <param name="Clock">Supplies the completion time stamped into the block.</param>
     internal readonly record struct Seams(
         Func<string, NtfsVolumeInformation> QueryVolumeInformation,
@@ -73,9 +73,10 @@ internal sealed class LocalMftBlockProducer
         {
             var progress = CreateProgress(request, options);
             var batches = _seams.ScanDriveRecordBatches(drive, allowance,
-                IdleOperation.Instance, progress, cancellationToken);
+                IdleOperation.Instance, progress,
+                new MftRecordScanOptions { IncludeFreed = options.IncludeFreed }, cancellationToken);
             var result = MftBlockScan.WriteToBlock(block, new BlockStamp(default, _seams.Clock), batches,
-                new MftBlockRowFilter(options.Profile, options.KeepFileNames),
+                new MftBlockRowFilter(options.Profile, options.KeepFileNames, options.IncludeFreed),
                 new BlockWriteReporting(progress, null), cancellationToken);
             BrokerMftBlockProducer.ValidateBlock(block, request.VolumeSerial, default, request.CacheTag);
             var produced = new MftBlockProduceResult(block, 0, 0, checked((int)result.SkippedRecordCount));

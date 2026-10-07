@@ -52,6 +52,15 @@ internal sealed unsafe partial class BlockFile : IDisposable
     /// </summary>
     internal Action<bool>? _disposeStartedForTest;
 
+    /// <summary>
+    ///     Reverse links from parent rows to their deleted children, built lazily on the first
+    ///     <see cref="BlockWriter.InvalidateDeletedDescendants" /> and owned by the block so every
+    ///     writer over it shares one copy: a watch creates a fresh <see cref="BlockWriter" /> per
+    ///     journal batch, and per-writer links would be rebuilt for every batch. Null until built;
+    ///     once built, every writer mutation keeps the links current.
+    /// </summary>
+    internal DeletedChildLinks? DeletedChildren;
+
     BlockFile(string path, long length, MemoryMappedFile mappedFile,
         MemoryMappedViewAccessor view)
     {

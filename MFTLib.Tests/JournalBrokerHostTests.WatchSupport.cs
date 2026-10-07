@@ -20,7 +20,7 @@ public partial class JournalBrokerHostTests
         return new JournalBrokerHost(
             new JournalBrokerHost.VolumeSources(
                 queryCursor ?? (_ => new UsnJournalCursor(7, 1000)),
-                scanDrive ?? ((_, _, _, _, _) => [[WatchRecord(5, ".", 3)]]),
+                scanDrive ?? ((_, _, _, _, _, _) => [[WatchRecord(5, ".", 3)]]),
                 readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
                 watchDrive,
                 _ => WatchVolume),

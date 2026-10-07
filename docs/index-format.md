@@ -210,6 +210,15 @@ is no lookup table.
 | 16 | size | i64 | Bytes; zero for directories and size-unknown rows |
 | 24 | modified | i64 | UTC ticks |
 
+A deleted row has the in-use and tombstone flags together, whatever deleted it: a journal delete sets
+tombstone on a live row, and a scan that imports freed records writes the same two flags, so
+`LiveRowCount` excludes both. A freed row whose parent chain verified at scan time keeps its parent
+row. Any other freed row is detached: its parent column holds `uint.MaxValue`, no row has that index,
+so it is nobody's child, its parent walk ends at once and its path is its bare name. Only a create
+reuses a deleted row's slot; the journal never edits, renames or deletes it again.
+
+Deleted rows are reverse-indexed by parent slot in memory only. `DeletedChildLinks`, owned by `BlockFile`, is built lazily once per block, kept current at every row write, rename, tombstone and detach, and consulted when a journal create reuses a slot, so only that slot's deleted descendants are detached. Each parent holds a hash set of its deleted children, so linking and unlinking a row is constant time however many deleted siblings share the parent. The index is not persisted in the block format: a block opened from a cache file carries no links until the first create that needs them.
+
 Name offset, name length, and row flags sit adjacent at byte offset 8 to form
 an 8-byte aligned 64-bit descriptor word. Rows are 32 bytes and the row region
 starts at 4096 (a 4 KB boundary), so byte offset 8 in every row is 8-byte

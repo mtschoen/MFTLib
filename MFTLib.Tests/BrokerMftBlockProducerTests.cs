@@ -104,7 +104,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Produce_BrokerErrorIsReportedAndPendingBlockDisposed()
     {
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _) =>
+        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) =>
             throw new IOException("batch failed")));
         var request = Request(Target());
 
@@ -153,7 +153,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Produce_ReportsRecordsTheRowWriterCouldNotPlace()
     {
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _) =>
+        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) =>
             [[Record(5, ".", 3), Record(20, "file.txt"), Record(21, ""), Record((ulong)uint.MaxValue + 1, "overflow")]]));
 
         var result = await ProduceAsync(broker.Process, Request(Target())).WaitAsync(HangGuard);

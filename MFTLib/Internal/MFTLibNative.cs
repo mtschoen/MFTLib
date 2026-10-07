@@ -10,8 +10,8 @@ static class MFTLibNative
     //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
-    internal const uint ExpectedMftNativeAbiVersion = 5;
-    internal const uint NativeCompactEntrySize = 50;
+    internal const uint ExpectedMftNativeAbiVersion = 6;
+    internal const uint NativeCompactEntrySize = 52;
 
     // Swappable function pointers - default to the native P/Invoke implementations.
     // Tests or platforms without the native library can replace these.

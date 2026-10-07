@@ -235,7 +235,7 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
 
     IEnumerable<IReadOnlyList<MftRecord>> Scan(string drive, ParseThreadAllowance parseThreads,
         IBrokerOperationReporter operation, IProgress<BlockWriteProgress>? progress,
-        CancellationToken cancellationToken)
+        MftRecordScanOptions scanOptions, CancellationToken cancellationToken)
     {
         var scanNumber = _scans.AddOrUpdate(drive[0], 1, (_, count) => count + 1);
         yield return [new MftRecord(5, 5, new MftRecordFields(3), ".", null),

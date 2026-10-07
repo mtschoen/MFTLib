@@ -20,7 +20,7 @@ internal static class LiveVolumeSources
     // and a closed pipe stops it.
     internal static IEnumerable<IReadOnlyList<MftRecord>> ScanDriveRecordBatches(string driveLetter,
         ParseThreadAllowance parseThreads, IBrokerOperationReporter operation, IProgress<BlockWriteProgress>? progress,
-        CancellationToken cancellationToken)
+        MftRecordScanOptions scanOptions, CancellationToken cancellationToken)
     {
         operation.WaitingOnVolume();
         var bytesPerFileRecordSegment = QueryVolumeInfo(driveLetter).BytesPerFileRecordSegment;
@@ -29,10 +29,17 @@ internal static class LiveVolumeSources
         var mftProgress = CreateMftProgressAdapter(operation, progress);
         ulong unreadableRecords = 0;
         foreach (var batch in volume.ReadRecordBatches(resolvePaths: false, 4096, mftProgress, parseThreads,
-                     cancellationToken, count => unreadableRecords = count))
+                     cancellationToken,
+                     new MftBatchReadOptions
+                     {
+                         IncludeFreed = scanOptions.IncludeFreed,
+                         UnreadableRecords = count => unreadableRecords = count
+                     }))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var records = Array.FindAll(batch, record => record.InUse);
+
+            // The parse only returns freed records when asked, so without the option every record is live.
+            var records = scanOptions.IncludeFreed ? batch : Array.FindAll(batch, record => record.InUse);
             if (records.Length > 0)
             {
                 yield return records;

@@ -51,7 +51,7 @@ public class JournalBrokerHostSessionTasksTests
         var host = new JournalBrokerHost(
             new JournalBrokerHost.VolumeSources(
                 _ => default,
-                (_, _, _, _, _) => [],
+                (_, _, _, _, _, _) => [],
                 (_, since, _) => ([], since)),
             timeProvider: new FakeTimeProvider());
         var tasks = new JournalBrokerHost.SessionTasks();

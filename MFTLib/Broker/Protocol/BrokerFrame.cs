@@ -58,6 +58,7 @@ internal readonly record struct BrokerFrame
     public string? PipeName { get; private init; }
     public string? SectionName { get; private init; }
     public BrokerScanProfile Profile { get; private init; }
+    public bool IncludeFreed { get; private init; }
     public UsnJournalCursor Cursor { get; private init; }
     public UsnJournalEntry[] Entries { get; private init; }
     public long SkippedRecordCount { get; private init; }
@@ -178,12 +179,13 @@ internal readonly record struct BrokerFrame
     }
 
     public static BrokerFrame ArmAndScan(string sectionName, BrokerScanProfile profile,
-        IReadOnlyList<string>? keepFileNames = null)
+        IReadOnlyList<string>? keepFileNames = null, bool includeFreed = false)
     {
         return Empty(BrokerFrameKind.ArmAndScan, 0) with
         {
             SectionName = sectionName,
             Profile = profile,
+            IncludeFreed = includeFreed,
             KeepFileNames = keepFileNames ?? Array.Empty<string>()
         };
     }

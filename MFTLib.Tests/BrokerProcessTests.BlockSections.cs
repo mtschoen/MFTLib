@@ -62,7 +62,7 @@ public partial class BrokerProcessTests
     [TestMethod]
     public async Task ScanDriveAsync_ErrorFrame_DisposesSectionLifetimeImmediately()
     {
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _) =>
+        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) =>
             throw new IOException("drive failed")));
 
         var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => broker.Process.ScanDriveAsync('C',

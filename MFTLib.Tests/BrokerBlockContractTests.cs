@@ -64,7 +64,7 @@ public class BrokerBlockContractTests : BrokerBlockTestBase
     [TestMethod]
     public async Task Produce_ReportsSkippedRecordsFromTheBlockWriter()
     {
-        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _) =>
+        await using var broker = new InProcessBroker(CreateHost(scanDrive: (_, _, _, _, _, _) =>
         [
             [Record(5, ".", 3), Record(20, string.Empty)]
         ]));

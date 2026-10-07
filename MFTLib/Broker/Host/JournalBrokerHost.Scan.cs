@@ -109,9 +109,10 @@ internal sealed partial class JournalBrokerHost
                 cancellationToken).ConfigureAwait(false);
 
             var batches = PublishEachBatch(
-                stage.ScanDrive(channel.Drive, parseThreads, channel.Pipe, progressReporter, cancellationToken),
+                stage.ScanDrive(channel.Drive, parseThreads, channel.Pipe, progressReporter,
+                    new MftRecordScanOptions { IncludeFreed = request.IncludeFreed }, cancellationToken),
                 channel.Pipe);
-            var filter = new MftBlockRowFilter(request.Profile, request.KeepFileNames);
+            var filter = new MftBlockRowFilter(request.Profile, request.KeepFileNames, request.IncludeFreed);
             var result = stage.Writer.Write(request.RequireSectionName(), cursor, batches, filter,
                 new BlockWriteReporting(progressReporter, channel.Pipe), cancellationToken);
             return progressState.Complete(cursor, result);

@@ -23,6 +23,7 @@ internal static class MftBlockRowWriter
         }
 
         var keepFileNames = filter.CreateKeepSet();
+        var freedRows = filter.IncludeFreed ? new FreedRowTrust(writer.Block) : null;
         long recordsWritten = 0;
         long skippedRecordCount = 0;
 
@@ -37,6 +38,12 @@ internal static class MftBlockRowWriter
             foreach (var record in batch)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (!record.InUse && freedRows is null)
+                {
+                    continue;
+                }
+
+                freedRows?.Observe(in record);
                 if (!ShouldKeepRecord(record, filter.Profile, keepFileNames))
                 {
                     continue;
@@ -45,6 +52,7 @@ internal static class MftBlockRowWriter
                 if (TryWriteRecord(writer, record))
                 {
                     recordsWritten++;
+                    freedRows?.Wrote(in record);
                 }
                 else
                 {
@@ -57,6 +65,8 @@ internal static class MftBlockRowWriter
             cancellationToken.ThrowIfCancellationRequested();
         }
 
+        // A freed record's parent can arrive after it, so trust is decided once every row is written.
+        freedRows?.DetachUntrusted(writer, cancellationToken);
         return new BlockWriteResult(writer.RowCount, writer.Block.Header.NamePoolUsed,
             skippedRecordCount, writer.CompactionNeeded);
     }
@@ -89,7 +99,8 @@ internal static class MftBlockRowWriter
             return false;
         }
 
-        var flags = RowFlags.InUse;
+        // A freed record has the flags a journal delete leaves, so a deleted row has one shape in a block.
+        var flags = record.InUse ? RowFlags.InUse : RowFlags.InUse | RowFlags.Tombstone;
         if (record.IsDirectory)
         {
             flags |= RowFlags.Directory;

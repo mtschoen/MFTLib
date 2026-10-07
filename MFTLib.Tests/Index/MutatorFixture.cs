@@ -26,6 +26,7 @@ internal sealed class MutatorFixture : IAsyncDisposable
 
     public DateTime Timestamp { get; } = new(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
     public BlockFile Block => _mutator.Writer.Block;
+    public Snapshot Snapshot => _snapshot;
 
     public IReadOnlyList<FileChange> Apply(IReadOnlyList<UsnJournalEntry> entries)
     {

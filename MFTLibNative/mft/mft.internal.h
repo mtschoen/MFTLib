@@ -170,6 +170,7 @@ struct ParsedEntry {
     uint32_t fileAttributes;
     uint16_t flags;
     uint16_t sequenceNumber;
+    uint16_t parentSequenceNumber;
     int64_t size;
     int64_t modifiedTime;
     const WCHAR* name;
@@ -190,9 +191,10 @@ struct SliceResult {
             const auto* src = reinterpret_cast<const uint16_t*>(entry.name);
             strings.insert(strings.end(), src, src + entry.nameLength);
         }
-        const MftCompactEntry compact{entry.recordNumber,  entry.parentRecordNumber, stringOffset, entry.fileAttributes,
-                                      entry.flags,         entry.nameLength,         entry.size,   entry.modifiedTime,
-                                      entry.sequenceNumber};
+        const MftCompactEntry compact{
+            entry.recordNumber,   entry.parentRecordNumber,  stringOffset, entry.fileAttributes,
+            entry.flags,          entry.nameLength,          entry.size,   entry.modifiedTime,
+            entry.sequenceNumber, entry.parentSequenceNumber};
         entries.push_back(compact);
     }
 };

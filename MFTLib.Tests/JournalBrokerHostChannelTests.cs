@@ -263,7 +263,7 @@ public partial class JournalBrokerHostChannelTests
         return new JournalBrokerHost(
             new JournalBrokerHost.VolumeSources(
                 queryCursor ?? (_ => Armed),
-                scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)]]),
+                scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)]]),
                 readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
                 watchDrive,
                 queryVolumeInfo,

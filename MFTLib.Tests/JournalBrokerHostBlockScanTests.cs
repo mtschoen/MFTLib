@@ -31,7 +31,7 @@ public class JournalBrokerHostBlockScanTests
                         ? (Array.Empty<UsnJournalEntry>(), new UsnJournalCursor(cursor.JournalId, 12500))
                         : (Array.Empty<UsnJournalEntry>(), cursor);
                 },
-                ScanDrive: (driveLetter, _, _, _, _) =>
+                ScanDrive: (driveLetter, _, _, _, _, _) =>
                 {
                     Assert.IsTrue(cursorArmed);
                     Assert.AreEqual("C", driveLetter);
@@ -61,7 +61,7 @@ public class JournalBrokerHostBlockScanTests
     public async Task ScanChannel_BlockFormat_ForwardsDirectoryIndexProfileAndKeepNamesToSectionWriter()
     {
         using var blockWriter = new RecordingBlockSectionWriter();
-        var host = CreateHost((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]);
+        var host = CreateHost((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]);
 
         var frames = await ScanAsync(host, blockWriter, BrokerScanProfile.DirectoryIndex, [".git"]);
 
@@ -78,7 +78,7 @@ public class JournalBrokerHostBlockScanTests
     [TestMethod]
     public async Task ScanChannel_BlockFormatWithoutSectionWriterReportsNamedError()
     {
-        var host = CreateHost((_, _, _, _, _) => [[Record(5, ".", 3)]]);
+        var host = CreateHost((_, _, _, _, _, _) => [[Record(5, ".", 3)]]);
 
         var frames = await ScanAsync(host, null);
 
@@ -98,7 +98,7 @@ public class JournalBrokerHostBlockScanTests
             throw new IOException("record batch failed");
         }
 
-        var frames = await ScanAsync(CreateHost((_, _, _, _, _) => Batches()), blockWriter);
+        var frames = await ScanAsync(CreateHost((_, _, _, _, _, _) => Batches()), blockWriter);
 
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
         Assert.IsFalse(blockWriter.Block.Header.IsComplete);
@@ -112,7 +112,7 @@ public class JournalBrokerHostBlockScanTests
     {
         using var blockWriter = new RecordingBlockSectionWriter();
         var parsingReported = new TestGate();
-        var host = CreateHost((_, _, _, progress, _) =>
+        var host = CreateHost((_, _, _, progress, _, _) =>
         {
             progress!.Report(new BlockWriteProgress(500, 0, 1000, null, BrokerScanPhase.Parsing));
             parsingReported.MarkEntered();
@@ -154,7 +154,7 @@ public class JournalBrokerHostBlockScanTests
             yield return [Record(20, "file.txt")];
         }
 
-        var host = CreateHost((_, _, _, _, cancellationToken) => Batches(cancellationToken));
+        var host = CreateHost((_, _, _, _, _, cancellationToken) => Batches(cancellationToken));
         await using var harness = new HostChannelHarness(host, blockWriter);
         var pipe = await harness.OpenScanChannelAsync('C', "section-C");
         await scanParked.Entered.WaitAsync(HostChannelHarness.HangGuard);
@@ -185,7 +185,7 @@ public class JournalBrokerHostBlockScanTests
         ];
         var completedUtc = new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc);
         using var hostWriter = new RecordingBlockSectionWriter();
-        var hostFrames = await ScanAsync(CreateHost((_, _, _, _, _) => batches), hostWriter);
+        var hostFrames = await ScanAsync(CreateHost((_, _, _, _, _, _) => batches), hostWriter);
         var skippedByHost = hostFrames.Single(frame => frame.Kind == BrokerFrameKind.ScanReady).SkippedRecordCount;
 
         using var directBlock = BlockFile.Create(new BlockFileCreateOptions

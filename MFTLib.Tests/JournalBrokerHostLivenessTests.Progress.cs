@@ -126,7 +126,7 @@ public partial class JournalBrokerHostLivenessTests
             var ranges = (block.Length + BlockFile.FlushRangeBytes - 1) / BlockFile.FlushRangeBytes;
             Assert.AreEqual(3L, ranges);
             await using var harness = new HostChannelHarness(
-                liveness.Host(scanDrive: (_, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]]),
+                liveness.Host(scanDrive: (_, _, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]]),
                 new RealBlockSectionWriter());
 
             var frames = await HostChannelHarness.ReadToEndAsync(await harness.OpenScanChannelAsync('C', sectionName));

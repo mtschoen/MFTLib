@@ -76,7 +76,7 @@ public class LiveScanInvalidFixupTests
         using var block = CreateBlock();
 
         var batches = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(2), new QuietReporter(),
-            null, CancellationToken.None);
+            null, default, CancellationToken.None);
         var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, () => DateTime.UtcNow), batches,
             MftBlockRowFilter.Full, new BlockWriteReporting(null, null), CancellationToken.None);
 
@@ -126,7 +126,7 @@ public class LiveScanInvalidFixupTests
         using var block = CreateBlock();
 
         var batches = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(1), new QuietReporter(),
-            null, CancellationToken.None).ToArray();
+            null, default, CancellationToken.None).ToArray();
         var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, () => DateTime.UtcNow), batches,
             MftBlockRowFilter.Full, new BlockWriteReporting(null, null), CancellationToken.None);
 

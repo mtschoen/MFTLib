@@ -5,19 +5,20 @@ bool verifyFreedRows(const MftParseResult& result, bool resolvePaths) {
         uint64_t recordNumber;
         uint64_t parentRecordNumber;
         uint16_t sequenceNumber;
+        uint16_t parentSequenceNumber;
         uint16_t flags;
         const char16_t* name;
         const char16_t* path;
     };
     const std::array<ExpectedFreedRecord, 8> expected = {{
-        {12, 5, 14, 2, u"deleted-dir", u"deleted-dir"},
-        {13, 12, 14, 0, u"deleted-before.txt", u"deleted-dir\\deleted-before.txt"},
-        {14, 12, 15, 0, u"deleted-current.txt", u"deleted-dir\\deleted-current.txt"},
-        {15, 8, 16, 0, u"deleted-live.txt", u"sub\\deleted-live.txt"},
-        {16, 8, 17, MFT_ENTRY_FLAG_PATH_UNRESOLVED, u"deleted-reused.txt", u"deleted-reused.txt"},
-        {17, 12, 18, MFT_ENTRY_FLAG_PATH_UNRESOLVED, u"deleted-stale.txt", u"deleted-stale.txt"},
-        {21, 13, 22, MFT_ENTRY_FLAG_PATH_UNRESOLVED, u"deleted-under-freed-file.txt", u"deleted-under-freed-file.txt"},
-        {22, 6, 23, MFT_ENTRY_FLAG_PATH_UNRESOLVED, u"deleted-under-live-file.txt", u"deleted-under-live-file.txt"},
+        {12, 5, 14, 6, 2, u"deleted-dir", u"deleted-dir"},
+        {13, 12, 14, 13, 0, u"deleted-before.txt", u"deleted-dir\\deleted-before.txt"},
+        {14, 12, 15, 14, 0, u"deleted-current.txt", u"deleted-dir\\deleted-current.txt"},
+        {15, 8, 16, 9, 0, u"deleted-live.txt", u"sub\\deleted-live.txt"},
+        {16, 8, 17, 8, MFT_ENTRY_FLAG_PATH_UNRESOLVED, u"deleted-reused.txt", u"deleted-reused.txt"},
+        {17, 12, 18, 12, MFT_ENTRY_FLAG_PATH_UNRESOLVED, u"deleted-stale.txt", u"deleted-stale.txt"},
+        {21, 13, 22, 13, MFT_ENTRY_FLAG_PATH_UNRESOLVED, u"deleted-under-freed-file.txt", u"deleted-under-freed-file.txt"},
+        {22, 6, 23, 7, MFT_ENTRY_FLAG_PATH_UNRESOLVED, u"deleted-under-live-file.txt", u"deleted-under-live-file.txt"},
     }};
     const auto* entries = resolvePaths ? result.pathEntries : result.entries;
     const auto* strings = resolvePaths ? result.pathStrings : result.entryStrings;
@@ -32,7 +33,8 @@ bool verifyFreedRows(const MftParseResult& result, bool resolvePaths) {
         const std::u16string_view name(reinterpret_cast<const char16_t*>(strings + entry.stringOffset),
                                        entry.stringLength);
         if (entry.recordNumber != row.recordNumber || entry.parentRecordNumber != row.parentRecordNumber ||
-            entry.sequenceNumber != row.sequenceNumber || entry.flags != flags ||
+            entry.sequenceNumber != row.sequenceNumber ||
+            entry.parentSequenceNumber != row.parentSequenceNumber || entry.flags != flags ||
             name != (resolvePaths ? row.path : row.name)) {
             std::fprintf(stderr, "  FAIL: freed record %llu flags=%u sequence=%u\n",
                          static_cast<unsigned long long>(entry.recordNumber), entry.flags, entry.sequenceNumber);

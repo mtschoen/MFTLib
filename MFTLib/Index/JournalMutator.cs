@@ -144,7 +144,7 @@ internal sealed class JournalMutator
 
     FileChange? ApplyDelete(Snapshot snapshot, ushort driveOrdinal, UsnJournalEntry entry, uint rowIndex)
     {
-        if (!TryHydrateRow(entry, rowIndex, out _))
+        if (IsDeletedRow(rowIndex) || !TryHydrateRow(entry, rowIndex, out _))
         {
             return null;
         }
@@ -161,7 +161,7 @@ internal sealed class JournalMutator
     /// </summary>
     FileChange? ApplyRenameArm(Snapshot snapshot, ushort driveOrdinal, UsnJournalEntry entry, uint rowIndex)
     {
-        if (!TryHydrateRow(entry, rowIndex, out var hydrated))
+        if (IsDeletedRow(rowIndex) || !TryHydrateRow(entry, rowIndex, out var hydrated))
         {
             return null;
         }
@@ -212,6 +212,8 @@ internal sealed class JournalMutator
             return null;
         }
 
+        Writer.InvalidateDeletedDescendants(rowIndex);
+
         return new FileChange(FileChangeKind.Created, FileEntry.Create(snapshot, driveOrdinal, rowIndex),
             IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex), entry.TimestampUtc);
     }
@@ -240,7 +242,7 @@ internal sealed class JournalMutator
     /// </summary>
     FileChange? ApplyModification(Snapshot snapshot, ushort driveOrdinal, UsnJournalEntry entry, uint rowIndex)
     {
-        if (!TryHydrateRow(entry, rowIndex, out _))
+        if (IsDeletedRow(rowIndex) || !TryHydrateRow(entry, rowIndex, out _))
         {
             return null;
         }
@@ -251,6 +253,15 @@ internal sealed class JournalMutator
         row.Attributes = (uint)entry.FileAttributes;
         return new FileChange(FileChangeKind.Modified, FileEntry.Create(snapshot, driveOrdinal, rowIndex),
             IndexNavigation.BuildPath(snapshot, driveOrdinal, rowIndex), entry.TimestampUtc);
+    }
+
+    /// <summary>
+    ///     A deleted row, whether the journal deleted it or a scan imported it freed, is never modified, renamed,
+    ///     deleted again or hydrated live. Only a create reuses its slot, because NTFS reuses record numbers.
+    /// </summary>
+    bool IsDeletedRow(uint rowIndex)
+    {
+        return Writer.Block.Rows[(int)rowIndex].IsDeleted;
     }
 
     /// <summary>

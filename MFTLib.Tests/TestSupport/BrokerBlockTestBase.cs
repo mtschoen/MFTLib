@@ -21,7 +21,7 @@ public abstract class BrokerBlockTestBase
         return new JournalBrokerHost(
             new JournalBrokerHost.VolumeSources(
                 queryCursor ?? (_ => ArmedCursor),
-                scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
+                scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
                 readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
                 null,
                 queryVolumeInfo ?? (_ => VolumeInformation),

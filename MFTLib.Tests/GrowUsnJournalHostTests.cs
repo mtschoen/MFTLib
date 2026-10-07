@@ -62,7 +62,7 @@ public class GrowUsnJournalHostTests
         return new JournalBrokerHost(
             new JournalBrokerHost.VolumeSources(
                 _ => default,
-                (_, _, _, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
+                (_, _, _, _, _, _) => Array.Empty<IReadOnlyList<MftRecord>>(),
                 (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
                 GrowUsnJournal: growUsnJournal));
     }

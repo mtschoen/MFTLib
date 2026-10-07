@@ -365,9 +365,9 @@ public class MockVolumeTests
         using var volume = MftVolume.Open("C");
         using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
 
-        // 3 records * 50 bytes + string units (file0.txt=9, file1.txt=9, file2.txt=9 = 27 units * 2 bytes = 54)
-        // 150 + 54 = 204 bytes
-        Assert.AreEqual(204UL, stream.NativeCompactBytes);
+        // 3 records * 52 bytes + string units (file0.txt=9, file1.txt=9, file2.txt=9 = 27 units * 2 bytes = 54)
+        // 156 + 54 = 210 bytes
+        Assert.AreEqual(210UL, stream.NativeCompactBytes);
     }
 
     [TestMethod]
@@ -378,9 +378,9 @@ public class MockVolumeTests
         using var volume = MftVolume.Open("C");
         using var stream = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
 
-        // With paths: pathEntries (3 * 50 = 150) + pathStrings (dir\file0.txt=13, 13, 13 = 39 units * 2 bytes = 78)
-        // 150 + 78 = 228 bytes
-        Assert.AreEqual(228UL, stream.NativeCompactBytes);
+        // With paths: pathEntries (3 * 52 = 156) + pathStrings (dir\file0.txt=13, 13, 13 = 39 units * 2 bytes = 78)
+        // 156 + 78 = 234 bytes
+        Assert.AreEqual(234UL, stream.NativeCompactBytes);
     }
 
     [TestMethod]
@@ -394,7 +394,7 @@ public class MockVolumeTests
 
         Assert.AreEqual(3UL, stream.TotalRecords);
         Assert.AreEqual(3UL, stream.UsedRecords);
-        Assert.AreEqual(204UL, stream.NativeCompactBytes);
+        Assert.AreEqual(210UL, stream.NativeCompactBytes);
         Assert.IsNotNull(stream.Timings);
     }
 

@@ -210,7 +210,7 @@ public sealed class BrokerFileIndexRescanTests
 
         IEnumerable<IReadOnlyList<MftRecord>> Scan(string drive, ParseThreadAllowance parseThreads,
             IBrokerOperationReporter operation, IProgress<BlockWriteProgress>? progress,
-            CancellationToken cancellationToken)
+            MftRecordScanOptions scanOptions, CancellationToken cancellationToken)
         {
             var scanNumber = _scans.AddOrUpdate(drive, 1, (_, count) => count + 1);
             if (drive == "T" && scanNumber == 2 && _heldScanOfT is { } held)

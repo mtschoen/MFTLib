@@ -13,7 +13,7 @@ public partial class JournalBrokerHostTests
     {
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = ScanHost(
-            scanDrive: (_, _, _, _, _) => [[ScanRecord(100, "a.txt")]],
+            scanDrive: (_, _, _, _, _, _) => [[ScanRecord(100, "a.txt")]],
             readJournal: CatchUpSources.ToTip(new UsnJournalCursor(ScanArmedCursor.JournalId, ScanArmedCursor.NextUsn + 1),
                 ScanEntry()));
         await using var harness = new HostChannelHarness(host, blockWriter);
@@ -39,7 +39,7 @@ public partial class JournalBrokerHostTests
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = ScanHost(
             queryCursor: _ => new UsnJournalCursor(7UL, 0L),
-            scanDrive: (_, _, _, _, _) =>
+            scanDrive: (_, _, _, _, _, _) =>
             [
                 [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "batch1.txt", null)],
                 [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "batch2.txt", null)]
@@ -181,7 +181,7 @@ public partial class JournalBrokerHostTests
         MftRecord[] records, IReadOnlyCollection<string>? keepFileNames)
     {
         var writer = new RecordingBlockSectionWriter();
-        var host = ScanHost(scanDrive: (_, _, _, _, _) => [records]);
+        var host = ScanHost(scanDrive: (_, _, _, _, _, _) => [records]);
         await using var harness = new HostChannelHarness(host, writer);
 
         var frames = await ScanFramesAsync(harness, 'C', "mftlib-scan-C", BrokerScanProfile.DirectoryIndex, keepFileNames);

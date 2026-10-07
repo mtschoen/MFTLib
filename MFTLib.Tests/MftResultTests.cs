@@ -91,10 +91,10 @@ public partial class MftResultTests
     }
 
     [TestMethod]
-    public void GetMftNativeAbiVersion_ReturnsVersion5()
+    public void GetMftNativeAbiVersion_ReturnsVersion6()
     {
         var version = MFTLibNative._getMftNativeAbiVersion();
-        Assert.AreEqual(5U, version);
+        Assert.AreEqual(6U, version);
     }
 
     [TestMethod]

@@ -10,13 +10,14 @@ readonly struct NativeStrings(IntPtr namePtr, ushort nameLength, IntPtr pathPtr,
 
 internal readonly struct MftRecordFields(
     ushort flags, FileAttributes fileAttributes = 0, long size = 0, long modifiedFileTime = 0,
-    ushort sequenceNumber = 0)
+    ushort sequenceNumber = 0, ushort parentSequenceNumber = 0)
 {
     public readonly ushort Flags = flags;
     public readonly FileAttributes FileAttributes = fileAttributes;
     public readonly long Size = size;
     public readonly long ModifiedFileTime = modifiedFileTime;
     public readonly ushort SequenceNumber = sequenceNumber;
+    public readonly ushort ParentSequenceNumber = parentSequenceNumber;
 }
 
 /// <summary>
@@ -36,6 +37,7 @@ internal sealed record MftRecordTestValues
     public long Size { get; init; }
     public long ModifiedFileTime { get; init; }
     public ushort SequenceNumber { get; init; }
+    public ushort ParentSequenceNumber { get; init; }
 }
 
 /// <summary>
@@ -54,6 +56,7 @@ internal readonly struct MftRecord
     readonly long _size;
     readonly long _modifiedFileTime;
     readonly ushort _sequenceNumber;
+    readonly ushort _parentSequenceNumber;
 
     const ushort InUseFlag = 1;
     const ushort DirectoryFlag = 2;
@@ -86,6 +89,12 @@ internal readonly struct MftRecord
     ///     file is deleted, so pair it with <see cref="RecordNumber" /> to identify one file.
     /// </summary>
     public ushort SequenceNumber => _sequenceNumber;
+
+    /// <summary>
+    ///     The sequence number the record's name stores in its parent reference. A parent is the
+    ///     directory this name was created in only while its own sequence number still equals this one.
+    /// </summary>
+    internal ushort ParentSequenceNumber => _parentSequenceNumber;
 
     /// <summary>
     ///     Whether the record is allocated. Freed base records returned with
@@ -223,6 +232,7 @@ internal readonly struct MftRecord
         _size = fields.Size;
         _modifiedFileTime = fields.ModifiedFileTime;
         _sequenceNumber = fields.SequenceNumber;
+        _parentSequenceNumber = fields.ParentSequenceNumber;
         _namePtr = strings.NamePtr;
         _nameLength = strings.NameLength;
         _pathPtr = strings.PathPtr;
@@ -244,7 +254,8 @@ internal readonly struct MftRecord
             return this;
         }
 
-        var fields = new MftRecordFields(_flags, FileAttributes, _size, _modifiedFileTime, _sequenceNumber);
+        var fields = new MftRecordFields(_flags, FileAttributes, _size, _modifiedFileTime, _sequenceNumber,
+            _parentSequenceNumber);
         return new MftRecord(RecordNumber, ParentRecordNumber, fields, FileName, FullPath);
     }
 
@@ -258,6 +269,7 @@ internal readonly struct MftRecord
         _size = fields.Size;
         _modifiedFileTime = fields.ModifiedFileTime;
         _sequenceNumber = fields.SequenceNumber;
+        _parentSequenceNumber = fields.ParentSequenceNumber;
         _fileName = fileName;
         _fullPath = fullPath;
         _namePtr = IntPtr.Zero;
@@ -274,7 +286,7 @@ internal readonly struct MftRecord
                              | (values.IsDirectory ? DirectoryFlag : 0)
                              | (values.SizeKnown ? 0 : SizeUnknownFlag));
         var fields = new MftRecordFields(flags, values.FileAttributes, values.Size, values.ModifiedFileTime,
-            values.SequenceNumber);
+            values.SequenceNumber, values.ParentSequenceNumber);
         return new MftRecord(values.RecordNumber, values.ParentRecordNumber, fields, values.FileName, values.FullPath);
     }
 

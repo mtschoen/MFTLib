@@ -34,6 +34,13 @@ internal static class BlockLayout
     /// <summary>Mirrors the native resolver's cap so a corrupt parent column cannot loop forever.</summary>
     public const int MaximumPathDepth = 128;
 
+    /// <summary>
+    ///     The parent row of a row with no verified parent: a freed or deleted record whose parent chain could not be
+    ///     trusted or whose ancestor slot was reused. No row has this index, so the row is nobody's child and its
+    ///     path is its bare name.
+    /// </summary>
+    internal const uint DetachedParentRow = uint.MaxValue;
+
     /// <summary>Size, in bytes, of one stored NTFS sequence number.</summary>
     internal const int SequenceBytes = 2;
 

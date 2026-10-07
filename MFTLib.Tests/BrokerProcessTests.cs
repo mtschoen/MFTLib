@@ -317,7 +317,7 @@ public partial class BrokerProcessTests
         return new JournalBrokerHost(
             new JournalBrokerHost.VolumeSources(
                 queryCursor ?? (_ => Armed),
-                scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
+                scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
                 readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
                 watchDrive,
                 queryVolumeInfo ?? (_ => Volume),

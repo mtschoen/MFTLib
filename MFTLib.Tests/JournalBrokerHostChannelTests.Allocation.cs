@@ -290,7 +290,7 @@ public partial class JournalBrokerHostChannelTests
 
         public IEnumerable<IReadOnlyList<MftRecord>> Source(string drive, ParseThreadAllowance parseThreads,
             IBrokerOperationReporter operation, IProgress<BlockWriteProgress>? progress,
-            CancellationToken cancellationToken)
+            MftRecordScanOptions scanOptions, CancellationToken cancellationToken)
         {
             lock (_scans)
             {

@@ -84,7 +84,7 @@ internal static class SearchEngine
         Justification = "FileRow is explicit-layout and intentionally mutable for field-by-field disk mapping; the in-parameter signature is spec-mandated.")]
     internal static bool RowMatches(in FileRow row, ReadOnlySpan<char> name, SearchQuery query)
     {
-        if (!row.IsInUse || row.IsDeleted)
+        if (!row.IsInUse || (row.IsDeleted && !query.IncludeDeleted))
         {
             return false;
         }

@@ -30,7 +30,7 @@ public partial class BrokerProcessTests
         // Writes 1 and 2 are the scan's volume query and channel open; write 3 is corrupted.
         var corrupt = new CorruptFrameWrite(corruptWriteNumber: 3);
         var broker = new InProcessBroker(CreateHost(
-                scanDrive: (_, _, _, _, cancellationToken) =>
+                scanDrive: (_, _, _, _, _, cancellationToken) =>
                     WaitForCancellation(scanning, sourceCancelled, cancellationToken)),
             wrapClientStream: ControlOnly(corrupt));
 

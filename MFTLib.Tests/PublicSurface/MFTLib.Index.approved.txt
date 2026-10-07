@@ -345,9 +345,9 @@ MFTLib.Index.ProducerKind :: type public enum : uint, System.IComparable, System
 MFTLib.Index.ProducerPolicy :: field public const Enumeration : MFTLib.Index.ProducerPolicy = 1
 MFTLib.Index.ProducerPolicy :: field public const Mft : MFTLib.Index.ProducerPolicy = 0
 MFTLib.Index.ProducerPolicy :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-MFTLib.Index.SearchQuery :: constructor public (string? NamePattern, MFTLib.Index.NameMatchMode MatchMode = 1, bool CaseSensitive = false, MFTLib.Index.FileEntry? Under = default, bool? Directories = default, long? MinimumSize = default, long? MaximumSize = default, System.DateTime? ModifiedAfter = default, System.DateTime? ModifiedBefore = default)
+MFTLib.Index.SearchQuery :: constructor public (string? NamePattern, MFTLib.Index.NameMatchMode MatchMode = 1, bool CaseSensitive = false, MFTLib.Index.FileEntry? Under = default, bool? Directories = default, long? MinimumSize = default, long? MaximumSize = default, System.DateTime? ModifiedAfter = default, System.DateTime? ModifiedBefore = default, bool IncludeDeleted = false)
 MFTLib.Index.SearchQuery :: method public <Clone>$() : MFTLib.Index.SearchQuery
-MFTLib.Index.SearchQuery :: method public Deconstruct(out string? NamePattern, out MFTLib.Index.NameMatchMode MatchMode, out bool CaseSensitive, out MFTLib.Index.FileEntry? Under, out bool? Directories, out long? MinimumSize, out long? MaximumSize, out System.DateTime? ModifiedAfter, out System.DateTime? ModifiedBefore) : void
+MFTLib.Index.SearchQuery :: method public Deconstruct(out string? NamePattern, out MFTLib.Index.NameMatchMode MatchMode, out bool CaseSensitive, out MFTLib.Index.FileEntry? Under, out bool? Directories, out long? MinimumSize, out long? MaximumSize, out System.DateTime? ModifiedAfter, out System.DateTime? ModifiedBefore, out bool IncludeDeleted) : void
 MFTLib.Index.SearchQuery :: method public Equals(MFTLib.Index.SearchQuery? other) : bool
 MFTLib.Index.SearchQuery :: method public override Equals(object? obj) : bool
 MFTLib.Index.SearchQuery :: method public override GetHashCode() : int
@@ -356,6 +356,7 @@ MFTLib.Index.SearchQuery :: method public static op_Equality(MFTLib.Index.Search
 MFTLib.Index.SearchQuery :: method public static op_Inequality(MFTLib.Index.SearchQuery? left, MFTLib.Index.SearchQuery? right) : bool
 MFTLib.Index.SearchQuery :: property public CaseSensitive { get; init; } : bool
 MFTLib.Index.SearchQuery :: property public Directories { get; init; } : bool?
+MFTLib.Index.SearchQuery :: property public IncludeDeleted { get; init; } : bool
 MFTLib.Index.SearchQuery :: property public MatchMode { get; init; } : MFTLib.Index.NameMatchMode
 MFTLib.Index.SearchQuery :: property public MaximumSize { get; init; } : long?
 MFTLib.Index.SearchQuery :: property public MinimumSize { get; init; } : long?

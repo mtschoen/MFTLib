@@ -109,7 +109,7 @@ public class DriveScannerModeTests
     public async Task ScanDriveThroughBroker_ScanFailsOnTheBroker_PrintsTheProducerFailure()
     {
         await using var broker = new InProcessBroker(CreateHost(
-            scanDrive: (_, _, _, _, _) => throw new IOException("volume unreadable")));
+            scanDrive: (_, _, _, _, _, _) => throw new IOException("volume unreadable")));
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
 
@@ -276,7 +276,7 @@ public class DriveScannerModeTests
         return new JournalBrokerHost(
             new JournalBrokerHost.VolumeSources(
                 _ => Armed,
-                scanDrive ?? ((_, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
+                scanDrive ?? ((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]),
                 readJournal ?? ((_, since, _) => (Array.Empty<UsnJournalEntry>(), since)),
                 QueryVolumeInformation: _ => Volume),
             processorCount: 4);

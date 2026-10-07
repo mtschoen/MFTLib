@@ -13,7 +13,7 @@ public partial class JournalBrokerHostChannelTests
         using var sectionWriter = new RecordingBlockSectionWriter();
         UsnJournalCursor? caughtUpFrom = null;
         var host = CreateHost(
-            scanDrive: (_, _, operation, progress, _) =>
+            scanDrive: (_, _, operation, progress, _, _) =>
             {
                 operation.Processing("MFT parse");
                 progress?.Report(new BlockWriteProgress(2, 0, 2, null, BrokerScanPhase.Parsing));
@@ -121,7 +121,7 @@ public partial class JournalBrokerHostChannelTests
     public async Task ScanChannel_AllowanceReachesSource()
     {
         int? allowance = null;
-        var host = CreateHost(processorCount: 8, scanDrive: (_, parseThreads, _, _, _) =>
+        var host = CreateHost(processorCount: 8, scanDrive: (_, parseThreads, _, _, _, _) =>
         {
             allowance = parseThreads.Count;
             return [[Record(5, ".", 3)]];

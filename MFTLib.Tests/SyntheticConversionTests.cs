@@ -104,7 +104,8 @@ public class SyntheticConversionTests
             FileAttributes = FileAttributes.Hidden,
             Size = 4096,
             LastWriteTime = modified,
-            SequenceNumber = 2
+            SequenceNumber = 2,
+            ParentSequenceNumber = 7
         }.ToProduction();
 
         Assert.AreEqual(31UL, record.RecordNumber);
@@ -118,6 +119,7 @@ public class SyntheticConversionTests
         Assert.AreEqual(4096L, record.Size);
         Assert.AreEqual(modified, record.ModifiedUtc);
         Assert.AreEqual((ushort)2, record.SequenceNumber);
+        Assert.AreEqual((ushort)7, record.ParentSequenceNumber);
     }
 
     [TestMethod]
