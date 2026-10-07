@@ -1,3 +1,4 @@
+using MFTLib.Index;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SampleProgram.Direct;
@@ -162,6 +163,7 @@ public class SampleHostElevationNoticeTests
         var clock = new FakeTimeProvider();
         var scanner = new SampleHost
         {
+            _isWindows = () => true,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (_, _) => true,
@@ -544,6 +546,7 @@ public class SampleHostElevationNoticeTests
         return new SampleHost
         {
             _isWindows = () => true,
+            _resolveDrive = letter => new IndexedDrive(char.ToUpperInvariant(letter[0]), Path.GetTempPath(), 1),
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _getProcessPath = () => ProcessPath,
