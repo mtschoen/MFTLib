@@ -93,6 +93,12 @@ public class PublicMemberCallerTests
             .OrderBy(member => member.Display, StringComparer.Ordinal)
             .ToList();
 
+    /// <summary>Fails naming every exposed type outside the surface namespaces, which the gate would never see.</summary>
+    static void AssertNoOutOfScopeTypes(Surface surface) =>
+        Assert.AreEqual(0, surface.OutOfScopeTypes.Count,
+            "These public types sit outside the MFTLib and MFTLib.Index namespaces, so the caller gate would not see " +
+            "them. Move them into a gated namespace or extend the gate: " + string.Join("; ", surface.OutOfScopeTypes));
+
     static string Describe(IEnumerable<SurfaceMember> members) =>
         string.Join(Environment.NewLine, members.Select(member => "  " + member.Display));
 
@@ -105,6 +111,7 @@ public class PublicMemberCallerTests
         }
 
         var surface = ReadSurface(LibraryPath);
+        AssertNoOutOfScopeTypes(surface);
         var references = CollectReferences([SamplePath(DirectSample), SamplePath(WatchSample)]);
 
         var unreferenced = FindUnreferenced(surface, references, ExemptMembers);
@@ -221,5 +228,21 @@ public class PublicMemberCallerTests
         Assert.IsFalse(unreferenced.Contains(exempt));
         Assert.IsTrue(unreferenced.Any(member => member.Display.StartsWith(
             "method MFTLib.Index.FileIndex.RescanAsync(System.Char,", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public void TheLibrary_ExposesTypesOnlyInTheGatedNamespaces() => AssertNoOutOfScopeTypes(ReadSurface(LibraryPath));
+
+    /// <summary>
+    ///     Negative control for the namespace guard: the test assembly's public types sit outside the namespace
+    ///     handed to the reader, so the guard must fail and name one of them.
+    /// </summary>
+    [TestMethod]
+    public void TheNamespaceGuard_NamesAPublicTypeOutsideTheSurfaceNamespaces()
+    {
+        var surface = ReadSurface(typeof(PublicMemberCallerTests).Assembly.Location, ["MFTLib.Tests.CallerGateFixtures"]);
+
+        var failure = Assert.ThrowsException<AssertFailedException>(() => AssertNoOutOfScopeTypes(surface));
+        StringAssert.Contains(failure.Message, "MFTLib.Tests.PublicMemberCallerTests");
     }
 }
