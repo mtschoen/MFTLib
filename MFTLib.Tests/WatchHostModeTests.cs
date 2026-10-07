@@ -201,7 +201,7 @@ public class WatchHostModeTests
             },
             _writeLine = _ => { }
         };
-        SampleHostElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
 
         var result = scanner.Run(arguments);
 
@@ -239,7 +239,7 @@ public class WatchHostModeTests
             },
             _writeLine = _ => { }
         };
-        SampleHostElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
 
         Assert.AreEqual(0, scanner.Run(arguments));
 
@@ -261,7 +261,7 @@ public class WatchHostModeTests
             _writeLine = lines.Add
         };
         // The run is attended and unelevated, so it shows the heads-up dialog before the broker launch.
-        SampleHostElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
         return scanner;
     }
 

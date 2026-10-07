@@ -26,7 +26,7 @@ public class WatchHostTests
             _tryRunElevated = (_, _) => true,
             _writeLine = lines.Add
         };
-        SampleHostElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
 
         var result = scanner.Run([]);
         Assert.AreEqual(0, result);
@@ -83,7 +83,7 @@ public class WatchHostTests
             _getProcessPath = () => "/some/path",
             _writeLine = lines.Add
         };
-        SampleHostElevationNoticeTests.AcknowledgeDeliberately(scanner);
+        WatchNoticeSupport.AcknowledgeDeliberately(scanner);
 
         var result = scanner.Run(["C"]);
         Assert.AreEqual(1, result);

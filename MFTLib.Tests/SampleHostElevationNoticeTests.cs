@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using SampleProgram.Watch;
+using SampleProgram.Direct;
 
 namespace MFTLib.Tests;
 
-// The heads-up dialog before the elevated relaunch or the broker launch of a scan-drive run. The dialog and
+// The heads-up dialog before the elevated relaunch (a Direct local scan) or the broker launch (the shared flow with
+// ElevationNeed.BrokerLaunch, which Watch uses and Direct never asks for). The dialog and
 // the clock are scripted: each stubbed dialog answers after a chosen amount of fake time, so no test sleeps
 // or reads the real clock.
 [TestClass]
@@ -37,7 +38,7 @@ public class SampleHostElevationNoticeTests
         var events = new List<string>();
         var (scanner, args, launchEvent) = CreateScannerForMode(isScanDrive, new List<string>(), events, [Answer(SampleHost.MessageBoxResultOk, 2)]);
 
-        var result = scanner.Run(args);
+        var result = RunMode(scanner, isScanDrive, args, events);
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(new[] { "dialog", launchEvent }, events);
@@ -52,7 +53,7 @@ public class SampleHostElevationNoticeTests
         var events = new List<string>();
         var (scanner, args, _) = CreateScannerForMode(isScanDrive, lines, events, [Answer(SampleHost.MessageBoxResultCancel, 2)]);
 
-        var result = scanner.Run(args);
+        var result = RunMode(scanner, isScanDrive, args, events);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(new[] { "dialog" }, events);
@@ -74,7 +75,7 @@ public class SampleHostElevationNoticeTests
             [Answer(SampleHost.MessageBoxResultOk, 0.2), Answer(SampleHost.MessageBoxResultOk, 3)],
             messages);
 
-        var result = scanner.Run(args);
+        var result = RunMode(scanner, isScanDrive, args, events);
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(new[] { "dialog", "dialog", launchEvent }, events);
@@ -91,7 +92,7 @@ public class SampleHostElevationNoticeTests
             events,
             [Answer(SampleHost.MessageBoxResultCancel, 0.2), Answer(SampleHost.MessageBoxResultOk, 3)]);
 
-        var result = scanner.Run(["C"]);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
@@ -104,7 +105,7 @@ public class SampleHostElevationNoticeTests
         var scanner = Scanner(
             new List<string>(), events, [Answer(SampleHost.MessageBoxResultOk, SampleHost.AccidentalDismissalInterval.TotalSeconds)]);
 
-        scanner.Run(["C"]);
+        scanner.Run(["scan", "C"]);
 
         CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, events);
     }
@@ -116,7 +117,7 @@ public class SampleHostElevationNoticeTests
         var events = new List<string>();
         var scanner = Scanner(lines, events, [Answer(0, 0)]);
 
-        var result = scanner.Run(["C"]);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(new[] { "dialog" }, events);
@@ -131,9 +132,9 @@ public class SampleHostElevationNoticeTests
         scanner._isElevated = () => true;
         scanner._acrtIobFunc = _ => IntPtr.Zero;
         scanner._wFreopen = (_, _, _) => IntPtr.Zero;
-        scanner._createBrokerSession = () => throw new IOException("no broker in this test");
+        scanner._createSource = _ => throw new IOException("no scan in this test");
 
-        scanner.Run(["scan-drive", "T"]);
+        scanner.Run(["scan", "T"]);
 
         CollectionAssert.AreEqual(Array.Empty<string>(), events);
     }
@@ -145,7 +146,7 @@ public class SampleHostElevationNoticeTests
         var scanner = Scanner(new List<string>(), events, []);
         scanner._canSelfElevate = () => false;
 
-        var result = scanner.Run(["C"]);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(Array.Empty<string>(), events);
@@ -183,7 +184,7 @@ public class SampleHostElevationNoticeTests
             }
         };
 
-        scanner.Run(["scan-drive", "C", "", "a b&c"]);
+        scanner.Run(["scan", "C", "--name", "", "--under", "a b&c"]);
 
         Assert.AreEqual(SampleHost.MessageBeepIconExclamation, beep);
         Assert.IsTrue(title!.Contains("SampleProgram", StringComparison.Ordinal));
@@ -193,8 +194,8 @@ public class SampleHostElevationNoticeTests
         Assert.IsTrue(text!.Contains("UAC", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("administrator rights", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains($"Executable: {ProcessPath}", StringComparison.Ordinal));
-        Assert.IsTrue(text.Contains("Arguments (4)", StringComparison.Ordinal));
-        Assert.IsTrue(text.Contains("  scan-drive", StringComparison.Ordinal));
+        Assert.IsTrue(text.Contains("Arguments (6)", StringComparison.Ordinal));
+        Assert.IsTrue(text.Contains("  scan", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("  <empty>", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("  a b&c", StringComparison.Ordinal));
     }
@@ -223,7 +224,7 @@ public class SampleHostElevationNoticeTests
         int result;
         try
         {
-            result = scanner.Run(args);
+            result = RunMode(scanner, isScanDrive, args, events);
         }
         finally
         {
@@ -244,24 +245,24 @@ public class SampleHostElevationNoticeTests
         var scanner = Scanner(lines, events, []);
         scanner._getEnvironmentVariable = Unattended;
 
-        var result = scanner.Run(["scan-drive", "C"]);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(Array.Empty<string>(), events);
         Assert.IsTrue(lines.Any(line => line.Contains("Running unattended (MFTLIB_SAMPLE_UNATTENDED=1): elevation skipped")));
         Assert.IsTrue(lines.Any(line => line.Contains("AUTOMATIC ELEVATION FAILED")));
-        Assert.IsTrue(lines.Contains("  scan-drive"));
+        Assert.IsTrue(lines.Contains("  scan"));
     }
 
     [TestMethod]
-    public void Run_ScanDrive_Unattended_NeverLaunchesTheBroker()
+    public void Run_LocalScan_Unattended_NeverScans()
     {
         var lines = new List<string>();
         var scanner = Scanner(lines, [], []);
         scanner._getEnvironmentVariable = Unattended;
-        scanner._createBrokerSession = () => throw new AssertFailedException("Unattended scan-drive must not launch the broker.");
+        scanner._createSource = _ => throw new AssertFailedException("An unattended local scan must not run.");
 
-        var result = scanner.Run(["scan-drive", "C"]);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
         Assert.IsTrue(lines.Any(line => line.Contains("Running unattended")));
@@ -278,7 +279,7 @@ public class SampleHostElevationNoticeTests
         var scanner = Scanner(new List<string>(), events, [Answer(SampleHost.MessageBoxResultOk, 2)]);
         scanner._getEnvironmentVariable = _ => value;
 
-        scanner.Run(["C"]);
+        scanner.Run(["scan", "C"]);
 
         CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, events);
     }
@@ -292,12 +293,11 @@ public class SampleHostElevationNoticeTests
         scanner._acrtIobFunc = _ => IntPtr.Zero;
         scanner._wFreopen = (_, _, _) => IntPtr.Zero;
         scanner._getEnvironmentVariable = Unattended;
-        scanner._elevationNeed = _ => ElevationNeed.SelfElevate;
-        scanner._createBrokerSession = () => throw new IOException("no broker in this test");
+        scanner._createSource = _ => throw new IOException("no scan in this test");
 
-        var result = scanner.Run(["scan-drive", "T"]);
+        var result = scanner.Run(["scan", "T"]);
 
-        Assert.AreEqual(0, result);
+        Assert.AreEqual(1, result, "The scan was attempted and failed; the switch changed nothing.");
         Assert.IsFalse(lines.Any(line => line.Contains("Running unattended")));
     }
 
@@ -324,25 +324,27 @@ public class SampleHostElevationNoticeTests
             return answer.Result;
         };
 
-        var result = scanner.Run(["C"]);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
     }
 
     [TestMethod]
-    public void Run_ScanDrive_UnattendedButAlreadyElevated_ScansAsUsual()
+    public void Run_LocalScan_UnattendedButAlreadyElevated_ScansAsUsual()
     {
         var lines = new List<string>();
         var scanner = Scanner(lines, [], []);
         scanner._isElevated = () => true;
+        scanner._acrtIobFunc = _ => IntPtr.Zero;
+        scanner._wFreopen = (_, _, _) => IntPtr.Zero;
         scanner._getEnvironmentVariable = Unattended;
-        scanner._createBrokerSession = () => throw new IOException("the scan was attempted");
+        scanner._createSource = _ => throw new IOException("the scan was attempted");
 
-        var result = scanner.Run(["scan-drive", "C"]);
+        var result = scanner.Run(["scan", "C"]);
 
-        Assert.AreEqual(0, result);
-        Assert.IsTrue(lines.Contains("Error creating broker session: the scan was attempted"));
+        Assert.AreEqual(1, result);
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("the scan was attempted")));
         Assert.IsFalse(lines.Any(line => line.Contains("Running unattended")));
     }
 
@@ -351,7 +353,7 @@ public class SampleHostElevationNoticeTests
 
 
     [TestMethod]
-    public void Run_ScanDrive_NotElevated_DialogNamesTheBrokerLaunchItPrecedes()
+    public void RunWithElevation_BrokerLaunch_NotElevated_DialogNamesTheBrokerLaunchItPrecedes()
     {
         string? text = null;
         string? title = null;
@@ -371,12 +373,11 @@ public class SampleHostElevationNoticeTests
                 clock.Advance(TimeSpan.FromSeconds(5));
                 return SampleHost.MessageBoxResultOk;
             },
-            _createBrokerSession = () => throw new IOException("the scripted launch stands in for the broker"),
-            _canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate."),
-            _tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate.")
+            _canSelfElevate = () => throw new AssertFailedException("A broker launch must not self-elevate."),
+            _tryRunElevated = (_, _) => throw new AssertFailedException("A broker launch must not self-elevate.")
         };
 
-        var result = scanner.Run(["scan-drive", "C"]);
+        var result = scanner.RunWithElevation(["scan-drive", "C"], ElevationNeed.BrokerLaunch, () => 0);
 
         Assert.AreEqual(0, result);
         Assert.IsTrue(title!.Contains("SampleProgram", StringComparison.Ordinal));
@@ -411,7 +412,7 @@ public class SampleHostElevationNoticeTests
             return answer.Result;
         };
 
-        var result = scanner.Run(["C"]);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(0, result);
         CollectionAssert.AreEqual(new[] { "dialog", "dialog", "elevate" }, events);
@@ -424,7 +425,7 @@ public class SampleHostElevationNoticeTests
         var events = new List<string>();
         var scanner = Scanner(lines, events, [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds + 1)]);
 
-        var result = scanner.Run(["C"]);
+        var result = scanner.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
         CollectionAssert.AreEqual(new[] { "dialog" }, events);
@@ -441,8 +442,8 @@ public class SampleHostElevationNoticeTests
             new List<string>(), earlierEvents,
             [Answer(SampleHost.MessageBoxResultOk, SampleHost.ElevationNoticeTimeout.TotalSeconds - 0.001)]);
 
-        Assert.AreEqual(1, atTimeout.Run(["C"]));
-        Assert.AreEqual(0, earlier.Run(["C"]));
+        Assert.AreEqual(1, atTimeout.Run(["scan", "C"]));
+        Assert.AreEqual(0, earlier.Run(["scan", "C"]));
 
         CollectionAssert.AreEqual(new[] { "dialog" }, atTimeoutEvents);
         CollectionAssert.AreEqual(new[] { "dialog", "elevate" }, earlierEvents);
@@ -508,18 +509,25 @@ public class SampleHostElevationNoticeTests
         var scanner = Scanner(lines, events, answers, messages);
         if (isScanDrive)
         {
-            scanner._elevationNeed = parsed => parsed.Need;
-            scanner._canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate.");
-            scanner._tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate.");
-            scanner._createBrokerSession = () =>
-            {
-                events.Add("create-session");
-                throw new IOException("the scripted launch stands in for the broker");
-            };
+            scanner._canSelfElevate = () => throw new AssertFailedException("A broker launch must not self-elevate.");
+            scanner._tryRunElevated = (_, _) => throw new AssertFailedException("A broker launch must not self-elevate.");
         }
-        string[] args = ["scan-drive", "C"];
+
+        string[] args = isScanDrive ? ["scan-drive", "C"] : ["scan", "C"];
         var launchEvent = isScanDrive ? "create-session" : "elevate";
         return (scanner, args, launchEvent);
+    }
+
+    // The broker-launch path is the shared flow asked for ElevationNeed.BrokerLaunch, as the Watch sample asks for it.
+    static int RunMode(SampleHost scanner, bool isScanDrive, string[] args, List<string> events)
+    {
+        return isScanDrive
+            ? scanner.RunWithElevation(args, ElevationNeed.BrokerLaunch, () =>
+            {
+                events.Add("create-session");
+                return 0;
+            })
+            : scanner.Run(args);
     }
 
     static (int Result, double SecondsToAnswer) Answer(int result, double secondsToAnswer) => (result, secondsToAnswer);
@@ -535,7 +543,7 @@ public class SampleHostElevationNoticeTests
         // The scanner of a run that must itself be elevated; the scan-drive tests turn that off, as the real scan is.
         return new SampleHost
         {
-            _elevationNeed = _ => ElevationNeed.SelfElevate,
+            _isWindows = () => true,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _getProcessPath = () => ProcessPath,
