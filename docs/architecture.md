@@ -34,7 +34,17 @@
       producer and the watch source of every MFT-backed drive, so the two cannot come from
       different connections. `BrokerSession.CreateIndexSource()` builds the broker-backed
       one; `MftIndexSource.Unavailable(reason)` fails every scan and watch start with
-      `Drive {letter}: {reason}.`. A null `MftSource` is a configuration error for
+      `Drive {letter}: {reason}.`. `MftIndexSources.FromLocalVolumes(scanOptions)` builds the in-process one for a caller
+      that is already elevated: `LocalMftBlockProducer` plans capacity from the volume geometry,
+      creates the requested block and fills it through `MftBlockScan.WriteToBlock` with a zero
+      journal cursor, with no broker process or pipe. It has no watch source, so watch start and
+      per-drive catch-up refuse with `Drive {letter}: this source does not support watching.`,
+      batched start and catch-up report `NotApplicable`, and `DriveStatus.WatchSupported` is false. Concurrent
+      direct scans share the process's parse threads through `ParseThreadAllocator`. Because the source
+      cannot watch, cache reopening skips resume-checkpoint validation against the live journal, preserving
+      cached blocks without spurious journal-recreation loss. The factory
+      opens nothing until the first scan; a process that cannot open the volume fails the drive
+      as `ProducerFailed`. A null `MftSource` is a configuration error for
       `ProducerPolicy.Mft` and is ignored by `ProducerPolicy.Enumeration`. The block producer
       delegate, the watch source and drive watch interfaces and their records are internal;
       only MFTLib implements them, and tests build sources through `MFTLibTestExtensions`.

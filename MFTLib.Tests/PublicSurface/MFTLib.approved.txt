@@ -39,6 +39,8 @@ MFTLib.IElevationProvider :: method public abstract CanSelfElevate() : bool
 MFTLib.IElevationProvider :: method public abstract IsElevated() : bool
 MFTLib.IElevationProvider :: method public abstract TryRunElevated(System.Collections.Generic.IReadOnlyList<string> arguments, System.TimeSpan timeout) : bool
 MFTLib.IElevationProvider :: type public interface
+MFTLib.MftIndexSources :: method public static FromLocalVolumes(MFTLib.BrokerScanOptions? scanOptions = default) : MFTLib.Index.MftIndexSource
+MFTLib.MftIndexSources :: type public static class
 MFTLib.UsnJournalSettings :: method public Equals(MFTLib.UsnJournalSettings other) : bool
 MFTLib.UsnJournalSettings :: method public override Equals(object obj) : bool
 MFTLib.UsnJournalSettings :: method public override GetHashCode() : int

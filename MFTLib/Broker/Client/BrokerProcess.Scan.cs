@@ -38,18 +38,9 @@ internal sealed partial class BrokerProcess
                 $"Drive {letter} scan could not start: {exception.Message}", exception);
         }
 
-        var (slotCapacity, namePoolCapacity) = MftBlockCapacity.Plan(volume);
-        var (sectionName, block, lifetime) = _createBlockSection(letter, new BlockFileCreateOptions
-        {
-            Path = target.Path,
-            VolumeSerial = target.VolumeSerial,
-            DeleteOnClose = target.DeleteOnClose,
-            ProducerKind = ProducerKind.Mft,
-            RootRow = 5,
-            SlotCapacity = slotCapacity,
-            NamePoolCapacity = namePoolCapacity,
-            CacheTag = target.CacheTag
-        });
+        var (sectionName, block, lifetime) = _createBlockSection(letter,
+            MftBlockCapacity.CreateOptions(volume, target.Path, target.VolumeSerial, target.DeleteOnClose,
+                target.CacheTag));
         var sectionLifetime = new ReleaseOnce(lifetime);
         try
         {

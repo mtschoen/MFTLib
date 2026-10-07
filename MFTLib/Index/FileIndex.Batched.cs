@@ -134,12 +134,12 @@ public sealed partial class FileIndex
         }
     }
 
-    /// <summary>Whether a start applies: the drive has an MFT-backed block to watch from.</summary>
+    /// <summary>Whether a start applies: the source offers a watch and the drive has an MFT-backed block to watch from.</summary>
     bool HasWatchableBlock(char driveLetter)
     {
         lock (_stateLock)
         {
-            return FindWatchableDriveBlockLocked(driveLetter) is not null;
+            return WatchSourceOrNull is not null && FindWatchableDriveBlockLocked(driveLetter) is not null;
         }
     }
 

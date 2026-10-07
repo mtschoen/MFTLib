@@ -65,7 +65,7 @@ internal sealed class BrokerMftBlockProducer
         }
     }
 
-    static void ValidateBlock(BlockFile block, uint volumeSerial, UsnJournalCursor armed, CacheTag requestedCacheTag)
+    internal static void ValidateBlock(BlockFile block, uint volumeSerial, UsnJournalCursor armed, CacheTag requestedCacheTag)
     {
         var header = block.Header;
         if (header.RowCount == 0)
