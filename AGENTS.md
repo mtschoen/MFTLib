@@ -45,19 +45,19 @@ dotnet nuget push "MFTLibTestExtensions\bin\x64\Release\MFTLib.TestExtensions.*.
 
 ### Running the sample programs
 
-Both samples need admin elevation (raw volume access); they **self-elevate** via `ElevationUtilities`.
+Direct local-volume runs need admin rights (raw volume access) and **self-elevate** via `ElevationUtilities`; Direct dump runs need none. Watch is unelevated, its broker elevates, and it prints to the console.
 
-For the most reliable experience (proper UAC prompt handling), **run the compiled .exe directly**:
+**Run the compiled .exe directly** for UAC:
 
 ```bash
-# Launch directly (will trigger UAC prompt if not already elevated)
-.\SampleProgram.Watch\bin\x64\Release\net10.0\SampleProgram.Watch.exe scan-drive C:
+# Launch directly (UAC prompt if not elevated)
+.\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe scan C:
 
-# Results are written to output.log in the same directory
-cat .\SampleProgram.Watch\bin\x64\Release\net10.0\output.log
+# A self-elevated run writes output.log beside the .exe
+cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 ```
 
-`dotnet <sample>.dll` cannot self-elevate; run the `.exe`. [Attended and unattended runs](docs/elevation.md): `MFTLIB_SAMPLE_UNATTENDED=1` skips every prompt.
+`dotnet <sample>.dll` cannot self-elevate. [Attended and unattended runs](docs/elevation.md): `MFTLIB_SAMPLE_UNATTENDED=1` skips every prompt.
 
 ### Test coverage
 
