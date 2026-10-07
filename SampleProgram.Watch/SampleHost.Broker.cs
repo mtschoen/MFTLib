@@ -3,9 +3,8 @@ using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
-// The index modes: each drive opened as a FileIndex over the broker, the path every consumer ships. scan-drive opens
-// NoCache and only reports; the others open the cached index and act on it. This process stays unelevated; the
-// broker it launches asks for elevation.
+// Each drive opened as a FileIndex over the broker, the path every consumer ships. scan-drive opens NoCache and only
+// reports; the other modes open the cached index and act on it. This process stays unelevated.
 partial class SampleHost
 {
     internal Func<BrokerSession> _createBrokerSession = CreateBrokerSessionNative;
@@ -26,11 +25,6 @@ partial class SampleHost
         return OperatingSystem.IsWindows()
             ? IndexedDrive.FromWindowsVolume(letter)
             : throw new PlatformNotSupportedException("Volume serials are read on Windows only.");
-    }
-
-    internal Task ScanDrivesThroughBrokerAsync(IReadOnlyList<string> drives, CancellationToken cancellationToken)
-    {
-        return RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, drives), cancellationToken);
     }
 
     // One broker, so one elevation prompt, serves every drive of the run.
@@ -79,12 +73,14 @@ partial class SampleHost
                 NoCache = !cached,
                 CacheDirectory = parsed.CacheDirectory ?? _cacheDirectory,
                 CacheTag = cached ? parsed.CacheTag : default,
+                Diagnostics = cached ? _writeLine : null,
                 MftSource = source,
                 Progress = new PhaseReporter(_writeLine)
             };
 
             await using var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);
-            WriteStatus(index.Drives.Single());
+            Action<DriveStatus> report = cached ? WriteDriveDetail : WriteStatus;
+            report(index.Drives.Single());
             var driveLetter = char.ToUpperInvariant(letter[0]);
             switch (parsed.Mode)
             {
@@ -93,7 +89,7 @@ partial class SampleHost
                     break;
                 case ProgramMode.Rescan:
                     await index.RescanAsync(driveLetter, cancellationToken).ConfigureAwait(false);
-                    WriteStatus(index.Drives.Single());
+                    report(index.Drives.Single());
                     break;
                 case ProgramMode.Journal:
                     await WriteJournalAsync(session, index, driveLetter, parsed, cancellationToken).ConfigureAwait(false);
