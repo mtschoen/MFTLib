@@ -28,7 +28,11 @@ partial class SampleHost
     int RunBroker(WatchArguments parsed)
     {
         // The console entry point has no synchronization context, so blocking here cannot deadlock.
-        RunThroughBrokerAsync(parsed, CancellationToken.None).GetAwaiter().GetResult();
+        if (!RunThroughBrokerAsync(parsed, CancellationToken.None).GetAwaiter().GetResult())
+        {
+            return 1;
+        }
+
         _writeLine($"Completed at {DateTime.Now}");
         return 0;
     }

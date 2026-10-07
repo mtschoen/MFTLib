@@ -183,6 +183,24 @@ public class WatchHostModeTests
     }
 
     [TestMethod]
+    public void Run_BrokerSessionCannotBeCreated_ReturnsOneAndNeverReportsCompletion()
+    {
+        var lines = new List<string>();
+        var scanner = new SampleHost
+        {
+            _elevationNeed = _ => ElevationNeed.None,
+            _createBrokerSession = () => throw new InvalidOperationException("UAC prompt declined"),
+            _writeLine = lines.Add
+        };
+
+        var result = scanner.Run(["scan-drive", "C"]);
+
+        Assert.AreEqual(1, result);
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error creating broker session: ", StringComparison.Ordinal)));
+        Assert.IsFalse(lines.Any(line => line.StartsWith("Completed at", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
     public void Run_NotElevated_WhenTheRunRequiresElevation_SelfElevatesWithTheOriginalArguments()
     {
         string[] arguments = ["scan-drive", "C", "D"];
