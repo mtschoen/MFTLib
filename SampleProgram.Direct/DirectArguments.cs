@@ -27,7 +27,8 @@ internal sealed partial record DirectArguments(DirectVerb Verb, string Drive)
         "  search DRIVE [--name P] [--exact] [--case-sensitive] [--under PATH] [--directories|--files]",
         "               [--min-size N] [--max-size N] [--after D] [--before D] [--stream] [--limit N] [--include-freed]",
         "  tree DRIVE [--path P] [--depth N]    open DRIVE --path P    largest DRIVE [--count N] [--under P]",
-        "  duplicate-names DRIVE [--count N]    scan DRIVE");
+        "  duplicate-names DRIVE [--count N]    scan DRIVE",
+        "  A flag not listed for a verb is accepted and ignored.");
 
     internal SourceKind Source { get; init; } = SourceKind.Local;
     internal string? DumpFile { get; init; }

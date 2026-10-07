@@ -24,7 +24,7 @@ internal sealed partial record WatchArguments
         {
             KeepNames = keep?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             Profile = profile?.ToLowerInvariant() switch { "directory-index" => BrokerScanProfile.DirectoryIndex, _ => BrokerScanProfile.Full },
-            Seconds = (int?)reader.Number("--seconds") ?? DefaultSeconds,
+            Seconds = reader.Integer("--seconds") ?? DefaultSeconds,
             MaximumSize = reader.Number("--maximum-size"),
             AllocationDelta = reader.Number("--allocation-delta"),
             CacheDirectory = reader.Text("--cache-directory"),
