@@ -11,7 +11,7 @@ public sealed partial class FileIndex
     ///     watch faulted is started afresh, which supersedes a queued automatic recovery.
     ///     <para>
     ///         The returned task completes once the source has returned the drive's handle and the
-    ///         drive's pump is reading it. A <see cref="StopWatchingAsync(char, CancellationToken)" /> or
+    ///         drive's pump is reading it. A <see cref="StopWatchingAsync(CancellationToken)" /> or
     ///         <see cref="DisposeAsync" /> during the start cancels the source's start and fails
     ///         this task with <see cref="OperationCanceledException" />. A source whose start throws
     ///         fails this task with that exception, sets the drive's
