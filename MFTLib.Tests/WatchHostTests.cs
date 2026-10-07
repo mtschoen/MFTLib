@@ -33,19 +33,20 @@ public class WatchHostTests
     }
 
     [DataTestMethod]
-    [DataRow(new[] { "C" }, DisplayName = "default-drive")]
-    [DataRow(new[] { "" }, DisplayName = "empty-drive")]
-    [DataRow(new[] { "x&echo(123" }, DisplayName = "cmd-ampersand")]
-    [DataRow(new[] { "x;echo(123);#" }, DisplayName = "powershell-separator")]
-    [DataRow(new[] { "$(Get-Date)" }, DisplayName = "powershell-subexpression")]
-    [DataRow(new[] { "%USERNAME%" }, DisplayName = "cmd-variable")]
-    [DataRow(new[] { "$env:USERNAME" }, DisplayName = "powershell-variable")]
-    [DataRow(new[] { "`n" }, DisplayName = "backtick-n")]
-    [DataRow(new[] { "a'b" }, DisplayName = "single-quote")]
-    [DataRow(new[] { "say\"hi" }, DisplayName = "embedded-quote")]
-    [DataRow(new[] { @"C:\spaced directory\" }, DisplayName = "trailing-backslash")]
-    public void Run_NotElevated_CannotSelfElevate_PrintsEachArgumentVerbatimOnItsOwnLine(string[] arguments)
+    [DataRow("C", DisplayName = "default-drive")]
+    [DataRow("", DisplayName = "empty-drive")]
+    [DataRow("x&echo(123", DisplayName = "cmd-ampersand")]
+    [DataRow("x;echo(123);#", DisplayName = "powershell-separator")]
+    [DataRow("$(Get-Date)", DisplayName = "powershell-subexpression")]
+    [DataRow("%USERNAME%", DisplayName = "cmd-variable")]
+    [DataRow("$env:USERNAME", DisplayName = "powershell-variable")]
+    [DataRow("`n", DisplayName = "backtick-n")]
+    [DataRow("a'b", DisplayName = "single-quote")]
+    [DataRow("say\"hi", DisplayName = "embedded-quote")]
+    [DataRow(@"C:\spaced directory\", DisplayName = "trailing-backslash")]
+    public void Run_NotElevated_CannotSelfElevate_PrintsEachArgumentVerbatimOnItsOwnLine(string value)
     {
+        string[] arguments = ["watch", "--cache-directory", value];
         var lines = new List<string>();
         var scanner = new SampleHost
         {

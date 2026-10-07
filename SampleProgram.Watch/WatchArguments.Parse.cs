@@ -31,8 +31,8 @@ internal sealed partial record WatchArguments
             CacheDirectory = reader.Text("--cache-directory"),
             Clear = reader.Flag("--clear")
         };
-        var drives = reader.Positionals();
-        error = reader.Error ?? Validate(candidate, profile, seconds) ?? NotApplicable(candidate.Mode, reader.Supplied);
+        var tokens = reader.Positionals();
+        error = reader.Error ?? Validate(candidate, profile, seconds) ?? NotApplicable(candidate.Mode, reader.Supplied) ?? NotADrive(tokens);
         if (error is not null)
         {
             parsed = new WatchArguments(ProgramMode.ScanDrive, [DefaultDrive]);
@@ -40,8 +40,15 @@ internal sealed partial record WatchArguments
         }
 
         var listsDrives = mode is ProgramMode.Cache or ProgramMode.ElevationStatus;
+        var drives = tokens.Select(token => char.ToUpperInvariant(token[0]).ToString()).ToList();
         parsed = candidate with { Drives = drives.Count == 0 && !listsDrives ? [DefaultDrive] : drives };
         return true;
+    }
+
+    static string? NotADrive(IEnumerable<string> tokens)
+    {
+        var stray = tokens.FirstOrDefault(token => !ArgumentReader.IsDriveLetter(token));
+        return stray is null ? null : $"'{stray}' is not a drive letter.";
     }
 
     // The first flag on the command line that the mode never reads, named with the mode as the user knows it.

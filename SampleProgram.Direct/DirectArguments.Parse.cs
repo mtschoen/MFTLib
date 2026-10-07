@@ -50,11 +50,6 @@ internal sealed partial record DirectArguments
         return true;
     }
 
-    static bool IsDriveLetter(string text)
-    {
-        return char.IsAsciiLetter(text[0]) && (text.Length == 1 || (text.Length == 2 && text[1] == ':'));
-    }
-
     // The first flag on the command line that the verb never reads, named with the verb as the user typed it.
     static string? NotApplicable(DirectVerb verb, string verbName, IEnumerable<string> supplied)
     {
@@ -67,7 +62,7 @@ internal sealed partial record DirectArguments
         return positionals switch
         {
             not { Count: 1 } => "Expected exactly one drive letter.",
-            _ when !IsDriveLetter(positionals[0]) => $"'{positionals[0]}' is not a drive letter.",
+            _ when !ArgumentReader.IsDriveLetter(positionals[0]) => $"'{positionals[0]}' is not a drive letter.",
             _ when candidate.Source is SourceKind.Local && !source.Equals("local", StringComparison.OrdinalIgnoreCase) => $"Unknown source {source}.",
             _ when candidate.Source is SourceKind.Dump && candidate.DumpFile is null => "--source dump needs --dump-file PATH.",
             _ when candidate.Source is SourceKind.Local && candidate.DumpFile is not null => "--dump-file needs --source dump.",
