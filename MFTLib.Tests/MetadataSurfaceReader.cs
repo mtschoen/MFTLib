@@ -22,8 +22,12 @@ internal static partial class MetadataSurfaceReader
         ["<Clone>$", "Equals", "GetHashCode", "ToString", "PrintMembers", "Deconstruct", "op_Equality", "op_Inequality",
             "EqualityContract"];
 
-    /// <summary>The members that need a caller, and the literal fields whose use the compiler inlines.</summary>
-    public sealed record Surface(IReadOnlyList<SurfaceMember> Members, IReadOnlyList<string> LiteralFields);
+    /// <summary>
+    ///     The members that need a caller, the literal fields whose use the compiler inlines, and the exposed
+    ///     top-level types that sit outside the surface namespaces and so would escape the gate unseen.
+    /// </summary>
+    public sealed record Surface(
+        IReadOnlyList<SurfaceMember> Members, IReadOnlyList<string> LiteralFields, IReadOnlyList<string> OutOfScopeTypes);
 
     /// <summary>One thing that needs a caller: a type, or a member whose use leaves any one of <see cref="Keys" /> in IL.</summary>
     public sealed record SurfaceMember(string Display, IReadOnlyList<string> Keys);
@@ -175,17 +179,26 @@ internal static partial class MetadataSurfaceReader
         var provider = new SignatureProvider(eraseInstantiation: false);
         var members = new List<SurfaceMember>();
         var literals = new List<string>();
+        var outOfScope = new List<string>();
         foreach (var handle in reader.TypeDefinitions)
         {
             var type = reader.GetTypeDefinition(handle);
-            if (type.GetDeclaringType().IsNil && IsExposed(reader, type) &&
-                surfaceNamespaces.Contains(reader.GetString(type.Namespace)))
+            if (!type.GetDeclaringType().IsNil || !IsExposed(reader, type))
+            {
+                continue;
+            }
+
+            if (surfaceNamespaces.Contains(reader.GetString(type.Namespace)))
             {
                 AddType(reader, provider, handle, members, literals);
             }
+            else
+            {
+                outOfScope.Add(provider.GetTypeFromDefinition(reader, handle, 0));
+            }
         }
 
-        return new Surface(members, literals);
+        return new Surface(members, literals, outOfScope);
     }
 
     static bool IsExposed(MetadataReader reader, TypeDefinition type)
