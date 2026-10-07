@@ -8,13 +8,9 @@ namespace SampleProgram.Direct;
 partial class SampleHost
 {
     internal Func<DirectArguments, MftIndexSource> _createSource = CreateSourceNative;
-    internal Func<string, IndexedDrive> _resolveDrive = ResolveDriveNative;
 
     // The elevation flow is Windows only (UAC and its dialog), so elsewhere the verb runs straight into its platform check.
     internal Func<bool> _isWindows = OperatingSystem.IsWindows;
-
-    // Where the index keeps its cache folder; the NoCache open still resolves one, so a test names its own.
-    internal string? _cacheDirectory;
 
     internal int Run(string[] arguments)
     {
@@ -53,13 +49,6 @@ partial class SampleHost
         return parsed.Source is SourceKind.Dump
             ? MftIndexSources.FromMftDumpFile(parsed.DumpFile ?? throw new ArgumentException("A dump source needs a dump file."), char.ToUpperInvariant(parsed.Drive[0]))
             : MftIndexSources.FromLocalVolumes(ScanOptions(parsed));
-    }
-
-    static IndexedDrive ResolveDriveNative(string letter)
-    {
-        return OperatingSystem.IsWindows()
-            ? IndexedDrive.FromWindowsVolume(letter)
-            : throw new PlatformNotSupportedException("Volume serials are read on Windows only.");
     }
 
     async Task<FileIndex> OpenIndexAsync(DirectArguments parsed, CancellationToken cancellationToken)
