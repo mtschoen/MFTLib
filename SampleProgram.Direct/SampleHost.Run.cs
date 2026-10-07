@@ -36,8 +36,19 @@ partial class SampleHost
         }
         catch (Exception exception)
         {
-            _writeLine($"Error: {exception}");
+            WriteFailure("Error: ", exception);
             return 1;
+        }
+    }
+
+    // The type and message of the failure and of everything it wraps, one line each; no stack trace.
+    void WriteFailure(string prefix, Exception exception)
+    {
+        _writeLine($"{prefix}{exception.GetType().Name}: {exception.Message}");
+        IEnumerable<Exception> inner = exception is AggregateException aggregate ? aggregate.InnerExceptions : exception.InnerException is { } single ? [single] : [];
+        foreach (var cause in inner)
+        {
+            WriteFailure("  caused by ", cause);
         }
     }
 

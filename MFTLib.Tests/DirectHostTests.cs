@@ -252,7 +252,25 @@ public class DirectHostTests
         var result = host.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("PlatformNotSupportedException")), string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("Volume serials are read on Windows only.")), string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
+    public void Run_WrappedFailure_NamesTheTypeAndEveryInnerExceptionWithoutAStackTrace()
+    {
+        var lines = new List<string>();
+        var host = HostOver(lines);
+        host._isWindows = () => false;
+        host._resolveDrive = _ => throw new AggregateException("outer failure", new IOException("inner detail", new InvalidOperationException("root cause")));
+
+        var result = host.Run(["scan", "C"]);
+
+        var report = string.Join(Environment.NewLine, lines);
+        Assert.AreEqual(1, result);
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: AggregateException: outer failure", StringComparison.Ordinal)), report);
+        Assert.IsTrue(lines.Any(line => line.Contains("caused by IOException: inner detail", StringComparison.Ordinal)), report);
+        Assert.IsTrue(lines.Any(line => line.Contains("caused by InvalidOperationException: root cause", StringComparison.Ordinal)), report);
+        Assert.IsFalse(report.Contains("   at ", StringComparison.Ordinal), report);
     }
 
     SampleHost ElevatedHost(List<string> lines, Func<DirectArguments, MftIndexSource> createSource)
