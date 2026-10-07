@@ -22,7 +22,7 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
     internal static string Usage =>
         "Usage: SampleProgram.Watch [mode] [drive ...] [--keep-name A,B] [--profile full|directory-index]" + Environment.NewLine +
         "  modes: " + string.Join(", ", ProgramModes.Names.Keys) + " (default scan-drive); drive defaults to " + DefaultDrive + Environment.NewLine +
-        "  watch [--seconds N]  journal [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]";
+        "  watch [--seconds N]  journal [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]  (each scan policy caches under D/policy-DIGEST)";
 
     // The flags each mode reads; any other flag on the command line is a usage error rather than silently ignored.
     static readonly Dictionary<ProgramMode, string[]> ModeFlags = new()
@@ -51,13 +51,22 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
         KeepNames is null && Profile == BrokerScanProfile.Full ? null : new BrokerScanOptions { KeepFileNames = KeepNames, Profile = Profile };
 
     /// <summary>A cached block holds what its scan kept, so a different profile or keep list is a different identity.</summary>
-    internal CacheTag CacheTag => new("SMPW", Fingerprint(Profile, KeepNames));
+    internal static CacheTag CacheTag => new("SMPW", 1);
 
-    // A hash of the profile and the sorted keep names, joined by NUL, which no file name contains.
-    static uint Fingerprint(BrokerScanProfile profile, IReadOnlyList<string>? names)
+    internal const string PolicyDirectoryPrefix = "policy-";
+
+    /// <summary>
+    ///     The folder under the cache directory that holds this scan policy's blocks. The name is the full SHA-256 of the
+    ///     profile and the sorted keep names (joined by NUL, which no file name contains), so two policies never share a block
+    ///     file; the 32-bit cache tag cannot carry that identity.
+    /// </summary>
+    internal string PolicyDirectoryName
     {
-        var canonical = $"{profile}\0{string.Join('\0', (names ?? []).Order(StringComparer.Ordinal))}";
-        return BitConverter.ToUInt32(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)), 0);
+        get
+        {
+            var canonical = $"{Profile}\0{string.Join('\0', (KeepNames ?? []).Order(StringComparer.Ordinal))}";
+            return PolicyDirectoryPrefix + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+        }
     }
 }
 

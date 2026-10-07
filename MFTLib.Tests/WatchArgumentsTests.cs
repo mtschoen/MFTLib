@@ -215,21 +215,32 @@ public class WatchArgumentsTests
     [DataTestMethod]
     [DataRow("directory-index", "Aa", "directory-index", "BB")]
     [DataRow("full", "b", "directory-index", "a")]
-    public void CacheTag_SettingsThatCollidedUnderAnAdditiveFingerprint_AreDistinct(string profileOne, string keepOne, string profileTwo, string keepTwo)
+    [DataRow("directory-index", "keep63926.txt", "directory-index", "keep68897.txt")]
+    [DataRow("directory-index", "keep20143.txt", "directory-index", "keep118021.txt")]
+    [DataRow("directory-index", "policy96088.txt", "full", "policy188525.txt")]
+    public void PolicyDirectoryName_PoliciesThatCollidedUnderA32BitTag_GetDifferentDirectories(string profileOne, string keepOne, string profileTwo, string keepTwo)
     {
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--profile", profileOne, "--keep-name", keepOne], out var one, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--profile", profileTwo, "--keep-name", keepTwo], out var two, out _));
 
-        Assert.AreNotEqual(one.CacheTag, two.CacheTag);
+        Assert.AreNotEqual(one.PolicyDirectoryName, two.PolicyDirectoryName);
     }
 
     [TestMethod]
-    public void CacheTag_SameKeepNamesInAnotherOrder_AreTheSameTag()
+    public void PolicyDirectoryName_IsThePrefixAndTheFull64DigitSha256()
+    {
+        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "a.txt"], out var parsed, out _));
+
+        StringAssert.Matches(parsed.PolicyDirectoryName, new System.Text.RegularExpressions.Regex("^policy-[0-9a-f]{64}$"));
+    }
+
+    [TestMethod]
+    public void PolicyDirectoryName_SameKeepNamesInAnotherOrder_IsTheSameDirectory()
     {
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "a.txt,b.txt"], out var one, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "b.txt, a.txt"], out var two, out _));
 
-        Assert.AreEqual(one.CacheTag, two.CacheTag);
+        Assert.AreEqual(one.PolicyDirectoryName, two.PolicyDirectoryName);
     }
 
     [TestMethod]
@@ -255,6 +266,6 @@ public class WatchArgumentsTests
         CollectionAssert.AreEqual(new[] { "desktop.ini", ".gitignore" }, options.KeepFileNames!.ToArray());
         Assert.AreEqual(BrokerScanProfile.DirectoryIndex, options.Profile);
         Assert.IsNull(plain.ScanOptions);
-        Assert.AreNotEqual(plain.CacheTag, parsed.CacheTag, "A different profile or keep list is a different cache identity.");
+        Assert.AreNotEqual(plain.PolicyDirectoryName, parsed.PolicyDirectoryName, "A different profile or keep list is a different cache directory.");
     }
 }
