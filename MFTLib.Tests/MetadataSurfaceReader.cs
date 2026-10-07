@@ -282,10 +282,26 @@ internal static partial class MetadataSurfaceReader
                             (name == "EqualityContract" || primaryParameters.Contains(name, StringComparer.OrdinalIgnoreCase));
             if (exposed.Count > 0 && !generated)
             {
-                members.Add(new SurfaceMember($"property {typeName}.{name}",
+                members.Add(new SurfaceMember(PropertyDisplay(reader, provider, typeName, name, exposed[0]),
                     exposed.Select(accessor => MethodKey(reader, provider, typeName, accessor)).ToList()));
             }
         }
+    }
+
+    // Display text is the exempt-list key, so it carries everything that tells siblings apart: generic arity,
+    // parameter types and the result type (a property carries its index parameters and its type).
+    static string MethodDisplay(string typeName, string name, MethodSignature<string> signature) =>
+        $"method {typeName}.{name}{(signature.GenericParameterCount > 0 ? $"<{signature.GenericParameterCount}>" : string.Empty)}" +
+        $"({string.Join(", ", signature.ParameterTypes)}) : {signature.ReturnType}";
+
+    static string PropertyDisplay(MetadataReader reader, SignatureProvider provider, string typeName, string name,
+        MethodDefinitionHandle accessor)
+    {
+        var signature = reader.GetMethodDefinition(accessor).DecodeSignature(provider, null);
+        var isSetter = signature.ReturnType == "System.Void";
+        var parameters = isSetter ? signature.ParameterTypes.RemoveAt(signature.ParameterTypes.Length - 1) : signature.ParameterTypes;
+        var type = isSetter ? signature.ParameterTypes[^1] : signature.ReturnType;
+        return $"property {typeName}.{name}{(parameters.Length > 0 ? $"[{string.Join(", ", parameters)}]" : string.Empty)} : {type}";
     }
 
     static void AddEvents(MetadataReader reader, SignatureProvider provider, TypeDefinition type, string typeName,
@@ -321,7 +337,7 @@ internal static partial class MetadataSurfaceReader
             }
 
             members.Add(new SurfaceMember(
-                $"method {typeName}.{name}({string.Join(", ", method.DecodeSignature(provider, null).ParameterTypes)})",
+                MethodDisplay(typeName, name, method.DecodeSignature(provider, null)),
                 [MethodKey(reader, provider, typeName, handle)]));
         }
     }
