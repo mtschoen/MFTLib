@@ -186,7 +186,7 @@ public class SampleHostElevationNoticeTests
             }
         };
 
-        scanner.Run(["scan", "C", "--name", "", "--under", "a b&c"]);
+        scanner.Run(["search", "C", "--name", "", "--under", "a b&c"]);
 
         Assert.AreEqual(SampleHost.MessageBeepIconExclamation, beep);
         Assert.IsTrue(title!.Contains("SampleProgram", StringComparison.Ordinal));
@@ -197,7 +197,7 @@ public class SampleHostElevationNoticeTests
         Assert.IsTrue(text.Contains("administrator rights", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains($"Executable: {ProcessPath}", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("Arguments (6)", StringComparison.Ordinal));
-        Assert.IsTrue(text.Contains("  scan", StringComparison.Ordinal));
+        Assert.IsTrue(text.Contains("  search", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("  <empty>", StringComparison.Ordinal));
         Assert.IsTrue(text.Contains("  a b&c", StringComparison.Ordinal));
     }

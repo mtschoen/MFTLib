@@ -40,7 +40,7 @@ internal sealed partial record DirectArguments
             Count = reader.Integer("--count") ?? DefaultCount
         };
         var positionals = reader.Positionals();
-        error = reader.Error ?? Validate(candidate, source, directories && files, positionals);
+        error = reader.Error ?? Validate(candidate, source, directories && files, positionals) ?? NotApplicable(verb, arguments[0], reader.Supplied);
         if (error is not null)
         {
             return false;
@@ -53,6 +53,13 @@ internal sealed partial record DirectArguments
     static bool IsDriveLetter(string text)
     {
         return char.IsAsciiLetter(text[0]) && (text.Length == 1 || (text.Length == 2 && text[1] == ':'));
+    }
+
+    // The first flag on the command line that the verb never reads, named with the verb as the user typed it.
+    static string? NotApplicable(DirectVerb verb, string verbName, IEnumerable<string> supplied)
+    {
+        var stray = supplied.FirstOrDefault(name => !CommonFlags.Contains(name) && !VerbFlags[verb].Contains(name));
+        return stray is null ? null : $"Option {stray} does not apply to {verbName.ToLowerInvariant()}.";
     }
 
     static string? Validate(DirectArguments candidate, string source, bool bothKinds, IReadOnlyList<string> positionals)

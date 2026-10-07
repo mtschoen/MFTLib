@@ -104,7 +104,7 @@ public class WatchArgumentsTests
     [DataTestMethod]
     [DataRow(new[] { "journal", "C", "--maximum-size", "9000" }, "journal needs --maximum-size and --allocation-delta together.")]
     [DataRow(new[] { "journal", "C", "--allocation-delta", "1" }, "journal needs --maximum-size and --allocation-delta together.")]
-    [DataRow(new[] { "watch", "C", "--clear" }, "--clear belongs to cache.")]
+    [DataRow(new[] { "watch", "C", "--clear" }, "Option --clear does not apply to watch.")]
     [DataRow(new[] { "watch", "C", "--profile", "sparse" }, "Unknown profile sparse.")]
     [DataRow(new[] { "watch", "C", "--seconds", "soon" }, "Option --seconds needs a whole number, not 'soon'.")]
     public void TryParse_BadFlags_AreRefusedWithTheirReason(string[] arguments, string expected)
@@ -112,6 +112,37 @@ public class WatchArgumentsTests
         Assert.IsFalse(WatchArguments.TryParse(arguments, out _, out var error));
 
         Assert.AreEqual(expected, error);
+    }
+
+    [DataTestMethod]
+    [DataRow(new[] { "scan-drive", "C", "--seconds", "5" }, "Option --seconds does not apply to scan-drive.")]
+    [DataRow(new[] { "C", "--seconds", "5" }, "Option --seconds does not apply to scan-drive.")]
+    [DataRow(new[] { "watch", "C", "--maximum-size", "1" }, "Option --maximum-size does not apply to watch.")]
+    [DataRow(new[] { "rescan", "C", "--allocation-delta", "1" }, "Option --allocation-delta does not apply to rescan.")]
+    [DataRow(new[] { "journal", "C", "--seconds", "3" }, "Option --seconds does not apply to journal.")]
+    [DataRow(new[] { "cache", "--keep-name", "a.txt" }, "Option --keep-name does not apply to cache.")]
+    [DataRow(new[] { "cache", "--profile", "full" }, "Option --profile does not apply to cache.")]
+    [DataRow(new[] { "cache", "--seconds", "3" }, "Option --seconds does not apply to cache.")]
+    [DataRow(new[] { "elevation-status", "--cache-directory", "folder" }, "Option --cache-directory does not apply to elevation-status.")]
+    [DataRow(new[] { "elevation-status", "--clear" }, "Option --clear does not apply to elevation-status.")]
+    public void TryParse_FlagTheModeNeverReads_IsRefusedWithTheFlagAndTheModeNamed(string[] arguments, string expected)
+    {
+        Assert.IsFalse(WatchArguments.TryParse(arguments, out _, out var error));
+
+        Assert.AreEqual(expected, error);
+    }
+
+    [DataTestMethod]
+    [DataRow("scan-drive")]
+    [DataRow("watch")]
+    [DataRow("rescan")]
+    [DataRow("journal")]
+    public void TryParse_ScanAndCacheFlags_ApplyToEveryModeThatOpensAnIndex(string mode)
+    {
+        Assert.IsTrue(WatchArguments.TryParse([mode, "C", "--keep-name", "a.txt", "--profile", "directory-index", "--cache-directory", "folder"], out var parsed, out var error), error);
+
+        Assert.AreEqual("folder", parsed.CacheDirectory);
+        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, parsed.Profile);
     }
 
     [TestMethod]

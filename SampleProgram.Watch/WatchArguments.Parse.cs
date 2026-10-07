@@ -31,7 +31,7 @@ internal sealed partial record WatchArguments
             Clear = reader.Flag("--clear")
         };
         var drives = reader.Positionals();
-        error = reader.Error ?? Validate(candidate, profile);
+        error = reader.Error ?? Validate(candidate, profile) ?? NotApplicable(candidate.Mode, reader.Supplied);
         if (error is not null)
         {
             parsed = new WatchArguments(ProgramMode.ScanDrive, [DefaultDrive]);
@@ -43,6 +43,13 @@ internal sealed partial record WatchArguments
         return true;
     }
 
+    // The first flag on the command line that the mode never reads, named with the mode as the user knows it.
+    static string? NotApplicable(ProgramMode mode, IEnumerable<string> supplied)
+    {
+        var stray = supplied.FirstOrDefault(name => !ModeFlags[mode].Contains(name));
+        return stray is null ? null : $"Option {stray} does not apply to {ProgramModes.Names.First(pair => pair.Value == mode).Key}.";
+    }
+
     static string? Validate(WatchArguments candidate, string? profile)
     {
         return candidate switch
@@ -51,7 +58,6 @@ internal sealed partial record WatchArguments
                 && !profile.Equals("directory-index", StringComparison.OrdinalIgnoreCase) => $"Unknown profile {profile}.",
             { Mode: ProgramMode.Journal } when candidate.MaximumSize.HasValue != candidate.AllocationDelta.HasValue
                 => "journal needs --maximum-size and --allocation-delta together.",
-            { Clear: true, Mode: not ProgramMode.Cache } => "--clear belongs to cache.",
             _ => null
         };
     }
