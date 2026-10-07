@@ -121,7 +121,7 @@ public class DirectHostTests
         var result = HostOver(lines).Run([.. Dump("open"), "--path", $"{DumpRoot}/missing.txt"]);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Contains($"Error: No entry at {DumpRoot}/missing.txt."), string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains($"No entry at {DumpRoot}/missing.txt.")), string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -226,7 +226,7 @@ public class DirectHostTests
         var result = host.Run(["scan", "Q"]);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Contains("Error: The drive is offline; nothing was scanned."), string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("The drive is offline; nothing was scanned.")), string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]
@@ -252,7 +252,7 @@ public class DirectHostTests
         var result = host.Run(["scan", "C"]);
 
         Assert.AreEqual(1, result);
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("Volume serials are read on Windows only.")), string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("PlatformNotSupportedException")), string.Join(Environment.NewLine, lines));
     }
 
     SampleHost ElevatedHost(List<string> lines, Func<DirectArguments, MftIndexSource> createSource)

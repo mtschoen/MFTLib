@@ -40,7 +40,7 @@ partial class SampleHost
         }
         catch (Exception exception)
         {
-            _writeLine($"Error: {exception.Message}");
+            _writeLine($"Error: {exception}");
             return 1;
         }
     }
