@@ -155,6 +155,7 @@ public class DirectHostTests
         var lines = new List<string>();
         var host = HostOver(lines);
         host._isElevated = () => false;
+        host._isWindows = () => true;
         host._getEnvironmentVariable = name => name == SampleHost.UnattendedVariableName ? "1" : null;
         host._createSource = _ => throw new AssertFailedException("An unelevated unattended run must not scan.");
 
@@ -240,12 +241,27 @@ public class DirectHostTests
         Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("volume unreadable")), string.Join(Environment.NewLine, lines));
     }
 
+    [TestMethod]
+    public void Run_LocalSourceOffWindows_SkipsTheElevationFlowAndReportsThePlatform()
+    {
+        var lines = new List<string>();
+        var host = HostOver(lines);
+        host._isWindows = () => false;
+        host._resolveDrive = _ => throw new PlatformNotSupportedException("Volume serials are read on Windows only.");
+
+        var result = host.Run(["scan", "C"]);
+
+        Assert.AreEqual(1, result);
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains("Volume serials are read on Windows only.")), string.Join(Environment.NewLine, lines));
+    }
+
     SampleHost ElevatedHost(List<string> lines, Func<DirectArguments, MftIndexSource> createSource)
     {
         Directory.CreateDirectory(_directory);
         return new SampleHost
         {
             _isElevated = () => true,
+            _isWindows = () => true,
             _acrtIobFunc = _ => IntPtr.Zero,
             _wFreopen = (_, _, _) => IntPtr.Zero,
             _createSource = createSource,
