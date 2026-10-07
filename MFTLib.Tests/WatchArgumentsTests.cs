@@ -93,6 +93,28 @@ public class WatchArgumentsTests
         Assert.AreEqual(WatchArguments.DefaultSeconds, WatchArguments.TryParse(["watch"], out var plain, out _) ? plain.Seconds : -1);
     }
 
+    [DataTestMethod]
+    [DataRow("0")]
+    [DataRow("4294967295")]
+    [DataRow("4294967296")]
+    [DataRow("2147484")]
+    public void TryParse_SecondsOutsideTheDelayRange_AreRefusedNamingTheRange(string seconds)
+    {
+        Assert.IsFalse(WatchArguments.TryParse(["watch", "C", "--seconds", seconds], out _, out var error));
+
+        Assert.AreEqual("Option --seconds must be from 1 to 2147483.", error);
+    }
+
+    [DataTestMethod]
+    [DataRow("1", 1)]
+    [DataRow("2147483", 2147483)]
+    public void TryParse_SecondsAtTheEdgesOfTheDelayRange_AreAccepted(string seconds, int expected)
+    {
+        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--seconds", seconds], out var parsed, out _));
+
+        Assert.AreEqual(expected, parsed.Seconds);
+    }
+
     [TestMethod]
     public void TryParse_Journal_ReadsBothSizes()
     {

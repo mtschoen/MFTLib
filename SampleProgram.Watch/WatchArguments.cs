@@ -16,6 +16,9 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
     internal const string DefaultDrive = "G";
     internal const int DefaultSeconds = 10;
 
+    // Task.Delay takes at most int.MaxValue milliseconds.
+    internal const int MaximumSeconds = int.MaxValue / 1000;
+
     internal static string Usage =>
         "Usage: SampleProgram.Watch [mode] [drive ...] [--keep-name A,B] [--profile full|directory-index]" + Environment.NewLine +
         "  modes: " + string.Join(", ", ProgramModes.Names.Keys) + " (default scan-drive); drive defaults to " + DefaultDrive + Environment.NewLine +

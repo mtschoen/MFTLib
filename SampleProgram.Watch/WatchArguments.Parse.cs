@@ -20,18 +20,19 @@ internal sealed partial record WatchArguments
         var reader = new ArgumentReader(arguments.Skip(start));
         var keep = reader.Text("--keep-name");
         var profile = reader.Text("--profile");
+        var seconds = reader.Number("--seconds");
         var candidate = new WatchArguments(mode, [])
         {
             KeepNames = keep?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             Profile = profile?.ToLowerInvariant() switch { "directory-index" => BrokerScanProfile.DirectoryIndex, _ => BrokerScanProfile.Full },
-            Seconds = reader.Integer("--seconds") ?? DefaultSeconds,
+            Seconds = seconds is >= 1 and <= MaximumSeconds ? (int)seconds : DefaultSeconds,
             MaximumSize = reader.Number("--maximum-size"),
             AllocationDelta = reader.Number("--allocation-delta"),
             CacheDirectory = reader.Text("--cache-directory"),
             Clear = reader.Flag("--clear")
         };
         var drives = reader.Positionals();
-        error = reader.Error ?? Validate(candidate, profile) ?? NotApplicable(candidate.Mode, reader.Supplied);
+        error = reader.Error ?? Validate(candidate, profile, seconds) ?? NotApplicable(candidate.Mode, reader.Supplied);
         if (error is not null)
         {
             parsed = new WatchArguments(ProgramMode.ScanDrive, [DefaultDrive]);
@@ -50,12 +51,13 @@ internal sealed partial record WatchArguments
         return stray is null ? null : $"Option {stray} does not apply to {ProgramModes.Names.First(pair => pair.Value == mode).Key}.";
     }
 
-    static string? Validate(WatchArguments candidate, string? profile)
+    static string? Validate(WatchArguments candidate, string? profile, long? seconds)
     {
         return candidate switch
         {
             _ when profile is not null && !profile.Equals("full", StringComparison.OrdinalIgnoreCase)
                 && !profile.Equals("directory-index", StringComparison.OrdinalIgnoreCase) => $"Unknown profile {profile}.",
+            _ when seconds is < 1 or > MaximumSeconds => $"Option --seconds must be from 1 to {MaximumSeconds}.",
             { Mode: ProgramMode.Journal } when candidate.MaximumSize.HasValue != candidate.AllocationDelta.HasValue
                 => "journal needs --maximum-size and --allocation-delta together.",
             _ => null
