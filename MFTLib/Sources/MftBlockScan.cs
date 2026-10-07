@@ -13,7 +13,7 @@ internal static class MftBlockScan
 
     /// <summary>Writes all batches through the filter, stamps the journal cursor, then completes the block.</summary>
     /// <param name="block">The block section to fill.</param>
-    /// <param name="stamp">The journal cursor and completion clock to stamp into the block; a producer without a live journal passes a zero cursor.</param>
+    /// <param name="stamp">The journal cursor and completion clock to stamp into the block; a dump or uncached local producer passes a zero cursor.</param>
     /// <param name="batches">The record batches to write.</param>
     /// <param name="filter">Selects which records receive block rows.</param>
     /// <param name="reporting">Where the write publishes its progress.</param>
@@ -33,6 +33,6 @@ internal static class MftBlockScan
 }
 
 /// <summary>What a completed block records about when and where in the journal it was written.</summary>
-/// <param name="Cursor">The journal cursor armed before the scan; zero when the producer has no live journal.</param>
+/// <param name="Cursor">The journal cursor armed before the scan; zero for a dump or uncached local scan.</param>
 /// <param name="Clock">Read once, after the last batch is written, for the completion time stamped into the block header.</param>
 internal readonly record struct BlockStamp(UsnJournalCursor Cursor, Func<DateTime> Clock);

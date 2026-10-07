@@ -357,15 +357,18 @@ because the classification is the journal's answer about that drive's position
 rather than a reading of the exception that ended the watch. A newer loss
 replaces an earlier report; an unrelated fault neither rewrites nor deletes it.
 
-`Cause` separates the two situations MFTLib can actually tell apart.
+`Cause` separates the situations MFTLib can actually tell apart.
 `CheckpointTrimmed` means the journal is the one the checkpoint came from and has
 trimmed past it, so `SizeThatWouldHaveRetained` says the size a journal would
 need to be at least to have kept the checkpoint, when that size fits in a
 `long`; it is null when it does not. `JournalRecreated` means the journal
 was deleted and recreated and carries a different id, so the checkpoint refers to
 a journal that no longer exists: no size would have helped, and none is offered.
+`JournalAdvanced` means a scan-only cached source still has a retained cursor but
+the journal's next USN differs from it. With no catch-up source it rescans; no
+retention size would help, so `BytesBehind` and `SizeThatWouldHaveRetained` are null.
 A consumer decides what to say from `Cause`, not from whether the size is null,
-since both causes can leave it null. `Cause` and `DetectedDuring` answer
+since all causes can leave it null. `Cause` and `DetectedDuring` answer
 different questions and are read together: `Cause` says whether a journal size
 would have helped, `DetectedDuring` says whether the drive needs anything done
 about it now. A drive that warm-started, whose watch has never lost its

@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using static MFTLib.Tests.TestSupport.CheckpointCacheTestSupport;
 
@@ -75,12 +76,19 @@ public class FileIndexCheckpointLossTests
     }
 
     [TestMethod]
-    public async Task CheckpointStillInTheJournal_WarmStartsAndReportsNoLoss()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ValidCheckpoint_WarmStartsAndReportsNoLoss(bool watchCapable)
     {
         await SeedCacheAsync();
-        using var journal = Journal(CachedJournalId, firstUsn: CachedNextUsn - 500, nextUsn: CachedNextUsn + 4_000);
+        using var journal = Journal(CachedJournalId, firstUsn: CachedNextUsn - 500,
+            nextUsn: watchCapable ? CachedNextUsn + 4_000 : CachedNextUsn);
 
-        await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
+        var options = Options() with
+        {
+            MftSource = new MftIndexSource(ProduceMftShapedBlock, watchCapable ? new ScriptedWatchSource() : null)
+        };
+        await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         var drive = reopened.Drives.Single();
         Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.BlockSource);

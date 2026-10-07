@@ -16,6 +16,8 @@ internal readonly record struct JournalWindow(
 ///     <see cref="JournalCheckpointLoss" />. The same check answers for a watch that faults
 ///     mid-session, where the position asked about is the one that watch had reached, so both
 ///     paths report the same fields from the same arithmetic.
+///     For a source with no watch source it also answers whether the journal has moved since
+///     the block was stamped (<c>CheckUnmoved</c>: the live next USN must equal the stamped one exactly).
 /// </summary>
 static class JournalCheckpointCheck
 {
@@ -44,6 +46,19 @@ static class JournalCheckpointCheck
     /// </param>
     public static JournalCheckpointLoss? Check(char driveLetter, ulong checkpointJournalId, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring)
+        => CheckObservation(driveLetter, checkpointJournalId, checkpointUsn, detectedDuring, requireUnmoved: false);
+
+    /// <summary>
+    ///     Checks a scan-only cache against one journal observation: recreation and trimming take
+    ///     precedence, then any unequal next USN requires a rescan. An unavailable or incoherent
+    ///     observation reports nothing, just as the resumability check does.
+    /// </summary>
+    internal static JournalCheckpointLoss? CheckUnmoved(char driveLetter, ulong checkpointJournalId,
+        long checkpointUsn, JournalCheckpointLossDetection detectedDuring)
+        => CheckObservation(driveLetter, checkpointJournalId, checkpointUsn, detectedDuring, requireUnmoved: true);
+
+    static JournalCheckpointLoss? CheckObservation(char driveLetter, ulong checkpointJournalId, long checkpointUsn,
+        JournalCheckpointLossDetection detectedDuring, bool requireUnmoved)
     {
         if (ProcessJournal.Read(driveLetter) is not { } journal)
         {
@@ -74,6 +89,16 @@ static class JournalCheckpointCheck
 
         if (checkpointUsn >= firstUsn)
         {
+            if (requireUnmoved && nextUsn != checkpointUsn)
+            {
+                return new JournalCheckpointLoss(driveLetter, detectedDuring,
+                    JournalCheckpointLossCause.JournalAdvanced, allocationDelta, maximumSize)
+                {
+                    CheckpointUsn = checkpointUsn,
+                    NextUsn = nextUsn
+                };
+            }
+
             // The checkpoint is still inside the journal, so the warm start can resume it.
             return null;
         }

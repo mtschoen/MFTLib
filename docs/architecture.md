@@ -70,13 +70,17 @@
       one; `MftIndexSource.Unavailable(reason)` fails every scan and watch start with
       `Drive {letter}: {reason}.`. `MftIndexSources.FromLocalVolumes(scanOptions)` builds the in-process one for a caller
       that is already elevated: `LocalMftBlockProducer` plans capacity from the volume geometry,
-      creates the requested block and fills it through `MftBlockScan.WriteToBlock` with a zero
-      journal cursor, with no broker process or pipe. It has no watch source, so watch start and
+      creates the requested block and fills it through `MftBlockScan.WriteToBlock`, stamping the live
+      journal cursor armed before a cached scan, with no broker process or pipe. It has no watch source, so watch start and
       per-drive catch-up refuse with `Drive {letter}: this source does not support watching.`,
       batched start and catch-up report `NotApplicable`, and `DriveStatus.WatchSupported` is false. Concurrent
-      direct scans share the process's parse threads through `ParseThreadAllocator`. Because the source
-      cannot watch, cache reopening skips resume-checkpoint validation against the live journal, preserving
-      cached blocks without spurious journal-recreation loss. The factory
+      direct scans share the process's parse threads through `ParseThreadAllocator`. Cache reopening
+      adopts only when the journal id matches and its next USN exactly equals the stamped cursor;
+      recreation, trimming or movement causes a rescan, with `JournalAdvanced` reporting movement
+      without retention-size hints. An unavailable or incoherent journal observation adopts without loss.
+      Cache-only opens keep the snapshot flagged unresumable with its loss report. NoCache scans skip
+      the cursor query and stamp zero; cached scans fail as `ProducerFailed` without an active journal.
+      Dump blocks retain zero cursors and require NoCache, so they never reach a cache freshness check. The factory
       opens nothing until the first scan; a process that cannot open the volume fails the drive
       as `ProducerFailed`. A null `MftSource` is a configuration error for
       `ProducerPolicy.Mft` and is ignored by `ProducerPolicy.Enumeration`. The block producer

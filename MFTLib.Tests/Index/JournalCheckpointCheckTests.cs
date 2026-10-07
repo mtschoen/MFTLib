@@ -14,6 +14,58 @@ public class JournalCheckpointCheckTests
 {
     const ulong JournalId = 0xABCD;
 
+    [TestMethod]
+    [DataRow(JournalId, 1000L, 2000L, null)]
+    [DataRow(JournalId, 1000L, 2001L, JournalCheckpointLossCause.JournalAdvanced)]
+    [DataRow(JournalId, 1000L, 1999L, JournalCheckpointLossCause.JournalAdvanced)]
+    [DataRow(JournalId, 2001L, 3000L, JournalCheckpointLossCause.CheckpointTrimmed)]
+    [DataRow(99UL, 2001L, 3000L, JournalCheckpointLossCause.JournalRecreated)]
+    public void Unmoved_UsesOneObservationAndPrioritizesRecreationThenTrimming(
+        ulong journalId, long firstUsn, long nextUsn, JournalCheckpointLossCause? expectedCause)
+    {
+        var reads = 0;
+        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
+        {
+            reads++;
+            return new JournalWindow(journalId, firstUsn, nextUsn, 64, 32768);
+        });
+        var loss = JournalCheckpointCheck.CheckUnmoved('T', JournalId, 2000,
+            JournalCheckpointLossDetection.DriveOpening);
+        Assert.AreEqual(1, reads);
+        Assert.AreEqual(expectedCause, loss?.Cause);
+        if (loss is null)
+        {
+            return;
+        }
+        Assert.AreEqual(JournalCheckpointLossDetection.DriveOpening, loss.DetectedDuring);
+        Assert.AreEqual(2000L, loss.CheckpointUsn);
+        Assert.AreEqual(nextUsn, loss.NextUsn);
+        Assert.AreEqual(64L, loss.AllocationDelta);
+        Assert.AreEqual(32768L, loss.MaximumSize);
+        if (expectedCause == JournalCheckpointLossCause.JournalAdvanced)
+        {
+            Assert.AreEqual(0L, loss.FirstUsn);
+            Assert.IsNull(loss.BytesBehind);
+            Assert.IsNull(loss.SizeThatWouldHaveRetained);
+        }
+    }
+
+    [TestMethod]
+    public void Unmoved_CannotSayAdoptsWithoutLoss()
+    {
+        using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
+        Assert.IsNull(JournalCheckpointCheck.CheckUnmoved('T', JournalId, 2000,
+            JournalCheckpointLossDetection.DriveOpening));
+    }
+
+    [TestMethod]
+    public void Unmoved_IncoherentObservationAdoptsWithoutLoss()
+    {
+        using var journal = Journal(firstUsn: 3000, nextUsn: 2000);
+        Assert.IsNull(JournalCheckpointCheck.CheckUnmoved('T', JournalId, 2000,
+            JournalCheckpointLossDetection.DriveOpening));
+    }
+
     static IDisposable Journal(ulong journalId = JournalId, long firstUsn = 1_000, long nextUsn = 5_000,
         long maximumSize = 128L * 1024 * 1024, long allocationDelta = 64)
     {

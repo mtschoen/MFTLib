@@ -6,7 +6,7 @@ namespace MFTLib;
 /// <summary>
 ///     Scans a live volume's MFT in this process into the block each index request names. It carries
 ///     no broker process, pipe or journal session: the caller must already be able to open the volume.
-///     The block it completes carries a zero journal cursor, so the source it builds has no watch source.
+///     Cached blocks carry the journal cursor armed before scanning; uncached blocks carry zero.
 ///     Concurrent scans divide the process's parse threads through a shared <see cref="ParseThreadAllocator" />.
 /// </summary>
 internal sealed class LocalMftBlockProducer
@@ -37,13 +37,16 @@ internal sealed class LocalMftBlockProducer
     /// <param name="QueryVolumeInformation">Reads the volume geometry that sizes the block.</param>
     /// <param name="ScanDriveRecordBatches">Streams the records of a drive, the in-use ones unless the scan options ask for freed records too.</param>
     /// <param name="Clock">Supplies the completion time stamped into the block.</param>
+    /// <param name="QueryCursor">Arms the live journal cursor before a cached scan.</param>
     internal readonly record struct Seams(
         Func<string, NtfsVolumeInformation> QueryVolumeInformation,
         MftRecordBatchSource ScanDriveRecordBatches,
-        Func<DateTime> Clock)
+        Func<DateTime> Clock,
+        UsnJournalCursorQuery QueryCursor)
     {
         internal static Seams Live { get; } = new(
-            LiveVolumeSources.QueryVolumeInfo, LiveVolumeSources.ScanDriveRecordBatches, () => DateTime.UtcNow);
+            LiveVolumeSources.QueryVolumeInfo, LiveVolumeSources.ScanDriveRecordBatches, () => DateTime.UtcNow,
+            LiveVolumeSources.QueryCursor);
     }
 
     /// <summary>The index source over this producer: scans fill the requested block directly, and no watch is offered.</summary>
@@ -71,15 +74,17 @@ internal sealed class LocalMftBlockProducer
             request.CacheTag));
         try
         {
+            var cursor = request.DeleteOnClose ? default : _seams.QueryCursor(drive);
             var progress = CreateProgress(request, options);
             var batches = _seams.ScanDriveRecordBatches(drive, allowance,
                 IdleOperation.Instance, progress,
                 new MftRecordScanOptions { IncludeFreed = options.IncludeFreed }, cancellationToken);
-            var result = MftBlockScan.WriteToBlock(block, new BlockStamp(default, _seams.Clock), batches,
+            var result = MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, _seams.Clock), batches,
                 new MftBlockRowFilter(options.Profile, options.KeepFileNames, options.IncludeFreed),
                 new BlockWriteReporting(progress, null), cancellationToken);
-            BrokerMftBlockProducer.ValidateBlock(block, request.VolumeSerial, default, request.CacheTag);
-            var produced = new MftBlockProduceResult(block, 0, 0, checked((int)result.SkippedRecordCount));
+            BrokerMftBlockProducer.ValidateBlock(block, request.VolumeSerial, cursor, request.CacheTag);
+            var produced = new MftBlockProduceResult(block, cursor.JournalId, cursor.NextUsn,
+                checked((int)result.SkippedRecordCount));
             block = null;
             return produced;
         }

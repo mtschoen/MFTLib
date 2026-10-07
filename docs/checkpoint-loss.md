@@ -11,8 +11,13 @@
       checkpoint-to-tip span rounded up to the allocation delta, plus one more allocation delta).
       The margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
       USN_JOURNAL_DATA, not a live measurement. A volume that cannot answer the query warm-starts
-      and reports nothing. A faulting MFT-backed drive asks the live journal about the cursor in
-      its current block; the read runs outside `_stateLock`, and the result is recorded only while
+      and reports nothing.
+      A direct scan-only source also rejects a retained cursor when the live next USN differs,
+      reporting `JournalAdvanced` without `BytesBehind` or `SizeThatWouldHaveRetained`. It cannot
+      catch up. Recreation and trimming take precedence over movement; an unavailable or incoherent
+      observation still adopts without a report. Cache-only opens keep the snapshot unresumable.
+      A faulting MFT-backed drive asks the live journal about the cursor in its current block;
+      the read runs outside `_stateLock`, and the result is recorded only while
       that block is still published. `JournalBrokerHost.DescribeWatchFailure` applies the same
       journal classification to a failed nonzero watch start. Neither path classifies exception
       wording, and a retained cursor or unavailable query records nothing new.

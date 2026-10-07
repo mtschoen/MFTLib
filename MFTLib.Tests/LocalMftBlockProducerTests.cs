@@ -40,8 +40,10 @@ public class LocalMftBlockProducerTests
         [[Record(5, ".", 3)], [Record(20, "file.txt"), Record(21, "other.md")]];
 
     static LocalMftBlockProducer.Seams Scripted(
-        Func<string, NtfsVolumeInformation>? query = null, MftRecordBatchSource? scan = null) => new(
-        query ?? (_ => Volume), scan ?? ((_, _, _, _, _, _) => Batches()), () => FixedMoment);
+        Func<string, NtfsVolumeInformation>? query = null, MftRecordBatchSource? scan = null,
+        UsnJournalCursorQuery? queryCursor = null) => new(
+        query ?? (_ => Volume), scan ?? ((_, _, _, _, _, _) => Batches()), () => FixedMoment,
+        queryCursor ?? (_ => new UsnJournalCursor(99, 2000)));
 
     MftBlockProduceRequest Request(bool deleteOnClose = true, IProgress<IndexScanProgress>? progress = null,
         char driveLetter = 'T') => new()
@@ -152,8 +154,8 @@ public class LocalMftBlockProducerTests
     }
 
     [DataTestMethod]
-    [DataRow(false, DisplayName = "normal-reopen-skips-checkpoint-validation")]
-    [DataRow(true, DisplayName = "cache-only-reopen-skips-checkpoint-validation")]
+    [DataRow(false, DisplayName = "normal-reopen-unmoved-journal")]
+    [DataRow(true, DisplayName = "cache-only-reopen-unmoved-journal")]
     public async Task Produce_CachePathBlockSurvivesDisposal(bool cacheOnly)
     {
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(
@@ -437,6 +439,8 @@ public class LocalMftBlockProducerTests
     [TestMethod]
     public void LiveSeams_OnANonWindowsHostRefuseTheVolumeQuery()
     {
+        Assert.AreEqual((UsnJournalCursorQuery)LiveVolumeSources.QueryCursor,
+            LocalMftBlockProducer.Seams.Live.QueryCursor);
         if (OperatingSystem.IsWindows())
         {
             Assert.IsNotNull(LocalMftBlockProducer.Seams.Live.Clock);

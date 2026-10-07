@@ -327,6 +327,7 @@ MFTLib.Index.JournalCheckpointLoss :: property public MaximumSize { get; init; }
 MFTLib.Index.JournalCheckpointLoss :: property public SizeThatWouldHaveRetained { get; init; } : long?
 MFTLib.Index.JournalCheckpointLoss :: type public sealed class : System.IEquatable<MFTLib.Index.JournalCheckpointLoss>
 MFTLib.Index.JournalCheckpointLossCause :: field public const CheckpointTrimmed : MFTLib.Index.JournalCheckpointLossCause = 0
+MFTLib.Index.JournalCheckpointLossCause :: field public const JournalAdvanced : MFTLib.Index.JournalCheckpointLossCause = 2
 MFTLib.Index.JournalCheckpointLossCause :: field public const JournalRecreated : MFTLib.Index.JournalCheckpointLossCause = 1
 MFTLib.Index.JournalCheckpointLossCause :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.JournalCheckpointLossDetection :: field public const DriveOpening : MFTLib.Index.JournalCheckpointLossDetection = 0

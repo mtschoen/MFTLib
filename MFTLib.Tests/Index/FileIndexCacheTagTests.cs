@@ -20,7 +20,7 @@ public class FileIndexCacheTagTests
         _directory = Path.Combine(Path.GetTempPath(), $"mftlib-index-tag-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(Cache);
-        JournalCheckpointCheck._journalOverride = _ => new JournalWindow(7, 100, 8192, 4096, 65536);
+        JournalCheckpointCheck._journalOverride = _ => new JournalWindow(7, 100, 4096, 4096, 65536);
     }
 
     [TestCleanup]

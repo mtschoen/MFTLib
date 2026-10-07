@@ -35,7 +35,7 @@ public enum JournalCheckpointLossDetection
     ScanCatchUp
 }
 
-/// <summary>Why a cached block's journal checkpoint could not be resumed.</summary>
+/// <summary>Why a cached block needs a rescan rather than adoption or journal catch-up.</summary>
 public enum JournalCheckpointLossCause
 {
     /// <summary>
@@ -51,15 +51,21 @@ public enum JournalCheckpointLossCause
     ///     fresh USN space. The checkpoint names a record in a journal that no longer exists;
     ///     no journal size would have preserved it, and none is suggested.
     /// </summary>
-    JournalRecreated
+    JournalRecreated,
+
+    /// <summary>
+    ///     The journal still holds the cursor but its next USN differs. A scan-only source
+    ///     cannot catch up, so it must rescan; no retention size would avoid that rescan.
+    /// </summary>
+    JournalAdvanced
 }
 
 /// <summary>
-///     What MFTLib found when a drive's journal position could no longer be resumed, so the
+///     What MFTLib found when a drive's journal position could no longer be adopted or resumed, so the
 ///     drive needs a full scan rather than a catch-up: the position that was lost, the journal
 ///     as it stood when the loss was detected, and the size a journal would need to be at least
 ///     to have kept it. The position is a cached block's checkpoint when a warm start found it
-///     gone, and the position a live watch had reached when that watch faulted.
+///     gone or moved, and the position a live watch had reached when that watch faulted.
 ///     <para>
 ///         Every number here is read off the volume, not inferred. USNs are byte offsets into
 ///         the journal, so the distance between two of them is a byte count.
@@ -96,7 +102,7 @@ public sealed record JournalCheckpointLoss
     public JournalCheckpointLossDetection DetectedDuring { get; init; }
 
     /// <summary>
-    ///     Which of the two situations this was, and therefore whether a journal size is
+    ///     Which situation this was, and therefore whether a journal size is
     ///     offered at all. MFTLib reports only causes it can detect from the journal itself.
     /// </summary>
     public JournalCheckpointLossCause Cause { get; init; }
@@ -125,8 +131,8 @@ public sealed record JournalCheckpointLoss
     /// <summary>
     ///     How far behind the journal the checkpoint had fallen, in bytes:
     ///     the oldest USN the journal retained minus the checkpoint. Null for
-    ///     <see cref="JournalCheckpointLossCause.JournalRecreated" />, where the checkpoint and
-    ///     the journal belong to different USN spaces and the difference would mean nothing.
+    ///     <see cref="JournalCheckpointLossCause.JournalRecreated" />, where USN spaces differ,
+    ///     and <see cref="JournalCheckpointLossCause.JournalAdvanced" />, where no trimming occurred.
     /// </summary>
     public long? BytesBehind { get; init; }
 
@@ -137,8 +143,9 @@ public sealed record JournalCheckpointLoss
     ///     margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
     ///     USN_JOURNAL_DATA, not a live measurement. This is the size to offer the user
     ///     alongside the broker's journal grow request (<c>BrokerFrameKind.GrowUsnJournal</c>), when there is one to offer.
-    ///     Null for <see cref="JournalCheckpointLossCause.JournalRecreated" />, where no size
-    ///     would have helped, and also null for <see cref="JournalCheckpointLossCause.CheckpointTrimmed" />
+    ///     Null for <see cref="JournalCheckpointLossCause.JournalRecreated" /> and
+    ///     <see cref="JournalCheckpointLossCause.JournalAdvanced" />, where no size would have helped,
+    ///     and also null for <see cref="JournalCheckpointLossCause.CheckpointTrimmed" />
     ///     when the size does not fit in a <see cref="long" />: a consumer branches on
     ///     <see cref="Cause" /> to tell the two apart, not on whether this is null.
     /// </summary>

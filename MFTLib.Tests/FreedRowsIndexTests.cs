@@ -173,7 +173,7 @@ public class FreedRowsIndexTests
     Task<FileIndex> OpenAsync(bool includeFreed)
     {
         var seams = new LocalMftBlockProducer.Seams(_ => Volume,
-            (_, _, _, _, scanOptions, _) => Scan(scanOptions), () => FixedMoment);
+            (_, _, _, _, scanOptions, _) => Scan(scanOptions), () => FixedMoment, _ => default);
         var producer = new LocalMftBlockProducer(new BrokerScanOptions { IncludeFreed = includeFreed }, seams);
         return FileIndex.OpenAsync(new FileIndexOptions
         {

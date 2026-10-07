@@ -274,12 +274,12 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
-    ///     Drops a warm-start candidate whose journal checkpoint the journal no longer holds,
-    ///     returning why in the result. Adopting such a block arms a watch that dies on its first read and
-    ///     rescans anyway, with nothing left to tell the consumer why; rejecting it here
-    ///     rescans once and keeps the reason. Only an MFT-backed block opened by a watch-capable
-    ///     source validates a checkpoint: a scan-only source cannot watch, so it carries no
-    ///     resumable cursor and never starts a watch from one. An enumeration block is also not
+    ///     Drops a warm-start candidate whose journal checkpoint its source cannot safely adopt,
+    ///     returning why in the result. Rejecting it here rescans once and keeps the reason,
+    ///     rather than publishing stale rows or arming a watch from a lost position.
+    ///     A watch-capable source checks retention and catches
+    ///     up later; a scan-only source requires the journal's next USN to equal its stamped cursor.
+    ///     Dump sources require NoCache and never reach warm start. An enumeration block is also not
     ///     watched through the journal, so nothing about it can have fallen out of one.
     ///     <para>
     ///         <see cref="FileIndexOptions.InitialOpenCacheOnly" /> forbids the scan that would
@@ -294,8 +294,7 @@ public sealed partial class FileIndex
     /// </summary>
     WarmStartResult RejectUnresumableCheckpoint(char driveLetter, WarmStartResult warmStart)
     {
-        if (warmStart.Block is not { } candidate || candidate.Header.ProducerKind != ProducerKind.Mft ||
-            (WatchSourceOrNull is null && candidate.Header.UsnJournalId == 0))
+        if (warmStart.Block is not { } candidate || candidate.Header.ProducerKind != ProducerKind.Mft)
         {
             return warmStart;
         }
@@ -304,8 +303,12 @@ public sealed partial class FileIndex
         try
         {
             ref readonly var header = ref candidate.Header;
-            if (JournalCheckpointCheck.Check(driveLetter, header.UsnJournalId, header.UsnNextUsn,
-                    JournalCheckpointLossDetection.DriveOpening) is not { } loss)
+            var checkpointLoss = WatchSourceOrNull is null
+                ? JournalCheckpointCheck.CheckUnmoved(driveLetter, header.UsnJournalId, header.UsnNextUsn,
+                    JournalCheckpointLossDetection.DriveOpening)
+                : JournalCheckpointCheck.Check(driveLetter, header.UsnJournalId, header.UsnNextUsn,
+                    JournalCheckpointLossDetection.DriveOpening);
+            if (checkpointLoss is not { } loss)
             {
                 accepted = true;
                 return warmStart;
