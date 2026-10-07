@@ -7,18 +7,9 @@ namespace SampleProgram.Watch;
 namespace SampleProgram.Direct;
 #endif
 
-/// <summary>What a verb needs from the process before it runs.</summary>
-internal enum ElevationNeed
-{
-    /// <summary>The verb reads nothing that needs administrator rights.</summary>
-    None,
-
-    /// <summary>The verb launches the elevated broker, which raises the UAC prompt itself.</summary>
-    BrokerLaunch,
-
-    /// <summary>The verb reads a volume directly, so this process must be elevated.</summary>
-    SelfElevate
-}
+// What a verb needs from the process before it runs: nothing, the elevated broker (which raises the UAC prompt
+// itself), or this process elevated because the verb reads a volume directly.
+internal enum ElevationNeed { None, BrokerLaunch, SelfElevate }
 
 // The elevation flow both samples share: the heads-up dialog, the self-elevating relaunch, the unattended skip and
 // the output.log redirect of an elevated run. Each sample compiles this file as linked source.

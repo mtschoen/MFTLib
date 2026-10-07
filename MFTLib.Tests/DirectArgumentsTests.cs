@@ -12,14 +12,14 @@ public class DirectArgumentsTests
     {
         Assert.IsTrue(DirectArguments.TryParse(arguments, out var parsed, out var error), error);
         Assert.IsNull(error);
-        return parsed!;
+        return parsed;
     }
 
     static string Refused(params string[] arguments)
     {
         Assert.IsFalse(DirectArguments.TryParse(arguments, out var parsed, out var error));
         Assert.IsNull(parsed);
-        return error!;
+        return error;
     }
 
     [TestMethod]

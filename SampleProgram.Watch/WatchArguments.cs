@@ -3,7 +3,6 @@ using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
-/// <summary>What one run does.</summary>
 internal enum ProgramMode { ScanDrive, Watch, Rescan, Journal, Cache, ElevationStatus }
 
 /// <summary>
@@ -28,8 +27,7 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
     internal string? CacheDirectory { get; init; }
     internal bool Clear { get; init; }
 
-    // Every mode that opens an index launches the broker, which asks for elevation itself; the cache listing and the
-    // elevation report touch no volume.
+    // Modes that open an index launch the broker, which asks for elevation itself; cache and elevation-status touch no volume.
     internal ElevationNeed Need => Mode is ProgramMode.Cache or ProgramMode.ElevationStatus ? ElevationNeed.None : ElevationNeed.BrokerLaunch;
 
     /// <summary>The scan options the broker source gets; null scans every record, as the library does by default.</summary>
@@ -49,7 +47,11 @@ internal static class ProgramModes
 {
     internal static readonly Dictionary<string, ProgramMode> Names = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["scan-drive"] = ProgramMode.ScanDrive, ["watch"] = ProgramMode.Watch, ["rescan"] = ProgramMode.Rescan,
-        ["journal"] = ProgramMode.Journal, ["cache"] = ProgramMode.Cache, ["elevation-status"] = ProgramMode.ElevationStatus
+        ["scan-drive"] = ProgramMode.ScanDrive,
+        ["watch"] = ProgramMode.Watch,
+        ["rescan"] = ProgramMode.Rescan,
+        ["journal"] = ProgramMode.Journal,
+        ["cache"] = ProgramMode.Cache,
+        ["elevation-status"] = ProgramMode.ElevationStatus
     };
 }
