@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using MFTLib;
 using MFTLib.Index;
 
@@ -46,11 +48,13 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
         KeepNames is null && Profile == BrokerScanProfile.Full ? null : new BrokerScanOptions { KeepFileNames = KeepNames, Profile = Profile };
 
     /// <summary>A cached block holds what its scan kept, so a different profile or keep list is a different identity.</summary>
-    internal CacheTag CacheTag => new("SMPW", 1 + (uint)Profile + Fingerprint(KeepNames));
+    internal CacheTag CacheTag => new("SMPW", Fingerprint(Profile, KeepNames));
 
-    static uint Fingerprint(IReadOnlyList<string>? names)
+    // A hash of the profile and the sorted keep names, joined by NUL, which no file name contains.
+    static uint Fingerprint(BrokerScanProfile profile, IReadOnlyList<string>? names)
     {
-        return names is null ? 0 : (uint)string.Join('\n', names).Aggregate(17, (hash, character) => hash * 31 + character);
+        var canonical = $"{profile}\0{string.Join('\0', (names ?? []).Order(StringComparer.Ordinal))}";
+        return BitConverter.ToUInt32(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)), 0);
     }
 }
 
