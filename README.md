@@ -136,7 +136,7 @@ var options = new FileIndexOptions
     NoCache = true,
     ProducerPolicy = ProducerPolicy.Mft
 };
-await using var index = await FileIndex.OpenAsync(options);
+await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 ```
 
 A dump is untrusted. An empty file, a record size other than 1024 or 4096, a partial
@@ -166,7 +166,7 @@ var options = new FileIndexOptions
     MftSource = MftIndexSources.FromLocalVolumes(new BrokerScanOptions { IncludeFreed = true }),
     CacheTag = new CacheTag("APPX", 2)
 };
-await using var index = await FileIndex.OpenAsync(options);
+await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 var deleted = index.Search(new SearchQuery("report", IncludeDeleted: true))
     .Where(entry => entry.IsDeleted);
 ```
