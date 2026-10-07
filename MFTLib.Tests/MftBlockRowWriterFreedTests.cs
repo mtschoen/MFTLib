@@ -225,7 +225,7 @@ public class MftBlockRowWriterFreedTests
     {
         using var block = CreateBlock();
         var freedRoot = new MftRecord(5, 5, new MftRecordFields(2, FileAttributes.Directory, 0, 0, RootSequence,
-            RootSequence), ".", null);
+            RootSequence), ".");
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [[freedRoot]], IncludingFreed, null,
             CancellationToken.None);
@@ -238,7 +238,7 @@ public class MftBlockRowWriterFreedTests
     {
         using var block = CreateBlock();
         var namelessRoot = new MftRecord(5, 5, new MftRecordFields(3, FileAttributes.Directory, 0, 0, RootSequence),
-            "", null);
+            "");
         MftRecord[] records =
         [
             namelessRoot,
@@ -252,6 +252,30 @@ public class MftBlockRowWriterFreedTests
         Assert.AreEqual(1L, result.SkippedRecordCount, "The nameless root gets no row.");
         Assert.AreEqual(5u, block.Rows[12].ParentRow);
         Assert.AreEqual(12u, block.Rows[13].ParentRow);
+    }
+
+    // A nameless directory other than the root cannot be a path component, so a freed child under it is detached
+    // and keeps only its bare name; the same chain through a named directory verifies.
+    [TestMethod]
+    public void TrustRule_NamelessNonRootParent_DetachesTheFreedChildWithItsBareName()
+    {
+        using var block = CreateBlock();
+        MftRecord[] records =
+        [
+            Root(),
+            Live(12, 5, "", 6, RootSequence, isDirectory: true),
+            Freed(13, 12, "orphan.txt", 14, parentSequence: 6),
+            Live(14, 5, "named", 7, RootSequence, isDirectory: true),
+            Freed(15, 14, "kept.txt", 16, parentSequence: 7)
+        ];
+
+        MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records], IncludingFreed, null,
+            CancellationToken.None);
+
+        Assert.AreEqual(BlockLayout.DetachedParentRow, block.Rows[13].ParentRow);
+        Assert.IsTrue(block.Rows[13].IsDeleted);
+        Assert.AreEqual("orphan.txt", NamePool.ReadRowName(block, 13).ToString());
+        Assert.AreEqual(14u, block.Rows[15].ParentRow, "The same chain through a named directory verifies.");
     }
 
     [TestMethod]
@@ -343,14 +367,12 @@ public class MftBlockRowWriterFreedTests
     static MftRecord Live(ulong recordNumber, ulong parent, string name, ushort sequence, ushort parentSequence,
         bool isDirectory = false) =>
         new(recordNumber, parent, new MftRecordFields((ushort)(isDirectory ? 3 : 1),
-            isDirectory ? FileAttributes.Directory : FileAttributes.Normal, 0, 0, sequence, parentSequence), name,
-            null);
+            isDirectory ? FileAttributes.Directory : FileAttributes.Normal, 0, 0, sequence, parentSequence), name);
 
     static MftRecord Freed(ulong recordNumber, ulong parent, string name, ushort sequence, ushort parentSequence,
         bool isDirectory = false) =>
         new(recordNumber, parent, new MftRecordFields((ushort)(isDirectory ? 2 : 0),
-            isDirectory ? FileAttributes.Directory : FileAttributes.Normal, 0, 0, sequence, parentSequence), name,
-            null);
+            isDirectory ? FileAttributes.Directory : FileAttributes.Normal, 0, 0, sequence, parentSequence), name);
 
     static BlockFile CreateBlock(uint slotCapacity = 32, uint namePoolCapacity = 1024)
     {

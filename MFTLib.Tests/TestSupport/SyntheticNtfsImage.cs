@@ -23,21 +23,29 @@ static class SyntheticNtfsImage
         {
             File.Delete(mftPath);
             MftVolume.GenerateSyntheticMFT(mftPath, (ulong)recordCount, 256);
-            var mft = File.ReadAllBytes(mftPath);
-
-            var data = BuildBootSector(ClusterSize + mft.Length);
-            mft.CopyTo(data, ClusterSize);
-            Array.Clear(data, ClusterSize, RecordSize);
-            WriteFileRecord(data, ClusterSize);
-            var dataAttributeLength = WriteNonResidentDataAttribute(
-                data, ClusterSize + 0x38, mft.Length, 1, mft.Length / ClusterSize);
-            WriteEndMarker(data, ClusterSize + 0x38 + dataAttributeLength);
-            File.WriteAllBytes(path, data);
+            Write(path, File.ReadAllBytes(mftPath));
         }
         finally
         {
             File.Delete(mftPath);
         }
+    }
+
+    /// <summary>
+    ///     Writes an image whose MFT is the 1024-byte records of <paramref name="mft" />, with record 0
+    ///     replaced by an $MFT record whose $DATA run covers them all. The MFT must be a whole number
+    ///     of 4096-byte clusters.
+    /// </summary>
+    public static void Write(string path, byte[] mft)
+    {
+        var data = BuildBootSector(ClusterSize + mft.Length);
+        mft.CopyTo(data, ClusterSize);
+        Array.Clear(data, ClusterSize, RecordSize);
+        WriteFileRecord(data, ClusterSize);
+        var dataAttributeLength = WriteNonResidentDataAttribute(
+            data, ClusterSize + 0x38, mft.Length, 1, mft.Length / ClusterSize);
+        WriteEndMarker(data, ClusterSize + 0x38 + dataAttributeLength);
+        File.WriteAllBytes(path, data);
     }
 
     public static byte[] BuildBootSector(int fileSize = 2 * 1024 * 1024)
@@ -108,52 +116,5 @@ static class SyntheticNtfsImage
         data[offset + 1] = 0xFF;
         data[offset + 2] = 0xFF;
         data[offset + 3] = 0xFF;
-    }
-
-    /// <summary>
-    ///     Points the $FILE_NAME parent reference of record <paramref name="recordNumber" /> in a raw
-    ///     1024-byte-record MFT at <paramref name="parentRecord" />. Returns false, changing nothing, when
-    ///     the record is not an in-use base FILE record or carries no resident $FILE_NAME.
-    /// </summary>
-    public static bool TrySetParentRecord(byte[] data, int recordNumber, ulong parentRecord, out int nameLength)
-    {
-        const int recordSize = 1024;
-        var recordOffset = recordNumber * recordSize;
-        nameLength = 0;
-        if (BitConverter.ToUInt32(data, recordOffset) != 0x454C4946 ||
-            (BitConverter.ToUInt16(data, recordOffset + 0x16) & 1) == 0 ||
-            (BitConverter.ToUInt64(data, recordOffset + 0x20) & 0x0000FFFFFFFFFFFFUL) != 0)
-        {
-            return false;
-        }
-
-        var attributeOffset = recordOffset + BitConverter.ToUInt16(data, recordOffset + 0x14);
-        while (attributeOffset + 24 < recordOffset + recordSize)
-        {
-            var attributeType = BitConverter.ToUInt32(data, attributeOffset);
-            if (attributeType == uint.MaxValue)
-            {
-                return false;
-            }
-
-            var attributeLength = BitConverter.ToUInt32(data, attributeOffset + 4);
-            if (attributeLength == 0)
-            {
-                return false;
-            }
-
-            if (attributeType == 0x30 && data[attributeOffset + 8] == 0)
-            {
-                var valueOffset = BitConverter.ToUInt16(data, attributeOffset + 0x14);
-                var value = attributeOffset + valueOffset;
-                nameLength = data[value + 64];
-                BitConverter.GetBytes(parentRecord).CopyTo(data, value);
-                return true;
-            }
-
-            attributeOffset += checked((int)attributeLength);
-        }
-
-        return false;
     }
 }

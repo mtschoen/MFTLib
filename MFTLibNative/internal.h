@@ -68,15 +68,14 @@ inline int32_t LoadSharedInt32(const int32_t* field) {
 
 struct MftParseControl;
 
-// The parse thread count for one chunk or for path resolution: every processor when control
+// The parse thread count for one chunk: every processor when control
 // is null or its allowance is 0, otherwise the allowance clamped to [1, processors]. The
 // SetMaxThreads test hook caps the result. Defined in core/test_hooks.cpp.
 unsigned EffectiveThreadCount(const MftParseControl* control);
-// Test hook recording (defined in core/test_hooks.cpp): what each chunk and path resolution
-// of the most recent parse used, read back through GetChunkThreadCounts and GetResolveThreadCount.
+// Test hook recording (defined in core/test_hooks.cpp): what each chunk of the most recent
+// parse used, read back through GetChunkThreadCounts.
 void ResetRecordedParseThreadCounts();
 void RecordChunkThreadCount(unsigned threadCount);
-void RecordResolveThreadCount(unsigned threadCount);
 
 // Test hook declarations (defined in core/test_hooks.cpp)
 bool ShouldFailAlloc();
@@ -84,9 +83,7 @@ bool ShouldFailRead();
 // The Nth parse cancellation check after SetCancelCheckCountdown(N), and every check after it,
 // reports cancelled, so a test can cancel inside a chunk's workers.
 bool ShouldForceCancel();
-uint64_t NamePoolCapacityOverride();
 bool ShouldFailFileSize();
-bool ShouldFailPathConversion();
 // Force the platform positioned read/write to take their failure branch, so
 // pread_at/pwrite_at error handling is coverable without a real I/O failure.
 bool ShouldFailPlatformRead();

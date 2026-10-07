@@ -227,7 +227,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         new(recordNumber, parentRecordNumber,
             new MftRecordFields(directory ? (ushort)3 : (ushort)1,
                 directory ? FileAttributes.Directory : FileAttributes.Normal,
-                directory ? 0 : 4096, Modified.ToFileTimeUtc()), name, null);
+                directory ? 0 : 4096, Modified.ToFileTimeUtc()), name);
 
     static UsnJournalEntry[] CatchUpEntries() =>
     [

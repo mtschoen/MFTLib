@@ -23,7 +23,7 @@ public partial class JournalBrokerHostRealSeamsTests
         MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
 
         var parsePtr = BuildThreeNameRecordsResult();
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => parsePtr;
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => parsePtr;
         MockFreeMftResult();
 
         using var writer = new RecordingBlockSectionWriter();
@@ -42,7 +42,7 @@ public partial class JournalBrokerHostRealSeamsTests
     }
 
     [TestMethod]
-    public async Task ServeAsync_DefaultSource_AdaptsNativeProgressWithoutPathResolution()
+    public async Task ServeAsync_DefaultSource_AdaptsNativeProgressWithoutFreedRows()
     {
         var queryInfo = new UsnJournalInfoNative { JournalId = 7UL, NextUsn = 100 };
         var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
@@ -51,11 +51,12 @@ public partial class JournalBrokerHostRealSeamsTests
         MFTLibNative._freeUsnJournalInfo = _ => Marshal.FreeHGlobal(queryPtr);
 
         var parsePtr = BuildThreeNameRecordsResult();
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, flags, _, _, callback) =>
+        var freedRequests = new List<bool>();
+        MFTLibNative._parseMftRecordsWithProgress = (_, freed, _, _, callback) =>
         {
-            Assert.AreEqual(MatchFlags.None, flags);
-            callback?.Invoke(MftScanPhase.Parsing, 200, 300, 42.0, IntPtr.Zero);
-            callback?.Invoke(MftScanPhase.Parsing, 300, 300, 45.0, IntPtr.Zero);
+            freedRequests.Add(freed);
+            callback?.Invoke(200, 300, 42.0, IntPtr.Zero);
+            callback?.Invoke(300, 300, 45.0, IntPtr.Zero);
             return parsePtr;
         };
         MockFreeMftResult();
@@ -71,6 +72,7 @@ public partial class JournalBrokerHostRealSeamsTests
         Assert.AreEqual(300L, reports[^1].TotalRecords);
         Assert.AreEqual(BrokerScanPhase.Transferring, reports[^1].Phase);
         Assert.IsTrue(writer.Block.Header.IsComplete);
+        CollectionAssert.AreEqual(new[] { false }, freedRequests, "The default scan asks for no freed rows.");
     }
 
     [TestMethod]
@@ -204,7 +206,7 @@ public partial class JournalBrokerHostRealSeamsTests
             var parsePtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
             Marshal.StructureToPtr(parseResult, parsePtr, false);
 
-            MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => parsePtr;
+            MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => parsePtr;
             MockFreeMftResult();
         }
 

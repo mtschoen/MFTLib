@@ -1,17 +1,12 @@
 #pragma once
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
-#include <cstdlib>
-// aislop-ignore-next-line CppUnusedIncludeDirective -- memcpy below needs this on GCC/Clang
-#include <cstring>
 #include <thread>
 #include <vector>
 
 #include "../framework.h"
 #include "../mft_api.h"
-#include "../internal.h"
 
 namespace mftlib::ntfs {
 struct DataRun {
@@ -47,14 +42,6 @@ bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uin
 }  // namespace detail
 }  // namespace mftlib::ntfs
 
-// Bundles the filename-filter parameters so they travel as a single argument
-// (and cannot be transposed) through the record-parsing path.
-struct FilterSpec {
-    const wchar_t* text;  // null = no filter (accept every named record)
-    uint16_t length;      // wchar_t units in text
-    uint32_t flags;       // MATCH_FLAG_* bitfield
-};
-
 // Half-open record range [start, end) within a chunk buffer.
 struct SliceRange {
     uint64_t start;
@@ -86,83 +73,6 @@ unsigned ForEachRange(uint64_t total, unsigned threadCount, Function body) {
     }
     return static_cast<unsigned>(workers.size());
 }
-
-struct PathLookup {
-    // recordFlags holds the header's in-use (0x01) and directory (0x02) bits of each
-    // validated record; kMissingRecord marks a slot with no validated record.
-    static constexpr uint8_t kMissingRecord = 0xFF;
-    static constexpr uint8_t kInUse = kRecordInUse;
-    static constexpr uint8_t kDirectory = kRecordDirectory;
-    uint64_t* parents = nullptr;
-    uint8_t* nameLens = nullptr;
-    uint32_t* nameOffsets = nullptr;
-    uint16_t* sequenceNumbers = nullptr;
-    uint16_t* parentSequenceNumbers = nullptr;
-    uint8_t* recordFlags = nullptr;
-    // namePool stores raw NTFS UTF-16 bytes (2 bytes per WCHAR unit).
-    // On Windows wchar_t==WCHAR so this is a direct match.
-    // On Linux wchar_t is 32-bit, so we use a byte pool and keep sizes in code units.
-    uint8_t* namePool = nullptr;
-    std::atomic<uint64_t> namePoolUsed{0};
-    uint64_t namePoolCapacity = 0;
-    // Count of names dropped because the pool filled up. Nonzero means some
-    // resolved paths are truncated; surfaced to the caller via errorMessage.
-    std::atomic<uint64_t> namesDropped{0};
-
-    bool init(uint64_t totalRecords) {
-        parents = static_cast<uint64_t*>(calloc(totalRecords, sizeof(uint64_t)));
-        nameLens = static_cast<uint8_t*>(calloc(totalRecords, sizeof(uint8_t)));
-        nameOffsets = static_cast<uint32_t*>(calloc(totalRecords, sizeof(uint32_t)));
-        sequenceNumbers = ShouldFailAlloc() ? nullptr : static_cast<uint16_t*>(calloc(totalRecords, sizeof(uint16_t)));
-        parentSequenceNumbers =
-            ShouldFailAlloc() ? nullptr : static_cast<uint16_t*>(calloc(totalRecords, sizeof(uint16_t)));
-        recordFlags = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(calloc(totalRecords, sizeof(uint8_t)));
-        if (recordFlags != nullptr) {
-            memset(recordFlags, kMissingRecord, totalRecords);
-        }
-        // Each name can be up to 255 WCHAR units; reserve an average of 32 units (64 bytes) per record.
-        // A test hook can shrink the pool to exercise the exhaustion path.
-        uint64_t capacityOverride = NamePoolCapacityOverride();
-        namePoolCapacity = (capacityOverride != 0U) ? capacityOverride : totalRecords * 64;  // bytes
-        namePool = static_cast<uint8_t*>(malloc(namePoolCapacity));
-        namePoolUsed = 0;
-        namesDropped = 0;
-        return (parents != nullptr) && (nameLens != nullptr) && (nameOffsets != nullptr) && (namePool != nullptr) &&
-               (sequenceNumbers != nullptr) && (parentSequenceNumbers != nullptr) && (recordFlags != nullptr);
-    }
-
-    // Store the validated name and reference identity, even when the name pool is exhausted.
-    void storeName(uint64_t recordIndex, const FILE_RECORD_SEGMENT_HEADER& record, const FILE_NAME& name) {
-        parents[recordIndex] = static_cast<uint64_t>(name.ParentDirectory.SegmentNumberLowPart) |
-                               (static_cast<uint64_t>(name.ParentDirectory.SegmentNumberHighPart) << 32);
-        sequenceNumbers[recordIndex] = record.SequenceNumber;
-        parentSequenceNumbers[recordIndex] = name.ParentDirectory.SequenceNumber;
-        recordFlags[recordIndex] = static_cast<uint8_t>(record.Flags & (kInUse | kDirectory));
-        uint64_t byteCount = static_cast<uint64_t>(name.FileNameLength) * sizeof(WCHAR);
-        uint64_t offset = namePoolUsed.fetch_add(byteCount, std::memory_order_relaxed);
-        if (offset + byteCount > namePoolCapacity) {
-            namesDropped.fetch_add(1, std::memory_order_relaxed);
-            return;
-        }
-        nameOffsets[recordIndex] = static_cast<uint32_t>(offset);
-        memcpy(namePool + offset, name.FileName, byteCount);
-        nameLens[recordIndex] = name.FileNameLength;
-    }
-
-    bool isValidatedFreed(uint64_t recordIndex) const {
-        return recordFlags[recordIndex] != kMissingRecord && (recordFlags[recordIndex] & kInUse) == 0;
-    }
-
-    void cleanup() const {
-        free(parents);
-        free(nameLens);
-        free(nameOffsets);
-        free(sequenceNumbers);
-        free(parentSequenceNumbers);
-        free(recordFlags);
-        free(namePool);
-    }
-};
 
 struct ParsedEntry {
     uint64_t recordNumber;
@@ -209,24 +119,18 @@ struct CompactOutput {
     uint64_t stringCapacity = 0;
 };
 
-// Read-only inputs that steer record scanning: the name filter, the optional
-// path-lookup table (null when paths aren't resolved), and the total record
-// count. Threaded through the scan pipeline as one const& instead of three
-// same-purpose arguments that could be transposed at a call site. control is the
+// Read-only inputs that steer record scanning, threaded through the scan pipeline as one
+// const&. includeFreed also emits base records whose in-use bit is clear. control is the
 // caller's cancellation flag and thread allowance (null when the caller supplied none).
 // rejectInvalidFixup fails the parse on an allocated record whose fixup is invalid.
 struct ScanContext {
-    FilterSpec filter{};
-    PathLookup* lookup = nullptr;
+    bool includeFreed = false;
     uint64_t totalRecords = 0;
     ParseGeometry geometry{};
     const MftParseControl* control = nullptr;
     bool rejectInvalidFixup = false;
 };
 
-constexpr uint32_t MAX_NTFS_PATH_UNITS = 32767;
-
-bool ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalRecords, std::vector<uint16_t>& path);
 bool AppendSlice(CompactOutput& output, const SliceResult& slice, MftMessageChar* errorMessage);
 void ProcessRecordSlice(uint8_t* buffer, SliceRange range, uint64_t recordBase, SliceResult* slice,
                         const ScanContext& scan);
@@ -249,8 +153,9 @@ struct ParseSource {
 };
 
 // What the caller asked of one parse. control may be null (every processor, never cancelled).
+// includeFreed also emits base records whose in-use bit is clear.
 struct ParseRequest {
-    FilterSpec filter{};
+    bool includeFreed = false;
     uint32_t bufferSizeRecords = 0;
     const MftParseControl* control = nullptr;
     MftProgressCallback callback = nullptr;

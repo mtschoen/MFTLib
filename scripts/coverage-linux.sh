@@ -61,7 +61,7 @@ mkdir -p "$REPORT_DIR"
 if [ "$RUN_MANAGED" -eq 1 ]; then
     mkdir -p "$MANAGED_REPORT_DIR"
 
-    # Tests excluded on Linux (call Windows-only entry points or use raw volume APIs):
+    # Classes excluded on Linux (they hold tests that parse an image through the volume export, a stub off Windows):
     #   MftResultTests, MftVolumeTests, NativeCoverageTests, NativeParserCoverageTests,
     #   UsnJournalSyntheticTests (UsnJournalSyntheticTests P/Invokes the USN test hooks
     #   + usn_journal exports, all #ifdef _WIN32, so they don't exist in libMFTLibNative.so)

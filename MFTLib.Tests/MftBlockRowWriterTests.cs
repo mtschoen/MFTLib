@@ -15,10 +15,10 @@ public class MftBlockRowWriterTests
         using var block = CreateBlock();
         MftRecord[] records =
         [
-            new(5, 5, new MftRecordFields(3, FileAttributes.Directory, 999), ".", null),
+            new(5, 5, new MftRecordFields(3, FileAttributes.Directory, 999), "."),
             new(20, 5, new MftRecordFields(1, FileAttributes.Archive | FileAttributes.Hidden,
-                5_000_000_000, ModifiedUtc.ToFileTimeUtc()), "snow\u2603.txt", null),
-            new(21, 20, new MftRecordFields(0x8001), "unknown", null)
+                5_000_000_000, ModifiedUtc.ToFileTimeUtc()), "snow\u2603.txt"),
+            new(21, 20, new MftRecordFields(0x8001), "unknown")
         ];
 
         var result = MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records],
@@ -49,7 +49,7 @@ public class MftBlockRowWriterTests
     public void WriteBatches_CopiesSequenceNumberIntoItsRecordSlot()
     {
         using var block = CreateBlock();
-        var record = new MftRecord(20, 5, new MftRecordFields(1, sequenceNumber: 37), "record", null);
+        var record = new MftRecord(20, 5, new MftRecordFields(1, sequenceNumber: 37), "record");
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [[record]],
             MftBlockRowFilter.Full, null, CancellationToken.None);
@@ -197,8 +197,8 @@ public class MftBlockRowWriterTests
         using var block = CreateBlock();
         MftRecord[] records =
         [
-            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir", null),
-            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), "file.txt", null)
+            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir"),
+            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), "file.txt")
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
@@ -217,8 +217,8 @@ public class MftBlockRowWriterTests
         using var block = CreateBlock();
         MftRecord[] records =
         [
-            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir", null),
-            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), "file.txt", null)
+            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir"),
+            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), "file.txt")
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
@@ -237,9 +237,9 @@ public class MftBlockRowWriterTests
         using var block = CreateBlock();
         MftRecord[] records =
         [
-            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir", null),
-            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), ".GIT", null),
-            new(11, 5, new MftRecordFields(1, FileAttributes.Normal, 200), "other.txt", null)
+            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir"),
+            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), ".GIT"),
+            new(11, 5, new MftRecordFields(1, FileAttributes.Normal, 200), "other.txt")
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
@@ -260,9 +260,9 @@ public class MftBlockRowWriterTests
         var reports = new List<BlockWriteProgress>();
         MftRecord[] records =
         [
-            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir", null),
-            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), "filtered1.txt", null),
-            new(11, 5, new MftRecordFields(1, FileAttributes.Normal, 200), "filtered2.txt", null)
+            new(5, 5, new MftRecordFields(3, FileAttributes.Directory), "dir"),
+            new(10, 5, new MftRecordFields(1, FileAttributes.Normal, 100), "filtered1.txt"),
+            new(11, 5, new MftRecordFields(1, FileAttributes.Normal, 200), "filtered2.txt")
         ];
 
         var result = MftBlockRowWriter.WriteBatches(
@@ -288,12 +288,12 @@ public class MftBlockRowWriterTests
 
     static MftRecord Record(ulong recordNumber, string name)
     {
-        return new MftRecord(recordNumber, 5, new MftRecordFields(1), name, null);
+        return new MftRecord(recordNumber, 5, new MftRecordFields(1), name);
     }
 
     static MftRecord RecordWithParent(ulong recordNumber, ulong parentRecordNumber, string name)
     {
-        return new MftRecord(recordNumber, parentRecordNumber, new MftRecordFields(1), name, null);
+        return new MftRecord(recordNumber, parentRecordNumber, new MftRecordFields(1), name);
     }
 
     static BlockFile CreateBlock(uint namePoolCapacity = 256)

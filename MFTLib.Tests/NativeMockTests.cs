@@ -17,35 +17,6 @@ public class NativeMockTests
     }
 
     [TestMethod]
-    public void ParseMFTFromFile_NullReturn_ThrowsInvalidOperation()
-    {
-        MFTLibNative._parseMftFromFile = (_, _, _, _, _, _) => IntPtr.Zero;
-
-        Assert.ThrowsException<InvalidOperationException>(() =>
-            DirectParse.ParseFile("fake.bin", out _));
-    }
-
-    [TestMethod]
-    public void ParseMFTFromFile_NativeErrorMessage_ThrowsWithMessage()
-    {
-        var errorResult = new MftParseResult
-        {
-            ErrorMessage = "Volume is not NTFS",
-            AbiVersion = MFTLibNative.ExpectedMftNativeAbiVersion,
-            EntryStride = MFTLibNative.NativeCompactEntrySize
-        };
-        var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
-        Marshal.StructureToPtr(errorResult, resultPtr, false);
-
-        MFTLibNative._parseMftFromFile = (_, _, _, _, _, _) => resultPtr;
-        MFTLibNative._freeMftResult = _ => Marshal.FreeHGlobal(resultPtr);
-
-        var ex = Assert.ThrowsException<InvalidOperationException>(() =>
-            DirectParse.ParseFile("fake.bin", out _));
-        Assert.AreEqual("Volume is not NTFS", ex.Message);
-    }
-
-    [TestMethod]
     public void GenerateSyntheticMFT_ReturnsFalse_ThrowsInvalidOperation()
     {
         MFTLibNative._generateSyntheticMftSized = (_, _, _, _) => false;
@@ -69,11 +40,11 @@ public class NativeMockTests
     public void StreamRecords_NullReturn_ThrowsInvalidOperation()
     {
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) => IntPtr.Zero;
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) => IntPtr.Zero;
 
         using var volume = MftVolume.Open("C");
         // ReSharper disable once AccessToDisposedClosure
-        Assert.ThrowsException<InvalidOperationException>(() => volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None));
+        Assert.ThrowsException<InvalidOperationException>(() => volume.StreamRecords(false, null, null, CancellationToken.None));
     }
 
     [TestMethod]
@@ -87,7 +58,7 @@ public class NativeMockTests
         using var handle = new SafeFileHandle(new IntPtr(-1), false);
 
         var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
-            handle, null, MatchFlags.None, 256, IntPtr.Zero, null);
+            handle, false, 256, IntPtr.Zero, null);
 
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try

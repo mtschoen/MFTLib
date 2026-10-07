@@ -219,8 +219,8 @@ public sealed class BrokerFileIndexRescanTests
                 held.WaitForRelease();
             }
 
-            yield return [new MftRecord(5, 5, new MftRecordFields(3), ".", null),
-                new MftRecord(20, 5, new MftRecordFields(1), $"scan-{scanNumber}.txt", null)];
+            yield return [new MftRecord(5, 5, new MftRecordFields(3), "."),
+                new MftRecord(20, 5, new MftRecordFields(1), $"scan-{scanNumber}.txt")];
         }
     }
 }

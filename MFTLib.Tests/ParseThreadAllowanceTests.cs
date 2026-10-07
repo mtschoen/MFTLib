@@ -54,7 +54,7 @@ public class ParseThreadAllowanceTests
         });
 
         using var volume = MftVolume.Open("C");
-        using (volume.StreamRecords(null, MatchFlags.None, null, allowance, CancellationToken.None))
+        using (volume.StreamRecords(false, null, allowance, CancellationToken.None))
         {
             CollectionAssert.AreEqual(new[] { 2, 3, 5 }, observed);
         }
@@ -62,7 +62,7 @@ public class ParseThreadAllowanceTests
         // Detached when the parse returned: the next parse attaches again and sees the current count.
         observed.Clear();
         allowance.Count = 7;
-        using (volume.StreamRecords(null, MatchFlags.None, null, allowance, CancellationToken.None))
+        using (volume.StreamRecords(false, null, allowance, CancellationToken.None))
         {
             Assert.AreEqual(7, observed[0]);
         }
@@ -75,7 +75,7 @@ public class ParseThreadAllowanceTests
         FakeParse(control => observed = control->ParseThreadAllowance);
 
         using var volume = MftVolume.Open("C");
-        using (volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None))
+        using (volume.StreamRecords(false, null, null, CancellationToken.None))
         {
             Assert.AreEqual(0, observed);
         }
@@ -96,7 +96,7 @@ public class ParseThreadAllowanceTests
         });
 
         using var volume = MftVolume.Open("C");
-        using (volume.StreamRecords(null, MatchFlags.None, null, null, cancellation.Token))
+        using (volume.StreamRecords(false, null, null, cancellation.Token))
         {
             CollectionAssert.AreEqual(new[] { 0, 1 }, observed);
         }
@@ -131,7 +131,7 @@ public class ParseThreadAllowanceTests
     static unsafe void FakeParse(ControlBlockObserver observe)
     {
         FileUtilities._getVolumeHandle = _ => new SafeFileHandle(new IntPtr(1), false);
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, control, _) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, control, _) =>
         {
             observe((MftParseControl*)control);
             var result = new MftParseResult

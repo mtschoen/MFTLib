@@ -181,7 +181,7 @@ public class JournalBrokerHostBlockScanTests
         MftRecord[][] batches =
         [
             [Record(5, ".", 3), Record(20, "file.txt"), Record(21, "")],
-            [Record(30, "other.txt"), new MftRecord(1UL << 33, 5, new MftRecordFields(1), "huge", null)]
+            [Record(30, "other.txt"), new MftRecord(1UL << 33, 5, new MftRecordFields(1), "huge")]
         ];
         var completedUtc = new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc);
         using var hostWriter = new RecordingBlockSectionWriter();
@@ -261,6 +261,6 @@ public class JournalBrokerHostBlockScanTests
 
     static MftRecord Record(ulong recordNumber, string name, ushort flags = 1)
     {
-        return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name, null);
+        return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name);
     }
 }

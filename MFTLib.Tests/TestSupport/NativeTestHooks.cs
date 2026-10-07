@@ -20,14 +20,8 @@ internal static class NativeTestHooks
     [DllImport(LibraryName, EntryPoint = "SetReadFailCountdown", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetReadFailCountdown(int countdown);
 
-    [DllImport(LibraryName, EntryPoint = "SetNamePoolCapacityOverride", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void NativeSetNamePoolCapacityOverride(ulong bytes);
-
     [DllImport(LibraryName, EntryPoint = "SetFailFileSize", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetFailFileSize(int fail);
-
-    [DllImport(LibraryName, EntryPoint = "SetFailPathConversion", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void NativeSetFailPathConversion(int fail);
 
     [DllImport(LibraryName, EntryPoint = "SetFailPlatformRead", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetFailPlatformRead(int countdown);
@@ -60,15 +54,11 @@ internal static class NativeTestHooks
     [DllImport(LibraryName, EntryPoint = "GetChunkThreadCounts", CallingConvention = CallingConvention.Cdecl)]
     internal static extern unsafe uint NativeGetChunkThreadCounts(uint* counts, uint capacity);
 
-    [DllImport(LibraryName, EntryPoint = "GetResolveThreadCount", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern uint NativeGetResolveThreadCount();
-
     [DllImport(LibraryName, EntryPoint = "ResetTestState", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeResetTestState();
 
-    [DllImport(LibraryName, EntryPoint = "ParseMFTRecordsWithProgress", CallingConvention = CallingConvention.Cdecl,
-        CharSet = CharSet.Unicode)]
-    static extern IntPtr NativeParseMFTRecordsWithProgressRaw(IntPtr volumeHandle, string? filter, uint matchFlags,
+    [DllImport(LibraryName, EntryPoint = "ParseMFTRecordsWithProgress", CallingConvention = CallingConvention.Cdecl)]
+    static extern IntPtr NativeParseMFTRecordsWithProgressRaw(IntPtr volumeHandle, uint includeFreed,
         uint bufferSizeRecords, IntPtr control, IntPtr callback, IntPtr context);
 
     // The dump input exports with raw pointers, for calls the typed bindings cannot express:
@@ -81,10 +71,9 @@ internal static class NativeTestHooks
         IntPtr callback, IntPtr context);
 
     // Parse entry that takes a raw IntPtr handle and no progress control (for testing with invalid handles)
-    internal static IntPtr NativeParseMFTRecordsRaw(IntPtr volumeHandle, string? filter, uint matchFlags,
-        uint bufferSizeRecords)
+    internal static IntPtr NativeParseMFTRecordsRaw(IntPtr volumeHandle, uint bufferSizeRecords)
     {
-        return NativeParseMFTRecordsWithProgressRaw(volumeHandle, filter, matchFlags, bufferSizeRecords, IntPtr.Zero,
-            IntPtr.Zero, IntPtr.Zero);
+        return NativeParseMFTRecordsWithProgressRaw(volumeHandle, 0, bufferSizeRecords, IntPtr.Zero, IntPtr.Zero,
+            IntPtr.Zero);
     }
 }

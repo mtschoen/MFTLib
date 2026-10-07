@@ -70,14 +70,14 @@ public class BrokerIncludeFreedTests : BrokerBlockTestBase
     {
         yield return
         [
-            new MftRecord(5, 5, new MftRecordFields(3, FileAttributes.Directory, 0, 0, 5, 5), ".", null),
-            new MftRecord(6, 5, new MftRecordFields(3, FileAttributes.Directory, 0, 0, 6, 5), "dir", null)
+            new MftRecord(5, 5, new MftRecordFields(3, FileAttributes.Directory, 0, 0, 5, 5), "."),
+            new MftRecord(6, 5, new MftRecordFields(3, FileAttributes.Directory, 0, 0, 6, 5), "dir")
         ];
         if (options.IncludeFreed)
         {
             yield return
             [
-                new MftRecord(21, 6, new MftRecordFields(0, FileAttributes.Normal, 7, 0, 9, 6), "freed.txt", null)
+                new MftRecord(21, 6, new MftRecordFields(0, FileAttributes.Normal, 7, 0, 9, 6), "freed.txt")
             ];
         }
     }

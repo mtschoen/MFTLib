@@ -3,7 +3,6 @@
 #include <array>
 // aislop-ignore-next-line CppUnusedIncludeDirective -- memcpy/memset below need this on GCC/Clang
 #include <cstring>
-#include <string>
 #include <thread>
 
 #include "../framework.h"
@@ -13,10 +12,6 @@
 #include "mft.internal.h"
 // aislop-ignore-next-line CppUnusedIncludeDirective -- constants consumed by the included fixture fragment
 #include "mft_fixture.h"
-
-#ifdef _WIN32
-    #include <stringapiset.h>
-#endif
 
 namespace {
 constexpr std::array<const wchar_t*, 16> fileNames = {
@@ -377,39 +372,7 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
 }  // namespace
 
 extern "C" {
-#ifdef _WIN32
-EXPORT bool GenerateSyntheticMFTSized(const wchar_t* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
-                                      uint32_t recordSize) {
-    if (!IsSupportedRecordSize(recordSize)) {
-        return false;
-    }
-    if (ShouldFailPathConversion()) {
-        return false;
-    }
-    int u8len = WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
-    if (u8len <= 0) {
-        return false;
-    }
-    std::string utf8(static_cast<size_t>(u8len - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, filePath, -1, utf8.data(), u8len, nullptr, nullptr);
-    return GenerateSyntheticMFTImpl(utf8.c_str(), RecordCount{recordCount}, bufferSizeRecords, recordSize);
-}
-
-EXPORT bool GenerateFixtureMFT(const wchar_t* filePath) {
-    if (ShouldFailPathConversion()) {
-        return false;
-    }
-    int utf8Length = WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
-    if (utf8Length <= 0) {
-        return false;
-    }
-    std::string utf8(static_cast<size_t>(utf8Length - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, filePath, -1, utf8.data(), utf8Length, nullptr, nullptr);
-    return GenerateFixtureMFTImpl(utf8.c_str());
-}
-#endif
-
-#ifndef _WIN32
+// Path is UTF-8 on every platform.
 EXPORT bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
                                           uint32_t recordSize) {
     if (!IsSupportedRecordSize(recordSize)) {
@@ -418,6 +381,6 @@ EXPORT bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordC
     return GenerateSyntheticMFTImpl(filePath, RecordCount{recordCount}, bufferSizeRecords, recordSize);
 }
 
+// Path is UTF-8 on every platform.
 EXPORT bool GenerateFixtureMFTUtf8(const char* filePath) { return GenerateFixtureMFTImpl(filePath); }
-#endif
 }

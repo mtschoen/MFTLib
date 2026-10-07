@@ -30,7 +30,7 @@ internal static unsafe class MftProgressParseFixture
         var parseResultPointer = Marshal.AllocHGlobal(Marshal.SizeOf<MftParseResult>());
         Marshal.StructureToPtr(parseResult, parseResultPointer, false);
 
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, callback) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, callback) =>
         {
             reportProgress(callback);
             return parseResultPointer;

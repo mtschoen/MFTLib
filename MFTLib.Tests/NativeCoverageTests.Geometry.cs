@@ -11,117 +11,6 @@ public partial class NativeCoverageTests
     // --- Variable record size and geometry validation tests ---
 
     [TestMethod]
-    public void ParseFromFile_InvalidMagic_ReturnsError()
-    {
-        var path = Path.GetTempFileName();
-        try
-        {
-            var data = new byte[2048];
-            // Magic "BAAD"
-            data[0] = (byte)'B';
-            data[1] = (byte)'A';
-            data[2] = (byte)'A';
-            data[3] = (byte)'D';
-            BitConverter.GetBytes(1024u).CopyTo(data, 0x1C);
-            File.WriteAllBytes(path, data);
-
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
-            }
-            finally
-            {
-                MFTLibNative._freeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    [DataTestMethod]
-    [DataRow(0u)]
-    [DataRow(256u)]
-    [DataRow(1536u)]
-    [DataRow(131072u)]
-    public void ParseFromFile_UnsupportedRecordSize_ReturnsError(uint recordSize)
-    {
-        var path = Path.GetTempFileName();
-        try
-        {
-            var data = new byte[4096];
-            // Magic "FILE"
-            data[0] = (byte)'F';
-            data[1] = (byte)'I';
-            data[2] = (byte)'L';
-            data[3] = (byte)'E';
-            BitConverter.GetBytes(recordSize).CopyTo(data, 0x1C);
-            File.WriteAllBytes(path, data);
-
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
-            }
-            finally
-            {
-                MFTLibNative._freeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    [TestMethod]
-    public void ParseFromFile_NonMultipleFileSize_ReturnsError()
-    {
-        var path = Path.GetTempFileName();
-        try
-        {
-            var data = new byte[1500]; // Not a multiple of 1024
-            data[0] = (byte)'F';
-            data[1] = (byte)'I';
-            data[2] = (byte)'L';
-            data[3] = (byte)'E';
-            BitConverter.GetBytes(1024u).CopyTo(data, 0x1C);
-            File.WriteAllBytes(path, data);
-
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage.Contains("record size", StringComparison.OrdinalIgnoreCase));
-            }
-            finally
-            {
-                MFTLibNative._freeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    [TestMethod]
     public void ParseMFTRecords_VolumeRecordSizeOverride_InvalidSize_ReturnsError()
     {
         var path = Path.GetTempFileName();
@@ -136,7 +25,7 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -176,7 +65,7 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -217,7 +106,7 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -259,7 +148,7 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -274,34 +163,6 @@ public partial class NativeCoverageTests
         finally
         {
             NativeTestHooks.NativeResetTestState();
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    [DataTestMethod]
-    [DataRow(0x38)]
-    [DataRow(0x98)]
-    public void ParseFromFile_MalformedResidentValueOffset_SkipsRecord(int attributeOffset)
-    {
-        var path = Path.GetTempFileName();
-        try
-        {
-            File.Delete(path);
-            MftVolume.GenerateSyntheticMFT(path, 20, 256);
-            var data = File.ReadAllBytes(path);
-            data[6 * 1024 + attributeOffset + 0x14] = 0x60;
-            data[6 * 1024 + attributeOffset + 0x15] = 0xEA;
-            File.WriteAllBytes(path, data);
-
-            var records = DirectParse.ParseFile(path, out _);
-            Assert.IsTrue(records.Length > 0);
-            Assert.IsFalse(records.Any(r => r.RecordNumber == 6));
-        }
-        finally
-        {
             if (File.Exists(path))
             {
                 File.Delete(path);

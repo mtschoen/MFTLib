@@ -215,7 +215,7 @@ The release notes in `CHANGELOG.md` and GitHub Release must match `CHANGELOG.md`
 - **`MFTLib.Index` namespace**: indexed query and file snapshot model (`FileIndex`, `Snapshot`, `FileEntry`, `FileChange`) with low-latency query evaluation and direct directory traversal.
 - **Broker block write path**: the elevated broker writes cold scan blocks directly into a client-owned file-backed block section; cold scans return packed blocks only.
 - **Per-drive watch channels**: `BrokerProcess` runs one control pipe and one channel per drive operation; `FileIndex` start, stop, rescan and catch-up are per drive with concurrent list and all-drive overloads, automatic per-drive recovery, and bounded catch-up-loss recovery.
-- **Include-freed scan**: `BrokerScanOptions.IncludeFreed` imports freed MFT records as scan-scoped rows with `FileEntry.IsDeleted` true, and `SearchQuery.IncludeDeleted` searches them; native ABI version 6.
+- **Include-freed scan**: `BrokerScanOptions.IncludeFreed` imports freed MFT records as scan-scoped rows with `FileEntry.IsDeleted` true, and `SearchQuery.IncludeDeleted` searches them; native ABI version 7.
 - **`MFTLib.TestExtensions` package**: `BrokerTestHarness` and the cache and journal isolation guards ship as a separate package.
 - **Documented public API**: the package ships `MFTLib.xml`, so IntelliSense documents every public member.
 

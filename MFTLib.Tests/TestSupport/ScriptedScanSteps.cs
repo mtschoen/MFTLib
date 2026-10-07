@@ -22,8 +22,8 @@ internal static class ScriptedScanSteps
         using var writer = new RecordingBlockSectionWriter(broker.Sections.Resolve);
         writer.Write(sectionName, cursor,
             [
-                [new MftRecord(5, 5, new MftRecordFields(3), ".", null)],
-                [new MftRecord(20, 5, new MftRecordFields(1), "file.txt", null)]
+                [new MftRecord(5, 5, new MftRecordFields(3), ".")],
+                [new MftRecord(20, 5, new MftRecordFields(1), "file.txt")]
             ],
             MftBlockRowFilter.Full, default, CancellationToken.None);
     }

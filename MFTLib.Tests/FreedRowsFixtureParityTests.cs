@@ -1,47 +1,50 @@
 using MFTLib.Index;
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
 /// <summary>
-///     The managed trust rule and the native freed path resolver are two implementations of one rule. This runs the
-///     native fixture, which holds freed records of every trust outcome, through both and requires the same split.
+///     The fixture holds freed records of every trust outcome. A native scan of it that includes freed rows,
+///     written through the managed trust rule, attaches exactly the freed records whose parent chain verifies
+///     and detaches the rest.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 public class FreedRowsFixtureParityTests
 {
     static readonly ulong[] TrustedFreedRecords = [12, 13, 14, 15];
     static readonly ulong[] UntrustedFreedRecords = [16, 17, 21, 22];
 
     string _fixturePath = null!;
+    string _imagePath = null!;
 
     [TestInitialize]
     public void Initialize()
     {
         _fixturePath = Path.Combine(Path.GetTempPath(), $"mftlib-freed-parity-{Guid.NewGuid():N}.mft");
-        if (OperatingSystem.IsWindows())
-        {
-            MftVolume.GenerateFixtureMFT(_fixturePath);
-        }
+        _imagePath = Path.ChangeExtension(_fixturePath, ".img");
+        MftVolume.GenerateFixtureMFT(_fixturePath);
     }
 
     [TestCleanup]
-    public void Cleanup() => File.Delete(_fixturePath);
+    public void Cleanup()
+    {
+        NativeTestHooks.NativeResetTestState();
+        File.Delete(_fixturePath);
+        File.Delete(_imagePath);
+    }
 
     [TestMethod]
-    public void ManagedTrustRule_MatchesTheNativeResolverOnTheFixture()
+    public void ManagedTrustRule_SplitsTheFixturesFreedRecordsByTheirParentChain()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutVolumeParse())
         {
             return;
         }
 
-        using var resolved = MftVolume.StreamMftFromFile(_fixturePath, null,
-            MatchFlags.IncludeFreed | MatchFlags.ResolvePaths);
-        var nativeTrusted = resolved.Where(record => !record.InUse)
-            .ToDictionary(record => record.RecordNumber, record => record.FullPath is not null);
-
-        using var scanned = MftVolume.StreamMftFromFile(_fixturePath, null, MatchFlags.IncludeFreed);
+        using var scanned = FixtureVolume.Parse(_imagePath, File.ReadAllBytes(_fixturePath), true);
+        var freedRecords = scanned.Where(record => !record.InUse).Select(record => record.RecordNumber).ToArray();
         using var block = BlockFile.Create(new BlockFileCreateOptions
         {
             Path = Path.Combine(Path.GetTempPath(), $"mft-parity-{Guid.NewGuid():N}.bin"),
@@ -55,41 +58,32 @@ public class FreedRowsFixtureParityTests
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [scanned.ToArray()],
             new MftBlockRowFilter(BrokerScanProfile.Full, IncludeFreed: true), null, CancellationToken.None);
 
-        Assert.AreEqual(TrustedFreedRecords.Length + UntrustedFreedRecords.Length, nativeTrusted.Count);
-        foreach (var recordNumber in nativeTrusted.Keys)
+        CollectionAssert.AreEquivalent(TrustedFreedRecords.Concat(UntrustedFreedRecords).ToArray(), freedRecords);
+        foreach (var recordNumber in freedRecords)
         {
-            var managedTrusted = block.Rows[(int)recordNumber].ParentRow != BlockLayout.DetachedParentRow;
             Assert.IsTrue(block.Rows[(int)recordNumber].IsDeleted, $"record {recordNumber} is a deleted row");
-            Assert.AreEqual(nativeTrusted[recordNumber], managedTrusted,
-                $"record {recordNumber}: native and managed disagree on whether its parent chain verifies");
+            Assert.AreEqual(TrustedFreedRecords.Contains(recordNumber),
+                block.Rows[(int)recordNumber].ParentRow != BlockLayout.DetachedParentRow,
+                $"record {recordNumber}: the managed rule attaches it exactly when its parent chain verifies");
         }
-
-        CollectionAssert.AreEquivalent(TrustedFreedRecords,
-            nativeTrusted.Where(pair => pair.Value).Select(pair => pair.Key).ToArray());
-        CollectionAssert.AreEquivalent(UntrustedFreedRecords,
-            nativeTrusted.Where(pair => !pair.Value).Select(pair => pair.Key).ToArray());
     }
 
     [TestMethod]
     public void NativeScan_ReportsEveryRecordsReferencedParentSequence()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutVolumeParse())
         {
             return;
         }
 
-        foreach (var flags in new[] { MatchFlags.IncludeFreed, MatchFlags.IncludeFreed | MatchFlags.ResolvePaths })
-        {
-            using var result = MftVolume.StreamMftFromFile(_fixturePath, null, flags);
-            var sequences = result.ToDictionary(record => record.RecordNumber,
-                record => record.ParentSequenceNumber);
+        using var result = FixtureVolume.Parse(_imagePath, File.ReadAllBytes(_fixturePath), true);
+        var sequences = result.ToDictionary(record => record.RecordNumber, record => record.ParentSequenceNumber);
 
-            Assert.AreEqual((ushort)6, sequences[8], "sub references its parent, the root, at sequence 6");
-            Assert.AreEqual((ushort)0, sequences[6], "live records without a stated parent sequence report zero");
-            Assert.AreEqual((ushort)6, sequences[12]);
-            Assert.AreEqual((ushort)13, sequences[13]);
-            Assert.AreEqual((ushort)9, sequences[15]);
-            Assert.AreEqual((ushort)12, sequences[17]);
-        }
+        Assert.AreEqual((ushort)6, sequences[8], "sub references its parent, the root, at sequence 6");
+        Assert.AreEqual((ushort)0, sequences[6], "live records without a stated parent sequence report zero");
+        Assert.AreEqual((ushort)6, sequences[12]);
+        Assert.AreEqual((ushort)13, sequences[13]);
+        Assert.AreEqual((ushort)9, sequences[15]);
+        Assert.AreEqual((ushort)12, sequences[17]);
     }
 }

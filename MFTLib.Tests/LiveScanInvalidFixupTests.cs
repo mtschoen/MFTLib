@@ -40,7 +40,7 @@ public class LiveScanInvalidFixupTests
     [TestMethod]
     public void VolumeParse_AllocatedRecordWithAnInvalidFixup_IsCountedAndItsNeighboursAreReturned()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutVolumeParse())
         {
             return;
         }
@@ -48,10 +48,10 @@ public class LiveScanInvalidFixupTests
         var (imagePath, corruptRecord) = WriteImageWithOneCorruptFixup();
         using var image = File.OpenHandle(imagePath);
 
-        var resultPointer = MFTLibNative._parseMftRecordsWithProgress(image, null, MatchFlags.None, 64, IntPtr.Zero,
+        var resultPointer = MFTLibNative._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero,
             null);
         var counted = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-        using var result = new MftResult(resultPointer, string.Empty);
+        using var result = new MftResult(resultPointer);
         var recordNumbers = result.ToArray().Select(record => record.RecordNumber).ToArray();
 
         Assert.AreEqual(string.Empty, counted.ErrorMessage);
@@ -66,7 +66,7 @@ public class LiveScanInvalidFixupTests
     [TestMethod]
     public void LiveBlockScan_AllocatedRecordWithAnInvalidFixup_IsAddedToTheSkippedRecordCount()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutVolumeParse())
         {
             return;
         }
@@ -89,7 +89,7 @@ public class LiveScanInvalidFixupTests
     [TestMethod]
     public async Task FromLocalVolumes_AllocatedRecordWithAnInvalidFixup_IsReportedAsASkippedRecord()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutVolumeParse())
         {
             return;
         }
@@ -115,7 +115,7 @@ public class LiveScanInvalidFixupTests
     [TestMethod]
     public void LiveBlockScan_NoInvalidFixup_SkipsNothing()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutVolumeParse())
         {
             return;
         }
@@ -159,7 +159,7 @@ public class LiveScanInvalidFixupTests
     public void VolumeParse_BootstrapRecordWithAnInvalidFixup_FailsWithoutReturningRecords(string caseId,
         bool corruptLayout)
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutVolumeParse())
         {
             return;
         }
@@ -181,7 +181,7 @@ public class LiveScanInvalidFixupTests
         File.WriteAllBytes(imagePath, image);
         using var handle = File.OpenHandle(imagePath);
 
-        var resultPointer = MFTLibNative._parseMftRecordsWithProgress(handle, null, MatchFlags.None, 64, IntPtr.Zero,
+        var resultPointer = MFTLibNative._parseMftRecordsWithProgress(handle, false, 64, IntPtr.Zero,
             null);
         try
         {
@@ -217,8 +217,7 @@ public class LiveScanInvalidFixupTests
     {
         using var image = File.OpenHandle(imagePath);
         using var result = new MftResult(
-            MFTLibNative._parseMftRecordsWithProgress(image, null, MatchFlags.None, 64, IntPtr.Zero, null),
-            string.Empty);
+            MFTLibNative._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
         Assert.AreEqual(0UL, result.InvalidFixupRecordCount, "the untouched image has no invalid fixup");
         return result.ToArray().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
     }

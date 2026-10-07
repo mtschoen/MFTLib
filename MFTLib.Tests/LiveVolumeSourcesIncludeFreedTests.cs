@@ -42,28 +42,26 @@ public class LiveVolumeSourcesIncludeFreedTests
     [DataRow(true)]
     public void ScanDriveRecordBatches_KeepsFreedRecordsOnlyWhenAsked(bool includeFreed)
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutVolumeParse())
         {
             return;
         }
 
         var (imagePath, freedRecord) = WriteImageWithOneFreedRecord();
         ServeImageAsVolume(imagePath);
-        var requestedFlags = new List<MatchFlags>();
+        var requests = new List<bool>();
         var parse = MFTLibNative._parseMftRecordsWithProgress;
-        MFTLibNative._parseMftRecordsWithProgress = (handle, filter, flags, bufferSize, control, callback) =>
+        MFTLibNative._parseMftRecordsWithProgress = (handle, freed, bufferSize, control, callback) =>
         {
-            requestedFlags.Add(flags);
-            return parse(handle, filter, flags, bufferSize, control, callback);
+            requests.Add(freed);
+            return parse(handle, freed, bufferSize, control, callback);
         };
 
         var records = LiveVolumeSources.ScanDriveRecordBatches("C", new ParseThreadAllowance(2), new QuietReporter(),
                 null, new MftRecordScanOptions { IncludeFreed = includeFreed }, CancellationToken.None)
             .SelectMany(batch => batch).ToArray();
 
-        Assert.AreEqual(1, requestedFlags.Count);
-        Assert.AreEqual(includeFreed, requestedFlags[0].HasFlag(MatchFlags.IncludeFreed));
-        Assert.IsFalse(requestedFlags[0].HasFlag(MatchFlags.ResolvePaths), "The block writer resolves no paths.");
+        CollectionAssert.AreEqual(new[] { includeFreed }, requests);
         var freed = records.Where(record => !record.InUse).ToArray();
         Assert.AreEqual(includeFreed ? 1 : 0, freed.Length);
         if (includeFreed)
@@ -76,7 +74,7 @@ public class LiveVolumeSourcesIncludeFreedTests
     [TestMethod]
     public void BlockScan_WithTheOption_WritesTheFreedRecordAsADeletedRow()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutVolumeParse())
         {
             return;
         }
@@ -124,8 +122,7 @@ public class LiveVolumeSourcesIncludeFreedTests
     {
         using var image = File.OpenHandle(imagePath);
         using var result = new MftResult(
-            MFTLibNative._parseMftRecordsWithProgress(image, null, MatchFlags.None, 64, IntPtr.Zero, null),
-            string.Empty);
+            MFTLibNative._parseMftRecordsWithProgress(image, false, 64, IntPtr.Zero, null));
         return result.ToArray().Where(record => record.InUse).Select(record => record.RecordNumber).ToHashSet();
     }
 

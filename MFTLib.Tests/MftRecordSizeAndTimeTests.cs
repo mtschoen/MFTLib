@@ -7,9 +7,9 @@ namespace MFTLib.Tests;
 public class MftRecordSizeAndTimeTests
 {
     [TestMethod]
-    public void ExpectedAbiVersion_IsSix()
+    public void ExpectedAbiVersion_IsSeven()
     {
-        Assert.AreEqual(6u, MFTLibNative.ExpectedMftNativeAbiVersion);
+        Assert.AreEqual(7u, MFTLibNative.ExpectedMftNativeAbiVersion);
     }
 
     [TestMethod]
@@ -19,14 +19,9 @@ public class MftRecordSizeAndTimeTests
     }
 
     [TestMethod]
-    public void NativeLibrary_ReportsAbiVersionSix()
+    public void NativeLibrary_ReportsAbiVersionSeven()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
-        {
-            return;
-        }
-
-        Assert.AreEqual(6u, MFTLibNative._getMftNativeAbiVersion());
+        Assert.AreEqual(7u, MFTLibNative._getMftNativeAbiVersion());
     }
 
     [TestMethod]
@@ -51,12 +46,10 @@ public class MftRecordSizeAndTimeTests
             RecordNumber = 1,
             ParentRecordNumber = 5,
             FileName = "x",
-            FullPath = @"C:\x",
             FileAttributes = FileAttributes.Archive,
             ModifiedFileTime = MftFixtureTests.ModifiedBaseFileTime
         });
         Assert.AreEqual(expected, record.ModifiedUtc);
-        Assert.AreEqual(@"C:\x", record.FullPath);
         Assert.AreEqual(FileAttributes.Archive, record.FileAttributes);
     }
 

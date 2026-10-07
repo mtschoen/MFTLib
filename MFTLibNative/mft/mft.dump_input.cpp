@@ -10,7 +10,6 @@
 #include <limits>
 #include <memory>
 #include <new>
-#include <string>
 
 #include "../framework.h"
 #include "../ntfs.h"
@@ -18,10 +17,6 @@
 #include "../internal.h"
 #include "../core/platform.h"
 #include "mft.internal.h"
-
-#ifdef _WIN32
-    #include <stringapiset.h>
-#endif
 
 // One opened dump file with the length and record size inspection found. A parse reads this
 // file and no other, so replacing the path after the open cannot change what is parsed.
@@ -138,44 +133,6 @@ MftParseResult* ParseDump(const MftDumpInput& input, ParseRequest request) {
     return ParseMFTImpl(source, request);
 }
 
-MftParseResult* CreateOpenFailureResult() {
-    auto* result = CreateParseResult();
-    if (result != nullptr) {
-        SetErrorMessage(result->errorMessage, L"Failed to open file. Error: %lu",
-                        static_cast<unsigned long>(mftlib::platform::last_error()));
-    }
-    return result;
-}
-
-MftParseResult* CreateRejectionResult(const DumpInspection& inspection) {
-    auto* result = CreateParseResult(inspection.rejection);
-    if (result != nullptr) {
-        result->invalidInput = inspection.invalidInput ? 1 : 0;
-    }
-    return result;
-}
-
-// Opens, inspects, parses and closes one file. Path is UTF-8.
-MftParseResult* ParseDumpFile(const char* pathUtf8, const ParseRequest& request) {
-#ifndef _WIN32
-    if (request.filter.text != nullptr) {
-        return CreateParseResult(L"Filter not supported on Linux yet");
-    }
-#endif
-
-    auto* file = mftlib::platform::open_read(pathUtf8);
-    if (file == nullptr) {
-        return CreateOpenFailureResult();
-    }
-
-    const DumpInspection inspection = InspectDump(file);
-    MftParseResult* result = inspection.rejection != nullptr
-                                 ? CreateRejectionResult(inspection)
-                                 : ParseDump(MftDumpInput{file, inspection.lengthBytes, inspection.geometry}, request);
-    mftlib::platform::close_file(file);
-    return result;
-}
-
 }  // namespace
 
 extern "C" {
@@ -212,16 +169,14 @@ EXPORT MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo
     return input;
 }
 
-// Parses every allocated base record of an opened dump, without a name filter or path
-// resolution. Fails with invalidInput set when an allocated record's fixup is invalid or the
-// file cannot be read to the length OpenMftDumpInput reported.
+// Parses every allocated base record of an opened dump; freed records are never emitted. Fails with invalidInput set
+// when an allocated record's fixup is invalid or the file cannot be read to the length OpenMftDumpInput reported.
 EXPORT MftParseResult* ParseMftDumpInput(const MftDumpInput* input, uint32_t bufferSizeRecords,
                                          const MftParseControl* control, MftProgressCallback callback, void* context) {
     if (input == nullptr) {
         return CreateParseResult(L"Dump input is invalid");
     }
-    return ParseDump(
-        *input, ParseRequest{FilterSpec{nullptr, 0, MATCH_FLAG_NONE}, bufferSizeRecords, control, callback, context});
+    return ParseDump(*input, ParseRequest{false, bufferSizeRecords, control, callback, context});
 }
 
 // Closes the file and frees the input. Safe with null.
@@ -231,35 +186,4 @@ EXPORT void CloseMftDumpInput(MftDumpInput* input) {
         mftlib::platform::close_file(owned->file);
     }
 }
-
-#ifdef _WIN32
-// C-ABI export; (filePath, filter) order is fixed by the C# P/Invoke signature.
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-EXPORT MftParseResult* ParseMFTFromFile(const wchar_t* filePath, const wchar_t* filter, uint32_t matchFlags,
-                                        uint32_t bufferSizeRecords, const MftParseControl* control,
-                                        MftProgressCallback callback, void* context) {
-    int u8len =
-        ShouldFailPathConversion() ? 0 : WideCharToMultiByte(CP_UTF8, 0, filePath, -1, nullptr, 0, nullptr, nullptr);
-    if (u8len <= 0) {
-        return CreateParseResult(L"Failed to convert path to UTF-8");
-    }
-    std::string utf8(static_cast<size_t>(u8len - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, filePath, -1, utf8.data(), u8len, nullptr, nullptr);
-    return ParseDumpFile(
-        utf8.c_str(), ParseRequest{FilterSpec{filter, 0, matchFlags}, bufferSizeRecords, control, callback, context});
-}
-#else
-EXPORT MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,
-                                            uint32_t bufferSizeRecords) {
-    return ParseDumpFile(filePath, ParseRequest{FilterSpec{filter, 0, matchFlags}, bufferSizeRecords});
-}
-
-EXPORT MftParseResult* ParseMFTFromFileUtf8WithProgress(const char* filePath, const wchar_t* filter,
-                                                        uint32_t matchFlags, uint32_t bufferSizeRecords,
-                                                        const MftParseControl* control, MftProgressCallback callback,
-                                                        void* context) {
-    return ParseDumpFile(
-        filePath, ParseRequest{FilterSpec{filter, 0, matchFlags}, bufferSizeRecords, control, callback, context});
-}
-#endif
 }

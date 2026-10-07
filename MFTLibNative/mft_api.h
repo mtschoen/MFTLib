@@ -10,7 +10,7 @@
     #endif
 #endif
 
-constexpr uint32_t MFT_NATIVE_ABI_VERSION = 6;
+constexpr uint32_t MFT_NATIVE_ABI_VERSION = 7;
 
 // One UTF-16 code unit of a parse error message. wchar_t is 16 bits on Windows and 32 bits
 // elsewhere, so the parse structs declare their message buffers in this type and keep one
@@ -28,28 +28,12 @@ using MftMessageChar = char16_t;
 // because the size is unknown rather than because the file is empty.
 constexpr uint16_t MFT_ENTRY_FLAG_SIZE_UNKNOWN = 0x8000;
 
-// Parser-synthesized, not an on-disk NTFS record flag. Set only on path-table
-// rows whose string is a bare name because the parent chain could not be trusted.
-constexpr uint16_t MFT_ENTRY_FLAG_PATH_UNRESOLVED = 0x4000;
-
-constexpr uint32_t MATCH_FLAG_NONE = 0;
-constexpr uint32_t MATCH_FLAG_EXACT_MATCH = 1;
-constexpr uint32_t MATCH_FLAG_CONTAINS = 2;
-constexpr uint32_t MATCH_FLAG_RESOLVE_PATHS = 4;
-constexpr uint32_t MATCH_FLAG_INCLUDE_FREED = 8;
-
-enum class MftScanPhase : uint8_t {
-    Parsing = 0,
-    ResolvingPaths = 1,
-};
-
-using MftProgressCallback = void (*)(MftScanPhase phase, uint64_t recordsScanned, uint64_t totalRecords,
-                                     double elapsedMs, void* context);
+using MftProgressCallback = void (*)(uint64_t recordsScanned, uint64_t totalRecords, double elapsedMs, void* context);
 
 // Caller-owned, kept in place for the whole parse call. The caller may write either field while
 // the parse runs; the parser only reads them, atomically. cancelRequested nonzero asks the parse
-// to stop. parseThreadAllowance is the thread count for each chunk and for path resolution, read
-// at the start of each: 0 means every processor, any other value is clamped to [1, processors].
+// to stop. parseThreadAllowance is the thread count for each chunk, read at the start of the
+// chunk: 0 means every processor, any other value is clamped to [1, processors].
 struct MftParseControl {
     int32_t cancelRequested;
     int32_t parseThreadAllowance;
@@ -78,6 +62,10 @@ struct MftCompactEntry {
     uint16_t parentSequenceNumber;
 };
 
+static_assert(sizeof(MftCompactEntry) == 52, "MftCompactEntry is the 52-byte packed row the managed side reads");
+static_assert(offsetof(MftCompactEntry, parentSequenceNumber) == 50,
+              "parentSequenceNumber is the last field of MftCompactEntry");
+
 struct MftParseResult {
     uint64_t totalRecords;
     uint64_t usedRecords;
@@ -89,11 +77,8 @@ struct MftParseResult {
     double fixupTimeMs;
     double parseTimeMs;
     double totalTimeMs;
-    MftCompactEntry* pathEntries;
     uint16_t* entryStrings;
     uint64_t entryStringUnits;
-    uint16_t* pathStrings;
-    uint64_t pathStringUnits;
     uint32_t abiVersion;
     uint32_t entryStride;
     uint32_t cancelled;  // 1 when the parse stopped because MftParseControl::cancelRequested was set

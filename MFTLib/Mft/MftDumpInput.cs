@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace MFTLib;
@@ -71,7 +70,7 @@ internal sealed class MftDumpInput : IDisposable
 
         MFTLibNative.EnsureCompatibleNativeAbi();
 
-        var handle = MFTLibNative.OpenMftDumpInput(Encoding.UTF8.GetBytes(filePath + '\0'), out var info);
+        var handle = MFTLibNative.OpenMftDumpInput(MFTLibNative.NullTerminatedUtf8(filePath), out var info);
         if (handle.IsInvalid)
         {
             handle.Dispose();
@@ -107,7 +106,7 @@ internal sealed class MftDumpInput : IDisposable
         return MftVolume.ParseToResult(
             (control, callback) => MFTLibNative.ParseMftDumpInput(_handle, bufferSizeRecords, control, callback,
                 IntPtr.Zero),
-            "ParseMftDumpInput", string.Empty, options.Progress, options.ParseThreads, options.CancellationToken);
+            "ParseMftDumpInput", options.Progress, options.ParseThreads, options.CancellationToken);
     }
 
     /// <summary>

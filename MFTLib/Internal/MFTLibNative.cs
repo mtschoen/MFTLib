@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using MFTLib.Interop;
 
 namespace MFTLib;
@@ -10,24 +11,22 @@ static class MFTLibNative
     //   Linux   -> libMFTLibNative.so
     const string LibraryName = "MFTLibNative";
 
-    internal const uint ExpectedMftNativeAbiVersion = 6;
+    internal const uint ExpectedMftNativeAbiVersion = 7;
     internal const uint NativeCompactEntrySize = 52;
 
     // Swappable function pointers - default to the native P/Invoke implementations.
     // Tests or platforms without the native library can replace these.
     internal static Func<uint> _getMftNativeAbiVersion = NativeGetMftNativeAbiVersion;
 
-    // The IntPtr after bufferSizeRecords is the caller's MftParseControl block, or zero for none.
-    // The callback carries its own state, so the native context argument is always zero.
-    internal static Func<SafeHandle, string?, MatchFlags, uint, IntPtr, NativeMftProgressCallback?, IntPtr>
+    // The bool asks for freed base records too. The IntPtr after bufferSizeRecords is the caller's
+    // MftParseControl block, or zero for none. The callback carries its own state, so the native
+    // context argument is always zero.
+    internal static Func<SafeHandle, bool, uint, IntPtr, NativeMftProgressCallback?, IntPtr>
         _parseMftRecordsWithProgress = NativeParseMFTRecordsWithProgressDefault;
 
     internal static Action<IntPtr> _freeMftResult = NativeFreeMftResult;
     internal static Func<string, ulong, uint, uint, bool> _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
     internal static Func<string, bool> _generateFixtureMft = NativeGenerateFixtureMFT;
-    // Same trailing control and callback as _parseMftRecordsWithProgress; the callback context is always zero.
-    internal static Func<string, string?, MatchFlags, uint, IntPtr, NativeMftProgressCallback?, IntPtr>
-        _parseMftFromFile = NativeParseMFTFromFileDefault;
     internal static Func<SafeHandle, IntPtr> _queryUsnJournal = NativeQueryUsnJournal;
     internal static Action<IntPtr> _freeUsnJournalInfo = NativeFreeUsnJournalInfo;
     internal static Func<SafeHandle, long, ulong, uint, IntPtr> _readUsnJournal = NativeReadUsnJournal;
@@ -37,47 +36,50 @@ static class MFTLibNative
     internal static Func<SafeHandle, bool> _cancelUsnJournalWatch = NativeCancelUsnJournalWatch;
 
     static IntPtr NativeParseMFTRecordsWithProgressDefault(
-        SafeHandle volumeHandle, string? filter, MatchFlags matchFlags, uint bufferSizeRecords, IntPtr control,
+        SafeHandle volumeHandle, bool includeFreed, uint bufferSizeRecords, IntPtr control,
         NativeMftProgressCallback? callback)
     {
-        return NativeParseMFTRecordsWithProgress(volumeHandle, filter, matchFlags, bufferSizeRecords, control, callback,
-            IntPtr.Zero);
+        return NativeParseMFTRecordsWithProgress(volumeHandle, includeFreed ? 1u : 0u, bufferSizeRecords, control,
+            callback, IntPtr.Zero);
     }
 
-    static IntPtr NativeParseMFTFromFileDefault(string filePath, string? filter, MatchFlags matchFlags,
-        uint bufferSizeRecords, IntPtr control, NativeMftProgressCallback? callback)
+    static bool NativeGenerateSyntheticMFTSized(string filePath, ulong recordCount, uint bufferSizeRecords,
+        uint recordSize)
     {
-        return NativeParseMFTFromFile(filePath, filter, matchFlags, bufferSizeRecords, control, callback, IntPtr.Zero);
+        return NativeGenerateSyntheticMFTSizedUtf8(NullTerminatedUtf8(filePath), recordCount, bufferSizeRecords,
+            recordSize);
+    }
+
+    static bool NativeGenerateFixtureMFT(string filePath)
+    {
+        return NativeGenerateFixtureMFTUtf8(NullTerminatedUtf8(filePath));
+    }
+
+    // The UTF-8 exports read the path up to its first null byte.
+    internal static byte[] NullTerminatedUtf8(string path)
+    {
+        return Encoding.UTF8.GetBytes(path + '\0');
     }
 
     // P/Invoke declarations (private - all access goes through the Func fields)
     [DllImport(LibraryName, EntryPoint = "GetMftNativeAbiVersion", CallingConvention = CallingConvention.Cdecl)]
     static extern uint NativeGetMftNativeAbiVersion();
 
-    [DllImport(LibraryName, EntryPoint = "ParseMFTRecordsWithProgress", CallingConvention = CallingConvention.Cdecl,
-        CharSet = CharSet.Unicode)]
-    static extern IntPtr NativeParseMFTRecordsWithProgress(SafeHandle volumeHandle, string? filter,
-        MatchFlags matchFlags, uint bufferSizeRecords, IntPtr control, NativeMftProgressCallback? callback,
-        IntPtr context);
+    [DllImport(LibraryName, EntryPoint = "ParseMFTRecordsWithProgress", CallingConvention = CallingConvention.Cdecl)]
+    static extern IntPtr NativeParseMFTRecordsWithProgress(SafeHandle volumeHandle, uint includeFreed,
+        uint bufferSizeRecords, IntPtr control, NativeMftProgressCallback? callback, IntPtr context);
 
     [DllImport(LibraryName, EntryPoint = "FreeMftResult", CallingConvention = CallingConvention.Cdecl)]
     static extern void NativeFreeMftResult(IntPtr result);
 
-    [DllImport(LibraryName, EntryPoint = "GenerateSyntheticMFTSized", CallingConvention = CallingConvention.Cdecl,
-        CharSet = CharSet.Unicode)]
+    [DllImport(LibraryName, EntryPoint = "GenerateSyntheticMFTSizedUtf8", CallingConvention = CallingConvention.Cdecl)]
     [return: MarshalAs(UnmanagedType.I1)]
-    static extern bool NativeGenerateSyntheticMFTSized(string filePath, ulong recordCount, uint bufferSizeRecords,
-        uint recordSize);
+    static extern bool NativeGenerateSyntheticMFTSizedUtf8(byte[] filePathUtf8, ulong recordCount,
+        uint bufferSizeRecords, uint recordSize);
 
-    [DllImport(LibraryName, EntryPoint = "GenerateFixtureMFT", CallingConvention = CallingConvention.Cdecl,
-        CharSet = CharSet.Unicode)]
+    [DllImport(LibraryName, EntryPoint = "GenerateFixtureMFTUtf8", CallingConvention = CallingConvention.Cdecl)]
     [return: MarshalAs(UnmanagedType.I1)]
-    static extern bool NativeGenerateFixtureMFT(string filePath);
-
-    [DllImport(LibraryName, EntryPoint = "ParseMFTFromFile", CallingConvention = CallingConvention.Cdecl,
-        CharSet = CharSet.Unicode)]
-    static extern IntPtr NativeParseMFTFromFile(string filePath, string? filter, MatchFlags matchFlags,
-        uint bufferSizeRecords, IntPtr control, NativeMftProgressCallback? callback, IntPtr context);
+    static extern bool NativeGenerateFixtureMFTUtf8(byte[] filePathUtf8);
 
     // The dump input exports exist on every platform and take the path as null-terminated UTF-8
     // bytes. They have no swappable field: a dump is exercised with real files, never a
@@ -133,7 +135,6 @@ static class MFTLibNative
         _freeMftResult = NativeFreeMftResult;
         _generateSyntheticMftSized = NativeGenerateSyntheticMFTSized;
         _generateFixtureMft = NativeGenerateFixtureMFT;
-        _parseMftFromFile = NativeParseMFTFromFileDefault;
         _queryUsnJournal = NativeQueryUsnJournal;
         _freeUsnJournalInfo = NativeFreeUsnJournalInfo;
         _readUsnJournal = NativeReadUsnJournal;
@@ -143,6 +144,6 @@ static class MFTLibNative
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void NativeMftProgressCallback(MftScanPhase phase, ulong recordsScanned, ulong totalRecords,
-        double elapsedMs, IntPtr context);
+    internal delegate void NativeMftProgressCallback(ulong recordsScanned, ulong totalRecords, double elapsedMs,
+        IntPtr context);
 }

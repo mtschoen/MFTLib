@@ -18,11 +18,8 @@ struct MftParseResult
     public double ParseTimeMs;
     public double TotalTimeMs;
 
-    public IntPtr PathEntries; // MftCompactEntry*, set when path resolution is requested
     public IntPtr EntryStrings; // ushort*
     public ulong EntryStringUnits;
-    public IntPtr PathStrings; // ushort*
-    public ulong PathStringUnits;
     public uint AbiVersion;
     public uint EntryStride;
     public uint Cancelled; // 1 when MftParseControl.CancelRequested stopped the parse

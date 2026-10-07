@@ -1,13 +1,5 @@
 namespace MFTLib;
 
-readonly struct NativeStrings(IntPtr namePtr, ushort nameLength, IntPtr pathPtr, ushort pathLength)
-{
-    public readonly IntPtr NamePtr = namePtr;
-    public readonly ushort NameLength = nameLength;
-    public readonly IntPtr PathPtr = pathPtr;
-    public readonly ushort PathLength = pathLength;
-}
-
 internal readonly struct MftRecordFields(
     ushort flags, FileAttributes fileAttributes = 0, long size = 0, long modifiedFileTime = 0,
     ushort sequenceNumber = 0, ushort parentSequenceNumber = 0)
@@ -32,7 +24,6 @@ internal sealed record MftRecordTestValues
     public bool IsDirectory { get; init; }
     public bool SizeKnown { get; init; } = true;
     public required string FileName { get; init; }
-    public string? FullPath { get; init; }
     public FileAttributes FileAttributes { get; init; }
     public long Size { get; init; }
     public long ModifiedFileTime { get; init; }
@@ -42,16 +33,14 @@ internal sealed record MftRecordTestValues
 
 /// <summary>
 ///     One parsed MFT file record. A record read straight from an <see cref="MftResult" /> borrows
-///     its name and path strings from native memory and is valid only until that result is
-///     disposed; call <see cref="Materialize" /> to keep one longer. Records from the batch and
-///     array APIs are already materialized.
+///     its name from native memory and is valid only until that result is disposed; call
+///     <see cref="Materialize" /> to keep one longer. Records from the batch and array APIs are
+///     already materialized.
 /// </summary>
 internal readonly struct MftRecord
 {
     readonly ushort _flags;
     readonly ushort _nameLength;
-    readonly ushort _pathLength;
-    readonly char _driveLetter;
     readonly bool _materialized;
     readonly long _size;
     readonly long _modifiedFileTime;
@@ -61,16 +50,13 @@ internal readonly struct MftRecord
     const ushort InUseFlag = 1;
     const ushort DirectoryFlag = 2;
     const ushort SizeUnknownFlag = 0x8000;
-    const ushort PathUnresolvedFlag = 0x4000;
 
     // DateTime.MaxValue as a FILETIME. Anything past it makes FromFileTimeUtc throw.
     static readonly long MaximumFileTime = DateTime.MaxValue.ToFileTimeUtc();
 
-    // These are either pointers to native memory (temporary) or materialized strings
+    // Either a pointer to native memory (temporary) or a materialized string
     readonly IntPtr _namePtr;
-    readonly IntPtr _pathPtr;
     readonly string? _fileName;
-    readonly string? _fullPath;
 
     /// <summary>
     ///     MFT segment index (the lower 48 bits of the file reference number). Stable across USN
@@ -97,8 +83,8 @@ internal readonly struct MftRecord
     internal ushort ParentSequenceNumber => _parentSequenceNumber;
 
     /// <summary>
-    ///     Whether the record is allocated. Freed base records returned with
-    ///     <see cref="MatchFlags.IncludeFreed" /> have this value set to false.
+    ///     Whether the record is allocated. Freed base records, returned only when a volume scan asks
+    ///     for them, have this value set to false.
     /// </summary>
     public bool InUse => (_flags & InUseFlag) != 0;
     /// <summary>Whether the record header marks a directory.</summary>
@@ -139,9 +125,8 @@ internal readonly struct MftRecord
     }
 
     /// <summary>
-    ///     The file name without its directory. When the record carried no name of its own it is
-    ///     taken from the last segment of the path; the root directory (segment 5) reads as
-    ///     <c>.</c>, and a record with neither a name nor a path reads as an empty string.
+    ///     The record's name. The root directory (segment 5) reads as <c>.</c> when it carried no
+    ///     name of its own, and any other record without a name reads as an empty string.
     /// </summary>
     public unsafe string FileName
     {
@@ -157,73 +142,12 @@ internal readonly struct MftRecord
                 return new string((char*)_namePtr, 0, _nameLength);
             }
 
-            if (_pathPtr != IntPtr.Zero && _pathLength > 0)
-            {
-                var pathChars = (char*)_pathPtr;
-                if ((_flags & PathUnresolvedFlag) != 0)
-                {
-                    return new string(pathChars, 0, _pathLength);
-                }
-
-                var lastSep = -1;
-                for (var i = _pathLength - 1; i >= 0; i--)
-                {
-                    if (pathChars[i] == '\\')
-                    {
-                        lastSep = i;
-                        break;
-                    }
-                }
-
-                var start = lastSep + 1;
-                return new string(pathChars, start, _pathLength - start);
-            }
-
-            if (RecordNumber == 5)
-            {
-                return ".";
-            }
-
-            return string.Empty;
+            return RecordNumber == 5 ? "." : string.Empty;
         }
     }
 
-    /// <summary>
-    ///     The resolved path, or null when paths were not requested or could not be resolved.
-    ///     A freed record requires a trusted sequence match at every parent, including the root;
-    ///     a freed parent's sequence may also be one higher than its reference, with ushort wraparound.
-    /// </summary>
-    public unsafe string? FullPath
-    {
-        get
-        {
-            if (_materialized)
-            {
-                return _fullPath;
-            }
-
-            if (_pathPtr == IntPtr.Zero || (_flags & PathUnresolvedFlag) != 0)
-            {
-                return null;
-            }
-
-            if (_pathLength == 0)
-            {
-                if (RecordNumber == 5 && (_flags & 1) != 0)
-                {
-                    return _driveLetter == '\0' ? @"\" : $"{_driveLetter}:\\";
-                }
-
-                return null;
-            }
-
-            var relativePath = new string((char*)_pathPtr, 0, _pathLength);
-            return _driveLetter == '\0' ? relativePath : $"{_driveLetter}:\\{relativePath}";
-        }
-    }
-
-    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, MftRecordFields fields,
-        NativeStrings strings, char driveLetter = '\0')
+    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, MftRecordFields fields, IntPtr namePtr,
+        ushort nameLength)
     {
         RecordNumber = recordNumber;
         ParentRecordNumber = parentRecordNumber;
@@ -233,13 +157,9 @@ internal readonly struct MftRecord
         _modifiedFileTime = fields.ModifiedFileTime;
         _sequenceNumber = fields.SequenceNumber;
         _parentSequenceNumber = fields.ParentSequenceNumber;
-        _namePtr = strings.NamePtr;
-        _nameLength = strings.NameLength;
-        _pathPtr = strings.PathPtr;
-        _pathLength = strings.PathLength;
-        _driveLetter = driveLetter;
+        _namePtr = namePtr;
+        _nameLength = nameLength;
         _fileName = null;
-        _fullPath = null;
         _materialized = false;
     }
 
@@ -256,11 +176,10 @@ internal readonly struct MftRecord
 
         var fields = new MftRecordFields(_flags, FileAttributes, _size, _modifiedFileTime, _sequenceNumber,
             _parentSequenceNumber);
-        return new MftRecord(RecordNumber, ParentRecordNumber, fields, FileName, FullPath);
+        return new MftRecord(RecordNumber, ParentRecordNumber, fields, FileName);
     }
 
-    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, MftRecordFields fields, string? fileName,
-        string? fullPath)
+    internal MftRecord(ulong recordNumber, ulong parentRecordNumber, MftRecordFields fields, string? fileName)
     {
         RecordNumber = recordNumber;
         ParentRecordNumber = parentRecordNumber;
@@ -271,12 +190,8 @@ internal readonly struct MftRecord
         _sequenceNumber = fields.SequenceNumber;
         _parentSequenceNumber = fields.ParentSequenceNumber;
         _fileName = fileName;
-        _fullPath = fullPath;
         _namePtr = IntPtr.Zero;
         _nameLength = 0;
-        _pathPtr = IntPtr.Zero;
-        _pathLength = 0;
-        _driveLetter = '\0';
         _materialized = true;
     }
 
@@ -287,13 +202,6 @@ internal readonly struct MftRecord
                              | (values.SizeKnown ? 0 : SizeUnknownFlag));
         var fields = new MftRecordFields(flags, values.FileAttributes, values.Size, values.ModifiedFileTime,
             values.SequenceNumber, values.ParentSequenceNumber);
-        return new MftRecord(values.RecordNumber, values.ParentRecordNumber, fields, values.FileName, values.FullPath);
-    }
-
-    /// <summary>Formats the record as its path when one was resolved, otherwise as its file name.</summary>
-    /// <returns>The <see cref="FullPath" /> or, when that is null, the <see cref="FileName" />.</returns>
-    public override string ToString()
-    {
-        return FullPath ?? FileName;
+        return new MftRecord(values.RecordNumber, values.ParentRecordNumber, fields, values.FileName);
     }
 }

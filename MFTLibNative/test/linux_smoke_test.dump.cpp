@@ -100,7 +100,7 @@ bool dump_input_fixup_is_rejected(uint16_t arrayOffset, uint16_t arraySize) {
     if (!write_dump_input_fixture() || !patch_dump_input((10 * 1024) + 4, hostileArray.data(), hostileArray.size())) {
         return false;
     }
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kDumpInputPath, nullptr, 0, 256);
+    MftParseResult* parseResult = parse_dump(kDumpInputPath, 256);
     const bool rejected = parseResult != nullptr && parseResult->invalidInput == 1 &&
                           message_is(parseResult->errorMessage, "The dump contains an invalid MFT record fixup.");
     if (!rejected) {

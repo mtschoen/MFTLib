@@ -63,7 +63,7 @@ public class MftDumpInputFaultTests
     [TestMethod]
     public void Open_HeaderReadFailsOnThePlatform_IsRejectedAsIncomplete()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutPlatformReadHook())
         {
             return;
         }
@@ -78,7 +78,7 @@ public class MftDumpInputFaultTests
     [TestMethod]
     public void Parse_ChunkReadFailsOnThePlatform_FailsAsIncomplete()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutPlatformReadHook())
         {
             return;
         }

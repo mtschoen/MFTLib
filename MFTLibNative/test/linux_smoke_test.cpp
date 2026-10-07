@@ -1,12 +1,7 @@
 // linux_smoke_test.cpp - native end-to-end + error-path tests on POSIX.
-#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <cwchar>
-#include <string_view>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
@@ -18,12 +13,6 @@
 extern "C" bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordCount, uint32_t bufferSizeRecords,
                                               uint32_t recordSize);
 extern "C" bool GenerateFixtureMFTUtf8(const char* filePath);
-extern "C" MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,
-                                                uint32_t bufferSizeRecords);
-extern "C" MftParseResult* ParseMFTFromFileUtf8WithProgress(const char* filePath, const wchar_t* filter,
-                                                            uint32_t matchFlags, uint32_t bufferSizeRecords,
-                                                            const MftParseControl* control,
-                                                            MftProgressCallback callback, void* context);
 extern "C" void FreeMftResult(MftParseResult* result);
 extern "C" MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo* info);
 extern "C" MftParseResult* ParseMftDumpInput(const MftDumpInput* input, uint32_t bufferSizeRecords,
@@ -56,6 +45,19 @@ bool message_is(const MftMessageChar* message, const char* expected) {
     return expected[index] == '\0' && message[index] == 0;
 }
 
+// Opens, parses and closes one dump. Null when the open or the result allocation fails.
+MftParseResult* parse_dump(const char* path, uint32_t bufferRecords, const MftParseControl* control = nullptr,
+                           MftProgressCallback callback = nullptr, void* context = nullptr) {
+    MftDumpInputInfo info{};
+    MftDumpInput* input = OpenMftDumpInput(path, &info);
+    if (input == nullptr) {
+        return nullptr;
+    }
+    MftParseResult* parseResult = ParseMftDumpInput(input, bufferRecords, control, callback, context);
+    CloseMftDumpInput(input);
+    return parseResult;
+}
+
 // --- Tests ---
 
 bool test_abi_version() {
@@ -73,7 +75,7 @@ bool test_round_trip() {
         std::fprintf(stderr, "  setup FAIL: GenerateSyntheticMFTSizedUtf8 returned false\n");
         return false;
     }
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
+    MftParseResult* parseResult = parse_dump(kFixturePath, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
                       parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
                       parseResult->entryStride == 52 && parseResult->entries != nullptr &&
@@ -117,7 +119,7 @@ bool test_round_trip_4096() {
         std::fprintf(stderr, "  setup FAIL: GenerateSyntheticMFTSizedUtf8(4096) returned false\n");
         return false;
     }
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixture4096Path, nullptr, 0, kDefaultBufferRecords);
+    MftParseResult* parseResult = parse_dump(kFixture4096Path, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
                       parseResult->errorMessage[0] == L'\0' && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
                       parseResult->entryStride == 52;
@@ -139,19 +141,15 @@ bool test_round_trip_4096() {
 }
 
 bool test_parse_missing_file() {
-    MftParseResult* parseResult =
-        ParseMFTFromFileUtf8("/tmp/does_not_exist_4f8e7c.mft", nullptr, 0, kDefaultBufferRecords);
-    bool testPassed = (parseResult != nullptr) && parseResult->errorMessage[0] != L'\0' &&
-                      parseResult->usedRecords == 0 && parseResult->abiVersion == MFT_NATIVE_ABI_VERSION &&
-                      parseResult->entryStride == 52;
+    MftDumpInputInfo info{};
+    MftDumpInput* input = OpenMftDumpInput("/tmp/does_not_exist_4f8e7c.mft", &info);
+    const bool testPassed = input == nullptr && info.errorMessage[0] != 0 && info.invalidInput == 0 &&
+                            info.lengthBytes == 0 && info.recordSize == 0;
     if (!testPassed) {
-        std::fprintf(stderr, "  FAIL: expected errorMessage set; got result=%p err[0]=%d\n",
-                     static_cast<void*>(parseResult),
-                     (parseResult != nullptr) ? static_cast<int>(parseResult->errorMessage[0]) : -1);
+        std::fprintf(stderr, "  FAIL: expected the open to fail; got input=%p err[0]=%d\n", static_cast<void*>(input),
+                     static_cast<int>(info.errorMessage[0]));
     }
-    if (parseResult != nullptr) {
-        FreeMftResult(parseResult);
-    }
+    CloseMftDumpInput(input);
     return testPassed;
 }
 
@@ -163,35 +161,16 @@ bool test_parse_empty_file() {
     }
     std::fclose(fileHandle);
 
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(path, nullptr, 0, kDefaultBufferRecords);
-    bool testPassed = (parseResult != nullptr) && parseResult->totalRecords == 0 && parseResult->invalidInput == 1 &&
-                      message_is(parseResult->errorMessage, "The dump file is empty.") &&
-                      parseResult->abiVersion == MFT_NATIVE_ABI_VERSION && parseResult->entryStride == 52;
-    if (!testPassed && parseResult != nullptr) {
-        std::fprintf(stderr, "  FAIL: empty file got totalRecords=%llu\n",
-                     static_cast<unsigned long long>(parseResult->totalRecords));
+    MftDumpInputInfo info{};
+    MftDumpInput* input = OpenMftDumpInput(path, &info);
+    const bool testPassed = input == nullptr && info.invalidInput == 1 && info.lengthBytes == 0 &&
+                            message_is(info.errorMessage, "The dump file is empty.");
+    if (!testPassed) {
+        std::fprintf(stderr, "  FAIL: empty file got input=%p invalidInput=%u\n", static_cast<void*>(input),
+                     info.invalidInput);
     }
-    if (parseResult != nullptr) {
-        FreeMftResult(parseResult);
-    }
+    CloseMftDumpInput(input);
     std::remove(path);
-    return testPassed;
-}
-
-bool test_parse_filter_returns_error() {
-    if (!generate_fixture()) {
-        return false;
-    }
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, L"file_*", 2, kDefaultBufferRecords);
-    bool testPassed = (parseResult != nullptr) && parseResult->errorMessage[0] != L'\0';
-    if (!testPassed && parseResult != nullptr) {
-        std::fprintf(stderr, "  FAIL: expected errorMessage set, got empty (used=%llu)\n",
-                     static_cast<unsigned long long>(parseResult->usedRecords));
-    }
-    if (parseResult != nullptr) {
-        FreeMftResult(parseResult);
-    }
-    remove_fixture();
     return testPassed;
 }
 
@@ -201,7 +180,7 @@ bool test_fixture_round_trip() {
         std::fprintf(stderr, "  setup FAIL: GenerateFixtureMFTUtf8 returned false\n");
         return false;
     }
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePathName, nullptr, 0, 4096);
+    MftParseResult* parseResult = parse_dump(kFixturePathName, 4096);
     // Records 0 and 5 to 11 are in use and non-extension; 1 to 4 are zeroed,
     // and freed or malformed records follow. Only eight are emitted by default.
     bool passed = parseResult != nullptr && parseResult->errorMessage[0] == L'\0' &&
@@ -223,7 +202,7 @@ bool test_fixture_modified_time() {
     if (!GenerateFixtureMFTUtf8(kFixturePathName)) {
         return false;
     }
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePathName, nullptr, 0, 4096);
+    MftParseResult* parseResult = parse_dump(kFixturePathName, 4096);
     bool passed = parseResult != nullptr && parseResult->entries != nullptr;
     if (passed) {
         for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
@@ -265,7 +244,7 @@ bool test_fixture_sizes() {
     if (!GenerateFixtureMFTUtf8(kFixturePathName)) {
         return false;
     }
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePathName, nullptr, 0, 4096);
+    MftParseResult* parseResult = parse_dump(kFixturePathName, 4096);
     bool passed = parseResult != nullptr && parseResult->usedRecords == expected.size();
     if (passed) {
         for (uint64_t i = 0; i < parseResult->usedRecords; i++) {
@@ -292,41 +271,56 @@ bool test_fixture_sizes() {
     return passed;
 }
 
-bool test_alloc_failure_path() {
+// Opens the synthetic fixture, then arms the allocation countdown so that the parse's
+// allocationOrdinal-th allocation fails. Arming after the open keeps the open's own input
+// allocation out of the count. Null when the fixture cannot be written or opened.
+MftDumpInput* open_fixture_with_alloc_failure(int allocationOrdinal) {
     if (!generate_fixture()) {
+        return nullptr;
+    }
+    MftDumpInputInfo info{};
+    MftDumpInput* input = OpenMftDumpInput(kFixturePath, &info);
+    if (input != nullptr) {
+        SetAllocFailCountdown(allocationOrdinal);
+    }
+    return input;
+}
+
+// The parse's first allocation is its result, so failing it returns no result at all.
+bool test_alloc_failure_path() {
+    MftDumpInput* input = open_fixture_with_alloc_failure(1);
+    if (input == nullptr) {
+        remove_fixture();
         return false;
     }
-    SetAllocFailCountdown(1);  // fail the next allocation in the parse path
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
-    bool testPassed =
-        (parseResult == nullptr) || parseResult->errorMessage[0] != L'\0' || parseResult->usedRecords == 0;
+    MftParseResult* parseResult = ParseMftDumpInput(input, kDefaultBufferRecords, nullptr, nullptr, nullptr);
+    const bool testPassed = parseResult == nullptr;
     if (!testPassed) {
-        std::fprintf(stderr, "  FAIL: alloc failure didn't propagate (used=%llu err[0]=%d)\n",
-                     static_cast<unsigned long long>(parseResult->usedRecords),
-                     static_cast<int>(parseResult->errorMessage[0]));
-    }
-    if (parseResult != nullptr) {
+        std::fprintf(stderr, "  FAIL: result allocation failure still returned a result (used=%llu)\n",
+                     static_cast<unsigned long long>(parseResult->usedRecords));
         FreeMftResult(parseResult);
     }
-    SetAllocFailCountdown(0);  // disarm
+    CloseMftDumpInput(input);
     ResetTestState();
     remove_fixture();
     return testPassed;
 }
 
+// The parse allocates its result, two read buffers, the entry array, then the string pool:
+// the fifth allocation.
 bool test_string_pool_alloc_failure() {
-    if (!generate_fixture()) {
+    MftDumpInput* input = open_fixture_with_alloc_failure(5);
+    if (input == nullptr) {
+        remove_fixture();
         return false;
     }
-    // Result, two read buffers, entry array, then string pool.
-    SetAllocFailCountdown(5);
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
-    bool testPassed =
-        (parseResult != nullptr) && message_is(parseResult->errorMessage, "Failed to allocate string pool");
+    MftParseResult* parseResult = ParseMftDumpInput(input, kDefaultBufferRecords, nullptr, nullptr, nullptr);
+    const bool testPassed = parseResult != nullptr && parseResult->usedRecords == 0 &&
+                            message_is(parseResult->errorMessage, "Failed to allocate string pool");
     if (parseResult != nullptr) {
         FreeMftResult(parseResult);
     }
-    SetAllocFailCountdown(0);
+    CloseMftDumpInput(input);
     ResetTestState();
     remove_fixture();
     return testPassed;
@@ -337,7 +331,7 @@ bool test_read_failure_path() {
         return false;
     }
     SetReadFailCountdown(1);  // fail the next read
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
+    MftParseResult* parseResult = parse_dump(kFixturePath, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords == 0 && parseResult->invalidInput == 1 &&
                       message_is(parseResult->errorMessage, "The dump file could not be read completely.");
     if (!testPassed && parseResult != nullptr) {
@@ -369,7 +363,7 @@ bool test_max_threads_clamping() {
         ResetTestState();
         return false;
     }
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(kFixturePath, nullptr, 0, kDefaultBufferRecords);
+    MftParseResult* parseResult = parse_dump(kFixturePath, kDefaultBufferRecords);
     bool testPassed = (parseResult != nullptr) && parseResult->usedRecords > 0 &&
                       parseResult->errorMessage[0] == L'\0' && parseResult->entries != nullptr;
     if (parseResult != nullptr) {
@@ -381,7 +375,7 @@ bool test_max_threads_clamping() {
     return testPassed;
 }
 
-#include "linux_smoke_test.paths.cpp"
+#include "linux_smoke_test.parse.cpp"
 #include "linux_smoke_test.freed.cpp"
 #include "linux_smoke_test.dump.cpp"
 
@@ -393,9 +387,9 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 27> tests = {{
+    const std::array<TestCase, 25> tests = {{
         {"abi_version", test_abi_version},
-        {"include_freed", testIncludeFreed},
+        {"dump_excludes_freed", test_dump_excludes_freed},
         {"round_trip", test_round_trip},
         {"round_trip_4096", test_round_trip_4096},
         {"fixture_round_trip", test_fixture_round_trip},
@@ -403,7 +397,6 @@ int main() {
         {"fixture_sizes", test_fixture_sizes},
         {"parse_missing_file", test_parse_missing_file},
         {"parse_empty_file", test_parse_empty_file},
-        {"parse_filter_returns_error", test_parse_filter_returns_error},
         {"alloc_failure_path", test_alloc_failure_path},
         {"string_pool_alloc_failure", test_string_pool_alloc_failure},
         {"read_failure_path", test_read_failure_path},
@@ -412,7 +405,6 @@ int main() {
         {"malformed_attribute_offset", test_malformed_attribute_offset},
         {"malformed_nonresident_data_length", test_malformed_nonresident_data_length},
         {"zero_length_file_name", test_zero_length_file_name},
-        {"path_resolution_and_fallback", test_path_resolution_and_fallback},
         {"progress_callback", test_progress_callback},
         {"file_parse_control_block", test_file_parse_control_block},
         {"parallel_progress_monotonicity", test_parallel_progress_monotonicity},

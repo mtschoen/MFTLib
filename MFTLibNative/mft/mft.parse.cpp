@@ -162,15 +162,14 @@ EXPORT uint32_t GetMftNativeAbiVersion() { return MFT_NATIVE_ABI_VERSION; }
 EXPORT void FreeMftResult(MftParseResult* result) {
     if (result != nullptr) {
         free(result->entries);
-        free(result->pathEntries);
         free(result->entryStrings);
-        free(result->pathStrings);
         free(result);
     }
 }
 
 #ifdef _WIN32
-EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wchar_t* filter, uint32_t matchFlags,
+// Parses every allocated base record of a volume; includeFreed nonzero also emits freed base records.
+EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t includeFreed,
                                                    uint32_t bufferSizeRecords, const MftParseControl* control,
                                                    MftProgressCallback callback, void* context) {
     auto* result = CreateParseResult();
@@ -253,16 +252,14 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, const wc
 
     free(result);
     const ParseSource source{VolumeReadChunk, &ctx, totalRecords, *geometry};
-    return ParseMFTImpl(source,
-                        ParseRequest{FilterSpec{filter, 0, matchFlags}, bufferSizeRecords, control, callback, context});
+    return ParseMFTImpl(source, ParseRequest{includeFreed != 0, bufferSizeRecords, control, callback, context});
 }
 #endif  // _WIN32
 
 #ifndef _WIN32
-EXPORT MftParseResult* ParseMFTRecordsWithProgress(void* /*volumeHandle*/, const wchar_t* /*filter*/,
-                                                   uint32_t /*matchFlags*/, uint32_t /*bufferSizeRecords*/,
-                                                   const MftParseControl* /*control*/, MftProgressCallback /*callback*/,
-                                                   void* /*context*/) {
+EXPORT MftParseResult* ParseMFTRecordsWithProgress(void* /*volumeHandle*/, uint32_t /*includeFreed*/,
+                                                   uint32_t /*bufferSizeRecords*/, const MftParseControl* /*control*/,
+                                                   MftProgressCallback /*callback*/, void* /*context*/) {
     return CreateParseResult(L"Direct volume parsing is not supported on Linux");
 }
 #endif

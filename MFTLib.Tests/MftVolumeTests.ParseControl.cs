@@ -16,7 +16,7 @@ public partial class MftVolumeTests
             var allowance = new ParseThreadAllowance((int)nativeHardwareThreadCount);
             var progress = new SynchronousProgress<MftScanProgress>(_ => allowance.Count = 1);
 
-            var batches = volume.ReadRecordBatches(false, 4096, progress, allowance, CancellationToken.None).ToList();
+            var batches = volume.ReadRecordBatches(4096, progress, allowance, CancellationToken.None).ToList();
 
             Assert.IsTrue(batches.Count > 0);
             var counts = ParseControlBlock.ChunkThreadCounts();
@@ -36,7 +36,7 @@ public partial class MftVolumeTests
             // ReSharper disable once AccessToDisposedClosure
             var progress = new SynchronousProgress<MftScanProgress>(_ => cancellation.Cancel());
 
-            using var batches = volume.ReadRecordBatches(false, 4096, progress, null, cancellation.Token)
+            using var batches = volume.ReadRecordBatches(4096, progress, null, cancellation.Token)
                 .GetEnumerator();
             // The assertion runs the lambda synchronously.
             // ReSharper disable once AccessToDisposedClosure
@@ -54,7 +54,7 @@ public partial class MftVolumeTests
         {
             using var cancellation = new CancellationTokenSource();
 
-            using var batches = volume.ReadRecordBatches(false, 10, null, null, cancellation.Token).GetEnumerator();
+            using var batches = volume.ReadRecordBatches(10, null, null, cancellation.Token).GetEnumerator();
             Assert.IsTrue(batches.MoveNext());
             cancellation.Cancel();
 

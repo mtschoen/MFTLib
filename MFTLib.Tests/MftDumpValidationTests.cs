@@ -141,7 +141,7 @@ public class MftDumpValidationTests
         FileUtilities._getVolumeHandle = path => throw new AssertFailedException($"A dump opened the volume {path}.");
         MFTLibNative._queryUsnJournal = _ => throw new AssertFailedException("A dump queried a live journal.");
         MFTLibNative._readUsnJournal = (_, _, _, _) => throw new AssertFailedException("A dump read a live journal.");
-        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _, _) =>
+        MFTLibNative._parseMftRecordsWithProgress = (_, _, _, _, _) =>
             throw new AssertFailedException("A dump parsed a live volume.");
         var path = MftDumpFixture.WriteFile(_directory, MftDumpFixture.Standard());
 

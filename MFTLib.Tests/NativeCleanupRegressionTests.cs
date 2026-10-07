@@ -53,7 +53,7 @@ public class NativeCleanupRegressionTests
 
             using var stream = File.OpenRead(path);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                stream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                stream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {

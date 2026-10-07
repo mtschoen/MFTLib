@@ -28,7 +28,7 @@ internal static class LiveVolumeSources
         operation.Processing("MFT parse");
         var mftProgress = CreateMftProgressAdapter(operation, progress);
         ulong unreadableRecords = 0;
-        foreach (var batch in volume.ReadRecordBatches(resolvePaths: false, 4096, mftProgress, parseThreads,
+        foreach (var batch in volume.ReadRecordBatches(4096, mftProgress, parseThreads,
                      cancellationToken,
                      new MftBatchReadOptions
                      {

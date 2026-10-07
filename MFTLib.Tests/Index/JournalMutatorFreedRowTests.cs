@@ -193,11 +193,11 @@ public class JournalMutatorFreedRowTests
     static void WriteFreedHierarchy(MutatorFixture fixture)
     {
         var freedDirectory = new MftRecord(FreedRow, 6,
-            new MftRecordFields(2, FileAttributes.Directory, 0, 0, 14), "freed-dir", null);
+            new MftRecordFields(2, FileAttributes.Directory, 0, 0, 14), "freed-dir");
         var directChild = new MftRecord(DirectChildRow, FreedRow,
-            new MftRecordFields(2, FileAttributes.Directory, 0, 0, 14, 13), "child-dir", null);
+            new MftRecordFields(2, FileAttributes.Directory, 0, 0, 14, 13), "child-dir");
         var deeperChild = new MftRecord(DeeperChildRow, DirectChildRow,
-            new MftRecordFields(0, FileAttributes.Archive, 10, 0, 14, 13), "deeper.txt", null);
+            new MftRecordFields(0, FileAttributes.Archive, 10, 0, 14, 13), "deeper.txt");
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(fixture.Block),
             [[freedDirectory, directChild, deeperChild]],
@@ -208,7 +208,7 @@ public class JournalMutatorFreedRowTests
     static void WriteFreedRow(MutatorFixture fixture, ushort parentSequence = 0)
     {
         var freed = new MftRecord(FreedRow, 6, new MftRecordFields(0, FileAttributes.Archive, 10, 0, 4,
-            parentSequence), "freed.txt", null);
+            parentSequence), "freed.txt");
         MftBlockRowWriter.WriteBatches(new BlockWriter(fixture.Block), [[freed]],
             new MftBlockRowFilter(BrokerScanProfile.Full, IncludeFreed: true), null, CancellationToken.None);
     }

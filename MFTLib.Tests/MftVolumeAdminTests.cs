@@ -75,123 +75,11 @@ public class MftVolumeAdminTests
     }
 
     [TestMethod]
-    public void ReadAllRecords_WithResolvePaths_PopulatesFullPath()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        var records = volume.ReadAll(true);
-
-        var withPaths = records.Where(r => r.FullPath != null).ToArray();
-        Assert.IsTrue(withPaths.Length > 0, "Expected some records with resolved paths");
-    }
-
-    [TestMethod]
-    public void ReadAllRecords_WithResolvePathsAndTimings_PopulatesFullPath()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        var records = volume.ReadAll(true, out _, out var totalRecords);
-
-        Assert.IsTrue(totalRecords > 0);
-        var withPaths = records.Where(r => r.FullPath != null).ToArray();
-        Assert.IsTrue(withPaths.Length > 0, "Expected some records with resolved paths");
-
-        // Paths should start with C:\
-        var withDrive = withPaths.Where(r => r.FullPath!.StartsWith(@"C:\", StringComparison.Ordinal)).ToArray();
-        Assert.IsTrue(withDrive.Length > 0, "Expected paths to start with C:\\");
-    }
-
-    [TestMethod]
-    public void FindByName_ExactMatch_FindsKnownFile()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        // ntldr or bootmgr should exist on C:
-        var records = volume.FindName("bootmgr");
-
-        // If bootmgr doesn't exist, try a Windows system file
-        if (records.Length == 0)
-        {
-            records = volume.FindName("ntldr");
-        }
-
-        // At minimum, we verified the call didn't throw
-        Assert.IsNotNull(records);
-    }
-
-    [TestMethod]
-    public void FindByName_SubstringMatch_ReturnsResults()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        var records = volume.FindName(".dll", MatchFlags.Contains);
-
-        Assert.IsTrue(records.Length > 0, "Expected to find some .dll files on C:");
-    }
-
-    [TestMethod]
-    public void FindByName_WithResolvePaths_PopulatesFullPath()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        var records = volume.FindName(".exe", MatchFlags.Contains | MatchFlags.ResolvePaths, out _, out var totalRecords);
-
-        Assert.IsTrue(records.Length > 0, "Expected to find some .exe files");
-        var withPaths = records.Where(r => r.FullPath != null).ToArray();
-        Assert.IsTrue(withPaths.Length > 0, "Expected resolved paths");
-        Assert.IsTrue(totalRecords > 0);
-    }
-
-    [TestMethod]
-    public void StreamRecords_SubstringWithPaths_CombinesFlags()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(".dll", MatchFlags.Contains | MatchFlags.ResolvePaths, null, null, CancellationToken.None);
-
-        var count = 0;
-        MftRecord? firstWithPath = null;
-        foreach (var record in result)
-        {
-            Assert.IsTrue(record.FileName.Contains(".dll", StringComparison.OrdinalIgnoreCase),
-                $"Record '{record.FileName}' doesn't match substring '.dll'");
-
-            if (firstWithPath == null && record.FullPath != null)
-            {
-                firstWithPath = record.Materialize();
-            }
-
-            count++;
-            if (count >= 100)
-            {
-                break;
-            }
-        }
-
-        Assert.IsTrue(count > 0, "Expected substring filter to find .dll files");
-        Assert.IsNotNull(firstWithPath, "Expected at least one record with a resolved path");
-        Assert.IsTrue(firstWithPath.Value.FullPath!.StartsWith(@"C:\", StringComparison.Ordinal),
-            $"Expected path to start with C:\\ but got '{firstWithPath.Value.FullPath}'");
-    }
-
-    [TestMethod]
-    public void StreamRecords_FilterWithNoMatchBits_Throws()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-
-        // The assertion runs the lambda synchronously.
-        // ReSharper disable once AccessToDisposedClosure
-        Assert.ThrowsException<ArgumentException>(() =>
-            volume.StreamRecords("explorer.exe", MatchFlags.None, null, null, CancellationToken.None));
-    }
-
-    [TestMethod]
     public void StreamRecords_CanEnumerate()
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+        using var result = volume.StreamRecords(false, null, null, CancellationToken.None);
 
         var count = 0;
         foreach (var unused in result)
@@ -207,31 +95,11 @@ public class MftVolumeAdminTests
     }
 
     [TestMethod]
-    public void StreamRecords_WithFilter_ReturnsFiltered()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords("explorer.exe", MatchFlags.ExactMatch, null, null, CancellationToken.None);
-
-        var records = new List<MftRecord>();
-        foreach (var record in result)
-        {
-            records.Add(record.Materialize());
-        }
-
-        Assert.IsTrue(records.Count > 0, "Expected to find explorer.exe");
-        foreach (var r in records)
-        {
-            Assert.AreEqual("explorer.exe", r.FileName);
-        }
-    }
-
-    [TestMethod]
     public void StreamRecords_ToArray_MaterializesAll()
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+        using var result = volume.StreamRecords(false, null, null, CancellationToken.None);
         var records = result.ToArray();
 
         Assert.IsTrue(records.Length > 0);
@@ -270,31 +138,11 @@ public class MftVolumeAdminTests
     {
         RequireElevation();
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(null, MatchFlags.None, null, null, CancellationToken.None);
+        using var result = volume.StreamRecords(false, null, null, CancellationToken.None);
 
         Assert.IsTrue(result.TotalRecords > 0);
         Assert.IsTrue(result.UsedRecords > 0);
         Assert.IsTrue(result.UsedRecords <= result.TotalRecords);
-    }
-
-    [TestMethod]
-    public void StreamRecords_WithPaths_FileNameExtractedFromPath()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords("explorer", MatchFlags.Contains | MatchFlags.ResolvePaths, null, null, CancellationToken.None);
-
-        foreach (var record in result)
-        {
-            // When path entries are used, FileName is extracted from the path
-            Assert.IsTrue(record.FileName.Length > 0, "FileName should not be empty");
-            if (record.FullPath != null && record.FullPath.Contains('\\'))
-            {
-                var expected = record.FullPath[(record.FullPath.LastIndexOf('\\') + 1)..];
-                Assert.AreEqual(expected, record.FileName,
-                    $"FileName '{record.FileName}' should match end of FullPath '{record.FullPath}'");
-            }
-        }
     }
 
     [TestMethod]
@@ -303,7 +151,7 @@ public class MftVolumeAdminTests
         RequireElevation();
         using var volume = MftVolume.Open("C");
         var batches = new List<MftRecord[]>();
-        foreach (var batch in volume.ReadRecordBatches(false, 100, null, null, CancellationToken.None))
+        foreach (var batch in volume.ReadRecordBatches(100, null, null, CancellationToken.None))
         {
             batches.Add(batch);
             if (batches.Count == 2)
@@ -317,25 +165,5 @@ public class MftVolumeAdminTests
         Assert.AreEqual(100, batches[1].Length);
         Assert.IsNotNull(batches[0][0].FileName);
         Assert.IsNotNull(batches[1][0].FileName);
-    }
-
-    [TestMethod]
-    public void ReadRecordBatches_WithResolvePaths_RealVolume_PopulatesFullPath()
-    {
-        RequireElevation();
-        using var volume = MftVolume.Open("C");
-        var batches = new List<MftRecord[]>();
-        foreach (var batch in volume.ReadRecordBatches(resolvePaths: true, 100, null, null, CancellationToken.None))
-        {
-            batches.Add(batch);
-            if (batches.Count == 2)
-            {
-                break;
-            }
-        }
-
-        Assert.AreEqual(2, batches.Count);
-        var withPaths = batches.SelectMany(b => b).Where(r => r.FullPath != null).ToArray();
-        Assert.IsTrue(withPaths.Length > 0, "Expected some records with resolved paths");
     }
 }

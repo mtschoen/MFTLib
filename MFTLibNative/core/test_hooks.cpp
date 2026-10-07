@@ -16,20 +16,17 @@ namespace {
 unsigned g_maxThreads = 0;
 int g_allocFailCountdown = 0;
 int g_readFailCountdown = 0;
-uint64_t g_namePoolCapacityOverride = 0;
 int g_failFileSize = 0;
-int g_failPathConversion = 0;
 int g_failPlatformReadCountdown = 0;
 int g_failPlatformWrite = 0;
 uint32_t g_volumeRecordSizeOverride = 0;
 // Process-global observations of the most recent parse, including the production parse path.
-// Every chunk records under the mutex; reset, path-resolution recording, and getters also lock.
+// Every chunk records under the mutex; reset and the getter also lock.
 // Chunks past the array's capacity are not recorded. The mutex protects access, not test ownership:
 // tests using these hooks must not run concurrently with other parses or tests touching the hooks.
 std::mutex g_parseThreadCountsMutex;
 std::array<unsigned, 1024> g_chunkThreadCounts = {};
 unsigned g_chunkThreadCountLength = 0;
-unsigned g_resolveThreadCount = 0;
 // While armed, each parse cancellation check decrements the countdown, and the check that takes
 // it from 1, and every check after it, reports cancelled. Atomic because parse workers check
 // concurrently; unarmed, a check costs one relaxed load.
@@ -70,7 +67,6 @@ unsigned EffectiveThreadCount(const MftParseControl* control) {
 void ResetRecordedParseThreadCounts() {
     std::scoped_lock lock(g_parseThreadCountsMutex);
     g_chunkThreadCountLength = 0;
-    g_resolveThreadCount = 0;
 }
 
 void RecordChunkThreadCount(unsigned threadCount) {
@@ -78,11 +74,6 @@ void RecordChunkThreadCount(unsigned threadCount) {
     if (g_chunkThreadCountLength < g_chunkThreadCounts.size()) {
         g_chunkThreadCounts[g_chunkThreadCountLength++] = threadCount;
     }
-}
-
-void RecordResolveThreadCount(unsigned threadCount) {
-    std::scoped_lock lock(g_parseThreadCountsMutex);
-    g_resolveThreadCount = threadCount;
 }
 
 bool ShouldFailAlloc() {
@@ -104,10 +95,7 @@ bool ShouldFailRead() {
     return --g_readFailCountdown == 0;
 }
 
-uint64_t NamePoolCapacityOverride() { return g_namePoolCapacityOverride; }
-
 bool ShouldFailFileSize() { return g_failFileSize != 0; }
-bool ShouldFailPathConversion() { return g_failPathConversion != 0; }
 
 bool ShouldFailPlatformRead() {
     if (g_failPlatformReadCountdown <= 0) {
@@ -186,9 +174,7 @@ extern "C" {
 EXPORT void SetMaxThreads(unsigned maxThreads) { g_maxThreads = maxThreads; }
 EXPORT void SetAllocFailCountdown(int countdown) { g_allocFailCountdown = countdown; }
 EXPORT void SetReadFailCountdown(int countdown) { g_readFailCountdown = countdown; }
-EXPORT void SetNamePoolCapacityOverride(uint64_t bytes) { g_namePoolCapacityOverride = bytes; }
 EXPORT void SetFailFileSize(int fail) { g_failFileSize = fail; }
-EXPORT void SetFailPathConversion(int fail) { g_failPathConversion = fail; }
 EXPORT void SetFailPlatformRead(int countdown) { g_failPlatformReadCountdown = countdown; }
 EXPORT void SetFailPlatformWrite(int fail) { g_failPlatformWrite = fail; }
 EXPORT void SetVolumeRecordSizeOverride(uint32_t recordSize) { g_volumeRecordSizeOverride = recordSize; }
@@ -209,12 +195,6 @@ EXPORT unsigned GetChunkThreadCounts(unsigned* counts, unsigned capacity) {
     const unsigned copied = (std::min)(capacity, g_chunkThreadCountLength);
     std::copy_n(g_chunkThreadCounts.begin(), copied, counts);
     return copied;
-}
-
-// The thread count path resolution of the most recent parse used; 0 when it did not run.
-EXPORT unsigned GetResolveThreadCount() {
-    std::scoped_lock lock(g_parseThreadCountsMutex);
-    return g_resolveThreadCount;
 }
 #ifdef _WIN32
 // C-ABI test hook; (error, countdown) order is fixed by the C# P/Invoke harness.
@@ -248,9 +228,7 @@ EXPORT void ResetTestState() {
     g_maxThreads = 0;
     g_allocFailCountdown = 0;
     g_readFailCountdown = 0;
-    g_namePoolCapacityOverride = 0;
     g_failFileSize = 0;
-    g_failPathConversion = 0;
     g_failPlatformReadCountdown = 0;
     g_failPlatformWrite = 0;
     g_volumeRecordSizeOverride = 0;
@@ -273,9 +251,7 @@ EXPORT void ResetTestState() {
     g_maxThreads = 0;
     g_allocFailCountdown = 0;
     g_readFailCountdown = 0;
-    g_namePoolCapacityOverride = 0;
     g_failFileSize = 0;
-    g_failPathConversion = 0;
     g_failPlatformReadCountdown = 0;
     g_failPlatformWrite = 0;
     g_volumeRecordSizeOverride = 0;

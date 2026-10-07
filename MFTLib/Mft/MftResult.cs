@@ -6,14 +6,13 @@ using MFTLib.Interop;
 namespace MFTLib;
 
 /// <summary>
-///     The native result of one MFT parse. It owns the native record tables and string pools
+///     The native result of one MFT parse. It owns the native record table and string pool
 ///     until disposed. Enumerating it yields records that borrow their strings from that native
 ///     memory, so they and any open enumerator must not outlive <see cref="Dispose" />; use
 ///     <see cref="MaterializeBatches" /> or <see cref="ToArray" /> for records that do.
 /// </summary>
 internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 {
-    readonly char _driveLetter;
     readonly MftParseResult _result;
     bool _disposed;
     IntPtr _resultPtr;
@@ -21,12 +20,10 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     // cancellationToken is the token that could have stopped the parse; a cancelled result throws
     // OperationCanceledException carrying it. A result whose file input was rejected for its
     // content throws InvalidDataException; any other native failure throws InvalidOperationException.
-    internal MftResult(IntPtr resultPtr, string driveLetter,
-        CancellationToken cancellationToken = default)
+    internal MftResult(IntPtr resultPtr, CancellationToken cancellationToken = default)
     {
         _resultPtr = resultPtr;
         _result = Marshal.PtrToStructure<MftParseResult>(resultPtr);
-        _driveLetter = string.IsNullOrEmpty(driveLetter) ? '\0' : driveLetter[0];
 
         if (_result.Cancelled != 0)
         {
@@ -89,26 +86,19 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
     public MftParseTimings Timings { get; }
 
     /// <summary>
-    ///     Total bytes occupied by the native compact entry buffers and UTF-16 string pools.
+    ///     Total bytes occupied by the native compact entry buffer and UTF-16 string pool.
     ///     Cached from the parsed result header and remains readable after <see cref="Dispose" />.
     /// </summary>
     public ulong NativeCompactBytes
     {
         get
         {
-            ulong bytes = 0;
+            var bytes = _result.EntryStringUnits * sizeof(ushort);
             if (_result.Entries != IntPtr.Zero)
             {
                 bytes += _result.UsedRecords * MFTLibNative.NativeCompactEntrySize;
             }
 
-            bytes += _result.EntryStringUnits * sizeof(ushort);
-            if (_result.PathEntries != IntPtr.Zero)
-            {
-                bytes += _result.UsedRecords * MFTLibNative.NativeCompactEntrySize;
-            }
-
-            bytes += _result.PathStringUnits * sizeof(ushort);
             return bytes;
         }
     }
@@ -155,8 +145,7 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
 
     unsafe MftRecord GetValidatedEntry(ulong index)
     {
-        var active = GetActiveTableAndPool();
-        return GetCompactEntry(active.Table, active.Pool, active.PoolUnits, index, active.IsPath, _driveLetter);
+        return GetCompactEntry((byte*)_result.Entries, (ushort*)_result.EntryStrings, _result.EntryStringUnits, index);
     }
 
     /// <summary>
@@ -202,19 +191,7 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
         return records;
     }
 
-    unsafe ActivePool GetActiveTableAndPool()
-    {
-        if (_result.PathEntries != IntPtr.Zero && _result.PathStrings != IntPtr.Zero)
-        {
-            return new ActivePool((byte*)_result.PathEntries, (ushort*)_result.PathStrings, _result.PathStringUnits,
-                true);
-        }
-
-        return new ActivePool((byte*)_result.Entries, (ushort*)_result.EntryStrings, _result.EntryStringUnits, false);
-    }
-
-    static unsafe MftRecord GetCompactEntry(
-        byte* table, ushort* pool, ulong poolUnits, ulong index, bool isPath, char driveLetter)
+    static unsafe MftRecord GetCompactEntry(byte* table, ushort* pool, ulong poolUnits, ulong index)
     {
         var row = table + checked((nuint)index * MFTLibNative.NativeCompactEntrySize);
         var recordNumber = Unsafe.ReadUnaligned<ulong>(row);
@@ -233,20 +210,8 @@ internal sealed class MftResult : IDisposable, IEnumerable<MftRecord>
             throw new InvalidDataException("Native MFT string offset is outside its pool");
         }
 
-        var pointer = (IntPtr)(pool + stringOffset);
-        var strings = isPath
-            ? new NativeStrings(IntPtr.Zero, 0, pointer, stringLength)
-            : new NativeStrings(pointer, stringLength, IntPtr.Zero, 0);
         var fields = new MftRecordFields(flags, fileAttributes, size, modifiedFileTime, sequenceNumber,
             parentSequenceNumber);
-        return new MftRecord(recordNumber, parentRecordNumber, fields, strings, driveLetter);
-    }
-
-    readonly unsafe struct ActivePool(byte* table, ushort* pool, ulong poolUnits, bool isPath)
-    {
-        public readonly byte* Table = table;
-        public readonly ushort* Pool = pool;
-        public readonly ulong PoolUnits = poolUnits;
-        public readonly bool IsPath = isPath;
+        return new MftRecord(recordNumber, parentRecordNumber, fields, (IntPtr)(pool + stringOffset), stringLength);
     }
 }

@@ -1,107 +1,103 @@
+using MFTLib.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
+/// <summary>
+///     The native freed branch: a scan that asks for freed rows emits the fixture's freed base records with
+///     their own columns, and leaves every live row as an ordinary scan returns it.
+/// </summary>
 [TestClass]
-public partial class IncludeFreedTests
+[DoNotParallelize]
+public class IncludeFreedTests
 {
     const int RecordSize = 1024;
     string _fixturePath = null!;
+    string _imagePath = null!;
 
     [TestInitialize]
     public void Initialize()
     {
         _fixturePath = Path.Combine(Path.GetTempPath(), $"mftlib-freed-{Guid.NewGuid():N}.mft");
-        if (OperatingSystem.IsWindows())
-        {
-            MftVolume.GenerateFixtureMFT(_fixturePath);
-        }
+        _imagePath = Path.ChangeExtension(_fixturePath, ".img");
+        MftVolume.GenerateFixtureMFT(_fixturePath);
     }
 
     [TestCleanup]
     public void Cleanup()
     {
+        NativeTestHooks.NativeResetTestState();
         File.Delete(_fixturePath);
+        File.Delete(_imagePath);
     }
 
     [TestMethod]
-    [DataRow(false, null)]
-    [DataRow(true, null)]
-    [DataRow(false, "deleted")]
-    [DataRow(true, "deleted")]
-    [DataRow(false, "deleted-before.txt")]
-    [DataRow(true, "deleted-before.txt")]
-    public void Fixture_IncludeFreed_EmitsValidatedBaseRecords(bool resolvePaths, string? filter)
+    public void Fixture_IncludeFreed_EmitsValidatedBaseRecords()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutVolumeParse())
         {
             return;
         }
 
-        var flags = FlagsFor(resolvePaths, filter);
-        var ordinary = DirectParse.ParseFile(_fixturePath, filter, flags, out _);
+        var fixture = File.ReadAllBytes(_fixturePath);
+        var ordinary = Parse(fixture, false, out _);
         Assert.IsTrue(ordinary.All(record => record.InUse));
-        var records = DirectParse.ParseFile(_fixturePath, filter, flags | MatchFlags.IncludeFreed, out _, out var totalRecords);
+        var records = Parse(fixture, true, out var totalRecords);
         Assert.AreEqual(24ul, totalRecords);
         var freed = records.Where(record => !record.InUse).ToArray();
-        var expected = new (ulong Number, string Name, ulong Parent, ushort Sequence, string? Path)[]
+        var expected = new (ulong Number, string Name, ulong Parent, ushort Sequence)[]
         {
-            (12, "deleted-dir", 5, 14, "deleted-dir"),
-            (13, "deleted-before.txt", 12, 14, @"deleted-dir\deleted-before.txt"),
-            (14, "deleted-current.txt", 12, 15, @"deleted-dir\deleted-current.txt"),
-            (15, "deleted-live.txt", 8, 16, @"sub\deleted-live.txt"),
-            (16, "deleted-reused.txt", 8, 17, null),
-            (17, "deleted-stale.txt", 12, 18, null),
-            (21, "deleted-under-freed-file.txt", 13, 22, null),
-            (22, "deleted-under-live-file.txt", 6, 23, null)
+            (12, "deleted-dir", 5, 14),
+            (13, "deleted-before.txt", 12, 14),
+            (14, "deleted-current.txt", 12, 15),
+            (15, "deleted-live.txt", 8, 16),
+            (16, "deleted-reused.txt", 8, 17),
+            (17, "deleted-stale.txt", 12, 18),
+            (21, "deleted-under-freed-file.txt", 13, 22),
+            (22, "deleted-under-live-file.txt", 6, 23)
         };
-        var selected = expected.Where(row => filter != "deleted-before.txt" || row.Number == 13).ToArray();
-        CollectionAssert.AreEqual(selected.Select(row => row.Number).ToArray(),
+        CollectionAssert.AreEqual(expected.Select(row => row.Number).ToArray(),
             freed.Select(record => record.RecordNumber).ToArray());
-        foreach (var row in selected)
+        foreach (var row in expected)
         {
             var record = freed.Single(candidate => candidate.RecordNumber == row.Number);
             Assert.AreEqual(row.Name, record.FileName);
             Assert.AreEqual(row.Parent, record.ParentRecordNumber);
             Assert.AreEqual(row.Sequence, record.SequenceNumber);
             Assert.AreEqual(row.Number == 12, record.IsDirectory);
-            Assert.AreEqual(resolvePaths ? row.Path : null, record.FullPath);
             Assert.AreEqual(row.Number == 12 ? 0L : 37L, record.Size);
             Assert.IsTrue(record.SizeKnown);
             Assert.AreEqual(DateTime.FromFileTimeUtc(MftFixtureTests.ModifiedBaseFileTime +
                 (long)row.Number * MftFixtureTests.ModifiedStepFileTime), record.ModifiedUtc);
         }
 
-        var live = records.Where(record => record.InUse).ToArray();
-        AssertRowsEqual(ordinary, live);
+        AssertRowsEqual(ordinary, records.Where(record => record.InUse).ToArray());
         Assert.IsFalse(records.Any(record => record.RecordNumber is 18 or 19 or 20 or 23));
     }
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void LiveOrigin_StopsAtFreedParent_WithoutChangingItsPath(bool resolvePaths)
+    public void LiveOrigin_UnderAFreedParent_KeepsItsRowWhenFreedRowsAreIncluded()
     {
-        if (MftFixtureTests.SkipOnNonWindows())
+        if (WindowsOnlyNative.SkipWithoutVolumeParse())
         {
             return;
         }
 
-        var image = File.ReadAllBytes(_fixturePath);
-        WriteParent(image, 9, 12, 0);
-        File.WriteAllBytes(_fixturePath, image);
-        var flags = FlagsFor(resolvePaths, null);
-        var ordinary = DirectParse.ParseFile(_fixturePath, null, flags, out _);
-        var includingFreed = DirectParse.ParseFile(_fixturePath, null, flags | MatchFlags.IncludeFreed, out _);
+        var fixture = File.ReadAllBytes(_fixturePath);
+        WriteParent(fixture, 9, 12, 0);
+
+        var ordinary = Parse(fixture, false, out _);
+        var includingFreed = Parse(fixture, true, out _);
+
         AssertRowsEqual(ordinary, includingFreed.Where(record => record.InUse).ToArray());
-        Assert.AreEqual(resolvePaths ? "nodata.dat" : null,
-            includingFreed.Single(record => record.RecordNumber == 9).FullPath);
+        Assert.AreEqual(12UL, includingFreed.Single(record => record.RecordNumber == 9).ParentRecordNumber);
     }
 
-    static MatchFlags FlagsFor(bool resolvePaths, string? filter)
+    MftRecord[] Parse(byte[] fixture, bool includeFreed, out ulong totalRecords)
     {
-        var flags = resolvePaths ? MatchFlags.ResolvePaths : MatchFlags.None;
-        return flags | (filter == "deleted-before.txt" ? MatchFlags.ExactMatch : MatchFlags.Contains);
+        using var result = FixtureVolume.Parse(_imagePath, fixture, includeFreed);
+        totalRecords = result.TotalRecords;
+        return result.ToArray();
     }
 
     static void AssertRowsEqual(MftRecord[] expected, MftRecord[] actual)
@@ -119,7 +115,6 @@ public partial class IncludeFreedTests
             Assert.AreEqual(expected[index].SizeKnown, actual[index].SizeKnown);
             Assert.AreEqual(expected[index].ModifiedUtc, actual[index].ModifiedUtc);
             Assert.AreEqual(expected[index].FileName, actual[index].FileName);
-            Assert.AreEqual(expected[index].FullPath, actual[index].FullPath);
         }
     }
 

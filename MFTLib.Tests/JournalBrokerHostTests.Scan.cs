@@ -41,8 +41,8 @@ public partial class JournalBrokerHostTests
             queryCursor: _ => new UsnJournalCursor(7UL, 0L),
             scanDrive: (_, _, _, _, _, _) =>
             [
-                [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "batch1.txt", null)],
-                [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "batch2.txt", null)]
+                [new MftRecord(1, 0, new MftRecordFields(1, FileAttributes.Archive, 100), "batch1.txt")],
+                [new MftRecord(2, 0, new MftRecordFields(1, FileAttributes.Archive, 200), "batch2.txt")]
             ]);
         await using var harness = new HostChannelHarness(host, blockWriter);
 
@@ -162,8 +162,8 @@ public partial class JournalBrokerHostTests
         {
             var cursor = new UsnJournalCursor(7, 100);
             var written = new RealBlockSectionWriter().Write(sectionName, cursor,
-                [[new MftRecord(5, 5, new MftRecordFields(3), ".", null),
-                    new MftRecord(100, 5, new MftRecordFields(1, FileAttributes.Normal, 2048), "nöte.txt", null)]],
+                [[new MftRecord(5, 5, new MftRecordFields(3), "."),
+                    new MftRecord(100, 5, new MftRecordFields(1, FileAttributes.Normal, 2048), "nöte.txt")]],
                 MftBlockRowFilter.Full, default, CancellationToken.None);
 
             Assert.AreEqual(101L, written.RowCount);

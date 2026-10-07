@@ -23,7 +23,7 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -64,7 +64,7 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -101,7 +101,7 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -153,7 +153,7 @@ public partial class NativeCoverageTests
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             NativeTestHooks.NativeSetReadFailCountdown(2); // fail 2nd Read
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -204,122 +204,12 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
                 Assert.IsTrue(result.TotalRecords > 0);
-            }
-            finally
-            {
-                MFTLibNative._freeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    // --- Single-threaded realloc failure in ProcessRecordBatch ---
-
-    [TestMethod]
-    public void ParseFromFile_SingleThreaded_AllocFailOnRealloc_ReturnsPartialResults()
-    {
-        var path = Path.GetTempFileName();
-        try
-        {
-            File.Delete(path);
-            // 5000 records with initial capacity 1024 → realloc triggers around record ~1024
-            MftVolume.GenerateSyntheticMFT(path, 5000, 256);
-            NativeTestHooks.NativeSetMaxThreads(1);
-
-            // Alloc countdown: 1=result calloc, 2=VirtualAlloc buf0, 3=VirtualAlloc buf1,
-            // 4=entries malloc, 5=strings malloc, 6=realloc when capacity exceeded
-            NativeTestHooks.NativeSetAllocFailCountdown(6);
-
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage.Contains("entry array"));
-                Assert.IsTrue(result.UsedRecords > 0, "Should have partial results");
-                Assert.IsTrue(result.UsedRecords < 5000, "Should not have all records");
-            }
-            finally
-            {
-                MFTLibNative._freeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    // --- Multi-threaded path: slice realloc + merge realloc ---
-
-    [TestMethod]
-    public void ParseFromFile_MultiThreaded_ProducesResults()
-    {
-        // Exercises the multi-threaded ProcessRecordSlice path (lines 629-630 realloc)
-        // and ParseMFTImpl merge realloc (lines 854-855).
-        // Large buffer (4096) ensures each thread handles many records, overflowing
-        // the initial per-slice capacity ((records/threads)/4) and triggering realloc.
-        var path = Path.GetTempFileName();
-        try
-        {
-            File.Delete(path);
-            MftVolume.GenerateSyntheticMFT(path, 5000, 4096);
-
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 4096, IntPtr.Zero, null);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.AreEqual(5000UL, result.TotalRecords);
-                Assert.IsTrue(result.UsedRecords > 0);
-            }
-            finally
-            {
-                MFTLibNative._freeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    [TestMethod]
-    public void ParseFromFile_MultiThreaded_WithFilter_TriggersSliceRealloc()
-    {
-        // With filter, slice initial capacity is 64  -  large buffer ensures enough
-        // matching records per thread to exceed it.
-        var path = Path.GetTempFileName();
-        try
-        {
-            File.Delete(path);
-            MftVolume.GenerateSyntheticMFT(path, 5000, 4096);
-
-            // Substring match on "file" should match all synthetic records
-            var resultPointer = MFTLibNative._parseMftFromFile(path, "file", MatchFlags.Contains, 4096, IntPtr.Zero, null);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.UsedRecords > 0);
             }
             finally
             {

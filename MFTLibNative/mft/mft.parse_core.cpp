@@ -5,10 +5,7 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <cstdlib>
-#include <cstring>
-#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -52,18 +49,14 @@ struct ChunkReader {
 };
 
 // Allocate the two double-buffer I/O buffers and the initial compact entry/string arrays.
-// On failure, frees whatever was allocated (plus lookup when resolvePaths), sets the
-// error message, and returns false. (big_free is a no-op on nullptr.)
-bool AllocateParseBuffers(std::array<uint8_t*, 2>& buf, size_t bufSize, PathLookup& lookup, bool resolvePaths,
-                          ParseState& state, MftParseResult* result) {
+// On failure, frees whatever was allocated, sets the error message, and returns false.
+// (big_free is a no-op on nullptr.)
+bool AllocateParseBuffers(std::array<uint8_t*, 2>& buf, size_t bufSize, ParseState& state, MftParseResult* result) {
     buf[0] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
     buf[1] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
     if ((buf[0] == nullptr) || (buf[1] == nullptr)) {
         mftlib::platform::big_free(buf[0], bufSize);
         mftlib::platform::big_free(buf[1], bufSize);
-        if (resolvePaths) {
-            lookup.cleanup();
-        }
         SetErrorMessage(result->errorMessage, L"Failed to allocate I/O buffers");
         return false;
     }
@@ -75,9 +68,6 @@ bool AllocateParseBuffers(std::array<uint8_t*, 2>& buf, size_t bufSize, PathLook
     if (state.output.entries == nullptr) {
         mftlib::platform::big_free(buf[0], bufSize);
         mftlib::platform::big_free(buf[1], bufSize);
-        if (resolvePaths) {
-            lookup.cleanup();
-        }
         SetErrorMessage(result->errorMessage, L"Failed to allocate entry array");
         return false;
     }
@@ -91,9 +81,6 @@ bool AllocateParseBuffers(std::array<uint8_t*, 2>& buf, size_t bufSize, PathLook
         state.output.entries = nullptr;
         mftlib::platform::big_free(buf[0], bufSize);
         mftlib::platform::big_free(buf[1], bufSize);
-        if (resolvePaths) {
-            lookup.cleanup();
-        }
         SetErrorMessage(result->errorMessage, L"Failed to allocate string pool");
         return false;
     }
@@ -158,7 +145,7 @@ bool RejectInvalidFixup(MftParseResult* result) {
 bool ParseChunkSerial(uint8_t* buffer, ChunkSpan chunk, const ScanContext& scan, ParseState& state,
                       MftParseResult* result) {
     SliceResult batchSlice;
-    batchSlice.entries.reserve((scan.filter.text != nullptr) ? 64 : chunk.chunkSize / 4);
+    batchSlice.entries.reserve(chunk.chunkSize / 4);
     batchSlice.strings.reserve(batchSlice.entries.capacity() * 32);
 
     auto parseStart = SteadyClock::now();
@@ -181,8 +168,7 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
     std::vector<SliceResult> slices(numThreads);
     std::vector<double> threadFixupMs(numThreads, 0.0);
     unsigned actualThreads = ForEachRange(chunk.chunkSize, numThreads, [&](unsigned index, SliceRange range) {
-        uint64_t initialCapacity = (scan.filter.text != nullptr) ? 64 : (range.end - range.start) / 4;
-        initialCapacity = std::max<uint64_t>(initialCapacity, 64);
+        const uint64_t initialCapacity = std::max<uint64_t>((range.end - range.start) / 4, 64);
         slices[index].entries.reserve(initialCapacity);
         slices[index].strings.reserve(initialCapacity * 32);
         threadFixupMs[index] = FixupAndParseSlice(buffer, range, chunk.recordIndex, slices[index], scan);
@@ -215,46 +201,6 @@ struct ProgressHook {
     void* context = nullptr;
     SteadyClock::time_point wallStart;
 };
-
-struct ResolveProgressState {
-    MftProgressCallback callback = nullptr;
-    void* context = nullptr;
-    const MftParseControl* control = nullptr;
-    SteadyClock::time_point wallStart;
-    uint64_t totalEntries = 0;
-    uint64_t entriesResolved = 0;
-    std::mutex callbackMutex;
-
-    void reportBatch(uint64_t batchCount) {
-        if (callback == nullptr) {
-            return;
-        }
-        std::lock_guard<std::mutex> lock(callbackMutex);
-        entriesResolved += batchCount;
-        uint64_t resolved = entriesResolved;
-        if (resolved > totalEntries) {
-            resolved = totalEntries;
-        }
-        if (resolved < totalEntries) {
-            double elapsedMs = ElapsedMs(wallStart, SteadyClock::now());
-            callback(MftScanPhase::ResolvingPaths, resolved, totalEntries, elapsedMs, context);
-        }
-    }
-
-    void reportFinal() {
-        if (callback == nullptr) {
-            return;
-        }
-        std::lock_guard<std::mutex> lock(callbackMutex);
-        entriesResolved = totalEntries;
-        double elapsedMs = ElapsedMs(wallStart, SteadyClock::now());
-        callback(MftScanPhase::ResolvingPaths, totalEntries, totalEntries, elapsedMs, context);
-    }
-};
-
-// Resolve the paths of source.entries[range), stopping between kCancelCheckRecords-entry
-// slices once cancellation is requested.
-#include "mft.paths.cpp"
 
 // Drive the double-buffered read/parse loop over every chunk. Each chunk reads the thread
 // allowance once at its start and keeps that count until it is merged. Failed means a chunk
@@ -301,7 +247,7 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
 
         if (progress.callback != nullptr) {
             double elapsedMs = ElapsedMs(progress.wallStart, SteadyClock::now());
-            progress.callback(MftScanPhase::Parsing, recordIndex, scan.totalRecords, elapsedMs, progress.context);
+            progress.callback(recordIndex, scan.totalRecords, elapsedMs, progress.context);
             lastReportedRecords = recordIndex;
         }
 
@@ -318,7 +264,7 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
 
     if (progress.callback != nullptr && lastReportedRecords < scan.totalRecords) {
         double elapsedMs = ElapsedMs(progress.wallStart, SteadyClock::now());
-        progress.callback(MftScanPhase::Parsing, scan.totalRecords, scan.totalRecords, elapsedMs, progress.context);
+        progress.callback(scan.totalRecords, scan.totalRecords, elapsedMs, progress.context);
     }
 
     return ParseOutcome::Completed;
@@ -374,20 +320,7 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
     const ParseGeometry geometry = source.geometry;
     const MftParseControl* control = request.control;
     const uint32_t bufferSizeRecords = request.bufferSizeRecords;
-    FilterSpec filter = request.filter;
     result->totalRecords = totalRecords;
-
-    filter.length = (filter.text != nullptr) ? static_cast<uint16_t>(wcslen(filter.text)) : 0;
-    bool resolvePaths = (filter.flags & MATCH_FLAG_RESOLVE_PATHS) != 0;
-
-    PathLookup lookup = {};
-    if (resolvePaths) {
-        if (ShouldFailAlloc() || !lookup.init(totalRecords)) {
-            lookup.cleanup();
-            SetErrorMessage(result->errorMessage, L"Failed to allocate path lookup");
-            return result;
-        }
-    }
 
     const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * geometry.recordSize;
 
@@ -395,17 +328,15 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
     // The record total comes from an unvalidated length, so it only sizes the first allocation
     // up to a fixed ceiling; a larger result grows as records are actually parsed.
     constexpr uint64_t kMaximumInitialEntries = uint64_t{4} * 1024 * 1024;
-    state.output.entryCapacity =
-        std::clamp<uint64_t>((filter.text != nullptr) ? 1024 : totalRecords / 4, 1024, kMaximumInitialEntries);
+    state.output.entryCapacity = std::clamp<uint64_t>(totalRecords / 4, 1024, kMaximumInitialEntries);
     state.output.stringCapacity = std::max<uint64_t>(state.output.entryCapacity * 32, 1024);
 
     std::array<uint8_t*, 2> buf = {};
-    if (!AllocateParseBuffers(buf, bufSize, lookup, resolvePaths, state, result)) {
+    if (!AllocateParseBuffers(buf, bufSize, state, result)) {
         return result;
     }
 
-    ScanContext scan{filter,  resolvePaths ? &lookup : nullptr, totalRecords, geometry,
-                     control, source.rejectInvalidFixup};
+    const ScanContext scan{request.includeFreed, totalRecords, geometry, control, source.rejectInvalidFixup};
     ChunkReader reader{&source, &buf};
     ProgressHook progress{request.callback, request.progressContext, wallStart};
     const ParseOutcome outcome = ParseAllChunks(reader, scan, state, result, progress);
@@ -413,9 +344,6 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
     mftlib::platform::big_free(buf[0], bufSize);
     mftlib::platform::big_free(buf[1], bufSize);
 
-    if (outcome != ParseOutcome::Completed && resolvePaths) {
-        lookup.cleanup();
-    }
     if (outcome == ParseOutcome::Cancelled) {
         return FinishCancelled(state, result);
     }
@@ -430,31 +358,11 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
         return result;
     }
 
-    if (resolvePaths && lookup.namesDropped.load(std::memory_order_relaxed) > 0) {
-        SetErrorMessage(result->errorMessage, L"Path name pool exhausted; %llu names dropped, some paths truncated",
-                        static_cast<unsigned long long>(lookup.namesDropped.load(std::memory_order_relaxed)));
-    }
-
-    uint64_t parsedCount = state.output.entryCount;
-    if (resolvePaths && parsedCount > 0) {
-        const unsigned resolveThreads = EffectiveThreadCount(control);
-        RecordResolveThreadCount(resolveThreads);
-        const bool resolved = ResolveAllPaths(scan, resolveThreads, state, result, progress);
-        lookup.cleanup();
-        if (!resolved) {
-            return FinishCancelled(state, result);
-        }
-    } else if (resolvePaths) {
-        lookup.cleanup();
-    }
-
-    result->usedRecords = parsedCount;
+    result->usedRecords = state.output.entryCount;
     result->invalidFixupRecords = state.invalidFixupRecords;
-    if (result->pathEntries == nullptr) {
-        result->entries = state.output.entries;
-        result->entryStrings = state.output.strings;
-        result->entryStringUnits = state.output.stringUnits;
-    }
+    result->entries = state.output.entries;
+    result->entryStrings = state.output.strings;
+    result->entryStringUnits = state.output.stringUnits;
 
     result->ioTimeMs = state.ioMs;
     result->fixupTimeMs = state.fixupMs;

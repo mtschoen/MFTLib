@@ -57,7 +57,7 @@ public partial class NativeCoverageTests
             }
 
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -99,7 +99,7 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             MFTLibNative._freeMftResult(resultPointer);
         }
@@ -147,7 +147,7 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             MFTLibNative._freeMftResult(resultPointer);
         }
@@ -199,7 +199,7 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -246,7 +246,7 @@ public partial class NativeCoverageTests
 
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {

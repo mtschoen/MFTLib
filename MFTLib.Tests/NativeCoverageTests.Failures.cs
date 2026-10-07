@@ -37,7 +37,7 @@ public partial class NativeCoverageTests
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             NativeTestHooks.NativeSetReadFailCountdown(3); // Fail 3rd read = ReadMFTRecord
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -81,7 +81,7 @@ public partial class NativeCoverageTests
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             NativeTestHooks.NativeSetReadFailCountdown(3); // Fail 3rd read = VolumeReadChunk
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -147,7 +147,7 @@ public partial class NativeCoverageTests
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             NativeTestHooks.NativeSetReadFailCountdown(3); // Fail 3rd read = ReadNonResidentData
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), null, 0, 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {
@@ -178,39 +178,6 @@ public partial class NativeCoverageTests
     }
 
     // --- Platform pread/pwrite failure branches (platform_win32.cpp) ---
-
-    [TestMethod]
-    public void ParseFromFile_PlatformReadFail_ReturnsZeroRecords()
-    {
-        // Forces pread_at's ReadFile-failure branch (distinct from the earlier
-        // ShouldFailRead hook, which short-circuits before pread_at is reached).
-        var path = Path.GetTempFileName();
-        try
-        {
-            File.Delete(path);
-            MftVolume.GenerateSyntheticMFT(path, 100, 256);
-            NativeTestHooks.NativeSetFailPlatformRead(1); // fail the first positioned read
-
-            var resultPointer = MFTLibNative._parseMftFromFile(path, null, MatchFlags.None, 256, IntPtr.Zero, null);
-            Assert.AreNotEqual(IntPtr.Zero, resultPointer);
-            try
-            {
-                var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.AreEqual(0UL, result.UsedRecords);
-            }
-            finally
-            {
-                MFTLibNative._freeMftResult(resultPointer);
-            }
-        }
-        finally
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
 
     [TestMethod]
     public void GenerateSyntheticMFT_PlatformWriteFail_ReturnsFalse()

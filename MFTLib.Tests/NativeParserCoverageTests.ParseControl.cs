@@ -5,8 +5,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests;
 
-// The parse control block: the thread allowance each chunk and path resolution read, and the
-// cancellation flag read before each chunk read, after each chunk's parse, and between slices.
+// The parse control block: the thread allowance each chunk reads, and the cancellation flag read
+// before each chunk read, after each chunk's parse, and between 4096-record sub-slices.
 // Every case parses a synthetic NTFS image in 64-record chunks, so several chunks run and the
 // progress callback (fired after each chunk is parsed) can only affect the chunks after it.
 public partial class NativeParserCoverageTests
@@ -80,50 +80,6 @@ public partial class NativeParserCoverageTests
     }
 
     [TestMethod]
-    public void ParseMFTRecordsWithProgress_PathResolutionReadsAllowanceAfterLastChunk()
-    {
-        WithImage(ImageRecordCount, path =>
-        {
-            using var control = new ParseControlBlock((int)NativeHardwareThreadCount);
-            var result = ParseImage(path, MatchFlags.ResolvePaths, control, (block, phase, scanned, total) =>
-            {
-                if (phase == MftScanPhase.Parsing && scanned == total)
-                {
-                    block.Allowance = 1;
-                }
-            });
-
-            Assert.AreEqual(0u, result.Cancelled);
-            Assert.AreNotEqual(IntPtr.Zero, result.PathEntries, "Path resolution must have run");
-            Assert.AreEqual(NativeHardwareThreadCount, ParseControlBlock.ChunkThreadCounts()[^1]);
-            Assert.AreEqual(1u, NativeTestHooks.NativeGetResolveThreadCount());
-        });
-    }
-
-    [TestMethod]
-    public void ParseMFTRecordsWithProgress_CancelledDuringPathResolution_StopsBetweenSlices()
-    {
-        // One resolution worker reports every 4096 entries; the image has over three times that
-        // many in-use records, so an uncancelled resolution reports at least twice more.
-        WithImage(16384, path =>
-        {
-            using var control = new ParseControlBlock(1);
-            var resolvingReports = 0;
-            var result = ParseImage(path, MatchFlags.ResolvePaths, control, (block, phase, _, _) =>
-            {
-                if (phase == MftScanPhase.ResolvingPaths && ++resolvingReports == 1)
-                {
-                    block.RequestCancel();
-                }
-            }, 4096);
-
-            AssertCancelled(result);
-            Assert.AreEqual(1, resolvingReports, "Resolution must stop at the slice after the cancelling report");
-            Assert.AreEqual(1u, NativeTestHooks.NativeGetResolveThreadCount());
-        });
-    }
-
-    [TestMethod]
     public void ParseMFTRecordsWithProgress_CancelledBeforeFirstChunk_ReturnsCancelledWithoutReading()
     {
         WithImage(ImageRecordCount, path =>
@@ -134,7 +90,7 @@ public partial class NativeParserCoverageTests
             // Reads 1 and 2 are the boot sector and record 0; read 3 would be the first chunk.
             NativeTestHooks.NativeSetReadFailCountdown(3);
 
-            var result = ParseImage(path, MatchFlags.None, control, (_, _, _, _) => progressCalls++);
+            var result = ParseImage(path, control, (_, _, _) => progressCalls++);
 
             AssertCancelled(result);
             Assert.AreEqual(0, progressCalls);
@@ -153,9 +109,9 @@ public partial class NativeParserCoverageTests
             using var control = new ParseControlBlock();
             var parsingCalls = 0;
 
-            var result = ParseImage(path, MatchFlags.ResolvePaths, control, (block, phase, _, _) =>
+            var result = ParseImage(path, control, (block, _, _) =>
             {
-                if (phase == MftScanPhase.Parsing && ++parsingCalls == 1)
+                if (++parsingCalls == 1)
                 {
                     block.RequestCancel();
                 }
@@ -164,7 +120,6 @@ public partial class NativeParserCoverageTests
             AssertCancelled(result);
             Assert.AreEqual(1, parsingCalls);
             Assert.AreEqual(1, ParseControlBlock.ChunkThreadCounts().Length);
-            Assert.AreEqual(0u, NativeTestHooks.NativeGetResolveThreadCount(), "Path resolution must not run");
         });
     }
 
@@ -180,7 +135,7 @@ public partial class NativeParserCoverageTests
             var progressCalls = 0;
             NativeTestHooks.NativeSetCancelCheckCountdown(4);
 
-            var result = ParseImage(path, MatchFlags.None, control, (_, _, _, _) => progressCalls++);
+            var result = ParseImage(path, control, (_, _, _) => progressCalls++);
 
             AssertCancelled(result);
             Assert.AreEqual(0, progressCalls, "The parse must stop before reporting the chunk");
@@ -206,7 +161,7 @@ public partial class NativeParserCoverageTests
             var progressCalls = 0;
             NativeTestHooks.NativeSetCancelCheckCountdown(6);
 
-            var result = ParseImage(path, MatchFlags.None, control, (_, _, _, _) => progressCalls++, 16384);
+            var result = ParseImage(path, control, (_, _, _) => progressCalls++, 16384);
 
             AssertCancelled(result);
             Assert.AreEqual(0, progressCalls);
@@ -219,7 +174,7 @@ public partial class NativeParserCoverageTests
         WithImage(ImageRecordCount, path =>
         {
             using var control = new ParseControlBlock(allowance);
-            ParseImage(path, MatchFlags.None, control);
+            ParseImage(path, control);
             AssertEveryChunkUsed(expected);
         });
     }
@@ -230,9 +185,9 @@ public partial class NativeParserCoverageTests
         {
             using var control = new ParseControlBlock(initialAllowance);
             var parsingCalls = 0;
-            ParseImage(path, MatchFlags.None, control, (block, phase, _, _) =>
+            ParseImage(path, control, (block, _, _) =>
             {
-                if (phase == MftScanPhase.Parsing && ++parsingCalls == 1)
+                if (++parsingCalls == 1)
                 {
                     block.Allowance = laterAllowance;
                 }
@@ -258,7 +213,6 @@ public partial class NativeParserCoverageTests
         Assert.AreEqual("Parse cancelled", result.ErrorMessage);
         Assert.AreEqual(0UL, result.UsedRecords);
         Assert.AreEqual(IntPtr.Zero, result.Entries);
-        Assert.AreEqual(IntPtr.Zero, result.PathEntries);
     }
 
     static void WithImage(int recordCount, Action<string> test)
@@ -275,32 +229,32 @@ public partial class NativeParserCoverageTests
         }
     }
 
-    delegate void ControlProgressObserver(ParseControlBlock control, MftScanPhase phase, ulong scanned, ulong total);
+    delegate void ControlProgressObserver(ParseControlBlock control, ulong scanned, ulong total);
 
     // Parses the image through the volume export with the given control block, handing that block
     // to onProgress with each progress callback, and returns a copy of the freed result's header.
-    static MftParseResult ParseImage(string path, MatchFlags matchFlags, ParseControlBlock control,
+    static MftParseResult ParseImage(string path, ParseControlBlock control,
         ControlProgressObserver? onProgress = null, uint bufferSizeRecords = 64)
     {
-        MFTLibNative.NativeMftProgressCallback callback = (phase, scanned, total, _, _) =>
-            onProgress?.Invoke(control, phase, scanned, total);
-        var result = ParseVolumeExport(path, matchFlags, control.Pointer, callback, bufferSizeRecords);
+        MFTLibNative.NativeMftProgressCallback callback = (scanned, total, _, _) =>
+            onProgress?.Invoke(control, scanned, total);
+        var result = ParseVolumeExport(path, control.Pointer, callback, bufferSizeRecords);
         GC.KeepAlive(callback);
         return result;
     }
 
     static MftParseResult ParseImageWithoutControl(string path)
     {
-        return ParseVolumeExport(path, MatchFlags.None, IntPtr.Zero, null, 64);
+        return ParseVolumeExport(path, IntPtr.Zero, null, 64);
     }
 
-    static MftParseResult ParseVolumeExport(string path, MatchFlags matchFlags, IntPtr control,
+    static MftParseResult ParseVolumeExport(string path, IntPtr control,
         MFTLibNative.NativeMftProgressCallback? callback, uint bufferSizeRecords)
     {
         NativeTestHooks.NativeSetVolumeRecordSizeOverride(1024);
         using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         var resultPointer = MFTLibNative._parseMftRecordsWithProgress(
-            fileStream.SafeFileHandle, null, matchFlags, bufferSizeRecords, control, callback);
+            fileStream.SafeFileHandle, false, bufferSizeRecords, control, callback);
         Assert.AreNotEqual(IntPtr.Zero, resultPointer);
         try
         {

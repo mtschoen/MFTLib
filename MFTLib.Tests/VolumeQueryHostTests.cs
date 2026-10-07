@@ -70,7 +70,7 @@ public class VolumeQueryHostTests
         return new JournalBrokerHost(
             new JournalBrokerHost.VolumeSources(
                 _ => new UsnJournalCursor(7UL, 0L),
-                (_, _, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".", null)]],
+                (_, _, _, _, _, _) => [[new MftRecord(5, 5, new MftRecordFields(3), ".")]],
                 (_, cursor, _) => (Array.Empty<UsnJournalEntry>(), cursor),
                 QueryVolumeInformation: queryVolumeInfo));
     }

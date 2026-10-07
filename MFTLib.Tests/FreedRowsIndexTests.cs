@@ -167,7 +167,7 @@ public class FreedRowsIndexTests
         var flags = (ushort)((freed ? 0 : 1) | (directory ? 2 : 0));
         return new MftRecord(recordNumber, parent, new MftRecordFields(flags,
             directory ? FileAttributes.Directory : FileAttributes.Normal, size, FixedMoment.ToFileTimeUtc(), sequence,
-            parentSequence), name, null);
+            parentSequence), name);
     }
 
     Task<FileIndex> OpenAsync(bool includeFreed)

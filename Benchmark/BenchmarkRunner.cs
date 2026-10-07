@@ -62,7 +62,7 @@ public partial class BenchmarkRunner
 
     internal Func<string, int, (int RecordCount, ulong NativeCompactBytes)> _parseBounded = (path, batchSize) =>
     {
-        using var result = MftVolume.StreamMftFromFile(path);
+        using var result = ParseDump(path);
         var count = 0;
         foreach (var batch in result.MaterializeBatches(batchSize))
         {
@@ -75,7 +75,7 @@ public partial class BenchmarkRunner
     // Measures the production named-section block transfer.
     internal Func<string, int, (int RecordCount, ulong NativeCompactBytes)> _parseBrokerStream = (path, batchSize) =>
     {
-        using var result = MftVolume.StreamMftFromFile(path);
+        using var result = ParseDump(path);
         var sectionName = NamedBlockSection.BuildSectionName('C');
         var slotCapacity = checked((uint)Math.Max(6UL, result.TotalRecords));
         var (block, lifetime) = NamedBlockSection.Create(new BlockFileCreateOptions
@@ -108,12 +108,20 @@ public partial class BenchmarkRunner
 
     internal Func<string, (int RecordCount, ulong NativeCompactBytes)> _parseCompat = path =>
     {
-        using var result = MftVolume.StreamMftFromFile(path);
+        using var result = ParseDump(path);
         var records = result.ToArray();
         return (records.Length, result.NativeCompactBytes);
     };
 
     internal Func<string, string> _readAllText = File.ReadAllText;
+
+    // Parses a dump at the volume scan's chunk size, the chunk size this benchmark has always
+    // measured, rather than the dump entry's own 64 MiB default.
+    static MftResult ParseDump(string path)
+    {
+        using var input = MftDumpInput.Open(path);
+        return input.Parse(new MftFileScanOptions(BufferSizeRecords: MftVolume.DefaultBufferSizeRecords));
+    }
 
     // Child process runner seam
     internal Func<string[], (int ExitCode, string Stdout, string Stderr)> _runChildProcess = arguments =>

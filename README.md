@@ -148,72 +148,11 @@ dotnet build external\MFTLib\MFTLibTestExtensions\MFTLibTestExtensions.csproj -c
 | --- | --- |
 | Elevated CLI or service; simplest integration | `MftVolume` directly |
 | Non-elevated desktop/CLI app; one UAC prompt | `BrokerSession` with `CreateIndexSource()` |
-| One-time filename lookup | `MftVolume.StreamRecords` with a name filter |
-| Full in-memory index | `MftVolume.StreamRecords`, then `MftResult.ToArray()` |
-| Process records while native memory is alive | `MftVolume.StreamRecords` |
-| Parse a saved MFT image, no volume or elevation | `MftVolume.StreamMftFromFile` |
 | Resume from a persisted journal cursor | `MftVolume.ReadUsnJournal` |
 | Continuously receive changes | `WatchUsnJournal` or broker batches |
 | Explain a rescan the change journal forced, at open or mid-watch | `DriveStatus.CheckpointLoss` |
 
-## Quick start: find records by name
-
-Run the application as Administrator when using `MftVolume` directly.
-
-```csharp
-using MFTLib;
-
-using var volume = MftVolume.Open("C");
-using var result = volume.StreamRecords(
-    ".git",
-    MatchFlags.ExactMatch | MatchFlags.ResolvePaths,
-    progress: null, parseThreads: null, CancellationToken.None);
-var records = result.ToArray();
-
-foreach (var record in records.Where(record => record.IsDirectory))
-    Console.WriteLine(record.FullPath);
-
-Console.WriteLine($"Matched {records.Length:N0} of {result.TotalRecords:N0} records; {result.Timings}");
-```
-
-`MftVolume.Open` accepts a drive letter (`"C"`, `"C:"` or `"C:\\"`), a raw device path
-(`\\.\C:`) or a volume GUID path (`\\?\Volume{guid}`). `MftResult.Timings` reports the native I/O, fixup, parse
-and total durations as `TimeSpan` values; time your own `ToArray()` if you want the copy cost.
-
-## Core MFT workflows
-
-### Read a complete volume index
-
-```csharp
-using var volume = MftVolume.Open("C");
-using var result = volume.StreamRecords(
-    filter: null, MatchFlags.ResolvePaths, progress: null, parseThreads: null, CancellationToken.None);
-var records = result.ToArray();
-
-var byRecordNumber = records.ToDictionary(record => record.RecordNumber);
-```
-
-`RecordNumber` and `ParentRecordNumber` are 48-bit MFT segment indexes with the NTFS
-sequence number removed. They match the corresponding identifiers on
-`UsnJournalEntry`, making them suitable for joining a scan with journal updates on the
-same volume. Each record's own sequence number is carried separately on
-`MftRecord.SequenceNumber` and `UsnJournalEntry.SequenceNumber`; combined with the record
-number as `(sequenceNumber << 48) | recordNumber`, it forms the NTFS file reference that
-detects an MFT record NTFS has since reused for a different file.
-
-### Filter in native code
-
-```csharp
-using var exact = volume.StreamRecords(
-    "report.pdf", MatchFlags.ExactMatch, progress: null, parseThreads: null, CancellationToken.None);
-using var containing = volume.StreamRecords(
-    "report", MatchFlags.Contains | MatchFlags.ResolvePaths,
-    progress: null, parseThreads: null, CancellationToken.None);
-```
-
-`ExactMatch` and `Contains` are case-insensitive. A filter with neither flag throws
-`ArgumentException` before any native call. Add `ResolvePaths` only when full paths
-are needed; path resolution has additional CPU and memory cost.
+## Freed MFT records
 
 Freed MFT records are opt-in. `BrokerScanOptions.IncludeFreed` (default false) makes a cold scan
 of a live volume, direct or through the broker, also import the records NTFS has freed; the
@@ -244,41 +183,6 @@ var deleted = index.Search(new SearchQuery("report", IncludeDeleted: true))
 the journal deleted them or a scan imported them freed. Lookup, children, largest and duplicate
 names stay live only.
 
-### Stream to reduce managed allocations
-
-```csharp
-using var result = volume.StreamRecords(
-    filter: ".git",
-    MatchFlags.ExactMatch | MatchFlags.ResolvePaths,
-    progress: null, parseThreads: null, CancellationToken.None);
-
-foreach (var record in result)
-{
-    // Use the record while result is alive.
-    Console.WriteLine(record.FullPath);
-}
-```
-
-Records yielded directly by `MftResult` can reference native memory owned by the result.
-Do not retain them after disposing it unless each record is materialized:
-
-```csharp
-var retained = record.Materialize();
-```
-
-`MftResult.ToArray()` returns records whose strings are already materialized into managed
-memory.
-
-### Tune scan buffers
-
-```csharp
-// Number of MFT records per native buffer. Default: MftVolume.DefaultBufferSizeRecords (262,144).
-using var volume = MftVolume.Open("C", bufferSizeRecords: 65_536);
-```
-
-Smaller buffers reduce peak memory use; larger buffers can improve throughput. The
-native implementation double-buffers, so budget for more than one record buffer.
-
 ## Keep an index current with the USN journal
 
 A durable `UsnJournalCursor` contains the journal instance ID and next USN to read.
@@ -292,7 +196,7 @@ using var volume = MftVolume.Open("C");
 
 var armedCursor = volume.QueryUsnJournalCursor();
 using var result = volume.StreamRecords(
-    filter: null, MatchFlags.ResolvePaths, progress: null, parseThreads: null, CancellationToken.None);
+    includeFreed: false, progress: null, parseThreads: null, CancellationToken.None);
 var records = result.ToArray();
 var (catchUpEntries, currentCursor) = volume.ReadUsnJournal(armedCursor);
 

@@ -306,6 +306,6 @@ public partial class JournalBrokerHostChannelTests
 
     static MftRecord Record(ulong recordNumber, string name, ushort flags = 1)
     {
-        return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name, null);
+        return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name);
     }
 }

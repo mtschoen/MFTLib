@@ -11,23 +11,18 @@ public class MftScanProgressTests
     public void Properties_And_Equality_WorkAsExpected()
     {
         var elapsed = TimeSpan.FromMilliseconds(1234);
-        var progress = new MftScanProgress(MftScanPhase.Parsing, 500, 1000, elapsed);
+        var progress = new MftScanProgress(500, 1000, elapsed);
 
-        Assert.AreEqual(MftScanPhase.Parsing, progress.Phase);
         Assert.AreEqual(500L, progress.RecordsScanned);
         Assert.AreEqual(1000L, progress.TotalRecords);
         // aislop-ignore-next-line ai-slop/test-wall-clock-assertion -- false positive: progress.Elapsed is the TimeSpan literal passed to the constructor, not a clock read (schoen/aislop#51)
         Assert.AreEqual(elapsed, progress.Elapsed);
 
-        var explicitPhase = new MftScanProgress(MftScanPhase.ResolvingPaths, 500, 1000, elapsed);
-        Assert.AreEqual(MftScanPhase.ResolvingPaths, explicitPhase.Phase);
-        Assert.AreNotEqual(progress, explicitPhase);
-
-        var same = new MftScanProgress(MftScanPhase.Parsing, 500, 1000, elapsed);
+        var same = new MftScanProgress(500, 1000, elapsed);
         Assert.AreEqual(progress, same);
         Assert.AreEqual(progress.GetHashCode(), same.GetHashCode());
 
-        var different = new MftScanProgress(MftScanPhase.Parsing, 501, 1000, elapsed);
+        var different = new MftScanProgress(501, 1000, elapsed);
         Assert.AreNotEqual(progress, different);
     }
 
@@ -43,18 +38,17 @@ public class MftScanProgressTests
     {
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, IntPtr.Zero);
+            callback?.Invoke(1, 10, 15.0, IntPtr.Zero);
         });
 
         var reported = new List<MftScanProgress>();
         var directProgress = new SynchronousProgress<MftScanProgress>(reported.Add);
 
         using var volume = MftVolume.Open("C");
-        var batches = volume.ReadRecordBatches(resolvePaths: false, 4096, directProgress, null, CancellationToken.None).ToList();
+        var batches = volume.ReadRecordBatches(4096, directProgress, null, CancellationToken.None).ToList();
 
         Assert.AreEqual(1, batches.Count);
         Assert.AreEqual(1, reported.Count);
-        Assert.AreEqual(MftScanPhase.Parsing, reported[0].Phase);
         Assert.AreEqual(1L, reported[0].RecordsScanned);
         Assert.AreEqual(10L, reported[0].TotalRecords);
     }
@@ -67,21 +61,19 @@ public class MftScanProgressTests
 
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, IntPtr.Zero);
-            callback?.Invoke(MftScanPhase.ResolvingPaths, 5, 10, 30.0, IntPtr.Zero);
+            callback?.Invoke(1, 10, 15.0, IntPtr.Zero);
+            callback?.Invoke(5, 10, 30.0, IntPtr.Zero);
             reportedDuringParse = reported.Count;
         });
 
         var directProgress = new SynchronousProgress<MftScanProgress>(reported.Add);
 
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(null, MatchFlags.None, directProgress, null, CancellationToken.None);
+        using var result = volume.StreamRecords(false, directProgress, null, CancellationToken.None);
 
         Assert.AreEqual(2, reportedDuringParse, "Both progress samples must have arrived before parse returned");
         Assert.AreEqual(2, reported.Count);
-        Assert.AreEqual(MftScanPhase.Parsing, reported[0].Phase);
         Assert.AreEqual(1L, reported[0].RecordsScanned);
-        Assert.AreEqual(MftScanPhase.ResolvingPaths, reported[1].Phase);
         Assert.AreEqual(5L, reported[1].RecordsScanned);
     }
 
@@ -90,16 +82,15 @@ public class MftScanProgressTests
     {
         MftProgressParseFixture.ConfigureSingleRecordParse(callback =>
         {
-            callback?.Invoke(MftScanPhase.Parsing, 1, 10, 15.0, IntPtr.Zero);
+            callback?.Invoke(1, 10, 15.0, IntPtr.Zero);
         });
 
         var throwingProgress = new SynchronousProgress<MftScanProgress>(
             _ => throw new InvalidOperationException("Simulated UI progress failure"));
 
         using var volume = MftVolume.Open("C");
-        using var result = volume.StreamRecords(null, MatchFlags.None, throwingProgress, null, CancellationToken.None);
+        using var result = volume.StreamRecords(false, throwingProgress, null, CancellationToken.None);
 
         Assert.AreEqual(1, result.ToArray().Length, "Parse must complete normally despite exception in progress handler");
     }
-
 }

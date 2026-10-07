@@ -111,7 +111,6 @@ public class SyntheticConversionTests
         Assert.AreEqual(31UL, record.RecordNumber);
         Assert.AreEqual(30UL, record.ParentRecordNumber);
         Assert.AreEqual("a.txt", record.FileName);
-        Assert.IsNull(record.FullPath);
         Assert.IsTrue(record.IsDirectory);
         Assert.IsFalse(record.InUse);
         Assert.IsFalse(record.SizeKnown);

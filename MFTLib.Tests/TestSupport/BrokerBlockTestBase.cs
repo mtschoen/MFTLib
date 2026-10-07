@@ -30,7 +30,7 @@ public abstract class BrokerBlockTestBase
     }
 
     internal static MftRecord Record(ulong recordNumber, string name, ushort flags = 1) =>
-        new(recordNumber, 5, new MftRecordFields(flags), name, null);
+        new(recordNumber, 5, new MftRecordFields(flags), name);
 
     internal static BlockScanTarget Target(uint volumeSerial = 123) => TestBlockSections.Target(volumeSerial);
 

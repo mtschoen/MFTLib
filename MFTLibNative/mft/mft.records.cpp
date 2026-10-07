@@ -3,8 +3,6 @@
     #error "mft.records.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
-#include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -17,33 +15,6 @@
 #include "mft.internal.h"
 
 namespace {
-
-bool FileNameMatches(const WCHAR* name, uint8_t nameLen, const FilterSpec& filter) {
-#ifdef _WIN32
-    if ((filter.flags & MATCH_FLAG_EXACT_MATCH) != 0U) {
-        if (nameLen != filter.length) {
-            return false;
-        }
-        return _wcsnicmp(name, filter.text, nameLen) == 0;
-    }
-    if ((filter.flags & MATCH_FLAG_CONTAINS) != 0U) {
-        if (filter.length > nameLen) {
-            return false;
-        }
-        for (uint16_t i = 0; i <= nameLen - filter.length; i++) {
-            if (_wcsnicmp(name + i, filter.text, filter.length) == 0) {
-                return true;
-            }
-        }
-        return false;
-    }
-#else
-    (void)name;
-    (void)nameLen;
-    (void)filter;
-#endif
-    return false;
-}
 
 struct StandardInformationValues {
     uint32_t fileAttributes = 0;
@@ -169,16 +140,15 @@ bool ScanRecordAttributes(PFILE_RECORD_SEGMENT_HEADER record, ParseGeometry geom
     return true;
 }
 
-// Scan one eligible base record. If it has a validated non-DOS
-// FileName that passes the filter, fill *outEntry and return true. Side effect:
-// stores the name into the path-lookup table when one is provided.
+// Scan one eligible base record. If it has a validated non-DOS FileName, fill *outEntry
+// and return true. A freed base record is eligible only when the scan includes freed rows.
 bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext& scan, ParsedEntry* outEntry) {
     auto* rec = reinterpret_cast<PFILE_RECORD_SEGMENT_HEADER>(recPtr);
 
     if (rec->MultiSectorHeader.Magic != kFileRecordMagic) {
         return false;
     }
-    if ((rec->Flags & kRecordInUse) == 0 && (scan.filter.flags & MATCH_FLAG_INCLUDE_FREED) == 0) {
+    if ((rec->Flags & kRecordInUse) == 0 && !scan.includeFreed) {
         return false;
     }
 
@@ -213,14 +183,6 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
     uint64_t parent = static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberLowPart) |
                       (static_cast<uint64_t>(nameAttr->ParentDirectory.SegmentNumberHighPart) << 32);
 
-    if ((scan.lookup != nullptr) && recordIndex < scan.totalRecords) {
-        scan.lookup->storeName(recordIndex, *rec, *nameAttr);
-    }
-
-    if ((scan.filter.text != nullptr) && !FileNameMatches(nameAttr->FileName, nameAttr->FileNameLength, scan.filter)) {
-        return false;
-    }
-
     outEntry->recordNumber = recordIndex;
     outEntry->parentRecordNumber = parent;
     outEntry->fileAttributes = attributes.standardInformation.present ? attributes.standardInformation.fileAttributes
@@ -233,97 +195,6 @@ bool ScanRecordForEntry(uint8_t* recPtr, uint64_t recordIndex, const ScanContext
     outEntry->nameLength = nameAttr->FileNameLength;
     return true;
 }
-
-// A freed record's path is trusted one hop at a time: the parent must be a validated
-// directory whose stored sequence matches the child's reference, or, when the parent
-// was freed too, is one higher, since NTFS bumps the sequence when it frees a record.
-bool TrustsParentHop(const PathLookup& lookup, uint64_t child, uint64_t parent, uint64_t totalRecords) {
-    if (parent >= totalRecords) {
-        return false;
-    }
-    const uint8_t parentFlags = lookup.recordFlags[parent];
-    if (parentFlags == PathLookup::kMissingRecord || (parentFlags & PathLookup::kDirectory) == 0) {
-        return false;
-    }
-    const uint16_t referencedSequence = lookup.parentSequenceNumbers[child];
-    const uint16_t storedSequence = lookup.sequenceNumbers[parent];
-    if (storedSequence == referencedSequence) {
-        return true;
-    }
-    return (parentFlags & PathLookup::kInUse) == 0 && storedSequence == static_cast<uint16_t>(referencedSequence + 1U);
-}
-
-bool IsValidatedInUse(const PathLookup& lookup, uint64_t recordIndex) {
-    const uint8_t flags = lookup.recordFlags[recordIndex];
-    return flags != PathLookup::kMissingRecord && (flags & PathLookup::kInUse) != 0;
-}
-
-}  // namespace
-
-bool ResolvePath(uint64_t recordIndex, const PathLookup& lookup, uint64_t totalRecords, std::vector<uint16_t>& path) {
-    path.clear();
-    struct Component {
-        const uint16_t* nameUnits;
-        uint8_t len;
-    };
-    std::array<Component, 128> stack = {};
-    int depth = 0;
-    uint64_t current = recordIndex;
-    std::array<uint64_t, 128> visited = {};
-    int visitCount = 0;
-    const bool freedOrigin = recordIndex < totalRecords && lookup.isValidatedFreed(recordIndex);
-
-    while (current != 5 && current < totalRecords && depth < 128) {
-        if (std::find(visited.begin(), visited.begin() + visitCount, current) != visited.begin() + visitCount) {
-            break;
-        }
-        visited[visitCount++] = current;
-
-        if (lookup.nameLens[current] == 0 || (!freedOrigin && !IsValidatedInUse(lookup, current))) {
-            break;
-        }
-        stack[depth].nameUnits = reinterpret_cast<const uint16_t*>(lookup.namePool + lookup.nameOffsets[current]);
-        stack[depth].len = lookup.nameLens[current];
-        depth++;
-        const uint64_t parent = lookup.parents[current];
-        if (freedOrigin && !TrustsParentHop(lookup, current, parent, totalRecords)) {
-            return false;
-        }
-        current = parent;
-    }
-
-    if (freedOrigin && current != 5) {
-        return false;
-    }
-
-    if (depth == 0) {
-        return true;
-    }
-
-    auto totalUnits = static_cast<uint64_t>(depth - 1);
-    for (int i = 0; i < depth; i++) {
-        totalUnits += stack[i].len;
-    }
-
-    if (totalUnits > MAX_NTFS_PATH_UNITS) {
-        return false;
-    }
-
-    path.resize(static_cast<size_t>(totalUnits));
-    size_t pos = 0;
-    for (int i = depth - 1; i >= 0; i--) {
-        if (pos > 0) {
-            path[pos++] = static_cast<uint16_t>(L'\\');
-        }
-        const uint16_t* src = stack[i].nameUnits;
-        uint8_t len = stack[i].len;
-        memcpy(path.data() + pos, src, static_cast<size_t>(len) * sizeof(uint16_t));
-        pos += len;
-    }
-    return true;
-}
-
-namespace {
 
 struct CapacityMessages {
     const wchar_t* overflow;

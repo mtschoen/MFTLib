@@ -10,25 +10,11 @@ public class MftFixtureTests
 
     string _fixturePath = null!;
 
-    internal static bool SkipOnNonWindows()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return false;
-        }
-
-        Assert.Inconclusive("MftVolume.ParseMFTFromFile binds a Windows-only native export.");
-        return true;
-    }
-
     [TestInitialize]
     public void Initialize()
     {
         _fixturePath = Path.Combine(Path.GetTempPath(), $"mftlib-fixture-{Guid.NewGuid():N}.mft");
-        if (OperatingSystem.IsWindows())
-        {
-            MftVolume.GenerateFixtureMFT(_fixturePath);
-        }
+        MftVolume.GenerateFixtureMFT(_fixturePath);
     }
 
     [TestCleanup]
@@ -43,11 +29,6 @@ public class MftFixtureTests
     [TestMethod]
     public void Fixture_Parses_EightInUseRecords()
     {
-        if (SkipOnNonWindows())
-        {
-            return;
-        }
-
         var records = DirectParse.ParseFile(_fixturePath, out _);
         Assert.AreEqual(8, records.Length);
         CollectionAssert.AreEquivalent(
@@ -58,11 +39,6 @@ public class MftFixtureTests
     [TestMethod]
     public void Fixture_NamesAndParents_MatchTheAuthoredTable()
     {
-        if (SkipOnNonWindows())
-        {
-            return;
-        }
-
         var records = DirectParse.ParseFile(_fixturePath, out _)
             .ToDictionary(record => record.RecordNumber);
         Assert.AreEqual("resident.txt", records[6].FileName);
@@ -76,11 +52,6 @@ public class MftFixtureTests
     [TestMethod]
     public void Fixture_ModifiedTime_ComesFromStandardInformation()
     {
-        if (SkipOnNonWindows())
-        {
-            return;
-        }
-
         var records = DirectParse.ParseFile(_fixturePath, out _)
             .ToDictionary(record => record.RecordNumber);
         foreach (var (recordNumber, record) in records)
@@ -94,11 +65,6 @@ public class MftFixtureTests
     [TestMethod]
     public void Fixture_ResidentData_SizeIsTheValueLength()
     {
-        if (SkipOnNonWindows())
-        {
-            return;
-        }
-
         var records = DirectParse.ParseFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
         Assert.AreEqual(37L, records[6].Size);
         Assert.IsTrue(records[6].SizeKnown);
@@ -107,11 +73,6 @@ public class MftFixtureTests
     [TestMethod]
     public void Fixture_NonResidentData_SizeComesFromTheLowestVcnZeroRun()
     {
-        if (SkipOnNonWindows())
-        {
-            return;
-        }
-
         var records = DirectParse.ParseFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
         Assert.AreEqual(1234567L, records[7].Size);
         // Record 10's first $DATA has a nonzero lowest virtual cluster number, whose file
@@ -123,11 +84,6 @@ public class MftFixtureTests
     [TestMethod]
     public void Fixture_NegativeNonResidentDataSize_PreservesRecordWithUnknownSize()
     {
-        if (SkipOnNonWindows())
-        {
-            return;
-        }
-
         var records = DirectParse.ParseFile(_fixturePath, out _)
             .ToDictionary(record => record.RecordNumber);
         var record = records[11];
@@ -140,11 +96,6 @@ public class MftFixtureTests
     [TestMethod]
     public void Fixture_DirectoriesAndMissingData_ReportZeroWithTheRightKnownFlag()
     {
-        if (SkipOnNonWindows())
-        {
-            return;
-        }
-
         var records = DirectParse.ParseFile(_fixturePath, out _).ToDictionary(r => r.RecordNumber);
         Assert.AreEqual(0L, records[8].Size);
         Assert.IsTrue(records[8].SizeKnown, "a directory has a known size of zero");

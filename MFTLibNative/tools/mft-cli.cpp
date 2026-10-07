@@ -18,8 +18,11 @@
 
 #include "mft_api.h"
 
-extern "C" MftParseResult* ParseMFTFromFileUtf8(const char* filePath, const wchar_t* filter, uint32_t matchFlags,
-                                                uint32_t bufferSizeRecords);
+extern "C" MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo* info);
+extern "C" MftParseResult* ParseMftDumpInput(const MftDumpInput* input, uint32_t bufferSizeRecords,
+                                             const MftParseControl* control, MftProgressCallback callback,
+                                             void* context);
+extern "C" void CloseMftDumpInput(MftDumpInput* input);
 extern "C" void FreeMftResult(MftParseResult* result);
 
 namespace {
@@ -107,10 +110,9 @@ void print_entry(const MftCompactEntry& entry, const std::string& name) {
 template <typename Predicate>
 uint64_t print_entries(const MftParseResult* parseResult, uint64_t maximumCount, const Predicate& matches) {
     uint64_t shown = 0;
-    const auto* pool = parseResult->pathStrings != nullptr ? parseResult->pathStrings : parseResult->entryStrings;
-    const auto* entries = parseResult->pathEntries != nullptr ? parseResult->pathEntries : parseResult->entries;
+    const auto* pool = parseResult->entryStrings;
     for (uint64_t i = 0; i < parseResult->usedRecords && shown < maximumCount; i++) {
-        const auto& entry = entries[i];
+        const auto& entry = parseResult->entries[i];
         if (entry.stringLength == 0 || pool == nullptr) {
             continue;
         }
@@ -158,7 +160,15 @@ int main(int argc, char** argv) {
     }
 
     std::printf("Parsing %s ...\n", path);
-    MftParseResult* parseResult = ParseMFTFromFileUtf8(path, nullptr, 0, kBufferSizeRecords);
+    MftDumpInputInfo info{};
+    MftDumpInput* input = OpenMftDumpInput(path, &info);
+    if (input == nullptr) {
+        std::string msg = wide_to_utf8(info.errorMessage, 256);
+        std::fprintf(stderr, "FAIL: %s\n", msg.c_str());
+        return 1;
+    }
+    MftParseResult* parseResult = ParseMftDumpInput(input, kBufferSizeRecords, nullptr, nullptr, nullptr);
+    CloseMftDumpInput(input);
     if (parseResult == nullptr) {
         std::fprintf(stderr, "FAIL: parser returned null\n");
         return 1;

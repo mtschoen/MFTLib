@@ -18,9 +18,9 @@ public partial class JournalBrokerHostTests
 
     static readonly MftRecord[] DirectoryIndexSampleRecords =
     [
-        new(100, 5, new MftRecordFields(3, FileAttributes.Directory), "repo", null),
-        new(101, 100, new MftRecordFields(1, FileAttributes.Archive), ".git", null),
-        new(102, 100, new MftRecordFields(1, FileAttributes.Archive), "file.txt", null)
+        new(100, 5, new MftRecordFields(3, FileAttributes.Directory), "repo"),
+        new(101, 100, new MftRecordFields(1, FileAttributes.Archive), ".git"),
+        new(102, 100, new MftRecordFields(1, FileAttributes.Archive), "file.txt")
     ];
 
     static JournalBrokerHost ScanHost(
@@ -47,7 +47,7 @@ public partial class JournalBrokerHostTests
 
     static MftRecord ScanRecord(ulong recordNumber, string name, ushort flags = 1)
     {
-        return new MftRecord(recordNumber, 5, new MftRecordFields(flags, FileAttributes.Archive, 100), name, null);
+        return new MftRecord(recordNumber, 5, new MftRecordFields(flags, FileAttributes.Archive, 100), name);
     }
 
     static UsnJournalEntry ScanEntry()

@@ -238,8 +238,8 @@ internal sealed class CrossDriveScenario : IAsyncDisposable
         MftRecordScanOptions scanOptions, CancellationToken cancellationToken)
     {
         var scanNumber = _scans.AddOrUpdate(drive[0], 1, (_, count) => count + 1);
-        yield return [new MftRecord(5, 5, new MftRecordFields(3), ".", null),
-            new MftRecord(20, 5, new MftRecordFields(1), $"scan-{drive}-{scanNumber}.txt", null)];
+        yield return [new MftRecord(5, 5, new MftRecordFields(3), "."),
+            new MftRecord(20, 5, new MftRecordFields(1), $"scan-{drive}-{scanNumber}.txt")];
     }
 
     Task HoldWrites(string pipeName) =>

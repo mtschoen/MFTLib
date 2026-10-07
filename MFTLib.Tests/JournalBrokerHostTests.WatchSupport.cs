@@ -29,7 +29,7 @@ public partial class JournalBrokerHostTests
 
     static MftRecord WatchRecord(ulong recordNumber, string name, ushort flags = 1)
     {
-        return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name, null);
+        return new MftRecord(recordNumber, 5, new MftRecordFields(flags), name);
     }
 
     static UsnJournalEntry WatchEntry()
