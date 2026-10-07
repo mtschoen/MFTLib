@@ -10,7 +10,7 @@ partial class SampleHost
     async Task WatchDriveAsync(FileIndex index, char letter, int seconds, CancellationToken cancellationToken)
     {
         var changes = 0;
-        index.WatchStateChanged += state => _writeLine($"  watch {state.DriveLetter}: {state.WatchCatchUpState} (version {state.WatchStateVersion})");
+        index.WatchStateChanged += state => _writeLine($"  watch {state.DriveLetter}: {state.WatchCatchUpState} (version {state.WatchStateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
         index.WatchFaulted += fault => _writeLine($"  watch fault {fault.DriveLetter}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.RecoveryStopped})" : string.Empty)}");
         index.Changed += change =>
         {

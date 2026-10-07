@@ -1,7 +1,7 @@
 # Elevation: attended and unattended runs
 
-Reading a volume's MFT needs administrator rights, so some sample verbs relaunch themselves elevated and
-Windows shows a UAC consent prompt. There are exactly two ways to work, and you pick by whether the owner is at
+Reading a volume's MFT needs administrator rights, so a Direct sample scan of a live volume relaunches itself elevated, a Watch sample verb launches
+the elevated broker, and Windows shows a UAC consent prompt. There are exactly two ways to work, and you pick by whether the owner is at
 the desktop.
 
 A full `dotnet test` run raises no prompt in either mode. The only tests that reach a sample's entry point
@@ -14,7 +14,7 @@ process is not elevated.
 Run a sample normally. This is allowed and expected, including from a lane running a smoke test.
 
 ```powershell
-.\SampleProgram.Watch\bin\x64\Release\net10.0\SampleProgram.Watch.exe scan-drive C:
+.\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe search C --name notes
 ```
 
 Before the UAC prompt, a system-modal heads-up dialog (with a beep) names SampleProgram, says a UAC prompt will
@@ -23,9 +23,10 @@ the manual-elevation instructions. A dismissal within 0.75 seconds is treated as
 dialog is shown again. A dialog nobody answers for five minutes counts as Cancel, so a run left unattended does not
 hang: no UAC prompt, the manual-elevation fallback, exit code 1.
 
-`scan-drive` stays unelevated and the broker it launches asks for elevation, so an attended, unelevated
-`scan-drive` run shows the same heads-up dialog before the broker launch; Cancel or the five-minute timeout
-skips the launch with the same fallback text and exit code 1.
+A Watch verb that opens an index (`scan-drive`, `watch`, `rescan`, `journal`) stays unelevated and the broker it
+launches asks for elevation, so an attended, unelevated run shows the same heads-up dialog before the broker launch;
+Cancel or the five-minute timeout skips the launch with the same fallback text and exit code 1. `cache` and
+`elevation-status` touch no volume and show no dialog, and neither does Direct with `--source dump`.
 
 The heads-up gate precedes creation of the scan's `BrokerSession`. One session serves the
 whole run and launches its broker only when a drive needs a scan; offline drives do not
@@ -47,7 +48,7 @@ export MFTLIB_SAMPLE_UNATTENDED=1        # bash
 
 With the value exactly `1` and a process that is not elevated, the sample prints one line saying it is running
 unattended and elevation was skipped, prints the manual-elevation fallback, and exits with code 1, the same code as a
-declined prompt. It shows no dialog and requests no elevation, including for `scan-drive`, whose broker would
+declined prompt. It shows no dialog and requests no elevation, including for the Watch verbs, whose broker would
 otherwise prompt. An already elevated process ignores the variable. Any other value, or no variable, means the attended
 behavior. The variable is read by the samples only; the MFTLib library has no such switch.
 

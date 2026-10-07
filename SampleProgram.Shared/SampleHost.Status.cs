@@ -46,7 +46,7 @@ partial class SampleHost
             }
 
             _lastPhase = value.Phase;
-            writeLine($"  {value.Phase}: {value.RowsWritten} rows");
+            writeLine($"  {value.Phase}: {value.RowsWritten} rows{(value.TotalRows is { } total ? $" of {total}" : string.Empty)}{(value.Outcome is { } outcome ? $" ({outcome})" : string.Empty)}");
         }
     }
 }
