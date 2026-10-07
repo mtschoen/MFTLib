@@ -66,7 +66,7 @@ public sealed record DriveStatus
     /// </summary>
     public bool CompactionNeeded { get; init; }
 
-    /// <summary>True only for an MFT-backed drive with a block and a live-watch cursor.</summary>
+    /// <summary>True only for an MFT-backed drive with a block whose source offers a watch source; false for a dump or a source without one.</summary>
     public bool WatchSupported { get; init; }
 
     /// <summary>

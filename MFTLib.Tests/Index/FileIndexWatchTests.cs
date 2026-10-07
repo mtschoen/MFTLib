@@ -99,7 +99,7 @@ public class FileIndexWatchTests
     public async Task StartWatchingAsync_OnAMixedIndexWithoutASource_ThrowsInvalidOperation()
     {
         Assert.IsFalse(_index.Drives[1].WatchSupported);
-        Assert.IsTrue(_index.Drives[0].WatchSupported);
+        Assert.IsFalse(_index.Drives[0].WatchSupported, "no source offers a watch source");
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => _index.StartWatchingAsync('T', CancellationToken.None));
     }

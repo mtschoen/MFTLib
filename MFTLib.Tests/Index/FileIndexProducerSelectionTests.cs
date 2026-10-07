@@ -315,14 +315,14 @@ public class FileIndexProducerSelectionTests
 
         Assert.AreEqual(2, invocationCount);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
-        Assert.IsTrue(index.Drives[0].WatchSupported);
+        Assert.IsFalse(index.Drives[0].WatchSupported, "the source offers no watch source");
         Assert.AreEqual(8192L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(4096L, previousRoot.DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(_treeRoot, previousRoot.Path);
     }
 
     [TestMethod]
-    public async Task OpenAsync_MftWithAFakeProducer_OpensAnMftProducedDriveWithWatchSupport()
+    public async Task OpenAsync_MftWithAFakeProducer_OpensAnMftProducedDrive()
     {
         Task<MftBlockProduceResult> FakeProducer(MftBlockProduceRequest request, CancellationToken _)
         {
@@ -334,7 +334,7 @@ public class FileIndexProducerSelectionTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
-        Assert.IsTrue(index.Drives[0].WatchSupported);
+        Assert.IsFalse(index.Drives[0].WatchSupported, "the source offers no watch source");
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
     }
 
@@ -484,7 +484,7 @@ public class FileIndexProducerSelectionTests
         Assert.IsNull(status.MftProducerFailureMessage);
         Assert.AreEqual(BlockSource.ProducedByScan, status.BlockSource);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
-        Assert.IsTrue(status.WatchSupported);
+        Assert.IsFalse(status.WatchSupported, "the source offers no watch source");
         Assert.AreEqual(4096L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
     }
 

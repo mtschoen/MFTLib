@@ -12,7 +12,8 @@
       watching.`, the same text a source with no watch source gives, and batched start, stop and catch-up report
       `NotApplicable` with no failure. Opening validates the options before any cache path is resolved or created: exactly one drive with the identity's
       letter, root `dump:/{DRIVE}`, `VolumeSerial` zero, `NoCache`, no cache directory, tag or cache-only open, and
-      `ProducerPolicy.Mft`; a dump block is never written to or adopted from a cache.
+      `ProducerPolicy.Mft`; a dump block is never written to or adopted from a cache. `DriveStatus.WatchSupported` is false for
+      a dump drive and for any drive whose source has no watch source, the same fact a watch start's refusal uses.
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
       compares exactly, not as a wildcard. Block format 3 stores the two values

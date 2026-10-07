@@ -63,7 +63,7 @@ public partial class SyntheticBlockTests
                 Reason = SyntheticJournalReason.FileDelete | SyntheticJournalReason.Close
             }], journalIdentifier: 0, nextUpdateSequenceNumber: 0);
 
-        Assert.IsTrue(index.Drives.Single().WatchSupported);
+        Assert.IsFalse(index.Drives.Single().WatchSupported, "a cache-only open has no watch source");
         Assert.IsTrue(zebra.IsDeleted);
         Assert.AreEqual(0, index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact)).Count);
         Assert.AreEqual(1, index.Search(new SearchQuery("keep.txt", NameMatchMode.Exact)).Count);

@@ -221,7 +221,45 @@ public class MftDumpApplicabilityTests
 
         Assert.AreEqual("dump:/D/documents", index.Find("dump:/D/documents")!.Value.Path);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-        Assert.IsFalse(index.Drives.Single().WatchSupported, "a rescanned dump drive does not support watching");
+        AssertNoWatchStatus(index.Drives.Single());
+    }
+
+    [TestMethod]
+    public async Task WatchSupported_ASourceWithNoWatchSourceIsFalseAndOneWithAWatchSourceIsTrue()
+    {
+        foreach (var (watchSource, expected) in new (IIndexWatchSource? Source, bool Expected)[]
+                 {
+                     (null, false), (new NullWatchSource(), true)
+                 })
+        {
+            var directories = new OwnedIndexDirectories();
+            Directory.CreateDirectory(directories.TreeRoot);
+            try
+            {
+                await using var index = await FileIndex.OpenAsync(new FileIndexOptions
+                {
+                    Drives = [new IndexedDrive('T', directories.TreeRoot, 0)],
+                    NoCache = true,
+                    CacheDirectory = directories.CacheDirectory,
+                    MftSource = new MftIndexSource(MftDumpIndexes.Produce, watchSource)
+                }, CancellationToken.None);
+
+                Assert.AreEqual(expected, index.Drives.Single().WatchSupported);
+                await index.RescanAsync('T', CancellationToken.None);
+                Assert.AreEqual(expected, index.Drives.Single().WatchSupported);
+            }
+            finally
+            {
+                directories.Dispose();
+            }
+        }
+    }
+
+    static void AssertNoWatchStatus(DriveStatus status)
+    {
+        Assert.IsFalse(status.WatchSupported);
+        Assert.IsFalse(status.WatchRequested);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, status.WatchCatchUpState);
     }
 
     static FileIndexOptions WithDrives(params IndexedDrive[] drives) =>

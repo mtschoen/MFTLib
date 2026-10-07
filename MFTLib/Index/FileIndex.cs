@@ -381,7 +381,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             header.IsCompactionNeeded,
             header.ScanTimestampUtc)
         {
-            WatchSupported = driveBlock.ProducerKind == ProducerKind.Mft && !driveBlock.IsMftDump,
+            WatchSupported = driveBlock.ProducerKind == ProducerKind.Mft && WatchSourceOrNull is not null,
             CacheSlot = _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             AccessDeniedSubtreeCount = _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             SkippedRecordCount = _skippedRecordCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),

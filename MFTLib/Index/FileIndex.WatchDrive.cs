@@ -69,6 +69,12 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
+    ///     The watch source a start uses, or null when this index's source offers none (no source, a source
+    ///     without one, or a dump); the one fact both the start's refusal and the drive status derive from.
+    /// </summary>
+    IIndexWatchSource? WatchSourceOrNull => _options.MftSource?.WatchSource;
+
+    /// <summary>
     ///     A test seam: awaited with the drive letter by a rescan's or a recovery's restart just
     ///     before it registers the drive's new instance.
     /// </summary>
@@ -83,7 +89,7 @@ public sealed partial class FileIndex
     {
         ThrowIfCancelledByDisposal(cancellationToken);
         var driveLetter = runtime.DriveLetter;
-        var source = _options.MftSource?.WatchSource ?? throw new InvalidOperationException(
+        var source = WatchSourceOrNull ?? throw new InvalidOperationException(
             MftIndexSource.FormatUnavailable(driveLetter,
                 _options.MftSource?.UnavailableReason ?? MftIndexSource.NoWatchReason));
 
