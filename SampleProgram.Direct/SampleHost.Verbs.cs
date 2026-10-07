@@ -23,7 +23,7 @@ partial class SampleHost
                 WriteTree(start, 1, parsed.Depth, cancellationToken);
                 break;
             case DirectVerb.Open:
-                OpenFile(Resolve(index, parsed.Path!, cancellationToken));
+                OpenFile(Resolve(index, parsed.Path ?? throw new ArgumentException("open needs a path."), cancellationToken));
                 break;
             case DirectVerb.Largest:
                 var under = ResolveOptional(index, parsed.Under, cancellationToken);

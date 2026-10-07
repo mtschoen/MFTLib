@@ -31,6 +31,7 @@ partial class SampleHost
     {
         try
         {
+            // aislop-ignore-next-line csharp-sync-over-async -- the console entry point has no synchronization context, so blocking cannot deadlock
             RunVerbAsync(parsed, CancellationToken.None).GetAwaiter().GetResult();
             return 0;
         }
@@ -47,7 +48,7 @@ partial class SampleHost
     static MftIndexSource CreateSourceNative(DirectArguments parsed)
     {
         return parsed.Source is SourceKind.Dump
-            ? MftIndexSources.FromMftDumpFile(parsed.DumpFile!, char.ToUpperInvariant(parsed.Drive[0]))
+            ? MftIndexSources.FromMftDumpFile(parsed.DumpFile ?? throw new ArgumentException("A dump source needs a dump file."), char.ToUpperInvariant(parsed.Drive[0]))
             : MftIndexSources.FromLocalVolumes(ScanOptions(parsed));
     }
 

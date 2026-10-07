@@ -85,7 +85,7 @@ partial class SampleHost
             switch (parsed.Mode)
             {
                 case ProgramMode.Watch:
-                    await WatchDriveAsync(index, driveLetter, parsed.Seconds, cancellationToken).ConfigureAwait(false);
+                    await WatchDriveAsync(index, parsed.Seconds, cancellationToken).ConfigureAwait(false);
                     break;
                 case ProgramMode.Rescan:
                     await index.RescanAsync(driveLetter, cancellationToken).ConfigureAwait(false);
