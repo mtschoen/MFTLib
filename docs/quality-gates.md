@@ -48,7 +48,7 @@ It deliberately does NOT use `actions/setup-node`
 build step calls `scripts/build-windows.ps1`, the same Windows recipe used by coverage and `init.ps1 -Build`. The shared script requires amd64 MSBuild; a 32-bit binary cannot resolve legacy SYSTEM-profile checkout paths. See the traps in
 `~/schoen-lab/packages/local_ci/docs/project-ci-setup.md`. `aislop / quality-gate
 (pull_request)` is one of the required status checks in the branch protection
-rule on `main`, alongside `test / windows` and `test / linux`, so a failing gate
+rule on `main`, alongside `test / windows (pull_request)`, `test / linux (pull_request)` and `test / linux-package (pull_request)`, so a failing gate
 blocks the merge.
 
 The global pin is a commit-ish, not a version. Do not assume a tag: the `v0.14.1`

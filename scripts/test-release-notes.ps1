@@ -14,6 +14,12 @@ $function = $releaseScript.Find({
 }, $false)
 Assert-True ($null -ne $function) 'Release script defines Get-ReleaseNotes.'
 . ([scriptblock]::Create($function.Extent.Text))
+$writeFunction = $releaseScript.Find({
+    param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Write-ReleaseNotesFile'
+}, $false)
+Assert-True ($null -ne $writeFunction) 'Release script defines Write-ReleaseNotesFile.'
+. ([scriptblock]::Create($writeFunction.Extent.Text))
 
 $changelogPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'CHANGELOG.md'
 $notes = Get-ReleaseNotes -ChangelogPath $changelogPath -Version '0.3.0'
@@ -27,4 +33,16 @@ catch { $failure = $_.Exception.Message }
 Assert-True ($null -ne $failure) 'A missing release heading fails extraction.'
 Assert-True ($failure.Contains("## missing-version") -and $failure.Contains('missing')) 'Missing-heading error identifies the release.'
 
-Write-Host 'Release notes regressions passed: 5 checks.'
+$notesFile = [IO.Path]::GetTempFileName()
+try {
+    Write-ReleaseNotesFile -Path $notesFile -Text $notes
+    $bytes = [IO.File]::ReadAllBytes($notesFile)
+    $hasByteOrderMark = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+    Assert-True (-not $hasByteOrderMark) 'The written notes file has no UTF-8 byte order mark.'
+    Assert-True ($bytes[0] -eq [byte][char]'#') 'The written notes file starts with the release heading.'
+}
+finally {
+    Remove-Item -LiteralPath $notesFile -Force
+}
+
+Write-Host 'Release notes regressions passed.'

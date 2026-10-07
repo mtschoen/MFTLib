@@ -30,8 +30,7 @@ Run these steps at `<release commit>`; pins and measurements belong in the check
 4. Read the printed glibc and libstdc++ symbol versions. Edit README, CHANGELOG and
    [Linux package](linux-package.md) only if the measured floors differ from glibc
    2.33 and GLIBCXX_3.4.22. Repeat validation at the resulting release commit.
-5. **Owner only:** add `test / linux-package (pull_request)` to branch protection.
-6. **Owner only:** publish from the validated release commit:
+5. **Owner only:** publish from the validated release commit:
 
    ```powershell
    .\scripts\release.ps1 -Publish
@@ -42,7 +41,7 @@ Run these steps at `<release commit>`; pins and measurements belong in the check
    attaches both packages and symbol packages, using only the extracted `## 0.3.0`
    CHANGELOG section as its notes. A missing version heading fails before publishing;
    the temporary notes file is deleted after release creation.
-7. **Owner only:** retire consumer bridges under
+6. **Owner only:** retire consumer bridges under
    [file-wizard issue 288 (NuGet bridge retirement)](https://gitea.fleet.sticktoitive.net/schoen/file-wizard/issues/288)
    and [git-wizard issue 134 (NuGet bridge retirement)](https://gitea.fleet.sticktoitive.net/schoen/git-wizard/issues/134).
    Their submodule recipe is in [consumer submodule](consumer-submodule.md).

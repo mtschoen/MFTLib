@@ -33,6 +33,13 @@ function Get-ReleaseNotes {
     return $lines -join "`n"
 }
 
+# Writes the notes as UTF-8 without a byte order mark on every PowerShell host.
+function Write-ReleaseNotesFile {
+    param([string] $Path, [string] $Text)
+
+    [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
+}
+
 . "$PSScriptRoot\Test-ReleasePackages.ps1"
 $repoRoot = Resolve-Path "$PSScriptRoot\.."
 Set-Location $repoRoot
@@ -304,7 +311,7 @@ Write-Host ""
 Write-Host "Creating GitHub release..." -ForegroundColor Cyan
 $releaseNotesPath = [IO.Path]::GetTempFileName()
 try {
-    Set-Content -LiteralPath $releaseNotesPath -Value $releaseNotes -Encoding utf8
+    Write-ReleaseNotesFile -Path $releaseNotesPath -Text $releaseNotes
     gh release create $tag $mftLibNupkg $mftLibSnupkg $testExtensionsNupkg $testExtensionsSnupkg --title $tag --notes-file $releaseNotesPath
     if ($LASTEXITCODE -ne 0) {
         Write-Host "GitHub release creation failed." -ForegroundColor Red
