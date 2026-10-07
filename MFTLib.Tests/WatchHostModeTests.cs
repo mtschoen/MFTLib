@@ -190,7 +190,7 @@ public class WatchHostModeTests
         var elevationTimeout = TimeSpan.Zero;
         var scanner = new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (relaunchArguments, timeout) =>
@@ -229,7 +229,7 @@ public class WatchHostModeTests
         IReadOnlyList<string>? relaunchedWith = null;
         var scanner = new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (relaunchArguments, _) =>

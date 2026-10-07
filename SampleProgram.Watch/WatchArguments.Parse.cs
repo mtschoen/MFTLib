@@ -1,8 +1,9 @@
 using System.Diagnostics.CodeAnalysis;
+using MFTLib;
 
 namespace SampleProgram.Watch;
 
-// The command-line parser: the mode name, then the drives.
+// The command-line parser: the mode name, then the drives and the mode's flags.
 internal sealed partial record WatchArguments
 {
     internal static bool TryParse(string[] arguments, out WatchArguments parsed,
@@ -16,27 +17,42 @@ internal sealed partial record WatchArguments
             start = 1;
         }
 
-        var drives = new List<string>();
-        for (var index = start; index < arguments.Length; index++)
+        var reader = new ArgumentReader(arguments.Skip(start));
+        var keep = reader.Text("--keep-name");
+        var profile = reader.Text("--profile");
+        var candidate = new WatchArguments(mode, [])
         {
-            var argument = arguments[index];
-            if (argument.StartsWith("--", StringComparison.Ordinal))
-            {
-                parsed = new WatchArguments(ProgramMode.ScanDrive, [DefaultDrive]);
-                error = $"Unknown option {argument}.";
-                return false;
-            }
-
-            drives.Add(argument);
+            KeepNames = keep?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            Profile = profile?.ToLowerInvariant() switch { "directory-index" => BrokerScanProfile.DirectoryIndex, _ => BrokerScanProfile.Full },
+            Seconds = (int?)reader.Number("--seconds") ?? DefaultSeconds,
+            MaximumSize = reader.Number("--maximum-size"),
+            AllocationDelta = reader.Number("--allocation-delta"),
+            CacheDirectory = reader.Text("--cache-directory"),
+            Clear = reader.Flag("--clear")
+        };
+        var drives = reader.Positionals();
+        error = reader.Error ?? Validate(candidate, profile);
+        if (error is not null)
+        {
+            parsed = new WatchArguments(ProgramMode.ScanDrive, [DefaultDrive]);
+            return false;
         }
 
-        if (drives.Count == 0)
-        {
-            drives.Add(DefaultDrive);
-        }
-
-        parsed = new WatchArguments(mode, drives);
-        error = null;
+        var listsDrives = mode is ProgramMode.Cache or ProgramMode.ElevationStatus;
+        parsed = candidate with { Drives = drives.Count == 0 && !listsDrives ? [DefaultDrive] : drives };
         return true;
+    }
+
+    static string? Validate(WatchArguments candidate, string? profile)
+    {
+        return candidate switch
+        {
+            _ when profile is not null && !profile.Equals("full", StringComparison.OrdinalIgnoreCase)
+                && !profile.Equals("directory-index", StringComparison.OrdinalIgnoreCase) => $"Unknown profile {profile}.",
+            { Mode: ProgramMode.Journal } when candidate.MaximumSize.HasValue != candidate.AllocationDelta.HasValue
+                => "journal needs --maximum-size and --allocation-delta together.",
+            { Clear: true, Mode: not ProgramMode.Cache } => "--clear belongs to cache.",
+            _ => null
+        };
     }
 }

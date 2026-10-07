@@ -292,7 +292,7 @@ public class SampleHostElevationNoticeTests
         scanner._acrtIobFunc = _ => IntPtr.Zero;
         scanner._wFreopen = (_, _, _) => IntPtr.Zero;
         scanner._getEnvironmentVariable = Unattended;
-        scanner._requiresElevation = _ => true;
+        scanner._elevationNeed = _ => ElevationNeed.SelfElevate;
         scanner._createBrokerSession = () => throw new IOException("no broker in this test");
 
         var result = scanner.Run(["scan-drive", "T"]);
@@ -508,7 +508,7 @@ public class SampleHostElevationNoticeTests
         var scanner = Scanner(lines, events, answers, messages);
         if (isScanDrive)
         {
-            scanner._requiresElevation = parsed => parsed.RequiresElevation;
+            scanner._elevationNeed = parsed => parsed.Need;
             scanner._canSelfElevate = () => throw new AssertFailedException("scan-drive must not self-elevate.");
             scanner._tryRunElevated = (_, _) => throw new AssertFailedException("scan-drive must not self-elevate.");
             scanner._createBrokerSession = () =>
@@ -535,7 +535,7 @@ public class SampleHostElevationNoticeTests
         // The scanner of a run that must itself be elevated; the scan-drive tests turn that off, as the real scan is.
         return new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _getProcessPath = () => ProcessPath,

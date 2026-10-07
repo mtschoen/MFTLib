@@ -73,8 +73,8 @@ internal sealed class ArgumentReader(IEnumerable<string> arguments)
         return null;
     }
 
-    /// <summary>Returns the positional arguments, or null after recording the first unknown option as the error.</summary>
-    internal IReadOnlyList<string>? Positionals()
+    /// <summary>Returns the positional arguments, after recording the first unknown option as the error.</summary>
+    internal IReadOnlyList<string> Positionals()
     {
         var unknown = _remaining.Find(argument => argument.StartsWith("--", StringComparison.Ordinal));
         if (unknown is not null)
@@ -82,6 +82,6 @@ internal sealed class ArgumentReader(IEnumerable<string> arguments)
             Error ??= $"Unknown option {unknown}.";
         }
 
-        return Error is null ? _remaining : null;
+        return _remaining;
     }
 }

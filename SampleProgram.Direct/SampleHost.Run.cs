@@ -17,12 +17,12 @@ partial class SampleHost
     {
         if (!DirectArguments.TryParse(arguments, out var parsed, out var error))
         {
-            _writeLine(error!);
+            _writeLine(error);
             _writeLine(DirectArguments.Usage);
             return 2;
         }
 
-        var need = parsed!.RequiresElevation ? ElevationNeed.SelfElevate : ElevationNeed.None;
+        var need = parsed.RequiresElevation ? ElevationNeed.SelfElevate : ElevationNeed.None;
         return RunWithElevation(arguments, need, () => RunVerb(parsed));
     }
 
