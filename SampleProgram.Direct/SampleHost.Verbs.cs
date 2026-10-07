@@ -97,12 +97,14 @@ partial class SampleHost
         }
     }
 
-    // A live entry opens through the volume; a dump entry cannot be opened, and the library says so.
+    // Describes the entry, then opens it: a live entry opens through the volume, a dump entry cannot be opened and the library says so.
     void OpenFile(FileEntry entry)
     {
+        var key = entry.RecordKey;
+        _writeLine($"{entry.Path}: record {key.RecordNumber} on {key.DriveLetter} ({key.ProducerKind}), {entry.Attributes}, modified {entry.LastWriteTime:u}, parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
         using var stream = entry.Open(FileAccess.Read);
         var buffer = new byte[16];
         var read = stream.Read(buffer, 0, buffer.Length);
-        _writeLine($"{entry.Path}: {stream.Length} bytes, first {read}: {Convert.ToHexString(buffer, 0, read)}");
+        _writeLine($"{stream.Length} bytes, first {read}: {Convert.ToHexString(buffer, 0, read)}");
     }
 }

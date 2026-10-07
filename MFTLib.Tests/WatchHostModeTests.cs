@@ -99,7 +99,7 @@ public class WatchHostModeTests
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
 
-        await scanner.ScanDrivesThroughBrokerAsync(["C"], CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["C"]), CancellationToken.None);
 
         Assert.IsTrue(lines.Any(line => line.StartsWith("Index holds ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("Catch-up lost: CheckpointTrimmed"));
@@ -113,7 +113,7 @@ public class WatchHostModeTests
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
 
-        await scanner.ScanDrivesThroughBrokerAsync(["C"], CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["C"]), CancellationToken.None);
 
         Assert.IsTrue(lines.Any(line => line.StartsWith("Error on drive C: ", StringComparison.Ordinal) &&
                                         line.Contains("volume unreadable")), string.Join(Environment.NewLine, lines));
@@ -147,7 +147,7 @@ public class WatchHostModeTests
         });
         scanner._resolveDrive = _ => new IndexedDrive('Q', Path.Combine(_directory, "missing-root"), 4242);
 
-        await scanner.ScanDrivesThroughBrokerAsync(["Q"], CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["Q"]), CancellationToken.None);
 
         Assert.AreEqual(0, launches, "An offline drive needs no elevated broker.");
         Assert.IsTrue(lines.Contains("Error on drive Q: The drive is offline; nothing was scanned."),
@@ -173,7 +173,7 @@ public class WatchHostModeTests
             _writeLine = lines.Add
         };
 
-        await scanner.ScanDrivesThroughBrokerAsync(["C"], CancellationToken.None);
+        await scanner.RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, ["C"]), CancellationToken.None);
 
         var prefix = failAtCreation ? "Error creating broker session: " : "Error on drive C: ";
         Assert.IsTrue(lines.Any(line => line.StartsWith(prefix, StringComparison.Ordinal) &&

@@ -17,9 +17,8 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
 
     internal static string Usage =>
         "Usage: SampleProgram.Watch [mode] [drive ...] [--keep-name A,B] [--profile full|directory-index]" + Environment.NewLine +
-        "  modes: " + string.Join(", ", ProgramModes.Names.Keys) + " (default scan-drive)" + Environment.NewLine +
-        "  watch [--seconds N]   journal [--maximum-size B --allocation-delta B]   cache [--cache-directory D] [--clear]" + Environment.NewLine +
-        "  rescan, watch and journal open the cached index (--cache-directory D); drive defaults to " + DefaultDrive;
+        "  modes: " + string.Join(", ", ProgramModes.Names.Keys) + " (default scan-drive); drive defaults to " + DefaultDrive + Environment.NewLine +
+        "  watch [--seconds N]  journal [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]";
 
     internal IReadOnlyList<string>? KeepNames { get; init; }
     internal BrokerScanProfile Profile { get; init; }
@@ -29,10 +28,8 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
     internal string? CacheDirectory { get; init; }
     internal bool Clear { get; init; }
 
-    /// <summary>
-    ///     Every mode that opens an index launches the broker, which is the elevated process and asks for
-    ///     elevation itself; the cache listing and the elevation report touch no volume.
-    /// </summary>
+    // Every mode that opens an index launches the broker, which asks for elevation itself; the cache listing and the
+    // elevation report touch no volume.
     internal ElevationNeed Need => Mode is ProgramMode.Cache or ProgramMode.ElevationStatus ? ElevationNeed.None : ElevationNeed.BrokerLaunch;
 
     /// <summary>The scan options the broker source gets; null scans every record, as the library does by default.</summary>

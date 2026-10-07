@@ -18,19 +18,18 @@ partial class SampleHost
         return RunWithElevation(arguments, _elevationNeed(parsed), () => RunMode(parsed));
     }
 
-    int RunMode(WatchArguments parsed)
+    int RunMode(WatchArguments parsed) => parsed.Mode switch
     {
-        switch (parsed.Mode)
-        {
-            case ProgramMode.Cache:
-                return RunCache(parsed);
-            case ProgramMode.ElevationStatus:
-                return WriteElevationStatus();
-            default:
-                // The console entry point has no synchronization context, so blocking here cannot deadlock.
-                RunThroughBrokerAsync(parsed, CancellationToken.None).GetAwaiter().GetResult();
-                _writeLine($"Completed at {DateTime.Now}");
-                return 0;
-        }
+        ProgramMode.Cache => RunCache(parsed),
+        ProgramMode.ElevationStatus => WriteElevationStatus(),
+        _ => RunBroker(parsed)
+    };
+
+    int RunBroker(WatchArguments parsed)
+    {
+        // The console entry point has no synchronization context, so blocking here cannot deadlock.
+        RunThroughBrokerAsync(parsed, CancellationToken.None).GetAwaiter().GetResult();
+        _writeLine($"Completed at {DateTime.Now}");
+        return 0;
     }
 }
