@@ -120,7 +120,7 @@ function Test-CoverageMeasurement {
         }
     }
     # These namespaces have non-admin Windows tests; interop-only declarations do not.
-    foreach ($namespace in @('MFTLib', 'MFTLib.Index', 'TestProgram', 'Benchmark', 'MFTLibTestExtensions')) {
+    foreach ($namespace in @('MFTLib', 'MFTLib.Index', 'SampleProgram.Direct', 'SampleProgram.Watch', 'Benchmark', 'MFTLibTestExtensions')) {
         if (-not $totals.ContainsKey($namespace) -or $totals[$namespace].Lines -eq 0) {
             throw "No executable coverage lines for tested namespace $namespace"
         }

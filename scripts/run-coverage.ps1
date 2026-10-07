@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 
 # vstest kills a testhost that has not exited 100 ms after the run ends. Coverlet writes each
 # module's hit file from a ProcessExit handler, so a kill mid-flush leaves later modules partly
-# or wholly unrecorded (Benchmark 33.45 percent, TestProgram 0 percent) although every test
+# or wholly unrecorded (Benchmark 33.45 percent, SampleProgram.Watch 0 percent) although every test
 # passed. Give the exit-time flush a generous grace period; a healthy host still exits at once.
 $env:VSTEST_TESTHOST_SHUTDOWN_TIMEOUT = "120000"
 

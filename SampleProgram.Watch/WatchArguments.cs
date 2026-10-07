@@ -1,4 +1,4 @@
-namespace TestProgram;
+namespace SampleProgram.Watch;
 
 /// <summary>What one run does to each drive.</summary>
 internal enum ProgramMode
@@ -11,12 +11,12 @@ internal enum ProgramMode
 ///     The parsed command line: an optional mode name, then drive letters. A first argument that names no
 ///     mode is a drive letter and selects <see cref="ProgramMode.ScanDrive" />.
 /// </summary>
-internal sealed partial record TestProgramArguments(ProgramMode Mode, IReadOnlyList<string> Drives)
+internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<string> Drives)
 {
     internal const string DefaultDrive = "G";
 
     internal static string Usage =>
-        "Usage: TestProgram [mode] [drive ...]" + Environment.NewLine +
+        "Usage: SampleProgram.Watch [mode] [drive ...]" + Environment.NewLine +
         "  modes: " + string.Join(", ", ProgramModes.Names.Keys) + " (default scan-drive)" + Environment.NewLine +
         $"  drive defaults to {DefaultDrive}";
 

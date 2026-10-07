@@ -24,8 +24,10 @@ function Write-Report([string]$Percentage, [int]$IndexHits = 1) {
 <class name="MFTLib.Index.Uncovered"><lines><line number="2" hits="0"/></lines></class>
 <class name="MFTLib.Index.FileIndex/Nested"><lines><line number="3" hits="0"/></lines></class>
 <class name="MFTLib.IndexExtra.Other"><lines><line number="1" hits="1"/></lines></class>
-</classes></package><package name="TestProgram"><classes>
-<class name="TestProgram.DriveScanner"><lines><line number="1" hits="1"/></lines></class>
+</classes></package><package name="SampleProgram.Direct"><classes>
+<class name="SampleProgram.Direct.SampleHost"><lines><line number="1" hits="1"/></lines></class>
+</classes></package><package name="SampleProgram.Watch"><classes>
+<class name="SampleProgram.Watch.SampleHost"><lines><line number="1" hits="1"/></lines></class>
 </classes></package><package name="Benchmark"><classes>
 <class name="Benchmark.BenchmarkRunner"><lines><line number="1" hits="1"/></lines></class>
 </classes></package><package name="MFTLibTestExtensions"><classes>
@@ -215,7 +217,7 @@ try {
     Assert-Equal (Publish-CoverageMeasurement $summary $coverage 'success' 'url' $readApi $failedPost) 1 'POST failure'
     # vstest kills a testhost that has not exited 100 ms after the run ends, which cuts coverlet's
     # exit-time hit-file flush short and drops modules from the report (Benchmark 33.45 percent,
-    # TestProgram 0 percent). Every coverage entry point must extend that grace period before it
+    # SampleProgram.Watch 0 percent). Every coverage entry point must extend that grace period before it
     # starts the test host.
     function Assert-ShutdownTimeout([string]$Text, [string]$Assignment, [int]$Assignments, [string]$Invocation, [string]$Label) {
         $found = [regex]::Matches($Text, $Assignment, 'Multiline')

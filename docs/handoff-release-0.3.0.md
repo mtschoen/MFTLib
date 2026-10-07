@@ -27,7 +27,7 @@ in some checkouts is a stale GitHub mirror; Gitea `main` is canonical. MFTLib ma
 - Public API internalization pass: test-only API is internal and reached through the `MFTLib.TestExtensions` package.
 - The public `BrokerSession` type owns a consumer session's elevated broker; both consumers use it.
 - `SyntheticBlockEditor.SetCacheTag` replaces a cached block's cache tag in place.
-- TestProgram shows a heads-up dialog before its self-elevating relaunch, and an attended unelevated `scan-drive` run shows one before the broker's UAC prompt; `MFTLIB_TESTPROGRAM_UNATTENDED=1` skips the dialog and every elevation request.
+- The samples show a heads-up dialog before a self-elevating relaunch, and an attended unelevated broker run (the Watch `scan-drive` verb) shows one before the broker's UAC prompt; `MFTLIB_SAMPLE_UNATTENDED=1` skips the dialog and every elevation request.
 - `scripts/build-windows.ps1` is the one Windows native and managed build recipe.
 - `BrokerMftBlockProducer`, both `BrokerProcess.LaunchAsync` overloads and `BrokerProcess.GrowUsnJournalAsync` are internal ([pull request 385](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/385)); consumers reach the broker through `BrokerSession`.
 - The post-clean init verification in `.gitea/workflows/test.yml` runs on pushes to `main` only, not on pull requests, and the host-mode Windows CI jobs no longer use `actions/setup-dotnet` ([pull request 386](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/pulls/386), [MFTLib issue 380](https://gitea.fleet.sticktoitive.net/schoen/MFTLib/issues/380)).

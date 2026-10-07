@@ -1,11 +1,11 @@
 using MFTLib;
 using MFTLib.Index;
 
-namespace TestProgram;
+namespace SampleProgram.Watch;
 
 // The scan-drive mode: one drive at a time opened as a NoCache FileIndex over the broker, the path
 // every consumer ships. This process stays unelevated; the broker it launches asks for elevation.
-partial class DriveScanner
+partial class SampleHost
 {
     internal Func<BrokerSession> _createBrokerSession = CreateBrokerSessionNative;
     internal Func<string, IndexedDrive> _resolveDrive = ResolveDriveNative;

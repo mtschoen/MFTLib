@@ -44,7 +44,7 @@ lint:
     #   jb inspectcode fires on CI because it resolves default namespace from
     #   the checkout path differently than the local dev machine.
     jbExcludeTypes: [InconsistentNaming, CheckNamespace]
-    jbProjects: "MFTLib;MFTLib.Tests;TestProgram;Benchmark;MFTLibTestExtensions"
+    jbProjects: "MFTLib;MFTLib.Tests;SampleProgram.Direct;SampleProgram.Watch;Benchmark;MFTLibTestExtensions"
   cpp:
     # The native tree is now scored by this gate (no longer excluded). It runs
     # cppcheck + clang-tidy + clang-format + ai-slop AND jb inspectcode

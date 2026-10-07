@@ -1,11 +1,11 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace TestProgram;
+namespace SampleProgram.Watch;
 
 // The command-line parser: the mode name, then the drives.
-internal sealed partial record TestProgramArguments
+internal sealed partial record WatchArguments
 {
-    internal static bool TryParse(string[] arguments, out TestProgramArguments parsed,
+    internal static bool TryParse(string[] arguments, out WatchArguments parsed,
         [NotNullWhen(false)] out string? error)
     {
         var mode = ProgramMode.ScanDrive;
@@ -22,7 +22,7 @@ internal sealed partial record TestProgramArguments
             var argument = arguments[index];
             if (argument.StartsWith("--", StringComparison.Ordinal))
             {
-                parsed = new TestProgramArguments(ProgramMode.ScanDrive, [DefaultDrive]);
+                parsed = new WatchArguments(ProgramMode.ScanDrive, [DefaultDrive]);
                 error = $"Unknown option {argument}.";
                 return false;
             }
@@ -35,7 +35,7 @@ internal sealed partial record TestProgramArguments
             drives.Add(DefaultDrive);
         }
 
-        parsed = new TestProgramArguments(mode, drives);
+        parsed = new WatchArguments(mode, drives);
         error = null;
         return true;
     }

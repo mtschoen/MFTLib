@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "TestProgram": {
+    "SampleProgram.Watch": {
       "commandName": "Project",
       "nativeDebugging": true
     }
