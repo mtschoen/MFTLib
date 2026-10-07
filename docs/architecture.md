@@ -205,6 +205,76 @@ scoped parameters, control characters in literals, and nullability on base types
 implementations, generic constraints and accessor flow attributes. That is a stated limit of the
 method, not a defect.
 
+Caller gate: every authored public or protected member and type of `MFTLib` and `MFTLib.Index`
+needs a real caller, and `MFTLib.Tests/PublicMemberCallerTests.cs` proves it. The caller is a use in
+`SampleProgram.Direct` or `SampleProgram.Watch`, or, for the narrow exceptions below, a consumer
+production caller. `MFTLib.Tests/MetadataSurfaceReader.cs` and `MetadataSurfaceReader.IL.cs` read
+the compiled assemblies with `System.Reflection.Metadata`, never loading them. One side is the
+library's surface; the other is the set of member, generic-method and type references in the IL of
+the two samples. Both sides key a member by declaring type, name and a signature decoded by one
+provider, so overloads stay apart. An enum is referenced by its type, and its literals ride with
+it. A property or event is referenced when any accessor is. A member is excluded as synthesized only on
+evidence in the compiled metadata: a member carrying `System.Runtime.CompilerServices.CompilerGeneratedAttribute`
+(matched by full name; an unrelated attribute of the same short name hides nothing) is not surface (record
+equality, the clone method, `PrintMembers`, the synthesized `Deconstruct` and copy constructor, and
+compiler-generated members generally), nor is a record's `EqualityContract` whose property itself carries the
+mark. The primary constructor carries no mark, so it is excluded when its parameter names and types equal the
+marked `Deconstruct` exactly; a zero-parameter positional record, a record whose author wrote the
+primary-signature `Deconstruct`, and a primary constructor with an `in` parameter leave no such evidence and keep
+the constructor on the surface, which fails loudly. Everything else a record declares is surface, every property
+included. A type is a record when it carries the `op_Equality` the compiler marks; an authored `PrintMembers` or
+`op_Equality` on a class does not make it one. Metadata cannot tell a compiler mark from the same attribute applied
+by hand to an authored member or operator, so that case is outside what the gate detects.
+A record's automatic property (every exposed accessor marked) is called either by a sample reference to one of
+its accessors or by a sample reference to a public constructor of the record whose own IL stores one of its
+arguments (`ldarg` 1 or higher, immediately followed by `stfld`) into the field the property's getter reads,
+which is how a positional property and an authored `{ get; init; } = First;` are initialized. The credit follows
+the field store, never names. The constructor must be straight-line: no branch of any kind, no `starg`, and
+exactly one `stfld` of that field, so an overwritten, mutated or conditional store, and a constructor with a
+guard branch, credit nothing and the property then needs an accessor reference. A store through a setter, of a
+constant or computed value, into another field, from an `in` parameter, or in a constructor that is not public
+also credits nothing. A constructor that delegates with `this(...)` and also stores an argument itself is
+credited on the same terms; pure delegation credits nothing. Constructor credit is evidence of a direct store,
+not a proof of data flow. A `constrained. T` prefix followed by `callvirt` of `ToString`, `Equals(object)` or
+`GetHashCode` declared on `System.Object` dispatches to the override `T` declares, so it counts as a reference to
+a method of `T` that is virtual and reuses a slot that starts at `System.Object`, never a method that hides it with
+`new`, and never an override of such a hiding method in a descendant (an ancestor that introduces the same method on a
+new slot, a base class from another assembly other than `ValueType` and `Enum`, and a generic base are refused): `T` is a
+library type or a closed instantiation of a library generic type (credited to its definition). A type-parameter
+constraint, an interface callee, a prefix separated from its call by another instruction, a boxed or
+`Nullable<T>` receiver and string interpolation credit nothing, and `Equals(T)` is a different member. The gate
+reads the library project's own build output, because coverage instrumentation rewrites the copy
+beside the tests, and fails on every platform when that output is missing. It also fails when two public members share a key, because a function pointer parameter renders as `fnptr`. A
+public type outside those two namespaces fails the
+gate by name, so a new namespace cannot escape it. The failure message lists each unreferenced
+member by type, name, parameters and result.
+
+A new public member is admitted by a sample use, which belongs in `SampleProgram.Shared` when the
+verb files are full, and never by a contrived call. A member with no sample use and no consumer
+production caller is internalized. Two lists in the test are the only exceptions, one entry per
+member, each with a reason. The exempt list holds members with no sample use that a consumer
+production caller needs; each reason names the consumer repository and file, never a line number
+(which rots), and each key is the member's full display text, with generic arity, parameters and
+result, so an entry cannot cover a sibling overload. The one exception is a `ToString` reached only by
+string interpolation, which emits no member reference and so is invisible to every check; its entry also
+cites the line that formats the value. An exempt reason is a statement by a person; no check verifies it against
+consumer IL. The constant list covers the `const` fields the compiler
+inlines, which leave no IL reference; a second test requires it to equal the literal fields the
+library metadata declares, in both directions. An entry that names no member, or whose member
+gained a sample use, fails the gate.
+
+The full gate runs on Windows, where `SampleProgram.Watch.dll` is built, and a missing assembly
+there fails the test. Elsewhere it reports Inconclusive. Controls run on every platform and assert
+member identity, never counts: the real sample references with one known member removed must
+report exactly that member; `MFTLib.Tests/CallerGateFixtureCaller.cs`, whose IL references one
+`InspectCached` overload, must be found by the type-scoped collector with its sibling absent;
+fixture types prove that records keep their authored `Deconstruct`, `ToString`, constructor overloads and
+copy constructor while the synthesized members are dropped, that the evidence-free shapes behave as described
+above, and that overloads differing only by arity or indexer parameter get distinct keys, that the namespace check fires, and that duplicate keys are
+reported. `CallerGateReaderTests`
+proves the credit rules through real IL: a generated assembly calls the fixture members, and each constructor
+store, accessor read and constrained call is credited or refused as described, one case per predicate.
+
 To update an approved file, set `MFTLIB_PUBLIC_SURFACE_REGENERATE_TO` to a scratch directory
 and run `PublicSurfaceTests`: the tests write the current surface there and fail on purpose.
 Review the diff and copy the files into `MFTLib.Tests/PublicSurface/` by hand. A normal run

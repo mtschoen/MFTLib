@@ -210,7 +210,6 @@ public class FileIndexCallbackReentrancyTests
             ("StopWatchingAsync", () => index.StopWatchingAsync(token)),
             ("RescanAsync", () => index.RescanAsync('U', token)),
             ("RescanAsync", () => index.RescanAsync(['U'], token)),
-            ("RescanAsync", () => index.RescanAsync(token)),
             ("WaitForCatchUpAsync", () => index.WaitForCatchUpAsync('U', token)),
             ("WaitForCatchUpAsync", () => index.WaitForCatchUpAsync(['U'], token)),
             ("WaitForCatchUpAsync", () => index.WaitForCatchUpAsync(token)),
@@ -508,8 +507,7 @@ public class FileIndexCallbackReentrancyTests
             outcome.TrySetResult([
                 BlockOn(() => index.WaitForCatchUpAsync(CancellationToken.None)),
                 BlockOn(() => index.StartWatchingAsync(CancellationToken.None)),
-                BlockOn(() => index.StopWatchingAsync(CancellationToken.None)),
-                BlockOn(() => index.RescanAsync(CancellationToken.None))
+                BlockOn(() => index.StopWatchingAsync(CancellationToken.None))
             ]);
         });
         await StartBothAsync(harness).WaitAsync(HangGuard);
@@ -523,7 +521,6 @@ public class FileIndexCallbackReentrancyTests
         AssertRejected(failures[0], "WaitForCatchUpAsync");
         AssertRejected(failures[1], "StartWatchingAsync");
         AssertRejected(failures[2], "StopWatchingAsync");
-        AssertRejected(failures[3], "RescanAsync");
         await disposal.WaitAsync(HangGuard);
     }
 

@@ -23,7 +23,7 @@ public sealed partial class FileIndex
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="driveLetter" /> is not part of this index.</exception>
     /// <exception cref="InvalidOperationException">The drive is not watching.</exception>
-    public async Task StopWatchingAsync(char driveLetter, CancellationToken cancellationToken)
+    internal async Task StopWatchingAsync(char driveLetter, CancellationToken cancellationToken)
     {
         if (RejectInsideHandler(nameof(StopWatchingAsync)) is { } rejection)
         {

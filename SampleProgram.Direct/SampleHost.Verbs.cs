@@ -124,9 +124,22 @@ partial class SampleHost
     {
         var key = entry.RecordKey;
         _writeLine($"{entry.Path}: record {key.RecordNumber} on {key.DriveLetter} ({key.ProducerKind}), {entry.Attributes}, modified {entry.LastWriteTime:u}, parent {entry.Parent?.Path}, valid {entry.IsValid}, disposed {entry.IsDisposed}");
-        using var stream = entry.Open(FileAccess.Read);
+        using var stream = OpenOrDescribe(entry);
         var buffer = new byte[16];
         var read = stream.Read(buffer, 0, buffer.Length);
         _writeLine($"{stream.Length} bytes, first {read}: {Convert.ToHexString(buffer, 0, read)}");
+    }
+
+    // The library's failure does not say which entry it was; ToString describes the entry without ever throwing.
+    static FileStream OpenOrDescribe(FileEntry entry)
+    {
+        try
+        {
+            return entry.Open(FileAccess.Read);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new InvalidOperationException(entry.ToString() + " cannot be opened.", exception);
+        }
     }
 }

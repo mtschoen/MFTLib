@@ -14,7 +14,7 @@ public sealed partial class FileIndex
     ///     A drive with no MFT-backed block is <see cref="DriveOperationOutcome.NotApplicable" /> and
     ///     records no watch request, so a later rescan does not start it.
     /// </summary>
-    public Task<IReadOnlyList<DriveOperationResult>> StartWatchingAsync(IReadOnlyList<char> driveLetters,
+    internal Task<IReadOnlyList<DriveOperationResult>> StartWatchingAsync(IReadOnlyList<char> driveLetters,
         CancellationToken cancellationToken)
     {
         if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(StartWatchingAsync)) is { } rejected)
@@ -37,8 +37,8 @@ public sealed partial class FileIndex
         return StartWatchingAsync(AllDriveLetters(), cancellationToken);
     }
 
-    /// <summary>Stops the watch of each listed drive; see <see cref="StopWatchingAsync(char, CancellationToken)" />.</summary>
-    public Task<IReadOnlyList<DriveOperationResult>> StopWatchingAsync(IReadOnlyList<char> driveLetters,
+    /// <summary>Stops the watch of each listed drive; see <see cref="StopWatchingAsync(CancellationToken)" />.</summary>
+    internal Task<IReadOnlyList<DriveOperationResult>> StopWatchingAsync(IReadOnlyList<char> driveLetters,
         CancellationToken cancellationToken)
     {
         if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(StopWatchingAsync)) is { } rejected)
@@ -74,24 +74,13 @@ public sealed partial class FileIndex
             cancellationToken);
     }
 
-    /// <summary>Rescans every drive, in <see cref="FileIndexOptions.Drives" /> order.</summary>
-    public Task<IReadOnlyList<DriveOperationResult>> RescanAsync(CancellationToken cancellationToken)
-    {
-        if (RejectedTask<IReadOnlyList<DriveOperationResult>>(nameof(RescanAsync)) is { } rejected)
-        {
-            return rejected;
-        }
-
-        return RescanAsync(AllDriveLetters(), cancellationToken);
-    }
-
     /// <summary>
     ///     Waits for the initial catch-up of each listed drive; see
     ///     <see cref="WaitForCatchUpAsync(char, CancellationToken)" />. A drive whose watch faults
     ///     or is superseded is <see cref="DriveOperationOutcome.Failed" /> and does not end the wait
     ///     for the others.
     /// </summary>
-    public Task<IReadOnlyList<DriveOperationResult>> WaitForCatchUpAsync(IReadOnlyList<char> driveLetters,
+    internal Task<IReadOnlyList<DriveOperationResult>> WaitForCatchUpAsync(IReadOnlyList<char> driveLetters,
         CancellationToken cancellationToken)
     {
         var letters = ValidateBatch(driveLetters);

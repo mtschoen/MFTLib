@@ -132,7 +132,7 @@ public class DirectHostTests
 
         Assert.AreEqual(1, result);
         Assert.IsTrue(lines.Any(line => line.StartsWith($"{DumpRoot}/documents/Notes.txt: record 7 on D (Mft), ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(lines.Any(line => line.StartsWith("Error: ", StringComparison.Ordinal) && line.Contains($"{DumpRoot}/documents/Notes.txt (") && line.Contains(" cannot be opened.")), string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]

@@ -12,19 +12,15 @@ public class FileIndexWatchRescanCommitTests
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    [DataTestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task BatchedRescan_ReportsScanSuccessWhenARestartFails(bool allDrives)
+    [TestMethod]
+    public async Task BatchedRescan_ReportsScanSuccessWhenARestartFails()
     {
         using var harness = new WatchHarness('T', 'U');
         await harness.Index.StartWatchingAsync(Token);
         var failure = new IOException("T cannot restart");
         harness.Source.FailNextStartFor('T', failure);
 
-        var results = allDrives
-            ? await harness.Index.RescanAsync(Token)
-            : await harness.Index.RescanAsync(['T', 'U'], Token);
+        var results = await harness.Index.RescanAsync(['T', 'U'], Token);
 
         Assert.AreEqual(2, results.Count);
         Assert.IsTrue(results.All(result => result.Outcome == DriveOperationOutcome.Succeeded));

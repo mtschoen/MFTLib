@@ -131,7 +131,7 @@ public sealed record DriveStatus
     ///     when its current watch started. <see cref="WatchCatchUpState.NotStarted" /> while the
     ///     drive's watch is not requested (<see cref="WatchRequested" /> is false) and no start of
     ///     it failed: before its first <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" />
-    ///     and again after <see cref="FileIndex.StopWatchingAsync(char, CancellationToken)" />.
+    ///     and again after <see cref="FileIndex.StopWatchingAsync(CancellationToken)" />.
     ///     <see cref="WatchCatchUpState.CatchingUp" /> while the watch applies its backlog,
     ///     <see cref="WatchCatchUpState.CaughtUp" /> once that backlog has been applied and the
     ///     drive is on live entries, and <see cref="WatchCatchUpState.Faulted" /> when the drive's
@@ -158,7 +158,7 @@ public sealed record DriveStatus
     ///     True while this drive's watch is requested: from a
     ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" />, including one whose
     ///     source threw or that was refused over an unresumable block, until
-    ///     <see cref="FileIndex.StopWatchingAsync(char, CancellationToken)" />, a start its own caller
+    ///     <see cref="FileIndex.StopWatchingAsync(CancellationToken)" />, a start its own caller
     ///     cancelled, or disposal. A <see cref="FileIndex.RescanAsync(char, CancellationToken)" />
     ///     starts the drive's watch on the replacement block only while this is true; a rescan never
     ///     starts a drive whose watch was not requested. A drive a batched start answered

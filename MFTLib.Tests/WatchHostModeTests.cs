@@ -62,7 +62,7 @@ public class WatchHostModeTests
         Assert.AreEqual(0, result);
         Assert.IsTrue(lines.Contains("Index holds 2 rows; 0 records skipped"), string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.Contains("Catch-up held; watch supported: True"));
-        Assert.IsTrue(lines.Any(line => line.StartsWith("  Finished: ", StringComparison.Ordinal)));
+        Assert.IsTrue(lines.Any(line => line.StartsWith("  C: Finished: ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("=== Drive C: done ==="));
     }
 

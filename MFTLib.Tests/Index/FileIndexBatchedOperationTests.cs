@@ -189,7 +189,6 @@ public class FileIndexBatchedOperationTests
         await ThrowsAsync<ObjectDisposedException>(() => index.WaitForCatchUpAsync(['T'], Token));
         await ThrowsAsync<ObjectDisposedException>(() => index.StartWatchingAsync(Token));
         await ThrowsAsync<ObjectDisposedException>(() => index.StopWatchingAsync(Token));
-        await ThrowsAsync<ObjectDisposedException>(() => index.RescanAsync(Token));
         await ThrowsAsync<ObjectDisposedException>(() => index.WaitForCatchUpAsync(Token));
     }
 
@@ -213,7 +212,7 @@ public class FileIndexBatchedOperationTests
         CollectionAssert.AreEqual(expected, Letters(caughtUp));
         Assert.IsTrue(caughtUp.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
 
-        var rescanned = await harness.Index.RescanAsync(Token).WaitAsync(HangGuard);
+        var rescanned = await harness.Index.RescanAsync([.. harness.Index.Drives.Select(drive => drive.DriveLetter)], Token).WaitAsync(HangGuard);
         CollectionAssert.AreEqual(expected, Letters(rescanned));
         Assert.IsTrue(rescanned.All(result => result.Outcome == DriveOperationOutcome.Succeeded));
 

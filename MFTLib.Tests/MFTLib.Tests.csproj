@@ -27,6 +27,19 @@
     <ProjectReference Include="..\MFTLibTestExtensions\MFTLibTestExtensions.csproj" />
   </ItemGroup>
 
+  <!-- The caller gate reads the library's IL (constructor stores), which coverlet rewrites in the test output copy
+       during a coverage run. The library project's own output is never instrumented. Its resolved path comes from the
+       project reference itself, so it holds on every platform and layout. -->
+  <Target Name="RecordLibraryOutput" BeforeTargets="CoreGenerateAssemblyInfo" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <_LibraryOutput Include="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)%(Extension)' == 'MFTLib.dll'" />
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>MFTLib.UninstrumentedOutput</_Parameter1>
+        <_Parameter2>@(_LibraryOutput->'%(FullPath)')</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <None Include="PublicSurface\*.approved.txt" CopyToOutputDirectory="Always" Link="PublicSurface\%(Filename)%(Extension)" />
     <None Include="..\AGENTS.md" Link="repository-docs\AGENTS.md"
