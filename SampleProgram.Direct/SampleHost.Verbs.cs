@@ -23,7 +23,7 @@ partial class SampleHost
                 WriteTree(start, 1, parsed.Depth, cancellationToken);
                 break;
             case DirectVerb.Open:
-                OpenFile(Resolve(index, parsed.Path ?? throw new ArgumentException("open needs a path."), cancellationToken));
+                OpenFile(Resolve(index, parsed.Path, cancellationToken));
                 break;
             case DirectVerb.Largest:
                 var under = ResolveOptional(index, parsed.Under, cancellationToken);
@@ -62,9 +62,9 @@ partial class SampleHost
         return path is null ? null : Resolve(index, path, cancellationToken);
     }
 
-    static FileEntry Resolve(FileIndex index, string path, CancellationToken cancellationToken)
+    static FileEntry Resolve(FileIndex index, string? path, CancellationToken cancellationToken)
     {
-        return index.Find(path, cancellationToken) ?? throw new FileNotFoundException($"No entry at {path}.");
+        return index.Find(path ?? string.Empty, cancellationToken) ?? throw new FileNotFoundException($"No entry at {path}.");
     }
 
     void WriteRows(IEnumerable<FileEntry> entries, DirectArguments parsed)
