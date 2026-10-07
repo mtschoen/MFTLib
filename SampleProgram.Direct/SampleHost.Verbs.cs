@@ -20,7 +20,7 @@ partial class SampleHost
             case DirectVerb.Tree:
                 var start = parsed.Path is null ? index.Root(letter, cancellationToken) : Resolve(index, parsed.Path, cancellationToken);
                 _writeLine(start.Path);
-                WriteTree(start, 1, parsed.Depth, cancellationToken);
+                WriteTree(start.RecordKey.RecordNumber, ChildLookup(_enumerateRows(index, cancellationToken)), 1, parsed.Depth);
                 break;
             case DirectVerb.Open:
                 OpenFile(Resolve(index, parsed.Path, cancellationToken));
@@ -80,19 +80,41 @@ partial class SampleHost
         _writeLine($"{count} entries");
     }
 
-    void WriteTree(FileEntry directory, int level, int depth, CancellationToken cancellationToken)
+    /// <summary>Groups every row under its parent's record number in one pass, so a tree never rescans the drive per directory.</summary>
+    internal static Dictionary<ulong, List<FileEntry>> ChildLookup(IEnumerable<FileEntry> rows)
     {
-        if (level > depth)
+        var lookup = new Dictionary<ulong, List<FileEntry>>();
+        foreach (var row in rows)
+        {
+            if (row.Parent is not { } parent || parent.RecordKey.RecordNumber == row.RecordKey.RecordNumber)
+            {
+                continue;
+            }
+
+            if (!lookup.TryGetValue(parent.RecordKey.RecordNumber, out var siblings))
+            {
+                lookup[parent.RecordKey.RecordNumber] = siblings = [];
+            }
+
+            siblings.Add(row);
+        }
+
+        return lookup;
+    }
+
+    void WriteTree(ulong directory, Dictionary<ulong, List<FileEntry>> lookup, int level, int depth)
+    {
+        if (level > depth || !lookup.TryGetValue(directory, out var children))
         {
             return;
         }
 
-        foreach (var child in directory.Children(cancellationToken).OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase))
+        foreach (var child in children.OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase))
         {
             _writeLine($"{new string(' ', level * 2)}{child.Name}{(child.IsDirectory ? "/" : string.Empty)}");
             if (child.IsDirectory)
             {
-                WriteTree(child, level + 1, depth, cancellationToken);
+                WriteTree(child.RecordKey.RecordNumber, lookup, level + 1, depth);
             }
         }
     }

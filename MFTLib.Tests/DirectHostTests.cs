@@ -79,6 +79,28 @@ public class DirectHostTests
     }
 
     [TestMethod]
+    public void Run_TreeOverSeveralDirectories_ReadsTheRowsOnceAndKeepsTheSortedOrder()
+    {
+        var lines = new List<string>();
+        var scans = 0;
+        var host = HostOver(lines);
+        host._enumerateRows = (index, cancellationToken) =>
+        {
+            scans++;
+            return index.Enumerate(new SearchQuery(null), cancellationToken);
+        };
+
+        var result = host.Run([.. Dump("tree"), "--depth", "4"]);
+
+        Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
+        Assert.AreEqual(1, scans);
+        var documents = lines.IndexOf("  documents/");
+        Assert.IsTrue(documents >= 0, string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(lines.Contains("    Notes.txt"), string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(lines.IndexOf("    Deep/") > documents && lines.IndexOf("    Deep/") < lines.IndexOf("    Notes.txt"), string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
     public void Run_LargestOverADump_ListsTheBiggestFileFirst()
     {
         var lines = new List<string>();

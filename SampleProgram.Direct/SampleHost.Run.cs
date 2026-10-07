@@ -10,6 +10,9 @@ partial class SampleHost
     internal Func<DirectArguments, MftIndexSource> _createSource = CreateSourceNative;
 
     // The elevation flow is Windows only (UAC and its dialog), so elsewhere the verb runs straight into its platform check.
+    // The one row pass a tree is built from; a test counts its calls.
+    internal Func<FileIndex, CancellationToken, IEnumerable<FileEntry>> _enumerateRows = (index, cancellationToken) => index.Enumerate(new SearchQuery(null), cancellationToken);
+
     internal Func<bool> _isWindows = OperatingSystem.IsWindows;
 
     internal int Run(string[] arguments)
