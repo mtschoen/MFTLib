@@ -55,6 +55,12 @@ internal sealed partial class ArgumentReader
         return null;
     }
 
+    /// <summary>A drive token is one letter, or one letter and a colon; an empty or longer token is not a drive.</summary>
+    internal static bool IsDriveLetter(string text)
+    {
+        return text.Length is 1 or 2 && char.IsAsciiLetter(text[0]) && (text.Length == 1 || text[1] == ':');
+    }
+
     /// <summary>Returns the positional arguments, after recording the first unknown option as the error.</summary>
     internal IReadOnlyList<string> Positionals()
     {

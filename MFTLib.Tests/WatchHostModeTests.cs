@@ -63,7 +63,7 @@ public class WatchHostModeTests
         Assert.IsTrue(lines.Contains("Index holds 2 rows; 0 records skipped"), string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.Contains("Catch-up held; watch supported: True"));
         Assert.IsTrue(lines.Any(line => line.StartsWith("  Finished: ", StringComparison.Ordinal)));
-        Assert.IsTrue(lines.Contains("=== Drive c: done ==="));
+        Assert.IsTrue(lines.Contains("=== Drive C: done ==="));
     }
 
     [TestMethod]
@@ -231,16 +231,21 @@ public class WatchHostModeTests
     // The library quotes each element for the child's command line, so the scanner hands over the
     // arguments exactly as it accepted them, whatever whitespace or quotes they hold.
     [DataTestMethod]
-    [DataRow(new[] { "C\" --maximum-size 9000 --allocation-delta 4096" },
-        DisplayName = "an option-injection positional stays one argument")]
-    [DataRow(new[] { "scan-drive", "a\"b" }, DisplayName = "a literal quote survives")]
-    [DataRow(new[] { "scan-drive", "a\\\"b" }, DisplayName = "a backslash before a quote survives")]
-    [DataRow(new[] { "scan-drive", "C", "" }, DisplayName = "an empty value last survives")]
-    [DataRow(new[] { "scan-drive", "", "C" }, DisplayName = "an empty value before another drive survives")]
-    [DataRow(new[] { "scan-drive", "a\tb.txt" }, DisplayName = "a tab inside a value survives")]
-    [DataRow(new[] { "scan-drive", "C:\\spaced directory\\" },
+    [DataRow(new[] { "scan-drive", "--cache-directory", "C\" --maximum-size 9000 --allocation-delta 4096" },
+        DisplayName = "an option-injection value stays one argument")]
+    [DataRow(new[] { "scan-drive", "--cache-directory", "a\"b" },
+        DisplayName = "a literal quote survives")]
+    [DataRow(new[] { "scan-drive", "--cache-directory", "a\\\"b" },
+        DisplayName = "a backslash before a quote survives")]
+    [DataRow(new[] { "scan-drive", "C", "--cache-directory", "" },
+        DisplayName = "an empty value last survives")]
+    [DataRow(new[] { "scan-drive", "--cache-directory", "", "C" },
+        DisplayName = "an empty value before another drive survives")]
+    [DataRow(new[] { "scan-drive", "--cache-directory", "a\tb.txt" },
+        DisplayName = "a tab inside a value survives")]
+    [DataRow(new[] { "scan-drive", "--cache-directory", "C:\\spaced directory\\" },
         DisplayName = "a trailing backslash last survives")]
-    [DataRow(new[] { "scan-drive", "C:\\spaced directory\\", "D" },
+    [DataRow(new[] { "scan-drive", "--cache-directory", "C:\\spaced directory\\", "D" },
         DisplayName = "a trailing backslash before another drive survives")]
     public void Run_NotElevated_RelaunchesWithEachArgumentVerbatim(string[] arguments)
     {

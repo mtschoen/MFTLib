@@ -22,7 +22,7 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["C", "D:"], out var parsed, out _));
 
         Assert.AreEqual(ProgramMode.ScanDrive, parsed.Mode);
-        CollectionAssert.AreEqual(new[] { "C", "D:" }, parsed.Drives.ToArray());
+        CollectionAssert.AreEqual(new[] { "C", "D" }, parsed.Drives.ToArray());
     }
 
     [DataTestMethod]
@@ -113,6 +113,51 @@ public class WatchArgumentsTests
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--seconds", seconds], out var parsed, out _));
 
         Assert.AreEqual(expected, parsed.Seconds);
+    }
+
+    [DataTestMethod]
+    [DataRow("watch")]
+    [DataRow("rescan")]
+    [DataRow("journal")]
+    [DataRow("scan-drive")]
+    [DataRow("cache")]
+    public void TryParse_EmptyOrGarbageDriveToken_IsRefusedForEveryMode(string mode)
+    {
+        Assert.IsFalse(WatchArguments.TryParse([mode, string.Empty], out _, out var empty));
+        Assert.IsFalse(WatchArguments.TryParse([mode, "Cjunk"], out _, out var garbage));
+        Assert.IsFalse(WatchArguments.TryParse([mode, "C:x"], out _, out var path));
+
+        Assert.AreEqual("'' is not a drive letter.", empty);
+        Assert.AreEqual("'Cjunk' is not a drive letter.", garbage);
+        Assert.AreEqual("'C:x' is not a drive letter.", path);
+    }
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void TryParse_CacheWithAGarbageToken_IsRefusedWithAndWithoutClear(bool clear)
+    {
+        string[] arguments = clear ? ["cache", "junk", "--clear"] : ["cache", "junk"];
+
+        Assert.IsFalse(WatchArguments.TryParse(arguments, out _, out var error));
+
+        Assert.AreEqual("'junk' is not a drive letter.", error);
+    }
+
+    [TestMethod]
+    public void TryParse_DriveListWithOneBadToken_NamesThatToken()
+    {
+        Assert.IsFalse(WatchArguments.TryParse(["watch", "C", "9", "d:"], out _, out var error));
+
+        Assert.AreEqual("'9' is not a drive letter.", error);
+    }
+
+    [TestMethod]
+    public void TryParse_DriveTokens_AreNormalizedToUpperCaseLetters()
+    {
+        Assert.IsTrue(WatchArguments.TryParse(["cache", "c:", "d"], out var parsed, out _));
+
+        CollectionAssert.AreEqual(new[] { "C", "D" }, parsed.Drives.ToArray());
     }
 
     [TestMethod]
