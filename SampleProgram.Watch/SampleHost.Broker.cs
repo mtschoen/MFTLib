@@ -8,23 +8,11 @@ namespace SampleProgram.Watch;
 partial class SampleHost
 {
     internal Func<BrokerSession> _createBrokerSession = CreateBrokerSessionNative;
-    internal Func<string, IndexedDrive> _resolveDrive = ResolveDriveNative;
-
-    // Where the index keeps its cache folder; null selects the library's default location.
-    internal string? _cacheDirectory;
-
     static BrokerSession CreateBrokerSessionNative()
     {
         return OperatingSystem.IsWindows()
             ? new BrokerSession()
             : throw new PlatformNotSupportedException("The broker is Windows only.");
-    }
-
-    static IndexedDrive ResolveDriveNative(string letter)
-    {
-        return OperatingSystem.IsWindows()
-            ? IndexedDrive.FromWindowsVolume(letter)
-            : throw new PlatformNotSupportedException("Volume serials are read on Windows only.");
     }
 
     // One broker, so one elevation prompt, serves every drive of the run.
