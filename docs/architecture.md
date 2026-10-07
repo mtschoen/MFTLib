@@ -233,7 +233,7 @@ gained a sample use, fails the gate.
 The full gate runs on Windows, where `SampleProgram.Watch.dll` is built, and a missing assembly
 there fails the test. Elsewhere it reports Inconclusive. Controls run on every platform and assert
 member identity, never counts: the real sample references with one known member removed must
-report exactly that member; `MFTLib.Tests/CallerGateFixtureCaller.cs`, whose IL calls one
+report exactly that member; `MFTLib.Tests/CallerGateFixtureCaller.cs`, whose IL references one
 `InspectCached` overload, must be found by the type-scoped collector with its sibling absent;
 fixture types prove a positional record with a second `Deconstruct` keeps its authored members,
 that overloads differing only by arity or indexer parameter get distinct keys, and that the
