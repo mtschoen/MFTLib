@@ -97,6 +97,19 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
         _items.Writer.TryComplete(fault);
     }
 
+    /// <summary>
+    ///     Queues a batch whose application fails: the index's pump throws <paramref name="exception" />
+    ///     from inside its apply step, reports <see cref="WatchFaultKind.Apply" /> carrying that same
+    ///     exception, and recovers automatically. Batches queued before it are applied first.
+    /// </summary>
+    /// <param name="exception">The failure the apply step throws.</param>
+    /// <exception cref="InvalidOperationException">The watch is closed.</exception>
+    public void FailApply(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        Queue(new JournalBatch(new FailingEntryList(exception), 0, 0));
+    }
+
     /// <summary>The channel is lost: the index reports <see cref="WatchFaultKind.Channel" />.</summary>
     /// <param name="exception">The failure the read throws.</param>
     public void LoseChannel(Exception exception)

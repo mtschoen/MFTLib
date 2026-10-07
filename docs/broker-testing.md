@@ -147,6 +147,7 @@ A watch scripts the read the index's pump performs:
   seconds, and the queueing form returns the task that completes then;
 - `PublishCaughtUpAsync` and `QueueCaughtUp` settle that drive's catch-up wait;
 - `FailDrive` produces `WatchFaultKind.Drive` and automatic recovery;
+- `FailApply` queues a batch whose application throws, producing `WatchFaultKind.Apply` and automatic recovery;
 - `LoseChannel`, or `End` for a normal end before the index cancels the read,
   produces `WatchFaultKind.Channel` with no automatic recovery; and
 - `FailOnCancellation` makes a cancelled read throw an I/O failure instead of

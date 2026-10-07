@@ -45,6 +45,7 @@ MFTLibTestExtensions.ScriptedBrokerVolumes :: property public WatchDrive { get; 
 MFTLibTestExtensions.ScriptedBrokerVolumes :: property public required QueryJournalCursor { get; init; } : System.Func<string, MFTLibTestExtensions.SyntheticJournalCursor>
 MFTLibTestExtensions.ScriptedBrokerVolumes :: type public sealed class : System.IEquatable<MFTLibTestExtensions.ScriptedBrokerVolumes>
 MFTLibTestExtensions.ScriptedDriveWatch :: method public End() : void
+MFTLibTestExtensions.ScriptedDriveWatch :: method public FailApply(System.Exception exception) : void
 MFTLibTestExtensions.ScriptedDriveWatch :: method public FailDrive(System.Exception exception) : void
 MFTLibTestExtensions.ScriptedDriveWatch :: method public LoseChannel(System.Exception exception) : void
 MFTLibTestExtensions.ScriptedDriveWatch :: method public PublishBatchAsync(System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Threading.Tasks.Task
