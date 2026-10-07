@@ -93,6 +93,22 @@ public class PublicMemberCallerTests
             .OrderBy(member => member.Display, StringComparer.Ordinal)
             .ToList();
 
+    /// <summary>
+    ///     The sample assemblies the full gate reads. Off Windows the Watch sample is not built, so the gate is
+    ///     Inconclusive there; on Windows a missing Watch assembly is a failure, never a skip.
+    /// </summary>
+    static string[] GateSamplePaths(bool isWindows, string baseDirectory)
+    {
+        if (!isWindows)
+        {
+            Assert.Inconclusive($"{WatchSample} is built on Windows only; the caller gate is enforced there.");
+        }
+
+        var watchPath = Path.Combine(baseDirectory, WatchSample);
+        Assert.IsTrue(File.Exists(watchPath), $"The caller gate needs {watchPath} on Windows, and it is missing.");
+        return [Path.Combine(baseDirectory, DirectSample), watchPath];
+    }
+
     /// <summary>Fails naming every exposed type outside the surface namespaces, which the gate would never see.</summary>
     static void AssertNoOutOfScopeTypes(Surface surface) =>
         Assert.AreEqual(0, surface.OutOfScopeTypes.Count,
@@ -105,14 +121,10 @@ public class PublicMemberCallerTests
     [TestMethod]
     public void EveryPublicMember_HasASampleOrReasonedConsumerCaller()
     {
-        if (!File.Exists(SamplePath(WatchSample)))
-        {
-            Assert.Inconclusive($"{WatchSample} is built on Windows only; the caller gate is enforced there.");
-        }
-
+        var samplePaths = GateSamplePaths(OperatingSystem.IsWindows(), AppContext.BaseDirectory);
         var surface = ReadSurface(LibraryPath);
         AssertNoOutOfScopeTypes(surface);
-        var references = CollectReferences([SamplePath(DirectSample), SamplePath(WatchSample)]);
+        var references = CollectReferences(samplePaths);
 
         var unreferenced = FindUnreferenced(surface, references, ExemptMembers);
         Assert.AreEqual(0, unreferenced.Count,
@@ -244,5 +256,15 @@ public class PublicMemberCallerTests
 
         var failure = Assert.ThrowsException<AssertFailedException>(() => AssertNoOutOfScopeTypes(surface));
         StringAssert.Contains(failure.Message, "MFTLib.Tests.PublicMemberCallerTests");
+    }
+
+    [TestMethod]
+    public void TheGate_FailsOnWindowsWhenTheWatchSampleIsMissing()
+    {
+        var absent = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+
+        var failure = Assert.ThrowsException<AssertFailedException>(() => GateSamplePaths(true, absent));
+        StringAssert.Contains(failure.Message, Path.Combine(absent, WatchSample));
+        Assert.ThrowsException<AssertInconclusiveException>(() => GateSamplePaths(false, absent));
     }
 }
