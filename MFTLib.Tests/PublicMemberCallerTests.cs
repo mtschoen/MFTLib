@@ -25,6 +25,50 @@ public class PublicMemberCallerTests
     /// </summary>
     static readonly Dictionary<string, string> ExemptMembers = new(StringComparer.Ordinal)
     {
+        ["type MFTLib.BrokerDiagnostics"] =
+            "file-wizard file-wizard/ProgramEntry.cs and FileWizardMaui/App.xaml.cs enable broker diagnostics at startup",
+        ["method MFTLib.BrokerDiagnostics.Enable(System.String)"] =
+            "file-wizard file-wizard/ProgramEntry.cs and FileWizardMaui/App.xaml.cs enable broker diagnostics at startup",
+        ["property MFTLib.BrokerDiagnostics.LogDirectory"] =
+            "file-wizard file-wizard/ProgramEntry.cs and FileWizardMaui/App.xaml.cs point the diagnostics log at the local files path",
+        ["type MFTLib.BrokerLauncher"] =
+            "file-wizard file-wizard/BrokerSmoke.cs and git-wizard GitWizard/Discovery/RepositoryDiscoveryDependencies.cs launch the broker",
+        ["method MFTLib.BrokerLauncher.Launch(System.String)"] =
+            "file-wizard file-wizard/BrokerSmoke.cs and git-wizard GitWizard/Discovery/RepositoryDiscoveryDependencies.cs launch the broker",
+        ["method MFTLib.BrokerSession..ctor(System.Func`2<System.String,System.Boolean>, System.Nullable`1<System.TimeSpan>)"] =
+            "git-wizard GitWizard/MftIndexSession.Windows.cs builds the session with its own launcher and connect timeout",
+        ["method MFTLib.BrokerSession.DisposeAsync()"] =
+            "reached through IAsyncDisposable, so no IL names it; file-wizard file-wizard/BrokerSmoke.cs disposes the session with await using",
+        ["method MFTLib.ElevationUtilities.CanSelfElevate()"] =
+            "file-wizard file-wizard/CliServices.cs decides whether to self-elevate",
+        ["method MFTLib.ElevationUtilities.IsElevated()"] =
+            "file-wizard file-wizard/CliServices.cs checks the elevation before a scan",
+        ["method MFTLib.ElevationUtilities.TryRunElevated(System.Collections.Generic.IReadOnlyList`1<System.String>, System.TimeSpan)"] =
+            "file-wizard file-wizard/CliServices.cs and file-wizard/ConfigureDefenderCommand.cs rerun elevated",
+        ["method MFTLib.Index.CacheDirectory.EnsureCreated(System.String)"] =
+            "file-wizard FileWizard/ContentHashSidecar.cs creates the cache directory before it writes beside it",
+        ["method MFTLib.Index.CacheDirectory.InspectCached(System.String, System.Collections.Generic.IReadOnlySet`1<System.Char>)"] =
+            "git-wizard GitWizard/MftIndexCacheInspection.cs inspects every cached block of a directory",
+        ["method MFTLib.Index.FileIndex.RescanAsync(System.Collections.Generic.IReadOnlyList`1<System.Char>, System.Threading.CancellationToken)"] =
+            "file-wizard FileWizard/FileIndexHost.cs and git-wizard GitWizard/Discovery/RepositoryDiscoveryCoordinator.cs rescan a chosen set of drives",
+        ["method MFTLib.Index.FileIndex.StartWatchingAsync(System.Char, System.Threading.CancellationToken)"] =
+            "file-wizard FileWizardMaui/MainPage.DriveRescan.cs restarts the watch of one rescanned drive",
+        ["method MFTLib.Index.FileIndex.WaitForCatchUpAsync(System.Char, System.Threading.CancellationToken)"] =
+            "git-wizard GitWizard/Watch/IndexVolumeChangeSource.Startup.cs waits for each drive in turn",
+        ["method MFTLib.Index.MftIndexSource.Unavailable(System.String)"] =
+            "file-wizard FileWizard/FileIndexHost.cs supplies a source for a host that may not scan",
+        ["property MFTLib.Index.FileIndexOptions.InitialOpenCacheOnly"] =
+            "file-wizard FileWizard/FileIndexHost.cs opens cache-only first",
+        ["property MFTLib.Index.FileIndexOptions.OpenProgress"] =
+            "file-wizard FileWizard/FileIndexHost.cs forwards the open progress sink",
+        ["type MFTLib.Index.IndexDriveOpened"] =
+            "file-wizard FileWizardMaui.Logic/OpenProgressPresenter.cs shows each settled drive",
+        ["property MFTLib.Index.IndexDriveOpened.DriveLetter"] =
+            "file-wizard FileWizardMaui.Logic/OpenProgressPresenter.cs shows each settled drive",
+        ["property MFTLib.Index.IndexDriveOpened.SettledDriveCount"] =
+            "file-wizard FileWizardMaui.Logic/OpenProgressPresenter.cs shows each settled drive",
+        ["property MFTLib.Index.IndexDriveOpened.TotalDriveCount"] =
+            "file-wizard FileWizardMaui.Logic/OpenProgressPresenter.cs shows each settled drive"
     };
 
     /// <summary>
