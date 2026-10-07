@@ -55,6 +55,8 @@ public class PublicMemberCallerTests
             "file-wizard FileWizardMaui/MainPage.DriveRescan.cs restarts the watch of one rescanned drive",
         ["method MFTLib.Index.FileIndex.WaitForCatchUpAsync(System.Char, System.Threading.CancellationToken) : System.Threading.Tasks.Task"] =
             "git-wizard GitWizard/Watch/IndexVolumeChangeSource.Startup.cs waits for each drive in turn",
+        ["method MFTLib.Index.FileEntry.Children(System.Threading.CancellationToken) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.FileEntry>"] =
+            "git-wizard GitWizard/GitWizardApi.IndexDiscovery.cs lists the children of a directory entry",
         ["method MFTLib.Index.MftIndexSource.Unavailable(System.String) : MFTLib.Index.MftIndexSource"] =
             "file-wizard FileWizard/FileIndexHost.cs supplies a source for a host that may not scan",
         ["property MFTLib.Index.FileIndexOptions.InitialOpenCacheOnly : System.Boolean"] =
