@@ -2,9 +2,9 @@ namespace SampleProgram.Watch;
 
 partial class SampleHost
 {
-    // Whether a run must be elevated itself. Scanning through the broker never must, because the broker is the
-    // elevated process; the seam keeps the self-elevation path testable.
-    internal Func<WatchArguments, bool> _requiresElevation = parsed => parsed.RequiresElevation;
+    // What a run needs from the process. The broker is the elevated process, so no mode self-elevates; the seam
+    // keeps the self-elevation path testable.
+    internal Func<WatchArguments, ElevationNeed> _elevationNeed = parsed => parsed.Need;
 
     internal int Run(string[] arguments)
     {
@@ -15,15 +15,22 @@ partial class SampleHost
             return 2;
         }
 
-        var need = _requiresElevation(parsed) ? ElevationNeed.SelfElevate : ElevationNeed.BrokerLaunch;
-        return RunWithElevation(arguments, need, () => RunOnDrives(parsed));
+        return RunWithElevation(arguments, _elevationNeed(parsed), () => RunMode(parsed));
     }
 
-    int RunOnDrives(WatchArguments parsed)
+    int RunMode(WatchArguments parsed)
     {
-        // The console entry point has no synchronization context, so blocking here cannot deadlock.
-        ScanDrivesThroughBrokerAsync(parsed.Drives, CancellationToken.None).GetAwaiter().GetResult();
-        _writeLine($"Completed at {DateTime.Now}");
-        return 0;
+        switch (parsed.Mode)
+        {
+            case ProgramMode.Cache:
+                return RunCache(parsed);
+            case ProgramMode.ElevationStatus:
+                return WriteElevationStatus();
+            default:
+                // The console entry point has no synchronization context, so blocking here cannot deadlock.
+                RunThroughBrokerAsync(parsed, CancellationToken.None).GetAwaiter().GetResult();
+                _writeLine($"Completed at {DateTime.Now}");
+                return 0;
+        }
     }
 }

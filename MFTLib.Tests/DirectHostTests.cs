@@ -31,7 +31,7 @@ public class DirectHostTests
         MftDumpFixture.DeleteOwnedDirectory(_directory);
     }
 
-    SampleHost HostOver(List<string> lines)
+    static SampleHost HostOver(List<string> lines)
     {
         return new SampleHost
         {

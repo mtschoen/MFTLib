@@ -3,8 +3,9 @@ using MFTLib.Index;
 
 namespace SampleProgram.Watch;
 
-// The scan-drive mode: one drive at a time opened as a NoCache FileIndex over the broker, the path
-// every consumer ships. This process stays unelevated; the broker it launches asks for elevation.
+// The index modes: each drive opened as a FileIndex over the broker, the path every consumer ships. scan-drive opens
+// NoCache and only reports; the others open the cached index and act on it. This process stays unelevated; the
+// broker it launches asks for elevation.
 partial class SampleHost
 {
     internal Func<BrokerSession> _createBrokerSession = CreateBrokerSessionNative;
@@ -27,8 +28,13 @@ partial class SampleHost
             : throw new PlatformNotSupportedException("Volume serials are read on Windows only.");
     }
 
+    internal Task ScanDrivesThroughBrokerAsync(IReadOnlyList<string> drives, CancellationToken cancellationToken)
+    {
+        return RunThroughBrokerAsync(new WatchArguments(ProgramMode.ScanDrive, drives), cancellationToken);
+    }
+
     // One broker, so one elevation prompt, serves every drive of the run.
-    internal async Task ScanDrivesThroughBrokerAsync(IReadOnlyList<string> drives, CancellationToken cancellationToken)
+    internal async Task RunThroughBrokerAsync(WatchArguments parsed, CancellationToken cancellationToken)
     {
         BrokerSession session;
         try
@@ -42,30 +48,58 @@ partial class SampleHost
         }
 
         await using var ownedSession = session.ConfigureAwait(false);
-        var source = session.CreateIndexSource();
-        foreach (var drive in drives)
+        if (parsed.Mode is not ProgramMode.ScanDrive)
         {
-            await ScanDriveThroughIndexAsync(source, drive, cancellationToken).ConfigureAwait(false);
+            session.Connecting += () => _writeLine("Broker: connecting; a UAC prompt may follow.");
+            session.Connected += () => _writeLine("Broker: connected.");
+        }
+
+        var source = session.CreateIndexSource(parsed.ScanOptions);
+        foreach (var drive in parsed.Drives)
+        {
+            await RunOnDriveAsync(session, source, parsed, drive, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (session.HasEnded)
+        {
+            _writeLine($"Broker ended: {await session.Ended.ConfigureAwait(false)}");
         }
     }
 
-    async Task ScanDriveThroughIndexAsync(MftIndexSource source, string drive, CancellationToken cancellationToken)
+    async Task RunOnDriveAsync(BrokerSession session, MftIndexSource source, WatchArguments parsed, string drive, CancellationToken cancellationToken)
     {
         var letter = drive.TrimEnd(':');
         _writeLine($"=== Drive {letter}: ===");
         try
         {
+            var cached = parsed.Mode is not ProgramMode.ScanDrive;
             var options = new FileIndexOptions
             {
                 Drives = [_resolveDrive(letter)],
-                NoCache = true,
-                CacheDirectory = _cacheDirectory,
+                NoCache = !cached,
+                CacheDirectory = parsed.CacheDirectory ?? _cacheDirectory,
+                CacheTag = cached ? parsed.CacheTag : default,
                 MftSource = source,
                 Progress = new PhaseReporter(_writeLine)
             };
 
             await using var index = await FileIndex.OpenAsync(options, cancellationToken).ConfigureAwait(false);
             WriteStatus(index.Drives.Single());
+            var driveLetter = char.ToUpperInvariant(letter[0]);
+            switch (parsed.Mode)
+            {
+                case ProgramMode.Watch:
+                    await WatchDriveAsync(index, driveLetter, parsed.Seconds, cancellationToken).ConfigureAwait(false);
+                    break;
+                case ProgramMode.Rescan:
+                    await index.RescanAsync(driveLetter, cancellationToken).ConfigureAwait(false);
+                    WriteStatus(index.Drives.Single());
+                    break;
+                case ProgramMode.Journal:
+                    await WriteJournalAsync(session, index, driveLetter, parsed, cancellationToken).ConfigureAwait(false);
+                    break;
+            }
+
             _writeLine($"=== Drive {letter}: done ===");
         }
         catch (Exception exception)

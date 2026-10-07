@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace SampleProgram.Direct;
 
 internal enum DirectVerb { Scan, Search, Tree, Open, Largest, DuplicateNames }
@@ -46,7 +48,8 @@ internal sealed record DirectArguments(DirectVerb Verb, string Drive)
     /// <summary>A local scan reads the volume itself, so the process must be elevated; a dump file needs nothing.</summary>
     internal bool RequiresElevation => Source is SourceKind.Local;
 
-    internal static bool TryParse(string[] arguments, out DirectArguments? parsed, out string? error)
+    internal static bool TryParse(string[] arguments, [NotNullWhen(true)] out DirectArguments? parsed,
+        [NotNullWhen(false)] out string? error)
     {
         parsed = null;
         if (arguments.Length == 0 || !Verbs.TryGetValue(arguments[0], out var verb))
@@ -78,11 +81,11 @@ internal sealed record DirectArguments(DirectVerb Verb, string Drive)
             return false;
         }
 
-        parsed = candidate with { Drive = positionals![0] };
+        parsed = candidate with { Drive = positionals[0] };
         return true;
     }
 
-    static string? Validate(DirectArguments candidate, string source, bool bothKinds, IReadOnlyList<string>? positionals)
+    static string? Validate(DirectArguments candidate, string source, bool bothKinds, IReadOnlyList<string> positionals)
     {
         return positionals switch
         {

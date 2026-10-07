@@ -20,7 +20,7 @@ public class WatchHostTests
         var lines = new List<string>();
         var scanner = new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (_, _) => true,
@@ -49,7 +49,7 @@ public class WatchHostTests
         var lines = new List<string>();
         var scanner = new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => false,
             _getEnvironmentVariable = _ => null,
@@ -76,7 +76,7 @@ public class WatchHostTests
         var lines = new List<string>();
         var scanner = new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => false,
             _canSelfElevate = () => true,
             _tryRunElevated = (_, _) => false,
@@ -173,7 +173,7 @@ public class WatchHostTests
     {
         return new SampleHost
         {
-            _requiresElevation = _ => true,
+            _elevationNeed = _ => ElevationNeed.SelfElevate,
             _isElevated = () => true,
             _acrtIobFunc = _ => IntPtr.Zero,
             _wFreopen = (_, _, _) => IntPtr.Zero,
