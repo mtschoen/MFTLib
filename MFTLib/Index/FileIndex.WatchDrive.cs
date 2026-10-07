@@ -84,10 +84,8 @@ public sealed partial class FileIndex
         ThrowIfCancelledByDisposal(cancellationToken);
         var driveLetter = runtime.DriveLetter;
         var source = _options.MftSource?.WatchSource ?? throw new InvalidOperationException(
-            _options.MftSource?.UnavailableReason is { } reason
-                ? MftIndexSource.FormatUnavailable(driveLetter, reason)
-                : $"Drive {driveLetter} supports a live watch but " +
-                  $"{nameof(FileIndexOptions)}.{nameof(FileIndexOptions.MftSource)} has no watch source.");
+            MftIndexSource.FormatUnavailable(driveLetter,
+                _options.MftSource?.UnavailableReason ?? MftIndexSource.NoWatchReason));
 
         (DriveBlock ArmedBlock, Task? PreviousDrain)? preparation;
         try

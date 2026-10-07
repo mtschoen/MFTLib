@@ -14,16 +14,27 @@ internal sealed class DriveBlock
     string? _deleteAtPathOverride;
     Action<string>? _deleteDiagnostics;
 
-    public DriveBlock(char driveLetter, ushort driveOrdinal, BlockFile block, string? rootDirectoryPath = null)
+    public DriveBlock(char driveLetter, ushort driveOrdinal, BlockFile block, string? rootDirectoryPath = null,
+        bool isMftDump = false)
     {
         ArgumentNullException.ThrowIfNull(block);
         DriveLetter = driveLetter;
         DriveOrdinal = driveOrdinal;
         Block = block;
         ProducerKind = block.Header.ProducerKind;
-        RootDirectoryPath = ToRootedDirectoryPath(rootDirectoryPath);
-        MatchableRootDirectoryPath = ToMatchablePrefix(RootDirectoryPath);
+        IsMftDump = isMftDump;
+        RootDirectoryPath = isMftDump ? rootDirectoryPath : ToRootedDirectoryPath(rootDirectoryPath);
+        MatchableRootDirectoryPath = isMftDump
+            ? MftDumpPaths.ToMatchablePrefix(RootDirectoryPath)
+            : ToMatchablePrefix(RootDirectoryPath);
     }
+
+    /// <summary>
+    ///     True when this block describes an MFT dump file. Its root is the opaque virtual root
+    ///     <c>dump:/{driveLetter}</c>, never a host path, so nothing may probe, open or journal it
+    ///     as the live volume that shares its letter.
+    /// </summary>
+    public bool IsMftDump { get; }
 
     public char DriveLetter { get; }
 

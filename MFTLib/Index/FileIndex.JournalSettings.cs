@@ -12,8 +12,19 @@ public sealed partial class FileIndex
     [SupportedOSPlatform("windows")]
     public UsnJournalSettings QueryUsnJournalSettings(char driveLetter)
     {
-        return UsnJournalSettingsQuery.Query(RequireConfiguredDrive(driveLetter));
+        var letter = RequireConfiguredDrive(driveLetter);
+        if (IsMftDumpDrive(letter))
+        {
+            throw new InvalidOperationException(
+                MftIndexSource.FormatUnavailable(letter, MftIndexSource.NoJournalSettingsReason));
+        }
+
+        return UsnJournalSettingsQuery.Query(letter);
     }
+
+    /// <summary>True when the drive's block comes from an MFT dump, whether or not the open produced one.</summary>
+    bool IsMftDumpDrive(char driveLetter) =>
+        _options.MftSource?.DumpIdentity is { } dump && dump.DriveLetter == char.ToUpperInvariant(driveLetter);
 
     char RequireConfiguredDrive(char driveLetter)
     {

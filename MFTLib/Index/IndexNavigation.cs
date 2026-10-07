@@ -54,7 +54,9 @@ internal static class IndexNavigation
             components[index + 1] = segments[segments.Count - 1 - index];
         }
 
-        return Path.Combine(components);
+        return driveBlock.IsMftDump
+            ? MftDumpPaths.Join(rootDirectoryPath, components.Skip(1).ToArray())
+            : Path.Combine(components);
     }
 
     /// <summary>

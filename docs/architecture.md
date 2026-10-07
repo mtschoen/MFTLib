@@ -3,6 +3,16 @@
 - **MFTLibNative** (C++ DLL) - Core NTFS MFT parsing logic with multi-threaded parallel fixup+parse and double-buffered I/O. Fully thread-safe and re-entrant. MFT record geometry (1024 or 4096-byte records) is detected at runtime rather than assumed - `FSCTL_GET_NTFS_VOLUME_DATA` for a live volume, record 0's header for an exported file. Results cross the P/Invoke boundary through compact ABI version 4 (`MFT_NATIVE_ABI_VERSION`): 50-byte `MftCompactEntry` rows with int64 size at offset 32, int64 modified time (FILETIME) at offset 40, and uint16 sequence number at offset 48, plus separate UTF-16 string pools. Flags bit `0x8000` marks an unknown size; `0x4000` marks an unresolved path whose path-table string is a bare name (path table only). The broker's block path parses without path resolution.
 - **MFTLib** (C# Library) - Managed wrapper with P/Invoke interop. The `MFTLib.Index` namespace provides a substrate-neutral columnar block format and query engine; see `docs/index-format.md`.
     - **Index namespace boundary**: `MFTLib.Index` depends on nothing in the flat `MFTLib` namespace or in `MFTLib.Interop` beyond an allowlist of journal value types (`UsnJournalEntry`, `UsnJournalSettings`, `UsnReason`). Enforced by `MFTLib.Tests/Index/NamespaceBoundaryTests.cs`, an IL-level ArchUnitNET test over the built assembly, with a mandatory negative-control fixture. Not an aislop rule: the forbidden folders share the flat `MFTLib` namespace, so there is no `using` for an import rule to match. Growing the allowlist is a review decision.
+    - **MFT dump drives**: a source built with a dump identity (`MftDumpSourceIdentity`) makes its drive a virtual
+      inventory with the root `dump:/{DRIVE}` (upper-case letter), rendered with `/` and read with `/` or `\`,
+      case-insensitive on every platform; `MftDumpPaths` owns those rules and touches no filesystem. The block
+      carries `DriveBlock.IsMftDump`, and the index never probes the root, opens the entry (`FileEntry.Open` throws
+      `InvalidOperationException`), answers journal settings (`QueryUsnJournalSettings` throws) or watches it:
+      `DriveStatus.WatchSupported` is false, start and per-drive catch-up throw `Drive X: this source does not support
+      watching.`, the same text a source with no watch source gives, and batched start, stop and catch-up report
+      `NotApplicable` with no failure. Opening validates the options before any cache path is resolved or created: exactly one drive with the identity's
+      letter, root `dump:/{DRIVE}`, `VolumeSerial` zero, `NoCache`, no cache directory, tag or cache-only open, and
+      `ProducerPolicy.Mft`; a dump block is never written to or adopted from a cache.
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
       compares exactly, not as a wildcard. Block format 3 stores the two values

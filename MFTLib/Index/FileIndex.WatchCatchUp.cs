@@ -134,7 +134,9 @@ public sealed partial class FileIndex
         lock (_stateLock)
         {
             wait = GetCatchUpWaitLocked(runtime) ?? throw new InvalidOperationException(
-                $"Drive {driveLetter} is not being watched, so there is no catch-up to wait for.");
+                _options.MftSource is { WatchSource: null, UnavailableReason: null }
+                    ? MftIndexSource.FormatUnavailable(runtime.DriveLetter, MftIndexSource.NoWatchReason)
+                    : $"Drive {driveLetter} is not being watched, so there is no catch-up to wait for.");
         }
 
         if (!wait.IsCompleted && RejectedTask(nameof(WaitForCatchUpAsync)) is { } rejected)

@@ -14,12 +14,26 @@ public sealed class MftIndexSource
     ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> throws
     ///     <see cref="InvalidOperationException" />.
     /// </param>
+    /// <param name="dumpIdentity">
+    ///     Set when the producer loads an MFT dump file. The index then treats the drive as a virtual
+    ///     inventory: it is never probed, opened, journaled or watched as the live volume that shares
+    ///     its letter, and the options it opens with are validated by
+    ///     <see cref="MftDumpSourceIdentity.ValidateOptions" />.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="producer" /> is null.</exception>
-    internal MftIndexSource(MftBlockProducer producer, IIndexWatchSource? watchSource = null)
+    /// <exception cref="ArgumentException">A dump source was given a watch source.</exception>
+    internal MftIndexSource(MftBlockProducer producer, IIndexWatchSource? watchSource = null,
+        MftDumpSourceIdentity? dumpIdentity = null)
     {
         ArgumentNullException.ThrowIfNull(producer);
+        if (dumpIdentity is not null && watchSource is not null)
+        {
+            throw new ArgumentException("A dump source cannot watch.", nameof(watchSource));
+        }
+
         Producer = producer;
         WatchSource = watchSource;
+        DumpIdentity = dumpIdentity;
     }
 
     MftIndexSource(string unavailableReason)
@@ -34,6 +48,12 @@ public sealed class MftIndexSource
     internal IIndexWatchSource? WatchSource { get; }
 
     internal string? UnavailableReason { get; }
+
+    internal MftDumpSourceIdentity? DumpIdentity { get; }
+
+    internal const string NoWatchReason = "this source does not support watching";
+
+    internal const string NoJournalSettingsReason = "this source has no live journal settings";
 
     /// <summary>
     ///     A source that scans nothing and watches nothing. Every scan of a drive fails with

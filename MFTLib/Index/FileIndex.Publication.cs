@@ -47,8 +47,9 @@ public sealed partial class FileIndex
     ///     the reference-counted <see cref="DriveBlock.Release" /> (see its own summary), not through
     ///     <see cref="IDisposable" />.
     /// </summary>
-    static DriveBlock BuildDriveBlock(IndexedDrive drive, ushort driveOrdinal, BlockFile block) =>
-        new(drive.DriveLetter, driveOrdinal, block, rootDirectoryPath: drive.RootDirectory);
+    DriveBlock BuildDriveBlock(IndexedDrive drive, ushort driveOrdinal, BlockFile block) =>
+        new(drive.DriveLetter, driveOrdinal, block, rootDirectoryPath: drive.RootDirectory,
+            isMftDump: IsMftDumpDrive(drive.DriveLetter));
 
     /// <summary>
     ///     Writes every field of a published result against its ordinal and counts its catch-up:

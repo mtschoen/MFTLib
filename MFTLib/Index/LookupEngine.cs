@@ -42,7 +42,7 @@ internal static class LookupEngine
         var descent = new PathDescent(snapshot, driveBlock.DriveOrdinal, IsCaseSensitive(driveBlock),
             cancellationToken);
         foreach (var segmentRange in remainder.SplitAny(
-                     OperatingSystem.IsWindows() ? ['\\', '/'] : ['/']))
+                     driveBlock.IsMftDump || OperatingSystem.IsWindows() ? ['\\', '/'] : ['/']))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var segment = remainder[segmentRange];
@@ -91,6 +91,7 @@ internal static class LookupEngine
         }
 
         var normalizedPath = OperatingSystem.IsWindows() ? nativePath.Replace('\\', '/') : nativePath;
+        var dumpNormalizedPath = MftDumpPaths.Fold(nativePath);
         DriveBlock? best = null;
         var bestLength = -1;
         foreach (var candidate in snapshot.DriveBlocks)
@@ -100,14 +101,17 @@ internal static class LookupEngine
                 continue;
             }
 
+            var comparable = candidate.IsMftDump ? dumpNormalizedPath : normalizedPath;
             if (trimmed.Length > nativePath.Length ||
-                !normalizedPath.AsSpan(0, trimmed.Length).Equals(trimmed, Comparison(candidate)))
+                !comparable.AsSpan(0, trimmed.Length).Equals(trimmed, Comparison(candidate)))
             {
                 continue;
             }
 
             if (nativePath.Length > trimmed.Length &&
-                !IsSeparator(nativePath[trimmed.Length]))
+                !(candidate.IsMftDump
+                    ? MftDumpPaths.IsSeparator(nativePath[trimmed.Length])
+                    : IsSeparator(nativePath[trimmed.Length])))
             {
                 continue;
             }

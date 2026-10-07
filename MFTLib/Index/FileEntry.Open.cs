@@ -8,9 +8,15 @@ public readonly partial record struct FileEntry
     ///     route is here, in <see cref="DefaultOpenById" /> below.
     /// </summary>
     /// <exception cref="ObjectDisposedException">The owning index has been disposed and this handle's snapshot released.</exception>
+    /// <exception cref="InvalidOperationException">The entry belongs to an MFT dump, whose files exist only as index rows.</exception>
     public FileStream Open(FileAccess access)
     {
         var driveBlock = DriveBlock;
+        if (driveBlock.IsMftDump)
+        {
+            throw new InvalidOperationException("Files in an MFT dump cannot be opened through the index.");
+        }
+
         if (driveBlock.ProducerKind == ProducerKind.Enumeration)
         {
             return new FileStream(Path, FileMode.Open, access, FileShare.ReadWrite | FileShare.Delete);

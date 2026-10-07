@@ -92,7 +92,7 @@ public sealed partial class FileIndex
         foreach (var driveBlock in _driveBlocks)
         {
             if (char.ToUpperInvariant(driveBlock.DriveLetter) == upperLetter &&
-                driveBlock.ProducerKind == ProducerKind.Mft)
+                driveBlock.ProducerKind == ProducerKind.Mft && !driveBlock.IsMftDump)
             {
                 return driveBlock;
             }

@@ -140,7 +140,7 @@ public class MftIndexSourceTests
     }
 
     [TestMethod]
-    public async Task SourceWithoutWatchSource_RefusesToWatchAndNamesTheOption()
+    public async Task SourceWithoutWatchSource_RefusesToWatchWithTheNoWatchingMessage()
     {
         await SeedCacheAsync();
         using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = HealthyWindow });
@@ -149,7 +149,7 @@ public class MftIndexSourceTests
         var refusal = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => index.StartWatchingAsync('T', Token));
 
-        StringAssert.Contains(refusal.Message, nameof(FileIndexOptions.MftSource));
+        Assert.AreEqual("Drive T: this source does not support watching.", refusal.Message);
     }
 
     [TestMethod]

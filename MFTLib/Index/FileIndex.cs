@@ -160,8 +160,19 @@ public sealed partial class FileIndex : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        var cacheDirectoryPath = options.CacheDirectory ?? CacheDirectory.ResolveDefaultPath();
-        CacheDirectory.EnsureCreated(cacheDirectoryPath);
+        string cacheDirectoryPath;
+        if (options.MftSource?.DumpIdentity is { } dumpIdentity)
+        {
+            // A dump block is never cached, so validation runs first and no cache path is resolved
+            // or created.
+            dumpIdentity.ValidateOptions(options);
+            cacheDirectoryPath = string.Empty;
+        }
+        else
+        {
+            cacheDirectoryPath = options.CacheDirectory ?? CacheDirectory.ResolveDefaultPath();
+            CacheDirectory.EnsureCreated(cacheDirectoryPath);
+        }
 
         var index = new FileIndex(options, cacheDirectoryPath);
         try
@@ -370,7 +381,7 @@ public sealed partial class FileIndex : IAsyncDisposable
             header.IsCompactionNeeded,
             header.ScanTimestampUtc)
         {
-            WatchSupported = driveBlock.ProducerKind == ProducerKind.Mft,
+            WatchSupported = driveBlock.ProducerKind == ProducerKind.Mft && !driveBlock.IsMftDump,
             CacheSlot = _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             AccessDeniedSubtreeCount = _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             SkippedRecordCount = _skippedRecordCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
