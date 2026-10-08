@@ -42,7 +42,7 @@ namespace MFTLib.Index;
 ///         2 scans of the single-pass design.
 ///     </para>
 /// </remarks>
-internal static class DuplicateNameFinder
+internal static partial class DuplicateNameFinder
 {
     /// <summary>Hard cap on refinement passes after pass 0, independent of how slowly candidates shrink.</summary>
     internal const int MaximumRefinementPassCount = 3;

@@ -10,7 +10,7 @@ namespace Benchmark;
 ///     Benchmark.exe names measure DIRECTORY [RUNS]
 ///     The measured variants use only public API.
 /// </summary>
-static class NameAccessorSpike
+static partial class NameAccessorSpike
 {
     struct LargestVisitor(PriorityQueue<FileEntry, long> best, int count) : IIndexRowVisitor
     {
@@ -97,6 +97,16 @@ static class NameAccessorSpike
             NameAccessorSpikeGenerator.Generate(generateDirectory, uint.Parse(rowText, CultureInfo.InvariantCulture));
             Console.WriteLine($"generated {rowText} rows in {stopwatch.Elapsed.TotalSeconds:F1} s");
             return 0;
+        }
+
+        if (arguments.Length >= 2 && arguments[0] == "lifetime")
+        {
+            return await LifetimeAsync(arguments[1]);
+        }
+
+        if (arguments.Length >= 2 && arguments[0] == "measure2")
+        {
+            return await MeasureInterleavedAsync(arguments[1], arguments.Length > 2 ? int.Parse(arguments[2], CultureInfo.InvariantCulture) : 10);
         }
 
         if (arguments.Length >= 2 && arguments[0] == "measure")

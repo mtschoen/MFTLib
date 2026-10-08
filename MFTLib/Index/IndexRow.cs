@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace MFTLib.Index;
 
 /// <summary>
@@ -10,23 +12,40 @@ public readonly ref struct IndexRow
     readonly ref readonly FileRow _row;
     readonly ushort _driveOrdinal;
     readonly uint _rowIndex;
+#if !LEAN_INDEX_ROW
+    readonly char _driveLetter;
 
     internal IndexRow(Snapshot snapshot, char driveLetter, ushort driveOrdinal, uint rowIndex,
         ref readonly FileRow row, ReadOnlySpan<char> name)
     {
         _snapshot = snapshot;
-        DriveLetter = driveLetter;
+        _driveLetter = driveLetter;
         _driveOrdinal = driveOrdinal;
         _rowIndex = rowIndex;
         _row = ref row;
         Name = name;
     }
 
-    /// <summary>The name, read straight from the mapped name pool.</summary>
-    public ReadOnlySpan<char> Name { get; }
+    /// <summary>The drive letter of the block this row lives in.</summary>
+    public char DriveLetter => _driveLetter;
+#else
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal IndexRow(Snapshot snapshot, ushort driveOrdinal, uint rowIndex,
+        ref readonly FileRow row, ReadOnlySpan<char> name)
+    {
+        _snapshot = snapshot;
+        _driveOrdinal = driveOrdinal;
+        _rowIndex = rowIndex;
+        _row = ref row;
+        Name = name;
+    }
 
     /// <summary>The drive letter of the block this row lives in.</summary>
-    public char DriveLetter { get; }
+    public char DriveLetter => _snapshot.GetDriveBlock(_driveOrdinal).DriveLetter;
+#endif
+
+    /// <summary>The name, read straight from the mapped name pool.</summary>
+    public ReadOnlySpan<char> Name { get; }
 
     /// <summary>The file length in bytes, or zero for directories and unknown sizes.</summary>
     public long Size => _row.Size;

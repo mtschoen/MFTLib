@@ -14,7 +14,7 @@ static class ConsumerSieve
     const int MaximumBucketCount = 1 << 27;
 
     // ---- sieve bitmaps (shared by A and B) ----
-    sealed class Pass(int bucketCount, int seed)
+    internal sealed class Pass(int bucketCount, int seed)
     {
         readonly int _shift = 32 - BitOperations.Log2((uint)bucketCount);
         readonly ulong[] _seenOnce = new ulong[bucketCount / 64];
@@ -41,7 +41,7 @@ static class ConsumerSieve
         }
     }
 
-    static int ComputeBucketCount(long rowCount)
+    internal static int ComputeBucketCount(long rowCount)
     {
         var target = Math.Min(rowCount, MaximumBucketCount) * 4;
         return target > MaximumBucketCount ? MaximumBucketCount

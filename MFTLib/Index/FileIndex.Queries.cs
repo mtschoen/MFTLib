@@ -123,6 +123,11 @@ public sealed partial class FileIndex
             return;
         }
 
+        var isSimple = query.NamePattern is null && query.MinimumSize is null && query.MaximumSize is null &&
+                       query.ModifiedAfter is null && query.ModifiedBefore is null && query.Under is null;
+        var includeDeleted = query.IncludeDeleted;
+        var filterDirectories = query.Directories.HasValue;
+        var wantDirectories = query.Directories.GetValueOrDefault();
         foreach (var driveBlock in snapshot.DriveBlocks)
         {
             scope.CancellationToken.ThrowIfCancellationRequested();
@@ -131,28 +136,94 @@ public sealed partial class FileIndex
                 continue;
             }
 
-            var block = driveBlock.Block;
-            var underRow = query.Under?.RowIndex ?? 0;
-            var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal, scope.CancellationToken);
-            while (scanner.MoveNext())
+            if (isSimple && !UseGeneralRowLoopForSpike)
             {
-                ref readonly var row = ref scanner.Current;
-                var name = scanner.CurrentName;
-                if (!SearchEngine.RowMatches(in row, name, query))
-                {
-                    continue;
-                }
-
-                if (query.Under is not null && !IndexNavigation.IsUnder(block, scanner.CurrentRowIndex, underRow))
-                {
-                    continue;
-                }
-
-                var indexRow = new IndexRow(snapshot, driveBlock.DriveLetter, driveBlock.DriveOrdinal,
-                    scanner.CurrentRowIndex, in row, name);
-                visitor.Visit(in indexRow);
+                ScanDriveSimple(snapshot, driveBlock, includeDeleted, filterDirectories, wantDirectories,
+                    ref visitor, scope.CancellationToken);
+            }
+            else
+            {
+                ScanDriveGeneral(snapshot, driveBlock, query, ref visitor, scope.CancellationToken);
             }
         }
+    }
+
+    /// <summary>
+    ///     Candidate C: a plain-<c>foreach</c> row enumeration with no per-row allocation. Named EnumerateRows
+    ///     because it parallels <see cref="Enumerate" /> (which yields <see cref="FileEntry" /> handles) but yields
+    ///     <see cref="IndexRow" /> views. Nothing is read or borrowed until <c>foreach</c> calls GetEnumerator.
+    /// </summary>
+    public IndexRowEnumerable EnumerateRows(SearchQuery query, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        NameMatching.ThrowIfUndefined(query);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return new IndexRowEnumerable(this, query, cancellationToken);
+    }
+
+    internal IndexRowEnumerator BeginRowEnumeration(SearchQuery query, CancellationToken cancellationToken)
+    {
+        return new IndexRowEnumerator(BeginQuery(cancellationToken), query, UseGeneralRowLoopForSpike);
+    }
+
+    /// <summary>Spike knob: forces the general per-row filter loop so the old cost stays measurable.</summary>
+    internal static bool UseGeneralRowLoopForSpike;
+
+    static void ScanDriveGeneral<TVisitor>(Snapshot snapshot, DriveBlock driveBlock, SearchQuery query,
+        ref TVisitor visitor, CancellationToken cancellationToken)
+        where TVisitor : struct, IIndexRowVisitor
+    {
+        var block = driveBlock.Block;
+        var underRow = query.Under?.RowIndex ?? 0;
+        var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal, cancellationToken);
+        while (scanner.MoveNext())
+        {
+            ref readonly var row = ref scanner.Current;
+            var name = scanner.CurrentName;
+            if (!SearchEngine.RowMatches(in row, name, query))
+            {
+                continue;
+            }
+
+            if (query.Under is not null && !IndexNavigation.IsUnder(block, scanner.CurrentRowIndex, underRow))
+            {
+                continue;
+            }
+
+            VisitRow(snapshot, driveBlock, scanner.CurrentRowIndex, in row, name, ref visitor);
+        }
+    }
+
+    /// <summary>Only the in-use, deleted and directory flag checks, with the query read once by the caller.</summary>
+    static void ScanDriveSimple<TVisitor>(Snapshot snapshot, DriveBlock driveBlock, bool includeDeleted,
+        bool filterDirectories, bool wantDirectories, ref TVisitor visitor, CancellationToken cancellationToken)
+        where TVisitor : struct, IIndexRowVisitor
+    {
+        var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal, cancellationToken);
+        while (scanner.MoveNext())
+        {
+            ref readonly var row = ref scanner.Current;
+            if (!row.IsInUse || (!includeDeleted && row.IsDeleted) ||
+                (filterDirectories && row.IsDirectory != wantDirectories))
+            {
+                continue;
+            }
+
+            VisitRow(snapshot, driveBlock, scanner.CurrentRowIndex, in row, scanner.CurrentName, ref visitor);
+        }
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    static void VisitRow<TVisitor>(Snapshot snapshot, DriveBlock driveBlock, uint rowIndex, in FileRow row,
+        ReadOnlySpan<char> name, ref TVisitor visitor)
+        where TVisitor : struct, IIndexRowVisitor
+    {
+#if LEAN_INDEX_ROW
+        var indexRow = new IndexRow(snapshot, driveBlock.DriveOrdinal, rowIndex, in row, name);
+#else
+        var indexRow = new IndexRow(snapshot, driveBlock.DriveLetter, driveBlock.DriveOrdinal, rowIndex, in row, name);
+#endif
+        visitor.Visit(in indexRow);
     }
 
     struct InterfaceRowVisitor(IIndexRowVisitor inner) : IIndexRowVisitor
@@ -277,7 +348,7 @@ public sealed partial class FileIndex
     }
 
     /// <summary>One query's hold on the index: the borrowed snapshot and the token that stops it.</summary>
-    readonly struct QueryScope : IDisposable
+    internal readonly struct QueryScope : IDisposable
     {
         readonly SnapshotBorrow _borrow;
         readonly CancellationTokenSource? _linkedCancellation;
