@@ -65,8 +65,8 @@ public partial class JournalBrokerHostChannelTests
         Assert.AreEqual(Armed.NextUsn, loss.CheckpointUsn);
         Assert.AreEqual(5000L, loss.FirstUsn);
         Assert.AreEqual(9000L, loss.NextUsn);
-        Assert.AreEqual(4096L, loss.AllocationDelta);
-        Assert.AreEqual(32768L, loss.MaximumSize);
+        Assert.AreEqual(4096L, loss.JournalSettings.AllocationDelta);
+        Assert.AreEqual(32768L, loss.JournalSettings.MaximumSize);
         Assert.AreEqual(4000L, loss.BytesBehind);
         Assert.AreEqual(12288L, loss.SizeThatWouldHaveRetained);
         Assert.IsNull(frames[^1].Message, "The failure text stays on the host.");

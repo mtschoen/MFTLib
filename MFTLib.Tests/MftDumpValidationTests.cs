@@ -76,8 +76,8 @@ public class MftDumpValidationTests
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, drive.State, description);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, drive.FailureKind, description);
-        Assert.AreEqual(message, drive.MftProducerFailureMessage, description);
-        Assert.IsFalse(drive.WatchSupported, description);
+        Assert.AreEqual(message, drive.FailureMessage, description);
+        Assert.IsFalse(drive.Watch.Supported, description);
     }
 
     [TestMethod]
@@ -88,7 +88,7 @@ public class MftDumpValidationTests
 
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveFailureKind.ProducerFailed, drive.FailureKind);
-        StringAssert.StartsWith(drive.MftProducerFailureMessage, "Failed to open file. Error: ");
+        StringAssert.StartsWith(drive.FailureMessage, "Failed to open file. Error: ");
     }
 
     [TestMethod]
@@ -102,12 +102,12 @@ public class MftDumpValidationTests
 
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
-        Assert.AreEqual(0, drive.SkippedRecordCount);
-        Assert.AreEqual(7u, drive.LiveRowCount);
-        Assert.IsFalse(drive.CompactionNeeded);
-        Assert.IsFalse(drive.WatchSupported);
-        Assert.IsNull(drive.MftProducerFailureMessage);
+        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
+        Assert.AreEqual(0, drive.Block.SkippedRecordCount);
+        Assert.AreEqual(7u, drive.Block.LiveRowCount);
+        Assert.IsFalse(drive.Block.CompactionNeeded);
+        Assert.IsFalse(drive.Watch.Supported);
+        Assert.IsNull(drive.FailureMessage);
 
         var notes = index.Find("dump:/D/documents/Notes.txt")!.Value;
         Assert.AreEqual(11L, notes.Size);
@@ -129,8 +129,8 @@ public class MftDumpValidationTests
 
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(0, drive.SkippedRecordCount);
-        Assert.AreEqual(6u, drive.LiveRowCount);
+        Assert.AreEqual(0, drive.Block.SkippedRecordCount);
+        Assert.AreEqual(6u, drive.Block.LiveRowCount);
         Assert.IsNull(index.Find("dump:/D/documents/Deep/leaf.txt"));
         Assert.IsNotNull(index.Find("dump:/D/documents/Deep"));
     }

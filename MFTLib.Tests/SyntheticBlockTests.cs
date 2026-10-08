@@ -121,11 +121,11 @@ public partial class SyntheticBlockTests
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
         var drive = index.Drives.Single();
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.BlockSource);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.Block.Source);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf().ProducerKind);
-        Assert.AreEqual(Moment, drive.ScanTimestamp);
+        Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
         Assert.AreEqual(10u, index.HeaderOf().RowCount);
-        Assert.AreEqual(5u, drive.LiveRowCount);
+        Assert.AreEqual(5u, drive.Block.LiveRowCount);
         var report = index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single();
         Assert.AreEqual(1234, report.Size);
         Assert.AreEqual(FileAttributes.ReadOnly | FileAttributes.Archive, report.Attributes);
@@ -202,7 +202,7 @@ public partial class SyntheticBlockTests
 
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
-        Assert.AreEqual(4u, index.Drives.Single().LiveRowCount);
+        Assert.AreEqual(4u, index.Drives.Single().Block.LiveRowCount);
     }
 
     [TestMethod]
@@ -214,7 +214,7 @@ public partial class SyntheticBlockTests
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
         var drive = index.Drives.Single();
-        Assert.IsTrue(drive.CompactionNeeded);
+        Assert.IsTrue(drive.Block.CompactionNeeded);
         Assert.AreEqual(DriveState.Stale, drive.State);
     }
 
@@ -231,7 +231,7 @@ public partial class SyntheticBlockTests
 
         await using (var index = await FileIndex.OpenAsync(CacheOnly(), Token))
         {
-            Assert.AreEqual(later, index.Drives.Single().ScanTimestamp);
+            Assert.AreEqual(later, index.Drives.Single().Block.ScanTimestamp);
         }
 
         using var block = BlockFile.Open(path, Serial, out _)!;
@@ -251,7 +251,7 @@ public partial class SyntheticBlockTests
         var producer = SampleProducer();
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
         var drive = index.Drives.Single();
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
+        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
     }
 
     [TestMethod]
@@ -352,9 +352,9 @@ public partial class SyntheticBlockTests
         await using (var index = await FileIndex.OpenAsync(Scanning(producer, tag), Token))
         {
             var drive = index.Drives.Single();
-            Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
-            Assert.AreEqual(3, drive.SkippedRecordCount);
-            Assert.AreEqual(Moment, drive.ScanTimestamp);
+            Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
+            Assert.AreEqual(3, drive.Block.SkippedRecordCount);
+            Assert.AreEqual(Moment, drive.Block.ScanTimestamp);
             Assert.AreEqual(1234, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Single().Size);
         }
 
@@ -414,7 +414,7 @@ public partial class SyntheticBlockTests
             var failedDrive = failedIndex.Drives.Single();
             Assert.AreEqual(DriveState.Failed, failedDrive.State);
             Assert.AreEqual(DriveFailureKind.ProducerFailed, failedDrive.FailureKind);
-            StringAssert.Contains(failedDrive.MftProducerFailureMessage, "catch-up evaluation failed");
+            StringAssert.Contains(failedDrive.FailureMessage, "catch-up evaluation failed");
             return;
         }
 
@@ -424,7 +424,7 @@ public partial class SyntheticBlockTests
         await using var index = await FileIndex.OpenAsync(Scanning(producer), Token);
 
         var drive = index.Drives.Single();
-        Assert.AreEqual(loss, drive.CheckpointLoss);
+        Assert.AreEqual(loss, drive.Watch.CheckpointLoss);
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(2, producer.ProducedDrives.Count, "the lost catch-up is scanned again");
     }

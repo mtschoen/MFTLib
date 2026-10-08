@@ -46,7 +46,7 @@ public class FileIndexBlockSourceTests
     {
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().BlockSource);
+        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block.Source);
     }
 
     [TestMethod]
@@ -58,7 +58,7 @@ public class FileIndexBlockSourceTests
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().BlockSource);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().Block.Source);
     }
 
     [TestMethod]
@@ -69,11 +69,11 @@ public class FileIndexBlockSourceTests
         }
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().BlockSource);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().Block.Source);
 
         await reopened.RescanAsync('T', CancellationToken.None);
 
-        Assert.AreEqual(BlockSource.ProducedByScan, reopened.Drives.Single().BlockSource);
+        Assert.AreEqual(BlockSource.ProducedByScan, reopened.Drives.Single().Block.Source);
     }
 
     [TestMethod]
@@ -89,7 +89,7 @@ public class FileIndexBlockSourceTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         Assert.AreEqual(DriveState.Offline, index.Drives.Single().State);
-        Assert.AreEqual(BlockSource.None, index.Drives.Single().BlockSource);
+        Assert.AreEqual(BlockSource.None, index.Drives.Single().Block.Source);
     }
 
     /// <summary>
@@ -111,7 +111,7 @@ public class FileIndexBlockSourceTests
         static async Task RebuildWarmStartedDrivesAsync(FileIndex index)
         {
             foreach (var status in index.Drives.Where(
-                         drive => drive.BlockSource == BlockSource.WarmStartedFromCache).ToArray())
+                         drive => drive.Block.Source == BlockSource.WarmStartedFromCache).ToArray())
             {
                 await index.RescanAsync(status.DriveLetter, CancellationToken.None);
             }
@@ -120,18 +120,18 @@ public class FileIndexBlockSourceTests
         await using (var firstOpen = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, CountingProducer),
                          CancellationToken.None))
         {
-            Assert.AreEqual(BlockSource.ProducedByScan, firstOpen.Drives.Single().BlockSource);
+            Assert.AreEqual(BlockSource.ProducedByScan, firstOpen.Drives.Single().Block.Source);
             await RebuildWarmStartedDrivesAsync(firstOpen);
             Assert.AreEqual(1, invocationCount, "the open already scanned this drive, so the loop must skip it");
         }
 
         await using var secondOpen = await FileIndex.OpenAsync(Options(ProducerPolicy.Mft, CountingProducer),
             CancellationToken.None);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, secondOpen.Drives.Single().BlockSource);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, secondOpen.Drives.Single().Block.Source);
 
         await RebuildWarmStartedDrivesAsync(secondOpen);
 
         Assert.AreEqual(2, invocationCount, "a warm-started drive is the one the loop must rescan");
-        Assert.AreEqual(BlockSource.ProducedByScan, secondOpen.Drives.Single().BlockSource);
+        Assert.AreEqual(BlockSource.ProducedByScan, secondOpen.Drives.Single().Block.Source);
     }
 }

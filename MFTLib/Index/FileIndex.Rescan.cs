@@ -40,7 +40,7 @@ public sealed partial class FileIndex
     ///         A scan whose journal catch-up was lost publishes its block, raises
     ///         <see cref="WatchFaultKind.CatchUpLost" />, and scans the drive again at once while
     ///         this rescan still holds the lifecycle gate, until a scan's catch-up holds or the
-    ///         drive's <see cref="DriveStatus.ConsecutiveLostCatchUps" /> reaches
+    ///         drive's <see cref="DriveWatchStatus.ConsecutiveLostCatchUps" /> reaches
     ///         <see cref="LostCatchUpRecoveryLimit" />; then this throws the last
     ///         <see cref="JournalCatchUpLostException" />, and the drive keeps its last block,
     ///         queryable but not watchable. With the count already at the limit it makes exactly one
@@ -51,7 +51,7 @@ public sealed partial class FileIndex
     ///         instance and its catch-up waits untouched. Journal changes applied during production
     ///         remain on the old block, including when its renamed file is restored. A producer
     ///         returning no block fails this task with <see cref="InvalidOperationException" />
-    ///         carrying its failure, also reported by <see cref="DriveStatus.MftProducerFailureMessage" />.
+    ///         carrying its failure, also reported by <see cref="DriveStatus.FailureMessage" />.
     ///         A failed retry after publishing a lost catch-up keeps that unresumable block and
     ///         refuses its watch.
     ///     </para>
@@ -59,7 +59,7 @@ public sealed partial class FileIndex
     ///         A successful scan returns normally if its watch source fails to start the replacement
     ///         watch. <see cref="WatchFaultKind.RescanRestart" /> is raised once, with the start
     ///         failure as the inner exception and a message explaining that the rescan replaced the
-    ///         block but could not start its watch. <see cref="DriveStatus.WatchFailureMessage" />
+    ///         block but could not start its watch. <see cref="DriveWatchStatus.FailureMessage" />
     ///         carries that message; the drive stays <see cref="WatchCatchUpState.Faulted" /> until
     ///         a consumer starts or rescans it. No automatic recovery is queued. Stop rethrows that
     ///         outstanding fault once. An automatic recovery's failed restart reports
@@ -233,7 +233,7 @@ public sealed partial class FileIndex
             {
                 _blocklessDriveStatuses[index] = _blocklessDriveStatuses[index] with
                 {
-                    MftProducerFailureMessage = message,
+                    FailureMessage = message,
                     FailureKind = DriveFailureKind.ProducerFailed
                 };
             }

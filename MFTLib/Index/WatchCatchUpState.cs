@@ -43,7 +43,7 @@ public enum WatchCatchUpState
 
     /// <summary>
     ///     The drive's watch failed, its start or automatic restart failed, or its start was
-    ///     refused, with detail in <see cref="DriveStatus.WatchFailureMessage" />. A failed
+    ///     refused, with detail in <see cref="DriveWatchStatus.FailureMessage" />. A failed
     ///     automatic recovery also leaves the drive here. Cleared by the drive's next start, by a
     ///     rescan that starts it again, or by a stop.
     /// </summary>

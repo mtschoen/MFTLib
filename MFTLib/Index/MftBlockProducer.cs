@@ -54,7 +54,7 @@ internal sealed record MftBlockProduceRequest
 ///     One finished block plus the journal cursor armed before the scan began, so a watch
 ///     resumes from before the scan rather than after it and nothing that changed during the
 ///     scan is lost. <paramref name="SkippedRecordCount" /> counts records the producer could
-///     not place, reported as <see cref="DriveStatus.SkippedRecordCount" />.
+///     not place, reported as <see cref="DriveBlockStatus.SkippedRecordCount" />.
 /// </summary>
 internal sealed record MftBlockProduceResult(
     BlockFile Block,

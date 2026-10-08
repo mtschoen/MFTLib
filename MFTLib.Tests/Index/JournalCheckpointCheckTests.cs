@@ -40,8 +40,8 @@ public class JournalCheckpointCheckTests
         Assert.AreEqual(JournalCheckpointLossDetection.DriveOpening, loss.DetectedDuring);
         Assert.AreEqual(2000L, loss.CheckpointUsn);
         Assert.AreEqual(nextUsn, loss.NextUsn);
-        Assert.AreEqual(64L, loss.AllocationDelta);
-        Assert.AreEqual(32768L, loss.MaximumSize);
+        Assert.AreEqual(64L, loss.JournalSettings.AllocationDelta);
+        Assert.AreEqual(32768L, loss.JournalSettings.MaximumSize);
         if (expectedCause == JournalCheckpointLossCause.JournalAdvanced)
         {
             Assert.AreEqual(0L, loss.FirstUsn);
@@ -127,8 +127,8 @@ public class JournalCheckpointCheckTests
         Assert.AreEqual(900L, loss.CheckpointUsn);
         Assert.AreEqual(1_000L, loss.FirstUsn);
         Assert.AreEqual(5_000L, loss.NextUsn);
-        Assert.AreEqual(64L, loss.AllocationDelta);
-        Assert.AreEqual(128L * 1024 * 1024, loss.MaximumSize);
+        Assert.AreEqual(64L, loss.JournalSettings.AllocationDelta);
+        Assert.AreEqual(128L * 1024 * 1024, loss.JournalSettings.MaximumSize);
         // The 4100-byte span rounds to 4160, then the trimming margin adds one 64-byte delta.
         Assert.AreEqual(100L, loss.BytesBehind);
         Assert.AreEqual(4_224L, loss.SizeThatWouldHaveRetained);
@@ -229,7 +229,7 @@ public class JournalCheckpointCheckTests
         Assert.IsNotNull(loss);
         Assert.AreEqual(20 * megabyte, loss.BytesBehind);
         Assert.AreEqual(384 * megabyte, loss.SizeThatWouldHaveRetained);
-        Assert.IsTrue(loss.SizeThatWouldHaveRetained > loss.MaximumSize,
+        Assert.IsTrue(loss.SizeThatWouldHaveRetained > loss.JournalSettings.MaximumSize,
             "the hint is only worth showing when it asks for a bigger journal than the current one");
     }
 
@@ -247,8 +247,8 @@ public class JournalCheckpointCheckTests
         Assert.AreEqual(0L, loss.CheckpointUsn);
         Assert.AreEqual(1L, loss.FirstUsn);
         Assert.AreEqual(long.MaxValue, loss.NextUsn);
-        Assert.AreEqual(64L, loss.AllocationDelta);
-        Assert.AreEqual(128L * 1024 * 1024, loss.MaximumSize);
+        Assert.AreEqual(64L, loss.JournalSettings.AllocationDelta);
+        Assert.AreEqual(128L * 1024 * 1024, loss.JournalSettings.MaximumSize);
         Assert.AreEqual(1L, loss.BytesBehind);
         Assert.IsNull(loss.SizeThatWouldHaveRetained);
     }

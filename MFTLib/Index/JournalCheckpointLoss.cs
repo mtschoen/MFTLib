@@ -3,7 +3,7 @@ namespace MFTLib.Index;
 /// <summary>
 ///     Which of MFTLib's two journal-position checks found the loss. A report outlives the
 ///     moment that produced it, so without this a consumer reading
-///     <see cref="DriveStatus.CheckpointLoss" /> from inside a
+///     <see cref="DriveWatchStatus.CheckpointLoss" /> from inside a
 ///     <see cref="FileIndex.WatchFaulted" /> handler could not tell a report about the fault it
 ///     is handling from one the open left behind.
 /// </summary>
@@ -77,16 +77,14 @@ public sealed record JournalCheckpointLoss
     /// <param name="driveLetter">The drive, in upper case.</param>
     /// <param name="detectedDuring">Which check found the loss.</param>
     /// <param name="cause">Which situation the loss was.</param>
-    /// <param name="allocationDelta">The journal's allocation unit.</param>
-    /// <param name="maximumSize">The journal's configured maximum size.</param>
+    /// <param name="journalSettings">The journal's sizing when the loss was detected.</param>
     internal JournalCheckpointLoss(char driveLetter, JournalCheckpointLossDetection detectedDuring,
-        JournalCheckpointLossCause cause, long allocationDelta, long maximumSize)
+        JournalCheckpointLossCause cause, UsnJournalSettings journalSettings)
     {
         DriveLetter = driveLetter;
         DetectedDuring = detectedDuring;
         Cause = cause;
-        AllocationDelta = allocationDelta;
-        MaximumSize = maximumSize;
+        JournalSettings = journalSettings;
     }
 
     /// <summary>Upper case, matching the letter this drive was configured with.</summary>
@@ -122,11 +120,8 @@ public sealed record JournalCheckpointLoss
     /// <summary>The USN the journal's next record would be written at.</summary>
     internal long NextUsn { get; init; }
 
-    /// <summary>The journal's allocation unit, which sizes are rounded up to.</summary>
-    public long AllocationDelta { get; init; }
-
-    /// <summary>The journal's configured maximum size when the loss was detected.</summary>
-    public long MaximumSize { get; init; }
+    /// <summary>The journal's sizing when the loss was detected: its configured maximum size and the allocation unit that sizes are rounded up to.</summary>
+    public UsnJournalSettings JournalSettings { get; init; }
 
     /// <summary>
     ///     How far behind the journal the checkpoint had fallen, in bytes:
@@ -139,7 +134,7 @@ public sealed record JournalCheckpointLoss
     /// <summary>
     ///     A journal's maximum size in bytes would need to be at least this large to have kept
     ///     the checkpoint readable: the journal's next USN minus the checkpoint,
-    ///     rounded up to <see cref="AllocationDelta" />, plus one more allocation delta. The
+    ///     rounded up to <see cref="UsnJournalSettings.AllocationDelta" />, plus one more allocation delta. The
     ///     margin follows NTFS's documented trimming behavior in CREATE_USN_JOURNAL_DATA and
     ///     USN_JOURNAL_DATA, not a live measurement. This is the size to offer the user
     ///     alongside the broker's journal grow request (<c>BrokerFrameKind.GrowUsnJournal</c>), when there is one to offer.

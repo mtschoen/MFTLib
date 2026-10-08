@@ -65,7 +65,7 @@ internal sealed class MftDumpBlockProducer
             var written = MftBlockScan.WriteToBlock(block, new BlockStamp(default, () => DateTime.UtcNow), records,
                 MftBlockRowFilter.Full, new BlockWriteReporting(TransferProgress(request), null), cancellationToken);
 
-            // DriveStatus.SkippedRecordCount is a public int, so a larger count reads as its maximum.
+            // DriveBlockStatus.SkippedRecordCount is a public int, so a larger count reads as its maximum.
             var produced = new MftBlockProduceResult(block, JournalId: 0, NextUsn: 0,
                 SkippedRecordCount: (int)Math.Min(written.SkippedRecordCount, int.MaxValue));
             block = null;

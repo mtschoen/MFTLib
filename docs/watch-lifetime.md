@@ -33,11 +33,11 @@
       delivered after it and repeated by replacement catch-up. Queries can lag until the new
       watch reports `CaughtUp`. A successful manual scan whose replacement watch cannot start
       returns normally and raises `RescanRestart` once, with the start failure as its inner
-      exception. Both its exception message and `WatchFailureMessage` identify the rescan's
+      exception. Both its exception message and `DriveWatchStatus.FailureMessage` identify the rescan's
       replacement and the failed watch start. The drive stays `Faulted` without automatic
       recovery until a consumer starts or rescans it; stop rethrows that fault once.
       A failed automatic recovery, including its restart, reports `Recovery`.
-    - **Watch request**: `DriveStatus.WatchRequested` exposes `DriveRuntime.WatchRequested`. A
+    - **Watch request**: `DriveWatchStatus.Requested` exposes `DriveRuntime.WatchRequested`. A
       consumer start sets it before invoking the source, and it stays set when the source throws
       or when the start is refused because the block's journal cursor cannot be resumed; stop,
       disposal and a start its own caller cancelled clear it. A rescan restarts the watch only
@@ -45,12 +45,12 @@
       never starts a drive nobody asked to watch. A batched start answering `NotApplicable`
       records no request. A restart whose rescan replaced the block with one that cannot be
       watched withdraws the request and supersedes any retained faulted watch with its failure
-      message, so the drive reads `NotStarted` either way. `WatchCatchUpState` derives, in order: `Recovering`; the current instance's
+      message, so the drive reads `NotStarted` either way. `DriveWatchStatus.CatchUpState` derives, in order: `Recovering`; the current instance's
       state; `Faulted` for a failed or refused start; `CatchingUp` while requested with no
       instance; otherwise `NotStarted`.
     - **Watch state events**: `FileIndex.WatchStateChanged` delivers a `DriveWatchState`
-      (`DriveLetter`, `WatchCatchUpState`, `WatchStateVersion`, `Fault`) for every change of a drive's derived
-      `WatchCatchUpState`, and `DriveStatus.WatchStateVersion` carries the same per-drive counter: zero
+      (`DriveLetter`, `CatchUpState`, `StateVersion`, `Fault`) for every change of a drive's derived
+      `CatchUpState`, and `DriveWatchStatus.StateVersion` carries the same per-drive counter: zero
       at open unless open-time scans exhausted catch-up retries (which leaves the drive `Faulted`
       with version 1), one more per change, independent across drives. Every section that changes an
       input of `GetWatchCatchUpStateLocked` (start registration, a start whose source threw or its

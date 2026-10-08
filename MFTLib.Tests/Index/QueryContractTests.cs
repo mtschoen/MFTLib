@@ -1,4 +1,5 @@
 using MFTLib.Index;
+using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -24,11 +25,11 @@ public class QueryContractTests
     [TestMethod]
     public void DriveStatus_DefaultsMatchThePublishedContract()
     {
-        var status = new DriveStatus('T', DriveState.Ready, BlockSource.None, 40, false,
+        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready, BlockSource.None, 40, false,
             new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc));
 
-        Assert.AreEqual(0, status.AccessDeniedSubtreeCount);
-        Assert.IsNull(status.WatchFailureMessage);
+        Assert.AreEqual(0, status.Block.AccessDeniedSubtreeCount);
+        Assert.IsNull(status.Watch.FailureMessage);
         Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
     }
 

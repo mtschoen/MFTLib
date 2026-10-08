@@ -59,7 +59,7 @@ public class BlockValidationMatrixTests
         Assert.IsTrue(diagnostics.Any(line => line.Contains($"cache validation failed: {expectedRejection}")),
             $"the rejection reason {expectedRejection} is logged");
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives[0].BlockSource);
+        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives[0].Block.Source);
         Assert.IsTrue(index.HeaderOf().RowCount >= 3);
     }
 

@@ -33,12 +33,12 @@ public class FileIndexWatchFaultTests
 
         Assert.AreEqual(1, harness.Faults.Count);
         Assert.IsInstanceOfType<ArgumentNullException>(fault.Exception);
-        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage, "the recovery replaced the faulted watch");
+        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage, "the recovery replaced the faulted watch");
         Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
         Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
         Assert.AreEqual(1, harness.Source.TargetsFor('U').Count);
-        Assert.IsNull(harness.DriveFor('U').WatchFailureMessage);
+        Assert.IsNull(harness.DriveFor('U').Watch.FailureMessage);
         Assert.AreEqual(frozenCursor, harness.BlockFor('T').Header.UsnNextUsn, "the rejected batch advanced nothing");
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
         Assert.AreEqual(1, harness.Changes.Count);
@@ -65,7 +65,7 @@ public class FileIndexWatchFaultTests
         var driveFault = (DriveWatchFaultException)fault.Exception;
         Assert.AreEqual('T', driveFault.DriveLetter);
         Assert.AreSame(wrapped, driveFault.InnerException);
-        Assert.AreEqual("journal wrapped", harness.DriveFor('T').WatchFailureMessage);
+        Assert.AreEqual("journal wrapped", harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);
         Assert.AreEqual(frozenCursor, harness.BlockFor('T').Header.UsnNextUsn);
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
@@ -90,10 +90,10 @@ public class FileIndexWatchFaultTests
         Assert.AreEqual(1, harness.Faults.Count);
         Assert.AreEqual('T', fault.DriveLetter);
         Assert.AreSame(lost, fault.Exception);
-        Assert.AreEqual("the broker died", harness.DriveFor('T').WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUpState);
-        Assert.IsNull(harness.DriveFor('U').WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').WatchCatchUpState);
+        Assert.AreEqual("the broker died", harness.DriveFor('T').Watch.FailureMessage);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').Watch.CatchUpState);
+        Assert.IsNull(harness.DriveFor('U').Watch.FailureMessage);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').Watch.CatchUpState);
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn);
 
         var thrown = await Assert.ThrowsExceptionAsync<IOException>(
@@ -118,7 +118,7 @@ public class FileIndexWatchFaultTests
 
         foreach (var driveLetter in new[] { 'T', 'U' })
         {
-            Assert.IsNotNull(harness.DriveFor(driveLetter).WatchFailureMessage);
+            Assert.IsNotNull(harness.DriveFor(driveLetter).Watch.FailureMessage);
             Assert.AreEqual(DriveState.Ready, harness.DriveFor(driveLetter).State);
         }
 
@@ -155,7 +155,7 @@ public class FileIndexWatchFaultTests
 
         Assert.AreEqual(1, harness.Faults.Count);
         Assert.AreEqual(WatchFaultKind.Subscriber, harness.Faults[0].Kind);
-        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(300L, harness.BlockFor('T').Header.UsnNextUsn);
 
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
@@ -177,8 +177,8 @@ public class FileIndexWatchFaultTests
         await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => start);
         Assert.AreEqual(0, harness.Faults.Count);
         Assert.AreEqual(0, harness.Source.Watches.Count);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUpState);
-        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').Watch.CatchUpState);
+        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => harness.Index.StopWatchingAsync('T', Token),
             "the cancelled start cleared the request, so the drive is not watching");
@@ -236,12 +236,12 @@ public class FileIndexWatchFaultTests
         await harness.Index.StartWatchingAsync('T', Token);
         harness.Source.WatchFor('T').FailDrive(new IOException("journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
-        Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
         await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
             () => harness.Index.StopWatchingAsync('T', Token));
 
         await harness.Index.StartWatchingAsync('T', Token);
-        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(recordNumber: 9, "after.txt", nextUsn: 300));
         Assert.AreEqual(300L, harness.BlockFor('T').Header.UsnNextUsn);
         await harness.Index.StopWatchingAsync('T', Token);

@@ -50,35 +50,35 @@ public sealed partial class BrokerCrossDriveLivenessTests
             faults.Select(fault => fault.Kind).ToArray(), "three CatchUpLost faults and no Recovery");
         var losses = faults.Select(fault => (JournalCatchUpLostException)fault.Exception).ToArray();
         var statusesAtLoss = scenario.CatchUpLossStatuses('T');
-        CollectionAssert.AreEqual(new[] { 1, 2, 3 }, statusesAtLoss.Select(status => status.ConsecutiveLostCatchUps).ToArray());
+        CollectionAssert.AreEqual(new[] { 1, 2, 3 }, statusesAtLoss.Select(status => status.Watch.ConsecutiveLostCatchUps).ToArray());
         CollectionAssert.AreEqual(new[] { false, false, true }, losses.Select(loss => loss.RecoveryStopped).ToArray());
         Assert.AreSame(losses[2], thrown, "the rescan throws the loss that stopped it");
 
         var drive = scenario.DriveOf('T');
-        Assert.AreEqual(3, drive.ConsecutiveLostCatchUps);
+        Assert.AreEqual(3, drive.Watch.ConsecutiveLostCatchUps);
         Assert.AreEqual(1, index.Search(new SearchQuery("scan-T-4.txt", NameMatchMode.Exact), token).Count, "T keeps its third block, the fourth scan");
         Assert.AreEqual(0, index.Search(new SearchQuery("scan-T-3.txt", NameMatchMode.Exact), token).Count);
-        var report = drive.CheckpointLoss;
+        var report = drive.Watch.CheckpointLoss;
         Assert.IsNotNull(report);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, report.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, report.Cause);
         Assert.AreEqual(ArmedCursor.NextUsn, report.CheckpointUsn);
         Assert.AreEqual(JournalSizeArithmetic.SizeThatWouldHaveRetained(ArmedCursor.NextUsn, TrimmedWindow.NextUsn,
             TrimmedWindow.AllocationDelta), report.SizeThatWouldHaveRetained);
-        Assert.AreEqual(report, statusesAtLoss[^1].CheckpointLoss);
+        Assert.AreEqual(report, statusesAtLoss[^1].Watch.CheckpointLoss);
         await WatchDeduplicationTestSupport.ThrowsAsync<InvalidOperationException>(() => index.StartWatchingAsync('T', token));
 
         // U completed normally in the same run.
         Assert.AreEqual(2, scenario.ScansOf('U'));
         Assert.AreEqual(1, index.Search(new SearchQuery("scan-U-2.txt", NameMatchMode.Exact), token).Count);
         Assert.AreEqual(0, scenario.FaultsOf('U').Count);
-        Assert.AreEqual(0, scenario.DriveOf('U').ConsecutiveLostCatchUps);
-        Assert.IsNull(scenario.DriveOf('U').CheckpointLoss);
+        Assert.AreEqual(0, scenario.DriveOf('U').Watch.ConsecutiveLostCatchUps);
+        Assert.IsNull(scenario.DriveOf('U').Watch.CheckpointLoss);
 
         // The source is fixed: a manual rescan succeeds, the count resets and a start is accepted.
         journal.Fix();
         await index.RescanAsync('T', token).WaitAsync(HangGuard);
-        Assert.AreEqual(0, scenario.DriveOf('T').ConsecutiveLostCatchUps);
+        Assert.AreEqual(0, scenario.DriveOf('T').Watch.ConsecutiveLostCatchUps);
         await index.StartWatchingAsync('T', token);
         Assert.AreEqual(ArmedCursor, (await scenario.Broker.Watch('T').RunAsync(1)).Since);
         Assert.AreEqual(hostClockAtStart, scenario.HostClock.GetUtcNow(), "no time passed on the host");
@@ -108,11 +108,11 @@ public sealed partial class BrokerCrossDriveLivenessTests
         var fault = scenario.FaultsOf('T').Single();
         Assert.AreEqual(WatchFaultKind.CatchUpLost, fault.Kind);
         var loss = (JournalCatchUpLostException)fault.Exception;
-        Assert.AreEqual(1, scenario.CatchUpLossStatuses('T').Single().ConsecutiveLostCatchUps);
+        Assert.AreEqual(1, scenario.CatchUpLossStatuses('T').Single().Watch.ConsecutiveLostCatchUps);
         Assert.IsFalse(loss.RecoveryStopped);
         var drive = scenario.DriveOf('T');
-        Assert.AreEqual(0, drive.ConsecutiveLostCatchUps);
-        Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, drive.CheckpointLoss?.DetectedDuring,
+        Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
+        Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, drive.Watch.CheckpointLoss?.DetectedDuring,
             "the report the lost scan produced is kept");
         Assert.AreEqual(1, index.Search(new SearchQuery("scan-T-3.txt", NameMatchMode.Exact), token).Count, "T's block is the second scan's");
         Assert.AreEqual(0, index.Search(new SearchQuery("scan-T-2.txt", NameMatchMode.Exact), token).Count);
@@ -144,8 +144,8 @@ public sealed partial class BrokerCrossDriveLivenessTests
         Assert.AreEqual(1, scenario.ChannelsOpenedFor('T') - channelsBefore, "one scan channel, no retry");
         Assert.AreEqual(2, scenario.ScansOf('T'));
         var drive = scenario.DriveOf('T');
-        Assert.AreEqual(0, drive.ConsecutiveLostCatchUps);
-        Assert.IsNull(drive.CheckpointLoss);
+        Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
+        Assert.IsNull(drive.Watch.CheckpointLoss);
         Assert.AreEqual(0, scenario.Faults.Count, "no CatchUpLost fault");
         Assert.AreEqual(1, index.Search(new SearchQuery("scan-T-1.txt", NameMatchMode.Exact), token).Count, "the open's block stays");
     }

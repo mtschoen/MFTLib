@@ -16,7 +16,7 @@ public static partial class MftIndexSources
     ///     The dump file. The path is made absolute once, here, and the file is not opened: a missing,
     ///     unreadable or invalid file fails the scan, which the index reports as
     ///     <see cref="DriveFailureKind.ProducerFailed" /> with the reason in
-    ///     <see cref="DriveStatus.MftProducerFailureMessage" />. Each scan and rescan opens the path
+    ///     <see cref="DriveStatus.FailureMessage" />. Each scan and rescan opens the path
     ///     anew and reads only the file it opened, so the file must not be rewritten in place during a scan.
     /// </param>
     /// <param name="driveLetter">The letter the index files the dump under; any ASCII letter, taken in upper case.</param>

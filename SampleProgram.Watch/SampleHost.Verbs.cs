@@ -11,7 +11,7 @@ partial class SampleHost
     async Task WatchDriveAsync(FileIndex index, int seconds, CancellationToken cancellationToken)
     {
         var changes = 0;
-        index.WatchStateChanged += state => _writeLine($"  watch {state.DriveLetter}: {state.WatchCatchUpState} (version {state.WatchStateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
+        index.WatchStateChanged += state => _writeLine($"  watch {state.DriveLetter}: {state.CatchUpState} (version {state.StateVersion}){(state.Fault is { } fault ? $", fault {fault.Kind}" : string.Empty)}");
         index.WatchFaulted += fault => _writeLine($"  watch fault {fault.DriveLetter}: {fault.Kind}: {fault.Exception.Message}{(fault.Exception is JournalCatchUpLostException lost ? $" (recovery stopped: {lost.RecoveryStopped})" : string.Empty)}");
         index.Changed += change =>
         {
@@ -38,11 +38,11 @@ partial class SampleHost
     void WriteDriveDetail(DriveStatus status)
     {
         WriteStatus(status);
-        _writeLine($"Cache {status.DriveLetter}: block {status.BlockSource}, slot {status.CacheSlot}, scanned {status.ScanTimestamp:u}, compaction needed {status.CompactionNeeded}");
-        _writeLine($"Watch: {status.WatchCatchUpState} v{status.WatchStateVersion}, requested {status.WatchRequested}; lost catch-ups {status.ConsecutiveLostCatchUps}; denied subtrees {status.AccessDeniedSubtreeCount}{(status.WatchFailureMessage is { } failure ? $"; {failure}" : string.Empty)}");
-        if (status.CheckpointLoss is { } loss)
+        _writeLine($"Cache {status.DriveLetter}: block {status.Block.Source}, slot {status.Block.CacheSlot}, scanned {status.Block.ScanTimestamp:u}, compaction needed {status.Block.CompactionNeeded}");
+        _writeLine($"Watch: {status.Watch.CatchUpState} v{status.Watch.StateVersion}, requested {status.Watch.Requested}; lost catch-ups {status.Watch.ConsecutiveLostCatchUps}; denied subtrees {status.Block.AccessDeniedSubtreeCount}{(status.Watch.FailureMessage is { } failure ? $"; {failure}" : string.Empty)}");
+        if (status.Watch.CheckpointLoss is { } loss)
         {
-            _writeLine($"Checkpoint lost on {loss.DriveLetter}: {loss.Cause} during {loss.DetectedDuring}; {loss.BytesBehind} bytes behind, journal {loss.MaximumSize}/{loss.AllocationDelta}, {loss.SizeThatWouldHaveRetained} would have kept it");
+            _writeLine($"Checkpoint lost on {loss.DriveLetter}: {loss.Cause} during {loss.DetectedDuring}; {loss.BytesBehind} bytes behind, journal {loss.JournalSettings.MaximumSize}/{loss.JournalSettings.AllocationDelta}, {loss.SizeThatWouldHaveRetained} would have kept it");
         }
     }
 

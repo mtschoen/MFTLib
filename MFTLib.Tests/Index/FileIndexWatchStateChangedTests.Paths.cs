@@ -36,7 +36,7 @@ public partial class FileIndexWatchStateChangedTests
         var stopDelivering = harness.TrackGate();
         index.WatchStateChanged += state =>
         {
-            if (state.WatchCatchUpState == WatchCatchUpState.Faulted)
+            if (state.CatchUpState == WatchCatchUpState.Faulted)
             {
                 stopDelivering.MarkEntered();
                 stopDelivering.WaitForRelease();
@@ -74,9 +74,9 @@ public partial class FileIndexWatchStateChangedTests
             _ => throw new IOException("the journal query failed"));
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        var faulted = await recorder.WaitForStateAsync('T', state => state.WatchCatchUpState == WatchCatchUpState.Faulted);
+        var faulted = await recorder.WaitForStateAsync('T', state => state.CatchUpState == WatchCatchUpState.Faulted);
 
-        Assert.AreEqual(2, faulted.WatchStateVersion);
+        Assert.AreEqual(2, faulted.StateVersion);
         Assert.AreEqual(WatchFaultKind.Drive, faulted.Fault?.Kind);
         AssertStatusMatchesLastEvent(harness, recorder, 'T');
         await ThrowsAsync<DriveWatchFaultException>(() => harness.Index.StopWatchingAsync('T', Token));

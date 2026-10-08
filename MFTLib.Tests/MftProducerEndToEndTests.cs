@@ -51,7 +51,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(2, duplicates.Entries.Count);
         var deleted = index.Find(At("documents", "obsolete.txt"))!.Value;
         var renamed = index.Find(At("documents", "draft.txt"))!.Value;
-        Assert.IsNull(index.Drives[0].CheckpointLoss);
+        Assert.IsNull(index.Drives[0].Watch.CheckpointLoss);
         var block = index.Root('C').DriveBlock.Block;
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.IsNull(index.Find(At("documents", "created.txt")));
@@ -123,7 +123,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.IsTrue(created.Header.SlotCapacity < 1_000_000);
         Assert.IsTrue(created.Header.IsComplete);
         Assert.IsTrue(created.Header.IsCompactionNeeded);
-        Assert.IsTrue(index.Drives[0].CompactionNeeded);
+        Assert.IsTrue(index.Drives[0].Block.CompactionNeeded);
         Assert.AreEqual(DriveState.Stale, index.Drives[0].State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
@@ -187,7 +187,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         var source = new BrokerMftBlockProducer(Connect(broker.Process)).CreateIndexSource();
         await using var index = await FileIndex.OpenAsync(Options(source), CancellationToken.None).WaitAsync(HangGuard);
 
-        var loss = index.Drives[0].CheckpointLoss;
+        var loss = index.Drives[0].Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, loss.DetectedDuring);
         var block = index.Root('C').DriveBlock.Block;
@@ -211,9 +211,9 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     {
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
-        Assert.IsTrue(index.Drives[0].WatchSupported);
-        Assert.IsFalse(index.Drives[0].CompactionNeeded);
-        Assert.IsNull(index.Drives[0].MftProducerFailureMessage);
+        Assert.IsTrue(index.Drives[0].Watch.Supported);
+        Assert.IsFalse(index.Drives[0].Block.CompactionNeeded);
+        Assert.IsNull(index.Drives[0].FailureMessage);
     }
 
     static IEnumerable<IReadOnlyList<MftRecord>> Records() =>

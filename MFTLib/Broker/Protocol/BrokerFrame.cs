@@ -105,7 +105,7 @@ internal readonly record struct BrokerFrame
     {
         var loss = CatchUpLoss ?? throw new InvalidDataException($"{Kind} frame is missing its loss field");
         return new JournalCheckpointLoss(driveLetter, JournalCheckpointLossDetection.ScanCatchUp, loss.Cause,
-            loss.AllocationDelta, loss.MaximumSize)
+            new UsnJournalSettings { AllocationDelta = loss.AllocationDelta, MaximumSize = loss.MaximumSize })
         {
             CheckpointUsn = loss.CheckpointUsn,
             FirstUsn = loss.FirstUsn,

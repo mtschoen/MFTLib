@@ -225,46 +225,50 @@ public class SyntheticNotificationsTests
     public void CreateDriveStatus_ForwardsEveryValueAndLeavesTheOptionalOnesDefault()
     {
         var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Stale, BlockSource.WarmStartedFromCache,
-            40, true, Moment) with
-        {
-            WatchSupported = true
-        };
+            40, true, Moment);
+        status = status with { Watch = status.Watch with { Supported = true } };
 
         Assert.AreEqual(
-            new DriveStatus('T', DriveState.Stale, BlockSource.WarmStartedFromCache, 40, true, Moment)
+            new DriveStatus('T', DriveState.Stale)
             {
-                WatchSupported = true
+                Block = new DriveBlockStatus
+                {
+                    Source = BlockSource.WarmStartedFromCache,
+                    LiveRowCount = 40,
+                    CompactionNeeded = true,
+                    ScanTimestamp = Moment
+                },
+                Watch = new DriveWatchStatus { Supported = true }
             },
             status);
         Assert.AreEqual('T', status.DriveLetter);
         Assert.AreEqual(DriveState.Stale, status.State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.BlockSource);
-        Assert.AreEqual(40u, status.LiveRowCount);
-        Assert.IsTrue(status.CompactionNeeded);
-        Assert.AreEqual(Moment, status.ScanTimestamp);
-        Assert.IsTrue(status.WatchSupported);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block.Source);
+        Assert.AreEqual(40u, status.Block.LiveRowCount);
+        Assert.IsTrue(status.Block.CompactionNeeded);
+        Assert.AreEqual(Moment, status.Block.ScanTimestamp);
+        Assert.IsTrue(status.Watch.Supported);
         Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
-        Assert.IsNull(status.WatchFailureMessage);
-        Assert.IsNull(status.CheckpointLoss);
+        Assert.IsNull(status.Watch.FailureMessage);
+        Assert.IsNull(status.Watch.CheckpointLoss);
     }
 
     [TestMethod]
     public void CreateDriveStatus_AcceptsAWithExpressionForTheOptionalValues()
     {
         var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready, BlockSource.None, 0, false,
-            DateTime.MinValue) with
-        {
-            WatchFailureMessage = "watch failed"
-        };
+            DateTime.MinValue);
+        status = status with { Watch = status.Watch with { FailureMessage = "watch failed" } };
 
-        Assert.AreEqual("watch failed", status.WatchFailureMessage);
+        Assert.AreEqual("watch failed", status.Watch.FailureMessage);
     }
 
     [TestMethod]
     public void CreateJournalCheckpointLoss_ForwardsEveryValue()
     {
         var loss = SyntheticNotifications.CreateJournalCheckpointLoss('T',
-            JournalCheckpointLossCause.CheckpointTrimmed, JournalCheckpointLossDetection.LiveWatch, 4096, 32768)
+            JournalCheckpointLossCause.CheckpointTrimmed, JournalCheckpointLossDetection.LiveWatch,
+            new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
             with
         {
             BytesBehind = 4000,
@@ -273,7 +277,8 @@ public class SyntheticNotificationsTests
 
         Assert.AreEqual(
             new JournalCheckpointLoss('T', JournalCheckpointLossDetection.LiveWatch,
-                JournalCheckpointLossCause.CheckpointTrimmed, 4096, 32768)
+                JournalCheckpointLossCause.CheckpointTrimmed,
+                new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
             {
                 BytesBehind = 4000,
                 SizeThatWouldHaveRetained = 12288
@@ -282,8 +287,8 @@ public class SyntheticNotificationsTests
         Assert.AreEqual('T', loss.DriveLetter);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, loss.DetectedDuring);
-        Assert.AreEqual(4096L, loss.AllocationDelta);
-        Assert.AreEqual(32768L, loss.MaximumSize);
+        Assert.AreEqual(4096L, loss.JournalSettings.AllocationDelta);
+        Assert.AreEqual(32768L, loss.JournalSettings.MaximumSize);
         Assert.AreEqual(4000L, loss.BytesBehind);
         Assert.AreEqual(12288L, loss.SizeThatWouldHaveRetained);
     }
@@ -292,7 +297,8 @@ public class SyntheticNotificationsTests
     public void CreateJournalCheckpointLoss_WithoutSizes_LeavesThemNull()
     {
         var loss = SyntheticNotifications.CreateJournalCheckpointLoss('T',
-            JournalCheckpointLossCause.JournalRecreated, JournalCheckpointLossDetection.DriveOpening, 4096, 32768);
+            JournalCheckpointLossCause.JournalRecreated, JournalCheckpointLossDetection.DriveOpening,
+            new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 });
 
         Assert.IsNull(loss.BytesBehind);
         Assert.IsNull(loss.SizeThatWouldHaveRetained);

@@ -147,7 +147,7 @@ public sealed partial class FileIndex
         /// </summary>
         public WatchCatchUpState NotedWatchState;
 
-        /// <summary>The drive's <see cref="DriveStatus.WatchStateVersion" />.</summary>
+        /// <summary>The drive's <see cref="DriveWatchStatus.StateVersion" />.</summary>
         public long WatchStateVersion;
 
         /// <summary>

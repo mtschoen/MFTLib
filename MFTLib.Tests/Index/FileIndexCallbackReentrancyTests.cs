@@ -44,7 +44,7 @@ public class FileIndexCallbackReentrancyTests
         Assert.AreEqual(0, harness.Source.WatchFor('U').DisposeCount, "Y's watch was not stopped");
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
         Assert.IsTrue(harness.Changes.Any(change => change.Entry.Name == "u.txt"), "Y still applies batches");
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').Watch.CatchUpState);
     }
 
     [TestMethod]
@@ -289,7 +289,7 @@ public class FileIndexCallbackReentrancyTests
         var stop = await queuedStop.Task.WaitAsync(HangGuard);
 
         await stop.WaitAsync(HangGuard);
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').Watch.CatchUpState);
         Assert.AreEqual(1, harness.Source.WatchFor('T').DisposeCount, "X drained");
     }
 
@@ -306,7 +306,7 @@ public class FileIndexCallbackReentrancyTests
         await harness.WaitForRecoveryAsync('T');
 
         Assert.AreEqual(2, harness.Source.TargetsFor('T').Count, "the recovery restarted the watch");
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
     }
 
     [TestMethod]

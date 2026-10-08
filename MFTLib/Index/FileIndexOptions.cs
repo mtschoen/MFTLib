@@ -34,9 +34,9 @@ public sealed record FileIndexOptions
     ///     remains available to scan it later.
     ///     A cache block whose journal checkpoint the journal no longer holds is different: this
     ///     open never watches, and the block is still a correct snapshot as of its age, so it is
-    ///     adopted instead of declined, with <see cref="DriveStatus.CheckpointLoss" /> set to say
+    ///     adopted instead of declined, with <see cref="DriveWatchStatus.CheckpointLoss" /> set to say
     ///     why the checkpoint could not be resumed. Such a drive is left out of a later
-    ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> (see <see cref="DriveStatus.WatchFailureMessage" />)
+    ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> (see <see cref="DriveWatchStatus.FailureMessage" />)
     ///     until <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> gives it a fresh cursor.
     /// </summary>
     public bool InitialOpenCacheOnly { get; init; }

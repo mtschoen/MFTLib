@@ -14,7 +14,7 @@ public sealed record SyntheticBlockOptions
     /// <summary>The journal position stamped into the header, from which a watch would resume.</summary>
     public SyntheticJournalCursor JournalCursor { get; init; }
 
-    /// <summary>Becomes <see cref="DriveStatus.ScanTimestamp" /> when an index adopts the block, so a test about scan age sets it explicitly.</summary>
+    /// <summary>Becomes <see cref="DriveBlockStatus.ScanTimestamp" /> when an index adopts the block, so a test about scan age sets it explicitly.</summary>
     public DateTime CompletedUtc { get; init; }
 
     /// <summary>A warm start adopts the block only when this equals the <see cref="FileIndexOptions.CacheTag" /> the index is opened with.</summary>

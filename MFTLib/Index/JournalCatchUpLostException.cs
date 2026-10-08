@@ -9,7 +9,7 @@ namespace MFTLib.Index;
 ///     <see cref="WatchFaultKind.CatchUpLost" /> fault after every such scan, and thrown by
 ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> when the scan operation stops retrying.
 ///     The exception names no drive: <see cref="WatchFault.DriveLetter" /> does, and the drive's
-///     <see cref="DriveStatus.ConsecutiveLostCatchUps" /> and <see cref="DriveStatus.CheckpointLoss" />
+///     <see cref="DriveWatchStatus.ConsecutiveLostCatchUps" /> and <see cref="DriveWatchStatus.CheckpointLoss" />
 ///     carry the count and the journal's proof.
 /// </summary>
 [SuppressMessage("Roslynator", "RCS1194",

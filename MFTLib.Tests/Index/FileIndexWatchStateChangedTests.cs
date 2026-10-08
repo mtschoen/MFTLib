@@ -8,8 +8,8 @@ namespace MFTLib.Tests.Index;
 
 /// <summary>
 ///     <see cref="FileIndex.WatchStateChanged" />: every change of a drive's
-///     <see cref="DriveStatus.WatchCatchUpState" /> is delivered once, with the drive's next
-///     <see cref="DriveStatus.WatchStateVersion" />, before the <see cref="FileIndex.WatchFaulted" />
+///     <see cref="DriveWatchStatus.CatchUpState" /> is delivered once, with the drive's next
+///     <see cref="DriveWatchStatus.StateVersion" />, before the <see cref="FileIndex.WatchFaulted" />
 ///     of the fault that caused it, with the state lock free. Each case drives the index through the
 ///     harness's scripted producer and handles and reads the order the handlers ran in; no clock is
 ///     involved. One case makes the live-watch checkpoint check throw through
@@ -35,8 +35,8 @@ public partial class FileIndexWatchStateChangedTests
     [
         .. recorder.EventsFor(driveLetter).Select(item => item switch
         {
-            DriveWatchState { Fault: { } fault } state => $"{state.WatchCatchUpState}:{state.WatchStateVersion}:{fault.Kind}",
-            DriveWatchState state => $"{state.WatchCatchUpState}:{state.WatchStateVersion}",
+            DriveWatchState { Fault: { } fault } state => $"{state.CatchUpState}:{state.StateVersion}:{fault.Kind}",
+            DriveWatchState state => $"{state.CatchUpState}:{state.StateVersion}",
             _ => $"!{((WatchFault)item).Kind}"
         })
     ];
@@ -75,8 +75,8 @@ public partial class FileIndexWatchStateChangedTests
     {
         var last = recorder.StatesFor(driveLetter)[^1];
         var status = harness.DriveFor(driveLetter);
-        Assert.AreEqual(last.WatchCatchUpState, status.WatchCatchUpState);
-        Assert.AreEqual(last.WatchStateVersion, status.WatchStateVersion);
+        Assert.AreEqual(last.CatchUpState, status.Watch.CatchUpState);
+        Assert.AreEqual(last.StateVersion, status.Watch.StateVersion);
     }
 
     [TestMethod]
@@ -84,7 +84,7 @@ public partial class FileIndexWatchStateChangedTests
     {
         using var harness = new WatchHarness('T');
         var recorder = new WatchStateRecorder(harness.Index);
-        Assert.AreEqual(0, harness.DriveFor('T').WatchStateVersion);
+        Assert.AreEqual(0, harness.DriveFor('T').Watch.StateVersion);
 
         await harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
         AssertHistory(recorder, 'T', "CatchingUp:1");
@@ -114,8 +114,8 @@ public partial class FileIndexWatchStateChangedTests
         var failedHandle = harness.Source.WatchFor('T');
 
         failedHandle.FailDrive(new IOException("T's journal wrapped"));
-        var restarted = await recorder.WaitForStateAsync('T', state => state.WatchStateVersion > 4);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, restarted.WatchCatchUpState);
+        var restarted = await recorder.WaitForStateAsync('T', state => state.StateVersion > 4);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, restarted.CatchUpState);
 
         // The restarted watch registers, and reports CatchingUp, before its source returns the
         // handle the recovery then publishes.
@@ -196,7 +196,7 @@ public partial class FileIndexWatchStateChangedTests
         await harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
-        _ = await recorder.WaitForStateAsync('T', state => state.WatchStateVersion == 5);
+        _ = await recorder.WaitForStateAsync('T', state => state.StateVersion == 5);
         await harness.WaitForRecoveryAsync('T');
 
         if (loseChannel)
@@ -381,7 +381,7 @@ public partial class FileIndexWatchStateChangedTests
 
         await harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        Assert.AreEqual(0, harness.DriveFor('U').WatchStateVersion);
+        Assert.AreEqual(0, harness.DriveFor('U').Watch.StateVersion);
         Assert.AreEqual(0, recorder.StatesFor('U').Count);
         await harness.Index.StartWatchingAsync('U', Token).WaitAsync(HangGuard);
 
@@ -404,7 +404,7 @@ public partial class FileIndexWatchStateChangedTests
         await harness.Index.StartWatchingAsync('T', Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         var readiness = harness.DriveFor('T');
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, readiness.WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CaughtUp, readiness.Watch.CatchUpState);
         var recoveryScan = harness.HoldNextProduction('T');
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
@@ -413,17 +413,17 @@ public partial class FileIndexWatchStateChangedTests
         var inOrder = new VersionedDriveState();
         foreach (var state in recorder.StatesFor('T'))
         {
-            inOrder.Apply(state.WatchCatchUpState, state.WatchStateVersion);
+            inOrder.Apply(state.CatchUpState, state.StateVersion);
         }
 
-        inOrder.Apply(readiness.WatchCatchUpState, readiness.WatchStateVersion);
+        inOrder.Apply(readiness.Watch.CatchUpState, readiness.Watch.StateVersion);
         Assert.AreEqual(WatchCatchUpState.Recovering, inOrder.State, "the stale readiness lost to the later fault");
 
         var reversed = new VersionedDriveState();
-        reversed.Apply(readiness.WatchCatchUpState, readiness.WatchStateVersion);
+        reversed.Apply(readiness.Watch.CatchUpState, readiness.Watch.StateVersion);
         foreach (var state in recorder.StatesFor('T').Reverse())
         {
-            reversed.Apply(state.WatchCatchUpState, state.WatchStateVersion);
+            reversed.Apply(state.CatchUpState, state.StateVersion);
         }
 
         Assert.AreEqual(inOrder.State, reversed.State);
@@ -447,7 +447,7 @@ public partial class FileIndexWatchStateChangedTests
         index.WatchStateChanged += state =>
         {
             var visible = index.Drives.Single(drive => drive.DriveLetter == 'T');
-            observations.Add((state, index.IsStateLockHeldForTest, visible.WatchStateVersion));
+            observations.Add((state, index.IsStateLockHeldForTest, visible.Watch.StateVersion));
             rejectedStop ??= index.StopWatchingAsync('T', CancellationToken.None);
         };
 
@@ -457,13 +457,13 @@ public partial class FileIndexWatchStateChangedTests
         Assert.AreEqual(2, observations.Count);
         foreach (var (state, stateLockHeld, visibleVersion) in observations)
         {
-            Assert.IsFalse(stateLockHeld, $"version {state.WatchStateVersion} was delivered under the state lock");
-            Assert.IsTrue(visibleVersion >= state.WatchStateVersion, "a change is visible before it is delivered");
+            Assert.IsFalse(stateLockHeld, $"version {state.StateVersion} was delivered under the state lock");
+            Assert.IsTrue(visibleVersion >= state.StateVersion, "a change is visible before it is delivered");
         }
 
         var rejection = await ThrowsAsync<InvalidOperationException>(() => rejectedStop!);
         StringAssert.Contains(rejection.Message, "WatchStateChanged");
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').Watch.CatchUpState);
         await index.StopWatchingAsync('T', Token).WaitAsync(HangGuard);
     }
 

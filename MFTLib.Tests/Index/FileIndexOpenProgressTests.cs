@@ -69,7 +69,7 @@ public class FileIndexOpenProgressTests
     static void AssertSettled(FileIndex index, char driveLetter, BlockSource blockSource, DriveState state)
     {
         var status = index.Drives.Single(drive => drive.DriveLetter == driveLetter);
-        Assert.AreEqual(blockSource, status.BlockSource);
+        Assert.AreEqual(blockSource, status.Block.Source);
         Assert.AreEqual(state, status.State);
     }
 
@@ -190,7 +190,7 @@ public class FileIndexOpenProgressTests
 
         Assert.AreEqual(2, index.Drives.Count);
         Assert.IsTrue(index.Drives.All(drive => drive.State == DriveState.Ready));
-        Assert.IsTrue(index.Drives.All(drive => drive.BlockSource == BlockSource.ProducedByScan));
+        Assert.IsTrue(index.Drives.All(drive => drive.Block.Source == BlockSource.ProducedByScan));
     }
 
     [TestMethod]
@@ -235,11 +235,11 @@ public class FileIndexOpenProgressTests
         AssertSettled(index, 'V', BlockSource.None, DriveState.Offline);
 
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives[0].BlockSource);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives[0].Block.Source);
         Assert.AreEqual(DriveState.Ready, index.Drives[1].State);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives[1].BlockSource);
+        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives[1].Block.Source);
         Assert.AreEqual(DriveState.Offline, index.Drives[2].State);
-        Assert.AreEqual(BlockSource.None, index.Drives[2].BlockSource);
+        Assert.AreEqual(BlockSource.None, index.Drives[2].Block.Source);
     }
 
     [TestMethod]
@@ -264,7 +264,7 @@ public class FileIndexOpenProgressTests
         AssertReport(reports.Single(), 'T', 1);
         AssertSettled(index, 'T', BlockSource.None, DriveState.Failed);
         Assert.AreEqual(DriveState.Failed, index.Drives[0].State);
-        StringAssert.Contains(index.Drives[0].MftProducerFailureMessage, "simulated MFT producer failure");
+        StringAssert.Contains(index.Drives[0].FailureMessage, "simulated MFT producer failure");
     }
 
     [TestMethod]

@@ -42,7 +42,7 @@ public class FileIndexWatchRescanCheckpointLossTests
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         var uFault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'U');
 
-        var lostBefore = harness.DriveFor('U').CheckpointLoss;
+        var lostBefore = harness.DriveFor('U').Watch.CheckpointLoss;
         Assert.IsNotNull(lostBefore);
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, lostBefore.DetectedDuring);
 
@@ -54,10 +54,10 @@ public class FileIndexWatchRescanCheckpointLossTests
         Assert.AreEqual(1, harness.Source.TargetsFor('U').Count, "U's condemned cursor is never started again");
 
         var lostDrive = harness.DriveFor('U');
-        Assert.AreEqual(uFault.Exception.Message, lostDrive.WatchFailureMessage);
-        Assert.AreEqual(lostBefore, lostDrive.CheckpointLoss);
-        Assert.AreEqual(WatchCatchUpState.Recovering, lostDrive.WatchCatchUpState, "U's recovery is still held");
-        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.AreEqual(uFault.Exception.Message, lostDrive.Watch.FailureMessage);
+        Assert.AreEqual(lostBefore, lostDrive.Watch.CheckpointLoss);
+        Assert.AreEqual(WatchCatchUpState.Recovering, lostDrive.Watch.CatchUpState, "U's recovery is still held");
+        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
 
         // U's own fault is still outstanding, so its stop reports it.
         var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<DriveWatchFaultException>(

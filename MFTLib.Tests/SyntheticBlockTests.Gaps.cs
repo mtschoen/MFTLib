@@ -31,7 +31,7 @@ public partial class SyntheticBlockTests
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
 
         Assert.AreEqual(0, index.Search(new SearchQuery("stale.bin", NameMatchMode.Exact)).Count);
-        Assert.AreEqual(5u, index.Drives.Single().LiveRowCount, "the tombstone and the free slot are not live");
+        Assert.AreEqual(5u, index.Drives.Single().Block.LiveRowCount, "the tombstone and the free slot are not live");
     }
 
     [TestMethod]
@@ -61,9 +61,9 @@ public partial class SyntheticBlockTests
                 UpdateSequenceNumber = 1,
                 FileName = "zebra.txt",
                 Reason = SyntheticJournalReason.FileDelete | SyntheticJournalReason.Close
-            }], journalIdentifier: 0, nextUpdateSequenceNumber: 0);
+            }], new SyntheticJournalCursor(0, 0));
 
-        Assert.IsFalse(index.Drives.Single().WatchSupported, "a cache-only open has no watch source");
+        Assert.IsFalse(index.Drives.Single().Watch.Supported, "a cache-only open has no watch source");
         Assert.IsTrue(zebra.IsDeleted);
         Assert.AreEqual(0, index.Search(new SearchQuery("zebra.txt", NameMatchMode.Exact)).Count);
         Assert.AreEqual(1, index.Search(new SearchQuery("keep.txt", NameMatchMode.Exact)).Count);
@@ -148,7 +148,7 @@ public partial class SyntheticBlockTests
 
         Assert.AreEqual(Moment, SyntheticBlock.ReadHeader(path, Serial).CompletedUtc);
         await using var index = await FileIndex.OpenAsync(CacheOnly(), Token);
-        Assert.AreEqual(Moment, index.Drives.Single().ScanTimestamp);
+        Assert.AreEqual(Moment, index.Drives.Single().Block.ScanTimestamp);
     }
 
     [DataTestMethod]
@@ -192,6 +192,6 @@ public partial class SyntheticBlockTests
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, drive.State);
         Assert.AreEqual(DriveFailureKind.CacheTagMismatch, drive.FailureKind);
-        Assert.AreEqual(BlockSource.None, drive.BlockSource);
+        Assert.AreEqual(BlockSource.None, drive.Block.Source);
     }
 }

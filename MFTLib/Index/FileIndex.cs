@@ -375,23 +375,29 @@ public sealed partial class FileIndex : IAsyncDisposable
         ref readonly var header = ref driveBlock.Block.Header;
         return new DriveStatus(
             driveBlock.DriveLetter,
-            header.IsCompactionNeeded ? DriveState.Stale : DriveState.Ready,
-            _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            header.LiveRowCount,
-            header.IsCompactionNeeded,
-            header.ScanTimestampUtc)
+            header.IsCompactionNeeded ? DriveState.Stale : DriveState.Ready)
         {
-            WatchSupported = driveBlock.ProducerKind == ProducerKind.Mft && WatchSourceOrNull is not null,
-            CacheSlot = _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            AccessDeniedSubtreeCount = _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            SkippedRecordCount = _skippedRecordCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            MftProducerFailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            WatchFailureMessage = _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            WatchCatchUpState = GetWatchCatchUpStateLocked(driveBlock.DriveLetter),
-            CheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
-            ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,
-            WatchRequested = runtime.WatchRequested,
-            WatchStateVersion = runtime.WatchStateVersion
+            FailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+            Block = new DriveBlockStatus
+            {
+                Source = _blockSourcesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+                CacheSlot = _cacheSlotsByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+                LiveRowCount = header.LiveRowCount,
+                ScanTimestamp = header.ScanTimestampUtc,
+                CompactionNeeded = header.IsCompactionNeeded,
+                SkippedRecordCount = _skippedRecordCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+                AccessDeniedSubtreeCount = _accessDeniedSubtreeCountByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal)
+            },
+            Watch = new DriveWatchStatus
+            {
+                Supported = driveBlock.ProducerKind == ProducerKind.Mft && WatchSourceOrNull is not null,
+                Requested = runtime.WatchRequested,
+                CatchUpState = GetWatchCatchUpStateLocked(driveBlock.DriveLetter),
+                StateVersion = runtime.WatchStateVersion,
+                FailureMessage = _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
+                ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,
+                CheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal)
+            }
         };
     }
 

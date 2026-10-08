@@ -6,7 +6,7 @@ namespace MFTLib.Tests.TestSupport;
 internal static class WatchDeduplicationTestSupport
 {
     public static JournalCheckpointLoss StandardCatchUpLoss(char driveLetter) => new JournalCheckpointLoss(driveLetter, JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
-        4096, 32768)
+        new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
     {
         CheckpointUsn = 1000,
         FirstUsn = 5000,

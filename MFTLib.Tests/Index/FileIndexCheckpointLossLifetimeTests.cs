@@ -85,7 +85,7 @@ public class FileIndexCheckpointLossLifetimeTests
             Options(ProduceMftShapedBlock, drives: drives), CancellationToken.None);
         foreach (var drive in index.Drives)
         {
-            Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
+            Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
         }
     }
 
@@ -122,12 +122,12 @@ public class FileIndexCheckpointLossLifetimeTests
 
         var failed = index.Drives.Single(drive => drive.DriveLetter == 'T');
         Assert.AreEqual(DriveState.Failed, failed.State);
-        Assert.IsNotNull(failed.CheckpointLoss, "the failed drive keeps the report that describes it");
-        Assert.AreEqual('T', failed.CheckpointLoss.DriveLetter);
+        Assert.IsNotNull(failed.Watch.CheckpointLoss, "the failed drive keeps the report that describes it");
+        Assert.AreEqual('T', failed.Watch.CheckpointLoss.DriveLetter);
 
         var settled = index.Drives.Single(drive => drive.DriveLetter == 'U');
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, settled.BlockSource);
-        Assert.IsNull(settled.CheckpointLoss,
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, settled.Block.Source);
+        Assert.IsNull(settled.Watch.CheckpointLoss,
             "a drive that reused the failed drive's ordinal must not inherit its report");
     }
 
@@ -151,10 +151,10 @@ public class FileIndexCheckpointLossLifetimeTests
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.BlockSource);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block.Source);
         Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
 
-        var loss = status.CheckpointLoss;
+        var loss = status.Watch.CheckpointLoss;
         Assert.IsNotNull(loss, "a cache-only open must still say why the checkpoint could not be resumed");
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual('T', loss.DriveLetter);
@@ -177,7 +177,7 @@ public class FileIndexCheckpointLossLifetimeTests
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
 
-        var loss = status.CheckpointLoss;
+        var loss = status.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
         Assert.IsNull(loss.SizeThatWouldHaveRetained, "different journal instances have no comparable span");
@@ -195,9 +195,9 @@ public class FileIndexCheckpointLossLifetimeTests
             Options(ProduceMftShapedBlock, cacheOnly: true, drives: drive), CancellationToken.None);
 
         var status = index.Drives.Single();
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.BlockSource);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block.Source);
         Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
-        Assert.IsNull(status.CheckpointLoss);
+        Assert.IsNull(status.Watch.CheckpointLoss);
     }
 
     // --- Rescan ---
@@ -215,11 +215,11 @@ public class FileIndexCheckpointLossLifetimeTests
         using var journals = OverrideJournals(new Dictionary<char, JournalWindow> { ['T'] = TrimmedWindow });
         await using var index = await FileIndex.OpenAsync(
             Options(ProduceMftShapedBlock, drives: drive), CancellationToken.None);
-        Assert.IsNotNull(index.Drives.Single().CheckpointLoss);
+        Assert.IsNotNull(index.Drives.Single().Watch.CheckpointLoss);
 
         await index.RescanAsync('T', CancellationToken.None);
 
-        Assert.IsNull(index.Drives.Single().CheckpointLoss,
+        Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss,
             "the rescan replaced the block the report described");
     }
 }

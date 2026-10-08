@@ -10,7 +10,7 @@ namespace MFTLib.Tests;
 public partial class BrokerProtocolTests
 {
     static readonly JournalCheckpointLoss FullLoss = new JournalCheckpointLoss('C', JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
-        4096, 32768)
+        new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
     {
         CheckpointUsn = 1000,
         FirstUsn = 5000,
@@ -181,8 +181,8 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(1000L, loss.CheckpointUsn);
         Assert.AreEqual(5000L, loss.FirstUsn);
         Assert.AreEqual(9000L, loss.NextUsn);
-        Assert.AreEqual(4096L, loss.AllocationDelta);
-        Assert.AreEqual(32768L, loss.MaximumSize);
+        Assert.AreEqual(4096L, loss.JournalSettings.AllocationDelta);
+        Assert.AreEqual(32768L, loss.JournalSettings.MaximumSize);
         Assert.AreEqual(4000L, loss.BytesBehind);
         Assert.AreEqual(12288L, loss.SizeThatWouldHaveRetained);
     }
@@ -411,8 +411,7 @@ public partial class BrokerProtocolTests
             CheckpointUsn = 1,
             FirstUsn = 2,
             NextUsn = 3,
-            AllocationDelta = 4,
-            MaximumSize = 5,
+            JournalSettings = new UsnJournalSettings { AllocationDelta = 4, MaximumSize = 5 },
             BytesBehind = 6,
             SizeThatWouldHaveRetained = null
         };

@@ -1,3 +1,4 @@
+using MFTLib;
 using MFTLib.Index;
 
 namespace MFTLibTestExtensions;
@@ -105,8 +106,9 @@ public static class SyntheticNotifications
         };
 
     /// <summary>
-    ///     Builds one drive status. A fixture sets <see cref="DriveStatus.WatchSupported" /> and the optional
-    ///     failure and watch values with a <c>with</c> expression on the result.
+    ///     Builds one drive status. A fixture sets the optional failure, cache-slot and watch values with a
+    ///     <c>with</c> expression on the result, nesting one for <see cref="DriveStatus.Watch" /> (for example
+    ///     <c>status with { Watch = status.Watch with { Supported = true } }</c>).
     /// </summary>
     /// <param name="driveLetter">The drive.</param>
     /// <param name="state">Whether the drive can answer queries, needs a rescan, or has no block.</param>
@@ -117,7 +119,16 @@ public static class SyntheticNotifications
     /// <returns>The status.</returns>
     public static DriveStatus CreateDriveStatus(char driveLetter, DriveState state, BlockSource blockSource,
         uint liveRowCount, bool compactionNeeded, DateTime scanTimestamp) =>
-        new(driveLetter, state, blockSource, liveRowCount, compactionNeeded, scanTimestamp);
+        new(driveLetter, state)
+        {
+            Block = new DriveBlockStatus
+            {
+                Source = blockSource,
+                LiveRowCount = liveRowCount,
+                CompactionNeeded = compactionNeeded,
+                ScanTimestamp = scanTimestamp
+            }
+        };
 
     /// <summary>
     ///     Builds a journal checkpoint loss report with no derived sizes and no raw journal positions. A
@@ -128,11 +139,10 @@ public static class SyntheticNotifications
     /// <param name="driveLetter">The drive, in upper case.</param>
     /// <param name="cause">Which situation the loss was.</param>
     /// <param name="detectedDuring">Which check found the loss.</param>
-    /// <param name="allocationDelta">The journal allocation unit.</param>
-    /// <param name="maximumSize">The journal configured maximum size.</param>
+    /// <param name="journalSettings">The journal sizing when the loss was detected.</param>
     /// <returns>The report.</returns>
     public static JournalCheckpointLoss CreateJournalCheckpointLoss(char driveLetter,
-        JournalCheckpointLossCause cause, JournalCheckpointLossDetection detectedDuring, long allocationDelta,
-        long maximumSize) =>
-        new(driveLetter, detectedDuring, cause, allocationDelta, maximumSize);
+        JournalCheckpointLossCause cause, JournalCheckpointLossDetection detectedDuring,
+        UsnJournalSettings journalSettings) =>
+        new(driveLetter, detectedDuring, cause, journalSettings);
 }

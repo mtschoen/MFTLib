@@ -223,7 +223,7 @@ public class FileIndexScanFinishedTests
 
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, status.BlockSource);
+        Assert.AreEqual(BlockSource.ProducedByScan, status.Block.Source);
     }
 
     [TestMethod]

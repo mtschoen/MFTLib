@@ -74,12 +74,12 @@ static class JournalCheckpointCheck
             return null;
         }
 
-        var maximumSize = journal.MaximumSize;
+        var journalSettings = new UsnJournalSettings { AllocationDelta = allocationDelta, MaximumSize = journal.MaximumSize };
 
         if (journal.JournalId != checkpointJournalId)
         {
             return new JournalCheckpointLoss(driveLetter, detectedDuring, JournalCheckpointLossCause.JournalRecreated,
-                allocationDelta, maximumSize)
+                journalSettings)
             {
                 CheckpointUsn = checkpointUsn,
                 FirstUsn = firstUsn,
@@ -92,7 +92,7 @@ static class JournalCheckpointCheck
             if (requireUnmoved && nextUsn != checkpointUsn)
             {
                 return new JournalCheckpointLoss(driveLetter, detectedDuring,
-                    JournalCheckpointLossCause.JournalAdvanced, allocationDelta, maximumSize)
+                    JournalCheckpointLossCause.JournalAdvanced, journalSettings)
                 {
                     CheckpointUsn = checkpointUsn,
                     NextUsn = nextUsn
@@ -104,7 +104,7 @@ static class JournalCheckpointCheck
         }
 
         return new JournalCheckpointLoss(driveLetter, detectedDuring, JournalCheckpointLossCause.CheckpointTrimmed,
-            allocationDelta, maximumSize)
+            journalSettings)
         {
             CheckpointUsn = checkpointUsn,
             FirstUsn = firstUsn,

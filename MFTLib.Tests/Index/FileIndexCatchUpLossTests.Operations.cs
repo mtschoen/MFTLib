@@ -90,7 +90,7 @@ public partial class FileIndexCatchUpLossTests
         await rescan.WaitAsync(HangGuard);
         await start.WaitAsync(HangGuard);
         Assert.AreEqual(new IndexWatchTarget('T', 21, 7700), harness.Source.TargetsFor('T').Single());
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
     }
 
     [TestMethod]
@@ -99,16 +99,16 @@ public partial class FileIndexCatchUpLossTests
         using var harness = new WatchHarness('T');
         harness.FailNextProduction('T', new MessagelessException("the first scan failed", new IOException()));
         await ThrowsAsync<InvalidOperationException>(() => harness.Index.RescanAsync('T', Token));
-        Assert.AreEqual("the first scan failed", harness.DriveFor('T').MftProducerFailureMessage);
+        Assert.AreEqual("the first scan failed", harness.DriveFor('T').FailureMessage);
 
         harness.FailNextProduction('T', new MessagelessException());
         await ThrowsAsync<InvalidOperationException>(() => harness.Index.RescanAsync('T', Token));
-        Assert.IsNull(harness.DriveFor('T').MftProducerFailureMessage);
+        Assert.IsNull(harness.DriveFor('T').FailureMessage);
         Assert.AreEqual(DriveState.Ready, harness.DriveFor('T').State);
 
         harness.FailNextProduction('T', new MessagelessException("the third scan failed"));
         await ThrowsAsync<InvalidOperationException>(() => harness.Index.RescanAsync('T', Token));
-        Assert.AreEqual("the third scan failed", harness.DriveFor('T').MftProducerFailureMessage);
+        Assert.AreEqual("the third scan failed", harness.DriveFor('T').FailureMessage);
     }
 
     /// <summary>A producer failure whose <see cref="Message" /> can be null, which no framework exception produces.</summary>

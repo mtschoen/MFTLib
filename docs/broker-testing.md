@@ -227,7 +227,7 @@ test needs from a scan:
 - `BeforeProduceAsync` is awaited before each production, so a test holds a scan or
   rescan in progress and releases it when ready;
 - `CatchUpLoss` returns the proven catch-up loss a production reports, which the
-  index surfaces as `DriveStatus.CheckpointLoss`.
+  index surfaces as `DriveWatchStatus.CheckpointLoss`.
 
 The callback must return the root row (row 5 for an MFT block).
 

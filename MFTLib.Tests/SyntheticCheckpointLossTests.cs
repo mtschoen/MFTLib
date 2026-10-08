@@ -14,7 +14,7 @@ namespace MFTLib.Tests;
 public class SyntheticCheckpointLossTests
 {
     static JournalCheckpointLoss PositionLess() => new JournalCheckpointLoss('T', JournalCheckpointLossDetection.LiveWatch, JournalCheckpointLossCause.CheckpointTrimmed,
-        4096, 32768)
+        new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
     {
         BytesBehind = 4000,
         SizeThatWouldHaveRetained = 12288
@@ -33,8 +33,8 @@ public class SyntheticCheckpointLossTests
         Assert.AreEqual('T', copy.DriveLetter);
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, copy.DetectedDuring);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, copy.Cause);
-        Assert.AreEqual(4096L, copy.AllocationDelta);
-        Assert.AreEqual(32768L, copy.MaximumSize);
+        Assert.AreEqual(4096L, copy.JournalSettings.AllocationDelta);
+        Assert.AreEqual(32768L, copy.JournalSettings.MaximumSize);
         Assert.AreEqual(4000L, copy.BytesBehind, "derived sizes are not recomputed from the positions");
         Assert.AreEqual(12288L, copy.SizeThatWouldHaveRetained);
         Assert.AreEqual(0L, original.CheckpointUsn, "the original is not changed");

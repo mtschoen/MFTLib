@@ -4,8 +4,8 @@ public sealed partial class FileIndex
 {
     /// <summary>
     ///     Starts the live watch of one MFT-backed drive from the journal cursor persisted in its
-    ///     current block header. The drive's <see cref="DriveStatus.WatchFailureMessage" /> is
-    ///     cleared and its <see cref="DriveStatus.WatchCatchUpState" /> begins at
+    ///     current block header. The drive's <see cref="DriveWatchStatus.FailureMessage" /> is
+    ///     cleared and its <see cref="DriveWatchStatus.CatchUpState" /> begins at
     ///     <see cref="WatchCatchUpState.CatchingUp" />. Every other drive is untouched. A drive that
     ///     is already watching is left as it is and the call completes. A drive whose previous
     ///     watch faulted is started afresh, which supersedes a queued automatic recovery.
@@ -15,10 +15,10 @@ public sealed partial class FileIndex
     ///         <see cref="DisposeAsync" /> during the start cancels the source's start and fails
     ///         this task with <see cref="OperationCanceledException" />. A source whose start throws
     ///         fails this task with that exception, sets the drive's
-    ///         <see cref="DriveStatus.WatchFailureMessage" />, and leaves its
-    ///         <see cref="DriveStatus.WatchCatchUpState" /> at <see cref="WatchCatchUpState.Faulted" />.
+    ///         <see cref="DriveWatchStatus.FailureMessage" />, and leaves its
+    ///         <see cref="DriveWatchStatus.CatchUpState" /> at <see cref="WatchCatchUpState.Faulted" />.
     ///         That failure, and a refusal over an unresumable block, still record the watch as
-    ///         requested (<see cref="DriveStatus.WatchRequested" />), so the rescan that replaces
+    ///         requested (<see cref="DriveWatchStatus.Requested" />), so the rescan that replaces
     ///         the block starts it.
     ///     </para>
     /// </summary>

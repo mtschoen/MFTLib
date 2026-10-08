@@ -134,7 +134,7 @@ internal static partial class BrokerProtocol
     internal static void WriteCatchUpLost(IBufferWriter<byte> writer, JournalCheckpointLoss loss)
     {
         new PayloadWriter().Int32((int)loss.Cause).Int64(loss.CheckpointUsn).Int64(loss.FirstUsn)
-            .Int64(loss.NextUsn).Int64(loss.AllocationDelta).Int64(loss.MaximumSize)
+            .Int64(loss.NextUsn).Int64(loss.JournalSettings.AllocationDelta).Int64(loss.JournalSettings.MaximumSize)
             .NullableInt64(loss.BytesBehind).NullableInt64(loss.SizeThatWouldHaveRetained)
             .WriteTo(writer, BrokerFrameKind.CatchUpLost);
     }

@@ -36,7 +36,7 @@ public partial class FileIndexWatchRecoveryTests
 
         Assert.AreEqual(1, harness.ProductionCount('T') - producedBefore, "the recovery committed its block");
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "no watch starts after the stop returned");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').Watch.CatchUpState);
         CollectionAssert.AreEqual(new[] { WatchFaultKind.Drive }, FaultKinds(harness, 'T'));
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => harness.Index.StopWatchingAsync('T', Token), "the stop's cleared request stands");
@@ -66,7 +66,7 @@ public partial class FileIndexWatchRecoveryTests
         await rescan.WaitAsync(HangGuard);
 
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "no watch starts after the stop returned");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').Watch.CatchUpState);
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => harness.Index.StopWatchingAsync('T', Token), "the stop's cleared request stands");
     }
@@ -86,7 +86,7 @@ public partial class FileIndexWatchRecoveryTests
         await rescan.WaitAsync(HangGuard);
 
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count, "no watch starts after the stop returned");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').Watch.CatchUpState);
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => harness.Index.StopWatchingAsync('T', Token), "the stop's cleared request stands");
     }

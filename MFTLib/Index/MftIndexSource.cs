@@ -59,7 +59,7 @@ public sealed class MftIndexSource
     ///     A source that scans nothing and watches nothing. Every scan of a drive fails with
     ///     <see cref="InvalidOperationException" /> whose message is <c>"Drive {letter}: {reason}."</c>,
     ///     which the index reports as <see cref="DriveFailureKind.ProducerFailed" /> with that message
-    ///     in <see cref="DriveStatus.MftProducerFailureMessage" />. Starting a watch throws
+    ///     in <see cref="DriveStatus.FailureMessage" />. Starting a watch throws
     ///     <see cref="InvalidOperationException" /> with the same message. Cached blocks still open.
     /// </summary>
     /// <param name="reason">Why this process cannot scan, written so that it ends a sentence.</param>

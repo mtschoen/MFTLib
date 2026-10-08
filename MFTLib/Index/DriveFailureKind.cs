@@ -23,7 +23,7 @@ public enum DriveFailureKind
 
     /// <summary>
     ///     The drive's MFT producer failed during opening or its latest rescan;
-    ///     <see cref="DriveStatus.MftProducerFailureMessage" /> carries the producer's error.
+    ///     <see cref="DriveStatus.FailureMessage" /> carries the producer's error.
     /// </summary>
     ProducerFailed,
 

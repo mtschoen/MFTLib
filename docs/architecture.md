@@ -8,17 +8,17 @@
       case-insensitive on every platform; `MftDumpPaths` owns those rules and touches no filesystem. The block
       carries `DriveBlock.IsMftDump`, and the index never probes the root, opens the entry (`FileEntry.Open` throws
       `InvalidOperationException`), answers journal settings (`QueryUsnJournalSettings` throws) or watches it:
-      `DriveStatus.WatchSupported` is false, start and per-drive catch-up throw `Drive X: this source does not support
+      `DriveWatchStatus.Supported` is false, start and per-drive catch-up throw `Drive X: this source does not support
       watching.`, the same text a source with no watch source gives, and batched start, stop and catch-up report
       `NotApplicable` with no failure. Opening validates the options before any cache path is resolved or created: exactly one drive with the identity's
       letter, root `dump:/{DRIVE}`, `VolumeSerial` zero, `NoCache`, no cache directory, tag or cache-only open, and
-      `ProducerPolicy.Mft`; a dump block is never written to or adopted from a cache. `DriveStatus.WatchSupported` is false for
+      `ProducerPolicy.Mft`; a dump block is never written to or adopted from a cache. `DriveWatchStatus.Supported` is false for
       a dump drive and for any drive whose source has no watch source, the same fact a watch start's refusal uses.
     - **MFT dump source**: `MftIndexSources.FromMftDumpFile(filePath, driveLetter)` is the only way to build a dump
       source. It checks its arguments (`A dump file path is required.`, `The logical drive key must be an ASCII
       letter.`), makes the path absolute once and never opens the file; every scan and rescan opens the path anew, so
       a missing or rejected dump is a `ProducerFailed` drive, or a failed rescan that keeps the last block, with the
-      reason in `MftProducerFailureMessage`. `MftDumpBlockProducer` is a direct producer with no broker, pipe or
+      reason in `DriveStatus.FailureMessage`. `MftDumpBlockProducer` is a direct producer with no broker, pipe or
       session: one `MftDumpInput` per request sizes the block (`NtfsVolumeInformation(fileLength, recordSize)`, never
       the live volume sharing the letter) and supplies every record, the shared `MftBlockScan.WriteToBlock` writes a
       plain `BlockFile` with the full profile, and the block carries a zero journal cursor. Record size is 1024 or
@@ -42,7 +42,7 @@
       fails is never decoded; on a file an allocated one fails the parse with `The dump contains an invalid MFT
       record fixup.`, on a live volume it is passed over and counted: the parse reports the allocated ones in
       `MftParseResult.invalidFixupRecords`, and the live record source hands that count to the shared block scan
-      (an `MftOmittedRecords` batch), which adds it to `DriveStatus.SkippedRecordCount`, so no record disappears
+      (an `MftOmittedRecords` batch), which adds it to `DriveBlockStatus.SkippedRecordCount`, so no record disappears
       without a trace. A live volume's record zero is the exception: its decoded `$DATA` runs locate every other
       record, so an invalid fixup there fails the scan with `MFT record 0 has an invalid fixup` before any
       attribute is read. These rejections set `MftParseResult.invalidInput`, which
@@ -73,7 +73,7 @@
       creates the requested block and fills it through `MftBlockScan.WriteToBlock`, stamping the live
       journal cursor armed before a cached scan, with no broker process or pipe. It has no watch source, so watch start and
       per-drive catch-up refuse with `Drive {letter}: this source does not support watching.`,
-      batched start and catch-up report `NotApplicable`, and `DriveStatus.WatchSupported` is false. Concurrent
+      batched start and catch-up report `NotApplicable`, and `DriveWatchStatus.Supported` is false. Concurrent
       direct scans share the process's parse threads through `ParseThreadAllocator`. Cache reopening
       adopts only when the journal id matches and its next USN exactly equals the stamped cursor;
       recreation, trimming or movement causes a rescan, with `JournalAdvanced` reporting movement
@@ -87,7 +87,7 @@
       delegate, the watch source and drive watch interfaces and their records are internal;
       only MFTLib implements them, and tests build sources through `MFTLibTestExtensions`.
     - **Watch state events**: `FileIndex.WatchStateChanged` reports every change of a drive's
-      derived `WatchCatchUpState` with a per-drive `WatchStateVersion`, noted by one helper inside the
+      derived `DriveWatchStatus.CatchUpState` with a per-drive `StateVersion`, noted by one helper inside the
       state-lock section that made the change and delivered with neither `_stateLock` nor a write
       gate held, one drive at a time in version order, before the `WatchFaulted` of the fault
       that caused it. Handlers follow the `Changed`/`WatchFaulted` reentrancy rules. The full
@@ -99,7 +99,7 @@
 
 - **SampleProgram.Direct** and **SampleProgram.Watch** (C# Console Apps) - the two samples, each a CLI that compiles against the public API with no access to MFTLib internals; together their IL is the caller set the public surface is measured against. The elevation flow, the heads-up dialog, the unattended check and the option reader live once in `SampleProgram.Shared` and compile into both as linked source. Each verb is small, so a public member that needs contortion to appear is an internalization candidate, not a reason to grow a sample.
   - **Direct** opens a `NoCache` `FileIndex` in this process, with no broker and no watch. `--source local` (the default) is `MftIndexSources.FromLocalVolumes` and self-elevates; `--source dump --dump-file PATH` is `MftIndexSources.FromMftDumpFile`, needs no elevation and runs on every platform. Verbs: `search` (name, exact, case, under, directories or files, size and date bounds, `--stream`, `--limit`, `--include-freed`), `tree`, `open`, `largest`, `duplicate-names` and `scan`. `--include-freed` sets `BrokerScanOptions.IncludeFreed` and `SearchQuery.IncludeDeleted` together, prints `FileEntry.IsDeleted` per row, and is refused on a dump, which never yields freed rows.
-  - **Watch** opens a `FileIndex` over `BrokerSession.CreateIndexSource()`, the path consumers ship, and also dispatches `--broker` through `ElevatedEntryPoint`. Verbs: `scan-drive` (the default; a `NoCache` open that prints the `DriveStatus` rows, skipped records and checkpoint loss), `watch` (state changes, faults and each `FileChangeKind`), `rescan`, `journal` (settings, or `BrokerSession.GrowUsnJournalAsync` with both sizes), `cache` (`CacheDirectory.InspectCached`, and `--clear` through `DeleteCached`) and `elevation-status`. The other verbs open the cached index, so they show `DriveStatus.BlockSource`, `CacheSlot` and checkpoint loss; `--keep-name` and `--profile` map to `BrokerScanOptions` and to the cache tag. One session shared by the drives launches its broker on the first needed scan, so one UAC prompt serves the run.
+  - **Watch** opens a `FileIndex` over `BrokerSession.CreateIndexSource()`, the path consumers ship, and also dispatches `--broker` through `ElevatedEntryPoint`. Verbs: `scan-drive` (the default; a `NoCache` open that prints the `DriveStatus` rows, skipped records and checkpoint loss), `watch` (state changes, faults and each `FileChangeKind`), `rescan`, `journal` (settings, or `BrokerSession.GrowUsnJournalAsync` with both sizes), `cache` (`CacheDirectory.InspectCached`, and `--clear` through `DeleteCached`) and `elevation-status`. The other verbs open the cached index, so they show `DriveBlockStatus.Source`, `CacheSlot` and checkpoint loss; `--keep-name` and `--profile` map to `BrokerScanOptions` and to the cache tag. One session shared by the drives launches its broker on the first needed scan, so one UAC prompt serves the run.
   - **Elevation:** a verb that launches the broker stays unelevated and the broker asks for elevation; a Direct local scan self-elevates through `ElevationUtilities.DefaultProvider`. Just before either prompt an attended run shows a blocking, system-modal `MessageBoxW` heads-up (with a beep) naming the executable and the exact arguments, so the UAC prompt that follows is expected: OK continues, Cancel prints the manual-elevation fallback and exits 1, a dismissal within 0.75 seconds is treated as an accidental key press and the dialog is shown again, and a dialog nobody answers within five minutes counts as Cancel. With `MFTLIB_SAMPLE_UNATTENDED=1` the samples show no dialog and request no elevation at all (see [Elevation: attended and unattended runs](elevation.md)). The dialog lives in the samples, never in `ElevationUtilities`, so a consumer's runtime flow gains none; it is skipped when already elevated or when self-elevation is unavailable (including a session with no interactive desktop). Verbs call the library through `internal Func` seams on `SampleHost` that `MFTLib.Tests` replaces.
 - **Benchmark** (C# Console App) - Measures synthetic MFT parsing and warm packed-index queries. Run `Benchmark.exe index --synthetic N` to write N rows (including the root) through the internal block writer, or `Benchmark.exe index --cache-directory <path>` to open existing blocks cache-only, without scanning or starting a watch. Each drive reports row count, slot capacity, file bytes, used name-pool bytes and their percentage of the file, and reserved name-pool capacity. Exact and substring `Search` query `file-0000000001`, warm up once, then report the median of K runs (`--iterations K`, default 3), with match counts. Synthetic file names are `file-0000000001` and onward, so this query compares same-length names in a full scan and matches one file when N is greater than one. Cache inspection supplies each block's root and consumer tag; unavailable or offline blocks are reported as errors. Synthetic blocks use production capacity headroom and are deleted after measurement.
 - **MFTLib.Tests** (C# MSTest) - Unit tests for record mapping and path resolution.

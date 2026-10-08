@@ -98,8 +98,8 @@ public class FileIndexWatchTests
     [TestMethod]
     public async Task StartWatchingAsync_OnAMixedIndexWithoutASource_ThrowsInvalidOperation()
     {
-        Assert.IsFalse(_index.Drives[1].WatchSupported);
-        Assert.IsFalse(_index.Drives[0].WatchSupported, "no source offers a watch source");
+        Assert.IsFalse(_index.Drives[1].Watch.Supported);
+        Assert.IsFalse(_index.Drives[0].Watch.Supported, "no source offers a watch source");
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => _index.StartWatchingAsync('T', CancellationToken.None));
     }
@@ -156,8 +156,8 @@ public class FileIndexWatchTests
             }
         ];
         var applied = throughTestExtensions
-            ? FileIndexTestAccess.ApplyJournalEntries(_index, 'T', synthetic, journalIdentifier: 5,
-                nextUpdateSequenceNumber: 100)
+            ? FileIndexTestAccess.ApplyJournalEntries(_index, 'T', synthetic,
+                new SyntheticJournalCursor(5, 100))
             : _index.ApplyJournalEntries('T', entries, journalId: 5, nextUsn: 100);
 
         Assert.AreEqual(1, applied.Count);
@@ -175,7 +175,7 @@ public class FileIndexWatchTests
     public void ApplyJournalEntries_TestExtensionRejectsNullIndex()
     {
         Assert.ThrowsException<ArgumentNullException>(() =>
-            FileIndexTestAccess.ApplyJournalEntries(null!, 'T', [], 5, 100));
+            FileIndexTestAccess.ApplyJournalEntries(null!, 'T', [], new SyntheticJournalCursor(5, 100)));
     }
 
     [TestMethod]
@@ -266,7 +266,7 @@ public class FileIndexWatchTests
             journalId: 5, nextUsn: 300);
 
         Assert.AreEqual(DriveState.Stale, _index.Drives[0].State);
-        Assert.IsTrue(_index.Drives[0].CompactionNeeded);
+        Assert.IsTrue(_index.Drives[0].Block.CompactionNeeded);
     }
 
     [TestMethod]

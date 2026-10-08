@@ -235,7 +235,7 @@ public partial class FileIndexResilienceTests
         var progress = new CancelOnFirstReport(cancellationTokenSource) { Armed = false };
         await using var index = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None);
         var rowsBefore = index.HeaderOf().RowCount;
-        var timestampBefore = index.Drives[0].ScanTimestamp;
+        var timestampBefore = index.Drives[0].Block.ScanTimestamp;
 
         await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
         progress.Armed = true;
@@ -243,7 +243,7 @@ public partial class FileIndexResilienceTests
         await AssertThrowsCancellation(() => index.RescanAsync('T', cancellationTokenSource.Token));
 
         Assert.AreEqual(rowsBefore, index.HeaderOf().RowCount);
-        Assert.AreEqual(timestampBefore, index.Drives[0].ScanTimestamp);
+        Assert.AreEqual(timestampBefore, index.Drives[0].Block.ScanTimestamp);
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
     }
 
@@ -258,7 +258,7 @@ public partial class FileIndexResilienceTests
         await using (var index = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None))
         {
             rowsBefore = index.HeaderOf().RowCount;
-            timestampBefore = index.Drives[0].ScanTimestamp;
+            timestampBefore = index.Drives[0].Block.ScanTimestamp;
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
             progress.Armed = true;
@@ -274,8 +274,8 @@ public partial class FileIndexResilienceTests
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, reopened.Drives[0].State);
         Assert.AreEqual(rowsBefore, reopened.HeaderOf().RowCount);
-        Assert.AreEqual(timestampBefore, reopened.Drives[0].ScanTimestamp);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives[0].BlockSource);
+        Assert.AreEqual(timestampBefore, reopened.Drives[0].Block.ScanTimestamp);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives[0].Block.Source);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -422,7 +422,7 @@ public partial class FileIndexResilienceTests
         }
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives[0].BlockSource);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives[0].Block.Source);
     }
 
     [TestMethod]

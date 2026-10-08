@@ -5,7 +5,7 @@
       volume-root handle (`UsnJournalVolumeInterop`) before adopting a cached block. A block
       whose `BlockHeader.UsnNextUsn` is below the journal's `FirstUsn`, or whose
       `BlockHeader.UsnJournalId` no longer matches, cannot be resumed, so the drive cold-scans
-      and `DriveStatus.CheckpointLoss` records the cause, the journal's allocation delta and
+      and `DriveWatchStatus.CheckpointLoss` records the cause, the journal's allocation delta and
       maximum size, how far behind the journal the checkpoint fell, and the size
       a journal would need to be at least to have kept it (`JournalSizeArithmetic`: the
       checkpoint-to-tip span rounded up to the allocation delta, plus one more allocation delta).
@@ -32,7 +32,7 @@
       A proven loss travels through `BrokerDriveScanResult.CatchUpLoss` and
       `MftBlockProduceResult.CatchUpLoss`; the index publishes the complete block as unresumable,
       records a `ScanCatchUp` report (including `SizeThatWouldHaveRetained` when the journal was
-      trimmed), and scans the drive again. `DriveStatus.ConsecutiveLostCatchUps` reaches
+      trimmed), and scans the drive again. `DriveWatchStatus.ConsecutiveLostCatchUps` reaches
       `FileIndex.LostCatchUpRecoveryLimit` after three consecutive losses; a scan whose catch-up
       holds resets it to zero. At the limit an open settles the drive `Ready` with its last block,
       refuses its watch, and requires a consumer `RescanAsync` to publish a resumable block

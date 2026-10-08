@@ -50,7 +50,7 @@ public class FileIndexLifetimeTests
         Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreEqual(ProducerKind.Enumeration, index.HeaderOf().ProducerKind);
         Assert.IsTrue(index.HeaderOf().RowCount >= 3);
-        Assert.IsFalse(index.Drives[0].WatchSupported);
+        Assert.IsFalse(index.Drives[0].Watch.Supported);
         Assert.IsTrue(File.Exists(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('T', _volumeSerial))));
     }
 
@@ -60,11 +60,11 @@ public class FileIndexLifetimeTests
         DateTime firstTimestamp;
         await using (var first = await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
-            firstTimestamp = first.Drives[0].ScanTimestamp;
+            firstTimestamp = first.Drives[0].Block.ScanTimestamp;
         }
 
         await using var second = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(firstTimestamp, second.Drives[0].ScanTimestamp);
+        Assert.AreEqual(firstTimestamp, second.Drives[0].Block.ScanTimestamp);
     }
 
 
@@ -92,7 +92,7 @@ public class FileIndexLifetimeTests
 
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
-        Assert.AreEqual(0u, index.Drives[0].LiveRowCount);
+        Assert.AreEqual(0u, index.Drives[0].Block.LiveRowCount);
         Assert.IsNull(SyntheticIndexInspection.ReadHeader(index, 'Z'));
     }
 

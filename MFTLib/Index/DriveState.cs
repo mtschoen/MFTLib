@@ -22,7 +22,7 @@ public enum DriveState
     ///     The drive has no block: its MFT producer failed, a cache-only open found no usable
     ///     cache, or the cache block is owned by another live index.
     ///     <see cref="DriveStatus.FailureKind" /> says which, and
-    ///     <see cref="DriveStatus.MftProducerFailureMessage" /> carries the detail.
+    ///     <see cref="DriveStatus.FailureMessage" /> carries the detail.
     /// </summary>
     Failed
 }

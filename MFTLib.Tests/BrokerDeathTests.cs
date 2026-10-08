@@ -79,10 +79,10 @@ public class BrokerDeathTests
         Assert.AreEqual('U', ((BrokerChannelLostException)faultU.Exception).DriveLetter);
         CollectionAssert.AreEquivalent(new[] { 'T', 'U' }, harness.Faults.Select(fault => fault.DriveLetter).ToArray());
         Assert.IsTrue(harness.Faults.All(fault => fault.Kind == WatchFaultKind.Channel));
-        Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
-        Assert.IsNotNull(harness.DriveFor('U').WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUpState);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('U').WatchCatchUpState);
+        Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
+        Assert.IsNotNull(harness.DriveFor('U').Watch.FailureMessage);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').Watch.CatchUpState);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('U').Watch.CatchUpState);
     }
 
     // The scripted host ends the way a process does: its control pipe and every drive pipe close.

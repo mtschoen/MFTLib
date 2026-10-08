@@ -189,7 +189,7 @@ channel. The elevated host:
 
 The scan's internal result carries the block, the armed cursor and the advanced
 cursor; `DriveStatus` exposes neither cursor, only the block's row and skipped
-counts and, after a proven loss, `CheckpointLoss`. A successful result
+counts and, after a proven loss, `DriveWatchStatus.CheckpointLoss`. A successful result
 contains the armed cursor and the advanced cursor. The catch-up entries do not
 cross the pipe: a caller that wants them watches from the armed cursor. A proven
 loss still returns the completed block, with `CatchUpLoss` set and
@@ -302,7 +302,7 @@ index.WatchFaulted += fault =>
         drive => drive.DriveLetter == fault.DriveLetter);
 
     Console.Error.WriteLine(
-        $"Drive {fault.DriveLetter}: {fault.Kind}, {status.WatchCatchUpState}");
+        $"Drive {fault.DriveLetter}: {fault.Kind}, {status.Watch.CatchUpState}");
 };
 ```
 
@@ -315,9 +315,9 @@ concurrently. The status has already been updated when the event runs.
 | An `IOException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
 | Drive watch fault | The host reported an error on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
 | `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan; a successful rescan starts the watch if it is requested. |
-| `WatchFaultKind.RescanRestart` | A rescan replaced the block but could not start its watch. The scan returns success. The exception and `WatchFailureMessage` identify the rescan; the inner exception is the start failure. No automatic recovery starts. A consumer start or rescan retries it, and stop rethrows the fault once. |
+| `WatchFaultKind.RescanRestart` | A rescan replaced the block but could not start its watch. The scan returns success. The exception and `DriveWatchStatus.FailureMessage` identify the rescan; the inner exception is the start failure. No automatic recovery starts. A consumer start or rescan retries it, and stop rethrows the fault once. |
 | `WatchCatchUpState.Recovering` | A drive or apply fault is being recovered, or a lost catch-up is being retried. Queries still use the current complete block, which may be behind the volume. |
-| `WatchCatchUpState.Faulted` | Recovery did not restore the watch, a channel was lost, a start was refused, or the catch-up loss limit was reached. Inspect `WatchFailureMessage` and the fault exception. Call `RescanAsync` or `StartWatchingAsync` after the triggering condition is fixed. An unresumable block must be rescanned first. |
+| `WatchCatchUpState.Faulted` | Recovery did not restore the watch, a channel was lost, a start was refused, or the catch-up loss limit was reached. Inspect `DriveWatchStatus.FailureMessage` and the fault exception. Call `RescanAsync` or `StartWatchingAsync` after the triggering condition is fixed. An unresumable block must be rescanned first. |
 
 `WatchFaultKind.Apply` follows the same automatic recovery path as
 `WatchFaultKind.Drive`. If the replacement watch faults before it first reaches
@@ -331,8 +331,8 @@ restarting the watch and reports the stopped watch instance's outstanding fault
 once.
 
 To follow a drive's state without polling `Drives`, subscribe to
-`WatchStateChanged`. It delivers every change of a drive's `WatchCatchUpState` once,
-with that drive's next `WatchStateVersion`, before the `WatchFaulted` of the
+`WatchStateChanged`. It delivers every change of a drive's `DriveWatchStatus.CatchUpState` once,
+with that drive's next `DriveWatchStatus.StateVersion`, before the `WatchFaulted` of the
 fault that caused it (`DriveWatchState.Fault`). A finished automatic recovery is
 `Recovering`, then `CatchingUp` when the restarted watch registers, then
 `CaughtUp`. One drive's changes arrive in version order, but a read of `Drives`
@@ -349,13 +349,13 @@ index.WatchStateChanged += state =>
     // delivered concurrently can never publish after a newer one.
     lock (gate)
     {
-        if (applied.GetValueOrDefault(state.DriveLetter) >= state.WatchStateVersion)
+        if (applied.GetValueOrDefault(state.DriveLetter) >= state.StateVersion)
         {
             return;
         }
 
-        applied[state.DriveLetter] = state.WatchStateVersion;
-        Publish(state.DriveLetter, state.WatchCatchUpState);
+        applied[state.DriveLetter] = state.StateVersion;
+        Publish(state.DriveLetter, state.CatchUpState);
     }
 };
 ```
@@ -382,14 +382,14 @@ the armed cursor is actually gone. Only a proven trimmed or recreated journal
 becomes `JournalCatchUpLostException`; an unavailable journal query or a cursor
 that is still retained remains an ordinary scan failure.
 
-Every proven loss increments `DriveStatus.ConsecutiveLostCatchUps`. A successful
+Every proven loss increments `DriveWatchStatus.ConsecutiveLostCatchUps`. A successful
 scan resets the count. A manual or recovery rescan retries until success or
 `FileIndex.LostCatchUpRecoveryLimit`; at the limit it throws the last
 `JournalCatchUpLostException`, keeps the complete block queryable, and refuses a
 watch from that block. At open, the same retries happen before the drive settles;
 the open returns the unresumable block instead of throwing at the limit.
 
-The drive's `DriveStatus.CheckpointLoss` report has
+The drive's `DriveWatchStatus.CheckpointLoss` report has
 `DetectedDuring == JournalCheckpointLossDetection.ScanCatchUp`. If its `Cause`
 is `JournalCheckpointLossCause.CheckpointTrimmed` and
 `SizeThatWouldHaveRetained` has a value, offer that value as the minimum journal

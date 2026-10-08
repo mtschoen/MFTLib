@@ -38,7 +38,7 @@ public class FileIndexWatchRecoveryFaultTests
         }
 
         await harness.WaitForRecoveryAsync('C');
-        Assert.IsNull(harness.DriveFor('C').WatchFailureMessage);
+        Assert.IsNull(harness.DriveFor('C').Watch.FailureMessage);
         Assert.AreEqual(new IndexWatchTarget('C', 13, 9000), harness.Source.TargetsFor('C')[^1]);
         Assert.AreEqual(2, harness.Source.TargetsFor('C').Count);
         Assert.AreEqual(1, harness.Source.TargetsFor('D').Count);
@@ -123,7 +123,7 @@ public class FileIndexWatchRecoveryFaultTests
         await harness.WaitForRecoveryAsync('C');
 
         Assert.AreSame(restartFailure, recoveryFault.Exception);
-        Assert.AreEqual("rearm failed", harness.DriveFor('C').WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('C').WatchCatchUpState);
+        Assert.AreEqual("rearm failed", harness.DriveFor('C').Watch.FailureMessage);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('C').Watch.CatchUpState);
     }
 }

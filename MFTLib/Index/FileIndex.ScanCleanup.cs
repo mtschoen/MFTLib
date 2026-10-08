@@ -32,8 +32,7 @@ public sealed partial class FileIndex
         lock (_stateLock)
         {
             ClaimSettledCountLocked(driveLetter);
-            _blocklessDriveStatuses.Add(new DriveStatus(driveLetter, DriveState.Offline, BlockSource.None, 0, false,
-                DateTime.MinValue));
+            _blocklessDriveStatuses.Add(new DriveStatus(driveLetter, DriveState.Offline));
         }
     }
 
@@ -46,15 +45,14 @@ public sealed partial class FileIndex
         lock (_stateLock)
         {
             ClaimSettledCountLocked(driveLetter);
-            _blocklessDriveStatuses.Add(new DriveStatus(driveLetter, DriveState.Failed, BlockSource.None, 0, false,
-                DateTime.MinValue)
+            _blocklessDriveStatuses.Add(new DriveStatus(driveLetter, DriveState.Failed)
             {
-                MftProducerFailureMessage = settled.ProducerFailureMessage,
+                FailureMessage = settled.ProducerFailureMessage,
                 FailureKind = failureKind,
                 // A cache-only open declines the drive precisely because the checkpoint was
                 // lost, so this is where that reason has to reach the consumer: the drive ends
                 // up with no block, and so never travels through DescribeDrive.
-                CheckpointLoss = settled.CheckpointLoss
+                Watch = new DriveWatchStatus { CheckpointLoss = settled.CheckpointLoss }
             });
             ReleaseCanonicalOwnershipLocked(driveLetter);
         }

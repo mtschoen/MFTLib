@@ -11,14 +11,14 @@ cache and rescan on a normal open.
 
 ## Scan diagnostics
 
-`DriveStatus.AccessDeniedSubtreeCount` counts subtrees the enumeration producer could
+`DriveBlockStatus.AccessDeniedSubtreeCount` counts subtrees the enumeration producer could
 not enter during the scan, including directories that vanished before entry.
-`DriveStatus.SkippedRecordCount` counts records the MFT producer could not place,
+`DriveBlockStatus.SkippedRecordCount` counts records the MFT producer could not place,
 including unsupported record identifiers, empty names and exhausted block capacity.
 Profile-filtered records contribute to neither count. These diagnostics describe the
 current block's production: successful rescans replace the counts, failed or cancelled
 rescans retain them with the block, and warm starts report zero because these counts
-are not stored in the block header. `DriveStatus.CompactionNeeded` reads the header's
+are not stored in the block header. `DriveBlockStatus.CompactionNeeded` reads the header's
 compaction flag independently of either count.
 
 ## File name
@@ -60,7 +60,7 @@ is re-locked in place.
 
 ### Observing a drive's backing
 
-Read `FileIndex.Drives` and inspect `DriveStatus.CacheSlot`:
+Read `FileIndex.Drives` and inspect `DriveBlockStatus.CacheSlot`:
 
 | Value | Meaning |
 | --- | --- |
@@ -69,7 +69,7 @@ Read `FileIndex.Drives` and inspect `DriveStatus.CacheSlot`:
 | `CacheSlotState.NotApplicable` | NoCache is enabled, or the drive has no block (failed or offline). |
 
 Both Ready and Stale blocks retain their backing classification. This is
-separate from `DriveStatus.BlockSource`: a canonical cold scan and a private
+separate from `DriveBlockStatus.Source`: a canonical cold scan and a private
 fallback scan both read `ProducedByScan`; a canonical warm start reads
 `WarmStartedFromCache`.
 
@@ -291,7 +291,7 @@ Rows are dense by NTFS record number: row i is record i, with unused slots left
 empty and the volume root at row 5 (`BlockHeader.RootRow`). `RowCount` is the
 highest written slot plus one. `LiveRowCount` counts records that are in use and
 not tombstoned, excluding free slots and deleted files. Use the live count when
-displaying a file count; `DriveStatus.LiveRowCount` reads it from the header. A
+displaying a file count; `DriveBlockStatus.LiveRowCount` reads it from the header. A
 size-unknown row carries `RowFlags.SizeUnknown` and a zero size when no usable data size was
 found in the base record, including data in an extension record that the parser
 does not follow or a negative non-resident data size. A known zero size means an
@@ -331,7 +331,7 @@ untouched.
 The source captures the journal tip for the arm. Backlog batches between the persisted
 cursor and that tip are streamed and applied to the block in place, advancing the header's
 `USN next USN` and updating `LiveRowCount` and file rows under the drive's write gate. A
-`DriveCaughtUp` item transitions `DriveStatus.WatchCatchUpState` from
+`DriveCaughtUp` item transitions `DriveWatchStatus.CatchUpState` from
 `WatchCatchUpState.CatchingUp` to `WatchCatchUpState.CaughtUp`. Live mutations continue on
 the same handle.
 
@@ -354,7 +354,7 @@ replacement handle faults before reaching `CaughtUp`, the index raises a `Recove
 and leaves the drive `Faulted` until a consumer starts or rescans it. A `Channel` fault does
 not recover automatically. A successful manual rescan whose replacement watch cannot start
 raises `RescanRestart` and leaves the drive `Faulted` without automatic recovery; the scan
-returns normally. The fault and `WatchFailureMessage` name the rescan, and the start failure
+returns normally. The fault and `DriveWatchStatus.FailureMessage` name the rescan, and the start failure
 is the inner exception. Stop rethrows the fault once. Across a successful swap, old `Changed`
 events can arrive after publication and repeat during the new watch's catch-up; queries can
 lag until it reports `CaughtUp`.
@@ -369,8 +369,8 @@ order. Caller cancellation cancels the batched call; disposal cancels it through
 index's disposal token.
 
 Calling either wait form is optional. The index observes each handle's failure even when
-no caller waits; faults still reach `WatchFaulted`, `DriveStatus.WatchFailureMessage`, and
-`DriveStatus.WatchCatchUpState`.
+no caller waits; faults still reach `WatchFaulted`, `DriveWatchStatus.FailureMessage`, and
+`DriveWatchStatus.CatchUpState`.
 
 ## Sidecars
 

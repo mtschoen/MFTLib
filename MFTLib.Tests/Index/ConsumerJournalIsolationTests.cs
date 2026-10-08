@@ -82,7 +82,7 @@ public class ConsumerJournalIsolationTests
     async Task SeedAsync()
     {
         await using var index = await FileIndex.OpenAsync(Options(false), Token);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().BlockSource);
+        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block.Source);
         Assert.AreEqual(1, _productions);
     }
 
@@ -105,14 +105,14 @@ public class ConsumerJournalIsolationTests
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(cacheOnly ? 1 : 2, _productions);
         Assert.AreEqual(cacheOnly ? BlockSource.WarmStartedFromCache : BlockSource.ProducedByScan,
-            status.BlockSource);
-        Assert.IsNotNull(status.CheckpointLoss);
+            status.Block.Source);
+        Assert.IsNotNull(status.Watch.CheckpointLoss);
         Assert.AreEqual(recreated ? JournalCheckpointLossCause.JournalRecreated
-            : JournalCheckpointLossCause.CheckpointTrimmed, status.CheckpointLoss.Cause);
+            : JournalCheckpointLossCause.CheckpointTrimmed, status.Watch.CheckpointLoss.Cause);
         Assert.AreEqual(JournalCheckpointLossDetection.DriveOpening,
-            status.CheckpointLoss.DetectedDuring);
-        Assert.AreEqual(1_000L, status.CheckpointLoss.CheckpointUsn);
-        Assert.IsNull(status.WatchFailureMessage);
+            status.Watch.CheckpointLoss.DetectedDuring);
+        Assert.AreEqual(1_000L, status.Watch.CheckpointLoss.CheckpointUsn);
+        Assert.IsNull(status.Watch.FailureMessage);
 
         if (cacheOnly)
         {
@@ -121,9 +121,9 @@ public class ConsumerJournalIsolationTests
             StringAssert.Contains(refusal.Message, "RescanAsync");
             Assert.AreEqual(0, source.Starts.Count);
             status = index.Drives.Single();
-            Assert.IsNotNull(status.WatchFailureMessage);
-            StringAssert.Contains(status.WatchFailureMessage, "RescanAsync");
-            Assert.AreEqual(WatchCatchUpState.Faulted, status.WatchCatchUpState);
+            Assert.IsNotNull(status.Watch.FailureMessage);
+            StringAssert.Contains(status.Watch.FailureMessage, "RescanAsync");
+            Assert.AreEqual(WatchCatchUpState.Faulted, status.Watch.CatchUpState);
         }
     }
 
@@ -137,12 +137,12 @@ public class ConsumerJournalIsolationTests
         var source = new ScriptedWatchSource();
         await using var index = await FileIndex.OpenAsync(Options(true, source), Token);
         Assert.AreEqual(1, _productions);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().BlockSource);
-        Assert.IsNull(index.Drives.Single().CheckpointLoss);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, index.Drives.Single().Block.Source);
+        Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
         await index.StartWatchingAsync('T', Token);
         Assert.AreEqual('T', source.Starts.Single().DriveLetter);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, index.Drives.Single().WatchCatchUpState);
-        Assert.IsNull(index.Drives.Single().WatchFailureMessage);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, index.Drives.Single().Watch.CatchUpState);
+        Assert.IsNull(index.Drives.Single().Watch.FailureMessage);
         await index.StopWatchingAsync('T', Token);
     }
 
@@ -175,20 +175,20 @@ public class ConsumerJournalIsolationTests
         await announced.Task.WaitAsync(ScriptedWatchSource.HangGuard);
         var status = index.Drives.Single();
         Assert.AreEqual(1, _productions);
-        Assert.AreEqual(WatchCatchUpState.Recovering, status.WatchCatchUpState);
-        Assert.IsNotNull(status.WatchFailureMessage);
+        Assert.AreEqual(WatchCatchUpState.Recovering, status.Watch.CatchUpState);
+        Assert.IsNotNull(status.Watch.FailureMessage);
         if (observation == 0)
         {
-            Assert.IsNull(status.CheckpointLoss);
+            Assert.IsNull(status.Watch.CheckpointLoss);
         }
         else
         {
-            Assert.IsNotNull(status.CheckpointLoss);
-            Assert.AreEqual(2_000L, status.CheckpointLoss.CheckpointUsn);
+            Assert.IsNotNull(status.Watch.CheckpointLoss);
+            Assert.AreEqual(2_000L, status.Watch.CheckpointLoss.CheckpointUsn);
             Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch,
-                status.CheckpointLoss.DetectedDuring);
+                status.Watch.CheckpointLoss.DetectedDuring);
             Assert.AreEqual(observation == 1 ? JournalCheckpointLossCause.CheckpointTrimmed
-                : JournalCheckpointLossCause.JournalRecreated, status.CheckpointLoss.Cause);
+                : JournalCheckpointLossCause.JournalRecreated, status.Watch.CheckpointLoss.Cause);
         }
         await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(() => index.StopWatchingAsync('T', Token));
     }
@@ -204,12 +204,12 @@ public class ConsumerJournalIsolationTests
         {
             using var scope = JournalIsolation.OverrideJournalWindow(_ => Lost(false));
             await using var index = await FileIndex.OpenAsync(Options(true), Token);
-            Assert.IsNotNull(index.Drives.Single().CheckpointLoss);
+            Assert.IsNotNull(index.Drives.Single().Watch.CheckpointLoss);
             throw new IOException("synthetic test body failure");
         });
         await using var restored = await FileIndex.OpenAsync(Options(true), Token);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, restored.Drives.Single().BlockSource);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, restored.Drives.Single().Block.Source);
         Assert.AreEqual(1, _productions);
-        Assert.IsNull(restored.Drives.Single().CheckpointLoss);
+        Assert.IsNull(restored.Drives.Single().Watch.CheckpointLoss);
     }
 }

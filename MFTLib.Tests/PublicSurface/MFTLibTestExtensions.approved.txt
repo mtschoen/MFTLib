@@ -7,7 +7,7 @@ MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MF
 MFTLibTestExtensions.BrokerTestHarness :: type public static class
 MFTLibTestExtensions.CacheDirectoryIsolation :: method public static ForbidDefaultCacheDirectory() : void
 MFTLibTestExtensions.CacheDirectoryIsolation :: type public static class
-MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, char driveLetter, System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, ulong journalIdentifier, long nextUpdateSequenceNumber) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
+MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, char driveLetter, System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
 MFTLibTestExtensions.FileIndexTestAccess :: type public static class
 MFTLibTestExtensions.InProcessBrokerHandle :: method public Crash() : void
 MFTLibTestExtensions.InProcessBrokerHandle :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
@@ -210,7 +210,7 @@ MFTLibTestExtensions.SyntheticNotifications :: method public static CreateFileCh
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexDriveOpened(char driveLetter, int settledDriveCount, int totalDriveCount) : MFTLib.Index.IndexDriveOpened
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateIndexScanProgress(char driveLetter, MFTLib.Index.IndexScanPhase phase, uint rowsWritten, uint? totalRows = default, string? currentDirectory = default, MFTLib.Index.IndexScanOutcome? outcome = default) : MFTLib.Index.IndexScanProgress
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCatchUpLostException(bool recoveryStopped, string message) : MFTLib.Index.JournalCatchUpLostException
-MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCheckpointLoss(char driveLetter, MFTLib.Index.JournalCheckpointLossCause cause, MFTLib.Index.JournalCheckpointLossDetection detectedDuring, long allocationDelta, long maximumSize) : MFTLib.Index.JournalCheckpointLoss
+MFTLibTestExtensions.SyntheticNotifications :: method public static CreateJournalCheckpointLoss(char driveLetter, MFTLib.Index.JournalCheckpointLossCause cause, MFTLib.Index.JournalCheckpointLossDetection detectedDuring, MFTLib.UsnJournalSettings journalSettings) : MFTLib.Index.JournalCheckpointLoss
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateWatchFault(MFTLib.Index.WatchFaultKind kind, char driveLetter, System.Exception exception) : MFTLib.Index.WatchFault
 MFTLibTestExtensions.SyntheticNotifications :: type public static class
 MFTLibTestExtensions.SyntheticRow :: constructor public (uint Row, string Name, uint ParentRow)

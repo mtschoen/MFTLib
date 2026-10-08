@@ -56,19 +56,19 @@ public class FileIndexOwnerLockTests
     {
         await using (var first = await FileIndex.OpenAsync(Options(), CancellationToken.None))
         {
-            Assert.AreEqual(CacheSlotState.OwnedCanonical, first.Drives.Single().CacheSlot);
-            Assert.AreEqual(BlockSource.ProducedByScan, first.Drives.Single().BlockSource);
+            Assert.AreEqual(CacheSlotState.OwnedCanonical, first.Drives.Single().Block.CacheSlot);
+            Assert.AreEqual(BlockSource.ProducedByScan, first.Drives.Single().Block.Source);
             Assert.IsTrue(File.Exists(CanonicalPath));
 
             await using (var second = await FileIndex.OpenAsync(Options(cacheOnly: true), CancellationToken.None))
             {
                 var status = second.Drives.Single();
                 Assert.AreEqual(DriveState.Failed, status.State);
-                Assert.AreEqual(CacheSlotState.NotApplicable, status.CacheSlot);
+                Assert.AreEqual(CacheSlotState.NotApplicable, status.Block.CacheSlot);
                 Assert.AreEqual(DriveFailureKind.InUse, status.FailureKind);
                 Assert.AreEqual(
                     "Drive T: cache block is in use by another FileIndex and --cache-only forbids a scan.",
-                    status.MftProducerFailureMessage);
+                    status.FailureMessage);
                 Assert.IsTrue(File.Exists(CanonicalPath),
                     "the second opener must not delete the first index's live block");
                 Assert.AreEqual(DriveState.Ready, first.Drives.Single().State);
@@ -81,8 +81,8 @@ public class FileIndexOwnerLockTests
         // The lock died with the first index, so a later open takes the slot and warm-starts.
         await using var third = await FileIndex.OpenAsync(Options(cacheOnly: true), CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, third.Drives.Single().State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, third.Drives.Single().BlockSource);
-        Assert.AreEqual(CacheSlotState.OwnedCanonical, third.Drives.Single().CacheSlot);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, third.Drives.Single().Block.Source);
+        Assert.AreEqual(CacheSlotState.OwnedCanonical, third.Drives.Single().Block.CacheSlot);
     }
 
     [TestMethod]
@@ -96,8 +96,8 @@ public class FileIndexOwnerLockTests
         {
             var status = second.Drives.Single();
             Assert.AreEqual(DriveState.Ready, status.State);
-            Assert.AreEqual(BlockSource.ProducedByScan, status.BlockSource);
-            Assert.AreEqual(CacheSlotState.PrivateFallback, status.CacheSlot);
+            Assert.AreEqual(BlockSource.ProducedByScan, status.Block.Source);
+            Assert.AreEqual(CacheSlotState.PrivateFallback, status.Block.CacheSlot);
             Assert.IsTrue(second.TryGetDriveOrdinal('T', out var secondOrdinal));
             secondBlockPath = second.CurrentSnapshot.GetDriveBlock(secondOrdinal).Block.Path;
             Assert.IsTrue(File.Exists(secondBlockPath));
@@ -122,7 +122,7 @@ public class FileIndexOwnerLockTests
         await using (var first = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None))
         {
             rowsBefore = first.HeaderOf().RowCount;
-            timestampBefore = first.Drives[0].ScanTimestamp;
+            timestampBefore = first.Drives[0].Block.ScanTimestamp;
 
             await File.WriteAllTextAsync(Path.Combine(_treeRoot, "Documents", "second.md"), "second");
             progress.Armed = true;
@@ -150,8 +150,8 @@ public class FileIndexOwnerLockTests
         await using var third = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, third.Drives[0].State);
         Assert.AreEqual(rowsBefore, third.HeaderOf().RowCount);
-        Assert.AreEqual(timestampBefore, third.Drives[0].ScanTimestamp);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, third.Drives[0].BlockSource);
+        Assert.AreEqual(timestampBefore, third.Drives[0].Block.ScanTimestamp);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, third.Drives[0].Block.Source);
     }
 
     [TestMethod]
@@ -209,7 +209,7 @@ public class FileIndexOwnerLockTests
 
             await using var second = await FileIndex.OpenAsync(Options(), CancellationToken.None);
             var initialStatus = second.Drives.Single();
-            Assert.AreEqual(CacheSlotState.PrivateFallback, initialStatus.CacheSlot);
+            Assert.AreEqual(CacheSlotState.PrivateFallback, initialStatus.Block.CacheSlot);
             Assert.IsTrue(second.TryGetDriveOrdinal('T', out var secondOrdinal));
             var firstPrivatePath = second.CurrentSnapshot.GetDriveBlock(secondOrdinal).Block.Path;
 
@@ -219,7 +219,7 @@ public class FileIndexOwnerLockTests
             await second.RescanAsync('T', CancellationToken.None);
 
             var secondPrivatePath = second.CurrentSnapshot.GetDriveBlock(secondOrdinal).Block.Path;
-            Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().CacheSlot);
+            Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().Block.CacheSlot);
             Assert.AreNotEqual(firstPrivatePath, secondPrivatePath);
             CollectionAssert.AreEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath),
                 "the canonical cache still belongs to the first index, untouched by the rescan");
@@ -232,13 +232,13 @@ public class FileIndexOwnerLockTests
             // canonical name, so later opens warm-start it.
             await first.DisposeAsync();
 
-            Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().CacheSlot);
+            Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().Block.CacheSlot);
 
             await second.RescanAsync('T', CancellationToken.None);
 
-            Assert.AreEqual(CacheSlotState.OwnedCanonical, second.Drives.Single().CacheSlot);
-            Assert.AreEqual(BlockSource.ProducedByScan, second.Drives.Single().BlockSource);
-            Assert.AreEqual(CacheSlotState.PrivateFallback, initialStatus.CacheSlot);
+            Assert.AreEqual(CacheSlotState.OwnedCanonical, second.Drives.Single().Block.CacheSlot);
+            Assert.AreEqual(BlockSource.ProducedByScan, second.Drives.Single().Block.Source);
+            Assert.AreEqual(CacheSlotState.PrivateFallback, initialStatus.Block.CacheSlot);
             Assert.AreEqual(DriveState.Ready, second.Drives.Single().State);
         }
         finally
@@ -255,14 +255,14 @@ public class FileIndexOwnerLockTests
 
         await using var second = await FileIndex.OpenAsync(Options(cacheOnly: true), CancellationToken.None);
         Assert.AreEqual(DriveFailureKind.InUse, second.Drives.Single().FailureKind);
-        Assert.AreEqual(CacheSlotState.NotApplicable, second.Drives.Single().CacheSlot);
+        Assert.AreEqual(CacheSlotState.NotApplicable, second.Drives.Single().Block.CacheSlot);
 
         await second.RescanAsync('T', CancellationToken.None);
 
         var status = second.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(DriveFailureKind.None, status.FailureKind);
-        Assert.AreEqual(CacheSlotState.PrivateFallback, status.CacheSlot);
+        Assert.AreEqual(CacheSlotState.PrivateFallback, status.Block.CacheSlot);
         CollectionAssert.AreEqual(canonicalBytes, await SharedFileReader.ReadAllBytesAsync(CanonicalPath));
     }
 
@@ -272,12 +272,12 @@ public class FileIndexOwnerLockTests
         await using var index = await FileIndex.OpenAsync(
             Options() with { NoCache = true }, CancellationToken.None);
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().CacheSlot);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().BlockSource);
+        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().Block.CacheSlot);
+        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block.Source);
 
         await index.RescanAsync('T', CancellationToken.None);
 
-        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().CacheSlot);
+        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().Block.CacheSlot);
         Assert.IsFalse(File.Exists(CanonicalPath));
     }
 
@@ -290,7 +290,7 @@ public class FileIndexOwnerLockTests
         };
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Offline, index.Drives.Single().State);
-        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().CacheSlot);
+        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().Block.CacheSlot);
     }
 
     [TestMethod]
@@ -298,13 +298,13 @@ public class FileIndexOwnerLockTests
     {
         await using var index = await FileIndex.OpenAsync(Options(cacheOnly: true), CancellationToken.None);
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
-        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().CacheSlot);
+        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().Block.CacheSlot);
 
         await index.RescanAsync('T', CancellationToken.None);
 
         Assert.AreEqual(DriveState.Ready, index.Drives.Single().State);
-        Assert.AreEqual(CacheSlotState.OwnedCanonical, index.Drives.Single().CacheSlot);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().BlockSource);
+        Assert.AreEqual(CacheSlotState.OwnedCanonical, index.Drives.Single().Block.CacheSlot);
+        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block.Source);
     }
 
     [TestMethod]
@@ -318,7 +318,7 @@ public class FileIndexOwnerLockTests
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
         Assert.AreEqual(DriveState.Failed, index.Drives.Single().State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, index.Drives.Single().FailureKind);
-        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().CacheSlot);
+        Assert.AreEqual(CacheSlotState.NotApplicable, index.Drives.Single().Block.CacheSlot);
     }
 
     [DataTestMethod]
@@ -333,7 +333,7 @@ public class FileIndexOwnerLockTests
             await using var second = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None);
             var before = second.Drives.Single();
             var rowCountBefore = second.HeaderOf().RowCount;
-            Assert.AreEqual(CacheSlotState.PrivateFallback, before.CacheSlot);
+            Assert.AreEqual(CacheSlotState.PrivateFallback, before.Block.CacheSlot);
             await first.DisposeAsync();
 
             using var cancellation = new CancellationTokenSource();
@@ -342,7 +342,7 @@ public class FileIndexOwnerLockTests
             try
             {
                 await progress.Reported.WaitAsync(TimeSpan.FromSeconds(30));
-                Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().CacheSlot);
+                Assert.AreEqual(CacheSlotState.PrivateFallback, second.Drives.Single().Block.CacheSlot);
                 Assert.AreEqual(rowCountBefore, second.HeaderOf().RowCount);
             }
             finally
@@ -364,8 +364,8 @@ public class FileIndexOwnerLockTests
             }
 
             Assert.AreEqual(cancel ? CacheSlotState.PrivateFallback : CacheSlotState.OwnedCanonical,
-                second.Drives.Single().CacheSlot);
-            Assert.AreEqual(CacheSlotState.PrivateFallback, before.CacheSlot);
+                second.Drives.Single().Block.CacheSlot);
+            Assert.AreEqual(CacheSlotState.PrivateFallback, before.Block.CacheSlot);
             Assert.AreEqual(DriveState.Ready, second.Drives.Single().State);
             Assert.IsNotNull(second.Find(Path.Combine(_treeRoot, "Documents", "readme.md")));
 
@@ -373,7 +373,7 @@ public class FileIndexOwnerLockTests
             {
                 progress.Armed = false;
                 await second.RescanAsync('T', CancellationToken.None);
-                Assert.AreEqual(CacheSlotState.OwnedCanonical, second.Drives.Single().CacheSlot);
+                Assert.AreEqual(CacheSlotState.OwnedCanonical, second.Drives.Single().Block.CacheSlot);
             }
         }
         finally

@@ -117,9 +117,9 @@ public class FileIndexConcurrentRescanTests
         var driveU = index.Drives.Single(drive => drive.DriveLetter == 'U');
         Assert.AreEqual(DriveState.Failed, driveT.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, driveT.FailureKind);
-        Assert.AreEqual("T lost its volume", driveT.MftProducerFailureMessage);
+        Assert.AreEqual("T lost its volume", driveT.FailureMessage);
         Assert.AreEqual(DriveState.Ready, driveU.State);
-        Assert.IsNull(driveU.MftProducerFailureMessage);
+        Assert.IsNull(driveU.FailureMessage);
         GC.KeepAlive(index);
     }
 
@@ -140,9 +140,9 @@ public class FileIndexConcurrentRescanTests
         await ThrowsAsync<InvalidOperationException>(() => rescanU.WaitAsync(HangGuard));
 
         Assert.AreEqual("T lost its volume",
-            index.Drives.Single(drive => drive.DriveLetter == 'T').MftProducerFailureMessage);
+            index.Drives.Single(drive => drive.DriveLetter == 'T').FailureMessage);
         Assert.AreEqual("U declined elevation",
-            index.Drives.Single(drive => drive.DriveLetter == 'U').MftProducerFailureMessage);
+            index.Drives.Single(drive => drive.DriveLetter == 'U').FailureMessage);
     }
 
     [TestMethod]
@@ -199,7 +199,7 @@ public class FileIndexConcurrentRescanTests
         var change = harness.Changes.Single(candidate => candidate.Path.EndsWith("held.txt", StringComparison.Ordinal));
         Assert.AreEqual("held.txt", change.Entry.Name);
         Assert.AreEqual(700L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
-        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
     }
 
     [TestMethod]

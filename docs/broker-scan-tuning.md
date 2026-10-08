@@ -59,7 +59,7 @@ failure as an ordinary scan error.
 `FileIndex` publishes the complete block from a proven loss, marks it
 unresumable, raises `WatchFaultKind.CatchUpLost` when handlers exist, and rescans
 the drive. A successful catch-up resets
-`DriveStatus.ConsecutiveLostCatchUps`. After
+`DriveWatchStatus.ConsecutiveLostCatchUps`. After
 `FileIndex.LostCatchUpRecoveryLimit` consecutive losses, automatic retries stop,
 and the block stays queryable but cannot be watched. A manual or recovery rescan
 at the limit leaves the drive `WatchCatchUpState.Faulted`. During
@@ -69,7 +69,7 @@ watch catch-up state is already `WatchCatchUpState.Faulted`. A later
 `StartWatchingAsync` is refused until `RescanAsync` succeeds. The refusal retains
 the watch request, so a successful rescan clears the refusal and starts the watch.
 
-The `JournalCheckpointLoss` report in the drive's `DriveStatus.CheckpointLoss` tells the
+The `JournalCheckpointLoss` report in the drive's `DriveWatchStatus.CheckpointLoss` tells the
 consumer what happened. For `JournalCheckpointLossCause.CheckpointTrimmed`, a non-null
 `SizeThatWouldHaveRetained` is the minimum size that would have kept the cursor.
 After user consent, grow the journal through

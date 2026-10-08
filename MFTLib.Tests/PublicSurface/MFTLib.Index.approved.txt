@@ -86,6 +86,21 @@ MFTLib.Index.CachedBlockStatus :: property public ProducerKind { get; init; } : 
 MFTLib.Index.CachedBlockStatus :: property public RootDirectory { get; init; } : string?
 MFTLib.Index.CachedBlockStatus :: property public Validation { get; init; } : MFTLib.Index.BlockValidationResult?
 MFTLib.Index.CachedBlockStatus :: type public sealed class : System.IEquatable<MFTLib.Index.CachedBlockStatus>
+MFTLib.Index.DriveBlockStatus :: method public <Clone>$() : MFTLib.Index.DriveBlockStatus
+MFTLib.Index.DriveBlockStatus :: method public Equals(MFTLib.Index.DriveBlockStatus? other) : bool
+MFTLib.Index.DriveBlockStatus :: method public override Equals(object? obj) : bool
+MFTLib.Index.DriveBlockStatus :: method public override GetHashCode() : int
+MFTLib.Index.DriveBlockStatus :: method public override ToString() : string
+MFTLib.Index.DriveBlockStatus :: method public static op_Equality(MFTLib.Index.DriveBlockStatus? left, MFTLib.Index.DriveBlockStatus? right) : bool
+MFTLib.Index.DriveBlockStatus :: method public static op_Inequality(MFTLib.Index.DriveBlockStatus? left, MFTLib.Index.DriveBlockStatus? right) : bool
+MFTLib.Index.DriveBlockStatus :: property public AccessDeniedSubtreeCount { get; init; } : int
+MFTLib.Index.DriveBlockStatus :: property public CacheSlot { get; init; } : MFTLib.Index.CacheSlotState
+MFTLib.Index.DriveBlockStatus :: property public CompactionNeeded { get; init; } : bool
+MFTLib.Index.DriveBlockStatus :: property public LiveRowCount { get; init; } : uint
+MFTLib.Index.DriveBlockStatus :: property public ScanTimestamp { get; init; } : System.DateTime
+MFTLib.Index.DriveBlockStatus :: property public SkippedRecordCount { get; init; } : int
+MFTLib.Index.DriveBlockStatus :: property public Source { get; init; } : MFTLib.Index.BlockSource
+MFTLib.Index.DriveBlockStatus :: type public sealed class : System.IEquatable<MFTLib.Index.DriveBlockStatus>
 MFTLib.Index.DriveFailureKind :: field public const CacheDeclined : MFTLib.Index.DriveFailureKind = 1
 MFTLib.Index.DriveFailureKind :: field public const CacheTagMismatch : MFTLib.Index.DriveFailureKind = 4
 MFTLib.Index.DriveFailureKind :: field public const InUse : MFTLib.Index.DriveFailureKind = 3
@@ -121,39 +136,42 @@ MFTLib.Index.DriveStatus :: method public override GetHashCode() : int
 MFTLib.Index.DriveStatus :: method public override ToString() : string
 MFTLib.Index.DriveStatus :: method public static op_Equality(MFTLib.Index.DriveStatus? left, MFTLib.Index.DriveStatus? right) : bool
 MFTLib.Index.DriveStatus :: method public static op_Inequality(MFTLib.Index.DriveStatus? left, MFTLib.Index.DriveStatus? right) : bool
-MFTLib.Index.DriveStatus :: property public AccessDeniedSubtreeCount { get; init; } : int
-MFTLib.Index.DriveStatus :: property public BlockSource { get; init; } : MFTLib.Index.BlockSource
-MFTLib.Index.DriveStatus :: property public CacheSlot { get; init; } : MFTLib.Index.CacheSlotState
-MFTLib.Index.DriveStatus :: property public CheckpointLoss { get; init; } : MFTLib.Index.JournalCheckpointLoss?
-MFTLib.Index.DriveStatus :: property public CompactionNeeded { get; init; } : bool
-MFTLib.Index.DriveStatus :: property public ConsecutiveLostCatchUps { get; init; } : int
+MFTLib.Index.DriveStatus :: property public Block { get; init; } : MFTLib.Index.DriveBlockStatus
 MFTLib.Index.DriveStatus :: property public DriveLetter { get; init; } : char
 MFTLib.Index.DriveStatus :: property public FailureKind { get; init; } : MFTLib.Index.DriveFailureKind
-MFTLib.Index.DriveStatus :: property public LiveRowCount { get; init; } : uint
-MFTLib.Index.DriveStatus :: property public MftProducerFailureMessage { get; init; } : string?
-MFTLib.Index.DriveStatus :: property public ScanTimestamp { get; init; } : System.DateTime
-MFTLib.Index.DriveStatus :: property public SkippedRecordCount { get; init; } : int
+MFTLib.Index.DriveStatus :: property public FailureMessage { get; init; } : string?
 MFTLib.Index.DriveStatus :: property public State { get; init; } : MFTLib.Index.DriveState
-MFTLib.Index.DriveStatus :: property public WatchCatchUpState { get; init; } : MFTLib.Index.WatchCatchUpState
-MFTLib.Index.DriveStatus :: property public WatchFailureMessage { get; init; } : string?
-MFTLib.Index.DriveStatus :: property public WatchRequested { get; init; } : bool
-MFTLib.Index.DriveStatus :: property public WatchStateVersion { get; init; } : long
-MFTLib.Index.DriveStatus :: property public WatchSupported { get; init; } : bool
+MFTLib.Index.DriveStatus :: property public Watch { get; init; } : MFTLib.Index.DriveWatchStatus
 MFTLib.Index.DriveStatus :: type public sealed class : System.IEquatable<MFTLib.Index.DriveStatus>
-MFTLib.Index.DriveWatchState :: constructor public (char DriveLetter, MFTLib.Index.WatchCatchUpState WatchCatchUpState, long WatchStateVersion, MFTLib.Index.WatchFault? Fault)
+MFTLib.Index.DriveWatchState :: constructor public (char DriveLetter, MFTLib.Index.WatchCatchUpState CatchUpState, long StateVersion, MFTLib.Index.WatchFault? Fault)
 MFTLib.Index.DriveWatchState :: method public <Clone>$() : MFTLib.Index.DriveWatchState
-MFTLib.Index.DriveWatchState :: method public Deconstruct(out char DriveLetter, out MFTLib.Index.WatchCatchUpState WatchCatchUpState, out long WatchStateVersion, out MFTLib.Index.WatchFault? Fault) : void
+MFTLib.Index.DriveWatchState :: method public Deconstruct(out char DriveLetter, out MFTLib.Index.WatchCatchUpState CatchUpState, out long StateVersion, out MFTLib.Index.WatchFault? Fault) : void
 MFTLib.Index.DriveWatchState :: method public Equals(MFTLib.Index.DriveWatchState? other) : bool
 MFTLib.Index.DriveWatchState :: method public override Equals(object? obj) : bool
 MFTLib.Index.DriveWatchState :: method public override GetHashCode() : int
 MFTLib.Index.DriveWatchState :: method public override ToString() : string
 MFTLib.Index.DriveWatchState :: method public static op_Equality(MFTLib.Index.DriveWatchState? left, MFTLib.Index.DriveWatchState? right) : bool
 MFTLib.Index.DriveWatchState :: method public static op_Inequality(MFTLib.Index.DriveWatchState? left, MFTLib.Index.DriveWatchState? right) : bool
+MFTLib.Index.DriveWatchState :: property public CatchUpState { get; init; } : MFTLib.Index.WatchCatchUpState
 MFTLib.Index.DriveWatchState :: property public DriveLetter { get; init; } : char
 MFTLib.Index.DriveWatchState :: property public Fault { get; init; } : MFTLib.Index.WatchFault?
-MFTLib.Index.DriveWatchState :: property public WatchCatchUpState { get; init; } : MFTLib.Index.WatchCatchUpState
-MFTLib.Index.DriveWatchState :: property public WatchStateVersion { get; init; } : long
+MFTLib.Index.DriveWatchState :: property public StateVersion { get; init; } : long
 MFTLib.Index.DriveWatchState :: type public sealed class : System.IEquatable<MFTLib.Index.DriveWatchState>
+MFTLib.Index.DriveWatchStatus :: method public <Clone>$() : MFTLib.Index.DriveWatchStatus
+MFTLib.Index.DriveWatchStatus :: method public Equals(MFTLib.Index.DriveWatchStatus? other) : bool
+MFTLib.Index.DriveWatchStatus :: method public override Equals(object? obj) : bool
+MFTLib.Index.DriveWatchStatus :: method public override GetHashCode() : int
+MFTLib.Index.DriveWatchStatus :: method public override ToString() : string
+MFTLib.Index.DriveWatchStatus :: method public static op_Equality(MFTLib.Index.DriveWatchStatus? left, MFTLib.Index.DriveWatchStatus? right) : bool
+MFTLib.Index.DriveWatchStatus :: method public static op_Inequality(MFTLib.Index.DriveWatchStatus? left, MFTLib.Index.DriveWatchStatus? right) : bool
+MFTLib.Index.DriveWatchStatus :: property public CatchUpState { get; init; } : MFTLib.Index.WatchCatchUpState
+MFTLib.Index.DriveWatchStatus :: property public CheckpointLoss { get; init; } : MFTLib.Index.JournalCheckpointLoss?
+MFTLib.Index.DriveWatchStatus :: property public ConsecutiveLostCatchUps { get; init; } : int
+MFTLib.Index.DriveWatchStatus :: property public FailureMessage { get; init; } : string?
+MFTLib.Index.DriveWatchStatus :: property public Requested { get; init; } : bool
+MFTLib.Index.DriveWatchStatus :: property public StateVersion { get; init; } : long
+MFTLib.Index.DriveWatchStatus :: property public Supported { get; init; } : bool
+MFTLib.Index.DriveWatchStatus :: type public sealed class : System.IEquatable<MFTLib.Index.DriveWatchStatus>
 MFTLib.Index.DuplicateGroup :: method public <Clone>$() : MFTLib.Index.DuplicateGroup
 MFTLib.Index.DuplicateGroup :: method public Equals(MFTLib.Index.DuplicateGroup? other) : bool
 MFTLib.Index.DuplicateGroup :: method public override Equals(object? obj) : bool
@@ -313,12 +331,11 @@ MFTLib.Index.JournalCheckpointLoss :: method public override GetHashCode() : int
 MFTLib.Index.JournalCheckpointLoss :: method public override ToString() : string
 MFTLib.Index.JournalCheckpointLoss :: method public static op_Equality(MFTLib.Index.JournalCheckpointLoss? left, MFTLib.Index.JournalCheckpointLoss? right) : bool
 MFTLib.Index.JournalCheckpointLoss :: method public static op_Inequality(MFTLib.Index.JournalCheckpointLoss? left, MFTLib.Index.JournalCheckpointLoss? right) : bool
-MFTLib.Index.JournalCheckpointLoss :: property public AllocationDelta { get; init; } : long
 MFTLib.Index.JournalCheckpointLoss :: property public BytesBehind { get; init; } : long?
 MFTLib.Index.JournalCheckpointLoss :: property public Cause { get; init; } : MFTLib.Index.JournalCheckpointLossCause
 MFTLib.Index.JournalCheckpointLoss :: property public DetectedDuring { get; init; } : MFTLib.Index.JournalCheckpointLossDetection
 MFTLib.Index.JournalCheckpointLoss :: property public DriveLetter { get; init; } : char
-MFTLib.Index.JournalCheckpointLoss :: property public MaximumSize { get; init; } : long
+MFTLib.Index.JournalCheckpointLoss :: property public JournalSettings { get; init; } : MFTLib.UsnJournalSettings
 MFTLib.Index.JournalCheckpointLoss :: property public SizeThatWouldHaveRetained { get; init; } : long?
 MFTLib.Index.JournalCheckpointLoss :: type public sealed class : System.IEquatable<MFTLib.Index.JournalCheckpointLoss>
 MFTLib.Index.JournalCheckpointLossCause :: field public const CheckpointTrimmed : MFTLib.Index.JournalCheckpointLossCause = 0

@@ -17,7 +17,7 @@ public enum BlockSource
 
     /// <summary>
     ///     The block was adopted from a valid file in the cache directory. Its contents are as
-    ///     old as <see cref="DriveStatus.ScanTimestamp" /> says.
+    ///     old as <see cref="DriveBlockStatus.ScanTimestamp" /> says.
     /// </summary>
     WarmStartedFromCache,
 

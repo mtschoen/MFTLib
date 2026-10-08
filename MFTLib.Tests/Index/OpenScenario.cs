@@ -43,7 +43,7 @@ internal sealed class OpenScenario : IDisposable
     public Action<IndexDriveOpened>? OnReport { get; set; }
 
     public static JournalCheckpointLoss Loss(char driveLetter) => new JournalCheckpointLoss(driveLetter, JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
-        4096, 32768)
+        new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
     {
         CheckpointUsn = 1000,
         FirstUsn = 5000,

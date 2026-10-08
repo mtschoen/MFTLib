@@ -7,7 +7,7 @@ namespace MFTLib.Tests.Index;
 /// <summary>
 ///     What <see cref="FileIndex.Drives" /> reports: configured order regardless of online or
 ///     offline state, an offline drive's rescan contract, and
-///     <see cref="DriveStatus.AccessDeniedSubtreeCount" /> reflecting the most recent scan.
+///     <see cref="DriveBlockStatus.AccessDeniedSubtreeCount" /> reflecting the most recent scan.
 /// </summary>
 [TestClass]
 public class FileIndexDriveStatusTests
@@ -64,7 +64,10 @@ public class FileIndexDriveStatusTests
         Assert.AreEqual(2, index.Drives.Count);
         Assert.AreEqual('Z', index.Drives[0].DriveLetter);
         Assert.AreEqual(DriveState.Offline, index.Drives[0].State);
-        Assert.AreEqual(0u, index.Drives[0].LiveRowCount);
+        Assert.AreEqual(0u, index.Drives[0].Block.LiveRowCount);
+        Assert.AreEqual(BlockSource.None, index.Drives[0].Block.Source);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, index.Drives[0].Watch.CatchUpState);
+        Assert.IsFalse(index.Drives[0].Watch.Supported);
         Assert.AreEqual(DriveFailureKind.None, index.Drives[0].FailureKind);
         Assert.AreEqual('T', index.Drives[1].DriveLetter);
         Assert.AreEqual(DriveState.Ready, index.Drives[1].State);
@@ -86,8 +89,8 @@ public class FileIndexDriveStatusTests
         }, TestContext.CancellationTokenSource.Token);
 
         var status = index.Drives.Single();
-        Assert.AreEqual(3u, status.LiveRowCount);
-        Assert.IsTrue(status.LiveRowCount <= index.HeaderOf().RowCount);
+        Assert.AreEqual(3u, status.Block.LiveRowCount);
+        Assert.IsTrue(status.Block.LiveRowCount <= index.HeaderOf().RowCount);
     }
 
     [TestMethod]
@@ -144,8 +147,8 @@ public class FileIndexDriveStatusTests
         var options = Options(progress: new DeleteSubtreeOnReport(documentsPath, vanishingPath));
         await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 
-        Assert.AreEqual(1, index.Drives[0].AccessDeniedSubtreeCount);
-        Assert.AreEqual(0, index.Drives[0].SkippedRecordCount);
+        Assert.AreEqual(1, index.Drives[0].Block.AccessDeniedSubtreeCount);
+        Assert.AreEqual(0, index.Drives[0].Block.SkippedRecordCount);
     }
 
     [TestMethod]
@@ -156,15 +159,15 @@ public class FileIndexDriveStatusTests
         var progress = new DeleteSubtreeOnReport(documentsPath, vanishingPath);
 
         await using var index = await FileIndex.OpenAsync(Options(progress: progress), CancellationToken.None);
-        Assert.AreEqual(0, index.Drives[0].AccessDeniedSubtreeCount);
-        Assert.AreEqual(0, index.Drives[0].SkippedRecordCount);
+        Assert.AreEqual(0, index.Drives[0].Block.AccessDeniedSubtreeCount);
+        Assert.AreEqual(0, index.Drives[0].Block.SkippedRecordCount);
 
         Directory.CreateDirectory(vanishingPath);
         await File.WriteAllTextAsync(Path.Combine(vanishingPath, "inner.txt"), "gone soon");
         await index.RescanAsync('T', CancellationToken.None);
 
-        Assert.AreEqual(1, index.Drives[0].AccessDeniedSubtreeCount);
-        Assert.AreEqual(0, index.Drives[0].SkippedRecordCount);
+        Assert.AreEqual(1, index.Drives[0].Block.AccessDeniedSubtreeCount);
+        Assert.AreEqual(0, index.Drives[0].Block.SkippedRecordCount);
     }
 
     [TestMethod]

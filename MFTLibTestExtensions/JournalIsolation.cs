@@ -26,7 +26,7 @@ public static class JournalIsolation
     ///         to do and have no reason to care about the journal, so the guard makes the
     ///         outcome deterministic rather than making the call an error.
     ///         Without a synthetic override, a new index opened under this guard reports no
-    ///         <see cref="DriveStatus.CheckpointLoss" /> from journal observations.
+    ///         <see cref="DriveWatchStatus.CheckpointLoss" /> from journal observations.
     ///         Consumer tests can use <see cref="OverrideJournalWindow" /> to supply retained,
     ///         trimmed, or recreated windows and exercise real open-time and watch-fault
     ///         transitions. The scope restores the previous behavior on disposal; the guard

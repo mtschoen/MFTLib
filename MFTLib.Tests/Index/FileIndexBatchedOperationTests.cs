@@ -25,7 +25,7 @@ public class FileIndexBatchedOperationTests
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
     static JournalCheckpointLoss Loss(char driveLetter) => new JournalCheckpointLoss(driveLetter, JournalCheckpointLossDetection.ScanCatchUp, JournalCheckpointLossCause.CheckpointTrimmed,
-        4096, 32768)
+        new UsnJournalSettings { AllocationDelta = 4096, MaximumSize = 32768 })
     {
         CheckpointUsn = 1000,
         FirstUsn = 5000,
@@ -55,7 +55,7 @@ public class FileIndexBatchedOperationTests
         Assert.AreSame(failure, results[1].Failure);
         Assert.AreEqual(DriveOperationOutcome.NotApplicable, results[2].Outcome);
         Assert.IsNull(results[2].Failure);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
         Assert.AreEqual(0, harness.Source.TargetsFor('V').Count, "a drive with no block never reaches the source");
         Assert.AreEqual(0, harness.Faults.Count, "a failed source start raises no WatchFaulted");
     }
@@ -83,7 +83,7 @@ public class FileIndexBatchedOperationTests
 
         Assert.AreEqual(1, harness.Source.TargetsFor('U').Count, "U's start reached the source and was cancelled there");
         Assert.AreEqual(0, harness.Source.Watches.Count, "no handle was published");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').WatchCatchUpState,
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').Watch.CatchUpState,
             "a start cancelled in flight leaves the drive with no running watch");
     }
 
@@ -237,7 +237,7 @@ public class FileIndexBatchedOperationTests
         Assert.AreSame(fault.Exception, results[0].Failure, "stop carries the fault that had ended T's watch");
         Assert.AreEqual(DriveOperationOutcome.Succeeded, results[1].Outcome);
         Assert.AreEqual(DriveOperationOutcome.NotApplicable, results[2].Outcome, "V was never watching");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').Watch.CatchUpState);
     }
 
     [TestMethod]
@@ -282,7 +282,7 @@ public class FileIndexBatchedOperationTests
         harness.Source.WatchFor('T').FailDrive(new IOException("the volume went away"));
 
         Assert.IsFalse(await waiter.WaitAsync(HangGuard), "the waiter's continuation ran on the settling stack");
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').Watch.CatchUpState);
         return;
 
         async Task<bool> WaitThenStopOtherDriveAsync(FileIndex index)
@@ -306,7 +306,7 @@ public class FileIndexBatchedOperationTests
         Assert.AreEqual(DriveOperationOutcome.Failed, results[0].Outcome);
         var lost = (JournalCatchUpLostException)results[0].Failure!;
         Assert.IsTrue(lost.RecoveryStopped);
-        Assert.AreEqual(3, harness.DriveFor('T').ConsecutiveLostCatchUps);
+        Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
         StringAssert.Contains(lost.Message, "12288", "the message carries the journal size to grow to");
         Assert.AreEqual(DriveOperationOutcome.Succeeded, results[1].Outcome);
         Assert.AreEqual(DriveState.Ready, harness.DriveFor('U').State);
@@ -322,7 +322,7 @@ public class FileIndexBatchedOperationTests
             () => harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard));
 
         Assert.IsTrue(thrown.RecoveryStopped);
-        Assert.AreEqual(3, harness.DriveFor('T').ConsecutiveLostCatchUps);
+        Assert.AreEqual(3, harness.DriveFor('T').Watch.ConsecutiveLostCatchUps);
         StringAssert.Contains(thrown.Message, "12288");
     }
 
@@ -338,6 +338,6 @@ public class FileIndexBatchedOperationTests
 
         StringAssert.Contains(thrown.Message, "the scan could not read the volume");
         Assert.AreSame(failure, thrown.InnerException);
-        Assert.AreEqual("the scan could not read the volume", harness.DriveFor('T').MftProducerFailureMessage);
+        Assert.AreEqual("the scan could not read the volume", harness.DriveFor('T').FailureMessage);
     }
 }

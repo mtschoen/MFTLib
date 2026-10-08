@@ -14,7 +14,7 @@ partial class SampleHost
     {
         if (status.State == DriveState.Failed)
         {
-            throw new InvalidOperationException(status.MftProducerFailureMessage ?? $"The drive failed: {status.FailureKind}");
+            throw new InvalidOperationException(status.FailureMessage ?? $"The drive failed: {status.FailureKind}");
         }
 
         // An offline drive settles without a scan, so there is no catch-up to report.
@@ -27,10 +27,10 @@ partial class SampleHost
     void WriteStatus(DriveStatus status)
     {
         ThrowIfNotReady(status);
-        _writeLine($"Index holds {status.LiveRowCount} rows; {status.SkippedRecordCount} records skipped");
-        _writeLine(status.CheckpointLoss is { } loss
+        _writeLine($"Index holds {status.Block.LiveRowCount} rows; {status.Block.SkippedRecordCount} records skipped");
+        _writeLine(status.Watch.CheckpointLoss is { } loss
             ? $"Catch-up lost: {loss.Cause}"
-            : $"Catch-up held; watch supported: {status.WatchSupported}");
+            : $"Catch-up held; watch supported: {status.Watch.Supported}");
     }
 
     // Reports each scan phase once, on the reporting thread, so the output keeps its order.

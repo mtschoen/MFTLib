@@ -3,8 +3,8 @@ namespace MFTLib.Index;
 public sealed partial class FileIndex
 {
     /// <summary>
-    ///     Raised once for every change of a drive's <see cref="DriveStatus.WatchCatchUpState" />, with
-    ///     the drive's new state and its new <see cref="DriveStatus.WatchStateVersion" />: a start,
+    ///     Raised once for every change of a drive's <see cref="DriveWatchStatus.CatchUpState" />, with
+    ///     the drive's new state and its new <see cref="DriveWatchStatus.StateVersion" />: a start,
     ///     a catch-up, a fault, a recovery being queued, finishing (the restarted watch reads
     ///     <see cref="WatchCatchUpState.CatchingUp" />, then <see cref="WatchCatchUpState.CaughtUp" />)
     ///     or failing, a rescan retiring and replacing the watch, a lost catch-up, a refused start,
@@ -22,7 +22,7 @@ public sealed partial class FileIndex
     ///         changes can be delivered concurrently. A handler must therefore not block waiting for
     ///         another change of the same drive. A consumer that also reads <see cref="Drives" />,
     ///         for example to seed a subscription made after the index opened, applies an event only
-    ///         when its <see cref="DriveWatchState.WatchStateVersion" /> is larger than the last one it applied
+    ///         when its <see cref="DriveWatchState.StateVersion" /> is larger than the last one it applied
     ///         for that drive, since its read can be newer than an event still being delivered. A
     ///         decision a consumer tagged with a version is superseded by any event of the same drive
     ///         with a larger one, which is how it orders its own publication against a fault that

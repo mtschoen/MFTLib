@@ -22,7 +22,7 @@ public class FileIndexWatchCatchUpTests
         harness.Source.WatchFor('T').FailDrive(new IOException("journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
 
-        Assert.AreEqual(WatchCatchUpState.Recovering, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.Recovering, harness.DriveFor('T').Watch.CatchUpState);
     }
 
     [TestMethod]
@@ -34,7 +34,7 @@ public class FileIndexWatchCatchUpTests
 
         await harness.Index.StopWatchingAsync('T', Token);
 
-        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('T').Watch.CatchUpState);
     }
 
     [TestMethod]
@@ -44,13 +44,13 @@ public class FileIndexWatchCatchUpTests
         await harness.Index.StartWatchingAsync('T', Token);
         await harness.Index.StartWatchingAsync('U', Token);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').Watch.CatchUpState);
 
         harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('U').Watch.CatchUpState);
     }
 
     [TestMethod]
@@ -162,7 +162,7 @@ public class FileIndexWatchCatchUpTests
         await caller.CancelAsync();
 
         await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => wait);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
 
         var replacementWait = harness.Index.WaitForCatchUpAsync('T', Token);
         Assert.IsFalse(replacementWait.IsCompleted, "the replacement wait remains pending until the drive catches up");
@@ -233,7 +233,7 @@ public class FileIndexWatchCatchUpTests
 
         await handle.Publish(new DriveCaughtUp());
 
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').Watch.CatchUpState);
         Assert.AreEqual(0, harness.Faults.Count);
         await harness.Index.WaitForCatchUpAsync('T', Token).WaitAsync(ScriptedWatchSource.HangGuard);
     }
@@ -249,8 +249,8 @@ public class FileIndexWatchCatchUpTests
         var wait = harness.Index.WaitForCatchUpAsync('T', cancellation.Token);
 
         Assert.IsTrue(wait.IsCanceled);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
-        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').Watch.CatchUpState);
     }
 }

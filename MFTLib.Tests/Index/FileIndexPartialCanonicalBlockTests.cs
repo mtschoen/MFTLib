@@ -121,7 +121,7 @@ public class FileIndexPartialCanonicalBlockTests
 
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, drive.State);
-        Assert.AreEqual("the producer lost the volume", drive.MftProducerFailureMessage);
+        Assert.AreEqual("the producer lost the volume", drive.FailureMessage);
         Assert.IsFalse(File.Exists(_canonicalPath));
         AssertPartialDeleteLogged(diagnostics);
     }
@@ -152,7 +152,7 @@ public class FileIndexPartialCanonicalBlockTests
 
         await using var index = await FileIndex.OpenAsync(options, Token);
 
-        Assert.AreEqual("the producer lost the volume", index.Drives.Single().MftProducerFailureMessage);
+        Assert.AreEqual("the producer lost the volume", index.Drives.Single().FailureMessage);
         var line = diagnostics.SingleOrDefault(entry => entry.Contains(_canonicalPath));
         Assert.IsNotNull(line, "the failed delete is reported through Diagnostics");
         Assert.IsTrue(line.StartsWith("Could not delete block file", StringComparison.Ordinal), line);
@@ -248,7 +248,7 @@ public class FileIndexPartialCanonicalBlockTests
 
         deletable.Value = false;
         await using var second = await FileIndex.OpenAsync(options, Token);
-        Assert.AreEqual("the producer lost the volume", second.Drives.Single().MftProducerFailureMessage,
+        Assert.AreEqual("the producer lost the volume", second.Drives.Single().FailureMessage,
             "a delete that fails with no Diagnostics callback still leaves the scan's failure intact");
     }
 
@@ -264,7 +264,7 @@ public class FileIndexPartialCanonicalBlockTests
 
         await using var index = await FileIndex.OpenAsync(options, Token);
 
-        Assert.AreEqual("the producer lost the volume", index.Drives.Single().MftProducerFailureMessage);
+        Assert.AreEqual("the producer lost the volume", index.Drives.Single().FailureMessage);
         Assert.IsFalse(File.Exists(_canonicalPath));
     }
 

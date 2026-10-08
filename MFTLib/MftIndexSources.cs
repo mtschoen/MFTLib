@@ -10,7 +10,7 @@ public static partial class MftIndexSources
     ///     elevated: no broker process is launched. Nothing is opened until the first scan. The source
     ///     offers no watch, so a watch start or a per-drive catch-up is refused with
     ///     <c>Drive {letter}: this source does not support watching.</c> and its drives report
-    ///     <see cref="DriveStatus.WatchSupported" /> false. A scan from a process that cannot open
+    ///     <see cref="DriveWatchStatus.Supported" /> false. A scan from a process that cannot open
     ///     the volume fails the drive as <see cref="DriveFailureKind.ProducerFailed" />.
     ///     Cached scans arm the live journal cursor before reading records; reopening adopts only
     ///     an unmoved journal, or one that cannot answer coherently; otherwise the drive rescans,

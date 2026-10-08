@@ -31,7 +31,7 @@ public class ScriptedApplyFaultTests
 
         Assert.AreSame(failure, fault.Exception);
         Assert.AreEqual(1, harness.Faults.Count);
-        Assert.AreEqual("the batch cannot be applied", harness.DriveFor('T').WatchFailureMessage);
+        Assert.AreEqual("the batch cannot be applied", harness.DriveFor('T').Watch.FailureMessage);
         Assert.AreEqual(9000L, harness.BlockFor('U').Header.UsnNextUsn, "the other drive keeps watching");
     }
 

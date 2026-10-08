@@ -71,8 +71,8 @@ public class FileIndexCheckpointLossTests
         // open is an ordinary cold scan and leaves a resumable block behind.
         using var journal = Journal(CachedJournalId, firstUsn: 0, nextUsn: CachedNextUsn);
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
-        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().BlockSource);
-        Assert.IsNull(index.Drives.Single().CheckpointLoss);
+        Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block.Source);
+        Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
     }
 
     [TestMethod]
@@ -91,8 +91,8 @@ public class FileIndexCheckpointLossTests
         await using var reopened = await FileIndex.OpenAsync(options, CancellationToken.None);
 
         var drive = reopened.Drives.Single();
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.BlockSource);
-        Assert.IsNull(drive.CheckpointLoss);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.Block.Source);
+        Assert.IsNull(drive.Watch.CheckpointLoss);
     }
 
     [TestMethod]
@@ -107,11 +107,11 @@ public class FileIndexCheckpointLossTests
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
         var drive = reopened.Drives.Single();
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource,
+        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source,
             "an unresumable checkpoint must cold-scan rather than warm-start");
         Assert.AreEqual(DriveState.Ready, drive.State);
 
-        var loss = drive.CheckpointLoss;
+        var loss = drive.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual('T', loss.DriveLetter);
@@ -132,9 +132,9 @@ public class FileIndexCheckpointLossTests
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
         var drive = reopened.Drives.Single();
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
+        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
 
-        var loss = drive.CheckpointLoss;
+        var loss = drive.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
         Assert.IsNull(loss.SizeThatWouldHaveRetained, "different journal instances have no comparable span");
@@ -150,9 +150,9 @@ public class FileIndexCheckpointLossTests
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
         var drive = reopened.Drives.Single();
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.BlockSource,
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.Block.Source,
             "a volume that cannot answer is not evidence against the cached block");
-        Assert.IsNull(drive.CheckpointLoss);
+        Assert.IsNull(drive.Watch.CheckpointLoss);
     }
 
     /// <summary>
@@ -181,8 +181,8 @@ public class FileIndexCheckpointLossTests
 
         await using var reopened = await FileIndex.OpenAsync(enumerationOptions, CancellationToken.None);
 
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().BlockSource);
-        Assert.IsNull(reopened.Drives.Single().CheckpointLoss);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, reopened.Drives.Single().Block.Source);
+        Assert.IsNull(reopened.Drives.Single().Watch.CheckpointLoss);
         Assert.AreEqual(0, checkedDrives);
     }
 
@@ -214,14 +214,14 @@ public class FileIndexCheckpointLossTests
         Assert.AreEqual(1, scanCount);
         var drive = reopened.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, drive.BlockSource);
-        var loss = drive.CheckpointLoss;
+        Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
+        var loss = drive.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual(CachedNextUsn, loss.CheckpointUsn);
         Assert.AreEqual(CachedNextUsn + 500, loss.FirstUsn);
         Assert.AreEqual(long.MaxValue, loss.NextUsn);
-        Assert.AreEqual(1L << 62, loss.AllocationDelta);
+        Assert.AreEqual(1L << 62, loss.JournalSettings.AllocationDelta);
         Assert.AreEqual(500L, loss.BytesBehind);
         Assert.IsNull(loss.SizeThatWouldHaveRetained);
     }
@@ -249,11 +249,11 @@ public class FileIndexCheckpointLossTests
 
         var drive = reopened.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.BlockSource);
+        Assert.AreEqual(BlockSource.WarmStartedFromCache, drive.Block.Source);
         Assert.AreEqual(DriveFailureKind.None, drive.FailureKind);
-        Assert.IsNotNull(drive.CheckpointLoss);
-        Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, drive.CheckpointLoss.Cause);
-        Assert.IsNull(drive.CheckpointLoss.SizeThatWouldHaveRetained);
+        Assert.IsNotNull(drive.Watch.CheckpointLoss);
+        Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, drive.Watch.CheckpointLoss.Cause);
+        Assert.IsNull(drive.Watch.CheckpointLoss.SizeThatWouldHaveRetained);
         Assert.IsTrue(reopened.Root('T').IsValid, "the adopted block must still answer queries");
     }
 

@@ -53,7 +53,7 @@ public class SyntheticIndexInspectionTests
 
         Assert.IsNotNull(header);
         Assert.AreEqual(ProducerKind.Enumeration, header.ProducerKind);
-        Assert.IsTrue(header.RowCount >= index.Drives.Single().LiveRowCount, "slots include every live row");
+        Assert.IsTrue(header.RowCount >= index.Drives.Single().Block.LiveRowCount, "slots include every live row");
         Assert.AreEqual(tag, header.CacheTag);
     }
 

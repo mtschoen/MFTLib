@@ -95,18 +95,18 @@ public class FileIndexMidSessionCheckpointLossTests
         await FailWithJournalEntriesDeletedAsync(harness, 'T');
 
         var drive = harness.DriveFor('T');
-        Assert.IsNotNull(drive.WatchFailureMessage, "the watch still reports that it died");
-        Assert.AreEqual(WatchCatchUpState.Recovering, drive.WatchCatchUpState);
+        Assert.IsNotNull(drive.Watch.FailureMessage, "the watch still reports that it died");
+        Assert.AreEqual(WatchCatchUpState.Recovering, drive.Watch.CatchUpState);
 
-        var loss = drive.CheckpointLoss;
+        var loss = drive.Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual('T', loss.DriveLetter);
         Assert.AreEqual(ArmedUsn, loss.CheckpointUsn);
         Assert.AreEqual(ArmedUsn + 500, loss.FirstUsn);
         Assert.AreEqual(ArmedUsn + 4_000, loss.NextUsn);
-        Assert.AreEqual(AllocationDelta, loss.AllocationDelta);
-        Assert.AreEqual(MaximumSize, loss.MaximumSize);
+        Assert.AreEqual(AllocationDelta, loss.JournalSettings.AllocationDelta);
+        Assert.AreEqual(MaximumSize, loss.JournalSettings.MaximumSize);
         Assert.AreEqual(500L, loss.BytesBehind);
         // The 4000-byte span rounds to 4032, then the trimming margin adds one 64-byte delta.
         Assert.AreEqual(4_096L, loss.SizeThatWouldHaveRetained);
@@ -134,7 +134,7 @@ public class FileIndexMidSessionCheckpointLossTests
 
         await FailWithJournalEntriesDeletedAsync(harness, 'T');
 
-        var loss = harness.DriveFor('T').CheckpointLoss;
+        var loss = harness.DriveFor('T').Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(ArmedUsn + 2_000, loss.CheckpointUsn,
             "the watch position, not the cursor the drive was armed from");
@@ -152,7 +152,7 @@ public class FileIndexMidSessionCheckpointLossTests
 
         await FailWithJournalEntriesDeletedAsync(harness, 'T');
 
-        var loss = harness.DriveFor('T').CheckpointLoss;
+        var loss = harness.DriveFor('T').Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
         Assert.AreEqual('T', loss.DriveLetter);
@@ -184,8 +184,8 @@ public class FileIndexMidSessionCheckpointLossTests
         await FailDriveAsync(harness, 'T', new UnauthorizedAccessException("the volume handle was revoked"));
 
         var drive = harness.DriveFor('T');
-        Assert.IsNotNull(drive.WatchFailureMessage);
-        Assert.IsNull(drive.CheckpointLoss, "a fault unrelated to the journal reports no checkpoint loss");
+        Assert.IsNotNull(drive.Watch.FailureMessage);
+        Assert.IsNull(drive.Watch.CheckpointLoss, "a fault unrelated to the journal reports no checkpoint loss");
         CollectionAssert.AreEqual(new[] { 'T' }, queriedDrives.ToArray(),
             "the journal is asked once, and its answer is what decides");
 
@@ -202,8 +202,8 @@ public class FileIndexMidSessionCheckpointLossTests
         await FailWithJournalEntriesDeletedAsync(harness, 'T');
 
         var drive = harness.DriveFor('T');
-        Assert.IsNotNull(drive.WatchFailureMessage);
-        Assert.IsNull(drive.CheckpointLoss, "a volume that cannot answer reports nothing rather than guessing");
+        Assert.IsNotNull(drive.Watch.FailureMessage);
+        Assert.IsNull(drive.Watch.CheckpointLoss, "a volume that cannot answer reports nothing rather than guessing");
 
         await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
             () => harness.Index.StopWatchingAsync('T', Token));
@@ -219,8 +219,8 @@ public class FileIndexMidSessionCheckpointLossTests
         await FailWithJournalEntriesDeletedAsync(harness, 'T');
         await FailWithJournalEntriesDeletedAsync(harness, 'U');
 
-        Assert.IsNotNull(harness.DriveFor('T').CheckpointLoss);
-        Assert.IsNull(harness.DriveFor('U').CheckpointLoss,
+        Assert.IsNotNull(harness.DriveFor('T').Watch.CheckpointLoss);
+        Assert.IsNull(harness.DriveFor('U').Watch.CheckpointLoss,
             "U's watch died too, but its position is still in the journal");
 
         await Assert.ThrowsExceptionAsync<DriveWatchFaultException>(
@@ -240,16 +240,16 @@ public class FileIndexMidSessionCheckpointLossTests
         using (Journal(WatchedJournalId, firstUsn: ArmedUsn + 500, nextUsn: ArmedUsn + 4_000))
         {
             await FailWithJournalEntriesDeletedAsync(harness, 'T');
-            Assert.IsNotNull(harness.DriveFor('T').CheckpointLoss);
+            Assert.IsNotNull(harness.DriveFor('T').Watch.CheckpointLoss);
         }
 
         harness.SetNextProducedCursor('T', WatchedJournalId, ArmedUsn + 4_000);
         await harness.Index.RescanAsync('T', Token);
 
-        Assert.IsNull(harness.DriveFor('T').CheckpointLoss,
+        Assert.IsNull(harness.DriveFor('T').Watch.CheckpointLoss,
             "the rescan replaced the block whose cursor the report described");
-        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
-        Assert.IsNull(harness.DriveFor('U').WatchFailureMessage);
+        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
+        Assert.IsNull(harness.DriveFor('U').Watch.FailureMessage);
     }
 
     /// <summary>
@@ -271,16 +271,16 @@ public class FileIndexMidSessionCheckpointLossTests
         await announcedT;
         await announcedU;
 
-        var lost = harness.DriveFor('T').CheckpointLoss;
+        var lost = harness.DriveFor('T').Watch.CheckpointLoss;
         Assert.IsNotNull(lost);
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, lost.Cause);
         Assert.AreEqual(500L, lost.BytesBehind);
-        Assert.IsNull(harness.DriveFor('U').CheckpointLoss);
+        Assert.IsNull(harness.DriveFor('U').Watch.CheckpointLoss);
     }
 
     /// <summary>
     ///     A <see cref="FileIndex.WatchFaulted" /> handler decides whether to blame the journal
-    ///     by reading <see cref="DriveStatus.CheckpointLoss" />, so the live-watch report must
+    ///     by reading <see cref="DriveWatchStatus.CheckpointLoss" />, so the live-watch report must
     ///     already be on the drive when the handler runs, not recorded after it returns.
     /// </summary>
     [TestMethod]
@@ -296,7 +296,7 @@ public class FileIndexMidSessionCheckpointLossTests
         {
             if (fault.Kind == WatchFaultKind.Drive)
             {
-                seenByHandler.TrySetResult(index.Drives.Single(drive => drive.DriveLetter == 'T').CheckpointLoss);
+                seenByHandler.TrySetResult(index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.CheckpointLoss);
             }
         };
 

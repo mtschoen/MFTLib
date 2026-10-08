@@ -61,7 +61,7 @@ public sealed class BrokerFileIndexRescanTests
         Assert.AreEqual(ScriptedWatchBrokerHarness.DefaultTip, secondT.Since, "T reopens from its fresh block's cursor");
         Assert.AreEqual(1, index.Search(new SearchQuery("scan-2.txt", NameMatchMode.Exact), token).Count);
         Assert.AreEqual(1, index.Search(new SearchQuery("scan-1.txt", NameMatchMode.Exact), token).Count, "only U's first scan is left");
-        Assert.IsTrue(index.Drives.All(drive => drive.WatchFailureMessage == null));
+        Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
         var appliedOnT = ChangeSignal.WhenApplied(index, "after.txt");
         secondT.Push(41, "after.txt", 300);
         await appliedOnT;
@@ -96,7 +96,7 @@ public sealed class BrokerFileIndexRescanTests
             await start.WaitAsync(HangGuard);
             await index.RescanAsync('U', token);
 
-            Assert.IsTrue(index.Drives.All(drive => drive.WatchFailureMessage == null));
+            Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
             await index.StopWatchingAsync('T', token);
         }
         finally
@@ -123,11 +123,11 @@ public sealed class BrokerFileIndexRescanTests
         var thrown = await WatchDeduplicationTestSupport.ThrowsAsync<IOException>(() => index.StartWatchingAsync('T', token));
 
         Assert.AreSame(connectionFailure, thrown);
-        Assert.AreEqual(WatchCatchUpState.Faulted, index.Drives.Single(drive => drive.DriveLetter == 'T').WatchCatchUpState);
+        Assert.AreEqual(WatchCatchUpState.Faulted, index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.CatchUpState);
         await index.StopWatchingAsync('T', token);
         await index.StartWatchingAsync('T', token);
         await index.RescanAsync('T', token);
-        Assert.IsTrue(index.Drives.All(drive => drive.WatchFailureMessage == null));
+        Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
         await index.StopWatchingAsync('T', token);
     }
 
@@ -163,7 +163,7 @@ public sealed class BrokerFileIndexRescanTests
             await WatchDeduplicationTestSupport.ThrowsAsync<OperationCanceledException>(() => start.WaitAsync(HangGuard));
             await index.StartWatchingAsync('T', token);
             await index.RescanAsync('T', token);
-            Assert.IsTrue(index.Drives.All(drive => drive.WatchFailureMessage == null));
+            Assert.IsTrue(index.Drives.All(drive => drive.Watch.FailureMessage == null));
             await index.StopWatchingAsync('T', token);
         }
         finally

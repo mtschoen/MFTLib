@@ -12,7 +12,7 @@ public sealed partial class FileIndex
     ///     The same holds for an automatic recovery, and a queued one ends without scanning.
     ///     A manual rescan retains the retired watch's fault through its drain and replacement
     ///     start, so a stop before the replacement handle is published still takes that fault.
-    ///     The drive's <see cref="DriveStatus.WatchCatchUpState" /> reads
+    ///     The drive's <see cref="DriveWatchStatus.CatchUpState" /> reads
     ///     <see cref="WatchCatchUpState.NotStarted" /> afterwards and any pending catch-up wait is
     ///     cancelled. A drive counts as watching while its watch is requested or it has a watch
     ///     instance, current or still retiring; a start that failed at its source or was refused

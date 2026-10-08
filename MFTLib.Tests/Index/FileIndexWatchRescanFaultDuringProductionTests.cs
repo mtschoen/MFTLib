@@ -48,7 +48,7 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         applyGate.Release();
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
         Assert.AreSame(applyFailure, fault.Exception);
-        Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, harness.DriveFor('T').CheckpointLoss!.DetectedDuring);
+        Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, harness.DriveFor('T').Watch.CheckpointLoss!.DetectedDuring);
         production.Release();
         if (scanFails)
         {
@@ -63,8 +63,8 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         await harness.WaitForRecoveryAsync('T');
         Assert.AreEqual(scanFails ? 3 : 2, harness.ProductionCount('T'));
         Assert.AreEqual(1, harness.Faults.Count(item => item.Kind == WatchFaultKind.Apply));
-        Assert.IsNull(harness.DriveFor('T').WatchFailureMessage);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').WatchCatchUpState);
+        Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
         Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 4500));
         Assert.AreEqual(4500L, harness.BlockFor('T').Header.UsnNextUsn);

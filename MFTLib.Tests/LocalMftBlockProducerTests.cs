@@ -184,8 +184,8 @@ public class LocalMftBlockProducerTests
             Assert.AreEqual(1, scanCalls);
             var initialDrive = initialIndex.Drives.Single();
             Assert.AreEqual(DriveState.Ready, initialDrive.State);
-            Assert.AreEqual(BlockSource.ProducedByScan, initialDrive.BlockSource);
-            Assert.IsNull(initialDrive.CheckpointLoss);
+            Assert.AreEqual(BlockSource.ProducedByScan, initialDrive.Block.Source);
+            Assert.IsNull(initialDrive.Watch.CheckpointLoss);
         }
 
         var canonicalPath = Path.Combine(_directories.CacheDirectory,
@@ -198,8 +198,8 @@ public class LocalMftBlockProducerTests
             Assert.AreEqual(1, scanCalls, "A cached block must not scan again on reopening.");
             var reopenedDrive = reopenedIndex.Drives.Single();
             Assert.AreEqual(DriveState.Ready, reopenedDrive.State);
-            Assert.AreEqual(BlockSource.WarmStartedFromCache, reopenedDrive.BlockSource);
-            Assert.IsNull(reopenedDrive.CheckpointLoss);
+            Assert.AreEqual(BlockSource.WarmStartedFromCache, reopenedDrive.Block.Source);
+            Assert.IsNull(reopenedDrive.Watch.CheckpointLoss);
         }
     }
 
@@ -386,9 +386,9 @@ public class LocalMftBlockProducerTests
         CollectionAssert.AreEqual(new[] { "file.txt" }, names);
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, status.State);
-        Assert.AreEqual(BlockSource.ProducedByScan, status.BlockSource);
-        Assert.IsFalse(status.WatchSupported);
-        Assert.IsFalse(status.WatchRequested);
+        Assert.AreEqual(BlockSource.ProducedByScan, status.Block.Source);
+        Assert.IsFalse(status.Watch.Supported);
+        Assert.IsFalse(status.Watch.Requested);
         Assert.IsTrue(reports.Count > 0);
     }
 
@@ -413,8 +413,8 @@ public class LocalMftBlockProducerTests
         Assert.AreEqual(DriveOperationOutcome.NotApplicable, batchedCatchUp.Outcome);
         Assert.IsNull(batchedCatchUp.Failure);
 
-        Assert.IsFalse(index.Drives.Single().WatchSupported);
-        Assert.IsFalse(index.Drives.Single().WatchRequested);
+        Assert.IsFalse(index.Drives.Single().Watch.Supported);
+        Assert.IsFalse(index.Drives.Single().Watch.Requested);
     }
 
     static InvalidOperationException CatchUpRefusal(FileIndex index) =>
@@ -433,7 +433,7 @@ public class LocalMftBlockProducerTests
         var status = index.Drives.Single();
         Assert.AreEqual(DriveState.Failed, status.State);
         Assert.AreEqual(DriveFailureKind.ProducerFailed, status.FailureKind);
-        StringAssert.Contains(status.MftProducerFailureMessage, message);
+        StringAssert.Contains(status.FailureMessage, message);
     }
 
     [TestMethod]

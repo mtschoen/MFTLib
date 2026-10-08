@@ -29,8 +29,8 @@ public class JournalWindowOverrideTests
         Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, loss.Cause);
         Assert.AreEqual(1_500L, loss.FirstUsn);
         Assert.AreEqual(5_000L, loss.NextUsn);
-        Assert.AreEqual(64L, loss.AllocationDelta);
-        Assert.AreEqual(8_192L, loss.MaximumSize);
+        Assert.AreEqual(64L, loss.JournalSettings.AllocationDelta);
+        Assert.AreEqual(8_192L, loss.JournalSettings.MaximumSize);
         Assert.IsNull(Check('U'));
     }
 

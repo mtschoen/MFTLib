@@ -50,10 +50,10 @@ public class LocalMftCacheFreshnessTests
             var status = reopened.Drives.Single();
             Assert.AreEqual(cacheOnly ? 1 : 2, scans);
             Assert.AreEqual(DriveState.Ready, status.State);
-            Assert.AreEqual(cacheOnly ? BlockSource.WarmStartedFromCache : BlockSource.ProducedByScan, status.BlockSource);
-            Assert.AreEqual(cause, status.CheckpointLoss?.Cause);
-            Assert.IsFalse(status.WatchSupported);
-            Assert.IsFalse(status.WatchRequested);
+            Assert.AreEqual(cacheOnly ? BlockSource.WarmStartedFromCache : BlockSource.ProducedByScan, status.Block.Source);
+            Assert.AreEqual(cause, status.Watch.CheckpointLoss?.Cause);
+            Assert.IsFalse(status.Watch.Supported);
+            Assert.IsFalse(status.Watch.Requested);
             if (cacheOnly)
             {
                 var field = typeof(FileIndex).GetField("_unresumableCheckpointsByOrdinal",

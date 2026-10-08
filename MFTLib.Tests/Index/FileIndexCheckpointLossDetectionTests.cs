@@ -76,7 +76,7 @@ public class FileIndexCheckpointLossDetectionTests
     {
         using var journal = Journal(firstUsn: 0, nextUsn: CachedNextUsn);
         await using var index = await FileIndex.OpenAsync(Options(watchSource), CancellationToken.None);
-        Assert.IsNull(index.Drives.Single().CheckpointLoss);
+        Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
     }
 
     /// <summary>
@@ -90,7 +90,7 @@ public class FileIndexCheckpointLossDetectionTests
         var index = await FileIndex.OpenAsync(Options(watchSource), CancellationToken.None);
         try
         {
-            var loss = index.Drives.Single().CheckpointLoss;
+            var loss = index.Drives.Single().Watch.CheckpointLoss;
             Assert.IsNotNull(loss, "this fixture needs a report from the open to start from");
             Assert.AreEqual(500L, loss.BytesBehind);
             return index;
@@ -114,7 +114,7 @@ public class FileIndexCheckpointLossDetectionTests
         var source = new ScriptedWatchSource();
         await using var index = await OpenWithAnOpenTimeLossAsync(source);
         index.HoldEveryRecovery();
-        var openReport = index.Drives.Single().CheckpointLoss;
+        var openReport = index.Drives.Single().Watch.CheckpointLoss;
         Assert.IsNotNull(openReport);
 
         // The cold scan wrote a fresh cursor and the journal holds it, so the drive is healthy
@@ -126,10 +126,10 @@ public class FileIndexCheckpointLossDetectionTests
             new UnauthorizedAccessException("the volume handle was revoked"));
 
         var drive = index.Drives.Single();
-        Assert.IsNotNull(drive.WatchFailureMessage, "the watch still reports that it died");
-        Assert.AreEqual(WatchCatchUpState.Recovering, drive.WatchCatchUpState);
+        Assert.IsNotNull(drive.Watch.FailureMessage, "the watch still reports that it died");
+        Assert.AreEqual(WatchCatchUpState.Recovering, drive.Watch.CatchUpState);
 
-        var loss = drive.CheckpointLoss;
+        var loss = drive.Watch.CheckpointLoss;
         Assert.IsNotNull(loss, "an unrelated fault must not delete a true report from the open");
         Assert.AreEqual(JournalCheckpointLossDetection.DriveOpening, loss.DetectedDuring,
             "the report still describes the open, so a fault handler must not read it as its own");
@@ -157,7 +157,7 @@ public class FileIndexCheckpointLossDetectionTests
         await FailDriveAndWaitForFaultAsync(index, source,
             new IOException("USN journal entries have been deleted; full rescan needed"));
 
-        var loss = index.Drives.Single().CheckpointLoss;
+        var loss = index.Drives.Single().Watch.CheckpointLoss;
         Assert.IsNotNull(loss);
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, loss.DetectedDuring,
             "the newer fact about this drive is the one a fault handler acts on");
@@ -196,6 +196,6 @@ public class FileIndexCheckpointLossDetectionTests
         await using var index = await OpenWithAnOpenTimeLossAsync(new ScriptedWatchSource());
 
         Assert.AreEqual(JournalCheckpointLossDetection.DriveOpening,
-            index.Drives.Single().CheckpointLoss!.DetectedDuring);
+            index.Drives.Single().Watch.CheckpointLoss!.DetectedDuring);
     }
 }

@@ -104,7 +104,7 @@ the matching test extensions package:
 | Non-elevated desktop/CLI app; one UAC prompt | `BrokerSession` with `CreateIndexSource()` |
 | Resume from a persisted journal cursor | Warm start from the cache block, whose header holds the cursor |
 | Continuously receive changes | `FileIndex.StartWatchingAsync` and `Changed` |
-| Explain a rescan the change journal forced, at open or mid-watch | `DriveStatus.CheckpointLoss` |
+| Explain a rescan the change journal forced, at open or mid-watch | `DriveWatchStatus.CheckpointLoss` |
 
 ## Samples
 
@@ -142,7 +142,7 @@ await using var index = await FileIndex.OpenAsync(options, CancellationToken.Non
 A dump is untrusted. An empty file, a record size other than 1024 or 4096, a partial
 final record, an invalid fixup on an allocated record, a file unreadable to its opened
 length, a missing or invalid root, duplicate record numbers or a parent outside the
-index each fail the scan with a message in `DriveStatus.MftProducerFailureMessage`.
+index each fail the scan with a message in `DriveStatus.FailureMessage`.
 
 ## Freed MFT records
 
@@ -200,7 +200,7 @@ await index.WaitForCatchUpAsync('C', cancellationToken);
 `Changed` events carry `FileChangeKind`, the current path, the timestamp and the
 previous path for a rename. A start establishes the connection; the catch-up wait
 observes the watch reaching its live position. Journal checkpoint loss is recorded
-on `DriveStatus.CheckpointLoss`; a successful `RescanAsync('C')` supplies a fresh
+on `DriveWatchStatus.CheckpointLoss`; a successful `RescanAsync('C')` supplies a fresh
 block and restarts a requested watch. `StopWatchingAsync(cancellationToken)` stops
 every configured drive and returns its per-drive results.
 
@@ -225,7 +225,7 @@ await using var index = await FileIndex.OpenAsync(options, CancellationToken.Non
 
 foreach (var drive in index.Drives)
 {
-    if (drive.CheckpointLoss is not { } loss)
+    if (drive.Watch.CheckpointLoss is not { } loss)
     {
         continue;
     }
@@ -236,7 +236,7 @@ foreach (var drive in index.Drives)
             Console.WriteLine(
                 $"Drive {loss.DriveLetter}: the last checkpoint was {loss.BytesBehind} bytes " +
                 $"older than the journal still holds, so a full rescan was needed. A journal " +
-                $"of at least {size} bytes (it is {loss.MaximumSize} now) would have kept the " +
+                $"of at least {size} bytes (it is {loss.JournalSettings.MaximumSize} now) would have kept the " +
                 "checkpoint.");
             break;
         case JournalCheckpointLossCause.CheckpointTrimmed:
@@ -273,8 +273,8 @@ until `RescanAsync` supplies a fresh cursor. A successful manual rescan clears
 the report and the refusal. The refused start retains the watch request, so the
 successful rescan starts the watch from the fresh cursor.
 
-A loss found mid-session sits alongside `WatchFailureMessage` and
-`WatchCatchUpState`. It answers the question those two cannot: the watch did not
+A loss found mid-session sits alongside `Watch.FailureMessage` and
+`Watch.CatchUpState`. It answers the question those two cannot: the watch did not
 merely stop, the journal moved past where it had reached. `Drive` and `Apply`
 faults recover by rescanning automatically; `Channel` faults do not. A scan-time
 loss records `JournalCheckpointLossDetection.ScanCatchUp`, publishes the complete
@@ -293,7 +293,7 @@ doing. `DetectedDuring` says which check found it:
 index.WatchFaulted += fault =>
 {
     var drive = index.Drives.Single(d => d.DriveLetter == fault.DriveLetter);
-    if (drive.CheckpointLoss is
+    if (drive.Watch.CheckpointLoss is
         {
             DetectedDuring: JournalCheckpointLossDetection.LiveWatch or
                 JournalCheckpointLossDetection.ScanCatchUp
@@ -305,7 +305,7 @@ index.WatchFaulted += fault =>
     }
 
     // Anything else is a plain watch failure, whatever else the drive is carrying.
-    Console.Error.WriteLine(drive.WatchFailureMessage);
+    Console.Error.WriteLine(drive.Watch.FailureMessage);
 };
 ```
 
@@ -335,7 +335,7 @@ different questions and are read together: `Cause` says whether a journal size
 would have helped, `DetectedDuring` says whether the drive needs anything done
 about it now. A drive that warm-started, whose watch has never lost its
 position, or whose volume could not answer the query at all, reports
-`CheckpointLoss` as null rather than guessing.
+`Watch.CheckpointLoss` as null rather than guessing.
 
 Turning that into the user's choice is the consumer's job: show the size,
 say what the journal is now, and let the user decide whether a journal that large
@@ -501,8 +501,8 @@ A cold drive that loses its journal catch-up is scanned again by its own settle,
 up to `FileIndex.LostCatchUpRecoveryLimit` times in a row, and settles `Ready`
 with its last block unresumable if every attempt lost it. `OpenAsync` raises no
 `WatchFaulted` event because the caller cannot subscribe before it returns; inspect
-`DriveStatus.ConsecutiveLostCatchUps`, `CheckpointLoss`, `WatchFailureMessage`, and
-`WatchCatchUpState` instead. The drive's watch is refused until a manual `RescanAsync`
+`DriveWatchStatus.ConsecutiveLostCatchUps`, `CheckpointLoss`, `FailureMessage`, and
+`CatchUpState` instead. The drive's watch is refused until a manual `RescanAsync`
 produces a resumable block. The refusal retains the watch request, so a successful
 rescan clears the refusal and starts the watch.
 
@@ -533,14 +533,14 @@ Every other `FileEntry` member reads a single row rather than scanning and carri
 borrow, so a read ordered after the disposal throws `ObjectDisposedException` from the
 per-access check instead.
 
-`DriveStatus.BlockSource` says whether a drive warm-started from cache or was scanned,
+`DriveBlockStatus.Source` says whether a drive warm-started from cache or was scanned,
 so a rebuild loop can skip the drives an open already scanned, and
 `CacheDirectory.InspectCached` lists the drives a cache directory holds without a
 consumer parsing block file names.
 
 `IsValid` and `IsDisposed` remain readable after disposal, and `ToString()` returns
 a diagnostic string. Reads of mapped entry data throw as described above.
-`DriveStatus.BlockSource` is `None` when no block is available,
+`DriveBlockStatus.Source` is `None` when no block is available,
 `WarmStartedFromCache` for an adopted cache block, or `ProducedByScan` after a scan.
 `CacheDirectory.InspectCached` returns `CachedBlockStatus` records whose `File` is a `CachedBlockFile` containing the
 drive letter, volume serial, full cache-file path, size, and last-write time, plus
@@ -572,7 +572,7 @@ with the native error message. Common causes include:
 - `Channel`: the drive pipe was lost or ended without a stop. This fault does not recover
   automatically.
 - `RescanRestart`: a rescan replaced the block but its watch could not start. The scan
-  succeeds; the exception and `WatchFailureMessage` identify the rescan and the exception's
+  succeeds; the exception and `DriveWatchStatus.FailureMessage` identify the rescan and the exception's
   inner exception is the start failure. The drive stays `Faulted` without automatic recovery
   until a consumer starts or rescans it. Stop rethrows this fault once.
 - `Recovery`: an automatic recovery scan or restart failed, or its restarted watch failed before
@@ -593,14 +593,14 @@ index.WatchFaulted += fault =>
         case WatchFaultKind.Drive:
         case WatchFaultKind.Apply:
             Console.WriteLine(
-                $"Drive {fault.DriveLetter}: {status.WatchCatchUpState == WatchCatchUpState.Recovering}");
+                $"Drive {fault.DriveLetter}: {status.Watch.CatchUpState == WatchCatchUpState.Recovering}");
             break;
 
         case WatchFaultKind.CatchUpLost
             when fault.Exception is JournalCatchUpLostException lost:
             Console.WriteLine(
-                $"Drive {fault.DriveLetter}: loss {status.ConsecutiveLostCatchUps}, " +
-                $"stopped {lost.RecoveryStopped}, report {status.CheckpointLoss?.DetectedDuring}");
+                $"Drive {fault.DriveLetter}: loss {status.Watch.ConsecutiveLostCatchUps}, " +
+                $"stopped {lost.RecoveryStopped}, report {status.Watch.CheckpointLoss?.DetectedDuring}");
             break;
 
         case WatchFaultKind.Channel:
@@ -624,8 +624,8 @@ catch-up. Queries can lag until the new watch reports `CaughtUp`.
 
 During automatic recovery, a catch-up wait faults immediately with the fault that started
 the recovery. To observe the replacement watch reaching `CaughtUp`, subscribe to
-`FileIndex.WatchStateChanged`: it reports every change of a drive's `WatchCatchUpState` with the
-drive's next `DriveStatus.WatchStateVersion`, before the `WatchFaulted` of the fault that
+`FileIndex.WatchStateChanged`: it reports every change of a drive's `DriveWatchStatus.CatchUpState` with the
+drive's next `DriveWatchStatus.StateVersion`, before the `WatchFaulted` of the fault that
 caused it, so a recovery reads `Recovering`, then `CatchingUp`, then `CaughtUp` with no
 polling. One drive's events arrive in version order; a consumer that also reads `Drives`
 applies an event only when its version is newer than the last it applied for that drive. When a lost catch-up

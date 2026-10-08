@@ -193,8 +193,8 @@ public class UsnJournalVolumeInteropTests
         Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, loss.Cause);
         Assert.AreEqual('C', loss.DriveLetter);
         Assert.IsTrue(loss.NextUsn >= loss.FirstUsn, "the journal window should not run backwards");
-        Assert.IsTrue(loss.AllocationDelta > 0);
-        Assert.IsTrue(loss.MaximumSize > 0);
+        Assert.IsTrue(loss.JournalSettings.AllocationDelta > 0);
+        Assert.IsTrue(loss.JournalSettings.MaximumSize > 0);
         Assert.IsNull(loss.SizeThatWouldHaveRetained,
             "different journal instances have no comparable span for the size arithmetic");
         Assert.IsNull(loss.BytesBehind);

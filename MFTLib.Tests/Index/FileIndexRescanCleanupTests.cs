@@ -153,7 +153,7 @@ public class FileIndexRescanCleanupTests
         {
             Assert.AreSame(producerFailure, thrown.InnerException);
             var drive = index.Drives.Single();
-            Assert.AreEqual("the producer lost the volume", drive.MftProducerFailureMessage);
+            Assert.AreEqual("the producer lost the volume", drive.FailureMessage);
             Assert.AreEqual(DriveState.Ready, drive.State,
                 "the drive keeps its previous block when its rescan's producer fails");
             Assert.AreEqual(1, Directory.GetFiles(_cacheDirectory, "*.retired-*").Length,
@@ -235,17 +235,17 @@ public class FileIndexRescanCleanupTests
         await harness.Index.StartWatchingAsync('T', Token);
         harness.Source.WatchFor('T').End();
         await harness.WaitForFaultAsync(WatchFaultKind.Channel, 'T');
-        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').WatchCatchUpState);
-        Assert.IsNotNull(harness.DriveFor('T').WatchFailureMessage);
+        Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').Watch.CatchUpState);
+        Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
 
         harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
         var drive = harness.DriveFor('T');
         Assert.AreEqual(DriveState.Ready, drive.State);
-        Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.WatchCatchUpState,
+        Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.Watch.CatchUpState,
             "the rescan replaced the faulted watch with one started from the fresh cursor");
-        Assert.IsNull(drive.WatchFailureMessage);
+        Assert.IsNull(drive.Watch.FailureMessage);
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.TargetsFor('T')[^1]);
     }
 }
