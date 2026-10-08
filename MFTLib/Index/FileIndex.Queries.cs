@@ -94,6 +94,72 @@ public sealed partial class FileIndex
         }
     }
 
+    /// <summary>Visits every row matching <paramref name="query" /> through an interface call, with no per-row allocation.</summary>
+    /// <param name="query">The predicates a row has to satisfy.</param>
+    /// <param name="visitor">Receives each row.</param>
+    /// <param name="cancellationToken">Observed before the first row and every 4096 rows.</param>
+    public void ForEachRow(SearchQuery query, IIndexRowVisitor visitor, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(visitor);
+        var adapter = new InterfaceRowVisitor(visitor);
+        ForEachRow(query, ref adapter, cancellationToken);
+    }
+
+    /// <summary>The generic form of <see cref="ForEachRow(SearchQuery, IIndexRowVisitor, CancellationToken)" />, which avoids interface dispatch.</summary>
+    /// <typeparam name="TVisitor">The visitor type.</typeparam>
+    /// <param name="query">The predicates a row has to satisfy.</param>
+    /// <param name="visitor">Receives each row; passed by reference so a struct visitor keeps its state.</param>
+    /// <param name="cancellationToken">Observed before the first row and every 4096 rows.</param>
+    public void ForEachRow<TVisitor>(SearchQuery query, ref TVisitor visitor,
+        CancellationToken cancellationToken = default)
+        where TVisitor : struct, IIndexRowVisitor
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        NameMatching.ThrowIfUndefined(query);
+        using var scope = BeginQuery(cancellationToken);
+        var snapshot = scope.Snapshot;
+        if (query.Under is { } underAncestor && !underAncestor.IsValid)
+        {
+            return;
+        }
+
+        foreach (var driveBlock in snapshot.DriveBlocks)
+        {
+            scope.CancellationToken.ThrowIfCancellationRequested();
+            if (query.Under is { } under && (!under.IsValid || under.DriveOrdinal != driveBlock.DriveOrdinal))
+            {
+                continue;
+            }
+
+            var block = driveBlock.Block;
+            var underRow = query.Under?.RowIndex ?? 0;
+            var scanner = new RowScanner(snapshot, driveBlock.DriveOrdinal, scope.CancellationToken);
+            while (scanner.MoveNext())
+            {
+                ref readonly var row = ref scanner.Current;
+                var name = scanner.CurrentName;
+                if (!SearchEngine.RowMatches(in row, name, query))
+                {
+                    continue;
+                }
+
+                if (query.Under is not null && !IndexNavigation.IsUnder(block, scanner.CurrentRowIndex, underRow))
+                {
+                    continue;
+                }
+
+                var indexRow = new IndexRow(snapshot, driveBlock.DriveLetter, driveBlock.DriveOrdinal,
+                    scanner.CurrentRowIndex, in row, name);
+                visitor.Visit(in indexRow);
+            }
+        }
+    }
+
+    struct InterfaceRowVisitor(IIndexRowVisitor inner) : IIndexRowVisitor
+    {
+        public void Visit(in IndexRow row) => inner.Visit(in row);
+    }
+
     /// <summary>
     ///     Returns the largest files across the current snapshot, optionally restricted to an inclusive subtree.
     /// </summary>

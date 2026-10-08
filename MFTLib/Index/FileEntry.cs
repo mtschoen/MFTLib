@@ -92,6 +92,26 @@ public readonly partial record struct FileEntry
     /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
     public string Name => new(NamePool.ReadRowName(DriveBlock.Block, _rowIndex));
 
+    /// <summary>
+    ///     Copies the current name into <paramref name="destination" /> without allocating. When the buffer is
+    ///     too small nothing is copied and the required length is returned, so a caller tests
+    ///     <c>length &gt; destination.Length</c> and retries with a larger buffer.
+    /// </summary>
+    /// <param name="destination">The buffer to receive the name.</param>
+    /// <returns>The name length in characters.</returns>
+    /// <exception cref="InvalidOperationException">This is the default entry value.</exception>
+    /// <exception cref="ObjectDisposedException">The owning <see cref="FileIndex" /> has been disposed.</exception>
+    public int CopyName(Span<char> destination)
+    {
+        var name = NamePool.ReadRowName(DriveBlock.Block, _rowIndex);
+        if (name.Length <= destination.Length)
+        {
+            name.CopyTo(destination);
+        }
+
+        return name.Length;
+    }
+
     /// <summary>Gets the file length in bytes, or zero for directories and unknown sizes.</summary>
     public long Size => Row.Size;
 
