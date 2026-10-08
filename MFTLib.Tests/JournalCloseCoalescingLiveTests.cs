@@ -19,7 +19,7 @@ public class JournalCloseCoalescingLiveTests
     [TestCategory("RequiresAdmin")]
     public async Task LiveWatch_CreateModifyDeleteCycle_ReportsOneChangePerRealTransition()
     {
-        if (!ElevationUtilities.IsElevated())
+        if (!ElevationUtilities.DefaultProvider.IsElevated())
         {
             Assert.Inconclusive("Requires admin");
             return;

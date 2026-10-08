@@ -41,12 +41,6 @@ public class PublicMemberCallerTests
             "git-wizard GitWizard/MftIndexSession.Windows.cs builds the session with its own launcher and connect timeout",
         ["method MFTLib.BrokerSession.DisposeAsync() : System.Threading.Tasks.ValueTask"] =
             "reached through IAsyncDisposable, so no IL names it; file-wizard file-wizard/BrokerSmoke.cs disposes the session with await using",
-        ["method MFTLib.ElevationUtilities.CanSelfElevate() : System.Boolean"] =
-            "file-wizard file-wizard/CliServices.cs decides whether to self-elevate",
-        ["method MFTLib.ElevationUtilities.IsElevated() : System.Boolean"] =
-            "file-wizard file-wizard/CliServices.cs checks the elevation before a scan",
-        ["method MFTLib.ElevationUtilities.TryRunElevated(System.Collections.Generic.IReadOnlyList`1<System.String>, System.TimeSpan) : System.Boolean"] =
-            "file-wizard file-wizard/CliServices.cs and file-wizard/ConfigureDefenderCommand.cs rerun elevated",
         ["method MFTLib.Index.CacheDirectory.EnsureCreated(System.String) : System.IO.DirectoryInfo"] =
             "file-wizard FileWizard/ContentHashSidecar.cs creates the cache directory before it writes beside it",
         ["method MFTLib.Index.CacheDirectory.InspectCached(System.String, System.Collections.Generic.IReadOnlySet`1<System.Char>) : System.Collections.Generic.IReadOnlyList`1<MFTLib.Index.CachedBlockStatus>"] =

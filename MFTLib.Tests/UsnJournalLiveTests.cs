@@ -7,7 +7,7 @@ public class UsnJournalLiveTests
 {
     static bool IsAdmin()
     {
-        return ElevationUtilities.IsElevated();
+        return ElevationUtilities.DefaultProvider.IsElevated();
     }
 
     [TestMethod]

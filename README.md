@@ -685,7 +685,7 @@ The source is organized by responsibility:
 - `MFTLib/Journal` - USN cursor, entries and reasons
 - `MFTLib/Sources` - producers, row writer and scan
 - `MFTLib/Broker` - elevated host/client, protocol, block writing, and diagnostics
-- `MFTLib/Elevation` - elevation detection and injectable provider
+- `MFTLib/Elevation` - elevation detection and the injectable provider
 - `MFTLib/Interop` - native result layouts
 - `MFTLib/Internal` - native bindings and internal volume utilities
 

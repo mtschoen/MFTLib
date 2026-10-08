@@ -66,7 +66,7 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     #   UsnJournalSyntheticTests (UsnJournalSyntheticTests P/Invokes the USN test hooks
     #   + usn_journal exports, all #ifdef _WIN32, so they don't exist in libMFTLibNative.so)
     # Plus individual tests that need Windows-side platform behavior:
-    #   ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse
+    #   DefaultElevationProviderTests.CanSelfElevate_DotnetExe_ReturnsFalse
     #   MockVolumeTests.GetVolumeHandle_InvalidVolume_ThrowsIOException
     #   DefaultElevatedEntryRunnerTests.RunBroker_ValidControlPipe_ServesUntilControlCloses_ExitsWithCode0 (real named pipe)
     # Coverlet only writes output when the run is green, so failing tests must be filtered.
@@ -75,7 +75,7 @@ if [ "$RUN_MANAGED" -eq 1 ]; then
     FILTER+='&FullyQualifiedName!~NativeCoverageTests'
     FILTER+='&FullyQualifiedName!~NativeParserCoverageTests'
     FILTER+='&FullyQualifiedName!~UsnJournalSyntheticTests'
-    FILTER+='&FullyQualifiedName!=MFTLib.Tests.ElevationUtilitiesTests.CanSelfElevate_DotnetExe_ReturnsFalse'
+    FILTER+='&FullyQualifiedName!=MFTLib.Tests.DefaultElevationProviderTests.CanSelfElevate_DotnetExe_ReturnsFalse'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.MockVolumeTests.GetVolumeHandle_InvalidVolume_ThrowsIOException'
     FILTER+='&FullyQualifiedName!=MFTLib.Tests.DefaultElevatedEntryRunnerTests.RunBroker_ValidControlPipe_ServesUntilControlCloses_ExitsWithCode0'
 

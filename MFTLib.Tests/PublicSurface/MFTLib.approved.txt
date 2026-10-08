@@ -31,9 +31,6 @@ MFTLib.BrokerSession :: type public sealed class : System.IAsyncDisposable
 MFTLib.ElevatedEntryPoint :: method public static TryHandle(string[] arguments) : bool
 MFTLib.ElevatedEntryPoint :: type public static class
 MFTLib.ElevationUtilities :: field public static readonly DefaultElevatedTimeout : System.TimeSpan
-MFTLib.ElevationUtilities :: method public static CanSelfElevate() : bool
-MFTLib.ElevationUtilities :: method public static IsElevated() : bool
-MFTLib.ElevationUtilities :: method public static TryRunElevated(System.Collections.Generic.IReadOnlyList<string> arguments, System.TimeSpan timeout) : bool
 MFTLib.ElevationUtilities :: property public static DefaultProvider { get; } : MFTLib.IElevationProvider
 MFTLib.ElevationUtilities :: type public static class
 MFTLib.IElevationProvider :: method public abstract CanSelfElevate() : bool

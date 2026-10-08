@@ -45,7 +45,7 @@ dotnet nuget push "MFTLibTestExtensions\bin\x64\Release\MFTLib.TestExtensions.*.
 
 ### Running the sample programs
 
-Direct local-volume runs need admin rights (raw volume access) and **self-elevate** via `ElevationUtilities`; Direct dump runs need none. Watch is unelevated, its broker elevates, and it prints to the console.
+Direct local-volume runs need admin rights (raw volume access) and **self-elevate** via `IElevationProvider`; Direct dump runs need none. Watch is unelevated, its broker elevates, and it prints to the console.
 
 **Run the compiled .exe directly** for UAC:
 

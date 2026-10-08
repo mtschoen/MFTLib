@@ -14,7 +14,7 @@ public class NtfsVolumeInformationAdminTests
 {
     static void RequireElevation()
     {
-        if (!ElevationUtilities.IsElevated())
+        if (!ElevationUtilities.DefaultProvider.IsElevated())
         {
             Assert.Inconclusive("Requires admin elevation. Run scripts/run-coverage.ps1");
         }

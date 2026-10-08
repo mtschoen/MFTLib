@@ -8,7 +8,7 @@ namespace MFTLib;
 ///     Launches the elevated journal broker: relaunches the current executable in
 ///     <c>--broker</c> mode under a UAC elevation prompt. The launch is fire-and-forget
 ///     (NOT waited on) - the broker is a long-lived process that the caller talks to over
-///     a pipe, so waiting for it to exit (as <c>ElevationUtilities.TryRunElevated</c> does)
+///     a pipe, so waiting for it to exit (as <c>IElevationProvider.TryRunElevated</c> does)
 ///     would be wrong here.
 /// </summary>
 public static class BrokerLauncher
