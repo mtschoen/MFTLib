@@ -5,7 +5,7 @@ public sealed partial class FileIndex
     /// <summary>
     ///     Rebuilds one drive's block into a new file and swaps it into the current snapshot.
     ///     For a cache-mode drive, the file at the canonical path is renamed aside first (safe
-    ///     even while it is still mapped, since <see cref="BlockFile" /> opens with
+    ///     even while it is still mapped, since the block's memory-mapped file opens with
     ///     <see cref="FileShare.Delete" />) so the new block can take the canonical name while a
     ///     handle from the retired snapshot keeps reading the renamed file until that snapshot is
     ///     released. The rename only happens while this index holds the canonical path's owner

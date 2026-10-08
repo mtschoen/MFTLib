@@ -12,11 +12,11 @@ Use the broker when your application:
 - scans, watches, or rescans several volumes after one UAC prompt; or
 - needs scan and watch failures isolated to the drive that produced them.
 
-For a short tool that already runs elevated, use `MftVolume` directly instead.
+For a short tool that already runs elevated, use `MftIndexSources.FromLocalVolumes`.
 
 ## Process and channel model
 
-One `BrokerProcess` owns the elevated child and its control pipe. Volume queries,
+One `BrokerSession` owns the elevated child and its control pipe. Volume queries,
 journal growth, and channel-open requests use that pipe. Each scan and each live
 watch then runs on a new pipe dedicated to one drive and one operation.
 
@@ -25,8 +25,8 @@ The separation is important:
 - a slow scan on one drive does not delay another drive's watch;
 - a watch reader that stops consuming holds back only its own pipe;
 - closing a watch pipe stops only that drive;
-- a drive pipe failure fails only that drive's operations with `BrokerChannelLostException`; and
-- losing the control pipe ends the process, completes the `BrokerProcess.Ended` task with the reason, and
+- a drive pipe failure fails only that drive's operations with an `IOException`; and
+- losing the control pipe ends the process, completes the `BrokerSession.Ended` task with the reason, and
   causes every open drive channel to fail.
 
 The host sends heartbeats on an idle control pipe, a watch pipe waiting on its
@@ -36,7 +36,7 @@ A pipe with a host write already in flight is skipped by the heartbeat sender;
 if it remains silent, the client's 30 second stall limit closes it. Any received
 frame counts as activity. A processing step that reports no progress past its
 limit receives a `Stalled` frame and its channel is cancelled. The client exposes
-that as `BrokerChannelLostException`, not as a drive-reported error.
+that as an `IOException`, not as a drive-reported error.
 
 ## 1. Dispatch broker mode before normal startup
 
@@ -55,7 +55,7 @@ if (ElevatedEntryPoint.TryHandle(Environment.GetCommandLineArgs()))
 ```
 
 Run the compiled app host (`MyApp.exe`), not `dotnet MyApp.dll`.
-`BrokerLauncher` relaunches the current executable, so the current process must
+The session relaunches the current executable, so the current process must
 be the application executable that contains this dispatch code.
 
 ## 2. Launch and own one broker with BrokerSession
@@ -74,7 +74,7 @@ _ = session.Ended.ContinueWith(
     TaskScheduler.Default);
 ```
 
-`new BrokerSession()` launches through `BrokerLauncher.Launch` and waits up to 30 seconds for the
+`new BrokerSession()` relaunches the executable and waits up to 30 seconds for the
 elevated child to connect. `new BrokerSession(launchBroker, connectTimeout)` takes the launch
 callback (it receives the broker command line and returns false when the UAC prompt was declined)
 and optionally a different connection timeout. Nothing launches at construction: the first scan,
@@ -128,10 +128,8 @@ launches the broker if no use has yet, grows the journal, and returns the settin
 from the volume.
 
 Consumers create index sources only through `BrokerSession.CreateIndexSource(scanOptions)`.
-`BrokerMftBlockProducer`, both `BrokerProcess.LaunchAsync` overloads and
-`BrokerProcess.GrowUsnJournalAsync` are internal implementation details. `BrokerProcess`
-remains public because the test package exposes it through `InProcessBrokerHandle.Process`
-and `BrokerTestHarness.CreateSession`; application code owns a `BrokerSession`.
+Application code owns a `BrokerSession`; test sessions use
+`BrokerTestHarness.CreateSession` with an `InProcessBrokerHandle` launch callback.
 
 ## 3. Build FileIndex over the broker
 
@@ -262,8 +260,9 @@ foreach (var result in starts)
 var catchUps = await index.WaitForCatchUpAsync(cancellationToken);
 ```
 
-The single-drive overloads act on one letter. The list overloads act on the
-letters supplied. Batched calls preserve that order in their result list, wait
+Single-drive `StartWatchingAsync`, `WaitForCatchUpAsync` and `RescanAsync` act on
+one letter. `RescanAsync(driveLetters)` acts on the supplied list. Start, stop
+and catch-up wait also have token-only all-drive forms. Batched calls preserve request order in their result list, wait
 for every drive they started to settle, and report per-drive failures without
 hiding successful siblings.
 
@@ -271,9 +270,9 @@ hiding successful siblings.
 handle and its pump is reading. It does not wait for the journal backlog.
 `WaitForCatchUpAsync` waits for the drive's caught-up marker per drive.
 
-`StopWatchingAsync` stops only the requested drive or drives. The single-drive
-form rethrows that watch instance's outstanding fault once. The batched form
-places it in the affected drive's failed result. `DisposeAsync` does not rethrow
+`StopWatchingAsync(cancellationToken)` stops every configured drive and consumes
+each watch instance's outstanding fault once, placing it in the affected drive's
+failed result. `DisposeAsync` does not rethrow
 watch faults.
 
 If the watch source fails during a consumer start, the failed start leaves a watch
@@ -313,8 +312,8 @@ concurrently. The status has already been updated when the event runs.
 | Signal | Meaning and consumer action |
 | --- | --- |
 | Completed `BrokerSession.Ended` task | The control connection and elevated process are gone. Stop using the session, close its indexes, and create a new session and new indexes. |
-| `BrokerChannelLostException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
-| Drive watch fault (internal `DriveWatchFaultException`) | The host reported an `Error` on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
+| An `IOException` | A pipe reached EOF, failed, stalled, or carried an invalid frame. A watch reports this through `WatchFaultKind.Channel`. A channel fault never starts automatic recovery. Reconnect the process when needed, then rescan or reopen the affected state. |
+| Drive watch fault | The host reported an error on that drive's watch. `FileIndex` publishes `WatchFaultKind.Drive`, changes the drive to `Recovering`, and rescans it automatically. Observe the recovery rather than starting a competing lifecycle operation. |
 | `JournalCatchUpLostException` | A scan completed, but the journal proved that the cursor armed before it had become unreadable. `WatchFaultKind.CatchUpLost` reports every attempt. Automatic retries stop when `RecoveryStopped` is true. Grow the journal when appropriate, then rescan; a successful rescan starts the watch if it is requested. |
 | `WatchFaultKind.RescanRestart` | A rescan replaced the block but could not start its watch. The scan returns success. The exception and `WatchFailureMessage` identify the rescan; the inner exception is the start failure. No automatic recovery starts. A consumer start or rescan retries it, and stop rethrows the fault once. |
 | `WatchCatchUpState.Recovering` | A drive or apply fault is being recovered, or a lost catch-up is being retried. Queries still use the current complete block, which may be behind the volume. |

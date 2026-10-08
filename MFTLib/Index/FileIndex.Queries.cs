@@ -29,7 +29,7 @@ public sealed partial class FileIndex
     /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
     /// <exception cref="InvalidDataException">
     ///     A candidate's parent chain does not resolve within
-    ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops while applying the subtree restriction
+    ///     128 parent hops while applying the subtree restriction
     ///     (<see cref="SearchQuery.Under" />).
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="query" /> has an undefined <see cref="SearchQuery.MatchMode" />.</exception>
@@ -46,8 +46,7 @@ public sealed partial class FileIndex
     ///     The streaming form of <see cref="Search" />: the same matches in the same order,
     ///     yielded one at a time instead of materialized into a list, for a consumer that
     ///     filters most rows away and should not pay memory for the whole match set. This is
-    ///     the consumer escape hatch over the mapped rows; <see cref="RowScanner" /> itself
-    ///     stays internal by design.
+    ///     the consumer escape hatch over the mapped rows; the row scanner itself stays internal.
     /// </summary>
     /// <param name="query">The predicates a row has to satisfy.</param>
     /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
@@ -62,7 +61,7 @@ public sealed partial class FileIndex
     /// </returns>
     /// <exception cref="InvalidDataException">
     ///     A candidate's parent chain does not resolve within
-    ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops while applying the subtree
+    ///     128 parent hops while applying the subtree
     ///     restriction (<see cref="SearchQuery.Under" />). Where <see cref="Search" /> throws
     ///     it before returning, the streaming form throws it from the MoveNext that reaches
     ///     the candidate.
@@ -103,7 +102,7 @@ public sealed partial class FileIndex
     /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
     /// <exception cref="InvalidDataException">
     ///     A candidate's parent chain does not resolve within
-    ///     <see cref="BlockLayout.MaximumPathDepth" /> parent hops while applying the subtree restriction
+    ///     128 parent hops while applying the subtree restriction
     ///     (<paramref name="under" />).
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>

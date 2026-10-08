@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 & "$PSScriptRoot\test-release-package-validation.ps1"
+& "$PSScriptRoot\test-release-notes.ps1"
 . "$PSScriptRoot\Test-ReleasePackages.ps1"
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot

@@ -359,8 +359,9 @@ is the inner exception. Stop rethrows the fault once. Across a successful swap, 
 events can arrive after publication and repeat during the new watch's catch-up; queries can
 lag until it reports `CaughtUp`.
 
-The batched overload accepts an `IReadOnlyList<char>` and returns one
-`DriveOperationResult` per requested drive in request order after every drive has settled.
+`WaitForCatchUpAsync(char, CancellationToken)` waits for one drive and throws its failure.
+The token-only all-drive overload returns one
+`DriveOperationResult` per configured drive in request order after every drive has settled.
 A failed drive has `DriveOperationOutcome.Failed` and carries the exception in `Failure`;
 it does not end the waits for other drives. A drive with no watch is `NotApplicable`. The
 overload with only a `CancellationToken` uses every drive in `FileIndexOptions.Drives`

@@ -1,10 +1,11 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     One block file found in a cache directory, recognised by its name alone. Nothing here was
-///     read from inside the block: <see cref="CacheDirectory.EnumerateCached(string)" /> does not open or
-///     validate blocks, so a file listed here may still be rejected when the index opens it. The
-///     drive's root directory is not part of this record because it lives inside the block.
+///     Directory-derived metadata for one block file found in a cache directory, recognised by its
+///     name and directory entry alone. Nothing here was read from inside the block;
+///     <see cref="CacheDirectory.InspectCached(string, System.Collections.Generic.IReadOnlySet{char}?)" />
+///     separately opens and validates available blocks under their slot locks. The drive's root
+///     directory is not part of this record because it lives inside the block.
 /// </summary>
 public sealed record CachedBlockFile
 {

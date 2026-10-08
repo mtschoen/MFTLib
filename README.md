@@ -14,8 +14,8 @@ enumeration-backed indexes are refreshed by rescanning. The name stays MFTLib be
 MFT scan is the fast path the library was built around and the project's identity; the other
 producers feed the same index.
 
-The public API is managed C#; performance-sensitive volume I/O, record parsing, and path
-resolution run in a native C++ core.
+The public API is managed C#; performance-sensitive volume I/O and record parsing
+run in a native C++ core.
 
 ## Why MFTLib?
 
@@ -35,27 +35,26 @@ for NTFS metadata on Windows; the index runs elsewhere through the enumeration p
 
 - File index (`MFTLib.Index`) over any filesystem, with the enumeration producer on Linux
   and the MFT scan on NTFS
-- Direct MFT parsing through raw NTFS volume access
+- In-process scan of a live volume (`MftIndexSources.FromLocalVolumes`) or a saved MFT dump (`MftIndexSources.FromMftDumpFile`) into the same index
 - Runtime detection of the volume's MFT record size (1024 or 4096 bytes) instead of an
   assumed fixed size
-- Native C++ I/O with parallel fixup, parsing, and path resolution
+- Native C++ I/O with parallel fixup and parsing
 - Double-buffered reads that overlap I/O and compute
-- Case-insensitive exact and substring filename filtering in native code
-- Optional native full-path resolution
-- Materialized arrays or lower-allocation streaming enumeration
-- USN journal query, catch-up, and cancellable live-watch APIs
+- Exact, substring, case-sensitive, size and time predicates over the packed index (`SearchQuery`)
+- `FileIndex.Search` (list) and `FileIndex.Enumerate` (streaming)
+- Live USN watch per drive through `FileIndex` and `BrokerSession`
 - Race-free scan/catch-up workflow through an elevated broker
 - One reusable UAC-elevated child per broker session
 - Per-drive error isolation and broker-death notification
 
 A synthetic 8-million-record benchmark has exceeded 2.6 million records/second on a
 Ryzen 9 7950X3D with a Samsung 990 PRO. Real-volume performance depends on storage,
-volume size, filtering, path resolution, and hardware.
+volume size and hardware.
 
 ## Requirements
 
-- Windows on an NTFS volume for direct raw MFT and USN journal operations
-- Administrator access for direct raw-volume and USN operations (cross-platform enumeration indexing requires neither)
+- An elevated Windows process on an NTFS volume for `MftIndexSources.FromLocalVolumes`
+- `MftIndexSources.FromMftDumpFile` and enumeration indexing need no elevation and run on Windows and Linux x64
 - .NET 10.0 or later
 - x64 process architecture
 
@@ -72,16 +71,15 @@ of the `MFTLib` package. It provides test hooks and scripted types: `BrokerDiagn
 `InProcessBrokerScan`, `JournalIsolation`, `ScriptedBrokerVolumes`, `ScriptedDriveWatch`,
 `ScriptedScan`, `ScriptedWatchSource`, `ScriptedWatchStart`, `SyntheticBlock`,
 `SyntheticBlockEditor`, `SyntheticBlockOptions`, `SyntheticCacheTag`, `SyntheticCheckpointLoss`,
-`SyntheticDriveHeader`, `SyntheticIndexInspection`, `SyntheticIndexSource`, `SyntheticJournalEntry`,
-`SyntheticJournalEntryOptions`, `SyntheticJournalWindow`, `SyntheticMftProducer`,
-`SyntheticMftRecord`, `SyntheticMftRecordOptions`, and `SyntheticRow`.
+`SyntheticDriveHeader`, `SyntheticIndexInspection`, `SyntheticIndexSource`, `SyntheticJournalCursor`,
+`SyntheticJournalReason`, `SyntheticJournalRecord`, `SyntheticJournalWindow`, `SyntheticMftProducer`,
+`SyntheticNotifications`, `SyntheticRow`, and `SyntheticScanRecord`.
 
 ## Install
 
-After 0.3.0 is published:
-
 ```bash
 dotnet add package MFTLib --version 0.3.0
+dotnet add package MFTLib.TestExtensions --version 0.3.0
 ```
 
 Or add a package reference:
@@ -97,64 +95,54 @@ the matching test extensions package:
 <PackageReference Include="MFTLib.TestExtensions" Version="0.3.0" />
 ```
 
-## Pre-release consumption (Gitea submodule & CI recipe)
-
-While 0.3.0 is unpublished, consumers of MFTLib (such as `file-wizard` and `git-wizard`) build it from source through a git submodule:
-
-1. **Submodule convention**: Declare MFTLib as a submodule whose url resolves to `https://gitea.fleet.sticktoitive.net/schoen/MFTLib.git`. Both consumers declare it at `external/MFTLib` with the relative url `../MFTLib.git`, which keeps the submodule on the same Gitea instance and under the same owner as the consumer. The gitlink is the pin: the commit sha recorded at that path is the MFTLib revision the consumer builds, and it is the only place that revision is stored.
-2. **Fan-out by hand**: the pin moves in each consumer's own pull request, because a breaking MFTLib change leaves an automatic pin-bump pull request unable to compile. `.gitea/workflows/sync-consumers.yml` runs on `workflow_dispatch` only: when run by hand it executes `scripts/sync_consumers.sh`, enumerates `schoen/*` repos on Gitea, and opens a `chore/mftlib-pin-bump` pull request as the `claude-code` bot (backed by the `MFTLIB_SYNC_TOKEN` Actions secret) in every repo whose `.gitmodules` declares a submodule resolving to MFTLib. That pull request commits the new sha into the gitlink. The submodule path is read from `.gitmodules` rather than assumed. A repo with no such submodule is not a consumer and is skipped.
-3. **A silent no-op is a failure**: a fan-out that matched zero consumers exits non-zero instead of reporting success, and so does one where any single consumer failed to bump. A green run that updated nothing is what let both consumers drift four MFTLib pull requests behind (issue #194).
-4. **Local development**: Populate the submodule with `git submodule update --init --recursive`. Do this after a `git clean -ffxd`, which removes the checked-out submodule content along with every other untracked file.
-5. **Post-0.3.0 NuGet transition**: Once 0.3.0 is published on NuGet, consumers drop the submodule and replace it with a standard `<PackageReference Include="MFTLib" Version="0.3.0" />` (automated package reference updates are planned for a future iteration of the fan-out workflow).
-
-### Consumer CI recipe
-
-Check the submodule out as part of the build instead of cloning MFTLib separately, so the revision CI builds is exactly the gitlink the repository pins:
-
-```yaml
-- uses: actions/checkout@v4
-  with:
-    submodules: recursive
-```
-
-MFTLib source then sits at `external/MFTLib`. Build the native core with the toolchain that can compile `MFTLibNative.vcxproj`, and the managed assemblies with `dotnet`.
-
-#### Bash (Linux CI)
-
-```bash
-# Native core, plus its smoke test, driven by MFTLib's own Linux build script
-# (cmake + Ninja into external/MFTLib/build/linux, which MFTLib gitignores).
-bash external/MFTLib/scripts/build-linux.sh
-
-# Managed assemblies
-dotnet build external/MFTLib/MFTLib/MFTLib.csproj -c Release -p:Platform=x64
-dotnet build external/MFTLib/MFTLibTestExtensions/MFTLibTestExtensions.csproj -c Release -p:Platform=x64
-```
-
-#### PowerShell (Windows CI)
-
-```powershell
-# VS MSBuild is the only toolchain that can compile MFTLib's native C++
-# vcxproj. Install it x64 (microsoft/setup-msbuild@v2 with
-# msbuild-architecture: x64) so a host-mode runner does not WOW64-redirect it.
-
-# Restore first: VS MSBuild does not auto-restore SDK-style projects.
-dotnet restore
-
-msbuild external\MFTLib\MFTLibNative\MFTLibNative.vcxproj -t:Build -p:Configuration=Release -p:Platform=x64 -nologo -v:minimal
-dotnet build external\MFTLib\MFTLib\MFTLib.csproj -c Release -p:Platform=x64 --no-restore
-dotnet build external\MFTLib\MFTLibTestExtensions\MFTLibTestExtensions.csproj -c Release -p:Platform=x64 --no-restore
-```
-
 ## Choose an integration model
 
 | Scenario | Recommended API |
 | --- | --- |
-| Elevated CLI or service; simplest integration | `MftVolume` directly |
+| Already elevated; scan once | `MftIndexSources.FromLocalVolumes` with `NoCache`, no watch |
+| Saved image on any supported platform | `MftIndexSources.FromMftDumpFile` with `NoCache`, no watch, no elevation |
 | Non-elevated desktop/CLI app; one UAC prompt | `BrokerSession` with `CreateIndexSource()` |
-| Resume from a persisted journal cursor | `MftVolume.ReadUsnJournal` |
-| Continuously receive changes | `WatchUsnJournal` or broker batches |
+| Resume from a persisted journal cursor | Warm start from the cache block, whose header holds the cursor |
+| Continuously receive changes | `FileIndex.StartWatchingAsync` and `Changed` |
 | Explain a rescan the change journal forced, at open or mid-watch | `DriveStatus.CheckpointLoss` |
+
+## Samples
+
+`SampleProgram.Direct` supports `search`, `tree`, `open`, `largest`, `duplicate-names`
+and `scan`. Select `--source local` for a live volume or `--source dump --dump-file <path>`
+for a saved MFT image; `--include-freed` applies to local scans.
+`SampleProgram.Watch` supports `scan-drive`, `watch`, `rescan`, `journal`, `cache`
+and `elevation-status`. Its `cache` verb uses policy-digest folders to keep different
+scan policies in distinct sample cache directories.
+
+```powershell
+.\SampleProgram.Direct\bin\x64\Release\net10.0\SampleProgram.Direct.exe search C --name notes
+.\SampleProgram.Watch\bin\x64\Release\net10.0\SampleProgram.Watch.exe scan-drive C
+```
+
+Run the compiled executable for self-elevation. Direct local scans self-elevate;
+Watch stays unelevated and its broker elevates. Dump scans need no elevation.
+Set `MFTLIB_SAMPLE_UNATTENDED=1` to skip prompts and elevation requests in an
+unelevated unattended run. See [elevation](docs/elevation.md).
+
+The dump source loads one virtual drive in process on Windows or Linux x64:
+
+```csharp
+var letter = 'D';
+var options = new FileIndexOptions
+{
+    Drives = [new IndexedDrive(letter, "dump:/" + letter, 0)],
+    MftSource = MftIndexSources.FromMftDumpFile(filePath, letter),
+    NoCache = true,
+    ProducerPolicy = ProducerPolicy.Mft
+};
+await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
+```
+
+A dump is untrusted. An empty file, a record size other than 1024 or 4096, a partial
+final record, an invalid fixup on an allocated record, a file unreadable to its opened
+length, a missing or invalid root, duplicate record numbers or a parent outside the
+index each fail the scan with a message in `DriveStatus.MftProducerFailureMessage`.
 
 ## Freed MFT records
 
@@ -178,7 +166,7 @@ var options = new FileIndexOptions
     MftSource = MftIndexSources.FromLocalVolumes(new BrokerScanOptions { IncludeFreed = true }),
     CacheTag = new CacheTag("APPX", 2)
 };
-await using var index = await FileIndex.OpenAsync(options);
+await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);
 var deleted = index.Search(new SearchQuery("report", IncludeDeleted: true))
     .Where(entry => entry.IsDeleted);
 ```
@@ -189,58 +177,32 @@ names stay live only.
 
 ## Keep an index current with the USN journal
 
-A durable `UsnJournalCursor` contains the journal instance ID and next USN to read.
-Persist both fields together.
-
-For a gap-free direct workflow, capture the cursor before the full scan, then apply the
-catch-up entries produced while the scan was running:
-
-```csharp
-using var volume = MftVolume.Open("C");
-
-var armedCursor = volume.QueryUsnJournalCursor();
-using var result = volume.StreamRecords(
-    includeFreed: false, progress: null, parseThreads: null, CancellationToken.None);
-var records = result.ToArray();
-var (catchUpEntries, currentCursor) = volume.ReadUsnJournal(armedCursor);
-
-ApplyChanges(records, catchUpEntries);
-PersistCursor(currentCursor);
-```
-
-Later, resume from the persisted cursor:
+A cached block holds the journal instance and next position together in its header.
+Open a broker-backed `FileIndex` to warm-start from that checkpoint or scan and catch
+up when the cache cannot be resumed. Consumers query the index and receive applied
+changes instead of persisting a separate cursor.
 
 ```csharp
-var (entries, updatedCursor) = volume.ReadUsnJournal(persistedCursor);
-ApplyChanges(entries);
-PersistCursor(updatedCursor);
-```
-
-`ReadUsnJournal` throws `InvalidOperationException` if the journal was recreated or the
-requested entries were overwritten. Treat that as a request to discard the stale cursor
-and perform another full scan/catch-up cycle.
-
-### Watch live changes
-
-```csharp
-await foreach (var (entries, cursor) in volume.WatchUsnJournal(
-    persistedCursor,
-    cancellationToken))
+await using var session = new BrokerSession();
+var options = new FileIndexOptions
 {
-    foreach (var entry in entries)
-        Console.WriteLine($"{entry.Reason}: {entry.FileName}");
-
-    PersistCursor(cursor);
-}
+    Drives = [IndexedDrive.FromWindowsVolume("C:")],
+    CacheDirectory = cacheDirectory,
+    MftSource = session.CreateIndexSource()
+};
+await using var index = await FileIndex.OpenAsync(options, cancellationToken);
+index.Changed += change =>
+    Console.WriteLine($"{change.Kind}: {change.Path}");
+await index.StartWatchingAsync('C', cancellationToken);
+await index.WaitForCatchUpAsync('C', cancellationToken);
 ```
 
-The watch blocks in the kernel without polling. Cancelling the token calls `CancelIoEx`
-to release the pending read. Each batch includes its post-batch cursor for persistence.
-
-USN entries include record and parent IDs, USN, UTC timestamp, reason flags, file
-attributes, filename, and convenience flags such as `IsCreate`, `IsDelete`, `IsRename`,
-and `IsClose`. A journal entry contains the changed name and parent ID, not an eagerly
-resolved full path; maintain an index keyed by record number when full paths are needed.
+`Changed` events carry `FileChangeKind`, the current path, the timestamp and the
+previous path for a rename. A start establishes the connection; the catch-up wait
+observes the watch reaching its live position. Journal checkpoint loss is recorded
+on `DriveStatus.CheckpointLoss`; a successful `RescanAsync('C')` supplies a fresh
+block and restarts a requested watch. `StopWatchingAsync(cancellationToken)` stops
+every configured drive and returns its per-drive results.
 
 A watched volume whose change journal is too small wraps under load: records
 are overwritten before the watch reads them, the watch faults, and the drive
@@ -443,8 +405,7 @@ Journal growth is an explicit user action; the broker refuses a requested maximu
 below the current value. `Ended` completes with the reason when the control pipe is lost.
 
 Consumers obtain a broker-backed source only through `BrokerSession.CreateIndexSource`.
-The producer and the process launch and journal-growth methods are internal. `BrokerProcess`
-remains public for the test-package signatures; production code uses `BrokerSession`.
+The producer and the process launch and journal-growth methods are internal.
 
 See the [broker integration guide](https://github.com/mtschoen/MFTLib/blob/main/docs/broker-integration.md)
 for startup dispatch, index scans, watch channels, recovery, and diagnostics.
@@ -465,10 +426,10 @@ await index.StartWatchingAsync('C', cancellationToken);
 await index.WaitForCatchUpAsync('C', cancellationToken);
 
 await index.RescanAsync('C', cancellationToken); // Restarts C if its watch is still requested.
-await index.StopWatchingAsync('C', cancellationToken);
+IReadOnlyList<DriveOperationResult> stops = await index.StopWatchingAsync(cancellationToken);
 ```
 
-The batched forms run the requested drives concurrently and return one
+The list-form rescan and all-drive lifecycle forms run drives concurrently and return one
 `DriveOperationResult` per drive in request order. One drive's `Failed` result does not
 discard the others. `NotApplicable` means the operation has nothing to do for that
 drive, such as starting an enumeration-backed drive or waiting on a drive with no watch.
@@ -477,17 +438,18 @@ drive, such as starting an enumeration-backed drive or waiting on a drive with n
 IReadOnlyList<char> driveLetters = ['C', 'D'];
 
 IReadOnlyList<DriveOperationResult> starts =
-    await index.StartWatchingAsync(driveLetters, cancellationToken);
+    await index.StartWatchingAsync(cancellationToken);
 IReadOnlyList<DriveOperationResult> catchUps =
-    await index.WaitForCatchUpAsync(driveLetters, cancellationToken);
+    await index.WaitForCatchUpAsync(cancellationToken);
 IReadOnlyList<DriveOperationResult> rescans =
     await index.RescanAsync(driveLetters, cancellationToken);
 IReadOnlyList<DriveOperationResult> stops =
-    await index.StopWatchingAsync(driveLetters, cancellationToken);
+    await index.StopWatchingAsync(cancellationToken);
 ```
 
-Omit the drive list to apply a batched call to every configured drive in
-`FileIndexOptions.Drives` order. Batched calls throw for invalid input, disposal, and
+Start, stop and catch-up wait accept a token-only all-drive call in
+`FileIndexOptions.Drives` order; rescan accepts a drive letter or a drive list.
+Batched calls throw for invalid input, disposal, and
 cancellation; drive-specific operational failures stay in `DriveOperationResult.Failure`.
 
 `FileIndexOptions.ProducerPolicy` selects how each drive's block is built:
@@ -550,7 +512,7 @@ with the entry's name chain using the host separator. It can be opened, and
 matching indexed root. Disposing a `FileIndex` releases every block mapping it
 holds, so the `.mlix` files are closed at a point the caller chooses; a `FileEntry`
 held across that disposal reports `IsDisposed` and throws `ObjectDisposedException`
-on every read.
+on reads of mapped entry data.
 
 Seven entry points scan rows: `Find`, `Search`, `Enumerate`, `Largest`,
 `DuplicateNames` and `Root` on `FileIndex`, and `Children()` on a `FileEntry`. Each
@@ -593,7 +555,7 @@ with the native error message. Common causes include:
 - the target is not an NTFS volume;
 - the volume cannot be opened;
 - the USN journal is unavailable, recreated, or wrapped; or
-- native allocation or path-pool capacity is exhausted.
+- native allocation capacity is exhausted.
 
 `WatchFaulted` reports a `WatchFault` containing `Kind`, `DriveLetter`, and the original
 `Exception`:
@@ -670,8 +632,8 @@ applies an event only when its version is newer than the last it applied for tha
 reaches the retry limit, `JournalCatchUpLostException.RecoveryStopped` is true, the drive
 keeps its last queryable block, and its watch is refused until a manual rescan succeeds.
 
-The single-drive `StopWatchingAsync` rethrows the watch's outstanding fault once. A
-batched stop returns that exception in the affected drive's `DriveOperationResult`.
+The all-drive `StopWatchingAsync` consumes each watch's outstanding fault once,
+returning that exception in the affected drive's `DriveOperationResult.Failure`.
 The following edge dispositions describe current behavior: a consumer source start failure leaves
 a refused-start fault that a later stop clears without rethrowing; a fresh start supersedes
 a faulted watch instance and discards its outstanding fault; and a stop that arrives while
@@ -686,8 +648,8 @@ fail immediately with `InvalidOperationException`. Queue the operation, for exam
 catch-up waits are allowed.
 
 A broker `Error` frame fails only its pending operation with the host's message. Losing
-the control pipe completes the `BrokerProcess.Ended` task with the reason and
-fails pending operations with `BrokerChannelLostException`. Losing a drive pipe faults
+the control pipe completes the `BrokerSession.Ended` task with the reason and
+fails pending operations with an `IOException`. Losing a drive pipe faults
 only that drive. Idle control and watch pipes, queued scans, and processing operations
 that recently reported progress receive heartbeats. A processing operation with no
 progress past the processing limit receives `Stalled` and its channel is cancelled. A
@@ -698,7 +660,8 @@ silent, the client's 30-second no-frame limit ends that pipe.
 
 Visual Studio 2022 with the Desktop development with C++ workload and .NET 10 SDK is
 required. Use the shared Windows build script to restore packages, build the native
-DLL with amd64 MSBuild, and build all five managed projects:
+DLL with amd64 MSBuild, and build all six managed projects: MFTLib,
+MFTLibTestExtensions, SampleProgram.Direct, SampleProgram.Watch, Benchmark and MFTLib.Tests:
 
 ```powershell
 .\scripts\build-windows.ps1
@@ -718,8 +681,9 @@ MFTLibTestExtensions is additionally required to have complete line, branch, and
 The source is organized by responsibility:
 
 - `MFTLib/Index` - the substrate-neutral packed index: block format, `FileIndex`, snapshots, queries, mutation, and the enumeration producer. It is not MFT-specific and depends on nothing else in the library beyond a few journal value types, a boundary an architecture test enforces.
-- `MFTLib/Mft` - scans, records, results, filters, paths, and timings
-- `MFTLib/Journal` - USN cursor, entries, reasons, and `MftVolume` journal APIs
+- `MFTLib/Mft` - scans, records, results and timings
+- `MFTLib/Journal` - USN cursor, entries and reasons
+- `MFTLib/Sources` - producers, row writer and scan
 - `MFTLib/Broker` - elevated host/client, protocol, block writing, and diagnostics
 - `MFTLib/Elevation` - elevation detection and injectable provider
 - `MFTLib/Interop` - native result layouts

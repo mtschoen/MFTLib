@@ -11,14 +11,14 @@ public static class BrokerDiagnosticsIsolation
     /// <summary>
     ///     Undoes <see cref="BrokerDiagnostics.Enable" />: restores the default role tag and the
     ///     environment-variable-controlled enablement, and discards the log writer after it drains
-    ///     the lines already queued. Call <see cref="BrokerDiagnostics.FlushAsync" /> first to
+    ///     the lines already queued. Call <see cref="BrokerDiagnosticsIsolation.FlushAsync" /> first to
     ///     read those lines from the log file.
     /// </summary>
     public static void Reset() => BrokerDiagnostics.ResetToDefaults();
 
     /// <summary>
     ///     Waits until every line already queued reaches the log file, so a test can read what a broker
-    ///     under test logged. Forwards to <see cref="BrokerDiagnostics.FlushAsync" />.
+    ///     under test logged. Use <see cref="BrokerDiagnosticsIsolation.Log" /> to queue a test line.
     /// </summary>
     /// <param name="cancellationToken">Cancels the wait.</param>
     /// <returns>A task that completes when the queued lines are written.</returns>
@@ -26,7 +26,7 @@ public static class BrokerDiagnosticsIsolation
 
     /// <summary>
     ///     Queues one diagnostics line on <paramref name="channel" />, as a broker under test would.
-    ///     Forwards to <see cref="BrokerDiagnostics.Log" />.
+    ///     Forwards to the broker's diagnostics log.
     /// </summary>
     /// <param name="channel">The channel tag of the line.</param>
     /// <param name="message">The line.</param>

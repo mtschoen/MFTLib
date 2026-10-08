@@ -16,7 +16,7 @@
       its `LiveWatch` checkpoint loss and its recovery ticket (`Recovering`) are recorded first,
       then the wait faults, then `WatchFaulted` is raised, so a consumer reading `Drives` from
       the wait's fault path sees the same state a `WatchFaulted` handler sees. A stop in that
-      window faults the wait with the watch's fault rather than cancelling it. The list and all-drive overloads fan out to the
+      window faults the wait with the watch's fault rather than cancelling it. Public list-form rescan and token-only all-drive start, stop and catch-up waits fan out to the
       requested drives concurrently and return one `DriveOperationResult` per drive. A `Drive` or
       `Apply` fault publishes `Recovering`, raises `WatchFaulted`, and automatically rescans and
       restarts only X. A second fault before the restarted watch reaches `CaughtUp`, or a failed

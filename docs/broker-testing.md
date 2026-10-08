@@ -7,9 +7,9 @@ a real volume's USN journal.
 
 ## BrokerTestHarness
 
-`BrokerTestHarness.StartInProcess(ScriptedBrokerVolumes)` runs a real `JournalBrokerHost` on a
-background task and returns an `InProcessBrokerHandle` whose `Process` is a real
-`BrokerProcess` connected through in-memory control and drive pipes. It needs no
+`BrokerTestHarness.StartInProcess(ScriptedBrokerVolumes)` runs the real broker host on a
+background task and returns an `InProcessBrokerHandle` exposing `Ended`, `Crash()`,
+`Scans` and `DisposeAsync`, connected through in-memory control and drive pipes. It needs no
 elevation and launches no child process. Consumer tests therefore exercise the same
 request routing, per-drive channels, frame decoding, timeouts, producer, and watch source
 used in production. The harness supplies everything except the volumes: the client creates
@@ -17,16 +17,16 @@ real block sections, and each scan's records are written through the production 
 and filter.
 
 `BrokerTestHarness.CreateSession(launchAsync)` returns a `BrokerSession` whose launch callback hands it
-the `BrokerProcess` of an in-process broker (for example `StartInProcess(...).Process`), so a test of
-code that takes a `BrokerSession` needs no elevation either.
+an `InProcessBrokerHandle`, so a test of code that takes a `BrokerSession` needs no
+elevation either. The callback is `Func<CancellationToken, Task<InProcessBrokerHandle>>`.
 
 `ScriptedBrokerVolumes` is the fake volumes the host serves. Only `QueryJournalCursor` is
 required; a null source refuses that operation as the real host does.
 
 - `QueryJournalCursor` arms a drive's journal cursor before its scan and bounds a watch's
   backlog.
-- `ScanDrive` receives a `ScriptedScan` (the drive letter, the scan's parse-thread allowance
-  and cancellation token) and returns the scan's records in batches. `ScriptedScan.ReportParsed`
+- `ScanDrive` receives a `ScriptedScan` (the drive letter and cancellation token)
+  and returns the scan's records in batches. `ScriptedScan.ReportParsed`
   emits one parsing-phase progress frame, which the client reports as
   `IndexScanPhase.ParsingMft`. A batch sequence that yields lazily is written as it is
   enumerated, so a test can pause after the first batch, or call `InProcessBrokerHandle.Crash()`
@@ -35,21 +35,20 @@ required; a null source refuses that operation as the real host does.
 - `ReadJournal` answers the bounded catch-up read after a scan. Null answers "nothing new"
   from every cursor.
 - `WatchDrive` streams a drive's journal for a watch. Null refuses every watch.
-- `QueryVolume` answers volume sizing queries. Null answers a small fixed volume (256 KiB of
-  1024-byte records).
+- Volume sizing is supplied by the harness (256 KiB of 1024-byte records).
 - `GrowUsnJournal` grows a drive's journal. Null refuses every grow request.
 
 ```csharp
 await using var broker = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
 {
-    QueryJournalCursor = _ => new UsnJournalCursor(7, 1000),
+    QueryJournalCursor = _ => new SyntheticJournalCursor(7, 1000),
     ScanDrive = scan =>
     {
         scan.ReportParsed(1, 1);
-        return [[SyntheticMftRecord.Create(new SyntheticMftRecordOptions
+        return [[new SyntheticScanRecord
         {
             RecordNumber = 5, ParentRecordNumber = 5, FileName = ".", IsDirectory = true
-        })]];
+        }]];
     }
 });
 ```
@@ -66,8 +65,8 @@ the session task, and then releases the block sections the scans wrote into. Dis
 safe to repeat. The harness has no separate fault event or stored host
 exception. A host failure reaches the test through the production surfaces:
 
-- the `BrokerProcess.Ended` task;
-- `BrokerChannelLostException` on pending control or drive operations; or
+- the `InProcessBrokerHandle.Ended` task;
+- an `IOException` on pending control or drive operations; or
 - a host `Error` frame translated by the operation reading that channel.
 
 Host exception detail is written only to broker diagnostics. Disposing the
@@ -75,8 +74,9 @@ process does not throw the host fault again.
 
 `InProcessBrokerHandle.Crash()` simulates the broker process dying: it closes every
 host pipe end at once, without the client's cooperation, so the client reads EOF on
-the control pipe and every drive channel, `Ended` reports the loss, and pending and
-later requests fail with `BrokerChannelLostException`. It differs from disposing the
+the control pipe and every drive channel, `Ended` reports the loss, and pending
+operations fail with an `IOException`; a later session use fails with
+`InvalidOperationException` naming the end reason. It differs from disposing the
 process, which ends with the reason "The broker process was disposed.". The handle
 still disposes normally after a crash.
 
@@ -88,8 +88,7 @@ cleanup to restore the default diagnostics state.
 The client clock, per-pipe connection failures, held host writes, the host clock and the
 processor count are not exposed: no consumer drives them. They stay internal seams that
 `MFTLib.Tests` reaches through the same assembly, together with the section recorders that
-back `Scans` (`InProcessBroker`, `TestBlockSections`, `RecordingBlockSectionWriter`), which
-live in `MFTLibTestExtensions` as internal types.
+back `Scans`, which live in `MFTLibTestExtensions` as internal types.
 
 ## Script a drive watch
 
@@ -108,15 +107,17 @@ var source = new ScriptedWatchSource();
 var watch = source.WatchFor('T');
 
 await watch.PublishBatchAsync(
-    [SyntheticJournalEntry.Create(new SyntheticJournalEntryOptions
+    [new SyntheticJournalRecord
     {
         RecordNumber = 20,
         ParentRecordNumber = 5,
-        Usn = 1200,
+        UpdateSequenceNumber = 1200,
         FileName = "new.txt",
-        Reason = UsnReason.FileCreate | UsnReason.Close
-    })],
-    new UsnJournalCursor(watch.StartCursor.JournalId, 1300));
+        Reason = SyntheticJournalReason.FileCreate | SyntheticJournalReason.Close
+    }],
+    new SyntheticJournalCursor(
+        source.Starts.Last(start => start.DriveLetter == watch.DriveLetter).Cursor.JournalIdentifier,
+        1300));
 await watch.PublishCaughtUpAsync();
 ```
 
@@ -133,7 +134,6 @@ scripted per source:
 
 - `CatchUpOnStart` queues the caught-up marker the moment each watch starts, for a
   test that only needs every drive to settle;
-- `FailNextStart` and `FailNextStartFor` make one start throw;
 - `StartFailure` is consulted on every start and throws whatever it returns; and
 - a start for a drive whose previous watch has not been disposed throws
   `InvalidOperationException`, because the index disposes a watch before it
@@ -145,16 +145,13 @@ A watch scripts the read the index's pump performs:
   changes and advances the block cursor; the publishing form completes once the
   pump has taken the item after it and throws `TimeoutException` after ten
   seconds, and the queueing form returns the task that completes then;
-- `PublishCaughtUpAsync` and `QueueCaughtUp` settle that drive's catch-up wait;
+- `PublishCaughtUpAsync` settles that drive's catch-up wait;
 - `FailDrive` produces `WatchFaultKind.Drive` and automatic recovery;
 - `FailApply` queues a batch whose application throws, producing `WatchFaultKind.Apply` and automatic recovery;
 - `LoseChannel`, or `End` for a normal end before the index cancels the read,
-  produces `WatchFaultKind.Channel` with no automatic recovery; and
-- `FailOnCancellation` makes a cancelled read throw an I/O failure instead of
-  `OperationCanceledException`.
+  produces `WatchFaultKind.Channel` with no automatic recovery.
 
-`ReadStarted`, `ReadEnded` (true when cancellation ended the read), `Disposed`
-and `DisposeCount` report what the index did with the watch. A watch closes when its
+`ReadEnded` (true when cancellation ended the read) reports how the read ended. A watch closes when its
 read ends, however it ends, or when it is disposed: every delivery method then throws
 `InvalidOperationException`, and each unread item's task settles once, faulted with
 the read's failure or cancelled, before `ReadEnded` completes. The index disposes a
@@ -166,10 +163,10 @@ the public seam is designed to exclude.
 ## Seed and edit cache blocks
 
 A test that needs a cache block on disk does not write one by hand. `SyntheticBlock`
-writes, edits and reads blocks through the production block writer, so a test never
+writes and edits blocks through the production block writer, so a test never
 sees the block format. Rows are `SyntheticRow` values: row number, name, parent row,
 and optional `IsDirectory`, `IsTombstone` (a deleted record whose name is kept),
-`IsFree` (a slot holding no record, so scans and counts skip it and `ReadRows` omits it),
+`IsFree` (a slot holding no record, so scans, lookups and counts skip it),
 `Attributes`, `Size` (null writes the size-unknown flag), `ModifiedUtc` and `SequenceNumber`. Capacity is planned from the
 rows, with headroom for later edits.
 
@@ -178,7 +175,7 @@ var cacheDirectory = Path.Combine(Path.GetTempPath(), $"cache-{Guid.NewGuid():N}
 var path = SyntheticBlock.WriteCached(cacheDirectory, 'C', volumeSerial: 0x1234,
     new SyntheticBlockOptions
     {
-        JournalCursor = new UsnJournalCursor(7, 4096),
+        JournalCursor = new SyntheticJournalCursor(7, 4096),
         CompletedUtc = completed,
         CacheTag = new CacheTag("TEST", 1)
     },
@@ -189,7 +186,7 @@ var path = SyntheticBlock.WriteCached(cacheDirectory, 'C', volumeSerial: 0x1234,
 
 SyntheticBlock.Edit(path, 0x1234, editor =>
 {
-    editor.WriteRow(editor.ReadRow(6) with { Size = null });
+    editor.MarkSizesUnknown(row => row.Row == 6);
     editor.MarkCompactionNeeded();
 });
 ```
@@ -199,11 +196,11 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
 - `WriteCached` writes a complete block into the drive's cache slot. Set
   `ProducerKind = ProducerKind.Enumeration` and `RootRow = 0` for an enumeration block.
 - `Edit` opens an existing block and hands a `SyntheticBlockEditor` to the callback,
-  then flushes and closes it. The editor reads and writes rows, sets attributes,
-  marks a tombstone, a size unknown (`MarkSizeUnknown` for one row, `MarkSizesUnknown`
-  for every row a filter selects, returning how many) or compaction needed, replaces the
-  journal cursor or scan timestamp (`ReadHeader(...).CompletedUtc` is the stored one,
-  so an edit can write it back), `SetProducerKind(ProducerKind.Mft)` turns a block
+  then flushes and closes it. The editor sets attributes, marks sizes unknown
+  (`MarkSizesUnknown` for every matching row, returning how many) or compaction needed,
+  and sets the scan timestamp through `Complete`. `SyntheticIndexInspection.ReadHeader(index, driveLetter)`
+  reports the timestamp of an open index's block for a later edit after disposal.
+  `SetProducerKind(ProducerKind.Mft)` turns a block
   written by an enumeration scan into one an index warm-starts without a producer and
   whose rows accept `FileIndexTestAccess.ApplyJournalEntries`.
   `SetCacheTag(new CacheTag("TEST", 7))` replaces only the stored cache identity,
@@ -213,17 +210,16 @@ SyntheticBlock.Edit(path, 0x1234, editor =>
   `CorruptNamePool` makes the next open reject the block with
   `BlockValidationResult.InvalidNameDescriptor`. Using the editor after the edit
   returns throws `InvalidOperationException`.
-- `ReadRows` returns every row in use, tombstones included, in row order.
 - `MaximumPathDepth` is the deepest path the index resolves.
 
 Every operation holds the cache slot's owner lock for its duration and throws
 `InvalidOperationException` when an open index owns the slot, so dispose the index
-before seeding, editing or reading its block. A missing block or one that fails
+before seeding or editing its block. A missing block or one that fails
 validation throws the same exception naming the problem.
 
 `SyntheticMftProducer` is the block producer of a test index. It writes the rows a
 callback returns for each drive through the same writer and reports a real
-`MftBlockProduceResult` carrying the request's cache tag. Its settings model what a
+produce result carrying the request's cache tag. Its settings model what a
 test needs from a scan:
 
 - `JournalCursor` and `CompletedUtc` are stamped into every block and
@@ -231,9 +227,7 @@ test needs from a scan:
 - `BeforeProduceAsync` is awaited before each production, so a test holds a scan or
   rescan in progress and releases it when ready;
 - `CatchUpLoss` returns the proven catch-up loss a production reports, which the
-  index surfaces as `DriveStatus.CheckpointLoss`;
-- `ProducedDrives` lists every drive whose production started, in order, including
-  repeats, so a test counts scans and rescans.
+  index surfaces as `DriveStatus.CheckpointLoss`.
 
 The callback must return the root row (row 5 for an MFT block).
 

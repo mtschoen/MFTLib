@@ -12,6 +12,34 @@ param(
 $nuGetKeyFile = "C:\Users\mtsch\nugetkey"
 
 $ErrorActionPreference = "Stop"
+
+function Get-ReleaseNotes {
+    param([string] $ChangelogPath, [string] $Version)
+
+    $heading = "## $Version"
+    $collecting = $false
+    $lines = [Collections.Generic.List[string]]::new()
+    foreach ($line in Get-Content -LiteralPath $ChangelogPath) {
+        if (-not $collecting) {
+            if ($line -ceq $heading) { $collecting = $true } else { continue }
+        } elseif ($line.StartsWith('## ')) {
+            break
+        }
+        $lines.Add($line)
+    }
+    if (-not $collecting) {
+        throw "Release notes heading '$heading' is missing from $ChangelogPath."
+    }
+    return $lines -join "`n"
+}
+
+# Writes the notes as UTF-8 without a byte order mark on every PowerShell host.
+function Write-ReleaseNotesFile {
+    param([string] $Path, [string] $Text)
+
+    [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
+}
+
 . "$PSScriptRoot\Test-ReleasePackages.ps1"
 $repoRoot = Resolve-Path "$PSScriptRoot\.."
 Set-Location $repoRoot
@@ -25,6 +53,7 @@ if (-not $version) {
 }
 
 $tag = "v$version"
+$releaseNotes = Get-ReleaseNotes -ChangelogPath "$repoRoot\CHANGELOG.md" -Version $version
 $mftLibNupkg = "$repoRoot\MFTLib\bin\x64\Release\MFTLib.$version.nupkg"
 $mftLibSnupkg = "$repoRoot\MFTLib\bin\x64\Release\MFTLib.$version.snupkg"
 $testExtensionsNupkg = "$repoRoot\MFTLibTestExtensions\bin\x64\Release\MFTLib.TestExtensions.$version.nupkg"
@@ -280,10 +309,17 @@ if ($LASTEXITCODE -ne 0) {
 # --- Create GitHub release ---
 Write-Host ""
 Write-Host "Creating GitHub release..." -ForegroundColor Cyan
-gh release create $tag $mftLibNupkg $mftLibSnupkg $testExtensionsNupkg $testExtensionsSnupkg --title $tag --notes-file "$repoRoot\CHANGELOG.md"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "GitHub release creation failed." -ForegroundColor Red
-    exit 1
+$releaseNotesPath = [IO.Path]::GetTempFileName()
+try {
+    Write-ReleaseNotesFile -Path $releaseNotesPath -Text $releaseNotes
+    gh release create $tag $mftLibNupkg $mftLibSnupkg $testExtensionsNupkg $testExtensionsSnupkg --title $tag --notes-file $releaseNotesPath
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "GitHub release creation failed." -ForegroundColor Red
+        exit 1
+    }
+}
+finally {
+    Remove-Item -LiteralPath $releaseNotesPath -Force
 }
 
 Write-Host ""

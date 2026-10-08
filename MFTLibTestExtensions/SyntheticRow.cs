@@ -19,7 +19,7 @@ public sealed record SyntheticRow(uint Row, string Name, uint ParentRow)
     /// <summary>
     ///     True for a slot that holds no record: the in-use flag is clear, as for a slot never filled or
     ///     freed, so scans, lookups and counts skip it. The other columns are still stored, which lets a
-    ///     test seed stale data a reader must ignore. <see cref="SyntheticBlock.ReadRows" /> reports only rows in use.
+    ///     test seed stale data a reader must ignore.
     /// </summary>
     public bool IsFree { get; init; }
 

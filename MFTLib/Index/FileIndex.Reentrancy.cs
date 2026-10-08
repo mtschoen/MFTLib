@@ -1,18 +1,18 @@
 namespace MFTLib.Index;
 
 /// <summary>
-///     The guard against a lifecycle call made from inside a <see cref="Changed" />,
-///     <see cref="WatchFaulted" /> or <see cref="WatchStateChanged" /> handler. A handler runs on
-///     a drive's pump, or on a scan or lifecycle call that holds a drive's lifecycle gate, and a
-///     lifecycle call can wait for a pump that is itself blocked in a handler, so two handlers stopping each other's drives deadlock. Every
-///     raise site delivers through <see cref="Deliver{TArgument}" />, which sets an
-///     <see cref="AsyncLocal{T}" /> marker naming this index for exactly the handler invocation;
-///     the marker flows with the handler's execution context, into its awaits and any work it
-///     starts, and its <see cref="DeliveryMarker.Active" /> flag is cleared when the invocation
-///     returns, so work queued from a handler that runs afterwards is allowed.
+///     Rejects lifecycle calls made from inside this index's <see cref="Changed" />,
+///     <see cref="WatchFaulted" /> or <see cref="WatchStateChanged" /> handlers with
+///     <see cref="InvalidOperationException" /> to prevent deadlocks between event delivery
+///     and lifecycle work. Queue lifecycle work to run after the handler returns.
+///     Work executing after that invocation returns is allowed, including queued work
+///     that inherited the handler's execution context.
 /// </summary>
 public sealed partial class FileIndex
 {
+    // Every raise site uses Deliver to set an AsyncLocal marker naming this index.
+    // The marker flows into awaits and queued work; its Active flag clears when the
+    // invocation returns. The outer chain preserves nested deliveries across indexes.
     static readonly AsyncLocal<DeliveryMarker?> s_delivery = new();
 
     /// <summary>Invokes one handler with this index's delivery marker set for the duration of the call.</summary>

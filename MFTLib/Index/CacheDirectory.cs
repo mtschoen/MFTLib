@@ -84,7 +84,7 @@ public static partial class CacheDirectory
     ///     Inspects selected cached blocks while holding each block's slot lock. A missing
     ///     directory returns an empty list. A lock that is held or cannot be opened reports
     ///     InUse without reading any block bytes; an unreadable or rejected block reports
-    ///     Invalid using the reason returned by BlockFile.Open.
+    ///     Invalid using the reason the block failed validation.
     ///     Inspection creates a persistent .lock sibling when absent and never unlinks it.
     ///     The block is disposed before its lock is released, after the root name has been
     ///     copied into a managed string. Results describe inspection time, not a reservation.
@@ -103,7 +103,7 @@ public static partial class CacheDirectory
     ///     Inspects selected cached blocks while holding each block's slot lock. A missing
     ///     directory returns an empty list. A lock that is held or cannot be opened reports
     ///     InUse without reading any block bytes; an unreadable or rejected block reports
-    ///     Invalid using the reason returned by BlockFile.Open.
+    ///     Invalid using the reason the block failed validation.
     ///     Inspection creates a persistent .lock sibling when absent and never unlinks it.
     ///     The block is disposed before its lock is released, after the root name has been
     ///     copied into a managed string. Results describe inspection time, not a reservation.
