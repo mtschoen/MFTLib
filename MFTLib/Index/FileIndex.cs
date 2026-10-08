@@ -237,16 +237,16 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// <remarks>
     ///     <para>
     ///         Disposing while another thread is running a scan is safe, and is what this method
-    ///         being asynchronous buys. Seven entry points scan rows, and each holds a borrow on
+    ///         being asynchronous buys. Six entry points scan rows, and each holds a borrow on
     ///         the snapshot it reads for its whole duration: <see cref="Find" />,
-    ///         <see cref="Search" />, <see cref="Enumerate" />, <see cref="Largest" />,
-    ///         <see cref="DuplicateNames" /> and <see cref="Root" /> on this class, and
+    ///         <see cref="Search" />, <see cref="Enumerate" />, <see cref="EnumerateRows" />
+    ///         and <see cref="Root" /> on this class, and
     ///         <see cref="FileEntry.Children" /> on a handle. Disposal waits for every one of
     ///         those borrows, on the current snapshot and on the retired ones, before it unmaps
     ///         anything.
     ///     </para>
     ///     <para>
-    ///         The seven queries on this class also observe a token linked to the index's disposal,
+    ///         The five queries on this class also observe a token linked to the index's disposal,
     ///         so disposal cancels them rather than waiting them out: each ends with
     ///         <see cref="OperationCanceledException" /> or, if it had not started,
     ///         <see cref="ObjectDisposedException" />, and the wait is as long as they take to

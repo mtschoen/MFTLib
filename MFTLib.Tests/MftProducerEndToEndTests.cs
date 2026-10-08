@@ -46,9 +46,10 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(Modified, notes.LastWriteTime);
         CollectionAssert.AreEquivalent(new ulong[] { 20, 22 }, index.Search(new SearchQuery("notes.txt"))
             .Select(entry => entry.RecordKey.RecordNumber).ToArray());
-        var duplicates = index.DuplicateNames().Single();
-        Assert.AreEqual("notes.txt", duplicates.Name);
-        Assert.AreEqual(2, duplicates.Entries.Count);
+        var duplicates = CollectFileRows(index).GroupBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
+            .Single(group => group.Count() > 1);
+        Assert.AreEqual("notes.txt", duplicates.Key);
+        Assert.AreEqual(2, duplicates.Count());
         var deleted = index.Find(At("documents", "obsolete.txt"))!.Value;
         var renamed = index.Find(At("documents", "draft.txt"))!.Value;
         Assert.IsNull(index.Drives[0].Watch.CheckpointLoss);
@@ -195,6 +196,17 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
+    }
+
+    static List<(string Name, FileEntry Entry)> CollectFileRows(FileIndex index)
+    {
+        var rows = new List<(string Name, FileEntry Entry)>();
+        foreach (var row in index.EnumerateRows(new SearchQuery(null, Directories: false)))
+        {
+            rows.Add((row.Name.ToString(), row.ToEntry()));
+        }
+
+        return rows;
     }
 
     string At(params string[] segments) => Path.Combine([_rootDirectory, .. segments]);

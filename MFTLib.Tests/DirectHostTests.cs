@@ -121,6 +121,19 @@ public class DirectHostTests
         Assert.AreEqual(0, result);
         Assert.IsTrue(lines.Any(line => line.StartsWith("Index holds ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.Contains("Catch-up held; watch supported: False"));
+        Assert.IsTrue(lines.Contains("D: 4 live files, 3 live directories, 0 retained deleted rows"), string.Join(Environment.NewLine, lines));
+    }
+
+    [TestMethod]
+    public void Run_ScanOverAScriptedSource_ReportsLiveAndRetainedDeletedCounts()
+    {
+        var lines = new List<string>();
+        var host = ElevatedHost(lines, _ => ScriptedSource());
+
+        var result = host.Run(["scan", "C", "--include-freed"]);
+
+        Assert.AreEqual(0, result, string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(lines.Contains("C: 2 live files, 2 live directories, 1 retained deleted rows"), string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]

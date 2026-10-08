@@ -89,29 +89,6 @@ public class FileIndexQueryTests
     }
 
     [TestMethod]
-    public void Largest_ReturnsTheBiggestFiles()
-    {
-        var results = _index.Largest(2);
-        Assert.AreEqual("holiday.jpg", results[0].Name);
-        Assert.AreEqual("report.pdf", results[1].Name);
-    }
-
-    [TestMethod]
-    public void Largest_Under_InvalidAncestor_ReturnsNoResults()
-    {
-        var results = _index.Largest(2, under: default(FileEntry));
-        Assert.AreEqual(0, results.Count);
-    }
-
-    [TestMethod]
-    public void DuplicateNames_FindsTheRepeatedName()
-    {
-        var groups = _index.DuplicateNames();
-        Assert.AreEqual(1, groups.Count);
-        Assert.AreEqual("readme.md", groups[0].Name);
-    }
-
-    [TestMethod]
     public void Root_ReturnsTheDriveRoot()
     {
         Assert.AreEqual(_treeRoot, _index.Root('T').Path);

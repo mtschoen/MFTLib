@@ -79,6 +79,44 @@ public sealed partial class FileIndex
     }
 
     /// <summary>
+    ///     Enumerates the rows matching <paramref name="query" /> as non-allocating <see cref="IndexRow" /> views:
+    ///     the name is a span over the mapped name pool, and no <see cref="FileEntry" />, name string or path
+    ///     is built unless the caller asks a row for one. Consume the result with <c>foreach</c>.
+    /// </summary>
+    /// <remarks>
+    ///     Each GetEnumerator takes its own snapshot borrow; <c>foreach</c> releases it on every exit.
+    ///     The borrow keeps that set of mappings owned and mapped, not their row contents frozen. Journal
+    ///     updates write rows in place during a live watch, so predicates and subsequent property reads can
+    ///     observe different updates. Name text is append-only; a captured name span keeps its text, but other
+    ///     row fields are live reads and do not form an atomic record with it. Separate enumerations can also
+    ///     see different mappings. The result, enumerator and rows are ref structs: they cannot be held across
+    ///     an <c>await</c>, captured by a lambda or stored in a class or ordinary struct field.
+    ///     Dispose a manually obtained enumerator even when scanning throws. Enumerator copies share one
+    ///     borrow: disposing any copy invalidates Current and MoveNext on all copies, which then throw
+    ///     <see cref="ObjectDisposedException" /> naming IndexRowEnumerator. Repeated disposal is harmless.
+    ///     A reachable undisposed enumerator can keep DisposeAsync waiting indefinitely; an unreachable
+    ///     borrow can eventually be returned by its internal finalizer, with no timing guarantee.
+    /// </remarks>
+    /// <param name="query">The predicates a row has to satisfy.</param>
+    /// <param name="cancellationToken">Observed before the first row and then at least every 4096 rows.</param>
+    /// <exception cref="ArgumentNullException">At call time: <paramref name="query" /> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">At call time: <paramref name="query" /> has an undefined <see cref="SearchQuery.MatchMode" />.</exception>
+    /// <exception cref="ObjectDisposedException">At GetEnumerator: the index has been disposed. At Current or MoveNext: this enumeration's shared borrow has been returned.</exception>
+    /// <exception cref="OperationCanceledException">At GetEnumerator or MoveNext: caller cancellation or index disposal cancels the enumeration.</exception>
+    /// <exception cref="InvalidDataException">At MoveNext: a candidate's parent chain does not resolve within 128 parent hops while applying <see cref="SearchQuery.Under" />.</exception>
+    public IndexRowEnumerable EnumerateRows(SearchQuery query, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        NameMatching.ThrowIfUndefined(query);
+        return new IndexRowEnumerable(this, query, cancellationToken);
+    }
+
+    internal IndexRowEnumerator BeginRowEnumeration(SearchQuery query, CancellationToken cancellationToken)
+    {
+        return new IndexRowEnumerator(BeginQuery(cancellationToken), query);
+    }
+
+    /// <summary>
     ///     The iterator behind <see cref="Enumerate" />, split out so argument and disposal
     ///     validation throw at call time while the borrow, like the scan, waits for the first
     ///     MoveNext. The scope sits in a using inside the iterator, so the borrow and the
@@ -92,40 +130,6 @@ public sealed partial class FileIndex
         {
             yield return entry;
         }
-    }
-
-    /// <summary>
-    ///     Returns the largest files across the current snapshot, optionally restricted to an inclusive subtree.
-    /// </summary>
-    /// <param name="count">How many entries to return at most.</param>
-    /// <param name="under">The inclusive subtree to stay within, or null for the whole index.</param>
-    /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
-    /// <exception cref="InvalidDataException">
-    ///     A candidate's parent chain does not resolve within
-    ///     128 parent hops while applying the subtree restriction
-    ///     (<paramref name="under" />).
-    /// </exception>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
-    public IReadOnlyList<FileEntry> Largest(int count, FileEntry? under = null,
-        CancellationToken cancellationToken = default)
-    {
-        using var query = BeginQuery(cancellationToken);
-        return AggregateEngine.Largest(query.Snapshot, count, under, query.CancellationToken);
-    }
-
-    /// <summary>
-    ///     Groups every live file name that occurs more than once across the current snapshot.
-    ///     This is the longest scan the index offers, several passes over the name column, which
-    ///     is where a token earns its keep.
-    /// </summary>
-    /// <param name="cancellationToken">Stops the scan, as described on <see cref="Find" />.</param>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> was cancelled.</exception>
-    /// <exception cref="ObjectDisposedException">The index has been disposed.</exception>
-    public IReadOnlyList<DuplicateGroup> DuplicateNames(CancellationToken cancellationToken = default)
-    {
-        using var query = BeginQuery(cancellationToken);
-        return AggregateEngine.DuplicateNames(query.Snapshot, query.CancellationToken);
     }
 
     /// <summary>
@@ -211,7 +215,7 @@ public sealed partial class FileIndex
     }
 
     /// <summary>One query's hold on the index: the borrowed snapshot and the token that stops it.</summary>
-    readonly struct QueryScope : IDisposable
+    internal readonly struct QueryScope : IDisposable
     {
         readonly SnapshotBorrow _borrow;
         readonly CancellationTokenSource? _linkedCancellation;
@@ -232,6 +236,8 @@ public sealed partial class FileIndex
         }
 
         internal Snapshot Snapshot => _borrow.Snapshot;
+
+        internal bool IsDisposed => _borrow.IsReturned;
 
         /// <summary>
         ///     The token the engines observe: cancelled by the caller's own token or by the

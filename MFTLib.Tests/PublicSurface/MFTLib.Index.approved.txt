@@ -172,16 +172,6 @@ MFTLib.Index.DriveWatchStatus :: property public Requested { get; init; } : bool
 MFTLib.Index.DriveWatchStatus :: property public StateVersion { get; init; } : long
 MFTLib.Index.DriveWatchStatus :: property public Supported { get; init; } : bool
 MFTLib.Index.DriveWatchStatus :: type public sealed class : System.IEquatable<MFTLib.Index.DriveWatchStatus>
-MFTLib.Index.DuplicateGroup :: method public <Clone>$() : MFTLib.Index.DuplicateGroup
-MFTLib.Index.DuplicateGroup :: method public Equals(MFTLib.Index.DuplicateGroup? other) : bool
-MFTLib.Index.DuplicateGroup :: method public override Equals(object? obj) : bool
-MFTLib.Index.DuplicateGroup :: method public override GetHashCode() : int
-MFTLib.Index.DuplicateGroup :: method public override ToString() : string
-MFTLib.Index.DuplicateGroup :: method public static op_Equality(MFTLib.Index.DuplicateGroup? left, MFTLib.Index.DuplicateGroup? right) : bool
-MFTLib.Index.DuplicateGroup :: method public static op_Inequality(MFTLib.Index.DuplicateGroup? left, MFTLib.Index.DuplicateGroup? right) : bool
-MFTLib.Index.DuplicateGroup :: property public Entries { get; init; } : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileEntry>
-MFTLib.Index.DuplicateGroup :: property public Name { get; init; } : string
-MFTLib.Index.DuplicateGroup :: type public sealed class : System.IEquatable<MFTLib.Index.DuplicateGroup>
 MFTLib.Index.FileChange :: method public <Clone>$() : MFTLib.Index.FileChange
 MFTLib.Index.FileChange :: method public Equals(MFTLib.Index.FileChange? other) : bool
 MFTLib.Index.FileChange :: method public override Equals(object? obj) : bool
@@ -226,10 +216,9 @@ MFTLib.Index.FileIndex :: event public WatchFaulted : System.Action<MFTLib.Index
 MFTLib.Index.FileIndex :: event public WatchStateChanged : System.Action<MFTLib.Index.DriveWatchState>?
 MFTLib.Index.FileIndex :: field public const LostCatchUpRecoveryLimit : int = 3
 MFTLib.Index.FileIndex :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
-MFTLib.Index.FileIndex :: method public DuplicateNames(System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.DuplicateGroup>
 MFTLib.Index.FileIndex :: method public Enumerate(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IEnumerable<MFTLib.Index.FileEntry>
+MFTLib.Index.FileIndex :: method public EnumerateRows(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.IndexRowEnumerable
 MFTLib.Index.FileIndex :: method public Find(string path, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.FileEntry?
-MFTLib.Index.FileIndex :: method public Largest(int count, MFTLib.Index.FileEntry? under = default, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileEntry>
 MFTLib.Index.FileIndex :: method public QueryUsnJournalSettings(char driveLetter) : MFTLib.UsnJournalSettings
 MFTLib.Index.FileIndex :: method public RescanAsync(System.Collections.Generic.IReadOnlyList<char> driveLetters, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MFTLib.Index.DriveOperationResult>>
 MFTLib.Index.FileIndex :: method public RescanAsync(char driveLetter, System.Threading.CancellationToken cancellationToken) : System.Threading.Tasks.Task
@@ -285,6 +274,20 @@ MFTLib.Index.IndexRecordKey :: property public DriveLetter { get; init; } : char
 MFTLib.Index.IndexRecordKey :: property public ProducerKind { get; init; } : MFTLib.Index.ProducerKind
 MFTLib.Index.IndexRecordKey :: property public RecordNumber { get; init; } : ulong
 MFTLib.Index.IndexRecordKey :: type public readonly struct : System.IEquatable<MFTLib.Index.IndexRecordKey>
+MFTLib.Index.IndexRow :: method public ToEntry() : MFTLib.Index.FileEntry
+MFTLib.Index.IndexRow :: property public DriveLetter { get; } : char
+MFTLib.Index.IndexRow :: property public IsDeleted { get; } : bool
+MFTLib.Index.IndexRow :: property public IsDirectory { get; } : bool
+MFTLib.Index.IndexRow :: property public IsSizeKnown { get; } : bool
+MFTLib.Index.IndexRow :: property public Name { get; } : System.ReadOnlySpan<char>
+MFTLib.Index.IndexRow :: property public Size { get; } : long
+MFTLib.Index.IndexRow :: type public readonly ref struct
+MFTLib.Index.IndexRowEnumerable :: method public GetEnumerator() : MFTLib.Index.IndexRowEnumerator
+MFTLib.Index.IndexRowEnumerable :: type public readonly ref struct
+MFTLib.Index.IndexRowEnumerator :: method public Dispose() : void
+MFTLib.Index.IndexRowEnumerator :: method public MoveNext() : bool
+MFTLib.Index.IndexRowEnumerator :: property public readonly Current { get; } : MFTLib.Index.IndexRow
+MFTLib.Index.IndexRowEnumerator :: type public ref struct
 MFTLib.Index.IndexScanOutcome :: field public const Cancelled : MFTLib.Index.IndexScanOutcome = 2
 MFTLib.Index.IndexScanOutcome :: field public const Failed : MFTLib.Index.IndexScanOutcome = 1
 MFTLib.Index.IndexScanOutcome :: field public const Succeeded : MFTLib.Index.IndexScanOutcome = 0

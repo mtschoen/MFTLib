@@ -50,33 +50,6 @@ public class FileIndexDisposeCancelsQueryTests
         _directories.Dispose();
     }
 
-    [TestMethod]
-    public async Task DisposeAsync_WhileADuplicateNameScanIsRunning_CancelsItAndCompletes()
-    {
-        var outcome = await QueryAcrossDisposalAsync((index, _) => index.DuplicateNames());
-
-        Assert.IsInstanceOfType<OperationCanceledException>(outcome,
-            $"a scan that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
-    }
-
-    /// <summary>
-    ///     The same for a caller that passed a token of its own. A query with no token observes
-    ///     the index's disposal signal directly, and one with a token observes a source linking
-    ///     the two; this is the second of those paths, and linking must not cost the query its
-    ///     link to disposal.
-    /// </summary>
-    [TestMethod]
-    public async Task DisposeAsync_WhileAScanWithACallerTokenIsRunning_CancelsItToo()
-    {
-        using var callerCancellation = new CancellationTokenSource();
-        var callerToken = callerCancellation.Token;
-
-        var outcome = await QueryAcrossDisposalAsync((index, _) => index.DuplicateNames(callerToken));
-
-        Assert.IsInstanceOfType<OperationCanceledException>(outcome,
-            $"a scan carrying its caller's token must still be cancelled by disposal, not {Describe(outcome)}");
-    }
-
     /// <summary>The same through the parallel search path, with a pattern that matches every row.</summary>
     [TestMethod]
     public async Task DisposeAsync_WhileAParallelSearchIsRunning_CancelsItAndReleasesEveryBlock()
@@ -85,32 +58,6 @@ public class FileIndexDisposeCancelsQueryTests
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
             $"a search that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
-    }
-
-    /// <summary>
-    ///     A largest-file query in flight when disposal begins must be cancelled, not throw
-    ///     ObjectDisposedException on guarded FileEntry property reads.
-    /// </summary>
-    [TestMethod]
-    public async Task DisposeAsync_WhileALargestQueryIsRunning_CancelsItAndReleasesEveryBlock()
-    {
-        var outcome = await QueryAcrossDisposalAsync((index, _) => index.Largest(100));
-
-        Assert.IsInstanceOfType<OperationCanceledException>(outcome,
-            $"a largest query that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
-    }
-
-    /// <summary>
-    ///     A largest-file query with a subtree restriction in flight when disposal begins must
-    ///     also be cancelled without throwing ObjectDisposedException on candidate navigation.
-    /// </summary>
-    [TestMethod]
-    public async Task DisposeAsync_WhileALargestWithSubtreeFilterIsRunning_CancelsItAndReleasesEveryBlock()
-    {
-        var outcome = await QueryAcrossDisposalAsync((index, root) => index.Largest(100, under: root));
-
-        Assert.IsInstanceOfType<OperationCanceledException>(outcome,
-            $"a largest query with subtree filter that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
     }
 
     /// <summary>
@@ -159,6 +106,45 @@ public class FileIndexDisposeCancelsQueryTests
 
         Assert.IsInstanceOfType<OperationCanceledException>(outcome,
             $"an enumeration that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_WhileEnumerateRowsIsRunning_CancelsItAndReleasesEveryBlock()
+    {
+        var outcome = await QueryAcrossDisposalAsync((index, _) => ConsumeRows(index, new SearchQuery(null)));
+
+        Assert.IsInstanceOfType<OperationCanceledException>(outcome,
+            $"a row enumeration that held the snapshot when disposal began must be cancelled, not {Describe(outcome)}");
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_WhileEnumerateRowsHasLiveCallerToken_CancelsItAndReleasesEveryBlock()
+    {
+        using var source = new CancellationTokenSource();
+        var outcome = await QueryAcrossDisposalAsync(
+            (index, _) => ConsumeRows(index, new SearchQuery(null), source.Token));
+
+        Assert.IsFalse(source.IsCancellationRequested, "Only index disposal cancels this enumeration.");
+        Assert.IsInstanceOfType<OperationCanceledException>(outcome,
+            $"a row enumeration with a live caller token must be cancelled by disposal, not {Describe(outcome)}");
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_WhileEnumerateRowsWithSubtreeFilterIsRunning_CancelsItAndReleasesEveryBlock()
+    {
+        var outcome = await QueryAcrossDisposalAsync(
+            (index, root) => ConsumeRows(index, new SearchQuery(null, Under: root)));
+
+        Assert.IsInstanceOfType<OperationCanceledException>(outcome,
+            $"a row enumeration with subtree filter must be cancelled by disposal, not {Describe(outcome)}");
+    }
+
+    static void ConsumeRows(FileIndex index, SearchQuery query, CancellationToken cancellationToken = default)
+    {
+        foreach (var row in index.EnumerateRows(query, cancellationToken))
+        {
+            _ = row.Size;
+        }
     }
 
     static string Describe(Exception? outcome)

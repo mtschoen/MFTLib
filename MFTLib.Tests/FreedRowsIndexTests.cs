@@ -117,15 +117,35 @@ public class FreedRowsIndexTests
     }
 
     [TestMethod]
-    public async Task LargestAndDuplicateNames_StayLiveOnly()
+    public async Task EnumerateRows_StaysLiveOnlyUnlessDeletedRowsAreAskedFor()
     {
         await using var index = await OpenAsync(includeFreed: true);
 
-        var largest = index.Largest(10).Select(entry => entry.Name).ToArray();
+        AssertRowDeletionFiltering(index);
+    }
 
-        CollectionAssert.DoesNotContain(largest, "orphan.txt");
-        CollectionAssert.DoesNotContain(largest, "trusted.txt");
-        Assert.AreEqual(0, index.DuplicateNames().Count, "One live dup.txt and one freed dup.txt are not duplicates.");
+    static void AssertRowDeletionFiltering(FileIndex index)
+    {
+        var names = new List<string>();
+        foreach (var row in index.EnumerateRows(new SearchQuery(null, Directories: false)))
+        {
+            names.Add(row.Name.ToString());
+        }
+
+        CollectionAssert.DoesNotContain(names, "orphan.txt");
+        CollectionAssert.DoesNotContain(names, "trusted.txt");
+        Assert.AreEqual(1, names.Count(name => name == "dup.txt"));
+
+        var deletedNames = new List<string>();
+        foreach (var row in index.EnumerateRows(new SearchQuery(null, Directories: false, IncludeDeleted: true)))
+        {
+            if (row.IsDeleted)
+            {
+                deletedNames.Add(row.Name.ToString());
+            }
+        }
+
+        CollectionAssert.AreEquivalent(new[] { "orphan.txt", "trusted.txt", "dup.txt" }, deletedNames);
     }
 
     [TestMethod]

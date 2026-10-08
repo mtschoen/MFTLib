@@ -41,7 +41,7 @@ for NTFS metadata on Windows; the index runs elsewhere through the enumeration p
 - Native C++ I/O with parallel fixup and parsing
 - Double-buffered reads that overlap I/O and compute
 - Exact, substring, case-sensitive, size and time predicates over the packed index (`SearchQuery`)
-- `FileIndex.Search` (list) and `FileIndex.Enumerate` (streaming)
+- `FileIndex.Search` (list), `FileIndex.Enumerate` (streaming entries) and `FileIndex.EnumerateRows` (row views)
 - Live USN watch per drive through `FileIndex` and `BrokerSession`
 - Race-free scan/catch-up workflow through an elevated broker
 - One reusable UAC-elevated child per broker session
@@ -111,6 +111,10 @@ the matching test extensions package:
 `SampleProgram.Direct` supports `search`, `tree`, `open`, `largest`, `duplicate-names`
 and `scan`. Select `--source local` for a live volume or `--source dump --dump-file <path>`
 for a saved MFT image; `--include-freed` applies to local scans.
+The `scan` verb prints status and a one-pass inventory per drive: live files, live directories
+(including the indexed root) and retained deleted rows. Deleted files and directories contribute
+only to the deleted count; free slots contribute to none. `--include-freed` retains freed records
+on local scans so the inventory can count them.
 `SampleProgram.Watch` supports `scan-drive`, `watch`, `rescan`, `journal`, `cache`
 and `elevation-status`. Its `cache` verb uses policy-digest folders to keep different
 scan policies in distinct sample cache directories.
@@ -172,8 +176,8 @@ var deleted = index.Search(new SearchQuery("report", IncludeDeleted: true))
 ```
 
 `SearchQuery.IncludeDeleted` (default false) makes a search return deleted rows as well, whether
-the journal deleted them or a scan imported them freed. Lookup, children, largest and duplicate
-names stay live only.
+the journal deleted them or a scan imported them freed. `FileIndex.Find`, `FileIndex.Root` and
+`FileEntry.Children` return live rows only.
 
 ## Keep an index current with the USN journal
 
@@ -514,12 +518,54 @@ holds, so the `.mlix` files are closed at a point the caller chooses; a `FileEnt
 held across that disposal reports `IsDisposed` and throws `ObjectDisposedException`
 on reads of mapped entry data.
 
-Seven entry points scan rows: `Find`, `Search`, `Enumerate`, `Largest`,
-`DuplicateNames` and `Root` on `FileIndex`, and `Children()` on a `FileEntry`. Each
+### Streaming entries and row views
+
+Use `EnumerateRows` for whole-drive passes that read names, sizes or flags and keep few rows.
+It yields non-allocating `IndexRow` views, with `Name` as a `ReadOnlySpan<char>` over the mapped
+name pool. Use `Enumerate` (streaming) or `Search` (a materialized list) when you want
+`FileEntry` values and LINQ.
+
+```csharp
+long total = 0;
+foreach (var row in index.EnumerateRows(new SearchQuery("*.log", NameMatchMode.Glob, Directories: false)))
+{
+    if (row.IsSizeKnown)
+    {
+        total += row.Size;
+    }
+}
+```
+
+The borrow begins when `foreach` calls `GetEnumerator()` and ends on completion, `break`,
+an exception or cancellation. Each row and its name span are valid until the enumerator
+advances or is disposed; call `row.ToEntry()` to keep an entry handle. The result, enumerator
+and rows are ref structs, so they cannot cross an `await`, be captured in a lambda or be stored
+in a class or ordinary struct field. If you call `GetEnumerator()` directly, dispose the
+enumerator yourself, even after an exception or a false `MoveNext`. Enumerator copies share one
+borrow: dispose it once through any copy. `Current` and `MoveNext` on every copy then throw
+`ObjectDisposedException` naming `IndexRowEnumerator`; repeated `Dispose` is harmless. Previously
+obtained rows and spans must obey their lifetime themselves. A reachable undisposed enumerator
+can keep `DisposeAsync` waiting indefinitely. Its internal borrow object has a finalizer that can
+eventually return an unreachable borrow, but collection timing is not guaranteed. Dispose promptly.
+
+Each `GetEnumerator` takes its own snapshot borrow, even on copies of the enumerable. This keeps
+that set of mappings owned and mapped; it does not freeze row contents. A live watch writes rows
+in place. Name text is append-only and its offset and length are read together, so a captured name
+span keeps its text and cannot combine one name's offset with another's length. Other row properties
+read live fields; there is no atomic whole-row view or atomic filtering-plus-consumption. A scanner
+captures the row-count bound when entering each drive; separate passes can see different contents
+and different mappings. Index disposal cancels an active borrowed scan at its cancellation checkpoint.
+
+`EnumerateRows` rejects a null query or undefined match mode at call time. Cancellation and index
+disposal are checked on admission at `GetEnumerator`; cancellation and unresolved subtree parent
+chains can throw during `MoveNext`.
+
+Six entry points scan rows: `Find`, `Search`, `Enumerate`, `EnumerateRows`
+and `Root` on `FileIndex`, and `Children()` on a `FileEntry`. Each
 takes an optional `CancellationToken`, read before the first row and then at least
 every 4096 rows, and each holds the snapshot it reads for its whole duration.
 `DisposeAsync` waits for every one of those readers before it unmaps anything, so
-scanning on one thread while another disposes the index is safe. The seven on
+scanning on one thread while another disposes the index is safe. The five on
 `FileIndex` also observe the index's disposal, so disposing cancels them and each ends
 with `OperationCanceledException`, or `ObjectDisposedException` if it had not started;
 while actively scanning, the wait is bounded by how long they take to reach their

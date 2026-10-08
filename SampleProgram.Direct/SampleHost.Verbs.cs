@@ -13,6 +13,7 @@ partial class SampleHost
         {
             case DirectVerb.Scan:
                 WriteStatus(index.Drives.Single());
+                WriteInventory(index, cancellationToken);
                 break;
             case DirectVerb.Search:
                 Search(index, parsed, cancellationToken);
@@ -27,15 +28,46 @@ partial class SampleHost
                 break;
             case DirectVerb.Largest:
                 var under = ResolveOptional(index, parsed.Under, cancellationToken);
-                WriteRows(index.Largest(parsed.Count, under, cancellationToken), parsed);
+                WriteRows(LargestFiles.Find(index, parsed.Count, under, cancellationToken), parsed);
                 break;
             case DirectVerb.DuplicateNames:
-                foreach (var group in index.DuplicateNames(cancellationToken).Take(parsed.Count))
+                foreach (var group in DuplicateNameSieve.Find(index, cancellationToken).Take(parsed.Count))
                 {
                     _writeLine($"{group.Name}: {group.Entries.Count} entries, first {group.Entries[0].Path}");
                 }
 
                 break;
+        }
+    }
+
+    // One mixed-row pass explains what the scan retained without materializing names or entry lists.
+    void WriteInventory(FileIndex index, CancellationToken cancellationToken)
+    {
+        var counts = new Dictionary<char, (long Files, long Directories, long Deleted)>();
+        foreach (var row in index.EnumerateRows(new SearchQuery(null, IncludeDeleted: true), cancellationToken))
+        {
+            counts.TryGetValue(row.DriveLetter, out var count);
+            if (row.IsDeleted)
+            {
+                count.Deleted++;
+            }
+            else if (row.IsDirectory)
+            {
+                count.Directories++;
+            }
+            else
+            {
+                count.Files++;
+            }
+
+            counts[row.DriveLetter] = count;
+        }
+
+        foreach (var drive in index.Drives)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            counts.TryGetValue(drive.DriveLetter, out var count);
+            _writeLine($"{drive.DriveLetter}: {count.Files} live files, {count.Directories} live directories, {count.Deleted} retained deleted rows");
         }
     }
 

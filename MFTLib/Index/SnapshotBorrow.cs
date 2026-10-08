@@ -28,6 +28,9 @@ internal sealed class SnapshotBorrow : IDisposable
     /// <summary>The snapshot this borrow keeps mapped, for the query that took it to read through.</summary>
     internal Snapshot Snapshot => _snapshot;
 
+    /// <summary>Shared by value-type scope copies; independent of snapshot release starting.</summary>
+    internal bool IsReturned => _acquired == 0;
+
     /// <summary>
     ///     Returns the borrow, once. A second call is a caller mistake that must not decrement
     ///     the count past the borrows that are genuinely outstanding, so the guard is part of the

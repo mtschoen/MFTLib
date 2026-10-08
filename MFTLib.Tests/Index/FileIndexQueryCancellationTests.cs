@@ -64,8 +64,6 @@ public class FileIndexQueryCancellationTests
         Assert.IsTrue(readme.HasValue);
         Assert.AreEqual(1, _index.Search(new SearchQuery("readme.md", NameMatchMode.Exact), token).Count);
         Assert.AreEqual(1, _index.Search(new SearchQuery("report"), token).Count);
-        Assert.AreEqual(1, _index.Largest(1, under: null, token).Count);
-        Assert.AreEqual(0, _index.DuplicateNames(token).Count);
         Assert.IsTrue(_index.Root('T', token).IsDirectory);
         Assert.AreEqual("Documents", _index.Root('T', token).Children(token).Single().Name);
     }
@@ -113,34 +111,32 @@ public class FileIndexQueryCancellationTests
     }
 
     [TestMethod]
-    public void Largest_WithACancelledToken_Throws()
+    public void EnumerateRows_WithACancelledToken_Throws()
     {
         using var cancellation = Cancelled();
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(
-            () => _index.Largest(5, under: null, token));
+            () => ConsumeRows(_index, new SearchQuery(null), token));
     }
 
     [TestMethod]
-    public void Largest_Under_WithACancelledToken_Throws()
+    public void EnumerateRows_Under_WithACancelledToken_Throws()
     {
         var root = _index.Root('T');
         using var cancellation = Cancelled();
         var token = cancellation.Token;
 
         Assert.ThrowsException<OperationCanceledException>(
-            () => _index.Largest(5, under: root, token));
+            () => ConsumeRows(_index, new SearchQuery(null, Under: root), token));
     }
 
-    [TestMethod]
-    public void DuplicateNames_WithACancelledToken_Throws()
+    static void ConsumeRows(FileIndex index, SearchQuery query, CancellationToken cancellationToken)
     {
-        using var cancellation = Cancelled();
-        var token = cancellation.Token;
-
-        Assert.ThrowsException<OperationCanceledException>(
-            () => _index.DuplicateNames(token));
+        foreach (var row in index.EnumerateRows(query, cancellationToken))
+        {
+            _ = row.Size;
+        }
     }
 
     [TestMethod]

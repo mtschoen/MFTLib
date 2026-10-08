@@ -3,8 +3,8 @@ namespace MFTLib.Index;
 /// <summary>
 ///     A ref-struct enumerator over one drive block's rows and names, working directly on the
 ///     mapped spans with no allocation. Internal by design (MFTLib#122): the public query
-///     surface is lists plus the streaming <see cref="FileIndex.Enumerate" />, and the engines
-///     behind them are built on this scanner. The range constructor is how a query partitions
+///     surface is lists, streaming <see cref="FileIndex.Enumerate" /> and row views from
+///     <see cref="FileIndex.EnumerateRows" />. Their engines use this scanner. The range constructor partitions
 ///     one drive across threads.
 /// </summary>
 internal ref struct RowScanner
