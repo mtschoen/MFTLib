@@ -29,8 +29,8 @@ public enum WatchFaultKind
     ///     before the scan could no longer be read when the scan finished. The exception is a
     ///     <see cref="JournalCatchUpLostException" />. The scan's block is published but cannot be
     ///     watched from its cursor. Raised by the scan operation, which rescans the drive at once
-    ///     unless <see cref="JournalCatchUpLostException.RecoveryStopped" /> says it has reached
-    ///     <see cref="FileIndex.LostCatchUpRecoveryLimit" />.
+    ///     unless <see cref="JournalCatchUpLostException.RecoveryStopped" /> says automatic recovery
+    ///     from consecutive scan catch-up losses has stopped.
     /// </summary>
     CatchUpLost,
 

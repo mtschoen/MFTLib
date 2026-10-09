@@ -75,11 +75,8 @@ public class PublicMemberCallerTests
     ///     Every public literal constant, by declaring type and field. The compiler inlines each value into the
     ///     caller, so no IL names it; the reason says why the constant is public.
     /// </summary>
-    static readonly Dictionary<string, string> InlinedConstants = new(StringComparer.Ordinal)
-    {
-        ["MFTLib.Index.FileIndex.LostCatchUpRecoveryLimit"] =
-            "file-wizard FileWizardMaui.Logic/JournalHintLogic.cs reads the limit to word the lost catch-up hint"
-    };
+    static readonly IReadOnlyDictionary<string, string> InlinedConstants =
+        System.Collections.Frozen.FrozenDictionary<string, string>.Empty;
 
     // Coverlet rewrites the copy of MFTLib.dll next to the tests during a coverage run, which changes the IL the gate
     // reads, so the gate reads the library project's own build output, whose path the build recorded. There is no

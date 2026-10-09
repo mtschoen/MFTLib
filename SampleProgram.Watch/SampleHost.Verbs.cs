@@ -39,7 +39,7 @@ partial class SampleHost
     {
         WriteStatus(status);
         _writeLine($"Cache {status.DriveLetter}: block {status.Block.Source}, slot {status.Block.CacheSlot}, scanned {status.Block.ScanTimestamp:u}, compaction needed {status.Block.CompactionNeeded}");
-        _writeLine($"Watch: {status.Watch.CatchUpState} v{status.Watch.StateVersion}, requested {status.Watch.Requested}; lost catch-ups {status.Watch.ConsecutiveLostCatchUps}; denied subtrees {status.Block.AccessDeniedSubtreeCount}{(status.Watch.FailureMessage is { } failure ? $"; {failure}" : string.Empty)}");
+        _writeLine($"Watch: {status.Watch.CatchUpState} v{status.Watch.StateVersion}, requested {status.Watch.Requested}; recovery stopped {status.Watch.RecoveryStopped}; denied subtrees {status.Block.AccessDeniedSubtreeCount}{(status.Watch.FailureMessage is { } failure ? $"; {failure}" : string.Empty)}");
         if (status.Watch.CheckpointLoss is { } loss)
         {
             _writeLine($"Checkpoint lost on {loss.DriveLetter}: {loss.Cause} during {loss.DetectedDuring}; {loss.BytesBehind} bytes behind, journal {loss.JournalSettings.MaximumSize}/{loss.JournalSettings.AllocationDelta}, {loss.SizeThatWouldHaveRetained} would have kept it");

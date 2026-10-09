@@ -76,6 +76,7 @@ public sealed partial class FileIndex
         }
 
         runtime.ConsecutiveLostCatchUps = 0;
+        runtime.RecoveryStopped = false;
         if (published.CacheOnlyUnresumable)
         {
             _unresumableCheckpointsByOrdinal[driveOrdinal] = UnresumableCheckpointReason.CacheOnlyAdoption;

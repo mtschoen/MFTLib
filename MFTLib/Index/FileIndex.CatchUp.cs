@@ -6,7 +6,7 @@ public sealed partial class FileIndex
     ///     How many scans of one drive in a row may lose their journal catch-up before a scan
     ///     operation stops rescanning the drive by itself.
     /// </summary>
-    public const int LostCatchUpRecoveryLimit = 3;
+    internal const int LostCatchUpRecoveryLimit = 3;
 
     /// <summary>
     ///     A test seam: invoked with the drive letter while a commit holds the drive's write gate,
@@ -200,6 +200,7 @@ public sealed partial class FileIndex
             FaultRestartPendingWaiterLocked(runtime, lost);
             if (recoveryStopped)
             {
+                runtime.RecoveryStopped = true;
                 // A recovery that reaches the limit ends here, so the drive reads Faulted with
                 // this loss as its cause now, before the loss is reported, rather than when the
                 // recovery returns.
@@ -233,7 +234,7 @@ public sealed partial class FileIndex
         }
 
         var remedy = catchUpLoss.SizeThatWouldHaveRetained is { } size
-            ? $"Grow the drive's USN journal to at least {size} bytes (BrokerProcess.GrowUsnJournalAsync), " +
+            ? $"Grow the drive's USN journal to at least {size} bytes (BrokerSession.GrowUsnJournalAsync), " +
               "then call FileIndex.RescanAsync for this drive."
             : "Call FileIndex.RescanAsync for this drive.";
         return $"Drive {driveLetter}: {consecutiveLostCatchUps} scans in a row lost their journal catch-up, so " +

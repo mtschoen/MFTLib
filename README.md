@@ -282,8 +282,8 @@ A loss found mid-session sits alongside `Watch.FailureMessage` and
 merely stop, the journal moved past where it had reached. `Drive` and `Apply`
 faults recover by rescanning automatically; `Channel` faults do not. A scan-time
 loss records `JournalCheckpointLossDetection.ScanCatchUp`, publishes the complete
-but unresumable block, and retries the scan up to
-`FileIndex.LostCatchUpRecoveryLimit`. Subscribe to `FileIndex.WatchFaulted` to
+but unresumable block, and retries the scan until automatic recovery is exhausted.
+`DriveWatchStatus.RecoveryStopped` records that decision. Subscribe to `FileIndex.WatchFaulted` to
 observe live and scan-time losses. The report is recorded before the fault is
 announced, so a handler that reads `index.Drives` already has it.
 
@@ -502,10 +502,10 @@ Marshalling belongs to the `IProgress<T>` implementation, the same convention
 `FileIndexOptions.Progress` uses.
 
 A cold drive that loses its journal catch-up is scanned again by its own settle,
-up to `FileIndex.LostCatchUpRecoveryLimit` times in a row, and settles `Ready`
+until automatic recovery is exhausted, and settles `Ready`
 with its last block unresumable if every attempt lost it. `OpenAsync` raises no
 `WatchFaulted` event because the caller cannot subscribe before it returns; inspect
-`DriveWatchStatus.ConsecutiveLostCatchUps`, `CheckpointLoss`, `FailureMessage`, and
+`DriveWatchStatus.RecoveryStopped`, `CheckpointLoss`, `FailureMessage`, and
 `CatchUpState` instead. The drive's watch is refused until a manual `RescanAsync`
 produces a resumable block. The refusal retains the watch request, so a successful
 rescan clears the refusal and starts the watch.
@@ -613,8 +613,9 @@ with the native error message. Common causes include:
   from the replacement block.
 - `CatchUpLost`: a scan completed, but the journal no longer held the cursor armed before
   it. The exception is `JournalCatchUpLostException`; the drive records a
-  `JournalCheckpointLossDetection.ScanCatchUp` report and rescans itself while its
-  consecutive count is below `FileIndex.LostCatchUpRecoveryLimit`.
+  `JournalCheckpointLossDetection.ScanCatchUp` report and rescans itself until
+  `DriveWatchStatus.RecoveryStopped` is true. A successful catch-up clears the flag;
+  failed or cancelled scans and stopping the watch preserve it.
 - `Channel`: the drive pipe was lost or ended without a stop. This fault does not recover
   automatically.
 - `RescanRestart`: a rescan replaced the block but its watch could not start. The scan
@@ -645,7 +646,7 @@ index.WatchFaulted += fault =>
         case WatchFaultKind.CatchUpLost
             when fault.Exception is JournalCatchUpLostException lost:
             Console.WriteLine(
-                $"Drive {fault.DriveLetter}: loss {status.Watch.ConsecutiveLostCatchUps}, " +
+                $"Drive {fault.DriveLetter}: recovery stopped {status.Watch.RecoveryStopped}, " +
                 $"stopped {lost.RecoveryStopped}, report {status.Watch.CheckpointLoss?.DetectedDuring}");
             break;
 

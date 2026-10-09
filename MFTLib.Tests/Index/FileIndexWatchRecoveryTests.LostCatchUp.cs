@@ -70,6 +70,9 @@ public partial class FileIndexWatchRecoveryTests
         var drive = harness.DriveFor('T');
         Assert.AreEqual(WatchCatchUpState.Faulted, drive.Watch.CatchUpState);
         Assert.AreEqual(3, drive.Watch.ConsecutiveLostCatchUps);
+        Assert.IsTrue(drive.Watch.RecoveryStopped);
+        CollectionAssert.AreEqual(new[] { false, false, true },
+            harness.CatchUpLossStatuses('T').Select(status => status.Watch.RecoveryStopped).ToArray());
         Assert.AreEqual(1, harness.Source.TargetsFor('T').Count);
 
         _ = harness.Index.Drives;
@@ -144,6 +147,7 @@ public partial class FileIndexWatchRecoveryTests
         var drive = harness.DriveFor('T');
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
         Assert.IsNull(drive.Watch.FailureMessage);
+        Assert.IsFalse(drive.Watch.RecoveryStopped);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, drive.Watch.CatchUpState);
         Assert.AreEqual(2, harness.Source.TargetsFor('T').Count);
     }

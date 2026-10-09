@@ -27,6 +27,7 @@ public partial class FileIndexCatchUpLossTests
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(BlockSource.ProducedByScan, drive.Block.Source);
         Assert.AreEqual(0, drive.Watch.ConsecutiveLostCatchUps);
+        Assert.IsFalse(drive.Watch.RecoveryStopped);
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss, "the retry keeps the report the loss produced");
         Assert.AreEqual(WatchCatchUpState.NotStarted, drive.Watch.CatchUpState);
         CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());
@@ -48,6 +49,7 @@ public partial class FileIndexCatchUpLossTests
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State);
         Assert.AreEqual(3, drive.Watch.ConsecutiveLostCatchUps);
+        Assert.IsTrue(drive.Watch.RecoveryStopped, "exhaustion is visible before open completes");
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
         Assert.AreEqual(WatchCatchUpState.Faulted, drive.Watch.CatchUpState);
         StringAssert.Contains(drive.Watch.FailureMessage, "12288");
@@ -69,6 +71,7 @@ public partial class FileIndexCatchUpLossTests
         var drive = index.Drives.Single();
         Assert.AreEqual(DriveState.Ready, drive.State, "the lost block stays in place");
         Assert.AreEqual(1, drive.Watch.ConsecutiveLostCatchUps);
+        Assert.IsFalse(drive.Watch.RecoveryStopped);
         Assert.AreEqual(StandardCatchUpLoss('T'), drive.Watch.CheckpointLoss);
         Assert.AreEqual("the retry scan failed", drive.FailureMessage);
         CollectionAssert.AreEqual(new[] { LossScriptedCache.CanonicalBlockName }, cache.BlockFileNames());

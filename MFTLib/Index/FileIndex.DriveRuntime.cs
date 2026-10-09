@@ -85,6 +85,9 @@ public sealed partial class FileIndex
         /// <summary>Scans of this drive in a row whose journal catch-up was lost.</summary>
         public int ConsecutiveLostCatchUps;
 
+        /// <summary>Automatic catch-up retries exhausted; only a successful publication clears it.</summary>
+        public bool RecoveryStopped;
+
         /// <summary>
         ///     Set while a scan operation of a watched drive retries after a lost catch-up, which is
         ///     what makes the drive read <see cref="WatchCatchUpState.Recovering" />.
