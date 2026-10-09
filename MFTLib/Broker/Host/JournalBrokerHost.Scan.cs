@@ -256,7 +256,7 @@ internal sealed partial class JournalBrokerHost
                 return chunk.Length == 0
                     ? cursor
                     : throw new InvalidOperationException(FormattableString.Invariant(
-                        $"Drive {channel.Drive} catch-up read returned {chunk.Length} entries without advancing its cursor {cursor.JournalId}:{cursor.NextUsn}."));
+                        $"Drive {channel.Drive} catch-up read returned {chunk.Length} entries without advancing its cursor {cursor.JournalIdentifier}:{cursor.NextUsn}."));
             }
 
             cursor = updated;
@@ -271,7 +271,7 @@ internal sealed partial class JournalBrokerHost
     static async Task ReportFailedCatchUpAsync(DriveChannel channel, UsnJournalCursor armed, Exception exception,
         CancellationToken cancellationToken)
     {
-        var loss = JournalCheckpointCheck.Check(channel.Drive[0], armed.JournalId, armed.NextUsn,
+        var loss = JournalCheckpointCheck.Check(channel.Drive[0], armed.JournalIdentifier, armed.NextUsn,
             JournalCheckpointLossDetection.ScanCatchUp);
         if (loss is null)
         {

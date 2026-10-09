@@ -72,7 +72,7 @@ public class FileIndexDisposalOrderTests
         };
         var index = harness.Index;
         var apply = Task.Run(() => index.ApplyJournalEntries('T', [WatchHarness.Create(9, "last.txt")],
-            WatchHarness.JournalId, 600));
+            WatchHarness.JournalIdentifier, 600));
         await batch.Entered.WaitAsync(HangGuard);
         var lifecycleGatesTaken = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         index.LifecycleGatesTakenForDisposalForTest = () => lifecycleGatesTaken.TrySetResult();

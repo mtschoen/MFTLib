@@ -28,7 +28,7 @@ public sealed class SyntheticMftProducer
     public DateTime CompletedUtc { get; set; }
 
     /// <summary>Becomes <see cref="DriveBlockStatus.SkippedRecordCount" />; zero means the scan placed every record.</summary>
-    public int SkippedRecordCount { get; set; }
+    internal int SkippedRecordCount { get; set; }
 
     /// <summary>Awaited before each production builds its block, so a test can hold a scan or rescan in progress.</summary>
     public Func<char, CancellationToken, Task>? BeforeProduceAsync { get; set; }
@@ -81,7 +81,7 @@ public sealed class SyntheticMftProducer
     {
         try
         {
-            return new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUpdateSequenceNumber, SkippedRecordCount)
+            return new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUsn, SkippedRecordCount)
             {
                 CatchUpLoss = CatchUpLoss?.Invoke(driveLetter)
             };

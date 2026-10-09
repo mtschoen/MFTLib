@@ -29,7 +29,7 @@ public class FileIndexWatchRescanCheckpointLossTests
         // U's cursor has been trimmed out of its journal; T's volume cannot say.
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(driveLetter =>
             driveLetter == 'U'
-                ? new JournalWindow(WatchHarness.JournalId, FirstUsn: WatchHarness.NextUsn + 500,
+                ? new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: WatchHarness.NextUsn + 500,
                     NextUsn: WatchHarness.NextUsn + 4_000, AllocationDelta, MaximumSize)
                 : null);
         using var harness = new WatchHarness('T', 'U');

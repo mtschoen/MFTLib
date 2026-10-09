@@ -13,7 +13,7 @@ internal sealed class JournalWindowOverride : IDisposable
     {
         _restore = JournalCheckpointCheck.OverrideJournalForTest(drive =>
             journal(drive) is { } window
-                ? new JournalWindow(window.JournalId, window.FirstUsn, window.NextUsn,
+                ? new JournalWindow(window.JournalIdentifier, window.FirstUsn, window.NextUsn,
                     window.AllocationDelta, window.MaximumSize)
                 : null);
     }

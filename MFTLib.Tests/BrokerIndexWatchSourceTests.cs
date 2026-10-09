@@ -38,10 +38,10 @@ public class BrokerIndexWatchSourceTests
 
         var batchC = await WatchReads.NextBatchAsync(readerC);
         var batchD = await WatchReads.NextBatchAsync(readerD);
-        Assert.AreEqual(7ul, batchC.JournalId);
+        Assert.AreEqual(7ul, batchC.JournalIdentifier);
         Assert.AreEqual(110L, batchC.NextUsn);
         Assert.AreEqual("c.txt", batchC.Entries.Single().FileName);
-        Assert.AreEqual(7ul, batchD.JournalId);
+        Assert.AreEqual(7ul, batchD.JournalIdentifier);
         Assert.AreEqual(210L, batchD.NextUsn);
         Assert.AreEqual("d.txt", batchD.Entries.Single().FileName);
         Assert.AreEqual(2, harness.ConnectionCount, "each start connects once and shares the process");

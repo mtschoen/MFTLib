@@ -25,7 +25,7 @@ internal static class MftBlockScan
     {
         var writer = new BlockWriter(block);
         var result = MftBlockRowWriter.WriteBatches(writer, batches, filter, reporting.Progress, cancellationToken);
-        writer.SetJournalCursor(stamp.Cursor.JournalId, stamp.Cursor.NextUsn);
+        writer.SetJournalCursor(stamp.Cursor.JournalIdentifier, stamp.Cursor.NextUsn);
         var operation = reporting.Operation;
         writer.Complete(stamp.Clock(), operation is null ? null : _ => operation.Processing(FlushStep));
         return result;

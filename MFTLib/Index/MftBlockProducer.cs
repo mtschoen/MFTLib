@@ -58,7 +58,7 @@ internal sealed record MftBlockProduceRequest
 /// </summary>
 internal sealed record MftBlockProduceResult(
     BlockFile Block,
-    ulong JournalId,
+    ulong JournalIdentifier,
     long NextUsn,
     int SkippedRecordCount)
 {

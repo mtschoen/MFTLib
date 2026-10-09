@@ -17,7 +17,7 @@ public class FileIndexWatchRescanFaultDuringProductionTests
 
     static IDisposable LostCheckpointForT() =>
         JournalCheckpointCheck.OverrideJournalForTest(letter => letter == 'T'
-            ? new JournalWindow(WatchHarness.JournalId, FirstUsn: 5000, NextUsn: 8000,
+            ? new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024)
             : null);
 
@@ -43,7 +43,7 @@ public class FileIndexWatchRescanFaultDuringProductionTests
         var applyFailure = new IOException("T's in-flight batch could not be applied");
         var applyGate = harness.TrackGate();
         var consumed = handle.Queue(new JournalBatch(new GatedFailingEntries(applyGate, applyFailure),
-            WatchHarness.JournalId, WatchHarness.NextUsn + 300));
+            WatchHarness.JournalIdentifier, WatchHarness.NextUsn + 300));
         await applyGate.Entered.WaitAsync(ScriptedWatchSource.HangGuard);
         applyGate.Release();
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');

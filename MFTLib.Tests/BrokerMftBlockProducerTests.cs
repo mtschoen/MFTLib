@@ -26,9 +26,9 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
         Assert.AreEqual(ProducerKind.Mft, block.Header.ProducerKind);
         Assert.AreEqual(5u, block.Header.RootRow);
         Assert.AreEqual(123u, block.Header.VolumeSerial);
-        Assert.AreEqual(ArmedCursor.JournalId, result.JournalId);
+        Assert.AreEqual(ArmedCursor.JournalIdentifier, result.JournalIdentifier);
         Assert.AreEqual(ArmedCursor.NextUsn, result.NextUsn);
-        Assert.AreEqual(result.JournalId, block.Header.UsnJournalId);
+        Assert.AreEqual(result.JournalIdentifier, block.Header.UsnJournalId);
         Assert.AreEqual(result.NextUsn, block.Header.UsnNextUsn);
         Assert.AreEqual(0, result.SkippedRecordCount);
         Assert.IsFalse(result.Block.Header.IsCompactionNeeded);
@@ -186,7 +186,7 @@ public class BrokerMftBlockProducerTests : BrokerBlockTestBase
 
         Assert.AreEqual(tag, block.Header.CacheTag);
         Assert.IsTrue(block.Header.IsComplete);
-        Assert.AreEqual(ArmedCursor.JournalId, block.Header.UsnJournalId);
+        Assert.AreEqual(ArmedCursor.JournalIdentifier, block.Header.UsnJournalId);
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
     }
 

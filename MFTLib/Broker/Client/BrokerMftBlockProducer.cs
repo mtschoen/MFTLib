@@ -52,7 +52,7 @@ internal sealed class BrokerMftBlockProducer
         try
         {
             ValidateBlock(block, request.VolumeSerial, result.ArmedCursor, request.CacheTag);
-            return new MftBlockProduceResult(block, result.ArmedCursor.JournalId, result.ArmedCursor.NextUsn,
+            return new MftBlockProduceResult(block, result.ArmedCursor.JournalIdentifier, result.ArmedCursor.NextUsn,
                 SkippedRecordCount: checked((int)result.Block.SkippedRecordCount))
             {
                 CatchUpLoss = result.CatchUpLoss
@@ -84,7 +84,7 @@ internal sealed class BrokerMftBlockProducer
             throw new InvalidOperationException("Block ProducerKind must be Mft.");
         }
 
-        if (header.UsnJournalId != armed.JournalId || header.UsnNextUsn != armed.NextUsn)
+        if (header.UsnJournalId != armed.JournalIdentifier || header.UsnNextUsn != armed.NextUsn)
         {
             throw new InvalidOperationException("Block journal cursor does not match the armed cursor.");
         }

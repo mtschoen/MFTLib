@@ -447,7 +447,7 @@ public partial class BrokerProcessTests
 
         Assert.IsNotNull(batch);
         Assert.AreEqual(1, batch.Entries.Count);
-        Assert.AreEqual(cursor.NextUpdateSequenceNumber, batch.NextUsn);
+        Assert.AreEqual(cursor.NextUsn, batch.NextUsn);
     }
 
     [TestMethod]

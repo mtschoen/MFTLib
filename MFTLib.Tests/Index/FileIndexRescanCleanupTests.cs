@@ -70,7 +70,7 @@ public class FileIndexRescanCleanupTests
                 }
 
                 return Task.FromResult(new MftBlockProduceResult(block,
-                    JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
+                    JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
             })
         };
         await using var index = await FileIndex.OpenAsync(options, Token);
@@ -138,7 +138,7 @@ public class FileIndexRescanCleanupTests
                 SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
                 return Task.FromResult(new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
-                    JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
+                    JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
             })
         };
         await using var index = await FileIndex.OpenAsync(options, Token);
@@ -183,7 +183,7 @@ public class FileIndexRescanCleanupTests
                 SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
                 return new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
-                    JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0);
+                    JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0);
             })
         };
         await using var index = await FileIndex.OpenAsync(options, Token);

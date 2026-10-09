@@ -111,7 +111,7 @@ public partial class FileIndexPerDriveWatchTests
         await rescan.WaitAsync(HangGuard);
         var starts = harness.Source.TargetsFor('T');
         Assert.AreEqual(2, starts.Count, "cancellation after commit does not abandon the replacement watch");
-        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn), starts[1]);
+        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalIdentifier, WatchHarness.NextUsn), starts[1]);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
     }
 

@@ -33,7 +33,7 @@ internal sealed class BrokerWatchChannel(BrokerDriveChannel channel) : IIndexDri
                     break;
 
                 case BrokerFrameKind.JournalBatch:
-                    yield return new JournalBatch(frame.Entries, frame.Cursor.JournalId, frame.Cursor.NextUsn);
+                    yield return new JournalBatch(frame.Entries, frame.Cursor.JournalIdentifier, frame.Cursor.NextUsn);
                     break;
 
                 case BrokerFrameKind.CaughtUp:

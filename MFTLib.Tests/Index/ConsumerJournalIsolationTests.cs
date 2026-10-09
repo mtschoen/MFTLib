@@ -24,7 +24,8 @@ public class ConsumerJournalIsolationTests
     public TestContext TestContext { get; set; } = null!;
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    static SyntheticJournalWindow Healthy => new(7, 0, 5_000, 64, 8_192);
+    static SyntheticJournalWindow Healthy => new(JournalIdentifier: 7, FirstUsn: 0, NextUsn: 5_000,
+        AllocationDelta: 64, MaximumSize: 8_192);
     static SyntheticJournalWindow Lost(bool recreated) => recreated
         ? new(8, 0, 5_000, 64, 8_192)
         : new(7, 1_500, 5_000, 64, 8_192);
@@ -164,7 +165,7 @@ public class ConsumerJournalIsolationTests
         index.WatchFaulted += _ => announced.TrySetResult();
         await index.StartWatchingAsync('T', Token);
         var handle = source.WatchFor('T');
-        await handle.Publish(new JournalBatch([], JournalId: 7, NextUsn: 2_000));
+        await handle.Publish(new JournalBatch([], JournalIdentifier: 7, NextUsn: 2_000));
         windows['T'] = observation switch
         {
             1 => new SyntheticJournalWindow(7, 2_500, 6_000, 64, 8_192),

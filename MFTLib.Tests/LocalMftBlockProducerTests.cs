@@ -124,7 +124,7 @@ public class LocalMftBlockProducerTests
         Assert.AreEqual(123u, block.Header.VolumeSerial);
         Assert.AreEqual(ProducerKind.Mft, block.Header.ProducerKind);
         Assert.IsTrue(block.Header.IsComplete);
-        Assert.AreEqual(0UL, result.JournalId);
+        Assert.AreEqual(0UL, result.JournalIdentifier);
         Assert.AreEqual(0L, result.NextUsn);
         Assert.AreEqual(0UL, block.Header.UsnJournalId);
         Assert.AreEqual(0L, block.Header.UsnNextUsn);

@@ -243,7 +243,7 @@ public class ScriptedWatchSourceTests
 
         var batch = (JournalBatch)enumerator.Current;
         Assert.AreSame(entry.FileName, batch.Entries.Single().FileName);
-        Assert.AreEqual(7UL, batch.JournalId);
+        Assert.AreEqual(7UL, batch.JournalIdentifier);
         Assert.AreEqual(200L, batch.NextUsn);
         Assert.IsFalse(published.IsCompleted, "the pump has not finished with the batch yet");
 

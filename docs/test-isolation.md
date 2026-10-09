@@ -96,7 +96,7 @@ of becoming an error. Without a synthetic override, a new index opened under the
 CheckpointLoss from journal observations. Consumer tests can call
 MFTLibTestExtensions.JournalIsolation.OverrideJournalWindow with a
 Func<char, SyntheticJournalWindow?> to drive real open-time and watch-fault
-checks. SyntheticJournalWindow carries JournalId, FirstUsn, NextUsn,
+checks. SyntheticJournalWindow carries JournalIdentifier, FirstUsn, NextUsn,
 AllocationDelta, and MaximumSize; null means "cannot say" and never falls back
 to a live read. The callback is evaluated for each query and may run on any
 drive's pump thread, concurrently for different drives, so mutable per-drive

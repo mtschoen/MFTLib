@@ -135,7 +135,7 @@ public static class SyntheticBlock
                 WriteRow(writer, row);
             }
 
-            writer.SetJournalCursor(options.JournalCursor.JournalIdentifier, options.JournalCursor.NextUpdateSequenceNumber);
+            writer.SetJournalCursor(options.JournalCursor.JournalIdentifier, options.JournalCursor.NextUsn);
             writer.Complete(options.CompletedUtc, null);
             return block;
         }

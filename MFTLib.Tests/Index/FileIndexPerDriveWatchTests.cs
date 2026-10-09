@@ -36,7 +36,7 @@ public partial class FileIndexPerDriveWatchTests
         await harness.Index.StartWatchingAsync('T', Token);
 
         CollectionAssert.AreEqual(
-            new[] { new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn) },
+            new[] { new IndexWatchTarget('T', WatchHarness.JournalIdentifier, WatchHarness.NextUsn) },
             harness.Source.Targets.ToArray());
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
         Assert.AreEqual(WatchCatchUpState.NotStarted, harness.DriveFor('U').Watch.CatchUpState);
@@ -220,7 +220,7 @@ public partial class FileIndexPerDriveWatchTests
         await harness.Index.StartWatchingAsync('T', Token);
         var cursorBefore = harness.BlockFor('T').Header.UsnNextUsn;
 
-        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalId, NextUsn: 900));
+        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalIdentifier, NextUsn: 900));
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
 
         Assert.IsInstanceOfType<ArgumentNullException>(fault.Exception);

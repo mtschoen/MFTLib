@@ -57,7 +57,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual(ArmedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.IsNull(index.Find(At("documents", "created.txt")));
 
-        var changes = index.ApplyJournalEntries('C', CatchUpEntries(), AdvancedCursor.JournalId, AdvancedCursor.NextUsn);
+        var changes = index.ApplyJournalEntries('C', CatchUpEntries(), AdvancedCursor.JournalIdentifier, AdvancedCursor.NextUsn);
 
         CollectionAssert.AreEqual(new[] { FileChangeKind.Created, FileChangeKind.Deleted, FileChangeKind.Renamed },
             changes.Select(change => change.Kind).ToArray());
@@ -68,7 +68,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual("published.txt", renamed.Name);
         Assert.AreEqual(23UL, index.Find(At("documents", "published.txt"))!.Value.RecordKey.RecordNumber);
         Assert.IsNull(index.Find(At("documents", "draft.txt")));
-        Assert.AreEqual(AdvancedCursor.JournalId, block.Header.UsnJournalId);
+        Assert.AreEqual(AdvancedCursor.JournalIdentifier, block.Header.UsnJournalId);
         Assert.AreEqual(AdvancedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.IsTrue(block.Header.UsnNextUsn > ArmedCursor.NextUsn);
     }

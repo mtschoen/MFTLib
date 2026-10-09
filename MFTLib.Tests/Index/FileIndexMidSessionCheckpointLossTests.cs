@@ -20,7 +20,7 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class FileIndexMidSessionCheckpointLossTests
 {
-    const ulong WatchedJournalId = WatchHarness.JournalId;
+    const ulong WatchedJournalId = WatchHarness.JournalIdentifier;
     const long ArmedUsn = WatchHarness.NextUsn;
     const long AllocationDelta = 64;
     const long MaximumSize = 128L * 1024 * 1024;
@@ -126,7 +126,7 @@ public class FileIndexMidSessionCheckpointLossTests
         using var harness = await StartedHarnessAsync();
         await harness.Source.WatchFor('T').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "applied.txt")],
-            JournalId: WatchedJournalId, NextUsn: ArmedUsn + 2_000));
+            JournalIdentifier: WatchedJournalId, NextUsn: ArmedUsn + 2_000));
         Assert.AreEqual(ArmedUsn + 2_000, harness.BlockFor('T').Header.UsnNextUsn);
 
         using var journal = Journal(WatchedJournalId,

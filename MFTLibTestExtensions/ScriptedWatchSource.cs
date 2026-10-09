@@ -34,7 +34,7 @@ public sealed class ScriptedWatchSource : IIndexWatchSource
             lock (_stateLock)
             {
                 return [.. _targets.Select(target =>
-                    new ScriptedWatchStart(target.DriveLetter, new SyntheticJournalCursor(target.JournalId, target.NextUsn)))];
+                    new ScriptedWatchStart(target.DriveLetter, new SyntheticJournalCursor(target.JournalIdentifier, target.NextUsn)))];
             }
         }
     }
