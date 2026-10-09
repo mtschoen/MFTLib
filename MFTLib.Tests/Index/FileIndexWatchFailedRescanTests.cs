@@ -24,7 +24,7 @@ public class FileIndexWatchFailedRescanTests
     /// <summary>T's cursor has been trimmed out of its journal.</summary>
     static IDisposable LostCheckpointForT() =>
         JournalCheckpointCheck.OverrideJournalForTest(letter => letter == 'T'
-            ? new JournalWindow(WatchHarness.JournalId, FirstUsn: 5000, NextUsn: 8000,
+            ? new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024)
             : null);
 
@@ -145,7 +145,7 @@ public class FileIndexWatchFailedRescanTests
         Assert.AreEqual(0, firstHandle.DisposeCount, "the original watch is still running");
         var starts = harness.Source.TargetsFor('T');
         Assert.AreEqual(1, starts.Count);
-        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn), starts[0]);
+        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalIdentifier, WatchHarness.NextUsn), starts[0]);
         Assert.AreEqual(1, harness.Source.TargetsFor('U').Count);
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "still-watching.txt", nextUsn: 4500));
         Assert.AreEqual(4500L, harness.Index.Root('T').DriveBlock.Block.Header.UsnNextUsn);

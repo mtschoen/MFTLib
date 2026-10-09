@@ -28,7 +28,7 @@ public class JournalBrokerHostBlockScanTests
                     Assert.IsTrue(capturedBlockWriter.Block.Header.IsComplete);
                     Assert.AreEqual(BrokerLiveness.CatchUpBufferReadsPerCall, maximumBufferReads);
                     return cursor == ArmedCursor
-                        ? (Array.Empty<UsnJournalEntry>(), new UsnJournalCursor(cursor.JournalId, 12500))
+                        ? (Array.Empty<UsnJournalEntry>(), new UsnJournalCursor(cursor.JournalIdentifier, 12500))
                         : (Array.Empty<UsnJournalEntry>(), cursor);
                 },
                 ScanDrive: (driveLetter, _, _, _, _, _) =>
@@ -49,7 +49,7 @@ public class JournalBrokerHostBlockScanTests
         Assert.IsTrue(blockWriter.Block.Header.IsComplete);
         Assert.AreEqual(ProducerKind.Mft, blockWriter.Block.Header.ProducerKind);
         Assert.AreEqual(5u, blockWriter.Block.Header.RootRow);
-        Assert.AreEqual(ArmedCursor.JournalId, blockWriter.Block.Header.UsnJournalId);
+        Assert.AreEqual(ArmedCursor.JournalIdentifier, blockWriter.Block.Header.UsnJournalId);
         Assert.AreEqual(ArmedCursor.NextUsn, blockWriter.Block.Header.UsnNextUsn);
         Assert.AreEqual("file.txt", NamePool.ReadRowName(blockWriter.Block, 20).ToString());
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);

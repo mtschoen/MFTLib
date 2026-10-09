@@ -393,7 +393,7 @@ public class FileIndexCallbackReentrancyTests
         await StartBothAsync(harness).WaitAsync(HangGuard);
         var uConsumed = harness.Source.WatchFor('U').Queue(WatchHarness.Batch(10, "u.txt", nextUsn: 300));
         await uGate.Entered.WaitAsync(HangGuard);
-        harness.SetNextProducedCursor('U', WatchHarness.JournalId, nextUsn: 300);
+        harness.SetNextProducedCursor('U', WatchHarness.JournalIdentifier, nextUsn: 300);
         var stop = index.StopWatchingAsync('U', stopCancellation.Token);
         Assert.IsFalse(stop.IsCompleted, "the stop waits for U's pump, which is inside its handler");
         var token = Token;
@@ -484,7 +484,7 @@ public class FileIndexCallbackReentrancyTests
         };
         var innerIndex = inner.Index;
         OnChanged(outer, "t.txt", () => innerIndex.ApplyJournalEntries('T', [WatchHarness.Create(20, "inner.txt")],
-            WatchHarness.JournalId, 500));
+            WatchHarness.JournalIdentifier, 500));
         await StartBothAsync(outer).WaitAsync(HangGuard);
 
         _ = outer.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "t.txt", nextUsn: 300));

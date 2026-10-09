@@ -12,13 +12,13 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class JournalCheckpointCheckTests
 {
-    const ulong JournalId = 0xABCD;
+    const ulong JournalIdentifier = 0xABCD;
 
     [TestMethod]
-    [DataRow(JournalId, 1000L, 2000L, null)]
-    [DataRow(JournalId, 1000L, 2001L, JournalCheckpointLossCause.JournalAdvanced)]
-    [DataRow(JournalId, 1000L, 1999L, JournalCheckpointLossCause.JournalAdvanced)]
-    [DataRow(JournalId, 2001L, 3000L, JournalCheckpointLossCause.CheckpointTrimmed)]
+    [DataRow(JournalIdentifier, 1000L, 2000L, null)]
+    [DataRow(JournalIdentifier, 1000L, 2001L, JournalCheckpointLossCause.JournalAdvanced)]
+    [DataRow(JournalIdentifier, 1000L, 1999L, JournalCheckpointLossCause.JournalAdvanced)]
+    [DataRow(JournalIdentifier, 2001L, 3000L, JournalCheckpointLossCause.CheckpointTrimmed)]
     [DataRow(99UL, 2001L, 3000L, JournalCheckpointLossCause.JournalRecreated)]
     public void Unmoved_UsesOneObservationAndPrioritizesRecreationThenTrimming(
         ulong journalId, long firstUsn, long nextUsn, JournalCheckpointLossCause? expectedCause)
@@ -29,7 +29,7 @@ public class JournalCheckpointCheckTests
             reads++;
             return new JournalWindow(journalId, firstUsn, nextUsn, 64, 32768);
         });
-        var loss = JournalCheckpointCheck.CheckUnmoved('T', JournalId, 2000,
+        var loss = JournalCheckpointCheck.CheckUnmoved('T', JournalIdentifier, 2000,
             JournalCheckpointLossDetection.DriveOpening);
         Assert.AreEqual(1, reads);
         Assert.AreEqual(expectedCause, loss?.Cause);
@@ -54,7 +54,7 @@ public class JournalCheckpointCheckTests
     public void Unmoved_CannotSayAdoptsWithoutLoss()
     {
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
-        Assert.IsNull(JournalCheckpointCheck.CheckUnmoved('T', JournalId, 2000,
+        Assert.IsNull(JournalCheckpointCheck.CheckUnmoved('T', JournalIdentifier, 2000,
             JournalCheckpointLossDetection.DriveOpening));
     }
 
@@ -62,11 +62,11 @@ public class JournalCheckpointCheckTests
     public void Unmoved_IncoherentObservationAdoptsWithoutLoss()
     {
         using var journal = Journal(firstUsn: 3000, nextUsn: 2000);
-        Assert.IsNull(JournalCheckpointCheck.CheckUnmoved('T', JournalId, 2000,
+        Assert.IsNull(JournalCheckpointCheck.CheckUnmoved('T', JournalIdentifier, 2000,
             JournalCheckpointLossDetection.DriveOpening));
     }
 
-    static IDisposable Journal(ulong journalId = JournalId, long firstUsn = 1_000, long nextUsn = 5_000,
+    static IDisposable Journal(ulong journalId = JournalIdentifier, long firstUsn = 1_000, long nextUsn = 5_000,
         long maximumSize = 128L * 1024 * 1024, long allocationDelta = 64)
     {
         return JournalCheckpointCheck.OverrideJournalForTest(
@@ -84,7 +84,7 @@ public class JournalCheckpointCheckTests
     {
         using (Journal(firstUsn: 1_000, nextUsn: 5_000))
         {
-            var trimmed = JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 900, detectedDuring);
+            var trimmed = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 900, detectedDuring);
             Assert.IsNotNull(trimmed);
             Assert.AreEqual(JournalCheckpointLossCause.CheckpointTrimmed, trimmed.Cause);
             Assert.AreEqual(detectedDuring, trimmed.DetectedDuring);
@@ -92,7 +92,7 @@ public class JournalCheckpointCheckTests
 
         using (Journal(journalId: 0xFEED, firstUsn: 1_000, nextUsn: 5_000))
         {
-            var recreated = JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 900, detectedDuring);
+            var recreated = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 900, detectedDuring);
             Assert.IsNotNull(recreated);
             Assert.AreEqual(JournalCheckpointLossCause.JournalRecreated, recreated.Cause);
             Assert.AreEqual(detectedDuring, recreated.DetectedDuring);
@@ -105,11 +105,11 @@ public class JournalCheckpointCheckTests
         using var journal = Journal(firstUsn: 1_000, nextUsn: 5_000);
 
         // At the oldest retained USN the checkpoint is still readable, and past it plainly so.
-        Assert.IsNull(JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 1_000,
+        Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 1_000,
             JournalCheckpointLossDetection.DriveOpening));
-        Assert.IsNull(JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 4_000,
+        Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 4_000,
             JournalCheckpointLossDetection.DriveOpening));
-        Assert.IsNull(JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 5_000,
+        Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 5_000,
             JournalCheckpointLossDetection.DriveOpening));
     }
 
@@ -118,7 +118,7 @@ public class JournalCheckpointCheckTests
     {
         using var journal = Journal(firstUsn: 1_000, nextUsn: 5_000, allocationDelta: 64);
 
-        var loss = JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 900,
+        var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 900,
             JournalCheckpointLossDetection.DriveOpening);
 
         Assert.IsNotNull(loss);
@@ -141,7 +141,7 @@ public class JournalCheckpointCheckTests
 
         // The checkpoint names a record in a journal instance that no longer exists, so its
         // USN and this journal's USNs are not comparable at all.
-        var loss = JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 900,
+        var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 900,
             JournalCheckpointLossDetection.DriveOpening);
 
         Assert.IsNotNull(loss);
@@ -160,7 +160,7 @@ public class JournalCheckpointCheckTests
     {
         using var journal = Journal(journalId: 0xFEED, firstUsn: 0, nextUsn: 5_000);
 
-        var loss = JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 900,
+        var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 900,
             JournalCheckpointLossDetection.DriveOpening);
 
         Assert.IsNotNull(loss);
@@ -173,7 +173,7 @@ public class JournalCheckpointCheckTests
     {
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ => null);
 
-        Assert.IsNull(JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 0,
+        Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening));
     }
 
@@ -186,28 +186,28 @@ public class JournalCheckpointCheckTests
     {
         using (Journal(firstUsn: -1))
         {
-            Assert.IsNull(JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 10,
+            Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 10,
                 JournalCheckpointLossDetection.DriveOpening));
         }
 
         // A window that runs backwards.
         using (Journal(firstUsn: 5_000, nextUsn: 1_000))
         {
-            Assert.IsNull(JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 10,
+            Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 10,
                 JournalCheckpointLossDetection.DriveOpening));
         }
 
         // No allocation unit to round a suggested size to.
         using (Journal(allocationDelta: 0))
         {
-            Assert.IsNull(JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 10,
+            Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 10,
                 JournalCheckpointLossDetection.DriveOpening));
         }
 
         // A negative checkpoint is a corrupt block header, not a very old checkpoint.
         using (Journal())
         {
-            Assert.IsNull(JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: -1,
+            Assert.IsNull(JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: -1,
                 JournalCheckpointLossDetection.DriveOpening));
         }
     }
@@ -223,7 +223,7 @@ public class JournalCheckpointCheckTests
             allocationDelta: 64 * megabyte);
 
         // The 320 MB span plus one 64 MB trimming margin yields an at-least size of 384 MB.
-        var loss = JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 1_000_000_000 - 20 * megabyte,
+        var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 1_000_000_000 - 20 * megabyte,
             JournalCheckpointLossDetection.DriveOpening);
 
         Assert.IsNotNull(loss);
@@ -238,7 +238,7 @@ public class JournalCheckpointCheckTests
     {
         using var journal = Journal(firstUsn: 1, nextUsn: long.MaxValue, allocationDelta: 64);
 
-        var loss = JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 0,
+        var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening);
 
         Assert.IsNotNull(loss);
@@ -259,7 +259,7 @@ public class JournalCheckpointCheckTests
         const long largestAlignedSize = long.MaxValue - 63;
         using var journal = Journal(firstUsn: 1, nextUsn: largestAlignedSize - 64, allocationDelta: 64);
 
-        var loss = JournalCheckpointCheck.Check('C', JournalId, checkpointUsn: 0,
+        var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening);
 
         Assert.IsNotNull(loss);

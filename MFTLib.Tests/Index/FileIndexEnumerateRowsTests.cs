@@ -332,7 +332,7 @@ public class FileIndexEnumerateRowsTests
             CacheDirectory = _cacheDirectory,
             ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource((request, _) => Task.FromResult(
-                new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment), JournalId: 7,
+                new MftBlockProduceResult(SeededBlocks.Build(request, rowCount, i => $"file{i}.dat", FixedMoment), JournalIdentifier: 7,
                     NextUsn: 4096, SkippedRecordCount: 0)))
         }, CancellationToken.None);
     }

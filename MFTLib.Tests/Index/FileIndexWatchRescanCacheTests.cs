@@ -36,9 +36,9 @@ public class FileIndexWatchRescanCacheTests
                         throw new IOException("production failed after rename");
                     }
 
-                    SeededBlocks.Write(request.BlockPath, 1, WatchHarness.JournalId, 100, moment: SeededBlocks.SeededMoment);
+                    SeededBlocks.Write(request.BlockPath, 1, WatchHarness.JournalIdentifier, 100, moment: SeededBlocks.SeededMoment);
                     return new MftBlockProduceResult(BlockFile.Open(request.BlockPath, 1, out _)!,
-                        WatchHarness.JournalId, 100, 0);
+                        WatchHarness.JournalIdentifier, 100, 0);
                 }, source)
             }, token);
             try

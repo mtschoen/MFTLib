@@ -17,7 +17,7 @@ namespace MFTLib.Tests.TestSupport;
 internal sealed class ScriptedWatchBrokerHarness : IAsyncDisposable
 {
     /// <summary>The journal tip every watch is measured against; a watch from it starts caught up.</summary>
-    public static readonly UsnJournalCursor DefaultTip = new(WatchHarness.JournalId, WatchHarness.NextUsn);
+    public static readonly UsnJournalCursor DefaultTip = new(WatchHarness.JournalIdentifier, WatchHarness.NextUsn);
 
     readonly ConcurrentDictionary<char, ScriptedHostWatch> _watches = new();
     readonly ConcurrentDictionary<char, UsnJournalCursor> _tips = new();
@@ -242,7 +242,7 @@ internal sealed class ScriptedWatchRun
     /// <summary>Delivers one batch of one created file, ending at <paramref name="nextUsn" />.</summary>
     public void Push(uint recordNumber, string fileName, long nextUsn) =>
         _items.Writer.TryWrite(([WatchHarness.Create(recordNumber, fileName)],
-            new UsnJournalCursor(WatchHarness.JournalId, nextUsn)));
+            new UsnJournalCursor(WatchHarness.JournalIdentifier, nextUsn)));
 
     /// <summary>The host's watch fails: the client reads an <c>Error</c> frame carrying the exception's message.</summary>
     public void Fail(Exception exception) => _items.Writer.TryComplete(exception);

@@ -261,7 +261,7 @@ public partial class FileIndexCatchUpLossTests
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(9, "sibling.txt", nextUsn: 900));
         Assert.AreEqual(900L, harness.Index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
         harness.ScriptScans('U', Lost('U'), Held);
-        harness.SetNextProducedCursor('U', WatchHarness.JournalId, 900);
+        harness.SetNextProducedCursor('U', WatchHarness.JournalIdentifier, 900);
         await harness.Index.RescanAsync('U', Token).WaitAsync(HangGuard);
         Assert.IsFalse(rescanOfT.IsCompleted, "T is still retrying");
 
@@ -283,7 +283,7 @@ public partial class FileIndexCatchUpLossTests
         using var harness = new WatchHarness('T');
         harness.Index.HoldEveryRecovery();
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(letter => letter == 'T'
-            ? new JournalWindow(WatchHarness.JournalId, FirstUsn: 5000, NextUsn: 8000,
+            ? new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024)
             : null);
         await harness.Index.StartWatchingAsync('T', Token);

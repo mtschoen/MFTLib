@@ -59,7 +59,7 @@ internal static partial class BrokerProtocol
 
         public PayloadWriter Cursor(UsnJournalCursor cursor)
         {
-            return UInt64(cursor.JournalId).Int64(cursor.NextUsn);
+            return UInt64(cursor.JournalIdentifier).Int64(cursor.NextUsn);
         }
 
         public void Entry(UsnJournalEntry entry)

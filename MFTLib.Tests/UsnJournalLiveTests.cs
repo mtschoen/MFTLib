@@ -23,7 +23,7 @@ public class UsnJournalLiveTests
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournalCursor();
 
-        Assert.IsTrue(cursor.JournalId > 0, "JournalId should be nonzero");
+        Assert.IsTrue(cursor.JournalIdentifier > 0, "JournalIdentifier should be nonzero");
         Assert.IsTrue(cursor.NextUsn > 0, "NextUsn should be positive");
     }
 

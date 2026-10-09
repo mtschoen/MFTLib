@@ -224,7 +224,7 @@ public sealed partial class FileIndex
 
     /// <summary>
     ///     Runs the MFT producer for one drive and checks its finished block before anything adopts
-    ///     it. <see cref="MftBlockProduceResult.JournalId" /> and <see cref="MftBlockProduceResult.NextUsn" />
+    ///     it. <see cref="MftBlockProduceResult.JournalIdentifier" /> and <see cref="MftBlockProduceResult.NextUsn" />
     ///     are already durable in the returned <see cref="MftBlockProduceResult.Block" />'s header by
     ///     the time it gets here (the producer stamps them before its own <c>Complete()</c> call, the
     ///     one flush-safe place to do it), so this method does not write them again.
@@ -253,7 +253,7 @@ public sealed partial class FileIndex
         ValidateProducedCacheTag(produceResult, blockPath);
 
         var header = produceResult.Block.Header;
-        if (header.UsnJournalId != produceResult.JournalId || header.UsnNextUsn != produceResult.NextUsn)
+        if (header.UsnJournalId != produceResult.JournalIdentifier || header.UsnNextUsn != produceResult.NextUsn)
         {
             // Nothing has adopted the block yet, so its mapping is closed directly.
             produceResult.Block.Dispose();
@@ -266,7 +266,7 @@ public sealed partial class FileIndex
                 "the MFT producer's block failed the journal cursor consistency check");
             throw new InvalidOperationException(
                 $"The MFT producer's block header carries journal cursor ({header.UsnJournalId}, " +
-                $"{header.UsnNextUsn}) but its result reported cursor ({produceResult.JournalId}, " +
+                $"{header.UsnNextUsn}) but its result reported cursor ({produceResult.JournalIdentifier}, " +
                 $"{produceResult.NextUsn}). A producer that contradicts its own block cannot be trusted.");
         }
 

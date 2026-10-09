@@ -26,7 +26,7 @@ public class FileIndexWatchFaultTests
         await harness.Index.StartWatchingAsync('U', Token);
         var frozenCursor = harness.BlockFor('T').Header.UsnNextUsn;
 
-        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalId, NextUsn: 5000));
+        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalIdentifier, NextUsn: 5000));
         var fault = await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
         await harness.Source.WatchFor('U').Publish(WatchHarness.Batch(10, "u.txt", nextUsn: 9000));
         await harness.WaitForRecoveryAsync('T');

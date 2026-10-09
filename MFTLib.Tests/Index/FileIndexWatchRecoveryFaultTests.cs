@@ -28,7 +28,7 @@ public class FileIndexWatchRecoveryFaultTests
         harness.SetNextProducedCursor('C', 13, 9000);
         if (applyFailure)
         {
-            await harness.Source.WatchFor('C').Publish(new JournalBatch(null!, WatchHarness.JournalId, 5000));
+            await harness.Source.WatchFor('C').Publish(new JournalBatch(null!, WatchHarness.JournalIdentifier, 5000));
             await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'C');
         }
         else

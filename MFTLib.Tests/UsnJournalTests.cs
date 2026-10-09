@@ -68,7 +68,7 @@ public class UsnJournalTests
         using var volume = MftVolume.Open("C");
         var cursor = volume.QueryUsnJournalCursor();
 
-        Assert.AreEqual(0x123456789ABCDEF0UL, cursor.JournalId);
+        Assert.AreEqual(0x123456789ABCDEF0UL, cursor.JournalIdentifier);
         Assert.AreEqual(42000L, cursor.NextUsn);
     }
 
@@ -172,7 +172,7 @@ public class UsnJournalTests
         Assert.AreEqual("deleted.txt", entries[1].FileName);
         Assert.IsTrue(entries[1].IsDelete);
         Assert.AreEqual(3000L, updatedCursor.NextUsn);
-        Assert.AreEqual(0xABCDUL, updatedCursor.JournalId);
+        Assert.AreEqual(0xABCDUL, updatedCursor.JournalIdentifier);
     }
 
     [TestMethod]
@@ -365,7 +365,7 @@ public class UsnJournalTests
     public void UsnJournalCursor_StoresValues()
     {
         var cursor = new UsnJournalCursor(0xDEADBEEF, 12345);
-        Assert.AreEqual(0xDEADBEEFUL, cursor.JournalId);
+        Assert.AreEqual(0xDEADBEEFUL, cursor.JournalIdentifier);
         Assert.AreEqual(12345L, cursor.NextUsn);
     }
 
@@ -521,7 +521,7 @@ public class UsnJournalTests
         Assert.AreEqual(1, batches.Count);
         Assert.AreEqual("created.txt", batches[0].Entries[0].FileName);
         Assert.IsTrue(batches[0].Entries[0].IsCreate);
-        Assert.AreEqual(0xABCDUL, batches[0].Cursor.JournalId);
+        Assert.AreEqual(0xABCDUL, batches[0].Cursor.JournalIdentifier);
         Assert.AreEqual(600L, batches[0].Cursor.NextUsn);
     }
 

@@ -79,7 +79,7 @@ public partial class FileIndexWatchRecoveryTests
             // Runs after the fault is recorded and before the recovery is queued. A wait issued
             // here must not have settled yet, or a consumer's fault path could read Faulted.
             faultVisibleDuringCheckpointCheck ??= index.WaitForCatchUpAsync('T', CancellationToken.None).IsCompleted;
-            return new JournalWindow(WatchHarness.JournalId, FirstUsn: 5000, NextUsn: 8000,
+            return new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024);
         });
 
@@ -229,7 +229,7 @@ public partial class FileIndexWatchRecoveryTests
         };
         _ = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "parked.txt", nextUsn: 9000));
         await pumpParked.Entered.WaitAsync(HangGuard);
-        harness.SetNextProducedCursor('T', WatchHarness.JournalId, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', WatchHarness.JournalIdentifier, nextUsn: 9000);
 
         var rescan = index.RescanAsync('T', Token);
         await UntilAsync(() => harness.DriveFor('T').Watch.CatchUpState != WatchCatchUpState.CaughtUp);

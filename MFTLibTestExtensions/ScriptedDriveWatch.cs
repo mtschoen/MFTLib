@@ -34,7 +34,7 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
     public char DriveLetter => Target.DriveLetter;
 
     /// <summary>The journal position the index resumed this watch from: the cursor of the block it started on.</summary>
-    internal UsnJournalCursor StartCursor => new(Target.JournalId, Target.NextUsn);
+    internal UsnJournalCursor StartCursor => new(Target.JournalIdentifier, Target.NextUsn);
 
     /// <summary>How many times the index disposed this watch; the index owes exactly one, and a second disposal throws.</summary>
     internal int DisposeCount => Volatile.Read(ref _disposeCount);
@@ -74,7 +74,7 @@ public sealed class ScriptedDriveWatch : IIndexDriveWatch
         Queue(ToBatch(entries, cursor));
 
     static JournalBatch ToBatch(IReadOnlyList<SyntheticJournalRecord> entries, SyntheticJournalCursor cursor) =>
-        new(entries.ToProduction(), cursor.JournalIdentifier, cursor.NextUpdateSequenceNumber);
+        new(entries.ToProduction(), cursor.JournalIdentifier, cursor.NextUsn);
 
     /// <summary>Delivers the caught-up marker and completes once the index's pump has taken the item after it.</summary>
     /// <returns>A task that completes when the pump is done with the marker.</returns>

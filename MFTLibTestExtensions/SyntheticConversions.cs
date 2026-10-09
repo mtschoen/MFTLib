@@ -9,10 +9,10 @@ namespace MFTLibTestExtensions;
 internal static class SyntheticConversions
 {
     public static UsnJournalCursor ToProduction(this SyntheticJournalCursor cursor) =>
-        new(cursor.JournalIdentifier, cursor.NextUpdateSequenceNumber);
+        new(cursor.JournalIdentifier, cursor.NextUsn);
 
     public static SyntheticJournalCursor ToSynthetic(this UsnJournalCursor cursor) =>
-        new(cursor.JournalId, cursor.NextUsn);
+        new(cursor.JournalIdentifier, cursor.NextUsn);
 
     public static MftRecord ToProduction(this SyntheticScanRecord record)
     {

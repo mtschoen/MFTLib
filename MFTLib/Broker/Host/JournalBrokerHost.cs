@@ -133,7 +133,7 @@ internal sealed partial class JournalBrokerHost
                         cancellationToken).ConfigureAwait(false);
                 }
 
-                if (!caughtUpReported && cursor.JournalId == arm.Tip.JournalId &&
+                if (!caughtUpReported && cursor.JournalIdentifier == arm.Tip.JournalIdentifier &&
                     cursor.NextUsn >= arm.Tip.NextUsn)
                 {
                     await channel.Pipe.WriteFrameAsync(BrokerProtocol.WriteCaughtUp, cancellationToken)
@@ -165,12 +165,12 @@ internal sealed partial class JournalBrokerHost
         // pre-launch gap is lost, and there is no cached cursor that could have gone stale.
         channel.Pipe.WaitingOnVolume();
         var tip = _queryCursor(channel.Drive);
-        var effectiveSince = since.JournalId == 0 ? tip : since;
+        var effectiveSince = since.JournalIdentifier == 0 ? tip : since;
 
         // No backlog at all: the drive starts on live entries, so the marker leads. The journal id
         // guard runs on both comparisons: two journals' USN offsets are not comparable, and a
         // mismatched tip belongs to a dead journal generation.
-        var caughtUpReported = effectiveSince.JournalId == tip.JournalId &&
+        var caughtUpReported = effectiveSince.JournalIdentifier == tip.JournalIdentifier &&
                                effectiveSince.NextUsn >= tip.NextUsn;
         if (caughtUpReported)
         {
@@ -186,15 +186,15 @@ internal sealed partial class JournalBrokerHost
     // and failures after batches have flowed.
     static string DescribeWatchFailure(string drive, UsnJournalCursor since, bool yieldedAny, Exception exception)
     {
-        if (yieldedAny || since.JournalId == 0 ||
+        if (yieldedAny || since.JournalIdentifier == 0 ||
             !BrokerDriveLetter.TryNormalize(drive, out var normalizedDrive) ||
-            JournalCheckpointCheck.Check(normalizedDrive[0], since.JournalId, since.NextUsn,
+            JournalCheckpointCheck.Check(normalizedDrive[0], since.JournalIdentifier, since.NextUsn,
                 JournalCheckpointLossDetection.LiveWatch) is null)
         {
             return exception.Message;
         }
 
-        var cursorText = FormattableString.Invariant($"{since.JournalId}:{since.NextUsn}");
+        var cursorText = FormattableString.Invariant($"{since.JournalIdentifier}:{since.NextUsn}");
         return $"Drive {drive} cannot resume its live watch from journal cursor {cursorText}: " +
                $"{exception.Message}. The records between that cursor and the current journal position " +
                "are gone, so this drive needs a rescan before it can be watched again.";
