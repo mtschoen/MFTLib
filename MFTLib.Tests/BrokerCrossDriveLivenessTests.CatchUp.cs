@@ -13,10 +13,10 @@ public sealed partial class BrokerCrossDriveLivenessTests
     static readonly UsnJournalCursor ArmedCursor = ScriptedWatchBrokerHarness.DefaultTip;
 
     // The journal has trimmed past the cursor every scan arms at.
-    static readonly SyntheticJournalWindow TrimmedWindow = new(ArmedCursor.JournalId, 500, 900, 64, 4096);
+    static readonly SyntheticJournalWindow TrimmedWindow = new(ArmedCursor.JournalIdentifier, 500, 900, 64, 4096);
 
     // The journal still holds the armed cursor.
-    static readonly SyntheticJournalWindow RetainingWindow = new(ArmedCursor.JournalId, 50, 900, 64, 4096);
+    static readonly SyntheticJournalWindow RetainingWindow = new(ArmedCursor.JournalIdentifier, 50, 900, 64, 4096);
 
     /// <summary>
     ///     T's catch-up fails on every scan and the journal proves the armed cursor trimmed, so T's

@@ -127,8 +127,8 @@ MFTLibTestExtensions.SyntheticIndexInspection :: method public static ReadHeader
 MFTLibTestExtensions.SyntheticIndexInspection :: type public static class
 MFTLibTestExtensions.SyntheticIndexSource :: method public static Create(MFTLibTestExtensions.SyntheticMftProducer? producer = default, MFTLibTestExtensions.ScriptedWatchSource? watches = default) : MFTLib.Index.MftIndexSource
 MFTLibTestExtensions.SyntheticIndexSource :: type public static class
-MFTLibTestExtensions.SyntheticJournalCursor :: constructor public (ulong JournalIdentifier, long NextUpdateSequenceNumber)
-MFTLibTestExtensions.SyntheticJournalCursor :: method public Deconstruct(out ulong JournalIdentifier, out long NextUpdateSequenceNumber) : void
+MFTLibTestExtensions.SyntheticJournalCursor :: constructor public (ulong JournalIdentifier, long NextUsn)
+MFTLibTestExtensions.SyntheticJournalCursor :: method public Deconstruct(out ulong JournalIdentifier, out long NextUsn) : void
 MFTLibTestExtensions.SyntheticJournalCursor :: method public Equals(MFTLibTestExtensions.SyntheticJournalCursor other) : bool
 MFTLibTestExtensions.SyntheticJournalCursor :: method public override Equals(object obj) : bool
 MFTLibTestExtensions.SyntheticJournalCursor :: method public override GetHashCode() : int
@@ -136,7 +136,7 @@ MFTLibTestExtensions.SyntheticJournalCursor :: method public override ToString()
 MFTLibTestExtensions.SyntheticJournalCursor :: method public static op_Equality(MFTLibTestExtensions.SyntheticJournalCursor left, MFTLibTestExtensions.SyntheticJournalCursor right) : bool
 MFTLibTestExtensions.SyntheticJournalCursor :: method public static op_Inequality(MFTLibTestExtensions.SyntheticJournalCursor left, MFTLibTestExtensions.SyntheticJournalCursor right) : bool
 MFTLibTestExtensions.SyntheticJournalCursor :: property public JournalIdentifier { get; init; } : ulong
-MFTLibTestExtensions.SyntheticJournalCursor :: property public NextUpdateSequenceNumber { get; init; } : long
+MFTLibTestExtensions.SyntheticJournalCursor :: property public NextUsn { get; init; } : long
 MFTLibTestExtensions.SyntheticJournalCursor :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.SyntheticJournalCursor>
 MFTLibTestExtensions.SyntheticJournalReason :: field public const BasicInformationChange : MFTLibTestExtensions.SyntheticJournalReason = 32768
 MFTLibTestExtensions.SyntheticJournalReason :: field public const Close : MFTLibTestExtensions.SyntheticJournalReason = 2147483648
@@ -180,8 +180,8 @@ MFTLibTestExtensions.SyntheticJournalRecord :: property public required ParentRe
 MFTLibTestExtensions.SyntheticJournalRecord :: property public required RecordNumber { get; init; } : ulong
 MFTLibTestExtensions.SyntheticJournalRecord :: property public required UpdateSequenceNumber { get; init; } : long
 MFTLibTestExtensions.SyntheticJournalRecord :: type public sealed class : System.IEquatable<MFTLibTestExtensions.SyntheticJournalRecord>
-MFTLibTestExtensions.SyntheticJournalWindow :: constructor public (ulong JournalId, long FirstUsn, long NextUsn, long AllocationDelta, long MaximumSize)
-MFTLibTestExtensions.SyntheticJournalWindow :: method public Deconstruct(out ulong JournalId, out long FirstUsn, out long NextUsn, out long AllocationDelta, out long MaximumSize) : void
+MFTLibTestExtensions.SyntheticJournalWindow :: constructor public (ulong JournalIdentifier, long FirstUsn, long NextUsn, long AllocationDelta, long MaximumSize)
+MFTLibTestExtensions.SyntheticJournalWindow :: method public Deconstruct(out ulong JournalIdentifier, out long FirstUsn, out long NextUsn, out long AllocationDelta, out long MaximumSize) : void
 MFTLibTestExtensions.SyntheticJournalWindow :: method public Equals(MFTLibTestExtensions.SyntheticJournalWindow other) : bool
 MFTLibTestExtensions.SyntheticJournalWindow :: method public override Equals(object obj) : bool
 MFTLibTestExtensions.SyntheticJournalWindow :: method public override GetHashCode() : int
@@ -190,7 +190,7 @@ MFTLibTestExtensions.SyntheticJournalWindow :: method public static op_Equality(
 MFTLibTestExtensions.SyntheticJournalWindow :: method public static op_Inequality(MFTLibTestExtensions.SyntheticJournalWindow left, MFTLibTestExtensions.SyntheticJournalWindow right) : bool
 MFTLibTestExtensions.SyntheticJournalWindow :: property public AllocationDelta { get; init; } : long
 MFTLibTestExtensions.SyntheticJournalWindow :: property public FirstUsn { get; init; } : long
-MFTLibTestExtensions.SyntheticJournalWindow :: property public JournalId { get; init; } : ulong
+MFTLibTestExtensions.SyntheticJournalWindow :: property public JournalIdentifier { get; init; } : ulong
 MFTLibTestExtensions.SyntheticJournalWindow :: property public MaximumSize { get; init; } : long
 MFTLibTestExtensions.SyntheticJournalWindow :: property public NextUsn { get; init; } : long
 MFTLibTestExtensions.SyntheticJournalWindow :: type public readonly struct : System.IEquatable<MFTLibTestExtensions.SyntheticJournalWindow>
@@ -199,7 +199,6 @@ MFTLibTestExtensions.SyntheticMftProducer :: property public BeforeProduceAsync 
 MFTLibTestExtensions.SyntheticMftProducer :: property public CatchUpLoss { get; set; } : System.Func<char, MFTLib.Index.JournalCheckpointLoss?>?
 MFTLibTestExtensions.SyntheticMftProducer :: property public CompletedUtc { get; set; } : System.DateTime
 MFTLibTestExtensions.SyntheticMftProducer :: property public JournalCursor { get; set; } : MFTLibTestExtensions.SyntheticJournalCursor
-MFTLibTestExtensions.SyntheticMftProducer :: property public SkippedRecordCount { get; set; } : int
 MFTLibTestExtensions.SyntheticMftProducer :: type public sealed class
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockDeletionResult(MFTLib.Index.CachedBlockFile file, MFTLib.Index.CachedBlockDeletionOutcome outcome, string? failureReason) : MFTLib.Index.CachedBlockDeletionResult
 MFTLibTestExtensions.SyntheticNotifications :: method public static CreateCachedBlockFile(char driveLetter, uint volumeSerial, string path, long sizeBytes, System.DateTime lastWriteTime) : MFTLib.Index.CachedBlockFile

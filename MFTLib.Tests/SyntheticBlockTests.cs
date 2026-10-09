@@ -157,7 +157,7 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(tag, CacheDirectory.InspectCached(CacheDirectoryPath).Single().CacheTag);
         using var block = BlockFile.Open(path, Serial, out _)!;
         Assert.AreEqual(Cursor.JournalIdentifier, block.Header.UsnJournalId);
-        Assert.AreEqual(Cursor.NextUpdateSequenceNumber, block.Header.UsnNextUsn);
+        Assert.AreEqual(Cursor.NextUsn, block.Header.UsnNextUsn);
     }
 
     [DataTestMethod]
@@ -362,7 +362,7 @@ public partial class SyntheticBlockTests
         Assert.AreEqual(tag, status.CacheTag, "the producer copies the request's cache tag");
         using var block = BlockFile.Open(SyntheticBlock.CachedPath(CacheDirectoryPath, 'T', Serial), Serial, out _)!;
         Assert.AreEqual(Cursor.JournalIdentifier, block.Header.UsnJournalId);
-        Assert.AreEqual(Cursor.NextUpdateSequenceNumber, block.Header.UsnNextUsn);
+        Assert.AreEqual(Cursor.NextUsn, block.Header.UsnNextUsn);
     }
 
     [TestMethod]

@@ -140,7 +140,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.AreEqual(WatchCatchUpState.CatchingUp, healthy.Watch.CatchUpState);
 
         await source.WatchFor('U').Publish(new JournalBatch(
-            [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalId: CachedJournalId, NextUsn: 9_500));
+            [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalId, NextUsn: 9_500));
         Assert.AreEqual(9_500L, index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
 
         await index.StopWatchingAsync('U', Token);
@@ -179,7 +179,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
         Assert.AreEqual(WatchCatchUpState.CatchingUp,
             index.Drives.Single(drive => drive.DriveLetter == 'T').Watch.CatchUpState);
         await source.WatchFor('T').Publish(new JournalBatch(
-            [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalId: CachedJournalId, NextUsn: 5_000));
+            [WatchHarness.Create(recordNumber: 9, "after.txt")], JournalIdentifier: CachedJournalId, NextUsn: 5_000));
         Assert.AreEqual(5_000L, index.Root('T').DriveBlock.Block.Header.UsnNextUsn);
 
         await index.StopWatchingAsync('T', Token);
@@ -237,7 +237,7 @@ public class FileIndexCacheOnlyUnresumableWatchTests
 
         // U is unaffected by T's failed rescan.
         await source.WatchFor('U').Publish(new JournalBatch(
-            [WatchHarness.Create(recordNumber: 9, "u.txt")], JournalId: CachedJournalId, NextUsn: 9_000));
+            [WatchHarness.Create(recordNumber: 9, "u.txt")], JournalIdentifier: CachedJournalId, NextUsn: 9_000));
         Assert.AreEqual(9_000L, index.Root('U').DriveBlock.Block.Header.UsnNextUsn);
 
         await index.StopWatchingAsync('U', Token);

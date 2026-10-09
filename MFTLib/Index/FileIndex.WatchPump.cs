@@ -102,7 +102,7 @@ public sealed partial class FileIndex
         IReadOnlyList<FileChange> changes;
         try
         {
-            changes = ApplyJournalEntriesCore(runtime.DriveLetter, instance, batch.Entries, batch.JournalId,
+            changes = ApplyJournalEntriesCore(runtime.DriveLetter, instance, batch.Entries, batch.JournalIdentifier,
                 batch.NextUsn);
         }
         catch (Exception exception)

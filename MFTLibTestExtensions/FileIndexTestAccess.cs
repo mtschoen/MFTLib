@@ -19,6 +19,6 @@ public static class FileIndexTestAccess
     {
         ArgumentNullException.ThrowIfNull(index);
         return index.ApplyJournalEntries(driveLetter, entries.ToProduction(), cursor.JournalIdentifier,
-            cursor.NextUpdateSequenceNumber);
+            cursor.NextUsn);
     }
 }

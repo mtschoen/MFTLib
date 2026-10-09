@@ -251,7 +251,7 @@ public partial class FileIndexWatchRescanTests
         // The block was never swapped, so the original watch keeps its cursor and catch-up.
         var starts = harness.Source.TargetsFor('T');
         Assert.AreEqual(1, starts.Count);
-        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalId, WatchHarness.NextUsn), starts[0]);
+        Assert.AreEqual(new IndexWatchTarget('T', WatchHarness.JournalIdentifier, WatchHarness.NextUsn), starts[0]);
         Assert.IsNull(harness.DriveFor('T').Watch.FailureMessage);
 
         await harness.Source.WatchFor('T').Publish(WatchHarness.Batch(9, "after.txt", nextUsn: 5000));
@@ -313,7 +313,7 @@ public partial class FileIndexWatchRescanTests
                 SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
                 return Task.FromResult(new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
-                    JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
+                    JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
             }, source),
             InitialOpenCacheOnly = true
         };

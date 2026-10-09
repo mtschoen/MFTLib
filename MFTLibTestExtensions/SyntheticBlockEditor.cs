@@ -107,7 +107,7 @@ public sealed class SyntheticBlockEditor
     internal void SetJournalCursor(SyntheticJournalCursor cursor)
     {
         EnsureOpen();
-        _writer.SetJournalCursor(cursor.JournalIdentifier, cursor.NextUpdateSequenceNumber);
+        _writer.SetJournalCursor(cursor.JournalIdentifier, cursor.NextUsn);
     }
 
     /// <summary>Replaces the scan timestamp and flushes the block.</summary>

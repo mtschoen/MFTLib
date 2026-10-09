@@ -83,7 +83,7 @@ internal sealed partial class MftVolume
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maximumBufferReads);
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var resultPtr = MFTLibNative._readUsnJournal(_volumeHandle, since.NextUsn, since.JournalId,
+        var resultPtr = MFTLibNative._readUsnJournal(_volumeHandle, since.NextUsn, since.JournalIdentifier,
             (uint)maximumBufferReads);
         if (resultPtr == IntPtr.Zero)
         {
@@ -160,7 +160,7 @@ internal sealed partial class MftVolume
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var nextUsn = since.NextUsn;
-        var journalId = since.JournalId;
+        var journalId = since.JournalIdentifier;
 
         using var session = new UsnWatchSession(FileUtilities._getWatchVolumeHandle(_volumePath));
         await using var registration = cancellationToken.Register(session.Cancel);

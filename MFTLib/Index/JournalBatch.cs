@@ -5,5 +5,5 @@ namespace MFTLib.Index;
 ///     than being tracked by the index, so a watch that resumes or skips ahead after a journal
 ///     wrap reports where it actually is.
 /// </summary>
-internal sealed record JournalBatch(IReadOnlyList<UsnJournalEntry> Entries, ulong JournalId, long NextUsn)
+internal sealed record JournalBatch(IReadOnlyList<UsnJournalEntry> Entries, ulong JournalIdentifier, long NextUsn)
     : WatchStreamItem;

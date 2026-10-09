@@ -34,7 +34,7 @@ public partial class FileIndexWatchRecoveryTests
     {
         using var harness = new WatchHarness('T', 'U');
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(letter => letter == 'T'
-            ? new JournalWindow(WatchHarness.JournalId, FirstUsn: 5000, NextUsn: 8000,
+            ? new JournalWindow(WatchHarness.JournalIdentifier, FirstUsn: 5000, NextUsn: 8000,
                 AllocationDelta: 64, MaximumSize: 128L * 1024 * 1024)
             : null);
         await harness.Index.StartWatchingAsync('T', Token);
@@ -68,7 +68,7 @@ public partial class FileIndexWatchRecoveryTests
         await harness.Index.StartWatchingAsync('T', Token);
         var producedBefore = harness.ProductionCount('T');
 
-        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalId, 5000));
+        await harness.Source.WatchFor('T').Publish(new JournalBatch(null!, WatchHarness.JournalIdentifier, 5000));
         await harness.WaitForFaultAsync(WatchFaultKind.Apply, 'T');
         await harness.WaitForRecoveryAsync('T');
 

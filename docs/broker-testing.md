@@ -222,8 +222,9 @@ callback returns for each drive through the same writer and reports a real
 produce result carrying the request's cache tag. Its settings model what a
 test needs from a scan:
 
-- `JournalCursor` and `CompletedUtc` are stamped into every block and
-  `SkippedRecordCount` is reported on the produce result;
+- `JournalCursor` and `CompletedUtc` are stamped into every block. The cursor's
+  `JournalIdentifier` identifies the journal instance and `NextUsn` is the next
+  position a reader resumes from;
 - `BeforeProduceAsync` is awaited before each production, so a test holds a scan or
   rescan in progress and releases it when ready;
 - `CatchUpLoss` returns the proven catch-up loss a production reports, which the

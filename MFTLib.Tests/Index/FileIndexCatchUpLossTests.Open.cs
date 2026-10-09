@@ -147,7 +147,7 @@ public partial class FileIndexCatchUpLossTests
             var loss = Losses.Count > 0 ? Losses.Dequeue() : null;
             return Task.FromResult(new MftBlockProduceResult(
                 BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0)
+                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0)
             {
                 CatchUpLoss = loss
             });

@@ -30,7 +30,7 @@ public partial class JournalBrokerHostRealSeamsTests
         var frames = await ServeDefaultScanAsync(writer);
 
         var cursor = frames.Single(frame => frame.Kind == BrokerFrameKind.Cursor).Cursor;
-        Assert.AreEqual(0xABCDUL, cursor.JournalId);
+        Assert.AreEqual(0xABCDUL, cursor.JournalIdentifier);
         Assert.AreEqual(5000L, cursor.NextUsn);
         Assert.AreEqual(RowFlags.InUse, writer.Block.Rows[100].Flags);
         Assert.AreEqual(RowFlags.None, writer.Block.Rows[101].Flags);

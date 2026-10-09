@@ -80,11 +80,13 @@ public class SyntheticConversionTests
     [TestMethod]
     public void SyntheticJournalCursor_RoundTripsThroughTheProductionCursor()
     {
-        var cursor = new SyntheticJournalCursor(9, 250);
+        var cursor = new SyntheticJournalCursor(JournalIdentifier: 9, NextUsn: 250);
 
         var production = cursor.ToProduction();
 
         Assert.AreEqual(new UsnJournalCursor(9, 250), production);
+        Assert.AreEqual(cursor.JournalIdentifier, production.JournalIdentifier);
+        Assert.AreEqual(cursor.NextUsn, production.NextUsn);
         Assert.AreEqual(cursor, production.ToSynthetic());
     }
 

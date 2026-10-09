@@ -14,7 +14,7 @@ public partial class JournalBrokerHostTests
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = ScanHost(
             scanDrive: (_, _, _, _, _, _) => [[ScanRecord(100, "a.txt")]],
-            readJournal: CatchUpSources.ToTip(new UsnJournalCursor(ScanArmedCursor.JournalId, ScanArmedCursor.NextUsn + 1),
+            readJournal: CatchUpSources.ToTip(new UsnJournalCursor(ScanArmedCursor.JournalIdentifier, ScanArmedCursor.NextUsn + 1),
                 ScanEntry()));
         await using var harness = new HostChannelHarness(host, blockWriter);
 
@@ -170,7 +170,7 @@ public partial class JournalBrokerHostTests
             Assert.AreEqual(18L, written.NamePoolUsedBytes);
             Assert.AreEqual(0L, written.SkippedRecordCount);
             Assert.IsTrue(block.Header.IsComplete);
-            Assert.AreEqual(cursor.JournalId, block.Header.UsnJournalId);
+            Assert.AreEqual(cursor.JournalIdentifier, block.Header.UsnJournalId);
             Assert.AreEqual(cursor.NextUsn, block.Header.UsnNextUsn);
             Assert.AreEqual("nöte.txt", NamePool.ReadRowName(block, 100).ToString());
             Assert.AreEqual(2048L, block.Rows[100].Size);

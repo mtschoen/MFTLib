@@ -32,7 +32,7 @@ public partial class BrokerProcessTests
         Assert.IsNull(result.CatchUpLoss);
         Assert.AreSame(sectionBlock, block);
         Assert.IsTrue(block.Header.RowCount > 0);
-        Assert.AreEqual(Armed.JournalId, block.Header.UsnJournalId);
+        Assert.AreEqual(Armed.JournalIdentifier, block.Header.UsnJournalId);
         Assert.AreEqual(target.CacheTag, block.Header.CacheTag);
         Assert.AreEqual(target.Path, block.Path);
         Assert.IsTrue(lifetime.IsDisposed, "The section name is unpublished once the block is written.");
@@ -220,7 +220,7 @@ public partial class BrokerProcessTests
         Assert.IsNotNull(produced.CatchUpLoss);
         Assert.AreEqual(JournalCheckpointLossDetection.ScanCatchUp, produced.CatchUpLoss.DetectedDuring);
         Assert.AreEqual(5000L, produced.CatchUpLoss.FirstUsn);
-        Assert.AreEqual(Armed.JournalId, produced.JournalId);
+        Assert.AreEqual(Armed.JournalIdentifier, produced.JournalIdentifier);
         Assert.AreEqual(Armed.NextUsn, produced.NextUsn);
         Assert.IsTrue(block.Header.RowCount > 0);
     }

@@ -13,7 +13,7 @@ namespace MFTLib.Tests.TestSupport;
 /// </summary>
 internal sealed class WatchHarness : IDisposable
 {
-    public const ulong JournalId = 7;
+    public const ulong JournalIdentifier = 7;
     public const long NextUsn = 100;
 
     static readonly DateTime ChangeMoment = new(2026, 9, 2, 6, 0, 0, DateTimeKind.Utc);
@@ -54,7 +54,7 @@ internal sealed class WatchHarness : IDisposable
         }
 
         _cursorsByDrive = driveLetters.Select(char.ToUpperInvariant)
-            .ToDictionary(letter => letter, letter => new IndexWatchTarget(letter, JournalId, NextUsn));
+            .ToDictionary(letter => letter, letter => new IndexWatchTarget(letter, JournalIdentifier, NextUsn));
         _blockBuilders = _cursorsByDrive.ToDictionary(pair => pair.Key, pair => CreateMftBlock(pair.Value));
         _cacheDirectory = Path.Combine(Path.GetTempPath(), $"mftlib-watch-cache-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_cacheDirectory);
@@ -199,7 +199,7 @@ internal sealed class WatchHarness : IDisposable
 
     public static JournalBatch Batch(uint recordNumber, string fileName, long nextUsn = NextUsn + 100)
     {
-        return new JournalBatch([Create(recordNumber, fileName)], JournalId, nextUsn);
+        return new JournalBatch([Create(recordNumber, fileName)], JournalIdentifier, nextUsn);
     }
 
     public static UsnJournalEntry Create(uint recordNumber, string fileName, ulong parentRecordNumber = 5)
@@ -356,7 +356,7 @@ internal sealed class WatchHarness : IDisposable
         var block = _blockBuilders[driveLetter].OpenForReading(out var validation) ??
                     throw new InvalidOperationException($"Synthetic watch block was invalid: {validation}.");
         _producedBlocks[driveLetter] = block;
-        return new MftBlockProduceResult(block, cursor.JournalId, cursor.NextUsn,
+        return new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUsn,
             SkippedRecordCount: 0)
         {
             CatchUpLoss = scripted.CatchUpLoss
@@ -368,7 +368,7 @@ internal sealed class WatchHarness : IDisposable
         var builder = SyntheticBlockBuilder.MftShaped();
         builder.MutateHeader((ref header) =>
         {
-            header.UsnJournalId = cursor.JournalId;
+            header.UsnJournalId = cursor.JournalIdentifier;
             header.UsnNextUsn = cursor.NextUsn;
         });
         return builder;

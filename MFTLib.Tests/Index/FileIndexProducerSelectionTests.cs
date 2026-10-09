@@ -166,7 +166,7 @@ public class FileIndexProducerSelectionTests
         {
             invocationCount++;
             return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
+                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -327,7 +327,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> FakeProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
+                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         var options = Options(ProducerPolicy.Mft, FakeProducer);
@@ -344,7 +344,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> MismatchedProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 99, NextUsn: 12345, SkippedRecordCount: 0));
+                JournalIdentifier: 99, NextUsn: 12345, SkippedRecordCount: 0));
         }
 
         var options = Options(ProducerPolicy.Mft, MismatchedProducer);
@@ -364,7 +364,7 @@ public class FileIndexProducerSelectionTests
         {
             invocationCount++;
             return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
+                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         var recoveryOptions = Options(ProducerPolicy.Mft, CountingProducer);
@@ -460,7 +460,7 @@ public class FileIndexProducerSelectionTests
         {
             invocationCount++;
             return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
+                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -522,7 +522,7 @@ public class FileIndexProducerSelectionTests
             }
 
             return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 7, NextUsn: 4096, SkippedRecordCount: 0));
+                JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
         await using var index = await FileIndex.OpenAsync(new FileIndexOptions
@@ -551,7 +551,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> MismatchedProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
-                JournalId: 99, NextUsn: 12345, SkippedRecordCount: 0));
+                JournalIdentifier: 99, NextUsn: 12345, SkippedRecordCount: 0));
         }
 
         var deletions = new List<string>();

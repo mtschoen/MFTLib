@@ -83,7 +83,7 @@ internal sealed class LocalMftBlockProducer
                 new MftBlockRowFilter(options.Profile, options.KeepFileNames, options.IncludeFreed),
                 new BlockWriteReporting(progress, null), cancellationToken);
             BrokerMftBlockProducer.ValidateBlock(block, request.VolumeSerial, cursor, request.CacheTag);
-            var produced = new MftBlockProduceResult(block, cursor.JournalId, cursor.NextUsn,
+            var produced = new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUsn,
                 checked((int)result.SkippedRecordCount));
             block = null;
             return produced;

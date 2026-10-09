@@ -35,7 +35,7 @@ public sealed partial class BrokerCrossDriveLivenessTests
         await using var scenario = await CrossDriveScenario.OpenAsync();
         var index = scenario.Index;
         var token = scenario.Token;
-        var tipOfU = new UsnJournalCursor(WatchHarness.JournalId, ScriptedWatchBrokerHarness.DefaultTip.NextUsn + 100);
+        var tipOfU = new UsnJournalCursor(WatchHarness.JournalIdentifier, ScriptedWatchBrokerHarness.DefaultTip.NextUsn + 100);
         scenario.Broker.SetTip('U', tipOfU);
         await index.StartWatchingAsync('T', token);
         await index.StartWatchingAsync('U', token);

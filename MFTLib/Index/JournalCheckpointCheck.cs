@@ -5,7 +5,7 @@ namespace MFTLib.Index;
 ///     <c>USN_JOURNAL_DATA</c> so the decision and its tests do not depend on Windows.
 /// </summary>
 internal readonly record struct JournalWindow(
-    ulong JournalId, long FirstUsn, long NextUsn, long AllocationDelta, long MaximumSize);
+    ulong JournalIdentifier, long FirstUsn, long NextUsn, long AllocationDelta, long MaximumSize);
 
 /// <summary>
 ///     Decides whether a block's journal position can still be resumed, by reading the live
@@ -76,7 +76,7 @@ static class JournalCheckpointCheck
 
         var journalSettings = new UsnJournalSettings { AllocationDelta = allocationDelta, MaximumSize = journal.MaximumSize };
 
-        if (journal.JournalId != checkpointJournalId)
+        if (journal.JournalIdentifier != checkpointJournalId)
         {
             return new JournalCheckpointLoss(driveLetter, detectedDuring, JournalCheckpointLossCause.JournalRecreated,
                 journalSettings)

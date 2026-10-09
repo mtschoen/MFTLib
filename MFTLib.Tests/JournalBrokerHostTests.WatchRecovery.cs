@@ -25,7 +25,7 @@ public partial class JournalBrokerHostTests
             string drive, UsnJournalCursor since, IBrokerOperationReporter operation,
             CancellationToken cancellationToken)
         {
-            if (drive == "C" && since.JournalId == 7UL)
+            if (drive == "C" && since.JournalIdentifier == 7UL)
             {
                 throw new InvalidOperationException("USN journal entries have been deleted; full rescan needed");
             }
@@ -156,7 +156,7 @@ public partial class JournalBrokerHostTests
                 queryCallCount++;
                 return new UsnJournalCursor(8UL, 50L);
             },
-            watchDrive: (_, since, _, cancellationToken) => since.JournalId == 7UL
+            watchDrive: (_, since, _, cancellationToken) => since.JournalIdentifier == 7UL
                 ? throw new InvalidOperationException(
                     "Journal ID mismatch: the cached cursor refers to a journal that was recreated")
                 : LiveWatch([([WatchEntry()], new UsnJournalCursor(8UL, 60L))], cancellationToken));

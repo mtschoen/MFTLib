@@ -242,7 +242,7 @@ public class UsnJournalVolumeInteropTests
         var journal = new JournalCheckpointCheck.JournalReader(() => false, JournalCheckpointCheck.ReadLiveJournal).Read('C');
 
         Assert.IsNotNull(journal, "C: has a journal the unelevated handle can read");
-        Assert.AreNotEqual(0UL, journal.Value.JournalId);
+        Assert.AreNotEqual(0UL, journal.Value.JournalIdentifier);
         Assert.IsTrue(journal.Value.AllocationDelta > 0);
     }
 

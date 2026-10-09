@@ -12,7 +12,7 @@ internal sealed partial class BrokerProcess
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
-        var since = new UsnJournalCursor(target.JournalId, target.NextUsn);
+        var since = new UsnJournalCursor(target.JournalIdentifier, target.NextUsn);
         var channel = await OpenChannelAsync(target.DriveLetter, writer => BrokerProtocol.WriteStartWatch(writer, since),
             cancellationToken).ConfigureAwait(false);
         return new BrokerWatchChannel(channel);
