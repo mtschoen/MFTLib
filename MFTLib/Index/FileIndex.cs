@@ -396,6 +396,7 @@ public sealed partial class FileIndex : IAsyncDisposable
                 StateVersion = runtime.WatchStateVersion,
                 FailureMessage = _watchFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
                 ConsecutiveLostCatchUps = runtime.ConsecutiveLostCatchUps,
+                RecoveryStopped = runtime.RecoveryStopped,
                 CheckpointLoss = _checkpointLossesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal)
             }
         };

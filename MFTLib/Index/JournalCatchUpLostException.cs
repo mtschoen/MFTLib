@@ -9,8 +9,8 @@ namespace MFTLib.Index;
 ///     <see cref="WatchFaultKind.CatchUpLost" /> fault after every such scan, and thrown by
 ///     <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> when the scan operation stops retrying.
 ///     The exception names no drive: <see cref="WatchFault.DriveLetter" /> does, and the drive's
-///     <see cref="DriveWatchStatus.ConsecutiveLostCatchUps" /> and <see cref="DriveWatchStatus.CheckpointLoss" />
-///     carry the count and the journal's proof.
+///     <see cref="DriveWatchStatus.RecoveryStopped" /> and <see cref="DriveWatchStatus.CheckpointLoss" />
+///     carry the recovery decision and the journal's proof.
 /// </summary>
 [SuppressMessage("Roslynator", "RCS1194",
     Justification = "Every instance says whether recovery stopped, which is what a consumer acts on; " +
@@ -28,8 +28,8 @@ public sealed class JournalCatchUpLostException : Exception
     }
 
     /// <summary>
-    ///     True when this loss brought the count to <see cref="FileIndex.LostCatchUpRecoveryLimit" />
-    ///     or past it, so no further scan follows automatically: the drive keeps this block,
+    ///     True when this loss exhausted automatic recovery from consecutive scan catch-up losses,
+    ///     so no further scan follows automatically: the drive keeps this block,
     ///     queryable but not watchable, until a consumer's <see cref="FileIndex.RescanAsync(char, CancellationToken)" />.
     /// </summary>
     public bool RecoveryStopped { get; }

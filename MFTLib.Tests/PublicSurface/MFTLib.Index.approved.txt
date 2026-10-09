@@ -166,8 +166,8 @@ MFTLib.Index.DriveWatchStatus :: method public static op_Equality(MFTLib.Index.D
 MFTLib.Index.DriveWatchStatus :: method public static op_Inequality(MFTLib.Index.DriveWatchStatus? left, MFTLib.Index.DriveWatchStatus? right) : bool
 MFTLib.Index.DriveWatchStatus :: property public CatchUpState { get; init; } : MFTLib.Index.WatchCatchUpState
 MFTLib.Index.DriveWatchStatus :: property public CheckpointLoss { get; init; } : MFTLib.Index.JournalCheckpointLoss?
-MFTLib.Index.DriveWatchStatus :: property public ConsecutiveLostCatchUps { get; init; } : int
 MFTLib.Index.DriveWatchStatus :: property public FailureMessage { get; init; } : string?
+MFTLib.Index.DriveWatchStatus :: property public RecoveryStopped { get; init; } : bool
 MFTLib.Index.DriveWatchStatus :: property public Requested { get; init; } : bool
 MFTLib.Index.DriveWatchStatus :: property public StateVersion { get; init; } : long
 MFTLib.Index.DriveWatchStatus :: property public Supported { get; init; } : bool
@@ -214,7 +214,6 @@ MFTLib.Index.FileEntry :: type public readonly struct : System.IEquatable<MFTLib
 MFTLib.Index.FileIndex :: event public Changed : System.Action<MFTLib.Index.FileChange>?
 MFTLib.Index.FileIndex :: event public WatchFaulted : System.Action<MFTLib.Index.WatchFault>?
 MFTLib.Index.FileIndex :: event public WatchStateChanged : System.Action<MFTLib.Index.DriveWatchState>?
-MFTLib.Index.FileIndex :: field public const LostCatchUpRecoveryLimit : int = 3
 MFTLib.Index.FileIndex :: method public DisposeAsync() : System.Threading.Tasks.ValueTask
 MFTLib.Index.FileIndex :: method public Enumerate(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : System.Collections.Generic.IEnumerable<MFTLib.Index.FileEntry>
 MFTLib.Index.FileIndex :: method public EnumerateRows(MFTLib.Index.SearchQuery query, System.Threading.CancellationToken cancellationToken = default) : MFTLib.Index.IndexRowEnumerable

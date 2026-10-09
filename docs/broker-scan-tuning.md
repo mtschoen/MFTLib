@@ -58,9 +58,9 @@ failure as an ordinary scan error.
 
 `FileIndex` publishes the complete block from a proven loss, marks it
 unresumable, raises `WatchFaultKind.CatchUpLost` when handlers exist, and rescans
-the drive. A successful catch-up resets
-`DriveWatchStatus.ConsecutiveLostCatchUps`. After
-`FileIndex.LostCatchUpRecoveryLimit` consecutive losses, automatic retries stop,
+the drive. A successful catch-up clears `DriveWatchStatus.RecoveryStopped`.
+When consecutive losses exhaust the internal retry policy, the flag is set before
+loss notification or open completion, automatic retries stop,
 and the block stays queryable but cannot be watched. A manual or recovery rescan
 at the limit leaves the drive `WatchCatchUpState.Faulted`. During
 `FileIndex.OpenAsync`, the same retry loop settles the drive `DriveState.Ready`
@@ -68,6 +68,7 @@ with the last block at the limit rather than failing the whole open, while its
 watch catch-up state is already `WatchCatchUpState.Faulted`. A later
 `StartWatchingAsync` is refused until `RescanAsync` succeeds. The refusal retains
 the watch request, so a successful rescan clears the refusal and starts the watch.
+Failed or cancelled production and stopping the watch do not clear recovery exhaustion.
 
 The `JournalCheckpointLoss` report in the drive's `DriveWatchStatus.CheckpointLoss` tells the
 consumer what happened. For `JournalCheckpointLossCause.CheckpointTrimmed`, a non-null

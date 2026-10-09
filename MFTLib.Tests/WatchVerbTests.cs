@@ -92,6 +92,7 @@ public class WatchVerbTests
         Assert.IsTrue(lines.Contains("=== Drive X: done ==="));
         Assert.AreEqual(2, lines.Count(line => line.StartsWith("Cache X: block ", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
         Assert.IsTrue(lines.Any(line => line.StartsWith("Watch: NotStarted v", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(lines.Any(line => line.Contains("recovery stopped False", StringComparison.Ordinal)), string.Join(Environment.NewLine, lines));
     }
 
     [TestMethod]

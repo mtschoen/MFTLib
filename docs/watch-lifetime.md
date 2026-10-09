@@ -1,6 +1,12 @@
 # Watch lifetime
 
 - Index contracts:
+    - **Catch-up recovery exhaustion**: `DriveWatchStatus.RecoveryStopped` records exhausted
+      automatic recovery from consecutive scan catch-up losses, independently of watch requests
+      and refused-start faults. It is set under the stop-decision state lock before loss
+      notification or open completion. Successful catch-up publication clears it with the internal
+      count reset; failed or cancelled production, no-block scans, and stopping the watch preserve
+      it. Each drive has its own flag. An unresumable refusal alone does not set it.
     - **Watch start readiness**: `StartWatchingAsync(X)` returns once X's channel is connected and
       `StartWatch` is written.
     - **Watch source**: every drive's watch starts through `FileIndexOptions.MftSource`'s watch

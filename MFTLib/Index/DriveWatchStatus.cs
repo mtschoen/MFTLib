@@ -2,7 +2,7 @@ namespace MFTLib.Index;
 
 /// <summary>
 ///     One drive's live-watch state within its <see cref="DriveStatus" />, captured with that
-///     status. Every value is its default for a drive that is not watched.
+///     status. Recovery exhaustion and checkpoint-loss reports can remain when no watch is running.
 /// </summary>
 public sealed record DriveWatchStatus
 {
@@ -45,8 +45,8 @@ public sealed record DriveWatchStatus
     ///     checkpoint reads <see cref="WatchCatchUpState.Faulted" /> instead once
     ///     <see cref="FileIndex.StartWatchingAsync(char, CancellationToken)" /> has refused it: it could be watched if its
     ///     cursor were resumable, so this says the watch was refused rather than never attempted.
-    ///     The same holds for a drive whose scans lost their journal catch-up
-    ///     <see cref="FileIndex.LostCatchUpRecoveryLimit" /> times in a row.
+    ///     The same holds for a drive whose consecutive scan catch-up losses exhausted automatic
+    ///     recovery (<see cref="RecoveryStopped" />).
     ///     <see cref="WatchCatchUpState.Recovering" /> while a recovery of the drive is queued or
     ///     running after a <see cref="WatchFaultKind.Drive" /> or <see cref="WatchFaultKind.Apply" />
     ///     fault, or a scan of a watched drive retries after a lost catch-up.
@@ -90,7 +90,15 @@ public sealed record DriveWatchStatus
     ///     It spans every scan of the drive for the life of the index, and a scan operation stops
     ///     retrying once it reaches <see cref="FileIndex.LostCatchUpRecoveryLimit" />.
     /// </summary>
-    public int ConsecutiveLostCatchUps { get; init; }
+    internal int ConsecutiveLostCatchUps { get; init; }
+
+    /// <summary>
+    ///     True when consecutive scan catch-up losses exhausted automatic recovery for this drive.
+    ///     Published before the loss notification or open completion. Failed or cancelled scans
+    ///     and stopping the watch preserve it; publishing a successful catch-up clears it.
+    ///     Call <see cref="FileIndex.RescanAsync(char, CancellationToken)" /> to restore a resumable block.
+    /// </summary>
+    public bool RecoveryStopped { get; init; }
 
     /// <summary>
     ///     Set when this drive's journal position fell out of the journal, so catching the

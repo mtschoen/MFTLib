@@ -220,8 +220,8 @@ failure.
 ### Concurrent open progress
 
 `FileIndex.OpenAsync` settles its drives concurrently. A drive whose scan loses
-catch-up rescans itself up to `FileIndex.LostCatchUpRecoveryLimit` times. At the
-limit, open still returns that drive as `Ready` with the last complete block,
+catch-up rescans itself until automatic recovery is exhausted. When
+`DriveWatchStatus.RecoveryStopped` becomes true, open still returns that drive as `Ready` with the last complete block,
 but the block is unresumable and watching it is refused until a successful
 `RescanAsync`.
 
@@ -382,12 +382,14 @@ the armed cursor is actually gone. Only a proven trimmed or recreated journal
 becomes `JournalCatchUpLostException`; an unavailable journal query or a cursor
 that is still retained remains an ordinary scan failure.
 
-Every proven loss increments `DriveWatchStatus.ConsecutiveLostCatchUps`. A successful
-scan resets the count. A manual or recovery rescan retries until success or
-`FileIndex.LostCatchUpRecoveryLimit`; at the limit it throws the last
+Every proven loss increments an internal per-drive count. A successful
+catch-up resets it and clears `DriveWatchStatus.RecoveryStopped`. A manual or recovery
+rescan retries until success or automatic recovery is exhausted; exhaustion sets the
+flag before notification, and the rescan throws the last
 `JournalCatchUpLostException`, keeps the complete block queryable, and refuses a
 watch from that block. At open, the same retries happen before the drive settles;
 the open returns the unresumable block instead of throwing at the limit.
+Failed or cancelled production and stopping the watch preserve the flag.
 
 The drive's `DriveWatchStatus.CheckpointLoss` report has
 `DetectedDuring == JournalCheckpointLossDetection.ScanCatchUp`. If its `Cause`

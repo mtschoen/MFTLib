@@ -40,10 +40,10 @@ public sealed partial class FileIndex
     ///         A scan whose journal catch-up was lost publishes its block, raises
     ///         <see cref="WatchFaultKind.CatchUpLost" />, and scans the drive again at once while
     ///         this rescan still holds the lifecycle gate, until a scan's catch-up holds or the
-    ///         drive's <see cref="DriveWatchStatus.ConsecutiveLostCatchUps" /> reaches
-    ///         <see cref="LostCatchUpRecoveryLimit" />; then this throws the last
+    ///         drive's consecutive losses exhaust automatic recovery
+    ///         (<see cref="DriveWatchStatus.RecoveryStopped" />); then this throws the last
     ///         <see cref="JournalCatchUpLostException" />, and the drive keeps its last block,
-    ///         queryable but not watchable. With the count already at the limit it makes exactly one
+    ///         queryable but not watchable. With recovery already stopped it makes exactly one
     ///         attempt.
     ///     </para>
     ///     <para>

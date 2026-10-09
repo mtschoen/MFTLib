@@ -32,9 +32,10 @@
       A proven loss travels through `BrokerDriveScanResult.CatchUpLoss` and
       `MftBlockProduceResult.CatchUpLoss`; the index publishes the complete block as unresumable,
       records a `ScanCatchUp` report (including `SizeThatWouldHaveRetained` when the journal was
-      trimmed), and scans the drive again. `DriveWatchStatus.ConsecutiveLostCatchUps` reaches
-      `FileIndex.LostCatchUpRecoveryLimit` after three consecutive losses; a scan whose catch-up
-      holds resets it to zero. At the limit an open settles the drive `Ready` with its last block,
+      trimmed), and scans the drive again. After three consecutive losses the internal retry
+      policy stops automatic recovery and sets `DriveWatchStatus.RecoveryStopped` before the
+      loss notification or open completion. A scan whose catch-up holds clears it; failed or
+      cancelled production and stopping the watch preserve it. An exhausted open settles the drive `Ready` with its last block,
       refuses its watch, and requires a consumer `RescanAsync` to publish a resumable block
       and start the watch if it is requested.
       A catch-up failure the journal cannot prove is an ordinary failed scan and carries no report.
@@ -42,6 +43,8 @@
       protocol carries them, report equality covers them, and `BytesBehind` and
       `SizeThatWouldHaveRetained` derive from them. `JournalCatchUpLostException` carries only
       `RecoveryStopped` and its message; the drive is the fault's `WatchFault.DriveLetter`, and the
-      consecutive count and the report are the drive's `DriveStatus` values, which a
+      recovery-stopped flag and the report are the drive's `DriveStatus.Watch` values, which a
       `WatchFaulted` handler reads when the fault is raised.
+      A stopped-loss message with a retained-size suggestion names the public
+      `BrokerSession.GrowUsnJournalAsync` remedy, followed by `FileIndex.RescanAsync`.
       A bounded catch-up read that returns entries without advancing its cursor fails the scan.
