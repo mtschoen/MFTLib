@@ -15,7 +15,7 @@ internal sealed class BrokerMftBlockProducer
     /// <param name="connectAsync">
     ///     Yields the process each scan runs on. The caller keeps ownership of what it returns.
     /// </param>
-    /// <param name="scanOptions">Base options for every scan: profile, keep-file names and progress.</param>
+    /// <param name="scanOptions">Base options for every scan: retention, freed-record inclusion and progress.</param>
     internal BrokerMftBlockProducer(
         Func<CancellationToken, Task<BrokerProcess>> connectAsync,
         BrokerScanOptions? scanOptions = null)

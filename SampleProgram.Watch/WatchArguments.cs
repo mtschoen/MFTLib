@@ -20,23 +20,22 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
     internal const int MaximumSeconds = int.MaxValue / 1000;
 
     internal static string Usage =>
-        "Usage: SampleProgram.Watch [mode] [drive ...] [--keep-name A,B] [--profile full|directory-index]" + Environment.NewLine +
+        "Usage: SampleProgram.Watch [mode] [drive ...] [--directories-only | --keep-name A,B]" + Environment.NewLine +
         "  modes: " + string.Join(", ", ProgramModes.Names.Keys) + " (default scan-drive); drive defaults to " + DefaultDrive + Environment.NewLine +
         "  watch [--seconds N]  journal [--maximum-size B --allocation-delta B]  cache [--cache-directory D] [--clear]  (each scan policy caches under D/policy-DIGEST)";
 
     // The flags each mode reads; any other flag on the command line is a usage error rather than silently ignored.
     static readonly Dictionary<ProgramMode, string[]> ModeFlags = new()
     {
-        [ProgramMode.ScanDrive] = ["--keep-name", "--profile", "--cache-directory"],
-        [ProgramMode.Watch] = ["--keep-name", "--profile", "--cache-directory", "--seconds"],
-        [ProgramMode.Rescan] = ["--keep-name", "--profile", "--cache-directory"],
-        [ProgramMode.Journal] = ["--keep-name", "--profile", "--cache-directory", "--maximum-size", "--allocation-delta"],
+        [ProgramMode.ScanDrive] = ["--keep-name", "--directories-only", "--cache-directory"],
+        [ProgramMode.Watch] = ["--keep-name", "--directories-only", "--cache-directory", "--seconds"],
+        [ProgramMode.Rescan] = ["--keep-name", "--directories-only", "--cache-directory"],
+        [ProgramMode.Journal] = ["--keep-name", "--directories-only", "--cache-directory", "--maximum-size", "--allocation-delta"],
         [ProgramMode.Cache] = ["--cache-directory", "--clear"],
         [ProgramMode.ElevationStatus] = []
     };
 
-    internal IReadOnlyList<string>? KeepNames { get; init; }
-    internal BrokerScanProfile Profile { get; init; }
+    internal IReadOnlyList<string>? DirectoryScanFileNames { get; init; }
     internal int Seconds { get; init; } = DefaultSeconds;
     internal long? MaximumSize { get; init; }
     internal long? AllocationDelta { get; init; }
@@ -48,23 +47,24 @@ internal sealed partial record WatchArguments(ProgramMode Mode, IReadOnlyList<st
 
     /// <summary>The scan options the broker source gets; null scans every record, as the library does by default.</summary>
     internal BrokerScanOptions? ScanOptions =>
-        KeepNames is null && Profile == BrokerScanProfile.Full ? null : new BrokerScanOptions { KeepFileNames = KeepNames, Profile = Profile };
+        DirectoryScanFileNames is null ? null : new BrokerScanOptions { DirectoryScanFileNames = DirectoryScanFileNames };
 
-    /// <summary>A cached block holds what its scan kept, so a different profile or keep list is a different identity.</summary>
-    internal static CacheTag CacheTag => new("SMPW", 1);
+    /// <summary>A cached block holds what its scan retained, so a different retention policy is a different identity.</summary>
+    internal static CacheTag CacheTag => new("SMPW", 2);
 
     internal const string PolicyDirectoryPrefix = "policy-";
 
     /// <summary>
     ///     The folder under the cache directory that holds this scan policy's blocks. The name is the full SHA-256 of the
-    ///     profile and the sorted keep names (joined by NUL, which no file name contains), so two policies never share a block
+    ///     full/directory marker and sorted retained names (joined by NUL, which no file name contains), so two policies never share a block
     ///     file; the 32-bit cache tag cannot carry that identity.
     /// </summary>
     internal string PolicyDirectoryName
     {
         get
         {
-            var canonical = $"{Profile}\0{string.Join('\0', (KeepNames ?? []).Order(StringComparer.Ordinal))}";
+            var marker = DirectoryScanFileNames is null ? "full" : "directories";
+            var canonical = $"{marker}\0{string.Join('\0', (DirectoryScanFileNames ?? []).Order(StringComparer.Ordinal))}";
             return PolicyDirectoryPrefix + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
         }
     }

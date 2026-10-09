@@ -11,13 +11,9 @@ MFTLib.BrokerScanOptions :: method public override GetHashCode() : int
 MFTLib.BrokerScanOptions :: method public override ToString() : string
 MFTLib.BrokerScanOptions :: method public static op_Equality(MFTLib.BrokerScanOptions? left, MFTLib.BrokerScanOptions? right) : bool
 MFTLib.BrokerScanOptions :: method public static op_Inequality(MFTLib.BrokerScanOptions? left, MFTLib.BrokerScanOptions? right) : bool
+MFTLib.BrokerScanOptions :: property public DirectoryScanFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
 MFTLib.BrokerScanOptions :: property public IncludeFreed { get; init; } : bool
-MFTLib.BrokerScanOptions :: property public KeepFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
-MFTLib.BrokerScanOptions :: property public Profile { get; init; } : MFTLib.BrokerScanProfile
 MFTLib.BrokerScanOptions :: type public sealed class : System.IEquatable<MFTLib.BrokerScanOptions>
-MFTLib.BrokerScanProfile :: field public const DirectoryIndex : MFTLib.BrokerScanProfile = 1
-MFTLib.BrokerScanProfile :: field public const Full : MFTLib.BrokerScanProfile = 0
-MFTLib.BrokerScanProfile :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.BrokerSession :: constructor public ()
 MFTLib.BrokerSession :: constructor public (System.Func<string, bool> launchBroker, System.TimeSpan? connectTimeout = default)
 MFTLib.BrokerSession :: event public Connected : System.Action?

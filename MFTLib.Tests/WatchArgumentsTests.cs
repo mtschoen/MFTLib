@@ -172,7 +172,10 @@ public class WatchArgumentsTests
     [DataRow(new[] { "journal", "C", "--maximum-size", "9000" }, "journal needs --maximum-size and --allocation-delta together.")]
     [DataRow(new[] { "journal", "C", "--allocation-delta", "1" }, "journal needs --maximum-size and --allocation-delta together.")]
     [DataRow(new[] { "watch", "C", "--clear" }, "Option --clear does not apply to watch.")]
-    [DataRow(new[] { "watch", "C", "--profile", "sparse" }, "Unknown profile sparse.")]
+    [DataRow(new[] { "watch", "C", "--profile", "sparse" }, "Unknown option --profile.")]
+    [DataRow(new[] { "watch", "C", "--directories-only", "--keep-name", "a" }, "Options --directories-only and --keep-name cannot be combined.")]
+    [DataRow(new[] { "watch", "C", "--keep-name", "" }, "Option --keep-name needs a file name; use --directories-only for directories alone.")]
+    [DataRow(new[] { "watch", "C", "--keep-name", " , " }, "Option --keep-name needs a file name; use --directories-only for directories alone.")]
     [DataRow(new[] { "watch", "C", "--seconds", "soon" }, "Option --seconds needs a whole number, not 'soon'.")]
     public void TryParse_BadFlags_AreRefusedWithTheirReason(string[] arguments, string expected)
     {
@@ -188,7 +191,7 @@ public class WatchArgumentsTests
     [DataRow(new[] { "rescan", "C", "--allocation-delta", "1" }, "Option --allocation-delta does not apply to rescan.")]
     [DataRow(new[] { "journal", "C", "--seconds", "3" }, "Option --seconds does not apply to journal.")]
     [DataRow(new[] { "cache", "--keep-name", "a.txt" }, "Option --keep-name does not apply to cache.")]
-    [DataRow(new[] { "cache", "--profile", "full" }, "Option --profile does not apply to cache.")]
+    [DataRow(new[] { "cache", "--directories-only" }, "Option --directories-only does not apply to cache.")]
     [DataRow(new[] { "cache", "--seconds", "3" }, "Option --seconds does not apply to cache.")]
     [DataRow(new[] { "elevation-status", "--cache-directory", "folder" }, "Option --cache-directory does not apply to elevation-status.")]
     [DataRow(new[] { "elevation-status", "--clear" }, "Option --clear does not apply to elevation-status.")]
@@ -206,22 +209,22 @@ public class WatchArgumentsTests
     [DataRow("journal")]
     public void TryParse_ScanAndCacheFlags_ApplyToEveryModeThatOpensAnIndex(string mode)
     {
-        Assert.IsTrue(WatchArguments.TryParse([mode, "C", "--keep-name", "a.txt", "--profile", "directory-index", "--cache-directory", "folder"], out var parsed, out var error), error);
+        Assert.IsTrue(WatchArguments.TryParse([mode, "C", "--keep-name", "a.txt", "--cache-directory", "folder"], out var parsed, out var error), error);
 
         Assert.AreEqual("folder", parsed.CacheDirectory);
-        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, parsed.Profile);
+        CollectionAssert.AreEqual(new[] { "a.txt" }, parsed.DirectoryScanFileNames!.ToArray());
     }
 
     [DataTestMethod]
-    [DataRow("directory-index", "Aa", "directory-index", "BB")]
-    [DataRow("full", "b", "directory-index", "a")]
-    [DataRow("directory-index", "keep63926.txt", "directory-index", "keep68897.txt")]
-    [DataRow("directory-index", "keep20143.txt", "directory-index", "keep118021.txt")]
-    [DataRow("directory-index", "policy96088.txt", "full", "policy188525.txt")]
-    public void PolicyDirectoryName_PoliciesThatCollidedUnderA32BitTag_GetDifferentDirectories(string profileOne, string keepOne, string profileTwo, string keepTwo)
+    [DataRow("Aa", "BB")]
+    [DataRow("b", "a")]
+    [DataRow("keep63926.txt", "keep68897.txt")]
+    [DataRow("keep20143.txt", "keep118021.txt")]
+    [DataRow("policy96088.txt", "policy188525.txt")]
+    public void PolicyDirectoryName_DistinctRetainedNames_GetDifferentDirectories(string keepOne, string keepTwo)
     {
-        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--profile", profileOne, "--keep-name", keepOne], out var one, out _));
-        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--profile", profileTwo, "--keep-name", keepTwo], out var two, out _));
+        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", keepOne], out var one, out _));
+        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", keepTwo], out var two, out _));
 
         Assert.AreNotEqual(one.PolicyDirectoryName, two.PolicyDirectoryName);
     }
@@ -257,15 +260,19 @@ public class WatchArgumentsTests
     }
 
     [TestMethod]
-    public void ScanOptions_KeepNamesAndProfile_MapToTheBrokerScanOptions()
+    public void ScanOptions_RetentionStates_MapToTheBrokerScanOptions()
     {
-        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "desktop.ini, .gitignore", "--profile", "directory-index"], out var parsed, out _));
+        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--keep-name", "desktop.ini, .gitignore"], out var parsed, out _));
         Assert.IsTrue(WatchArguments.TryParse(["watch", "C"], out var plain, out _));
+        Assert.IsTrue(WatchArguments.TryParse(["watch", "C", "--directories-only"], out var directories, out _));
 
         var options = parsed.ScanOptions!;
-        CollectionAssert.AreEqual(new[] { "desktop.ini", ".gitignore" }, options.KeepFileNames!.ToArray());
-        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, options.Profile);
+        CollectionAssert.AreEqual(new[] { "desktop.ini", ".gitignore" }, options.DirectoryScanFileNames!.ToArray());
+        Assert.AreEqual(0, directories.ScanOptions!.DirectoryScanFileNames!.Count);
+        Assert.AreNotEqual(plain.PolicyDirectoryName, directories.PolicyDirectoryName);
+        Assert.AreNotEqual(parsed.PolicyDirectoryName, directories.PolicyDirectoryName);
+        Assert.AreEqual(new MFTLib.Index.CacheTag("SMPW", 2), WatchArguments.CacheTag);
         Assert.IsNull(plain.ScanOptions);
-        Assert.AreNotEqual(plain.PolicyDirectoryName, parsed.PolicyDirectoryName, "A different profile or keep list is a different cache directory.");
+        Assert.AreNotEqual(plain.PolicyDirectoryName, parsed.PolicyDirectoryName, "A different retention policy is a different cache directory.");
     }
 }

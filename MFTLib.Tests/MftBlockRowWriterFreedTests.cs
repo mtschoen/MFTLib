@@ -11,7 +11,7 @@ namespace MFTLib.Tests;
 public class MftBlockRowWriterFreedTests
 {
     const ushort RootSequence = 5;
-    static readonly MftBlockRowFilter IncludingFreed = new(BrokerScanProfile.Full, IncludeFreed: true);
+    static readonly MftBlockRowFilter IncludingFreed = new(IncludeFreed: true);
 
     [TestMethod]
     public void FreedRow_HasTheFlagsAJournalDeleteLeavesAndIsNotLive()
@@ -67,7 +67,14 @@ public class MftBlockRowWriterFreedTests
     }
 
     [TestMethod]
-    public void DirectoryIndexProfile_KeepsFreedDirectoriesAndNamedFreedFilesOnly()
+    [DataRow(null, false, false, false)]
+    [DataRow(null, true, true, true)]
+    [DataRow(new string[0], false, false, false)]
+    [DataRow(new string[0], true, false, false)]
+    [DataRow(new[] { "keep.txt" }, false, false, false)]
+    [DataRow(new[] { "keep.txt" }, true, false, true)]
+    public void RetentionAndFreedInclusion_AreOrthogonal(string[]? names, bool includeFreed,
+        bool ignoredFileRetained, bool namedFileRetained)
     {
         using var block = CreateBlock();
         MftRecord[] records =
@@ -79,13 +86,16 @@ public class MftBlockRowWriterFreedTests
         ];
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [records],
-            new MftBlockRowFilter(BrokerScanProfile.DirectoryIndex, ["keep.txt"], IncludeFreed: true), null,
+            new MftBlockRowFilter(names, IncludeFreed: includeFreed), null,
             CancellationToken.None);
 
-        Assert.IsTrue(block.Rows[12].IsDeleted);
-        Assert.AreEqual(RowFlags.None, block.Rows[13].Flags);
-        Assert.IsTrue(block.Rows[14].IsDeleted);
-        Assert.AreEqual(12u, block.Rows[14].ParentRow, "A named freed file under a verified directory keeps its parent.");
+        Assert.AreEqual(includeFreed, block.Rows[12].IsDeleted);
+        Assert.AreEqual(ignoredFileRetained, block.Rows[13].IsDeleted);
+        Assert.AreEqual(namedFileRetained, block.Rows[14].IsDeleted);
+        if (namedFileRetained)
+        {
+            Assert.AreEqual(12u, block.Rows[14].ParentRow, "A retained freed file under a verified directory keeps its parent.");
+        }
     }
 
     [TestMethod]

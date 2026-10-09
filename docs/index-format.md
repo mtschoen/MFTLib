@@ -170,7 +170,9 @@ at this header value.
 four ASCII characters and a `uint` version. The all-zero default means
 unspecified, not match-any. Codes are case-sensitive and neither component is
 interpreted by MFTLib. The consumer increments its version whenever its scan
-profile or keep-list changes the rows it stores. For example:
+retention policy changes the rows it stores. `DirectoryScanFileNames` distinguishes
+full retention (null), directories alone (empty), and directories plus matching names.
+Freed-record inclusion also changes the retained rows. For example:
 
     CacheTag = new CacheTag("GITW", 1)
 

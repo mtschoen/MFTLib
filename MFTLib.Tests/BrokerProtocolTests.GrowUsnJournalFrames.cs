@@ -20,7 +20,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(0x08000000L, frame.JournalMaximumSize);
         Assert.AreEqual(0x01000000L, frame.JournalAllocationDelta);
         Assert.AreEqual(0, frame.Entries.Length);
-        Assert.AreEqual(0, frame.KeepFileNames.Count);
+        Assert.IsNull(frame.DirectoryScanFileNames);
     }
 
     [TestMethod]
@@ -34,7 +34,7 @@ public partial class BrokerProtocolTests
         Assert.AreEqual(0x02000000L, frame.JournalAllocationDelta);
         Assert.IsNull(frame.Drive, "The reply is matched by its request id, not by a drive.");
         Assert.AreEqual(0, frame.Entries.Length);
-        Assert.AreEqual(0, frame.KeepFileNames.Count);
+        Assert.IsNull(frame.DirectoryScanFileNames);
     }
 
     [TestMethod]

@@ -56,7 +56,7 @@ public class FreedRowsFixtureParityTests
             DeleteOnClose = true
         });
         MftBlockRowWriter.WriteBatches(new BlockWriter(block), [scanned.ToArray()],
-            new MftBlockRowFilter(BrokerScanProfile.Full, IncludeFreed: true), null, CancellationToken.None);
+            new MftBlockRowFilter(IncludeFreed: true), null, CancellationToken.None);
 
         CollectionAssert.AreEquivalent(TrustedFreedRecords.Concat(UntrustedFreedRecords).ToArray(), freedRecords);
         foreach (var recordNumber in freedRecords)

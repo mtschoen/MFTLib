@@ -57,13 +57,12 @@ internal readonly record struct BrokerFrame
     public string? Drive { get; private init; }
     public string? PipeName { get; private init; }
     public string? SectionName { get; private init; }
-    public BrokerScanProfile Profile { get; private init; }
     public bool IncludeFreed { get; private init; }
     public UsnJournalCursor Cursor { get; private init; }
     public UsnJournalEntry[] Entries { get; private init; }
     public long SkippedRecordCount { get; private init; }
     public string? Message { get; private init; }
-    public IReadOnlyList<string> KeepFileNames { get; private init; }
+    public IReadOnlyCollection<string>? DirectoryScanFileNames { get; private init; }
 
     /// <summary>
     ///     A scan's progress. The drive belongs to the channel, so a frame read off the wire carries
@@ -115,8 +114,7 @@ internal readonly record struct BrokerFrame
         };
     }
 
-    // Per-kind factories: the only way to build a valid frame. Each initializes Entries and
-    // KeepFileNames (empty for kinds that carry none) so consumers never see a null.
+    // Per-kind factories initialize Entries. Retention stays null on full scans and non-scan frames.
 
     public static BrokerFrame OpenChannel(uint requestId, string drive, string pipeName)
     {
@@ -178,15 +176,14 @@ internal readonly record struct BrokerFrame
         return Empty(BrokerFrameKind.Stalled, 0) with { Message = message };
     }
 
-    public static BrokerFrame ArmAndScan(string sectionName, BrokerScanProfile profile,
-        IReadOnlyList<string>? keepFileNames = null, bool includeFreed = false)
+    public static BrokerFrame ArmAndScan(string sectionName,
+        IReadOnlyCollection<string>? directoryScanFileNames = null, bool includeFreed = false)
     {
         return Empty(BrokerFrameKind.ArmAndScan, 0) with
         {
             SectionName = sectionName,
-            Profile = profile,
             IncludeFreed = includeFreed,
-            KeepFileNames = keepFileNames ?? Array.Empty<string>()
+            DirectoryScanFileNames = directoryScanFileNames
         };
     }
 
@@ -240,8 +237,7 @@ internal readonly record struct BrokerFrame
         {
             Kind = kind,
             RequestId = requestId,
-            Entries = Array.Empty<UsnJournalEntry>(),
-            KeepFileNames = Array.Empty<string>()
+            Entries = Array.Empty<UsnJournalEntry>()
         };
     }
 }

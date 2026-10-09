@@ -20,14 +20,13 @@ public partial class BrokerProtocolTests
     };
 
     [TestMethod]
-    public void ArmAndScanFrame_RoundTrips_SectionAndProfile()
+    public void ArmAndScanFrame_RoundTrips_SectionAndFullRetention()
     {
-        var frame = RoundTrip(writer => BrokerProtocol.WriteArmAndScan(writer, "mftlib-scan-C", BrokerScanProfile.Full));
+        var frame = RoundTrip(writer => BrokerProtocol.WriteArmAndScan(writer, "mftlib-scan-C"));
 
         Assert.AreEqual(BrokerFrameKind.ArmAndScan, frame.Kind);
         Assert.AreEqual("mftlib-scan-C", frame.SectionName);
-        Assert.AreEqual(BrokerScanProfile.Full, frame.Profile);
-        Assert.AreEqual(0, frame.KeepFileNames.Count);
+        Assert.IsNull(frame.DirectoryScanFileNames);
         Assert.IsNull(frame.Drive, "The drive pipe names no drive.");
         Assert.AreEqual(0, frame.Entries.Length);
     }
@@ -38,22 +37,21 @@ public partial class BrokerProtocolTests
     public void ArmAndScanFrame_RoundTrips_IncludeFreed(bool includeFreed)
     {
         var frame = RoundTrip(writer => BrokerProtocol.WriteArmAndScan(
-            writer, "s", BrokerScanProfile.DirectoryIndex, KeepFileNamesGitAndNonAscii, includeFreed));
+            writer, "s", KeepFileNamesGitAndNonAscii, includeFreed));
 
         Assert.AreEqual(includeFreed, frame.IncludeFreed);
-        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, frame.Profile);
-        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, frame.KeepFileNames.ToArray());
+        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, frame.DirectoryScanFileNames!.ToArray());
     }
 
     [TestMethod]
     public void ReadFrame_ArmAndScan_UnknownIncludeFreedValue_ThrowsInvalidDataException()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(buffer, "s", BrokerScanProfile.Full, includeFreed: true);
+        BrokerProtocol.WriteArmAndScan(buffer, "s", includeFreed: true);
         var bytes = buffer.WrittenSpan.ToArray();
 
-        // length prefix 4 + kind 1 + section (4 + 2) + profile 4 = the flag's offset.
-        bytes[15] = 2;
+        // length prefix 4 + kind 1 + section (4 + 2) = the flag's offset.
+        bytes[11] = 2;
         var exception = Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(bytes, out _));
 
         StringAssert.Contains(exception.Message, "2");
@@ -63,20 +61,21 @@ public partial class BrokerProtocolTests
     public void ArmAndScanFrame_RoundTrips_KeepFileNames()
     {
         var frame = RoundTrip(writer => BrokerProtocol.WriteArmAndScan(
-            writer, "s", BrokerScanProfile.DirectoryIndex, KeepFileNamesGitAndNonAscii)); // non-ASCII to prove UTF-16
+            writer, "s", KeepFileNamesGitAndNonAscii)); // non-ASCII to prove UTF-16
 
-        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, frame.Profile);
-        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, frame.KeepFileNames.ToArray());
+        CollectionAssert.AreEqual(KeepFileNamesGitAndNonAscii, frame.DirectoryScanFileNames!.ToArray());
     }
 
     [TestMethod]
-    public void ReadFrame_ArmAndScan_UnknownProfile_ThrowsInvalidDataException()
+    public void ReadFrame_ArmAndScan_NegativeNameCountBelowNull_ThrowsInvalidDataException()
     {
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(buffer, "s", (BrokerScanProfile)99);
+        BrokerProtocol.WriteArmAndScan(buffer, "s");
+        var bytes = buffer.WrittenSpan.ToArray();
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(15), -99);
 
         var exception = Assert.ThrowsException<InvalidDataException>(() =>
-            BrokerProtocol.ReadFrame(buffer.WrittenSpan, out _));
+            BrokerProtocol.ReadFrame(bytes, out _));
 
         StringAssert.Contains(exception.Message, "99");
     }
@@ -289,27 +288,25 @@ public partial class BrokerProtocolTests
     [DataRow(true, (byte)1)]
     public void WireBytes_Golden_ArmAndScanFrame(bool includeFreed, byte expectedFlagByte)
     {
-        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C", BrokerScanProfile.Full, includeFreed: includeFreed),
+        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C", includeFreed: includeFreed),
         [
-            0x13, 0x00, 0x00, 0x00, // totalLength = 19
+            0x0F, 0x00, 0x00, 0x00, // totalLength = 15
             0x0A, // kind = ArmAndScan
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // sectionName "C"
-            0x00, 0x00, 0x00, 0x00, // profile = Full
             expectedFlagByte, 0x00, 0x00, 0x00, // includeFreed
-            0x00, 0x00, 0x00, 0x00 // keepFileNames count = 0
+            0xFF, 0xFF, 0xFF, 0xFF // name count = -1 (full scan)
         ]);
     }
 
     [TestMethod]
     public void WireBytes_Golden_ArmAndScanFrame_WithKeepFileNames()
     {
-        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C", BrokerScanProfile.DirectoryIndex,
+        AssertWireBytes(w => BrokerProtocol.WriteArmAndScan(w, "C",
                 KeepFileNamesSingleLetter),
         [
-            0x19, 0x00, 0x00, 0x00, // totalLength = 25
+            0x15, 0x00, 0x00, 0x00, // totalLength = 21
             0x0A, // kind = ArmAndScan
             0x02, 0x00, 0x00, 0x00, 0x43, 0x00, // sectionName "C"
-            0x01, 0x00, 0x00, 0x00, // profile = DirectoryIndex
             0x00, 0x00, 0x00, 0x00, // includeFreed = false
             0x01, 0x00, 0x00, 0x00, // keepFileNames count = 1
             0x02, 0x00, 0x00, 0x00, 0x61, 0x00 // keepFileNames[0] "a"
@@ -457,11 +454,11 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void Factory_ArmAndScan_WithoutKeepFileNames_HasEmptyList()
+    public void Factory_ArmAndScan_WithoutRetainedNames_HasNullList()
     {
-        var frame = BrokerFrame.ArmAndScan("section", BrokerScanProfile.Full);
+        var frame = BrokerFrame.ArmAndScan("section");
 
-        Assert.AreEqual(0, frame.KeepFileNames.Count);
+        Assert.IsNull(frame.DirectoryScanFileNames);
     }
 
     [TestMethod]

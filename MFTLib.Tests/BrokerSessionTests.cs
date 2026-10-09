@@ -627,7 +627,7 @@ public class BrokerSessionTests
         });
 
         var plain = session.CreateIndexSource();
-        var scanned = session.CreateIndexSource(new BrokerScanOptions { Profile = BrokerScanProfile.Full });
+        var scanned = session.CreateIndexSource(new BrokerScanOptions());
 
         Assert.IsNotNull(plain);
         Assert.IsNotNull(scanned);

@@ -63,14 +63,13 @@ public class JournalBrokerHostBlockScanTests
         using var blockWriter = new RecordingBlockSectionWriter();
         var host = CreateHost((_, _, _, _, _, _) => [[Record(5, ".", 3)], [Record(20, "file.txt")]]);
 
-        var frames = await ScanAsync(host, blockWriter, BrokerScanProfile.DirectoryIndex, [".git"]);
+        var frames = await ScanAsync(host, blockWriter, [".git"]);
 
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.Error));
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         Assert.AreEqual("section-C", blockWriter.LastSectionName);
-        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, blockWriter.LastFilter.Profile);
-        Assert.IsNotNull(blockWriter.LastFilter.KeepFileNames);
-        CollectionAssert.AreEqual(new[] { ".git" }, blockWriter.LastFilter.KeepFileNames.ToArray());
+        Assert.IsNotNull(blockWriter.LastFilter.DirectoryScanFileNames);
+        CollectionAssert.AreEqual(new[] { ".git" }, blockWriter.LastFilter.DirectoryScanFileNames.ToArray());
         Assert.AreEqual(RowFlags.InUse | RowFlags.Directory, blockWriter.Block.Rows[5].Flags);
         Assert.AreEqual(RowFlags.None, blockWriter.Block.Rows[20].Flags);
     }
@@ -252,10 +251,10 @@ public class JournalBrokerHostBlockScanTests
     }
 
     static async Task<List<BrokerFrame>> ScanAsync(JournalBrokerHost host, IBlockSectionWriter? blockWriter,
-        BrokerScanProfile profile = BrokerScanProfile.Full, IReadOnlyCollection<string>? keepFileNames = null)
+        IReadOnlyCollection<string>? directoryScanFileNames = null)
     {
         await using var harness = new HostChannelHarness(host, blockWriter);
-        var pipe = await harness.OpenScanChannelAsync('C', "section-C", profile, keepFileNames);
+        var pipe = await harness.OpenScanChannelAsync('C', "section-C", directoryScanFileNames);
         return await HostChannelHarness.ReadToEndAsync(pipe);
     }
 

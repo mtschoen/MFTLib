@@ -210,8 +210,7 @@ public partial class BrokerProcessTests
     {
         var options = new BrokerScanOptions
         {
-            Profile = BrokerScanProfile.DirectoryIndex,
-            KeepFileNames = [".git"]
+            DirectoryScanFileNames = [".git"]
         };
 
         if (recordingCase == ScanRecordingCase.FirstCallbackHeld)
@@ -282,8 +281,7 @@ public partial class BrokerProcessTests
 
             var recorded = singleHandle.Scans.Single();
             Assert.AreEqual("C", recorded.DriveLetter);
-            Assert.AreEqual(BrokerScanProfile.DirectoryIndex, recorded.Profile);
-            CollectionAssert.AreEqual(new[] { ".git" }, recorded.KeepFileNames!.ToArray());
+            CollectionAssert.AreEqual(new[] { ".git" }, recorded.DirectoryScanFileNames!.ToArray());
             return;
         }
 
@@ -296,8 +294,31 @@ public partial class BrokerProcessTests
         Assert.IsTrue(result.Block.Block.Header.RowCount > 0);
         var scan = singleHandle.Scans.Single();
         Assert.AreEqual("C", scan.DriveLetter);
-        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, scan.Profile);
-        CollectionAssert.AreEqual(new[] { ".git" }, scan.KeepFileNames!.ToArray());
+        CollectionAssert.AreEqual(new[] { ".git" }, scan.DirectoryScanFileNames!.ToArray());
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow(new string[0])]
+    public async Task ScriptedScan_RecordsNullVersusEmptyRetention(string[]? names)
+    {
+        await using var handle = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolumes
+        {
+            QueryJournalCursor = _ => ArmedSynthetic,
+            ScanDrive = _ => [[SyntheticRecord(5, ".", 3)]]
+        });
+        await handle.Process.ScanDriveAsync('C', TestBlockSections.Target(),
+            new BrokerScanOptions { DirectoryScanFileNames = names }, CancellationToken.None).WaitAsync(HangGuard);
+        var scan = handle.Scans.Single();
+        if (names is null)
+        {
+            Assert.IsNull(scan.DirectoryScanFileNames);
+        }
+        else
+        {
+            Assert.IsNotNull(scan.DirectoryScanFileNames);
+            Assert.AreEqual(0, scan.DirectoryScanFileNames.Count);
+        }
     }
 
     [TestMethod]

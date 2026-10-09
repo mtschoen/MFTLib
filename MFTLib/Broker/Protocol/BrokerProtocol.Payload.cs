@@ -142,6 +142,25 @@ internal static partial class BrokerProtocol
 
         public int EntryCount() => Count(EntryFixedBytes);
 
+        public int NullableNameCount()
+        {
+            var count = Int32();
+            if (count < -1 || count > Remaining / 4)
+            {
+                throw new InvalidDataException($"Broker frame declares {count} names in {Remaining} bytes");
+            }
+
+            return count;
+        }
+
+        public readonly void RequireComplete()
+        {
+            if (Remaining != 0)
+            {
+                throw new InvalidDataException($"Broker scan frame has {Remaining} trailing bytes");
+            }
+        }
+
         public UsnJournalEntry Entry()
         {
             if (Remaining < EntryFixedBytes)
