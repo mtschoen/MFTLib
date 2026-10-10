@@ -68,21 +68,29 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task ScanDrive_ForwardsProfileAndKeepFileNames()
+    [DataRow(null)]
+    [DataRow(new string[0])]
+    [DataRow(new[] { ".git" })]
+    public async Task ScanDrive_ForwardsDirectoryScanFileNames(string[]? names)
     {
         await using var broker = new InProcessBroker(CreateHost());
         var options = new BrokerScanOptions
         {
-            Profile = BrokerScanProfile.DirectoryIndex,
-            KeepFileNames = [".git"]
+            DirectoryScanFileNames = names
         };
 
         var result = await broker.Process.ScanDriveAsync('C', TestBlockSections.Target(), options, CancellationToken.None)
             .WaitAsync(HangGuard);
         result.Block.Block.Dispose();
 
-        Assert.AreEqual(BrokerScanProfile.DirectoryIndex, broker.Writer.LastFilter.Profile);
-        CollectionAssert.AreEqual(new[] { ".git" }, broker.Writer.LastFilter.KeepFileNames!.ToArray());
+        if (names is null)
+        {
+            Assert.IsNull(broker.Writer.LastFilter.DirectoryScanFileNames);
+        }
+        else
+        {
+            CollectionAssert.AreEqual(names, broker.Writer.LastFilter.DirectoryScanFileNames!.ToArray());
+        }
     }
 
     [TestMethod]
@@ -375,18 +383,18 @@ public partial class BrokerProcessTests
     }
 
     [TestMethod]
-    public async Task ScanDrive_WithoutKeepFileNames_SendsAnEmptyList()
+    public async Task ScanDrive_DefaultRetention_SendsANullList()
     {
         await using var broker = new ScriptedBroker();
         var scan = broker.Process.ScanDriveAsync('C', TestBlockSections.Target(),
-            new BrokerScanOptions { Profile = BrokerScanProfile.Full }, CancellationToken.None);
+            new BrokerScanOptions(), CancellationToken.None);
         await broker.AnswerQueryVolumeAsync(Volume);
         await using (var pipe = await broker.AcceptChannelAsync())
         {
             var request = await HostChannelHarness.ReadFrameAsync(pipe);
             Assert.AreEqual(BrokerFrameKind.ArmAndScan, request?.Kind);
-            Assert.AreEqual(BrokerScanProfile.Full, request?.Profile);
-            Assert.AreEqual(0, request?.KeepFileNames.Count);
+            Assert.IsNotNull(request);
+            Assert.IsNull(request.Value.DirectoryScanFileNames);
         }
 
         await Assert.ThrowsExceptionAsync<BrokerChannelLostException>(() => scan.WaitAsync(HangGuard));

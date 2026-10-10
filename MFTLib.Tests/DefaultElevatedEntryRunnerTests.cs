@@ -184,7 +184,7 @@ public class DefaultElevatedEntryRunnerTests
         {
             await AcceptDriveChannelAsync(control, drive, cts.Token);
             await HostChannelHarness.WriteFrameAsync(drive,
-                writer => BrokerProtocol.WriteArmAndScan(writer, "mftlib-runner-scan-C", BrokerScanProfile.Full));
+                writer => BrokerProtocol.WriteArmAndScan(writer, "mftlib-runner-scan-C"));
 
             // Reach the cursor query before taking the client ends away, so the reply that
             // follows is written to a pipe that is already broken for certain. A scan that has

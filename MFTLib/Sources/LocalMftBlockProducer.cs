@@ -18,7 +18,7 @@ internal sealed class LocalMftBlockProducer
     readonly ParseThreadAllocator _allocator;
 
     /// <summary>Builds a producer over the live volume seams.</summary>
-    /// <param name="scanOptions">Profile, keep-file names and progress for every scan.</param>
+    /// <param name="scanOptions">Retention, freed-record inclusion and progress for every scan.</param>
     internal LocalMftBlockProducer(BrokerScanOptions? scanOptions = null)
         : this(scanOptions, Seams.Live)
     {
@@ -80,7 +80,7 @@ internal sealed class LocalMftBlockProducer
                 IdleOperation.Instance, progress,
                 new MftRecordScanOptions { IncludeFreed = options.IncludeFreed }, cancellationToken);
             var result = MftBlockScan.WriteToBlock(block, new BlockStamp(cursor, _seams.Clock), batches,
-                new MftBlockRowFilter(options.Profile, options.KeepFileNames, options.IncludeFreed),
+                new MftBlockRowFilter(options.DirectoryScanFileNames, options.IncludeFreed),
                 new BlockWriteReporting(progress, null), cancellationToken);
             BrokerMftBlockProducer.ValidateBlock(block, request.VolumeSerial, cursor, request.CacheTag);
             var produced = new MftBlockProduceResult(block, cursor.JournalIdentifier, cursor.NextUsn,

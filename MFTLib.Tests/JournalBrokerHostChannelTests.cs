@@ -203,8 +203,8 @@ public partial class JournalBrokerHostChannelTests
         payload.AddRange(BitConverter.GetBytes(malformation == "truncated section name" ? 100 : 0));
         if (malformation != "truncated section name")
         {
-            payload.AddRange(BitConverter.GetBytes((int)BrokerScanProfile.Full));
-            payload.AddRange(BitConverter.GetBytes(malformation == "negative name count" ? -1 : int.MaxValue));
+            payload.AddRange(BitConverter.GetBytes(0)); // IncludeFreed
+            payload.AddRange(BitConverter.GetBytes(malformation == "negative name count" ? -2 : int.MaxValue));
         }
         else
         {

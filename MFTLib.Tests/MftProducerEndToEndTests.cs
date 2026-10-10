@@ -86,8 +86,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         }));
         var source = new BrokerMftBlockProducer(Connect(broker.Process), new BrokerScanOptions
         {
-            Profile = BrokerScanProfile.DirectoryIndex,
-            KeepFileNames = ["NOTES.TXT"],
+            DirectoryScanFileNames = ["NOTES.TXT"],
             Progress = new SynchronousProgress<BrokerScanProgress>(value =>
             {
                 progress.Add(value);

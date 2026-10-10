@@ -22,7 +22,7 @@ public class BrokerFrameWriteLimitTests
         var buffer = new ArrayBufferWriter<byte>();
 
         var exception = Assert.ThrowsException<InvalidOperationException>(() =>
-            BrokerProtocol.WriteArmAndScan(buffer, "section", BrokerScanProfile.DirectoryIndex, KeepList(32_700)));
+            BrokerProtocol.WriteArmAndScan(buffer, "section", KeepList(32_700)));
 
         StringAssert.Contains(exception.Message, "frame limit");
         Assert.AreEqual(0, buffer.WrittenCount);
@@ -46,7 +46,7 @@ public class BrokerFrameWriteLimitTests
     {
         var names = new[] { ".git", "HEAD" };
         var buffer = new ArrayBufferWriter<byte>();
-        BrokerProtocol.WriteArmAndScan(buffer, "section-C", BrokerScanProfile.DirectoryIndex, names);
+        BrokerProtocol.WriteArmAndScan(buffer, "section-C", names);
 
         Assert.AreEqual(BinaryPrimitives.ReadInt32LittleEndian(buffer.WrittenSpan),
             BrokerProtocol.ArmAndScanFrameLength("section-C", names));
@@ -93,8 +93,7 @@ public class BrokerFrameWriteLimitTests
         await using var broker = new InProcessBroker(CreateHost());
         var options = new BrokerScanOptions
         {
-            Profile = BrokerScanProfile.DirectoryIndex,
-            KeepFileNames = KeepList(32_700)
+            DirectoryScanFileNames = KeepList(32_700)
         };
 
         var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>

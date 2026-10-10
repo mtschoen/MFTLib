@@ -72,7 +72,7 @@ public class LocalMftBlockProducerTests
     [TestMethod]
     public void Factory_BuildsASourceWithNoWatchDumpOrUnavailableReason()
     {
-        var source = MftIndexSources.FromLocalVolumes(new BrokerScanOptions { Profile = BrokerScanProfile.Full });
+        var source = MftIndexSources.FromLocalVolumes(new BrokerScanOptions());
 
         Assert.IsNull(source.WatchSource);
         Assert.IsNull(source.DumpIdentity);

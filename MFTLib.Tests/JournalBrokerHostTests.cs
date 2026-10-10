@@ -58,10 +58,9 @@ public partial class JournalBrokerHostTests
     // Opens a scan channel on the drive and returns everything the host writes on it, in order,
     // until it closes the pipe.
     static async Task<List<BrokerFrame>> ScanFramesAsync(HostChannelHarness harness, char drive = 'C',
-        string sectionName = "section", BrokerScanProfile profile = BrokerScanProfile.Full,
-        IReadOnlyCollection<string>? keepFileNames = null)
+        string sectionName = "section", IReadOnlyCollection<string>? directoryScanFileNames = null)
     {
-        var pipe = await harness.OpenScanChannelAsync(drive, sectionName, profile, keepFileNames);
+        var pipe = await harness.OpenScanChannelAsync(drive, sectionName, directoryScanFileNames);
         return await HostChannelHarness.ReadToEndAsync(pipe);
     }
 

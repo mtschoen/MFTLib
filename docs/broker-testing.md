@@ -54,8 +54,10 @@ await using var broker = BrokerTestHarness.StartInProcess(new ScriptedBrokerVolu
 ```
 
 `InProcessBrokerHandle.Scans` lists every scan the host served, in order, as an
-`InProcessBrokerScan` (the drive, the scan profile and the keep-file-names list the client
-requested), so a test asserts what it asked for. The harness does not offer the section
+`InProcessBrokerScan` (the drive and nullable `DirectoryScanFileNames` the client
+requested), so a test asserts what it asked for. Null means full retention, an empty
+collection means directories only, and names mean directories plus matching files.
+The observation preserves null versus empty. The harness does not offer the section
 lifetime or the write path: those are MFTLib's own, and `MFTLib.Tests` covers them. A consumer
 asserts the outcome it owns, such as the block file under its cache directory.
 

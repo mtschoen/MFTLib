@@ -125,26 +125,21 @@ internal static partial class BrokerProtocol
     static BrokerFrame ReadArmAndScanFrame(ref PayloadReader payload)
     {
         var sectionName = payload.String();
-        var profile = (BrokerScanProfile)payload.Int32();
-        if (!Enum.IsDefined(profile))
-        {
-            throw new InvalidDataException($"Unknown broker scan profile: {(int)profile}");
-        }
-
         var includeFreedValue = payload.Int32();
         if (includeFreedValue is not (0 or 1))
         {
             throw new InvalidDataException($"Unknown broker include-freed value: {includeFreedValue}");
         }
 
-        var nameCount = payload.Count(minimumItemBytes: 4);
-        var keepFileNames = new List<string>(nameCount);
-        while (keepFileNames.Count < nameCount)
+        var nameCount = payload.NullableNameCount();
+        List<string>? directoryScanFileNames = nameCount == -1 ? null : new(nameCount);
+        while (directoryScanFileNames is not null && directoryScanFileNames.Count < nameCount)
         {
-            keepFileNames.Add(payload.String());
+            directoryScanFileNames.Add(payload.String());
         }
 
-        return BrokerFrame.ArmAndScan(sectionName, profile, keepFileNames, includeFreedValue == 1);
+        payload.RequireComplete();
+        return BrokerFrame.ArmAndScan(sectionName, directoryScanFileNames, includeFreedValue == 1);
     }
 
     static BrokerFrame ReadJournalBatchFrame(ref PayloadReader payload)

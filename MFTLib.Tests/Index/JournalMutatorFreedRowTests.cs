@@ -201,7 +201,7 @@ public class JournalMutatorFreedRowTests
 
         MftBlockRowWriter.WriteBatches(new BlockWriter(fixture.Block),
             [[freedDirectory, directChild, deeperChild]],
-            new MftBlockRowFilter(BrokerScanProfile.Full, IncludeFreed: true), null, CancellationToken.None);
+            new MftBlockRowFilter(IncludeFreed: true), null, CancellationToken.None);
     }
 
     // The freed record hangs under "documents" (row 6) and verifies against it unless parentSequence says otherwise.
@@ -210,7 +210,7 @@ public class JournalMutatorFreedRowTests
         var freed = new MftRecord(FreedRow, 6, new MftRecordFields(0, FileAttributes.Archive, 10, 0, 4,
             parentSequence), "freed.txt");
         MftBlockRowWriter.WriteBatches(new BlockWriter(fixture.Block), [[freed]],
-            new MftBlockRowFilter(BrokerScanProfile.Full, IncludeFreed: true), null, CancellationToken.None);
+            new MftBlockRowFilter(IncludeFreed: true), null, CancellationToken.None);
     }
 
     static UsnJournalEntry Entry(UsnReason reason, string name, ulong parent, ushort sequence = 4,

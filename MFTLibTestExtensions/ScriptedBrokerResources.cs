@@ -1,5 +1,3 @@
-using MFTLib;
-
 namespace MFTLibTestExtensions;
 
 /// <summary>
@@ -34,9 +32,9 @@ internal sealed class ScriptedBrokerResources : IDisposable
         Sections.Dispose();
     }
 
-    public void RecordScan(string drive, BrokerScanProfile profile, IReadOnlyList<string>? keepFileNames)
+    public void RecordScan(string drive, IReadOnlyCollection<string>? directoryScanFileNames)
     {
-        var scan = new InProcessBrokerScan(drive, profile, keepFileNames);
+        var scan = new InProcessBrokerScan(drive, directoryScanFileNames);
         lock (_scans)
         {
             _scans.Add(scan);

@@ -97,7 +97,7 @@ public sealed record FileIndexOptions
     public Action<string>? Diagnostics { get; init; }
 
     /// <summary>
-    ///     An optional consumer cache tag identifying the scan shape (profile and keep-list).
+    ///     An optional consumer cache tag identifying the scan retention shape.
     ///     The tag is validated on construction: the FourCC must contain exactly four ASCII characters.
     ///     The default value is all zeros, meaning unspecified. Comparison matches both the FourCC and
     ///     version exactly. The consumer owns and increments its version whenever its scan shape changes.

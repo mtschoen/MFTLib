@@ -4,16 +4,11 @@ namespace MFTLib;
 public sealed record BrokerScanOptions
 {
     /// <summary>
-    ///     Selects whether the broker returns every MFT record or only records needed for a
-    ///     directory index. The default is <see cref="BrokerScanProfile.Full" />.
+    ///     Null retains all eligible records. An empty collection retains directories only;
+    ///     a nonempty collection also retains files whose names match ordinally, ignoring case.
+    ///     Freed records remain controlled independently by <see cref="IncludeFreed" />.
     /// </summary>
-    public BrokerScanProfile Profile { get; init; } = BrokerScanProfile.Full;
-    /// <summary>
-    ///     Names to retain when <see cref="Profile" /> is
-    ///     <see cref="BrokerScanProfile.DirectoryIndex" />. A null collection retains no
-    ///     additional non-directory records.
-    /// </summary>
-    public IReadOnlyCollection<string>? KeepFileNames { get; init; }
+    public IReadOnlyCollection<string>? DirectoryScanFileNames { get; init; }
     /// <summary>
     ///     When true, the scan also imports MFT records that NTFS has freed: each becomes a row
     ///     with <see cref="MFTLib.Index.FileEntry.IsDeleted" /> true that exists only for this scan, and a later

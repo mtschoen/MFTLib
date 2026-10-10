@@ -84,7 +84,7 @@ internal sealed partial class JournalBrokerHost
     internal Action? HeartbeatVisitedForTest { get; set; }
 
     /// <summary>Test hook, set before serving: receives each accepted scan request before cursor query or source execution.</summary>
-    internal Action<string, BrokerScanProfile, IReadOnlyList<string>?>? ScanStartingForTest { get; set; }
+    internal Action<string, IReadOnlyCollection<string>?>? ScanStartingForTest { get; set; }
 
     // One watch channel: stream this drive's journal from the requested cursor until the
     // channel is cancelled (its pipe closed or the session ended) or the watch fails. The loop

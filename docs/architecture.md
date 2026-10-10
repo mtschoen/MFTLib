@@ -26,7 +26,7 @@
       reason in `DriveStatus.FailureMessage`. `MftDumpBlockProducer` is a direct producer with no broker, pipe or
       session: one `MftDumpInput` per request sizes the block (`NtfsVolumeInformation(fileLength, recordSize)`, never
       the live volume sharing the letter) and supplies every record, the shared `MftBlockScan.WriteToBlock` writes a
-      plain `BlockFile` with the full profile, and the block carries a zero journal cursor. Record size is 1024 or
+      plain `BlockFile` with full retention, and the block carries a zero journal cursor. Record size is 1024 or
       4096 only. `MftDumpRecordValidation` runs before the block is completed: the root row 5 must be an allocated
       directory whose parent is 5 (`The dump has no valid allocated root record.`), no base record number repeats
       (`The dump contains duplicate base record numbers.`), and every parent a record names fits the planned block
@@ -57,8 +57,8 @@
       four-ASCII-character code plus a `uint` version; default is all zeros and
       compares exactly, not as a wildcard. Block format 3 stores the two values
       at offsets 104 and 108 in a 112-byte declared header. Old-format blocks
-      cold-scan once. Consumers bump their own version when their profile or
-      keep-list changes. Mismatches report `WrongCacheTag` and cold-scan; a
+      cold-scan once. Consumers bump their own version when their retention policy
+      changes. Mismatches report `WrongCacheTag` and cold-scan; a
       cache-only open fails with `DriveFailureKind.CacheTagMismatch`. Both emit
       stored/requested tag diagnostics. `InspectCached` reports tags on available
       blocks. Tags are initialized before completion; the internal MFT producers copy
@@ -104,7 +104,7 @@
 
 - **SampleProgram.Direct** and **SampleProgram.Watch** (C# Console Apps) - the two samples, each a CLI that compiles against the public API with no access to MFTLib internals; together their IL is the caller set the public surface is measured against. The elevation flow, the heads-up dialog, the unattended check and the option reader live once in `SampleProgram.Shared` and compile into both as linked source. Each verb is small, so a public member that needs contortion to appear is an internalization candidate, not a reason to grow a sample.
   - **Direct** opens a `NoCache` `FileIndex` in this process, with no broker and no watch. `--source local` (the default) is `MftIndexSources.FromLocalVolumes` and self-elevates; `--source dump --dump-file PATH` is `MftIndexSources.FromMftDumpFile`, needs no elevation and runs on every platform. Verbs: `search` (name, exact, case, under, directories or files, size and date bounds, `--stream`, `--limit`, `--include-freed`), `tree`, `open`, `largest`, `duplicate-names` and `scan`. `--include-freed` sets `BrokerScanOptions.IncludeFreed` and `SearchQuery.IncludeDeleted` together, prints `FileEntry.IsDeleted` per row, and is refused on a dump, which never yields freed rows.
-  - **Watch** opens a `FileIndex` over `BrokerSession.CreateIndexSource()`, the path consumers ship, and also dispatches `--broker` through `ElevatedEntryPoint`. Verbs: `scan-drive` (the default; a `NoCache` open that prints the `DriveStatus` rows, skipped records and checkpoint loss), `watch` (state changes, faults and each `FileChangeKind`), `rescan`, `journal` (settings, or `BrokerSession.GrowUsnJournalAsync` with both sizes), `cache` (`CacheDirectory.InspectCached`, and `--clear` through `DeleteCached`) and `elevation-status`. The other verbs open the cached index, so they show `DriveBlockStatus.Source`, `CacheSlot` and checkpoint loss; `--keep-name` and `--profile` map to `BrokerScanOptions` and to the cache tag. One session shared by the drives launches its broker on the first needed scan, so one UAC prompt serves the run.
+  - **Watch** opens a `FileIndex` over `BrokerSession.CreateIndexSource()`, the path consumers ship, and also dispatches `--broker` through `ElevatedEntryPoint`. Verbs: `scan-drive` (the default; a `NoCache` open that prints the `DriveStatus` rows, skipped records and checkpoint loss), `watch` (state changes, faults and each `FileChangeKind`), `rescan`, `journal` (settings, or `BrokerSession.GrowUsnJournalAsync` with both sizes), `cache` (`CacheDirectory.InspectCached`, and `--clear` through `DeleteCached`) and `elevation-status`. The other verbs open the cached index, so they show `DriveBlockStatus.Source`, `CacheSlot` and checkpoint loss. No retention flag means full scanning; `--directories-only` keeps directories alone, and `--keep-name A,B` keeps directories plus those names. These two flags are mutually exclusive and an empty keep-name value is refused. `DirectoryScanFileNames` supplies the nullable retention policy, with a full/directory marker and sorted names in the policy directory fingerprint; the sample tag is `SMPW` version 2. One session shared by the drives launches its broker on the first needed scan, so one UAC prompt serves the run.
   - **Direct row algorithms**: `largest` and `duplicate-names` are implemented in the sample over
     `EnumerateRows`. `LargestFiles` keeps a bounded heap of live, known-size files and prints paths and sizes
     followed by an entry count. `DuplicateNameSieve` and `SieveBitmap` make several hash passes, then group

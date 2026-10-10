@@ -62,7 +62,7 @@ public partial class JournalBrokerHostTests
     [DataRow(new[] { ".git" }, 2, DisplayName = "KeepFileNameMatch_KeepsTheNamedFile")]
     [DataRow(new[] { ".GIT" }, 2, DisplayName = "KeepFileNameMatch_IsCaseInsensitive")]
     [DataRow(new[] { "other.txt" }, 1, DisplayName = "NonMatchingFiles_AreDropped")]
-    [DataRow(null, 1, DisplayName = "NullKeepFileNames_YieldsDirectoriesOnly")]
+    [DataRow(null, 3, DisplayName = "NullRetention_YieldsAllRecords")]
     [DataRow(new string[0], 1, DisplayName = "EmptyKeepFileNames_YieldsDirectoriesOnly")]
     public async Task DirectoryIndexProfile_KeepFileNames_DecideWhichFilesAreKept(string[]? keepFileNames, int expectedInUseRows)
     {
@@ -72,7 +72,7 @@ public partial class JournalBrokerHostTests
     }
 
     [TestMethod]
-    public async Task ArmAndScan_UnknownProfile_WritesMalformedErrorAndSessionContinues()
+    public async Task ArmAndScan_InvalidFreedFlag_WritesMalformedErrorAndSessionContinues()
     {
         var host = ScanHost(queryVolumeInfo: _ => ControlVolume);
         using var blockWriter = new RecordingBlockSectionWriter();
@@ -80,7 +80,16 @@ public partial class JournalBrokerHostTests
         var pipe = await harness.OpenChannelAsync('C');
 
         await HostChannelHarness.WriteFrameAsync(pipe,
-            writer => BrokerProtocol.WriteArmAndScan(writer, "section", (BrokerScanProfile)99));
+            writer =>
+            {
+                var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+                BrokerProtocol.WriteArmAndScan(buffer, "section");
+                var bytes = buffer.WrittenSpan.ToArray();
+                System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(23), 99);
+                var destination = writer.GetSpan(bytes.Length);
+                bytes.CopyTo(destination);
+                writer.Advance(bytes.Length);
+            });
         var frames = await HostChannelHarness.ReadToEndAsync(pipe);
 
         Assert.AreEqual(1, frames.Count);
@@ -184,7 +193,7 @@ public partial class JournalBrokerHostTests
         var host = ScanHost(scanDrive: (_, _, _, _, _, _) => [records]);
         await using var harness = new HostChannelHarness(host, writer);
 
-        var frames = await ScanFramesAsync(harness, 'C', "mftlib-scan-C", BrokerScanProfile.DirectoryIndex, keepFileNames);
+        var frames = await ScanFramesAsync(harness, 'C', "mftlib-scan-C", keepFileNames);
 
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
         return writer;

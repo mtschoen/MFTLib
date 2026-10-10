@@ -71,15 +71,18 @@ public partial class BrokerProtocolTests
     }
 
     [TestMethod]
-    public void ReadFrame_JournalBatchCountingAnEntryTheNamesLeftNoRoomFor_ThrowsInvalidDataException()
+    [DataRow(2, "46 bytes needed, 0 left")]
+    [DataRow(-1, "declares -1 items")]
+    [DataRow(int.MaxValue, "declares 2147483647 items")]
+    public void ReadFrame_JournalBatchWithAnInvalidEntryCount_ThrowsInvalidDataException(int count, string expectedMessage)
     {
         // One entry whose name is exactly one fixed part long: the payload then holds two fixed
         // parts, so a count of two passes the count check, but the first entry takes every byte.
         var frame = BatchFrameWithOneEntry(new string('n', EntryFixedBytes / 2));
-        BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(5 + 16), 2);
+        BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(5 + 16), count);
 
         var exception = Assert.ThrowsException<InvalidDataException>(() => BrokerProtocol.ReadFrame(frame, out _));
 
-        StringAssert.Contains(exception.Message, $"{EntryFixedBytes} bytes needed, 0 left");
+        StringAssert.Contains(exception.Message, expectedMessage);
     }
 }

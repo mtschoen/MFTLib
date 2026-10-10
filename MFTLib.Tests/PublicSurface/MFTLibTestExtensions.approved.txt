@@ -14,18 +14,17 @@ MFTLibTestExtensions.InProcessBrokerHandle :: method public DisposeAsync() : Sys
 MFTLibTestExtensions.InProcessBrokerHandle :: property public Ended { get; } : System.Threading.Tasks.Task<string>
 MFTLibTestExtensions.InProcessBrokerHandle :: property public Scans { get; } : System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.InProcessBrokerScan>
 MFTLibTestExtensions.InProcessBrokerHandle :: type public sealed class : System.IAsyncDisposable
-MFTLibTestExtensions.InProcessBrokerScan :: constructor public (string DriveLetter, MFTLib.BrokerScanProfile Profile, System.Collections.Generic.IReadOnlyCollection<string>? KeepFileNames)
+MFTLibTestExtensions.InProcessBrokerScan :: constructor public (string DriveLetter, System.Collections.Generic.IReadOnlyCollection<string>? DirectoryScanFileNames)
 MFTLibTestExtensions.InProcessBrokerScan :: method public <Clone>$() : MFTLibTestExtensions.InProcessBrokerScan
-MFTLibTestExtensions.InProcessBrokerScan :: method public Deconstruct(out string DriveLetter, out MFTLib.BrokerScanProfile Profile, out System.Collections.Generic.IReadOnlyCollection<string>? KeepFileNames) : void
+MFTLibTestExtensions.InProcessBrokerScan :: method public Deconstruct(out string DriveLetter, out System.Collections.Generic.IReadOnlyCollection<string>? DirectoryScanFileNames) : void
 MFTLibTestExtensions.InProcessBrokerScan :: method public Equals(MFTLibTestExtensions.InProcessBrokerScan? other) : bool
 MFTLibTestExtensions.InProcessBrokerScan :: method public override Equals(object? obj) : bool
 MFTLibTestExtensions.InProcessBrokerScan :: method public override GetHashCode() : int
 MFTLibTestExtensions.InProcessBrokerScan :: method public override ToString() : string
 MFTLibTestExtensions.InProcessBrokerScan :: method public static op_Equality(MFTLibTestExtensions.InProcessBrokerScan? left, MFTLibTestExtensions.InProcessBrokerScan? right) : bool
 MFTLibTestExtensions.InProcessBrokerScan :: method public static op_Inequality(MFTLibTestExtensions.InProcessBrokerScan? left, MFTLibTestExtensions.InProcessBrokerScan? right) : bool
+MFTLibTestExtensions.InProcessBrokerScan :: property public DirectoryScanFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
 MFTLibTestExtensions.InProcessBrokerScan :: property public DriveLetter { get; init; } : string
-MFTLibTestExtensions.InProcessBrokerScan :: property public KeepFileNames { get; init; } : System.Collections.Generic.IReadOnlyCollection<string>?
-MFTLibTestExtensions.InProcessBrokerScan :: property public Profile { get; init; } : MFTLib.BrokerScanProfile
 MFTLibTestExtensions.InProcessBrokerScan :: type public sealed class : System.IEquatable<MFTLibTestExtensions.InProcessBrokerScan>
 MFTLibTestExtensions.JournalIsolation :: method public static ForbidLiveJournalReads() : void
 MFTLibTestExtensions.JournalIsolation :: method public static OverrideJournalWindow(System.Func<char, MFTLibTestExtensions.SyntheticJournalWindow?> journal) : System.IDisposable

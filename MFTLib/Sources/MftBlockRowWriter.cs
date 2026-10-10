@@ -17,11 +17,6 @@ internal static class MftBlockRowWriter
         ArgumentNullException.ThrowIfNull(batches);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (filter.Profile is not (BrokerScanProfile.Full or BrokerScanProfile.DirectoryIndex))
-        {
-            throw new InvalidDataException($"Unknown broker scan profile: {filter.Profile}");
-        }
-
         var keepFileNames = filter.CreateKeepSet();
         var freedRows = filter.IncludeFreed ? new FreedRowTrust(writer.Block) : null;
         long recordsWritten = 0;
@@ -44,7 +39,7 @@ internal static class MftBlockRowWriter
                 }
 
                 freedRows?.Observe(in record);
-                if (!ShouldKeepRecord(record, filter.Profile, keepFileNames))
+                if (!ShouldKeepRecord(record, keepFileNames))
                 {
                     continue;
                 }
@@ -73,14 +68,12 @@ internal static class MftBlockRowWriter
 
     static bool ShouldKeepRecord(
         in MftRecord record,
-        BrokerScanProfile profile,
         HashSet<string>? keepFileNames)
     {
-        // WriteBatches rejects every other profile before the first batch, so this is the
-        // DirectoryIndex rule alone: keep directories, plus any file the caller named.
-        return profile == BrokerScanProfile.Full ||
+        // Null is a full scan; an empty set keeps directories only.
+        return keepFileNames is null ||
             record.IsDirectory ||
-            (keepFileNames != null && keepFileNames.Contains(record.FileName));
+            keepFileNames.Contains(record.FileName);
     }
 
     static bool TryWriteRecord(BlockWriter writer, MftRecord record)

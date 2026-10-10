@@ -95,7 +95,7 @@ cat .\SampleProgram.Direct\bin\x64\Release\net10.0\output.log
 
 [Index namespace boundary](docs/architecture.md): `MFTLib.Index` must not depend on flat `MFTLib` or `MFTLib.Interop` except `UsnJournalEntry`, `UsnJournalSettings` and `UsnReason`. `MFTLib.Tests/Index/NamespaceBoundaryTests.cs` enforces the compiled-IL boundary with a mandatory negative control; growing the allowlist requires review, not an import-lint rule.
 
-[Cache identity](docs/architecture.md) and [block format](docs/index-format.md): CacheTag compares exactly, including zero; initialize before completion. Consumers bump versions for profile/keep-list changes. Preserve the documented mismatch, cache-only failure and diagnostic contracts.
+[Cache identity](docs/architecture.md) and [block format](docs/index-format.md): CacheTag compares exactly, including zero; initialize before completion. Consumers bump versions for retention-policy changes. Preserve the documented mismatch, cache-only failure and diagnostic contracts.
 
 [Checkpoint loss](docs/checkpoint-loss.md): classify journal observations, never exception wording. Preserve `JournalCheckpointLoss.DetectedDuring` labels and existing reports on unrelated faults; automatic recovery retains LiveWatch reports. An unresumable block's refused start retains the watch request; a successful rescan clears the refusal and starts the watch. A failed rescan must never arm a cursor the journal cannot resume. Preserve bounded catch-up recovery, refusal after three consecutive losses, progress checks and journal-size arithmetic in the linked contract.
 
