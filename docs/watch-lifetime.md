@@ -1,6 +1,15 @@
 # Watch lifetime
 
 - Index contracts:
+    - **Fault recovery classification**: `WatchFault.IsRecovering` is true for `Drive` and
+      `Apply`, and for `CatchUpLost` only when its exception is a
+      `JournalCatchUpLostException` with `RecoveryStopped` false. It is false for `Subscriber`,
+      `Channel`, `Recovery`, `RescanRestart`, and other catch-up exceptions. It describes recovery
+      associated with that notification, not the drive's subsequent live-watch health.
+    - **Snapshot conversion**: `DriveStatus.ToWatchState()` converts the already captured
+      drive letter, `Watch.CatchUpState` and `Watch.StateVersion` to a `DriveWatchState` without
+      rereading the index. The version is preserved exactly, including zero. `Fault` is null:
+      snapshots do not retain event faults, and `Watch.FailureMessage` never reconstructs one.
     - **Catch-up recovery exhaustion**: `DriveWatchStatus.RecoveryStopped` records exhausted
       automatic recovery from consecutive scan catch-up losses, independently of watch requests
       and refused-start faults. It is set under the stop-decision state lock before loss

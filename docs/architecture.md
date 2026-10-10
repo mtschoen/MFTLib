@@ -96,7 +96,10 @@
       state-lock section that made the change and delivered with neither `_stateLock` nor a write
       gate held, one drive at a time in version order, before the `WatchFaulted` of the fault
       that caused it. Handlers follow the `Changed`/`WatchFaulted` reentrancy rules. The full
-      contract is in `docs/watch-lifetime.md`.
+      contract is in `docs/watch-lifetime.md`. `DriveStatus.ToWatchState()` converts a captured
+      snapshot to that event shape with the same drive, state and version and a null fault;
+      snapshots retain failure text, not event faults. `WatchFault.IsRecovering` classifies
+      recovery associated with a fault notification rather than querying current watch health.
     - **Lazy Materialization**: `MftRecord` stores native pointers; strings are only created on access.
     - **Memory Safety**: `ToArray()` and `Materialize()` ensure strings are stable in managed memory after native buffers are freed.
     - **Streaming API**: `MftVolume.StreamRecords` (a volume) and `MftDumpInput.Parse` (a saved image) are the only scan entry points. Both support the same progress, `ParseThreadAllowance` and cancellation controls (supplied directly on `StreamRecords` or grouped into `MftFileScanOptions` for `MftDumpInput.Parse`) and share one managed path (`ParseWithControl` allocates the native `MftParseControl` block, attaches the allowance, registers the token and frees it) over one native core (`ParseMFTImpl`); the dump export and the volume export both take the control block and callback. Neither filters names or resolves paths. `StreamRecords(includeFreed, ...)` also returns freed base records when asked; a dump parse never does. `MftResult.Timings` is native-only (`NativeIo`, `NativeFixup`, `NativeParse`, `NativeTotal` as `TimeSpan`); `MftResult.TotalRecords` is the examined count. `StreamRecords` provides memory-efficient `IEnumerable<MftRecord>`; `MaterializeBatches` provides bounded-memory batch materialization over the same result; the internal `MftVolume.ReadRecordBatches` is the batch path the broker uses.
