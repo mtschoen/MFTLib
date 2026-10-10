@@ -35,3 +35,15 @@
       channel per drive watch. `ElevatedEntryPoint` and `BrokerLauncher` dispatch `--broker` mode.
       `BrokerDiagnostics` writes through a bounded background queue and filters the two diagnostic
       logs from journal batches unless `MFTLIB_BROKER_DIAG_INCLUDE_SELF=1` opts in.
+
+## Diagnostics configuration
+
+After early child dispatch, clients call `BrokerDiagnostics.Enable(role, logDirectory)`
+with an application-owned directory they create themselves. Environment-only opt-in
+(`MFTLIB_BROKER_DIAG=1`) uses the OS temp directory. The launcher forwards the resolved
+absolute log path as quoted `--diag-log` alongside `--diag`. Child dispatch derives its
+directory from that path, enables the broker role, and supplies the client path to
+journal self-filtering before invoking the runner. Missing, valueless, relative, or
+invalid paths are handled broker launches that exit with code 1 without serving a
+session or falling through to application startup. Without `--diag`, dispatch ignores
+the diagnostics arguments and does not configure diagnostics.

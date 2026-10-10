@@ -16,7 +16,7 @@ public static class ElevatedEntryPoint
     ///     no flag.
     /// </summary>
     /// <param name="arguments">The process arguments.</param>
-    /// <returns><c>true</c> when the process was relaunched as the broker and has served its session.</returns>
+    /// <returns><c>true</c> when broker mode was handled, including rejected diagnostics arguments.</returns>
     public static bool TryHandle(string[] arguments)
     {
         return TryHandle(arguments, new DefaultElevatedEntryRunner());
@@ -34,14 +34,22 @@ public static class ElevatedEntryPoint
                     // arrive over the control pipe, so it needs only that pipe's name.
                     // --diag turns on frame tracing in the elevated child too (a runas
                     // launch does not reliably inherit the MFTLIB_BROKER_DIAG env var).
-                    // --diag-log carries the client process's log path and
+                    // --diag-log carries the client process's log path and its directory,
                     // --diag-include-self the opt-in to keep the logs' own journal
                     // entries, for the same reason. Without --diag they are meaningless:
                     // diagnostics are off, so nothing is filtered anyway.
                     if (HasFlag(arguments, "--diag"))
                     {
-                        BrokerDiagnostics.Enable("broker");
-                        BrokerDiagnostics.ClientLogPath = FindOption(arguments, "--diag-log");
+                        var clientLogPath = FindOption(arguments, "--diag-log");
+                        var logDirectory = DiagnosticsDirectory(clientLogPath);
+                        if (logDirectory == null)
+                        {
+                            DefaultElevatedEntryRunner._exitProcess(1);
+                            return true;
+                        }
+
+                        BrokerDiagnostics.Enable("broker", logDirectory);
+                        BrokerDiagnostics.ClientLogPath = clientLogPath;
                         BrokerDiagnostics.IncludeSelfEntries = HasFlag(arguments, "--diag-include-self");
                     }
 
@@ -51,6 +59,24 @@ public static class ElevatedEntryPoint
         }
 
         return false;
+    }
+
+    // The existing absolute log path transports the directory across runas as well as
+    // identifying the client's file for journal self-filtering. Never resolve a relative path here.
+    static string? DiagnosticsDirectory(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path) ||
+            path.IndexOfAny(Path.GetInvalidPathChars()) >= 0 ||
+            string.IsNullOrWhiteSpace(Path.GetFileName(path)))
+        {
+            return null;
+        }
+
+        var components = path[Path.GetPathRoot(path.AsSpan()).Length..]
+            .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return components.Any(component => component.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            ? null
+            : Path.GetDirectoryName(path);
     }
 
     // Return the value following the first occurrence of name, or null if absent / last.

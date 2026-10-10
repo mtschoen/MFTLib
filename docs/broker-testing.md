@@ -80,10 +80,15 @@ operations fail with an `IOException`; a later session use fails with
 process, which ends with the reason "The broker process was disposed.". The handle
 still disposes normally after a crash.
 
-A test that enables `BrokerDiagnostics` awaits `BrokerDiagnosticsIsolation.FlushAsync` to
+A test creates an owned temporary log directory and calls
+`BrokerDiagnostics.Enable("client", temporaryDirectory)`. Mark the fixture nonparallel
+because diagnostics configuration and environment switches are process-global.
+It awaits `BrokerDiagnosticsIsolation.FlushAsync` to
 read the log file deterministically, writes its own marker line with
 `BrokerDiagnosticsIsolation.Log`, and calls `BrokerDiagnosticsIsolation.Reset()` in
-cleanup to restore the default diagnostics state.
+cleanup to restore the default role, OS temp directory, client log path, include-self
+setting and environment-controlled enablement. Reset does not clear environment
+variables; tests restore any switches they changed.
 
 The client clock, per-pipe connection failures, held host writes, the host clock and the
 processor count are not exposed: no consumer drives them. They stay internal seams that

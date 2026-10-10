@@ -24,7 +24,7 @@ public class BrokerDiagnosticsWriterReplacementTests
         // Diagnostics are still off, so nothing has created the process's writer: the replacement
         // is the first.
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Add, () => "broker"));
-        BrokerDiagnostics.Enable("broker");
+        BrokerDiagnostics.Enable("broker", Path.GetTempPath());
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "hello");
         await BrokerDiagnostics.FlushAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
 
@@ -39,7 +39,7 @@ public class BrokerDiagnosticsWriterReplacementTests
         var first = new List<string>();
         var second = new List<string>();
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(first.Add, () => "broker"));
-        BrokerDiagnostics.Enable("broker");
+        BrokerDiagnostics.Enable("broker", Path.GetTempPath());
 
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(second.Add, () => "broker"));
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "after");
@@ -61,7 +61,7 @@ public class BrokerDiagnosticsWriterReplacementTests
         var replacementLines = new ConcurrentQueue<string>();
         var original = new BrokerDiagnosticsWriter(originalLines.Enqueue);
         BrokerDiagnostics.ReplaceWriterForTest(original);
-        BrokerDiagnostics.Enable("broker");
+        BrokerDiagnostics.Enable("broker", Path.GetTempPath());
         BrokerDiagnostics.AfterWriterAcquiredForTest = () =>
         {
             gate.MarkEntered();

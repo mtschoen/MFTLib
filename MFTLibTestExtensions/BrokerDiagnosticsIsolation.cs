@@ -9,7 +9,7 @@ namespace MFTLibTestExtensions;
 public static class BrokerDiagnosticsIsolation
 {
     /// <summary>
-    ///     Undoes <see cref="BrokerDiagnostics.Enable" />: restores the default role tag and the
+    ///     Undoes <see cref="BrokerDiagnostics.Enable" />: restores the default role tag, OS temp log directory and the
     ///     environment-variable-controlled enablement, and discards the log writer after it drains
     ///     the lines already queued. Call <see cref="BrokerDiagnosticsIsolation.FlushAsync" /> first to
     ///     read those lines from the log file.

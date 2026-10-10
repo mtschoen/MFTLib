@@ -72,7 +72,7 @@ public partial class BrokerProcessTests
     public async Task HostFault_ExceptionMessageIsWrittenToDiagnosticsLog()
     {
         var lines = new List<string>();
-        BrokerDiagnostics.Enable("client");
+        BrokerDiagnostics.Enable("client", Path.GetTempPath());
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
         {
             lock (lines)

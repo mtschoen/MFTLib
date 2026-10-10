@@ -4,10 +4,11 @@ namespace MFTLib;
 ///     Opt-in broker diagnostics. When environment variable
 ///     <c>MFTLIB_BROKER_DIAG=1</c> is set (or <see cref="Enable" /> has been called),
 ///     <see cref="Log" /> appends a timestamped, role-tagged line to
-///     <c>{LogDirectory}/broker-diagnostics.log</c>; otherwise it is a no-op. Consumers
-///     point <see cref="LogDirectory" /> at their own app-data directory before enabling
-///     diagnostics; it defaults to the OS temp directory. The elevated child receives
-///     diagnostics via the <c>--diag</c> flag (see <see cref="Enable" />) rather than the
+///     <c>broker-diagnostics.log</c> in the configured directory; otherwise it is a no-op.
+///     Consumers pass their own app-data directory to <see cref="Enable" /> after early
+///     broker dispatch; environment-only opt-in defaults to the OS temp directory.
+///     The elevated child receives diagnostics via <c>--diag</c> and the absolute
+///     <c>--diag-log</c> path rather than the
 ///     env var, because a <c>runas</c> launch does not reliably inherit the parent's
 ///     environment. Used to reveal, on an on-hardware run, whether the cold scan used the
 ///     broker or fell back to a direct scan, what cursor the broker captured vs.
@@ -30,22 +31,17 @@ public static class BrokerDiagnostics
     // shared log file. The broker child sets it to "broker" via Enable.
     static string _role = "client";
 
-    /// <summary>
-    ///     Directory the diagnostics log is written into. Consumers should set this to
-    ///     their own app-data directory before enabling diagnostics. Defaults to the OS
-    ///     temp directory.
-    /// </summary>
-    public static string LogDirectory { get; set; } = Path.GetTempPath();
+    static string _logDirectory = Path.GetTempPath();
 
     internal const string LogFileName = "broker-diagnostics.log";
 
     /// <summary>
     ///     Full path of this process's diagnostics log file. The client forwards it to the
-    ///     elevated child as <c>--diag-log</c> so the broker can filter the log file's own
-    ///     journal entries out of the watch stream.
+    ///     elevated child as <c>--diag-log</c> so the broker uses its parent directory and
+    ///     filters the log file's own journal entries out of the watch stream.
     /// </summary>
     internal static string LogPath =>
-        ResolveLogPath(Path.Combine(LogDirectory, LogFileName), OperatingSystem.IsWindows());
+        ResolveLogPath(Path.Combine(_logDirectory, LogFileName), OperatingSystem.IsWindows());
 
     internal static string ResolveLogPath(string combined, bool isWindows)
     {
@@ -92,10 +88,13 @@ public static class BrokerDiagnostics
     ///     <paramref name="role" />. Used by the elevated broker child, which cannot rely on
     ///     inheriting the <c>MFTLIB_BROKER_DIAG</c> env var across the <c>runas</c> launch.
     /// </summary>
-    public static void Enable(string role)
+    /// <param name="role">The role tag included in each log line.</param>
+    /// <param name="logDirectory">The caller-owned log directory. The caller creates it before logging.</param>
+    public static void Enable(string role, string logDirectory)
     {
-        _forced = true;
+        _logDirectory = logDirectory;
         _role = role;
+        _forced = true;
     }
 
     /// <summary>
@@ -118,6 +117,7 @@ public static class BrokerDiagnostics
     {
         _forced = false;
         _role = "client";
+        _logDirectory = Path.GetTempPath();
         ClientLogPath = null;
         _includeSelfEntries = false;
         AfterWriterAcquiredForTest = null;

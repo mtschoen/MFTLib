@@ -7,23 +7,19 @@ namespace MFTLib.Tests;
 [DoNotParallelize]
 public class BrokerDiagnosticsTests
 {
-    string _originalLogDirectory = null!;
     string _temporaryRoot = null!;
 
     [TestInitialize]
     public void Setup()
     {
-        _originalLogDirectory = BrokerDiagnostics.LogDirectory;
         _temporaryRoot = Path.Combine(Path.GetTempPath(), "BrokerDiagTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_temporaryRoot);
-        BrokerDiagnostics.LogDirectory = _temporaryRoot;
     }
 
     [TestCleanup]
     public void Cleanup()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
-        BrokerDiagnostics.LogDirectory = _originalLogDirectory;
         BrokerDiagnostics.ResetToDefaults();
         // Best-effort cleanup only: a locked file or already-missing directory must
         // not fail the test.
@@ -42,12 +38,13 @@ public class BrokerDiagnosticsTests
     [TestMethod]
     public void IsolationReset_RestoresTheDefaultDiagnosticsState()
     {
-        BrokerDiagnostics.Enable("test");
+        BrokerDiagnostics.Enable("test", _temporaryRoot);
         Assert.IsTrue(BrokerDiagnostics.Enabled);
 
         BrokerDiagnosticsIsolation.Reset();
 
         Assert.IsFalse(BrokerDiagnostics.Enabled);
+        Assert.AreEqual(Path.Combine(Path.GetTempPath(), BrokerDiagnostics.LogFileName), BrokerDiagnostics.LogPath);
     }
 
     [DataTestMethod]
@@ -55,7 +52,7 @@ public class BrokerDiagnosticsTests
     [DataRow(true)]
     public async Task Log_WhenEnabled_AppendsTimestampedLine(bool viaIsolation)
     {
-        Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
+        BrokerDiagnostics.Enable("client", _temporaryRoot);
         var message = viaIsolation ? "isolation-forwarded" : "cold-scan-broker-ok";
         if (viaIsolation)
         {
@@ -74,6 +71,22 @@ public class BrokerDiagnosticsTests
     }
 
     [TestMethod]
+    public async Task Log_EnvironmentOptIn_UsesDefaultDirectoryAndClientRole()
+    {
+        Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
+        var lines = new List<string>();
+        BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Add));
+
+        BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "environment-opt-in");
+        await BrokerDiagnostics.FlushAsync(CancellationToken.None);
+
+        Assert.AreEqual(Path.Combine(Path.GetTempPath(), BrokerDiagnostics.LogFileName), BrokerDiagnostics.LogPath);
+        Assert.AreEqual(1, lines.Count);
+        StringAssert.Contains(lines[0], "[client:");
+        StringAssert.Contains(lines[0], "environment-opt-in");
+    }
+
+    [TestMethod]
     public void Log_WhenDisabled_WritesNothing()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
@@ -87,7 +100,7 @@ public class BrokerDiagnosticsTests
     public async Task Enable_ForcesLoggingRegardlessOfEnvVar_AndTagsRoleInLogLine()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
-        BrokerDiagnostics.Enable("broker");
+        BrokerDiagnostics.Enable("broker", _temporaryRoot);
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "forced-on");
         await BrokerDiagnostics.FlushAsync(CancellationToken.None);
 
@@ -101,17 +114,19 @@ public class BrokerDiagnosticsTests
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
         // File.AppendAllText does not create missing directories, so pointing
-        // LogDirectory at one that was never created makes the write throw.
-        BrokerDiagnostics.LogDirectory = Path.Combine(_temporaryRoot, "missing-subdir");
+        // diagnostics at one that was never created makes the write throw.
+        var missingDirectory = Path.Combine(_temporaryRoot, "missing-subdir");
+        BrokerDiagnostics.Enable("client", missingDirectory);
 
         BrokerDiagnostics.Log(BrokerDiagnostics.ControlChannel, "should-not-throw");
         await BrokerDiagnostics.FlushAsync(CancellationToken.None);
+        Assert.IsFalse(Directory.Exists(missingDirectory));
     }
 
     [TestMethod]
     public async Task LogFrame_WhenEnabled_AppendsFrameTraceLine()
     {
-        Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
+        BrokerDiagnostics.Enable("client", _temporaryRoot);
         BrokerDiagnostics.LogFrame(BrokerDiagnostics.DriveChannel('C', 3), "read", 6, 42);
         await BrokerDiagnostics.FlushAsync(CancellationToken.None);
 
@@ -127,7 +142,7 @@ public class BrokerDiagnosticsTests
     [TestMethod]
     public async Task Log_CarriesChannelTag()
     {
-        BrokerDiagnostics.Enable("broker");
+        BrokerDiagnostics.Enable("broker", _temporaryRoot);
         var lines = new List<string>();
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Add, () => "broker"));
 
@@ -142,7 +157,7 @@ public class BrokerDiagnosticsTests
     [TestMethod]
     public async Task Log_ConcurrentWritersFromEightChannels_LoseNoLine()
     {
-        BrokerDiagnostics.Enable("client");
+        BrokerDiagnostics.Enable("client", _temporaryRoot);
         var lines = new List<string>();
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(lines.Add));
         var start = new TestGate();
@@ -171,7 +186,7 @@ public class BrokerDiagnosticsTests
     [TestMethod]
     public async Task Log_BlockedSink_DoesNotBlockCaller()
     {
-        BrokerDiagnostics.Enable("client");
+        BrokerDiagnostics.Enable("client", _temporaryRoot);
         var gate = new TestGate();
         var lines = new List<string>();
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
@@ -201,7 +216,7 @@ public class BrokerDiagnosticsTests
     [TestMethod]
     public async Task Log_BufferFull_DropsAndReportsCount()
     {
-        BrokerDiagnostics.Enable("client");
+        BrokerDiagnostics.Enable("client", _temporaryRoot);
         var gate = new TestGate();
         var lines = new List<string>();
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
@@ -228,7 +243,7 @@ public class BrokerDiagnosticsTests
     [TestMethod]
     public async Task Log_SinkThrowsThenRecovers_CountsFailureAndReportsOnNextAppend()
     {
-        BrokerDiagnostics.Enable("client");
+        BrokerDiagnostics.Enable("client", _temporaryRoot);
         var lines = new List<string>();
         var attempts = 0;
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>

@@ -431,18 +431,23 @@ identifier.
 
 ## Diagnostics
 
-Set the log directory before enabling diagnostics:
+Configure diagnostics after the early `ElevatedEntryPoint.TryHandle` dispatch returns
+false. Create the application-owned directory, then enable diagnostics in one call:
 
 ```csharp
-BrokerDiagnostics.LogDirectory = appDataDirectory;
-BrokerDiagnostics.Enable("client");
+Directory.CreateDirectory(appDataDirectory);
+BrokerDiagnostics.Enable("client", appDataDirectory);
 ```
 
-Alternatively, set `MFTLIB_BROKER_DIAG=1` before launching. MFTLib propagates
-diagnostics arguments across the `runas` boundary. Each process appends to
-`broker-diagnostics.log` in its own `BrokerDiagnostics.LogDirectory`; the
-consumer's setting does not cross the boundary, so the elevated broker's file
-lands in its default, the OS temp directory.
+Alternatively, set `MFTLIB_BROKER_DIAG=1` before launching for the OS temp directory.
+Applications with their own opt-in switch should honor either that switch or
+`MFTLIB_BROKER_DIAG=1` by calling `Enable("client", appDataDirectory)` after child
+dispatch. MFTLib propagates `--diag` and the quoted absolute `--diag-log` across the
+`runas` boundary. The elevated broker derives the directory from that existing path
+and appends broker-role lines to `broker-diagnostics.log` in the same directory. It
+does not rely on inherited environment or application configuration before dispatch.
+A diagnostics-enabled child with a missing or invalid log path exits with code 1
+before serving a session; broker mode remains handled so normal startup never runs.
 
 Diagnostics are best effort and disabled by default. Writes are queued so disk
 logging does not block a channel. Each line carries its control or drive-channel

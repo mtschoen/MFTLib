@@ -138,7 +138,7 @@ internal static class ProductionStaticFieldReferenceFixture
 
 internal static class ProductionStaticSetterReferenceFixture
 {
-    public static void Reference() => BrokerDiagnostics.LogDirectory = Path.GetTempPath();
+    public static void Reference() => BrokerDiagnostics.IncludeSelfEntries = true;
 }
 
 internal static class ProductionResetReferenceFixture

@@ -1,5 +1,4 @@
-MFTLib.BrokerDiagnostics :: method public static Enable(string role) : void
-MFTLib.BrokerDiagnostics :: property public static LogDirectory { get; set; } : string
+MFTLib.BrokerDiagnostics :: method public static Enable(string role, string logDirectory) : void
 MFTLib.BrokerDiagnostics :: type public static class
 MFTLib.BrokerLauncher :: method public static Launch(string brokerArguments) : bool
 MFTLib.BrokerLauncher :: type public static class

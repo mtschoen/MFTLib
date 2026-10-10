@@ -44,7 +44,7 @@ public class NativeSeamIsolationTests
     [DataRow(typeof(CurrentDirectoryReferenceFixture), "Environment.set_CurrentDirectory")]
     [DataRow(typeof(ConsoleRedirectReferenceFixture), "Console.SetOut")]
     [DataRow(typeof(ProductionStaticFieldReferenceFixture), "BrokerLauncher._startProcess")]
-    [DataRow(typeof(ProductionStaticSetterReferenceFixture), "BrokerDiagnostics.set_LogDirectory")]
+    [DataRow(typeof(ProductionStaticSetterReferenceFixture), "BrokerDiagnostics.set_IncludeSelfEntries")]
     [DataRow(typeof(ProductionResetReferenceFixture), "BrokerLauncher.ResetToDefaults")]
     public void Detector_ReportsUnmarkedReferences(Type fixture, string member)
     {
