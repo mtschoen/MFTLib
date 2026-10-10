@@ -10,7 +10,7 @@ public partial class JournalBrokerHostTests
     const ulong DiagOwnLogReference = 9101;
     const ulong DiagClientLogReference = 9102;
 
-    static string DiagOwnLogPath => Path.Combine(BrokerDiagnostics.LogDirectory, "broker-diagnostics.log");
+    static string DiagOwnLogPath => BrokerDiagnostics.LogPath;
 
     static UsnJournalEntry DiagEntry(ulong recordNumber, string fileName = "broker-diagnostics.log") =>
         JournalEntries.Create(recordNumber, 110, fileName);
@@ -21,7 +21,7 @@ public partial class JournalBrokerHostTests
     static void EnableDiagFilterSeams()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
-        BrokerDiagnostics.LogDirectory = @"C:\broker-diag-tests";
+        BrokerDiagnostics.Enable("broker", @"C:\broker-diag-tests");
         BrokerDiagnostics.ClientLogPath = DiagClientLogPath;
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(_ => { }, () => "broker"));
         BrokerDiagnosticsLogFilter._resolveFileReference = path =>
@@ -35,7 +35,6 @@ public partial class JournalBrokerHostTests
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", null);
         BrokerDiagnostics.ResetToDefaults();
         BrokerDiagnosticsLogFilter.ResetToDefaults();
-        BrokerDiagnostics.LogDirectory = Path.GetTempPath();
     }
 
     [TestMethod]

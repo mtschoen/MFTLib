@@ -33,10 +33,8 @@ public class PublicMemberCallerTests
             "file-wizard FileWizardMaui/MainPage.WatchStates.cs and git-wizard GitWizard/Watch/IndexVolumeChangeSource.WatchStates.cs seed watch state from a captured status",
         ["type MFTLib.BrokerDiagnostics"] =
             "file-wizard file-wizard/ProgramEntry.cs and FileWizardMaui/App.xaml.cs enable broker diagnostics at startup",
-        ["method MFTLib.BrokerDiagnostics.Enable(System.String) : System.Void"] =
+        ["method MFTLib.BrokerDiagnostics.Enable(System.String, System.String) : System.Void"] =
             "file-wizard file-wizard/ProgramEntry.cs and FileWizardMaui/App.xaml.cs enable broker diagnostics at startup",
-        ["property MFTLib.BrokerDiagnostics.LogDirectory : System.String"] =
-            "file-wizard file-wizard/ProgramEntry.cs and FileWizardMaui/App.xaml.cs point the diagnostics log at the local files path",
         ["type MFTLib.BrokerLauncher"] =
             "file-wizard file-wizard/BrokerSmoke.cs and git-wizard GitWizard/Discovery/RepositoryDiscoveryDependencies.cs launch the broker",
         ["method MFTLib.BrokerLauncher.Launch(System.String) : System.Boolean"] =

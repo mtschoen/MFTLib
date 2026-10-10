@@ -178,17 +178,16 @@ public class BrokerDiagnosticsLogFilterTests
     [TestMethod]
     public void LogPath_WhenLogDirectoryIsRelative_ResolvesToFullPathInOriginatingProcess()
     {
-        var originalDirectory = BrokerDiagnostics.LogDirectory;
         try
         {
-            BrokerDiagnostics.LogDirectory = "logs";
+            BrokerDiagnostics.Enable("client", "logs");
             var path = BrokerDiagnostics.LogPath;
             Assert.IsTrue(Path.IsPathRooted(path));
             StringAssert.EndsWith(path, Path.Combine("logs", BrokerDiagnostics.LogFileName));
         }
         finally
         {
-            BrokerDiagnostics.LogDirectory = originalDirectory;
+            BrokerDiagnostics.ResetToDefaults();
         }
     }
 
@@ -229,8 +228,7 @@ public class BrokerDiagnosticsLogFilterTests
     public void CreateLogFilter_WhenDiagnosticsEnabled_ReturnsFilterThatDropsBothLogs()
     {
         Environment.SetEnvironmentVariable("MFTLIB_BROKER_DIAG", "1");
-        var originalDirectory = BrokerDiagnostics.LogDirectory;
-        BrokerDiagnostics.LogDirectory = @"C:\broker-diag";
+        BrokerDiagnostics.Enable("client", @"C:\broker-diag");
         // Key the seam on the combined path so the test is portable (Path.Combine joins
         // with the host separator).
         var ownPath = BrokerDiagnostics.LogPath;
@@ -257,7 +255,7 @@ public class BrokerDiagnosticsLogFilterTests
         }
         finally
         {
-            BrokerDiagnostics.LogDirectory = originalDirectory;
+            BrokerDiagnostics.ResetToDefaults();
         }
     }
 

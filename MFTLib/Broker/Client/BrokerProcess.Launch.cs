@@ -82,7 +82,7 @@ internal sealed partial class BrokerProcess
 
     // A runas launch does not reliably inherit MFTLIB_BROKER_DIAG, so the diagnostics flag is
     // forwarded explicitly. This process's log path travels alongside as --diag-log (quoted: temp
-    // paths can contain spaces) so the broker can filter both logs' journal entries, and
+    // paths can contain spaces) so the broker uses the same directory and filters both logs' journal entries, and
     // MFTLIB_BROKER_DIAG_INCLUDE_SELF crosses as --diag-include-self for the same reason.
     static string DiagnosticsArguments()
     {

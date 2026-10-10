@@ -39,9 +39,9 @@ public class BrokerProcessLaunchTests
     [TestMethod]
     public async Task LaunchAsync_BrokerDiagnosticsEnabledProgrammatically_AppendsDiagFlag()
     {
-        // BrokerDiagnostics.Enable("client") activates diagnostics without setting
+        // Programmatic enablement activates diagnostics without setting
         // MFTLIB_BROKER_DIAG; LaunchAsync must forward --diag and --diag-log for it as well.
-        BrokerDiagnostics.Enable("client");
+        BrokerDiagnostics.Enable("client", Path.Combine(Path.GetTempPath(), "client logs " + Guid.NewGuid().ToString("N")));
         try
         {
             var arguments = await CaptureDeclinedLaunchArgumentsAsync();
@@ -59,9 +59,7 @@ public class BrokerProcessLaunchTests
     [TestMethod]
     public async Task LaunchAsync_RelativeLogDirectory_ForwardsResolvedFullPath()
     {
-        var originalDirectory = BrokerDiagnostics.LogDirectory;
-        BrokerDiagnostics.LogDirectory = "relative-logs";
-        BrokerDiagnostics.Enable("client");
+        BrokerDiagnostics.Enable("client", "relative-logs");
         try
         {
             var arguments = await CaptureDeclinedLaunchArgumentsAsync();
@@ -72,7 +70,6 @@ public class BrokerProcessLaunchTests
         }
         finally
         {
-            BrokerDiagnostics.LogDirectory = originalDirectory;
             BrokerDiagnostics.ResetToDefaults();
         }
     }
@@ -96,7 +93,7 @@ public class BrokerProcessLaunchTests
     [TestMethod]
     public async Task LaunchAsync_IncludeSelfSetProgrammatically_AppendsIncludeSelfFlag()
     {
-        BrokerDiagnostics.Enable("client");
+        BrokerDiagnostics.Enable("client", Path.GetTempPath());
         BrokerDiagnostics.IncludeSelfEntries = true;
         try
         {

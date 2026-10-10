@@ -221,7 +221,7 @@ public class DefaultElevatedEntryRunnerTests
         // the session fails. The clock is never advanced, so the flush's bound cannot end the wait.
         var sink = new TestGate();
         var appended = new List<string>();
-        BrokerDiagnostics.Enable("broker");
+        BrokerDiagnostics.Enable("broker", Path.GetTempPath());
         BrokerDiagnostics.ReplaceWriterForTest(new BrokerDiagnosticsWriter(line =>
         {
             sink.MarkEntered();
