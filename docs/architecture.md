@@ -53,6 +53,15 @@
       attribute is read. These rejections set `MftParseResult.invalidInput`, which
       `MftResult` throws as `InvalidDataException`; no caller classifies a failure by its text. Message buffers are
       UTF-16 (`MftMessageChar`) on every platform, so the managed struct layouts match the native ones on Linux.
+    - **Cache directory ownership**: cached opens require an explicit nonblank
+      application-owned `FileIndexOptions.CacheDirectory`, even with no drives.
+      Missing configuration throws `ArgumentException` before directory creation.
+      The library has no default cache directory or default-cache guard.
+      `NoCache` opens use temporary blocks and ignore supplied cache paths without
+      resolving or creating them. Dump validation runs first and prohibits cache options.
+      Watch defaults to `<user profile>/.MFTLib.Sample.Watch/cache`, retaining policy
+      subdirectories for production and cache inventory/deletion. Without a profile,
+      it requires `--cache-directory`. Direct remains NoCache.
     - **Consumer cache identity**: `FileIndexOptions.CacheTag` carries an opaque
       four-ASCII-character code plus a `uint` version; default is all zeros and
       compares exactly, not as a wildcard. Block format 3 stores the two values

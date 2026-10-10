@@ -16,7 +16,6 @@ MFTLib.Index.CacheDirectory :: method public static DeleteCached(string cacheDir
 MFTLib.Index.CacheDirectory :: method public static EnsureCreated(string path) : System.IO.DirectoryInfo
 MFTLib.Index.CacheDirectory :: method public static InspectCached(string cacheDirectoryPath, System.Collections.Generic.IReadOnlySet<char>? driveLetters = default) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockStatus>
 MFTLib.Index.CacheDirectory :: method public static InspectCached(string cacheDirectoryPath, System.Collections.Generic.IReadOnlySet<char>? driveLetters, System.Action<MFTLib.Index.CachedBlockRejection>? rejectedFile) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.CachedBlockStatus>
-MFTLib.Index.CacheDirectory :: method public static ResolveDefaultPath() : string
 MFTLib.Index.CacheDirectory :: type public static class
 MFTLib.Index.CacheSlotState :: field public const NotApplicable : MFTLib.Index.CacheSlotState = 0
 MFTLib.Index.CacheSlotState :: field public const OwnedCanonical : MFTLib.Index.CacheSlotState = 1

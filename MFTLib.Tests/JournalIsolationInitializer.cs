@@ -3,12 +3,11 @@ using MFTLibTestExtensions;
 
 namespace MFTLib.Tests;
 
-internal static class CacheDirectoryIsolationInitializer
+internal static class JournalIsolationInitializer
 {
     [ModuleInitializer]
     internal static void Initialize()
     {
-        CacheDirectoryIsolation.ForbidDefaultCacheDirectory();
         JournalIsolation.ForbidLiveJournalReads();
     }
 }

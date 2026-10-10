@@ -151,6 +151,48 @@ public class WatchVerbTests
         Assert.IsTrue(lines.Contains("Elevated: False; can self-elevate: True; unattended: False"), string.Join(Environment.NewLine, lines));
     }
 
+    [TestMethod]
+    public async Task Run_CachedModes_UseTheSampleProfileRootForProductionAndInventory()
+    {
+        await using var handle = BrokerTestHarness.StartInProcess(Volumes());
+        var host = HostOver(handle, _ => { });
+        host._cacheDirectory = null;
+        host._getUserProfileDirectory = () => _directory;
+        Assert.AreEqual(0, host.Run(["rescan", "X"]));
+        var lines = new List<string>();
+        host._writeLine = lines.Add;
+
+        Assert.AreEqual(0, host.Run(["cache", "--clear"]));
+
+        var root = Path.Combine(_directory, ".MFTLib.Sample.Watch", "cache");
+        Assert.IsTrue(Directory.Exists(root));
+        Assert.IsTrue(lines.Any(line => line.StartsWith("X: ", StringComparison.Ordinal) && line.Contains(root, StringComparison.Ordinal)));
+        Assert.IsTrue(lines.Any(line => line.Trim() == "X: Deleted"));
+    }
+
+    [DataTestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow(" \t")]
+    public void Run_CacheWithoutAProfile_RequiresAnExplicitDirectory(string? profile)
+    {
+        var lines = new List<string>();
+        var host = new SampleHost { _getUserProfileDirectory = () => profile, _writeLine = lines.Add };
+
+        Assert.AreEqual(2, host.Run(["cache"]));
+        Assert.IsTrue(lines.Any(line => line.Contains("--cache-directory", StringComparison.Ordinal)));
+        Assert.AreEqual(0, host.Run(["cache", "--cache-directory", Path.Combine(_directory, "explicit")]));
+    }
+
+    [TestMethod]
+    public void SampleCacheDirectory_FromSuppliedProfile_IsPure()
+    {
+        var profile = Path.Combine(_directory, "absent-profile");
+
+        Assert.AreEqual(Path.Combine(profile, ".MFTLib.Sample.Watch", "cache"), SampleHost.CacheDirectoryFromProfile(profile));
+        Assert.IsFalse(Directory.Exists(profile));
+    }
+
     // The run is attended and unelevated, so the heads-up dialog precedes the broker launch.
     SampleHost HostOver(InProcessBrokerHandle handle, Action<string> writeLine)
     {

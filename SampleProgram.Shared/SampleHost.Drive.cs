@@ -11,7 +11,7 @@ partial class SampleHost
 {
     internal Func<string, IndexedDrive> _resolveDrive = ResolveDriveNative;
 
-    // Where the index keeps its cache folder; null selects the library's default location. A NoCache open still resolves one.
+    // An optional sample cache-root override. Watch owns its default; Direct uses NoCache.
     internal string? _cacheDirectory;
 
     static IndexedDrive ResolveDriveNative(string letter)
