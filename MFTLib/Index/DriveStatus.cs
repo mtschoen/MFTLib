@@ -8,7 +8,7 @@ public sealed record DriveStatus
 {
     /// <summary>Creates a status with the values every drive has, whether or not it has a block or a watch.</summary>
     /// <param name="driveLetter">The drive.</param>
-    /// <param name="state">Whether the drive can answer queries, needs a rescan, or has no block.</param>
+    /// <param name="state">Whether the drive has a queryable block, is offline, or failed without a block.</param>
     internal DriveStatus(char driveLetter, DriveState state)
     {
         DriveLetter = driveLetter;
@@ -18,13 +18,14 @@ public sealed record DriveStatus
     /// <summary>Identifies the drive in every per-drive <see cref="FileIndex" /> call; one status exists per configured drive, including failed and offline ones.</summary>
     public char DriveLetter { get; init; }
 
-    /// <summary>Whether the drive can answer queries, needs a rescan, or has no block.</summary>
+    /// <summary>Whether the drive has a queryable block, is offline, or failed without a block. Compaction is reported independently by <see cref="DriveBlockStatus.CompactionNeeded" />.</summary>
     public DriveState State { get; init; }
 
     /// <summary>
     ///     Why this drive is <see cref="DriveState.Failed" />:
     ///     <see cref="DriveFailureKind.CacheDeclined" /> when a cache-only open declined it for
-    ///     lack of a usable cache block, <see cref="DriveFailureKind.InUse" /> when the cache
+    ///     lack of a usable cache block, <see cref="DriveFailureKind.CacheTagMismatch" /> when
+    ///     the cached block's tag did not match the requested tag, <see cref="DriveFailureKind.InUse" /> when the cache
     ///     block is locked by another live index, <see cref="DriveFailureKind.ProducerFailed" />
     ///     when its MFT producer failed. <see cref="DriveFailureKind.None" /> in every other
     ///     state, including <see cref="DriveState.Offline" />. A successful

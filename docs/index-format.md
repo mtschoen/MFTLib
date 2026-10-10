@@ -68,7 +68,7 @@ Read `FileIndex.Drives` and inspect `DriveBlockStatus.CacheSlot`:
 | `CacheSlotState.PrivateFallback` | This drive's current block was scanned privately because its canonical slot was unavailable when the scan target was selected. |
 | `CacheSlotState.NotApplicable` | NoCache is enabled, or the drive has no block (failed or offline). |
 
-Both Ready and Stale blocks retain their backing classification. This is
+Ready blocks retain their backing classification, including when compaction is needed. This is
 separate from `DriveBlockStatus.Source`: a canonical cold scan and a private
 fallback scan both read `ProducedByScan`; a canonical warm start reads
 `WarmStartedFromCache`.
@@ -269,8 +269,10 @@ Slot capacity is the estimated row count plus headroom of 25 percent or 65536
 rows, whichever is larger, so journal creates land in place at their record
 number. Name pool capacity uses the same 25 percent ratio with a floor of one
 mebibyte (1048576 bytes). Exhausting either sets the compaction-needed flag; the
-producer or mutator keeps applying what fits and the drive is reported stale so
-the caller can offer a rescan. Compaction is a rescan.
+producer or mutator keeps applying what fits and the drive remains Ready and queryable.
+The caller reads `DriveBlockStatus.CompactionNeeded` to offer a rescan. The flag
+remains set until a successful rescan publishes a replacement block without it;
+failed or cancelled rescans retain the old block and its flag. Compaction is a rescan.
 
 ## Name pool
 

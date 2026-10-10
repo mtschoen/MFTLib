@@ -3,7 +3,7 @@ namespace MFTLib.Index;
 /// <summary>
 ///     Applies USN journal batches to a block in place. Handed-out handles never dangle and
 ///     never read garbage; their values simply become current. Capacity exhaustion sets the
-///     compaction-needed flag, keeps applying what fits, and reports the drive as stale rather
+///     compaction-needed flag, keeps applying what fits, and leaves the drive queryable rather
 ///     than crashing or silently dropping a record. NTFS closes every open cycle with a record
 ///     that repeats the cycle's reasons plus <see cref="UsnReason.Close" />; the mutator
 ///     coalesces that close record against the reasons the cycle already reported (tracked per

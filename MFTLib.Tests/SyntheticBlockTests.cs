@@ -206,7 +206,7 @@ public partial class SyntheticBlockTests
     }
 
     [TestMethod]
-    public async Task Edit_MarkCompactionNeeded_MakesTheDriveStale()
+    public async Task Edit_MarkCompactionNeeded_ReportsReadyWithCompactionNeeded()
     {
         var path = Seed();
         SyntheticBlock.Edit(path, Serial, editor => editor.MarkCompactionNeeded());
@@ -215,7 +215,8 @@ public partial class SyntheticBlockTests
 
         var drive = index.Drives.Single();
         Assert.IsTrue(drive.Block.CompactionNeeded);
-        Assert.AreEqual(DriveState.Stale, drive.State);
+        Assert.AreEqual(DriveState.Ready, drive.State);
+        Assert.AreEqual(1, index.Search(new SearchQuery("report.txt", NameMatchMode.Exact)).Count);
     }
 
     [TestMethod]
