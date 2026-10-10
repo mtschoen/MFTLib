@@ -60,7 +60,7 @@ partial class SampleHost
     // blocks in its own policy-* folder under the cache directory, so the root and every such folder are covered.
     int RunCache(WatchArguments parsed)
     {
-        var root = parsed.CacheDirectory ?? _cacheDirectory ?? CacheDirectory.ResolveDefaultPath();
+        var root = ResolveCacheDirectory(parsed);
         var letters = parsed.Drives.Count == 0 ? null : parsed.Drives.Select(drive => char.ToUpperInvariant(drive[0])).ToHashSet();
         IEnumerable<string> policies = Directory.Exists(root)
             ? Directory.EnumerateDirectories(root, WatchArguments.PolicyDirectoryPrefix + "*").Order(StringComparer.Ordinal)

@@ -241,7 +241,7 @@ The callback must return the root row (row 5 for an MFT block).
 
 ## Isolate cache and journal state
 
-Consumer test assemblies can activate both guards from a module initializer:
+Consumer test assemblies activate journal isolation from a module initializer:
 
 ```csharp
 using System.Runtime.CompilerServices;
@@ -252,19 +252,18 @@ static class TestIsolation
     [ModuleInitializer]
     internal static void Initialize()
     {
-        CacheDirectoryIsolation.ForbidDefaultCacheDirectory();
         JournalIsolation.ForbidLiveJournalReads();
     }
 }
 ```
 
-`CacheDirectoryIsolation.ForbidDefaultCacheDirectory` is process-wide,
-idempotent, and one-way. After activation, resolving the default cache directory
-throws `InvalidOperationException`. Every test opening an index must set
-`FileIndexOptions.CacheDirectory` to a temporary directory it owns, including
-`NoCache` and empty-drive tests.
+Cached opens require an explicit nonblank `FileIndexOptions.CacheDirectory`,
+including empty-drive tests. Supply a temporary directory the test owns.
+Missing configuration throws `ArgumentException`; there is no library default
+cache directory or cache guard. `NoCache` needs no path and ignores any supplied
+path without creating it. Dump sources prohibit cache options.
 
-`JournalIsolation.ForbidLiveJournalReads` is also process-wide, idempotent, and
+`JournalIsolation.ForbidLiveJournalReads` is process-wide, idempotent, and
 one-way. It makes live journal observations answer "cannot say" instead of
 reading a volume. It does not throw and does not affect broker source delegates
 supplied by the test.

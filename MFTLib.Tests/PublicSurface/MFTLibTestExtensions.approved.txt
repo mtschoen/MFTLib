@@ -5,8 +5,6 @@ MFTLibTestExtensions.BrokerDiagnosticsIsolation :: type public static class
 MFTLibTestExtensions.BrokerTestHarness :: method public static CreateSession(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<MFTLibTestExtensions.InProcessBrokerHandle>> launchAsync) : MFTLib.BrokerSession
 MFTLibTestExtensions.BrokerTestHarness :: method public static StartInProcess(MFTLibTestExtensions.ScriptedBrokerVolumes volumes) : MFTLibTestExtensions.InProcessBrokerHandle
 MFTLibTestExtensions.BrokerTestHarness :: type public static class
-MFTLibTestExtensions.CacheDirectoryIsolation :: method public static ForbidDefaultCacheDirectory() : void
-MFTLibTestExtensions.CacheDirectoryIsolation :: type public static class
 MFTLibTestExtensions.FileIndexTestAccess :: method public static ApplyJournalEntries(MFTLib.Index.FileIndex index, char driveLetter, System.Collections.Generic.IReadOnlyList<MFTLibTestExtensions.SyntheticJournalRecord> entries, MFTLibTestExtensions.SyntheticJournalCursor cursor) : System.Collections.Generic.IReadOnlyList<MFTLib.Index.FileChange>
 MFTLibTestExtensions.FileIndexTestAccess :: type public static class
 MFTLibTestExtensions.InProcessBrokerHandle :: method public Crash() : void

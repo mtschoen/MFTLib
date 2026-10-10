@@ -15,6 +15,19 @@ partial class SampleHost
             return 2;
         }
 
+        if (parsed.Mode is not (ProgramMode.ScanDrive or ProgramMode.ElevationStatus))
+        {
+            try
+            {
+                parsed = parsed with { CacheDirectory = ResolveCacheDirectory(parsed) };
+            }
+            catch (ArgumentException exception)
+            {
+                _writeLine(exception.Message);
+                return 2;
+            }
+        }
+
         return RunWithElevation(arguments, _elevationNeed(parsed), () => RunMode(parsed));
     }
 

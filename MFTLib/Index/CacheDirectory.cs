@@ -11,7 +11,7 @@ namespace MFTLib.Index;
 ///     SYSTEM only, inheritance blocked so no Administrators or Users entry is inherited. On
 ///     platforms without access-control lists the equivalent is owner-only Unix permissions.
 /// </summary>
-public static partial class CacheDirectory
+public static class CacheDirectory
 {
     /// <summary>
     ///     Produces the canonical cache filename for a volume, using an uppercase drive letter and

@@ -67,7 +67,7 @@ released library by `scripts/check-linux-native.sh`).
 `MFTLib.TestExtensions` is a separate package for consumer test assemblies. It depends
 on the matching `MFTLib` version and contains `MFTLibTestExtensions.dll`; it is not part
 of the `MFTLib` package. It provides test hooks and scripted types: `BrokerDiagnosticsIsolation`,
-`BrokerTestHarness`, `CacheDirectoryIsolation`, `FileIndexTestAccess`, `InProcessBrokerHandle`,
+`BrokerTestHarness`, `FileIndexTestAccess`, `InProcessBrokerHandle`,
 `InProcessBrokerScan`, `JournalIsolation`, `ScriptedBrokerVolumes`, `ScriptedDriveWatch`,
 `ScriptedScan`, `ScriptedWatchSource`, `ScriptedWatchStart`, `SyntheticBlock`,
 `SyntheticBlockEditor`, `SyntheticBlockOptions`, `SyntheticCacheTag`, `SyntheticCheckpointLoss`,
@@ -76,6 +76,16 @@ of the `MFTLib` package. It provides test hooks and scripted types: `BrokerDiagn
 `SyntheticNotifications`, `SyntheticRow`, and `SyntheticScanRecord`.
 
 ## Install
+
+Cached `FileIndex.OpenAsync` calls require a nonblank application-owned
+`FileIndexOptions.CacheDirectory`, including empty-drive opens. Missing configuration
+throws `ArgumentException`. `NoCache = true` needs no cache path and ignores any
+supplied path without creating it. Dump sources prohibit cache options. Tests own
+their temporary cache paths; no default-cache guard is needed.
+
+The Watch sample defaults to `<user profile>/.MFTLib.Sample.Watch/cache`, with
+policy subdirectories used by cached modes and cache inventory/deletion alike.
+If no profile is available, supply `--cache-directory`. Direct uses NoCache.
 
 ```bash
 dotnet add package MFTLib --version 0.3.0
@@ -168,6 +178,7 @@ var options = new FileIndexOptions
 {
     Drives = [new IndexedDrive('C', @"C:\", volumeSerial)],
     MftSource = MftIndexSources.FromLocalVolumes(new BrokerScanOptions { IncludeFreed = true }),
+    CacheDirectory = cacheDirectory,
     CacheTag = new CacheTag("APPX", 2)
 };
 await using var index = await FileIndex.OpenAsync(options, CancellationToken.None);

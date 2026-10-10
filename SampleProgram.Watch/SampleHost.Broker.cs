@@ -61,7 +61,7 @@ partial class SampleHost
             {
                 Drives = [_resolveDrive(letter)],
                 NoCache = !cached,
-                CacheDirectory = cached ? Path.Combine(parsed.CacheDirectory ?? _cacheDirectory ?? CacheDirectory.ResolveDefaultPath(), parsed.PolicyDirectoryName) : parsed.CacheDirectory ?? _cacheDirectory,
+                CacheDirectory = cached ? Path.Combine(ResolveCacheDirectory(parsed), parsed.PolicyDirectoryName) : null,
                 CacheTag = cached ? WatchArguments.CacheTag : default,
                 Diagnostics = cached ? _writeLine : null,
                 MftSource = source,

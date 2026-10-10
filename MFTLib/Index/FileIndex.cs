@@ -94,8 +94,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     }
 
     /// <summary>
-    ///     The directory this index keeps its cache blocks in: the configured cache directory,
-    ///     or the resolved default when none was set. It is resolved even when no drive caches.
+    ///     The explicitly configured cache directory, or empty for NoCache and dump opens.
     /// </summary>
     internal string CacheDirectoryPath { get; }
 
@@ -154,6 +153,7 @@ public sealed partial class FileIndex : IAsyncDisposable
     /// </param>
     /// <returns>The opened index, which the caller disposes.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="options" /> is null.</exception>
+    /// <exception cref="ArgumentException">Cache configuration is missing or dump options are invalid.</exception>
     /// <exception cref="OperationCanceledException">The token was cancelled before the open finished.</exception>
     public static async Task<FileIndex> OpenAsync(FileIndexOptions options,
         CancellationToken cancellationToken)
@@ -168,9 +168,19 @@ public sealed partial class FileIndex : IAsyncDisposable
             dumpIdentity.ValidateOptions(options);
             cacheDirectoryPath = string.Empty;
         }
+        else if (options.NoCache)
+        {
+            cacheDirectoryPath = string.Empty;
+        }
         else
         {
-            cacheDirectoryPath = options.CacheDirectory ?? CacheDirectory.ResolveDefaultPath();
+            var suppliedCacheDirectory = options.CacheDirectory;
+            if (string.IsNullOrWhiteSpace(suppliedCacheDirectory))
+            {
+                throw new ArgumentException("Set FileIndexOptions.CacheDirectory or enable NoCache.", nameof(options));
+            }
+
+            cacheDirectoryPath = suppliedCacheDirectory;
             CacheDirectory.EnsureCreated(cacheDirectoryPath);
         }
 

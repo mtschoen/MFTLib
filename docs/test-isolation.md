@@ -59,26 +59,19 @@ classes. For stress validation, use 32 ClassLevel MSTest workers with the
 existing Linux platform exclusions in `scripts/coverage-linux.sh`; do not add
 new exclusions to hide seam races.
 
-MFTLib.Tests activates default-cache isolation from a module initializer, so
-`dotnet test`, IDE runners, and the coverage scripts all reject accidental use
-of the real per-user cache. Consumer test assemblies can opt in by referencing
-MFTLibTestExtensions and calling
-`MFTLibTestExtensions.CacheDirectoryIsolation.ForbidDefaultCacheDirectory()`
-from their own `[ModuleInitializer]` before opening indexes. Referencing the
-assembly alone does not activate protection.
+Cached opens require an explicit nonblank `FileIndexOptions.CacheDirectory`,
+including empty-drive opens. Missing configuration throws `ArgumentException`
+before creating a directory. There is no library default cache path or cache
+guard facade. Tests supply temporary directories they own. `NoCache` opens
+require no cache path and ignore supplied paths without resolving or creating
+them. Dump options validate first and prohibit cache options.
 
-Activation is idempotent and one-way for the test process; there is no reset,
-and it is not part of the native delegate seam family. It is not inherited by
-child processes. Once activated, `CacheDirectory.ResolveDefaultPath()` throws
-`InvalidOperationException`; tests must set `FileIndexOptions.CacheDirectory`
-to an owned temporary path, including empty-drive and `NoCache` opens. The
-guard runs before `FileIndex.OpenAsync` creates the cache directory. It blocks
-default resolution, not arbitrary explicitly supplied paths. Production hosts
-that do not opt in retain the existing default-cache behavior.
-
-The same initializer activates journal isolation, through
-`MFTLibTestExtensions.JournalIsolation.ForbidLiveJournalReads()`, on the same
-one-way idempotent terms. Opening a drive reads the live USN journal to decide
+MFTLib.Tests activates journal isolation from a module initializer, through
+`MFTLibTestExtensions.JournalIsolation.ForbidLiveJournalReads()`. Consumer test
+assemblies must call it from their own `[ModuleInitializer]`; referencing the
+assembly alone does not activate it. Activation is one-way and idempotent, has
+no reset and is not inherited by child processes.
+Opening a drive reads the live USN journal to decide
 whether a cached block's checkpoint is still resumable, and a faulting watch
 reads it again to decide whether that drive's position is still in the journal,
 so a test that warm-starts or watches a synthetic MFT-kind block over a drive
@@ -88,7 +81,7 @@ test would cold-scan on one machine and warm-start on another. Measured before
 the guard, nine existing test methods reached the live read on letters `T` and
 `U`, which pass here only because neither letter is mounted on this machine.
 
-Unlike the cache guard this one does **not** throw. Warm-starting is a
+Journal isolation does **not** throw. Warm-starting is a
 legitimate thing for a test to do and most such tests have no interest in the
 journal, so the guard returns "cannot say", which is exactly what a volume with
 no readable journal already answers; the outcome becomes deterministic instead
