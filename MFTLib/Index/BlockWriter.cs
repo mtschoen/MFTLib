@@ -4,7 +4,7 @@ namespace MFTLib.Index;
 ///     The only type that writes rows and names into a block. Every capacity limit is enforced
 ///     here: an out-of-range row index or a name that does not fit sets the compaction-needed
 ///     flag and reports failure, so a producer or a journal batch keeps applying what does fit
-///     and the drive is reported stale rather than crashing or silently dropping records.
+///     and the block reports that it needs compaction rather than crashing or silently dropping records.
 ///     Every public member holds a <see cref="BlockAccessScope" /> on the block for the member's
 ///     whole duration, so a call racing <see cref="BlockFile.Dispose" /> either completes against
 ///     mapped memory or, when disposal began first, fails with <see cref="ObjectDisposedException" />

@@ -224,12 +224,12 @@ public class SyntheticNotificationsTests
     [TestMethod]
     public void CreateDriveStatus_ForwardsEveryValueAndLeavesTheOptionalOnesDefault()
     {
-        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Stale, BlockSource.WarmStartedFromCache,
+        var status = SyntheticNotifications.CreateDriveStatus('T', DriveState.Ready, BlockSource.WarmStartedFromCache,
             40, true, Moment);
         status = status with { Watch = status.Watch with { Supported = true } };
 
         Assert.AreEqual(
-            new DriveStatus('T', DriveState.Stale)
+            new DriveStatus('T', DriveState.Ready)
             {
                 Block = new DriveBlockStatus
                 {
@@ -242,7 +242,7 @@ public class SyntheticNotificationsTests
             },
             status);
         Assert.AreEqual('T', status.DriveLetter);
-        Assert.AreEqual(DriveState.Stale, status.State);
+        Assert.AreEqual(DriveState.Ready, status.State);
         Assert.AreEqual(BlockSource.WarmStartedFromCache, status.Block.Source);
         Assert.AreEqual(40u, status.Block.LiveRowCount);
         Assert.IsTrue(status.Block.CompactionNeeded);

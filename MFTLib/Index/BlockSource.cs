@@ -10,8 +10,8 @@ public enum BlockSource
 {
     /// <summary>
     ///     The drive has no block: it was offline at open, its MFT producer failed, or a
-    ///     cache-only open found no usable cache. <see cref="DriveStatus.FailureKind" />
-    ///     distinguishes the two failure kinds.
+    ///     cache-only open found no usable cache or a mismatched cache tag, or the cache slot
+    ///     was in use. <see cref="DriveStatus.FailureKind" /> distinguishes these failures.
     /// </summary>
     None,
 

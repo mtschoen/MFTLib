@@ -123,10 +123,9 @@ MFTLib.Index.DriveOperationResult :: property public DriveLetter { get; init; } 
 MFTLib.Index.DriveOperationResult :: property public Failure { get; init; } : System.Exception?
 MFTLib.Index.DriveOperationResult :: property public Outcome { get; init; } : MFTLib.Index.DriveOperationOutcome
 MFTLib.Index.DriveOperationResult :: type public sealed class : System.IEquatable<MFTLib.Index.DriveOperationResult>
-MFTLib.Index.DriveState :: field public const Failed : MFTLib.Index.DriveState = 3
-MFTLib.Index.DriveState :: field public const Offline : MFTLib.Index.DriveState = 2
+MFTLib.Index.DriveState :: field public const Failed : MFTLib.Index.DriveState = 2
+MFTLib.Index.DriveState :: field public const Offline : MFTLib.Index.DriveState = 1
 MFTLib.Index.DriveState :: field public const Ready : MFTLib.Index.DriveState = 0
-MFTLib.Index.DriveState :: field public const Stale : MFTLib.Index.DriveState = 1
 MFTLib.Index.DriveState :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.DriveStatus :: method public <Clone>$() : MFTLib.Index.DriveStatus
 MFTLib.Index.DriveStatus :: method public Equals(MFTLib.Index.DriveStatus? other) : bool
