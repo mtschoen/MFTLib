@@ -298,6 +298,34 @@ but unresumable block, and retries the scan until automatic recovery is exhauste
 observe live and scan-time losses. The report is recorded before the fault is
 announced, so a handler that reads `index.Drives` already has it.
 
+`WatchFault.IsRecovering` shares the automatic-recovery classification:
+
+```csharp
+index.WatchFaulted += fault => Console.Error.WriteLine(
+    $"Drive {fault.DriveLetter}: {fault.Kind}, automatic recovery: {fault.IsRecovering}");
+```
+
+It is true for Drive and Apply, and for CatchUpLost carrying a
+`JournalCatchUpLostException` whose `RecoveryStopped` is false. Other faults return
+false, including Subscriber faults whose watches continue running. The value describes
+that notification, not subsequent watch health.
+
+To seed a late subscriber's watch-state view, convert an already captured status:
+
+```csharp
+foreach (var drive in index.Drives)
+{
+    DriveWatchState state = drive.ToWatchState();
+    Console.WriteLine($"Drive {state.DriveLetter}: {state.CatchUpState}, version {state.StateVersion}");
+}
+```
+
+`ToWatchState()` preserves the drive, catch-up state and exact version without
+rereading the index. Its `Fault` is null because a snapshot retains failure text,
+not an event fault. Subscribe before reading `Drives` and merge snapshots and
+events through the same per-drive version check, as shown in the
+[broker integration guide](docs/broker-integration.md#5-handle-faults-and-recovery).
+
 **In a fault handler, branch on `DetectedDuring`, not on the loss being
 non-null.** A report lives until a rescan replaces the block it explains, so a
 drive that cold-scanned at open still carries that report while it is being
