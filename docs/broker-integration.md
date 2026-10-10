@@ -406,24 +406,39 @@ the open returns the unresumable block instead of throwing at the limit.
 Failed or cancelled production and stopping the watch preserve the flag.
 
 The drive's `DriveWatchStatus.CheckpointLoss` report has
-`DetectedDuring == JournalCheckpointLossDetection.ScanCatchUp`. If its `Cause`
-is `JournalCheckpointLossCause.CheckpointTrimmed` and
-`SizeThatWouldHaveRetained` has a value, offer that value as the minimum journal
-size that would have retained the cursor. If the cause is `JournalRecreated`, no
-size would have preserved the old journal.
+`DetectedDuring == JournalCheckpointLossDetection.ScanCatchUp`. When
+`loss.TryGetGrowthTarget(out var target)` succeeds, offer `target.MaximumSize`
+as the recorded size that would have retained the cursor. This projects the
+recorded allocation delta too, without querying or changing the journal. It
+refuses non-trimming losses, absent or nonpositive retention sizes, targets at
+or below the recorded maximum, and nonpositive allocation deltas. If the cause
+is `JournalRecreated`, no size would have preserved the old journal.
 
 Journal growth is an explicit, persistent system change. After user consent:
 
-1. Read current sizing with `index.QueryUsnJournalSettings(driveLetter)`.
-2. Choose a new maximum greater than the current `MaximumSize` and at least the
-   loss report's `SizeThatWouldHaveRetained`.
-3. Call `broker.GrowUsnJournalAsync(driveLetter, maximumSize,
-   allocationDelta, cancellationToken)`. The broker refuses a maximum at or
+1. Obtain a target with `loss.TryGetGrowthTarget(out var target)`; stop if it returns false.
+2. Read fresh sizing with `index.QueryUsnJournalSettings(driveLetter)` immediately
+   before growth and require `target.MaximumSize` to exceed its `MaximumSize`.
+3. Call `broker.GrowUsnJournalAsync(driveLetter, target.MaximumSize,
+   target.AllocationDelta, cancellationToken)`. The broker refuses a maximum at or
    below the current size and returns the settings read back after success.
 4. Call `index.RescanAsync(driveLetter, cancellationToken)`.
 5. The successful rescan clears the refusal and starts the watch if it is requested.
    Call `index.StartWatchingAsync(driveLetter, cancellationToken)` only if watching
    has not been requested.
+
+```csharp
+if (loss.TryGetGrowthTarget(out var target))
+{
+    var current = index.QueryUsnJournalSettings(driveLetter);
+    if (target.MaximumSize > current.MaximumSize)
+    {
+        await broker.GrowUsnJournalAsync(driveLetter, target.MaximumSize,
+            target.AllocationDelta, cancellationToken);
+        await index.RescanAsync(driveLetter, cancellationToken);
+    }
+}
+```
 
 Growing the journal does not make the already lost records reappear. The rescan
 is what rebuilds current state; the larger journal reduces the chance that the

@@ -364,6 +364,16 @@ maximum at or below the current one. Growing is persistent and shared with
 every other journal consumer on the volume (Windows Search, backup and
 replication agents), so surface it as a user action, not a startup default.
 
+Use `loss.TryGetGrowthTarget(out var target)` to obtain the recorded retention size
+and allocation delta for that action. It succeeds only for `CheckpointTrimmed`
+with a positive representable retention size greater than the recorded maximum
+and a positive allocation delta; on failure, `target` is default. The method
+does not recompute sizing or query the volume. Immediately before growth, query
+fresh settings with `index.QueryUsnJournalSettings(driveLetter)` and require
+`target.MaximumSize` to exceed the current maximum. Pass `target.MaximumSize` and
+`target.AllocationDelta` to `GrowUsnJournalAsync`, then rescan the drive: growth
+does not restore records already lost.
+
 ## Keep the application non-elevated
 
 For desktop applications and long-running tools, use the elevated broker instead of

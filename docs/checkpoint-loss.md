@@ -48,3 +48,18 @@
       A stopped-loss message with a retained-size suggestion names the public
       `BrokerSession.GrowUsnJournalAsync` remedy, followed by `FileIndex.RescanAsync`.
       A bounded catch-up read that returns entries without advancing its cursor fails the scan.
+
+## Journal growth target
+
+`JournalCheckpointLoss.TryGetGrowthTarget(out UsnJournalSettings target)` projects
+the report into sizing for an explicit journal growth request. It succeeds only
+for `CheckpointTrimmed`, with a positive representable `SizeThatWouldHaveRetained`
+greater than the report's `JournalSettings.MaximumSize`, and a positive recorded
+`AllocationDelta`. On success the target contains exactly that retention size and
+the recorded allocation delta. On failure the output is default, including when
+the retained size is null because it cannot fit in a `long`.
+
+The method performs no I/O, growth or new arithmetic. It does not round again or
+invent a larger target. Query current settings immediately before requesting
+growth and refuse the request if the target maximum is no longer greater than
+the current maximum. Growing cannot recover lost records; rescan afterward.

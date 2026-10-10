@@ -71,11 +71,14 @@ the watch request, so a successful rescan clears the refusal and starts the watc
 Failed or cancelled production and stopping the watch do not clear recovery exhaustion.
 
 The `JournalCheckpointLoss` report in the drive's `DriveWatchStatus.CheckpointLoss` tells the
-consumer what happened. For `JournalCheckpointLossCause.CheckpointTrimmed`, a non-null
-`SizeThatWouldHaveRetained` is the minimum size that would have kept the cursor.
-After user consent, grow the journal through
-`BrokerSession.GrowUsnJournalAsync`, choosing a maximum greater than the current
-`UsnJournalSettings.MaximumSize` and at least the suggested size. Then rescan the
+consumer what happened. `loss.TryGetGrowthTarget(out var target)` returns the recorded
+retention size and allocation delta when an eligible growth target exists. It returns
+false for non-trimming losses, absent or nonpositive retention sizes, targets at or
+below the recorded maximum, or nonpositive allocation deltas.
+After user consent, query fresh settings with `index.QueryUsnJournalSettings(driveLetter)`
+and require `target.MaximumSize` to exceed the current `MaximumSize`. Grow through
+`BrokerSession.GrowUsnJournalAsync` with `target.MaximumSize` and
+`target.AllocationDelta`. Then rescan the
 drive. Journal growth cannot recover records already discarded, so the rescan is
 required. If watching had been refused over the unresumable block, the successful
 rescan clears the refusal and starts the requested watch.
