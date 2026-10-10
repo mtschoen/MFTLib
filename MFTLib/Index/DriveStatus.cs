@@ -51,4 +51,13 @@ public sealed record DriveStatus
 
     /// <summary>This drive's live-watch state; defaults for a drive that is not watched. Never null.</summary>
     public DriveWatchStatus Watch { get; init; } = new();
+
+    /// <summary>
+    ///     Converts this captured snapshot to the watch event shape, preserving its drive, catch-up
+    ///     state and state version without rereading the index. The fault is null because a snapshot
+    ///     does not retain the event's fault; <see cref="DriveWatchStatus.FailureMessage" /> is not converted to one.
+    /// </summary>
+    /// <returns>The captured watch state, with no event fault.</returns>
+    public DriveWatchState ToWatchState() =>
+        new(DriveLetter, Watch.CatchUpState, Watch.StateVersion, null);
 }

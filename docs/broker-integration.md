@@ -309,12 +309,19 @@ index.WatchFaulted += fault =>
         drive => drive.DriveLetter == fault.DriveLetter);
 
     Console.Error.WriteLine(
-        $"Drive {fault.DriveLetter}: {fault.Kind}, {status.Watch.CatchUpState}");
+        $"Drive {fault.DriveLetter}: {fault.Kind}, {status.Watch.CatchUpState}, " +
+        $"automatic recovery: {fault.IsRecovering}");
 };
 ```
 
 `WatchFaulted` always names a drive. Faults from different drives may be raised
 concurrently. The status has already been updated when the event runs.
+
+`fault.IsRecovering` is true for Drive and Apply faults and for a CatchUpLost
+notification carrying `JournalCatchUpLostException` with `RecoveryStopped` false.
+Subscriber, Channel, Recovery and RescanRestart faults return false. This classifies
+the recovery associated with the notification, not subsequent watch health; a
+Subscriber fault still leaves the watch running.
 
 | Signal | Meaning and consumer action |
 | --- | --- |
@@ -350,13 +357,13 @@ together), and drop older events:
 ```csharp
 var gate = new Lock();
 var applied = new Dictionary<char, long>();
-index.WatchStateChanged += state =>
+void ApplyWatchState(DriveWatchState state)
 {
     // The check and the publication share one lock, so an older event
     // delivered concurrently can never publish after a newer one.
     lock (gate)
     {
-        if (applied.GetValueOrDefault(state.DriveLetter) >= state.StateVersion)
+        if (applied.TryGetValue(state.DriveLetter, out var version) && version >= state.StateVersion)
         {
             return;
         }
@@ -364,8 +371,18 @@ index.WatchStateChanged += state =>
         applied[state.DriveLetter] = state.StateVersion;
         Publish(state.DriveLetter, state.CatchUpState);
     }
-};
+}
+index.WatchStateChanged += ApplyWatchState;
+foreach (var status in index.Drives)
+{
+    ApplyWatchState(status.ToWatchState());
+}
 ```
+
+Subscribe first, then seed through the same version check. `ToWatchState()` uses
+the captured snapshot's drive, catch-up state and exact version (including zero),
+without reading the index again. Its `Fault` is null because the snapshot does not
+retain the event fault; failure text is not converted into an exception.
 
 A decision a consumer tags with the version it read, such as "this drive is
 ready", is superseded by any later event of that drive, including a fault that

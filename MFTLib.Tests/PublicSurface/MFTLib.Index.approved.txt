@@ -130,6 +130,7 @@ MFTLib.Index.DriveState :: field public const Ready : MFTLib.Index.DriveState = 
 MFTLib.Index.DriveState :: type public enum : int, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 MFTLib.Index.DriveStatus :: method public <Clone>$() : MFTLib.Index.DriveStatus
 MFTLib.Index.DriveStatus :: method public Equals(MFTLib.Index.DriveStatus? other) : bool
+MFTLib.Index.DriveStatus :: method public ToWatchState() : MFTLib.Index.DriveWatchState
 MFTLib.Index.DriveStatus :: method public override Equals(object? obj) : bool
 MFTLib.Index.DriveStatus :: method public override GetHashCode() : int
 MFTLib.Index.DriveStatus :: method public override ToString() : string
@@ -395,6 +396,7 @@ MFTLib.Index.WatchFault :: method public static op_Equality(MFTLib.Index.WatchFa
 MFTLib.Index.WatchFault :: method public static op_Inequality(MFTLib.Index.WatchFault? left, MFTLib.Index.WatchFault? right) : bool
 MFTLib.Index.WatchFault :: property public DriveLetter { get; init; } : char
 MFTLib.Index.WatchFault :: property public Exception { get; init; } : System.Exception
+MFTLib.Index.WatchFault :: property public IsRecovering { get; } : bool
 MFTLib.Index.WatchFault :: property public Kind { get; init; } : MFTLib.Index.WatchFaultKind
 MFTLib.Index.WatchFault :: type public sealed class : System.IEquatable<MFTLib.Index.WatchFault>
 MFTLib.Index.WatchFaultKind :: field public const Apply : MFTLib.Index.WatchFaultKind = 2
