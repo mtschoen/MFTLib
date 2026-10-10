@@ -375,7 +375,7 @@ public sealed partial class FileIndex : IAsyncDisposable
         ref readonly var header = ref driveBlock.Block.Header;
         return new DriveStatus(
             driveBlock.DriveLetter,
-            header.IsCompactionNeeded ? DriveState.Stale : DriveState.Ready)
+            DriveState.Ready)
         {
             FailureMessage = _mftProducerFailureMessagesByOrdinal.GetValueOrDefault(driveBlock.DriveOrdinal),
             Block = new DriveBlockStatus

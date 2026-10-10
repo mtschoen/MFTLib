@@ -111,7 +111,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
     }
 
     [TestMethod]
-    public async Task OpenAsync_RecordBeyondPlannedCapacityMarksDriveStale()
+    public async Task OpenAsync_RecordBeyondPlannedCapacityReportsReadyWithCompactionNeeded()
     {
         await using var broker = new InProcessBroker(CreateHost(
             scanDrive: (_, _, _, _, _, _) => Records().Append([Record(1_000_000, 5, "beyond.txt")]),
@@ -124,7 +124,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.IsTrue(created.Header.IsComplete);
         Assert.IsTrue(created.Header.IsCompactionNeeded);
         Assert.IsTrue(index.Drives[0].Block.CompactionNeeded);
-        Assert.AreEqual(DriveState.Stale, index.Drives[0].State);
+        Assert.AreEqual(DriveState.Ready, index.Drives[0].State);
         Assert.AreEqual(ProducerKind.Mft, index.HeaderOf('C').ProducerKind);
         Assert.IsNotNull(index.Find(At("documents", "notes.txt")));
         Assert.IsNull(index.Find(At("beyond.txt")));
