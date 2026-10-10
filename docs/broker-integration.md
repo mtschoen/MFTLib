@@ -136,7 +136,8 @@ Application code owns a `BrokerSession`; test sessions use
 `BrokerSession.CreateIndexSource()` adapts broker scans to `FileIndex`. Its watch source
 uses the same session and opens a separate broker channel for every drive watch.
 
-Given an `IReadOnlyList<IndexedDrive>` named `drives`:
+Given an `IReadOnlyList<IndexedDrive>` named `drives` and an application-owned
+cache directory named `cacheDirectory`:
 
 ```csharp
 using MFTLib;
@@ -145,6 +146,7 @@ using MFTLib.Index;
 var options = new FileIndexOptions
 {
     Drives = drives,
+    CacheDirectory = cacheDirectory,
     MftSource = session.CreateIndexSource(new BrokerScanOptions
     {
         DirectoryScanFileNames = null // Full scan; [] keeps directories only.
@@ -153,6 +155,11 @@ var options = new FileIndexOptions
 
 await using var index = await FileIndex.OpenAsync(options, cancellationToken);
 ```
+
+Cached opens require a nonblank cache directory even with no drives. Missing
+configuration throws `ArgumentException`. `NoCache = true` requires no directory
+and ignores supplied paths without creating them. Dump sources validate first
+and prohibit cache options.
 
 `BrokerSession.CreateIndexSource()` returns the `MftIndexSource` that
 `FileIndexOptions.MftSource` takes. The source carries both halves of the

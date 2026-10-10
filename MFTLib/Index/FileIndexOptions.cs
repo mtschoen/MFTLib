@@ -10,10 +10,10 @@ public sealed record FileIndexOptions
     public IReadOnlyList<IndexedDrive> Drives { get; init; } = [];
 
     /// <summary>
-    ///     Null resolves to <see cref="MFTLib.Index.CacheDirectory.ResolveDefaultPath()" />.
-    ///     Test hosts that activate <c>CacheDirectoryIsolation.ForbidDefaultCacheDirectory</c>
-    ///     must supply a temporary path; null then causes <see cref="FileIndex.OpenAsync" />
-    ///     to throw <see cref="InvalidOperationException" /> before directory creation.
+    ///     An application-owned cache directory. Required and nonblank unless <see cref="NoCache" />
+    ///     is enabled, including empty-drive opens. Missing configuration causes
+    ///     <see cref="FileIndex.OpenAsync" /> to throw <see cref="ArgumentException" />.
+    ///     Ignored with NoCache; dump sources prohibit this option.
     /// </summary>
     public string? CacheDirectory { get; init; }
 
@@ -22,6 +22,7 @@ public sealed record FileIndexOptions
     ///     created with <see cref="FileOptions.DeleteOnClose" />, so the operating system removes
     ///     the temp file when the last handle closes. This includes process exit by kill rather
     ///     than graceful dispose, so no stale no-cache file is left behind.
+    ///     No cache directory is required, resolved or created, even if one is supplied.
     /// </summary>
     public bool NoCache { get; init; }
 

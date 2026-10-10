@@ -56,6 +56,8 @@ public class WatchHostModeTests
         await using var broker = new InProcessBroker(CreateHost());
         var lines = new List<string>();
         var scanner = ScannerOverBroker(broker, lines);
+        scanner._cacheDirectory = Path.Combine(_directory, "unused-cache");
+        scanner._getUserProfileDirectory = () => throw new AssertFailedException("NoCache must not resolve a profile.");
 
         var result = scanner.Run(["scan-drive", "c:"]);
 
@@ -64,6 +66,7 @@ public class WatchHostModeTests
         Assert.IsTrue(lines.Contains("Catch-up held; watch supported: True"));
         Assert.IsTrue(lines.Any(line => line.StartsWith("  C: Finished: ", StringComparison.Ordinal)));
         Assert.IsTrue(lines.Contains("=== Drive C: done ==="));
+        Assert.IsFalse(Directory.Exists(scanner._cacheDirectory));
     }
 
     [TestMethod]

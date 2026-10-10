@@ -1,6 +1,5 @@
 using System.Runtime.Versioning;
 using MFTLib.Index;
-using MFTLibTestExtensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MFTLib.Tests.Index;
@@ -145,97 +144,42 @@ public class CacheDirectoryTests
         Assert.AreEqual("C-0BADF00D.mlix", CacheDirectory.BlockFileName('c', 0x0BADF00D));
     }
 
-    static string ComputeDefaultPathForTest()
+    [DataTestMethod]
+    [DataRow(null, false)]
+    [DataRow("", false)]
+    [DataRow(" \t", false)]
+    [DataRow(null, true)]
+    [DataRow("", true)]
+    [DataRow(" \t", true)]
+    public async Task OpenAsync_BlankCachedDirectory_RejectsConfiguration(string? directory, bool includeDrive)
     {
-        return new CacheDirectory.DefaultPathResolver(() => false, Environment.GetFolderPath).Resolve();
-    }
-
-    [TestMethod]
-    public void ComputeDefaultPath_IsUnderTheUserProfileAndNotHardCoded()
-    {
-        var path = ComputeDefaultPathForTest();
-        Assert.IsFalse(string.IsNullOrWhiteSpace(path));
-        Assert.IsTrue(Path.IsPathFullyQualified(path));
-        StringAssert.Contains(path, "MFTLib");
-    }
-
-    [TestMethod]
-    public void ResolveDefaultPath_Unforbidden_IsTheIndexFolderUnderLocalApplicationData()
-    {
-        var applicationData = Path.Combine(_root, "local");
-
-        var path = new CacheDirectory.DefaultPathResolver(() => false,
-            folder => folder == Environment.SpecialFolder.LocalApplicationData ? applicationData : "unused").Resolve();
-
-        Assert.AreEqual(Path.Combine(applicationData, "MFTLib", "index"), path);
-    }
-
-    [TestMethod]
-    public void ResolveDefaultPath_NoLocalApplicationData_FallsBackToTheCacheFolderInTheUserProfile()
-    {
-        var profile = Path.Combine(_root, "profile");
-
-        var path = new CacheDirectory.DefaultPathResolver(() => false,
-            folder => folder == Environment.SpecialFolder.UserProfile ? profile : string.Empty).Resolve();
-
-        Assert.AreEqual(Path.Combine(profile, ".cache", "MFTLib", "index"), path);
-    }
-
-    [TestMethod]
-    public void ResolveDefaultPath_Forbidden_ThrowsBeforeReadingAnyFolder()
-    {
-        var foldersRead = 0;
-
-        var resolver = new CacheDirectory.DefaultPathResolver(() => true, _ =>
-        {
-            foldersRead++;
-            return "unused";
-        });
-
-        Assert.ThrowsException<InvalidOperationException>(() => resolver.Resolve());
-
-        Assert.AreEqual(0, foldersRead);
-    }
-
-    [TestMethod]
-    public void ResolveDefaultPath_InGuardedProcess_ThrowsWithIsolationInstructions()
-    {
-        var exception = Assert.ThrowsException<InvalidOperationException>(
-            () => CacheDirectory.ResolveDefaultPath());
-        StringAssert.Contains(exception.Message,
-            "CacheDirectoryIsolation.ForbidDefaultCacheDirectory");
-        StringAssert.Contains(exception.Message, "FileIndexOptions.CacheDirectory");
-        StringAssert.Contains(exception.Message, "temporary path");
-    }
-
-    [TestMethod]
-    public void ForbidDefaultCacheDirectory_RepeatedCalls_KeepResolutionForbidden()
-    {
-        CacheDirectoryIsolation.ForbidDefaultCacheDirectory();
-        CacheDirectoryIsolation.ForbidDefaultCacheDirectory();
-        Assert.ThrowsException<InvalidOperationException>(
-            () => CacheDirectory.ResolveDefaultPath());
-    }
-
-    [TestMethod]
-    public async Task OpenAsync_OmittedCacheDirectory_ThrowsBeforeDirectoryCreation()
-    {
-        // Stop here if isolation regresses; never open an unguarded default cache.
-        var guardException = Assert.ThrowsException<InvalidOperationException>(
-            () => CacheDirectory.ResolveDefaultPath());
-        var defaultPath = ComputeDefaultPathForTest();
-        var existedBefore = Directory.Exists(defaultPath);
-
-        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        var exception = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
         {
             await using var index = await FileIndex.OpenAsync(
-                new FileIndexOptions { CacheDirectory = null, Drives = [] },
+                new FileIndexOptions
+                {
+                    CacheDirectory = directory,
+                    Drives = includeDrive ? [new IndexedDrive('T', _root, 1)] : []
+                },
                 CancellationToken.None);
         });
 
-        Assert.AreEqual(guardException.Message, exception.Message);
-        StringAssert.Contains(exception.Message, "FileIndexOptions.CacheDirectory");
-        Assert.AreEqual(existedBefore, Directory.Exists(defaultPath));
+        Assert.AreEqual("options", exception.ParamName);
+        StringAssert.Contains(exception.Message, "Set FileIndexOptions.CacheDirectory or enable NoCache.");
+        Assert.IsFalse(Directory.Exists(_root));
+    }
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task OpenAsync_NoCache_DoesNotCreateAnUnusedCacheDirectory(bool supplyDirectory)
+    {
+        await using var index = await FileIndex.OpenAsync(
+            new FileIndexOptions { NoCache = true, CacheDirectory = supplyDirectory ? _root : null },
+            CancellationToken.None);
+
+        Assert.AreEqual(string.Empty, index.CacheDirectoryPath);
+        Assert.IsFalse(Directory.Exists(_root));
     }
 
     [TestMethod]
