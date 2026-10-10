@@ -84,4 +84,14 @@ public sealed record WatchFault
 
     /// <summary>The failure itself; its type depends on <see cref="Kind" />, for example a <see cref="JournalCatchUpLostException" /> for a lost catch-up.</summary>
     public Exception Exception { get; init; }
+
+    /// <summary>
+    ///     Whether automatic recovery accompanies this notification: a drive or apply fault, or
+    ///     a scan catch-up loss whose <see cref="JournalCatchUpLostException.RecoveryStopped" /> is false.
+    ///     This classifies the reported fault, not the drive's subsequent live-watch health.
+    /// </summary>
+    public bool IsRecovering =>
+        Kind is WatchFaultKind.Drive or WatchFaultKind.Apply ||
+        Kind == WatchFaultKind.CatchUpLost &&
+        Exception is JournalCatchUpLostException { RecoveryStopped: false };
 }
