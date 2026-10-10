@@ -145,4 +145,40 @@ public sealed record JournalCheckpointLoss
     ///     <see cref="Cause" /> to tell the two apart, not on whether this is null.
     /// </summary>
     public long? SizeThatWouldHaveRetained { get; init; }
+
+    /// <summary>
+    ///     Projects the recorded retention size and allocation delta into a journal growth target.
+    ///     No sizing is recomputed, no volume is queried and no journal is changed.
+    /// </summary>
+    /// <param name="target">
+    ///     The recorded retention size as the maximum size, with the recorded allocation delta;
+    ///     default when no eligible target exists.
+    /// </param>
+    /// <returns>
+    ///     True only for a trimmed checkpoint with a positive representable retention size greater
+    ///     than the recorded maximum, and a positive recorded allocation delta.
+    /// </returns>
+    /// <remarks>
+    ///     Query fresh journal settings and compare the target maximum with the current maximum
+    ///     immediately before requesting growth. This report describes sizing at detection time.
+    /// </remarks>
+    public bool TryGetGrowthTarget(out UsnJournalSettings target)
+    {
+        target = default;
+        if (Cause != JournalCheckpointLossCause.CheckpointTrimmed ||
+            SizeThatWouldHaveRetained is not { } maximumSize ||
+            maximumSize <= JournalSettings.MaximumSize ||
+            maximumSize <= 0 ||
+            JournalSettings.AllocationDelta <= 0)
+        {
+            return false;
+        }
+
+        target = new UsnJournalSettings
+        {
+            MaximumSize = maximumSize,
+            AllocationDelta = JournalSettings.AllocationDelta
+        };
+        return true;
+    }
 }

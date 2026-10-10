@@ -55,6 +55,8 @@ public class PublicMemberCallerTests
             "git-wizard GitWizard/GitWizardApi.IndexDiscovery.cs lists the children of a directory entry",
         ["method MFTLib.Index.MftIndexSource.Unavailable(System.String) : MFTLib.Index.MftIndexSource"] =
             "file-wizard FileWizard/FileIndexHost.cs supplies a source for a host that may not scan",
+        ["method MFTLib.Index.JournalCheckpointLoss.TryGetGrowthTarget(MFTLib.UsnJournalSettings&) : System.Boolean"] =
+            "file-wizard file-wizard/JournalCommand.cs and FileWizardMaui.Logic/JournalSettingsPresenter.cs, and git-wizard GitWizardUI/ViewModels/MainViewModel.Journals.cs use the recorded target for explicit journal growth",
         ["property MFTLib.Index.FileIndexOptions.InitialOpenCacheOnly : System.Boolean"] =
             "file-wizard FileWizard/FileIndexHost.cs opens cache-only first",
         ["property MFTLib.Index.FileIndexOptions.OpenProgress : System.IProgress`1<MFTLib.Index.IndexDriveOpened>"] =
