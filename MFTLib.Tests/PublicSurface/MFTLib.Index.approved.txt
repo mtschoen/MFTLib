@@ -328,6 +328,7 @@ MFTLib.Index.JournalCatchUpLostException :: property public RecoveryStopped { ge
 MFTLib.Index.JournalCatchUpLostException :: type public sealed class : System.Exception, System.Runtime.Serialization.ISerializable
 MFTLib.Index.JournalCheckpointLoss :: method public <Clone>$() : MFTLib.Index.JournalCheckpointLoss
 MFTLib.Index.JournalCheckpointLoss :: method public Equals(MFTLib.Index.JournalCheckpointLoss? other) : bool
+MFTLib.Index.JournalCheckpointLoss :: method public TryGetGrowthTarget(out MFTLib.UsnJournalSettings target) : bool
 MFTLib.Index.JournalCheckpointLoss :: method public override Equals(object? obj) : bool
 MFTLib.Index.JournalCheckpointLoss :: method public override GetHashCode() : int
 MFTLib.Index.JournalCheckpointLoss :: method public override ToString() : string
