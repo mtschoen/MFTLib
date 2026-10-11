@@ -27,6 +27,30 @@ public partial class MftVolumeTests
     }
 
     [TestMethod]
+    public void ReadRecordBatches_ParseInProgress_LeavesTheFinishedParsesCountsUntouched()
+    {
+        WithImageVolume(volume =>
+        {
+            var firstParse = volume.ReadRecordBatches(4096, null, new ParseThreadAllowance(1), CancellationToken.None)
+                .ToList();
+            Assert.IsTrue(firstParse.Count > 0);
+            var finishedCounts = ParseControlBlock.ChunkThreadCounts();
+            Assert.AreEqual(16, finishedCounts.Length);
+
+            uint[]? countsDuringSecondParse = null;
+            var progress = new SynchronousProgress<MftScanProgress>(_ =>
+                countsDuringSecondParse ??= ParseControlBlock.ChunkThreadCounts());
+
+            var secondParse = volume.ReadRecordBatches(4096, progress, null, CancellationToken.None).ToList();
+
+            Assert.IsTrue(secondParse.Count > 0);
+            CollectionAssert.AreEqual(finishedCounts, countsDuringSecondParse,
+                "A running parse does not clear or extend the recording of the last finished parse.");
+            Assert.AreEqual(16, ParseControlBlock.ChunkThreadCounts().Length);
+        });
+    }
+
+    [TestMethod]
     public void ReadRecordBatches_TokenCancelledDuringParse_ThrowsBeforeFirstBatch()
     {
         WithImageVolume(volume =>

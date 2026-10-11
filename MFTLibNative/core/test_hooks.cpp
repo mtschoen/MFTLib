@@ -20,13 +20,18 @@ int g_failFileSize = 0;
 int g_failPlatformReadCountdown = 0;
 int g_failPlatformWrite = 0;
 uint32_t g_volumeRecordSizeOverride = 0;
-// Process-global observations of the most recent parse, including the production parse path.
-// Every chunk records under the mutex; reset and the getter also lock.
-// Chunks past the array's capacity are not recorded. The mutex protects access, not test ownership:
-// tests using these hooks must not run concurrently with other parses or tests touching the hooks.
+// Process-global observation of the most recently finished parse, published by
+// ParseThreadRecording's destructor. Publication, reset and the getter lock the mutex.
+// The mutex protects access, not test ownership: tests reading these counts must not run
+// concurrently with other parses or tests touching the hooks.
 std::mutex g_parseThreadCountsMutex;
 std::array<unsigned, 1024> g_chunkThreadCounts = {};
 unsigned g_chunkThreadCountLength = 0;
+
+void ClearRecordedParseThreadCounts() {
+    std::scoped_lock lock(g_parseThreadCountsMutex);
+    g_chunkThreadCountLength = 0;
+}
 // While armed, each parse cancellation check decrements the countdown, and the check that takes
 // it from 1, and every check after it, reports cancelled. Atomic because parse workers check
 // concurrently; unarmed, a check costs one relaxed load.
@@ -64,16 +69,10 @@ unsigned EffectiveThreadCount(const MftParseControl* control) {
     return threadCount;
 }
 
-void ResetRecordedParseThreadCounts() {
+ParseThreadRecording::~ParseThreadRecording() {
     std::scoped_lock lock(g_parseThreadCountsMutex);
-    g_chunkThreadCountLength = 0;
-}
-
-void RecordChunkThreadCount(unsigned threadCount) {
-    std::scoped_lock lock(g_parseThreadCountsMutex);
-    if (g_chunkThreadCountLength < g_chunkThreadCounts.size()) {
-        g_chunkThreadCounts[g_chunkThreadCountLength++] = threadCount;
-    }
+    std::copy_n(counts_.begin(), length_, g_chunkThreadCounts.begin());
+    g_chunkThreadCountLength = length_;
 }
 
 bool ShouldFailAlloc() {
@@ -232,7 +231,7 @@ EXPORT void ResetTestState() {
     g_failPlatformReadCountdown = 0;
     g_failPlatformWrite = 0;
     g_volumeRecordSizeOverride = 0;
-    ResetRecordedParseThreadCounts();
+    ClearRecordedParseThreadCounts();
     g_cancelCheckCountdownArmed = false;
     g_cancelCheckCountdown = 0;
     g_usnIoFailError = 0;
@@ -255,7 +254,7 @@ EXPORT void ResetTestState() {
     g_failPlatformReadCountdown = 0;
     g_failPlatformWrite = 0;
     g_volumeRecordSizeOverride = 0;
-    ResetRecordedParseThreadCounts();
+    ClearRecordedParseThreadCounts();
     g_cancelCheckCountdownArmed = false;
     g_cancelCheckCountdown = 0;
 }

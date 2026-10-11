@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cassert>
@@ -91,10 +92,30 @@ struct MftParseControl;
 // is null or its allowance is 0, otherwise the allowance clamped to [1, processors]. The
 // SetMaxThreads test hook caps the result. Defined in core/test_hooks.cpp.
 unsigned EffectiveThreadCount(const MftParseControl* control);
-// Test hook recording (defined in core/test_hooks.cpp): what each chunk of the most recent
-// parse used, read back through GetChunkThreadCounts.
-void ResetRecordedParseThreadCounts();
-void RecordChunkThreadCount(unsigned threadCount);
+// Test hook recording (defined in core/test_hooks.cpp): what each chunk of the most recently
+// finished parse used, read back through GetChunkThreadCounts. A parse collects its counts in its
+// own instance, which only that parse touches; the destructor replaces the process-global
+// observation under a mutex, so concurrent parses never interleave or clear each other's counts.
+// Chunks past the capacity are not recorded.
+class ParseThreadRecording {
+   public:
+    ParseThreadRecording() = default;
+    ParseThreadRecording(const ParseThreadRecording&) = delete;
+    ParseThreadRecording& operator=(const ParseThreadRecording&) = delete;
+    ParseThreadRecording(ParseThreadRecording&&) = delete;
+    ParseThreadRecording& operator=(ParseThreadRecording&&) = delete;
+    ~ParseThreadRecording();
+
+    void Record(unsigned threadCount) {
+        if (length_ < counts_.size()) {
+            counts_[length_++] = threadCount;
+        }
+    }
+
+   private:
+    std::array<unsigned, 1024> counts_ = {};
+    unsigned length_ = 0;
+};
 
 // Test hook declarations (defined in core/test_hooks.cpp)
 bool ShouldFailAlloc();

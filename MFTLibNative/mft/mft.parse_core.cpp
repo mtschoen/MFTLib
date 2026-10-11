@@ -29,6 +29,7 @@ struct ParseState {
     double fixupMs = 0.0;
     double parseMs = 0.0;
     uint64_t invalidFixupRecords = 0;
+    ParseThreadRecording* threadRecording = nullptr;
 };
 
 // One chunk's global record base plus its record count.
@@ -223,7 +224,7 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
             return ParseOutcome::Cancelled;
         }
         const unsigned numThreads = EffectiveThreadCount(scan.control);
-        RecordChunkThreadCount(numThreads);
+        state.threadRecording->Record(numThreads);
 
         uint64_t nextChunkSize = 0;
         double nextIoMs = 0;
@@ -310,7 +311,7 @@ MftParseResult* CreateParseResult(const wchar_t* message) {
 
 MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& request) {
     auto wallStart = SteadyClock::now();
-    ResetRecordedParseThreadCounts();
+    ParseThreadRecording threadRecording;
 
     auto* result = CreateParseResult();
     if (result == nullptr) {
@@ -325,6 +326,7 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
     const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * geometry.recordSize;
 
     ParseState state = {};
+    state.threadRecording = &threadRecording;
     // The record total comes from an unvalidated length, so it only sizes the first allocation
     // up to a fixed ceiling; a larger result grows as records are actually parsed.
     constexpr uint64_t kMaximumInitialEntries = uint64_t{4} * 1024 * 1024;
