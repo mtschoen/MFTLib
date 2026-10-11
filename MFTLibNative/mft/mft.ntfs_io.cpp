@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <limits>
 #include <vector>
 
 #include "../framework.h"
@@ -20,12 +21,19 @@ namespace mftlib::ntfs::detail {
 
 #ifdef _WIN32
 BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead) {
+    *bytesRead = 0;
     if (ShouldFailRead()) {
         return FALSE;
     }
-    auto high = static_cast<LONG>(from.value >> 32);
-    SetFilePointer(handle, static_cast<LONG>(from.value & 0xFFFFFFFF), &high, FILE_BEGIN);
-    return ReadFile(handle, buffer, count, bytesRead, nullptr);
+    // The offset travels with the request, so reads on one handle cannot move each other's position.
+    OVERLAPPED position{};
+    position.Offset = static_cast<DWORD>(from.value & 0xFFFFFFFF);
+    position.OffsetHigh = static_cast<DWORD>(from.value >> 32);
+    if (ReadFile(handle, buffer, count, bytesRead, &position) != 0) {
+        return TRUE;
+    }
+    // Like a read on a plain file, one that starts at the end succeeds with no bytes.
+    return GetLastError() == ERROR_HANDLE_EOF ? TRUE : FALSE;
 }
 #else
 // The handle is a file descriptor. Like ReadFile on a file, a read that reaches the end of the
@@ -80,42 +88,100 @@ bool ApplyFixup(uint8_t* record, uint32_t recordSize) {
     return true;
 }
 
+namespace {
+constexpr uint64_t kMaximumVolumeOffset = static_cast<uint64_t>((std::numeric_limits<int64_t>::max)());
+constexpr size_t kMinimumFirstAttributeOffset = 42;
+constexpr size_t kResidentAttributeHeaderSize = 0x18;
+constexpr size_t kNonresidentAttributeHeaderSize = 0x40;
+constexpr size_t kMaximumRunFieldBytes = sizeof(uint64_t);
+
+bool TryMultiply(uint64_t factor, uint64_t multiplier, uint64_t* product) {
+    if (factor != 0 && multiplier > (std::numeric_limits<uint64_t>::max)() / factor) {
+        return false;
+    }
+    *product = factor * multiplier;
+    return true;
+}
+
+bool TryAdd(uint64_t addend, uint64_t other, uint64_t* sum) {
+    if (other > (std::numeric_limits<uint64_t>::max)() - addend) {
+        return false;
+    }
+    *sum = addend + other;
+    return true;
+}
+
+bool IsWellFormedNonresident(const ATTRIBUTE_RECORD_HEADER* attr) {
+    return attr->FormCode == 1 && attr->RecordLength >= kNonresidentAttributeHeaderSize &&
+           attr->Form.Nonresident.MappingPairsOffset >= kNonresidentAttributeHeaderSize &&
+           attr->Form.Nonresident.MappingPairsOffset <= attr->RecordLength;
+}
+
+// Reads a little-endian run field of fieldBytes (at most eight) bytes; a signed field is sign-extended.
+uint64_t ReadRunField(const uint8_t* field, size_t fieldBytes, bool isSigned) {
+    uint64_t value = 0;
+    for (size_t i = 0; i < fieldBytes; i++) {
+        value |= static_cast<uint64_t>(field[i]) << (i * 8);
+    }
+    if (isSigned && fieldBytes > 0 && (field[fieldBytes - 1] & 0x80) != 0) {
+        for (size_t i = fieldBytes; i < kMaximumRunFieldBytes; i++) {
+            value |= 0xFFULL << (i * 8);
+        }
+    }
+    return value;
+}
+}  // namespace
+
+bool TryClusterByteOffset(uint64_t cluster, uint32_t bytesPerCluster, uint64_t* byteOffset) {
+    return TryMultiply(cluster, bytesPerCluster, byteOffset) && *byteOffset <= kMaximumVolumeOffset;
+}
+
+bool TryMeasureRuns(const std::vector<DataRun>& runs, uint32_t bytesPerCluster, uint64_t* totalBytes) {
+    uint64_t total = 0;
+    for (const auto& run : runs) {
+        uint64_t runBytes = 0;
+        uint64_t start = 0;
+        uint64_t end = 0;
+        if (run.clusterOffset < 0 || !TryMultiply(run.clusterCount, bytesPerCluster, &runBytes) ||
+            !TryClusterByteOffset(static_cast<uint64_t>(run.clusterOffset), bytesPerCluster, &start) ||
+            !TryAdd(start, runBytes, &end) || end > kMaximumVolumeOffset || !TryAdd(total, runBytes, &total)) {
+            return false;
+        }
+    }
+    *totalBytes = total;
+    return true;
+}
+
 std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr) {
     std::vector<DataRun> runs;
-    if (attr->FormCode != 1) {
+    if (!IsWellFormedNonresident(attr)) {
         return runs;
     }
 
     const auto* runPtr = reinterpret_cast<const uint8_t*>(attr) + attr->Form.Nonresident.MappingPairsOffset;
     const auto* endPtr = reinterpret_cast<const uint8_t*>(attr) + attr->RecordLength;
-    int64_t prevCluster = 0;
+    uint64_t cluster = 0;
 
     while (runPtr < endPtr) {
         const auto* header = reinterpret_cast<const RunHeader*>(runPtr);
         if (header->lengthFieldBytes == 0) {
             break;
         }
+        const size_t lengthBytes = header->lengthFieldBytes;
+        const size_t offsetBytes = header->offsetFieldBytes;
+        if (lengthBytes > kMaximumRunFieldBytes || offsetBytes > kMaximumRunFieldBytes ||
+            static_cast<size_t>(endPtr - runPtr) < 1 + lengthBytes + offsetBytes) {
+            return {};
+        }
         runPtr++;
 
-        uint64_t length = 0;
-        for (int i = 0; i < header->lengthFieldBytes && runPtr < endPtr; i++) {
-            length |= static_cast<uint64_t>(*runPtr++) << (i * 8);
-        }
+        const uint64_t length = ReadRunField(runPtr, lengthBytes, false);
+        runPtr += lengthBytes;
+        const uint64_t offset = ReadRunField(runPtr, offsetBytes, true);
+        runPtr += offsetBytes;
 
-        uint64_t offsetBits = 0;
-        for (int i = 0; i < header->offsetFieldBytes && runPtr < endPtr; i++) {
-            offsetBits |= static_cast<uint64_t>(*runPtr++) << (i * 8);
-        }
-
-        if (header->offsetFieldBytes > 0 && ((offsetBits & (1ULL << ((header->offsetFieldBytes * 8) - 1))) != 0)) {
-            for (int i = header->offsetFieldBytes; i < 8; i++) {
-                offsetBits |= 0xFFULL << (i * 8);
-            }
-        }
-        auto offset = static_cast<int64_t>(offsetBits);
-
-        prevCluster += offset;
-        runs.push_back({prevCluster, length});
+        cluster += offset;
+        runs.push_back({static_cast<int64_t>(cluster), length});
     }
 
     return runs;
@@ -123,34 +189,38 @@ std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr) {
 
 uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attr, uint32_t bytesPerCluster,
                              uint64_t* outSize) {
-    auto runs = ParseDataRuns(attr);
-    auto fileSize = static_cast<uint64_t>(attr->Form.Nonresident.FileSize);
-    *outSize = fileSize;
-
-    uint64_t totalClusterBytes = 0;
-    for (const auto& run : runs) {
-        totalClusterBytes += run.clusterCount * bytesPerCluster;
+    *outSize = 0;
+    if (!IsWellFormedNonresident(attr)) {
+        return nullptr;
     }
-    uint64_t allocSize = (std::max)(totalClusterBytes, fileSize);
+    const auto runs = ParseDataRuns(attr);
+    const auto fileSize = static_cast<uint64_t>(attr->Form.Nonresident.FileSize);
+    uint64_t totalClusterBytes = 0;
+    if (!TryMeasureRuns(runs, bytesPerCluster, &totalClusterBytes) || fileSize == 0 || fileSize > totalClusterBytes) {
+        return nullptr;
+    }
+    // Reads are whole clusters. The runs hold fileSize, so rounding it up to a cluster cannot overflow.
+    const uint64_t remainder = fileSize % bytesPerCluster;
+    const uint64_t readLimit = remainder == 0 ? fileSize : fileSize + (bytesPerCluster - remainder);
 
-    auto* buffer = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(malloc(static_cast<size_t>(allocSize)));
+    auto* buffer = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(malloc(static_cast<size_t>(readLimit)));
     if (buffer == nullptr) {
         return nullptr;
     }
 
     uint64_t bufferOffset = 0;
     for (const auto& run : runs) {
-        uint64_t runBytes = run.clusterCount * bytesPerCluster;
+        const uint64_t runBytes = run.clusterCount * bytesPerCluster;
+        const uint64_t runStart = static_cast<uint64_t>(run.clusterOffset) * bytesPerCluster;
         uint64_t runOffset = 0;
-        while (runOffset < runBytes && bufferOffset < allocSize) {
-            auto chunkSize = static_cast<DWORD>((std::min)(static_cast<uint64_t>(0x10000000ULL), runBytes - runOffset));
+        while (runOffset < runBytes && bufferOffset < readLimit) {
+            auto chunkSize = static_cast<DWORD>(
+                (std::min)({static_cast<uint64_t>(0x10000000ULL), runBytes - runOffset, readLimit - bufferOffset}));
             DWORD bytesRead = 0;
-            if (Read(volumeHandle, buffer + bufferOffset,
-                     VolumeOffset{(static_cast<uint64_t>(run.clusterOffset) * bytesPerCluster) + runOffset}, chunkSize,
-                     &bytesRead) == 0 ||
+            if (Read(volumeHandle, buffer + bufferOffset, VolumeOffset{runStart + runOffset}, chunkSize, &bytesRead) ==
+                    0 ||
                 bytesRead != chunkSize) {
                 free(buffer);
-                *outSize = 0;
                 return nullptr;
             }
             bufferOffset += bytesRead;
@@ -158,11 +228,15 @@ uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER*
         }
     }
 
+    *outSize = fileSize;
     return buffer;
 }
 
 bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
                    ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber) {
+    // The runs are validated by the caller (TryMeasureRuns on the base runs, and on each extension's
+    // runs before they were appended), so their lengths and disk offsets below cannot overflow. A segment number
+    // has 48 bits and a record size at most 16, so the byte offset fits 64 bits.
     uint64_t byteOffset = recordNumber * geometry.recordSize;
     uint64_t currentOffset = 0;
 
@@ -187,21 +261,34 @@ bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uin
     return false;
 }
 
-PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type) {
-    const auto* fileRecord = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(record);
-    auto* attr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(record + fileRecord->FirstAttributeOffset);
-
-    while (attr->TypeCode != ATTRIBUTE_TYPE_CODE::EndMarker) {
-        if (attr->RecordLength == 0) {
-            break;
-        }
-        if (attr->TypeCode == type) {
-            return attr;
-        }
-        attr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(attr) + attr->RecordLength);
+AttributeStep NextAttribute(uint8_t* record, uint32_t recordSize, size_t* offset, PATTRIBUTE_RECORD_HEADER* attribute) {
+    if (*offset < kMinimumFirstAttributeOffset || *offset + sizeof(uint32_t) > recordSize) {
+        return AttributeStep::Malformed;
     }
+    auto* current = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(record + *offset);
+    if (current->TypeCode == ATTRIBUTE_TYPE_CODE::EndMarker) {
+        return AttributeStep::End;
+    }
+    if (*offset + kResidentAttributeHeaderSize > recordSize || current->RecordLength < kResidentAttributeHeaderSize ||
+        *offset + current->RecordLength > recordSize) {
+        return AttributeStep::Malformed;
+    }
+    *attribute = current;
+    *offset += current->RecordLength;
+    return AttributeStep::Attribute;
+}
 
-    return nullptr;
+AttributeSearch FindAttribute(uint8_t* record, uint32_t recordSize, ATTRIBUTE_TYPE_CODE type) {
+    size_t offset = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(record)->FirstAttributeOffset;
+    PATTRIBUTE_RECORD_HEADER attribute = nullptr;
+    AttributeStep step = NextAttribute(record, recordSize, &offset, &attribute);
+    while (step == AttributeStep::Attribute) {
+        if (attribute->TypeCode == type) {
+            return {attribute, false};
+        }
+        step = NextAttribute(record, recordSize, &offset, &attribute);
+    }
+    return {nullptr, step == AttributeStep::Malformed};
 }
 
 }  // namespace mftlib::ntfs::detail

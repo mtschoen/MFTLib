@@ -3,6 +3,7 @@
     #error "mft.parse.cpp is a fragment included by mft.cpp; do not compile it directly"
 #endif
 
+#include <limits>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
@@ -70,6 +71,16 @@ std::optional<ParseGeometry> QueryVolumeRecordSize(HANDLE volumeHandle) {
 #else
     return ReadBootSectorRecordSize(volumeHandle);
 #endif
+}
+
+constexpr wchar_t kMalformedRecordZeroMessage[] = L"MFT record 0 has a malformed attribute";
+constexpr wchar_t kRunsOutsideVolumeMessage[] = L"The MFT data runs lie outside the volume";
+
+// A chunk is at least one record, no more records than the MFT holds, and small enough that its
+// byte count fits the DWORD a read takes.
+uint32_t ClampChunkRecords(uint32_t requested, uint64_t totalRecords, uint32_t recordSize) {
+    const uint64_t largest = (std::max)(uint64_t{1}, (std::min)(totalRecords, uint64_t{0xFFFFFFFF} / recordSize));
+    return static_cast<uint32_t>(std::clamp<uint64_t>(requested, 1, largest));
 }
 
 struct VolumeReadContext {
@@ -144,30 +155,47 @@ std::vector<uint64_t> CollectExtensionRecordNumbers(uint8_t* attrListData, uint6
     return extensionRecords;
 }
 
-// Append the $DATA runs of one already-read extension record to mftRuns.
-void AppendRecordDataRuns(uint8_t* extRecord, std::vector<DataRun>& mftRuns) {
+// Append the $DATA runs of one already-read extension record to mftRuns. A record whose attribute
+// chain leaves the record contributes nothing. False, with mftRuns unchanged, when the runs it
+// declares would leave the volume or overflow the $MFT's size: no later lookup may use them.
+// totalBytes is the cumulative size of mftRuns, which are already validated; only the new runs are
+// measured and added to it, so the merge stays linear in the total number of runs.
+bool AppendRecordDataRuns(uint8_t* extRecord, uint32_t recordSize, uint32_t bytesPerCluster,
+                          std::vector<DataRun>& mftRuns, uint64_t& totalBytes) {
     const auto* extHdr = reinterpret_cast<const FILE_RECORD_SEGMENT_HEADER*>(extRecord);
     if (extHdr->MultiSectorHeader.Magic != kFileRecordMagic) {
-        return;
+        return true;
     }
-    auto* extAttr = reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(extRecord + extHdr->FirstAttributeOffset);
-    while (extAttr->TypeCode != ATTRIBUTE_TYPE_CODE::EndMarker) {
-        if (extAttr->RecordLength == 0) {
-            break;
-        }
+    std::vector<DataRun> additionalRuns;
+    size_t offset = extHdr->FirstAttributeOffset;
+    PATTRIBUTE_RECORD_HEADER extAttr = nullptr;
+    AttributeStep step = NextAttribute(extRecord, recordSize, &offset, &extAttr);
+    while (step == AttributeStep::Attribute) {
         if (extAttr->TypeCode == Data) {
-            auto additionalRuns = ParseDataRuns(extAttr);
-            mftRuns.insert(mftRuns.end(), additionalRuns.begin(), additionalRuns.end());
+            auto attributeRuns = ParseDataRuns(extAttr);
+            additionalRuns.insert(additionalRuns.end(), attributeRuns.begin(), attributeRuns.end());
         }
-        extAttr =
-            reinterpret_cast<PATTRIBUTE_RECORD_HEADER>(reinterpret_cast<uint8_t*>(extAttr) + extAttr->RecordLength);
+        step = NextAttribute(extRecord, recordSize, &offset, &extAttr);
     }
+    if (step != AttributeStep::End) {
+        return true;
+    }
+    uint64_t additionalBytes = 0;
+    if (!TryMeasureRuns(additionalRuns, bytesPerCluster, &additionalBytes) ||
+        additionalBytes > (std::numeric_limits<uint64_t>::max)() - totalBytes) {
+        return false;
+    }
+    mftRuns.insert(mftRuns.end(), additionalRuns.begin(), additionalRuns.end());
+    totalBytes += additionalBytes;
+    return true;
 }
 
 // Follow record 0's $ATTRIBUTE_LIST (when present) to its extension records and
-// append their $DATA runs to mftRuns, completing the $MFT's run list.
-void MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrListAttr, uint32_t bytesPerCluster,
-                            ParseGeometry geometry, std::vector<DataRun>& mftRuns) {
+// append their $DATA runs to mftRuns, completing the $MFT's run list. An extension record that cannot
+// be read or found is skipped; one whose runs lie outside the volume stops the merge and returns false.
+// mftRuns arrive validated with cumulative size totalBytes, which grows with each accepted extension.
+bool MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrListAttr, uint32_t bytesPerCluster,
+                            ParseGeometry geometry, std::vector<DataRun>& mftRuns, uint64_t& totalBytes) {
     uint8_t* attrListData;
     uint64_t attrListSize = 0;
     if (attrListAttr->FormCode == 1) {
@@ -177,7 +205,7 @@ void MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrLi
         if (attrListAttr->Form.Resident.ValueOffset < kResidentHeaderSize ||
             static_cast<size_t>(attrListAttr->Form.Resident.ValueOffset) + attrListAttr->Form.Resident.ValueLength >
                 attrListAttr->RecordLength) {
-            return;
+            return true;
         }
         attrListSize = attrListAttr->Form.Resident.ValueLength;
         attrListData = static_cast<uint8_t*>(malloc(static_cast<size_t>(attrListSize)));
@@ -187,17 +215,21 @@ void MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEADER attrLi
         }
     }
     if (attrListData == nullptr) {
-        return;
+        return true;
     }
 
     std::vector<uint64_t> extensionRecords = CollectExtensionRecordNumbers(attrListData, attrListSize);
     std::vector<uint8_t> extRecord(geometry.recordSize);
+    bool merged = true;
     for (auto recNum : extensionRecords) {
-        if (ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, geometry, extRecord.data(), recNum)) {
-            AppendRecordDataRuns(extRecord.data(), mftRuns);
+        if (ReadMFTRecord(volumeHandle, mftRuns, bytesPerCluster, geometry, extRecord.data(), recNum) &&
+            !AppendRecordDataRuns(extRecord.data(), geometry.recordSize, bytesPerCluster, mftRuns, totalBytes)) {
+            merged = false;
+            break;
         }
     }
     free(attrListData);
+    return merged;
 }
 
 }  // namespace
@@ -247,9 +279,14 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t
 
     uint32_t bytesPerCluster = bpb.bytesPerSector * bpb.sectorsPerCluster;
 
+    uint64_t mftStartOffset = 0;
+    if (!TryClusterByteOffset(bpb.mftStart, bytesPerCluster, &mftStartOffset)) {
+        SetErrorMessage(result->errorMessage, L"The MFT start is outside the volume");
+        return result;
+    }
+
     std::vector<uint8_t> record0(geometry->recordSize);
-    if ((Read(volumeHandle, record0.data(), VolumeOffset{bpb.mftStart * bytesPerCluster}, geometry->recordSize,
-              &bytesRead) == 0) ||
+    if ((Read(volumeHandle, record0.data(), VolumeOffset{mftStartOffset}, geometry->recordSize, &bytesRead) == 0) ||
         bytesRead != geometry->recordSize) {
         SetErrorMessage(result->errorMessage, L"Failed to read MFT record 0");
         return result;
@@ -266,25 +303,37 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t
         return result;
     }
 
-    const auto* dataAttr = FindAttribute(record0.data(), Data);
-    if (dataAttr == nullptr) {
+    const auto dataSearch = FindAttribute(record0.data(), geometry->recordSize, Data);
+    if (dataSearch.malformed) {
+        SetErrorMessage(result->errorMessage, kMalformedRecordZeroMessage);
+        return result;
+    }
+    if (dataSearch.attribute == nullptr) {
         SetErrorMessage(result->errorMessage, L"No Data attribute in MFT record 0");
         return result;
     }
-    auto mftRuns = ParseDataRuns(dataAttr);
+    auto mftRuns = ParseDataRuns(dataSearch.attribute);
     if (mftRuns.empty()) {
         SetErrorMessage(result->errorMessage, L"MFT record 0 has no data runs");
         return result;
     }
-
-    auto* attrListAttr = FindAttribute(record0.data(), AttributeList);
-    if (attrListAttr != nullptr) {
-        MergeExtensionDataRuns(volumeHandle, attrListAttr, bytesPerCluster, *geometry, mftRuns);
+    uint64_t totalMftBytes = 0;
+    if (!TryMeasureRuns(mftRuns, bytesPerCluster, &totalMftBytes)) {
+        SetErrorMessage(result->errorMessage, kRunsOutsideVolumeMessage);
+        return result;
     }
 
-    uint64_t totalMftBytes = 0;
-    for (const auto& run : mftRuns) {
-        totalMftBytes += run.clusterCount * bytesPerCluster;
+    const auto attrListSearch = FindAttribute(record0.data(), geometry->recordSize, AttributeList);
+    if (attrListSearch.malformed) {
+        SetErrorMessage(result->errorMessage, kMalformedRecordZeroMessage);
+        return result;
+    }
+    if (attrListSearch.attribute != nullptr) {
+        if (!MergeExtensionDataRuns(volumeHandle, attrListSearch.attribute, bytesPerCluster, *geometry, mftRuns,
+                                    totalMftBytes)) {
+            SetErrorMessage(result->errorMessage, kRunsOutsideVolumeMessage);
+            return result;
+        }
     }
     uint64_t totalRecords = totalMftBytes / geometry->recordSize;
 
@@ -293,7 +342,7 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t
     ctx.mftRuns = &mftRuns;
     ctx.bytesPerCluster = bytesPerCluster;
     ctx.filesRemaining = mftRuns[0].clusterCount * bytesPerCluster / geometry->recordSize;
-    ctx.bufferSizeRecords = bufferSizeRecords;
+    ctx.bufferSizeRecords = ClampChunkRecords(bufferSizeRecords, totalRecords, geometry->recordSize);
     ctx.geometry = *geometry;
 
     free(result);
@@ -304,6 +353,6 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t
                              VolumeReadIncomplete,
                              false,
                              L"The volume could not be read completely."};
-    return ParseMFTImpl(source, ParseRequest{includeFreed != 0, bufferSizeRecords, control, callback, context});
+    return ParseMFTImpl(source, ParseRequest{includeFreed != 0, ctx.bufferSizeRecords, control, callback, context});
 }
 }

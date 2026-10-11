@@ -291,7 +291,7 @@ void GenerateBatch(uint8_t* buffer, const BatchParams& params) {
 
 bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uint32_t bufferSizeRecords,
                               uint32_t recordSize) {
-    if (!IsSupportedRecordSize(recordSize)) {
+    if (!IsSupportedRecordSize(recordSize) || bufferSizeRecords == 0) {
         return false;
     }
     auto* hFile = mftlib::platform::open_write(filePath);

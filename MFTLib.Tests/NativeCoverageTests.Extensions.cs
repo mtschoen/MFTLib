@@ -39,11 +39,11 @@ public partial class NativeCoverageTests
             Array.Copy(attrListSize, 0, data, a2 + 0x28, 8); // AllocatedLength
             Array.Copy(attrListSize, 0, data, a2 + 0x30, 8); // FileSize
             Array.Copy(attrListSize, 0, data, a2 + 0x38, 8); // ValidDataLength
-            // Data run: cluster 260, 1 cluster  -  within our 2MB file (260*4096 = 1,064,960 < 2MB)
-            data[a2 + 0x40] = 0x12; // 2-byte length, 1-byte offset
-            data[a2 + 0x41] = 0x01;
-            data[a2 + 0x42] = 0x00; // 1 cluster
-            data[a2 + 0x43] = 0x80; // cluster 128 (offset 524,288  -  within 2MB)
+            // Data run: 1 cluster at cluster 128 (offset 524,288, within our 2MB file)
+            data[a2 + 0x40] = 0x21; // 1-byte length, 2-byte offset
+            data[a2 + 0x41] = 0x01; // 1 cluster
+            data[a2 + 0x42] = 0x80;
+            data[a2 + 0x43] = 0x00; // cluster 128
             data[a2 + 0x44] = 0x00; // terminator
 
             WriteEndMarker(data, a2 + 0x48);

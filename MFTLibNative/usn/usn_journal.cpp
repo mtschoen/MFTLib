@@ -169,24 +169,27 @@ uint64_t CountUsnRecords(const uint8_t* readBuffer, DWORD bytesReturned) {
     return count;
 }
 
-// Reads the next-USN cursor and copies the batch's records into result->entries.
-// No-op when the buffer holds no records or the entry allocation fails.
+// Reads the next-USN cursor and copies the batch's records into result->entries. No-op when the
+// buffer holds no records. When the entry allocation fails the result carries an error and keeps its
+// starting cursor, so the caller does not step past records it never received.
 void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, DWORD bytesReturned) {
     if (bytesReturned < sizeof(int64_t)) {
         return;
     }
     int64_t bufferNextUsn;
     memcpy(&bufferNextUsn, readBuffer, sizeof(int64_t));
-    result->nextUsn = bufferNextUsn;
 
     uint64_t count = CountUsnRecords(readBuffer, bytesReturned);
     if (count == 0) {
+        result->nextUsn = bufferNextUsn;
         return;
     }
     result->entries = reinterpret_cast<UsnJournalEntry*>(AllocatePages(count * sizeof(UsnJournalEntry)));
     if (result->entries == nullptr) {
+        SetErrorMessage(result->errorMessage, L"Failed to allocate entry array");
         return;
     }
+    result->nextUsn = bufferNextUsn;
 
     const uint8_t* endPtr = readBuffer + bytesReturned;
     const uint8_t* recordPtr = readBuffer + sizeof(int64_t);

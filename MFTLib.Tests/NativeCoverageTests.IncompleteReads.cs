@@ -50,7 +50,7 @@ public partial class NativeCoverageTests
     }
 
     // Parses the image as a volume with 1024-byte records; failingRead is the 1-based read to fail, 0 for none.
-    private static ParseOutcome ParseImage(byte[] image, int length, int failingRead = 0)
+    private static ParseOutcome ParseImage(byte[] image, int length, int failingRead = 0, uint bufferSizeRecords = 256)
     {
         var path = Path.GetTempFileName();
         try
@@ -64,7 +64,7 @@ public partial class NativeCoverageTests
             }
 
             var resultPointer = NativeTestHooks.NativeParseMFTRecordsRaw(
-                fileStream.SafeFileHandle.DangerousGetHandle(), 256);
+                fileStream.SafeFileHandle.DangerousGetHandle(), bufferSizeRecords);
             Assert.AreNotEqual(IntPtr.Zero, resultPointer);
             try
             {

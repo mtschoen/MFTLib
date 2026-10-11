@@ -30,12 +30,48 @@ namespace detail {
 // header, does not cover exactly the record's sectors, or a sector's last word is not the update
 // sequence number. A rejected record is left unmodified and must not be decoded.
 bool ApplyFixup(uint8_t* record, uint32_t recordSize);
+
+// Run arithmetic for lengths and offsets read from an untrusted volume. TryClusterByteOffset is false
+// when the byte offset overflows 64 bits or leaves the signed range a file offset can take.
+// TryMeasureRuns is false when any run's length or extent overflows, starts before the volume or ends
+// beyond that range, or when the lengths sum past 64 bits; every other run computation here (the
+// run byte length, disk offsets inside a run, the running sum) is plain arithmetic that holds only for
+// runs it has accepted.
+bool TryClusterByteOffset(uint64_t cluster, uint32_t bytesPerCluster, uint64_t* byteOffset);
+bool TryMeasureRuns(const std::vector<DataRun>& runs, uint32_t bytesPerCluster, uint64_t* totalBytes);
+
+// The runs of a non-resident attribute. Empty when the attribute is resident, its header or mapping
+// pairs do not fit its length, a run field is wider than eight bytes, or a run is cut off by the end
+// of the attribute: a run list is complete or not used.
 std::vector<DataRun> ParseDataRuns(const ATTRIBUTE_RECORD_HEADER* attr);
-PATTRIBUTE_RECORD_HEADER FindAttribute(uint8_t* record, ATTRIBUTE_TYPE_CODE type);
-// Off Windows the handle is a file descriptor, so an image file stands in for the volume.
+
+// Steps through a record's attributes without leaving the record. *offset starts at the record's
+// FirstAttributeOffset and advances past each attribute returned. Malformed when an attribute header
+// or its declared length does not fit inside the record.
+enum class AttributeStep : uint8_t { Attribute, End, Malformed };
+AttributeStep NextAttribute(uint8_t* record, uint32_t recordSize, size_t* offset, PATTRIBUTE_RECORD_HEADER* attribute);
+
+// The first attribute of the given type, or null when the record has none. malformed is set when the
+// walk met an attribute that does not fit the record before it reached the end marker or the type.
+struct AttributeSearch {
+    PATTRIBUTE_RECORD_HEADER attribute;
+    bool malformed;
+};
+AttributeSearch FindAttribute(uint8_t* record, uint32_t recordSize, ATTRIBUTE_TYPE_CODE type);
+
+// Off Windows the handle is a file descriptor, so an image file stands in for the volume. The read
+// takes its position from the offset alone and leaves no file position behind.
 BOOL Read(HANDLE handle, void* buffer, VolumeOffset from, DWORD count, PDWORD bytesRead);
+
+// The first fileSize bytes of a non-resident attribute, read in whole clusters, or null when the
+// attribute is malformed, its runs are out of range or shorter than fileSize, or a read fails.
+// *outSize is the number of bytes in the returned buffer, all of them read.
 uint8_t* ReadNonResidentData(HANDLE volumeHandle, const ATTRIBUTE_RECORD_HEADER* attr, uint32_t bytesPerCluster,
                              uint64_t* outSize);
+
+// mftRuns must already be validated, with a cumulative size TryMeasureRuns accepted: the lookup does
+// not remeasure the list, so it stays linear in the runs it visits. False when the record is not
+// covered by them or its read fails.
 bool ReadMFTRecord(HANDLE volumeHandle, const std::vector<DataRun>& mftRuns, uint32_t bytesPerCluster,
                    ParseGeometry geometry, uint8_t* buffer, uint64_t recordNumber);
 }  // namespace detail
@@ -170,7 +206,8 @@ struct ParseRequest {
 MftParseResult* CreateParseResult(const wchar_t* message = nullptr);
 
 // A parse stopped by control->cancelRequested returns a result with no entries, cancelled set
-// to 1 and errorMessage "Parse cancelled". A parse whose source reports incomplete input, or
-// that rejects an invalid fixup, returns a result with no entries and incompleteMessage as its
-// errorMessage; invalidInput is set to 1 when the source says its content was rejected.
+// to 1 and errorMessage "Parse cancelled". A parse whose source reports incomplete input returns a
+// result with no entries and incompleteMessage as its errorMessage; invalidInput is set to 1 when
+// the source says its content was rejected. A parse that rejects an invalid fixup stops at that
+// chunk and keeps the entries parsed before it, with errorMessage saying why.
 MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& request);

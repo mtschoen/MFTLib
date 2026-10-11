@@ -89,7 +89,7 @@ public partial class NativeCoverageTests
     }
 
     [TestMethod]
-    public void ParseMFTRecords_ZeroLengthAttribute_ReturnsMissingDataError()
+    public void ParseMFTRecords_ZeroLengthAttribute_ReturnsMalformedAttributeError()
     {
         var path = Path.GetTempFileName();
         try
@@ -106,7 +106,7 @@ public partial class NativeCoverageTests
             try
             {
                 var result = Marshal.PtrToStructure<MftParseResult>(resultPointer);
-                Assert.IsTrue(result.ErrorMessage.Contains("Data attribute"));
+                Assert.IsTrue(result.ErrorMessage.Contains("malformed attribute"));
             }
             finally
             {

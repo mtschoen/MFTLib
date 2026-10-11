@@ -551,7 +551,7 @@ public partial class UsnJournalSyntheticTests
     }
 
     [TestMethod]
-    public void WatchUsnJournal_AllocFailOnEntryArray_ReturnsEmptyAtAdvancedCursor()
+    public void WatchUsnJournal_AllocFailOnEntryArray_ReportsTheFailureAtTheStartingCursor()
     {
         UseFakeHandle();
         QueueSuccess(BuildReadBuffer(2500, (300, 5, 2400, 0x00000100u, "watched.txt")));
@@ -561,8 +561,9 @@ public partial class UsnJournalSyntheticTests
             volume.GetVolumeHandleForTest(), Cursor.NextUsn, Cursor.JournalIdentifier);
         var result = Marshal.PtrToStructure<UsnJournalResultNative>(resultPointer);
         MFTLibNative._freeUsnJournalResult(resultPointer);
+        Assert.AreEqual("Failed to allocate entry array", result.ErrorMessage);
         Assert.AreEqual(0UL, result.EntryCount);
-        Assert.AreEqual(2500L, result.NextUsn);
+        Assert.AreEqual(Cursor.NextUsn, result.NextUsn, "a batch that was not delivered must be read again");
     }
 
     [TestMethod]

@@ -64,9 +64,11 @@ internal sealed partial class MftVolume : IDisposable
     /// <returns>The open volume, which the caller disposes.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="volumePath" /> is null or empty.</exception>
     /// <exception cref="ArgumentException"><paramref name="volumePath" /> is in none of the recognized formats.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="bufferSizeRecords" /> is zero.</exception>
     /// <exception cref="IOException">The volume could not be opened, for example without elevation.</exception>
     public static MftVolume Open(string volumePath, uint bufferSizeRecords = DefaultBufferSizeRecords)
     {
+        ArgumentOutOfRangeException.ThrowIfZero(bufferSizeRecords);
         var normalizedPath = MFTUtilities.GetVolumePath(volumePath);
         var handle = FileUtilities._getVolumeHandle(normalizedPath);
 

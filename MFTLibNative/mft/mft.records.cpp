@@ -210,20 +210,20 @@ bool EnsureCapacity(Element*& data, uint64_t& capacity, uint64_t used, uint64_t 
     uint64_t newCapacity = capacity == 0 ? 1024 : capacity;
     while (used + extra > newCapacity) {
         if (newCapacity > UINT64_MAX / 2) {
-            SetErrorMessageBuffer(errorMessage, 256, messages.overflow);
+            SetErrorMessageBuffer(errorMessage, MFT_ERROR_MESSAGE_UNITS, messages.overflow);
             return false;
         }
         newCapacity *= 2;
     }
     if (newCapacity > SIZE_MAX / sizeof(Element)) {
-        SetErrorMessageBuffer(errorMessage, 256, messages.overflow);
+        SetErrorMessageBuffer(errorMessage, MFT_ERROR_MESSAGE_UNITS, messages.overflow);
         return false;
     }
     auto* grown = ShouldFailAlloc()
                       ? nullptr
                       : static_cast<Element*>(realloc(data, static_cast<size_t>(newCapacity) * sizeof(Element)));
     if (grown == nullptr) {
-        SetErrorMessageBuffer(errorMessage, 256, messages.allocationFailure);
+        SetErrorMessageBuffer(errorMessage, MFT_ERROR_MESSAGE_UNITS, messages.allocationFailure);
         return false;
     }
     data = grown;

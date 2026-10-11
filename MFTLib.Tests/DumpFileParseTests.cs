@@ -200,4 +200,18 @@ public partial class DumpFileParseTests
             }
         }
     }
+
+    [TestMethod]
+    public void GenerateSyntheticMFT_ZeroRecordsPerBuffer_Throws()
+    {
+        var tempPath = Path.GetTempFileName();
+        try
+        {
+            Assert.ThrowsException<InvalidOperationException>(() => MftVolume.GenerateSyntheticMFT(tempPath, 100, 0));
+        }
+        finally
+        {
+            File.Delete(tempPath);
+        }
+    }
 }

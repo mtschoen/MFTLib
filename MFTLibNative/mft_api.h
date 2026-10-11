@@ -21,6 +21,9 @@ using MftMessageChar = wchar_t;
 using MftMessageChar = char16_t;
 #endif
 
+// Units in every native error message buffer.
+constexpr size_t MFT_ERROR_MESSAGE_UNITS = 256;
+
 // Parser-synthesized, not an on-disk NTFS record flag. The flags field carries the
 // raw FILE_RECORD_SEGMENT_HEADER flags in the low bits; the parser sets this top
 // bit when a non-directory record has
@@ -71,7 +74,7 @@ struct MftParseResult {
     uint64_t usedRecords;
     MftCompactEntry* entries;
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)
-    MftMessageChar errorMessage[256];
+    MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
     // Performance counters (milliseconds)
     double ioTimeMs;
     double fixupTimeMs;
@@ -102,7 +105,7 @@ struct MftDumpInputInfo {
     uint32_t recordSize;
     uint32_t invalidInput;
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)
-    MftMessageChar errorMessage[256];
+    MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
 };
 
 struct UsnJournalInfo {
@@ -114,7 +117,7 @@ struct UsnJournalInfo {
     uint64_t maximumSize;
     uint64_t allocationDelta;
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)
-    MftMessageChar errorMessage[256];
+    MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
 };
 
 struct UsnJournalEntry {
@@ -136,9 +139,17 @@ struct UsnJournalResult {
     int64_t nextUsn;             // cursor for next read
     uint64_t journalIdentifier;  // journal identifier for staleness detection
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)
-    MftMessageChar errorMessage[256];
+    MftMessageChar errorMessage[MFT_ERROR_MESSAGE_UNITS];
 };
 
+static_assert(sizeof(MftParseResult) == 592 + (2 * sizeof(void*)),
+              "MftParseResult is the 592 bytes of counters and 256 UTF-16 message units around two pointers");
+static_assert(sizeof(MftDumpInputInfo) == 528,
+              "MftDumpInputInfo is a 64-bit length, two 32-bit fields and 256 UTF-16 message units");
+#ifdef _WIN32
+static_assert(sizeof(UsnJournalEntry) == 564,
+              "UsnJournalEntry is 42 bytes of fields, 260 UTF-16 units and a sequence number");
+#endif
 static_assert(sizeof(UsnJournalInfo) == 568, "UsnJournalInfo is seven 64-bit fields and 256 UTF-16 message units");
 static_assert(sizeof(UsnJournalResult) == 536 + sizeof(UsnJournalEntry*),
               "UsnJournalResult is three 64-bit fields, a pointer and 256 UTF-16 message units");
