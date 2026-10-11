@@ -1,9 +1,9 @@
 # scripts/capture-benchmark-baseline.ps1
-# Captures a throughput and memory baseline for Benchmark.exe before representation changes.
+# Captures a throughput and memory baseline for Benchmark.exe.
 #
 # Usage:
 #   .\scripts\capture-benchmark-baseline.ps1
-#   .\scripts\capture-benchmark-baseline.ps1 -OutputPath "Benchmark\baseline-before-compact.txt" -RecordCount 1000000 -IterationCount 5
+#   .\scripts\capture-benchmark-baseline.ps1 -OutputPath "artifacts\benchmark-baseline.txt" -RecordCount 1000000 -IterationCount 5
 
 param(
     [Parameter(Position = 0)]
@@ -25,7 +25,7 @@ $repoRoot = if ($env:GITHUB_WORKSPACE) {
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $repoRoot "Benchmark\baseline-before-compact.txt"
+    $OutputPath = Join-Path $repoRoot "artifacts\benchmark-baseline.txt"
 } elseif (-not [System.IO.Path]::IsPathRooted($OutputPath)) {
     $OutputPath = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $OutputPath))
 }

@@ -9,7 +9,7 @@ param(
     [switch]$Publish
 )
 
-$nuGetKeyFile = "C:\Users\mtsch\nugetkey"
+$nuGetKeyFile = if ($env:NUGET_KEY_FILE) { $env:NUGET_KEY_FILE } else { Join-Path $HOME "nugetkey" }
 
 $ErrorActionPreference = "Stop"
 
@@ -252,12 +252,12 @@ if (-not $Publish) {
 }
 
 # --- Read NuGet API key ---
-if (!(Test-Path $nuGetKeyFile)) {
+if (!(Test-Path -LiteralPath $nuGetKeyFile -PathType Leaf)) {
     Write-Host "NuGet API key file not found: $nuGetKeyFile" -ForegroundColor Red
     exit 1
 }
 
-$NuGetApiKey = (Get-Content $nuGetKeyFile -Raw).Trim()
+$NuGetApiKey = (Get-Content -LiteralPath $nuGetKeyFile -Raw).Trim()
 if (-not $NuGetApiKey) {
     Write-Host "NuGet API key file is empty." -ForegroundColor Red
     exit 1
