@@ -132,7 +132,7 @@ public class FileIndexBatchedWaitTests
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.IsFalse(wait.IsCompleted);
 
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard);
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
 
@@ -148,7 +148,7 @@ public class FileIndexBatchedWaitTests
         await harness.Index.StartWatchingAsync(Token).WaitAsync(HangGuard);
 
         var wait = harness.Index.WaitForCatchUpAsync(Token);
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token).WaitAsync(HangGuard);
         await harness.Source.WatchFor('U').Publish(new DriveCaughtUp());
 

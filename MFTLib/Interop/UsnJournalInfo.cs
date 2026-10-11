@@ -5,7 +5,7 @@ namespace MFTLib.Interop;
 [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Unicode)]
 struct UsnJournalInfoNative
 {
-    public ulong JournalId;
+    public ulong JournalIdentifier;
     public long FirstUsn;
     public long NextUsn;
     public long LowestValidUsn;

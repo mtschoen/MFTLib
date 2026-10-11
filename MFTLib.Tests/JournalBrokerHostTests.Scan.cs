@@ -179,7 +179,7 @@ public partial class JournalBrokerHostTests
             Assert.AreEqual(18L, written.NamePoolUsedBytes);
             Assert.AreEqual(0L, written.SkippedRecordCount);
             Assert.IsTrue(block.Header.IsComplete);
-            Assert.AreEqual(cursor.JournalIdentifier, block.Header.UsnJournalId);
+            Assert.AreEqual(cursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
             Assert.AreEqual(cursor.NextUsn, block.Header.UsnNextUsn);
             Assert.AreEqual("nöte.txt", NamePool.ReadRowName(block, 100).ToString());
             Assert.AreEqual(2048L, block.Rows[100].Size);

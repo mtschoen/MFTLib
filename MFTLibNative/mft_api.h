@@ -106,7 +106,7 @@ struct MftDumpInputInfo {
 };
 
 struct UsnJournalInfo {
-    uint64_t journalId;
+    uint64_t journalIdentifier;
     int64_t firstUsn;
     int64_t nextUsn;
     int64_t lowestValidUsn;
@@ -132,9 +132,9 @@ struct UsnJournalEntry {
 
 struct UsnJournalResult {
     uint64_t entryCount;
-    UsnJournalEntry* entries;  // array, owned by native side
-    int64_t nextUsn;           // cursor for next read
-    uint64_t journalId;        // journal ID for staleness detection
+    UsnJournalEntry* entries;    // array, owned by native side
+    int64_t nextUsn;             // cursor for next read
+    uint64_t journalIdentifier;  // journal identifier for staleness detection
     // NOLINTNEXTLINE(modernize-avoid-c-arrays)
     MftMessageChar errorMessage[256];
 };

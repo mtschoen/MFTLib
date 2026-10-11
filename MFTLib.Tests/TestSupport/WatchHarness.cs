@@ -121,13 +121,13 @@ internal sealed class WatchHarness : IDisposable
     }
 
     /// <summary>The cursor the producer stamps into the block it hands back on the next scan.</summary>
-    public void SetNextProducedCursor(char driveLetter, ulong journalId, long nextUsn)
+    public void SetNextProducedCursor(char driveLetter, ulong journalIdentifier, long nextUsn)
     {
         var normalizedLetter = char.ToUpperInvariant(driveLetter);
-        _cursorsByDrive[normalizedLetter] = new IndexWatchTarget(normalizedLetter, journalId, nextUsn);
+        _cursorsByDrive[normalizedLetter] = new IndexWatchTarget(normalizedLetter, journalIdentifier, nextUsn);
         _blockBuilders[normalizedLetter].MutateHeader((ref header) =>
         {
-            header.UsnJournalId = journalId;
+            header.UsnJournalIdentifier = journalIdentifier;
             header.UsnNextUsn = nextUsn;
         });
     }
@@ -368,7 +368,7 @@ internal sealed class WatchHarness : IDisposable
         var builder = SyntheticBlockBuilder.MftShaped();
         builder.MutateHeader((ref header) =>
         {
-            header.UsnJournalId = cursor.JournalIdentifier;
+            header.UsnJournalIdentifier = cursor.JournalIdentifier;
             header.UsnNextUsn = cursor.NextUsn;
         });
         return builder;

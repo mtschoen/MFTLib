@@ -207,7 +207,7 @@ public partial class FileIndexPerDriveWatchTests
     {
         using var harness = new WatchHarness();
         var producing = harness.HoldNextProduction('T');
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         var rescan = harness.Index.RescanAsync('T', Token);
         await producing.Entered.WaitAsync(HangGuard);
 
@@ -247,7 +247,7 @@ public partial class FileIndexPerDriveWatchTests
         using var harness = new WatchHarness();
         await harness.Index.StartWatchingAsync('T', Token);
         var firstHandle = harness.Source.WatchFor('T');
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
 
         await harness.Index.RescanAsync('T', Token);
 

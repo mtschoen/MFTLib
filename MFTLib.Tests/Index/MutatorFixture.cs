@@ -30,7 +30,7 @@ internal sealed class MutatorFixture : IAsyncDisposable
 
     public IReadOnlyList<FileChange> Apply(IReadOnlyList<UsnJournalEntry> entries)
     {
-        return _mutator.Apply(_snapshot, driveOrdinal: 0, entries, journalId: 7, _nextUsn++);
+        return _mutator.Apply(_snapshot, driveOrdinal: 0, entries, journalIdentifier: 7, _nextUsn++);
     }
 
     public async ValueTask DisposeAsync()

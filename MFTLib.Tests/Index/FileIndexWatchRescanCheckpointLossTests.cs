@@ -46,7 +46,7 @@ public class FileIndexWatchRescanCheckpointLossTests
         Assert.IsNotNull(lostBefore);
         Assert.AreEqual(JournalCheckpointLossDetection.LiveWatch, lostBefore.DetectedDuring);
 
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
         Assert.AreEqual(new IndexWatchTarget('T', 13, 9000), harness.Source.TargetsFor('T')[^1]);

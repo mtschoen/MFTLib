@@ -112,7 +112,7 @@ internal static partial class BrokerProtocol
         payload.WriteTo(writer, BrokerFrameKind.ArmAndScan);
     }
 
-    // payload: [journalId u64][nextUsn i64]
+    // payload: [journalIdentifier u64][nextUsn i64]
     public static void WriteCursor(IBufferWriter<byte> writer, UsnJournalCursor cursor)
     {
         new PayloadWriter().Cursor(cursor).WriteTo(writer, BrokerFrameKind.Cursor);
@@ -144,7 +144,7 @@ internal static partial class BrokerProtocol
         new PayloadWriter().Int64(skippedRecordCount).WriteTo(writer, BrokerFrameKind.ScanReady);
     }
 
-    // payload: [journalId u64][nextUsn i64][entryCount i32][entries]
+    // payload: [journalIdentifier u64][nextUsn i64][entryCount i32][entries]
     public static void WriteJournalBatch(IBufferWriter<byte> writer, UsnJournalCursor cursor,
         UsnJournalEntry[] entries)
     {
@@ -157,7 +157,7 @@ internal static partial class BrokerProtocol
         payload.WriteTo(writer, BrokerFrameKind.JournalBatch);
     }
 
-    // payload: [journalId u64][nextUsn i64]
+    // payload: [journalIdentifier u64][nextUsn i64]
     public static void WriteStartWatch(IBufferWriter<byte> writer, UsnJournalCursor since)
     {
         new PayloadWriter().Cursor(since).WriteTo(writer, BrokerFrameKind.StartWatch);
@@ -168,7 +168,7 @@ internal static partial class BrokerProtocol
         new PayloadWriter().WriteTo(writer, BrokerFrameKind.CaughtUp);
     }
 
-    // payload: [journalId u64][nextUsn i64]
+    // payload: [journalIdentifier u64][nextUsn i64]
     public static void WriteScanCompleted(IBufferWriter<byte> writer, UsnJournalCursor advanced)
     {
         new PayloadWriter().Cursor(advanced).WriteTo(writer, BrokerFrameKind.ScanCompleted);

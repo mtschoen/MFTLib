@@ -54,8 +54,8 @@ public class NamespaceBoundaryTests
             // The reason flags on a journal entry. A plain [Flags] enum of uint.
             .And().DoNotHaveFullName("MFTLib.UsnReason");
 
-        // MFTLib#118's ruling also names UsnJournalId. There is no such type: the journal id
-        // crosses the boundary as a plain ulong (BlockHeader.UsnJournalId at BlockHeader.cs:32),
+        // MFTLib#118's ruling also names UsnJournalIdentifier. There is no such type: the journal identifier
+        // crosses the boundary as a plain ulong (BlockHeader.UsnJournalIdentifier at BlockHeader.cs:32),
         // so there is nothing to allow. Recorded here rather than silently dropped.
 
         return Types().That().ResideInNamespaceMatching(IndexNamespacePattern)

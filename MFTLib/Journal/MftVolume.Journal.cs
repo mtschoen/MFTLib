@@ -20,7 +20,7 @@ internal sealed partial class MftVolume
     public UsnJournalCursor QueryUsnJournalCursor()
     {
         var info = QueryJournalInfo();
-        return new UsnJournalCursor(info.JournalId, info.NextUsn);
+        return new UsnJournalCursor(info.JournalIdentifier, info.NextUsn);
     }
 
     /// <summary>
@@ -99,7 +99,7 @@ internal sealed partial class MftVolume
             }
 
             var entries = MarshalUsnEntries(result);
-            var updatedCursor = new UsnJournalCursor(result.JournalId, result.NextUsn);
+            var updatedCursor = new UsnJournalCursor(result.JournalIdentifier, result.NextUsn);
             return (entries, updatedCursor);
         }
         finally
@@ -160,7 +160,7 @@ internal sealed partial class MftVolume
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var nextUsn = since.NextUsn;
-        var journalId = since.JournalIdentifier;
+        var journalIdentifier = since.JournalIdentifier;
 
         using var session = new UsnWatchSession(FileUtilities._getWatchVolumeHandle(_volumePath));
         await using var registration = cancellationToken.Register(session.Cancel);
@@ -170,7 +170,7 @@ internal sealed partial class MftVolume
             ObjectDisposedException.ThrowIf(_disposed, this);
 
             var currentUsn = nextUsn;
-            var resultPtr = await session.ReadBatchAsync(currentUsn, journalId, cancellationToken)
+            var resultPtr = await session.ReadBatchAsync(currentUsn, journalIdentifier, cancellationToken)
                 .ConfigureAwait(false);
 
             if (resultPtr == IntPtr.Zero)
@@ -190,7 +190,7 @@ internal sealed partial class MftVolume
 
                 entries = MarshalUsnEntries(result);
                 nextUsn = result.NextUsn;
-                cursor = new UsnJournalCursor(result.JournalId, result.NextUsn);
+                cursor = new UsnJournalCursor(result.JournalIdentifier, result.NextUsn);
             }
             finally
             {

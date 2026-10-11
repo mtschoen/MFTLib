@@ -39,7 +39,7 @@ public partial class FileIndexWatchRecoveryTests
             : null);
         await harness.Index.StartWatchingAsync('T', Token);
         var producedBefore = harness.ProductionCount('T');
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9500);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9500);
 
         harness.Source.WatchFor('T').FailDrive(new IOException("T's journal wrapped"));
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');

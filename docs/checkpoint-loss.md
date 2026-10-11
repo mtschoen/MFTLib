@@ -4,7 +4,7 @@
     - **Checkpoint loss**: opening a drive reads the live journal through the unelevated
       volume-root handle (`UsnJournalVolumeInterop`) before adopting a cached block. A block
       whose `BlockHeader.UsnNextUsn` is below the journal's `FirstUsn`, or whose
-      `BlockHeader.UsnJournalId` no longer matches, cannot be resumed, so the drive cold-scans
+      `BlockHeader.UsnJournalIdentifier` no longer matches, cannot be resumed, so the drive cold-scans
       and `DriveWatchStatus.CheckpointLoss` records the cause, the journal's allocation delta and
       maximum size, how far behind the journal the checkpoint fell, and the size
       a journal would need to be at least to have kept it (`JournalSizeArithmetic`: the

@@ -84,7 +84,7 @@ internal sealed class BrokerMftBlockProducer
             throw new InvalidOperationException("Block ProducerKind must be Mft.");
         }
 
-        if (header.UsnJournalId != armed.JournalIdentifier || header.UsnNextUsn != armed.NextUsn)
+        if (header.UsnJournalIdentifier != armed.JournalIdentifier || header.UsnNextUsn != armed.NextUsn)
         {
             throw new InvalidOperationException("Block journal cursor does not match the armed cursor.");
         }

@@ -17,7 +17,7 @@ public static class JournalIsolation
     ///     that warm-starts or watches a synthetic block over a drive letter that happens to
     ///     name a real NTFS volume would have that block rejected as
     ///     <see cref="JournalCheckpointLossCause.JournalRecreated" />, because a synthetic
-    ///     journal id never matches a real one, so the test would cold-scan on one machine and
+    ///     journal identifier never matches a real one, so the test would cold-scan on one machine and
     ///     warm-start on another. Once this is active the read is skipped and the check answers
     ///     "cannot say", which is what a volume with no readable journal already answers, so
     ///     warm starts and watch faults behave the same way everywhere.

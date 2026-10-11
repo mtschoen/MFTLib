@@ -166,7 +166,7 @@ public class MftDumpValidationTests
         Assert.AreEqual(0L, result.NextUsn);
         Assert.AreEqual(0, result.SkippedRecordCount);
         Assert.IsNull(result.CatchUpLoss);
-        Assert.AreEqual(0UL, header.UsnJournalId);
+        Assert.AreEqual(0UL, header.UsnJournalIdentifier);
         Assert.AreEqual(0L, header.UsnNextUsn);
         Assert.AreEqual(0u, header.VolumeSerial);
         Assert.AreEqual(ProducerKind.Mft, header.ProducerKind);

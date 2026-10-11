@@ -49,7 +49,7 @@ public class JournalBrokerHostBlockScanTests
         Assert.IsTrue(blockWriter.Block.Header.IsComplete);
         Assert.AreEqual(ProducerKind.Mft, blockWriter.Block.Header.ProducerKind);
         Assert.AreEqual(5u, blockWriter.Block.Header.RootRow);
-        Assert.AreEqual(ArmedCursor.JournalIdentifier, blockWriter.Block.Header.UsnJournalId);
+        Assert.AreEqual(ArmedCursor.JournalIdentifier, blockWriter.Block.Header.UsnJournalIdentifier);
         Assert.AreEqual(ArmedCursor.NextUsn, blockWriter.Block.Header.UsnNextUsn);
         Assert.AreEqual("file.txt", NamePool.ReadRowName(blockWriter.Block, 20).ToString());
         Assert.AreEqual(BrokerFrameKind.ScanCompleted, frames[^1].Kind);
@@ -101,7 +101,7 @@ public class JournalBrokerHostBlockScanTests
 
         Assert.AreEqual(6u, blockWriter.Block.Header.RowCount);
         Assert.IsFalse(blockWriter.Block.Header.IsComplete);
-        Assert.AreEqual(0UL, blockWriter.Block.Header.UsnJournalId);
+        Assert.AreEqual(0UL, blockWriter.Block.Header.UsnJournalIdentifier);
         Assert.AreEqual("record batch failed", frames.Single(frame => frame.Kind == BrokerFrameKind.Error).Message);
         Assert.IsFalse(frames.Any(frame => frame.Kind == BrokerFrameKind.ScanReady));
     }

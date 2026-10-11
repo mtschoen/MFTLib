@@ -32,7 +32,7 @@ public partial class BrokerProcessTests
         Assert.IsNull(result.CatchUpLoss);
         Assert.AreSame(sectionBlock, block);
         Assert.IsTrue(block.Header.RowCount > 0);
-        Assert.AreEqual(Armed.JournalIdentifier, block.Header.UsnJournalId);
+        Assert.AreEqual(Armed.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(target.CacheTag, block.Header.CacheTag);
         Assert.AreEqual(target.Path, block.Path);
         Assert.IsTrue(lifetime.IsDisposed, "The section name is unpublished once the block is written.");

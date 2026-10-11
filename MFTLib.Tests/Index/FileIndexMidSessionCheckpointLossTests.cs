@@ -20,7 +20,7 @@ namespace MFTLib.Tests.Index;
 [DoNotParallelize]
 public class FileIndexMidSessionCheckpointLossTests
 {
-    const ulong WatchedJournalId = WatchHarness.JournalIdentifier;
+    const ulong WatchedJournalIdentifier = WatchHarness.JournalIdentifier;
     const long ArmedUsn = WatchHarness.NextUsn;
     const long AllocationDelta = 64;
     const long MaximumSize = 128L * 1024 * 1024;
@@ -29,10 +29,10 @@ public class FileIndexMidSessionCheckpointLossTests
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    static IDisposable Journal(ulong journalId, long firstUsn, long nextUsn)
+    static IDisposable Journal(ulong journalIdentifier, long firstUsn, long nextUsn)
     {
         return JournalCheckpointCheck.OverrideJournalForTest(
-            _ => new JournalWindow(journalId, firstUsn, nextUsn, AllocationDelta, MaximumSize));
+            _ => new JournalWindow(journalIdentifier, firstUsn, nextUsn, AllocationDelta, MaximumSize));
     }
 
     /// <summary>T has lost its position by 500 bytes; every other drive's is still inside the journal.</summary>
@@ -40,9 +40,9 @@ public class FileIndexMidSessionCheckpointLossTests
     {
         return JournalCheckpointCheck.OverrideJournalForTest(driveLetter =>
             char.ToUpperInvariant(driveLetter) == 'T'
-                ? new JournalWindow(WatchedJournalId, ArmedUsn + 500, ArmedUsn + 4_000,
+                ? new JournalWindow(WatchedJournalIdentifier, ArmedUsn + 500, ArmedUsn + 4_000,
                     AllocationDelta, MaximumSize)
-                : new JournalWindow(WatchedJournalId, 0, ArmedUsn + 4_000, AllocationDelta, MaximumSize));
+                : new JournalWindow(WatchedJournalIdentifier, 0, ArmedUsn + 4_000, AllocationDelta, MaximumSize));
     }
 
     async Task<WatchHarness> StartedHarnessAsync(params char[] driveLetters)
@@ -89,7 +89,7 @@ public class FileIndexMidSessionCheckpointLossTests
         using var harness = await StartedHarnessAsync();
         // The journal has moved on past the watch position by 500 bytes, and its tip is
         // 4000 bytes past it: the same window the warm-start path computes 4096 from.
-        using var journal = Journal(WatchedJournalId,
+        using var journal = Journal(WatchedJournalIdentifier,
             firstUsn: ArmedUsn + 500, nextUsn: ArmedUsn + 4_000);
 
         await FailWithJournalEntriesDeletedAsync(harness, 'T');
@@ -126,10 +126,10 @@ public class FileIndexMidSessionCheckpointLossTests
         using var harness = await StartedHarnessAsync();
         await harness.Source.WatchFor('T').Publish(new JournalBatch(
             [WatchHarness.Create(recordNumber: 9, "applied.txt")],
-            JournalIdentifier: WatchedJournalId, NextUsn: ArmedUsn + 2_000));
+            JournalIdentifier: WatchedJournalIdentifier, NextUsn: ArmedUsn + 2_000));
         Assert.AreEqual(ArmedUsn + 2_000, harness.BlockFor('T').Header.UsnNextUsn);
 
-        using var journal = Journal(WatchedJournalId,
+        using var journal = Journal(WatchedJournalIdentifier,
             firstUsn: ArmedUsn + 2_500, nextUsn: ArmedUsn + 3_000);
 
         await FailWithJournalEntriesDeletedAsync(harness, 'T');
@@ -148,7 +148,7 @@ public class FileIndexMidSessionCheckpointLossTests
     public async Task WatchFaultOverARecreatedJournal_ReportsTheLossWithNoSize()
     {
         using var harness = await StartedHarnessAsync();
-        using var journal = Journal(journalId: 0xFEED, firstUsn: 0, nextUsn: 200);
+        using var journal = Journal(journalIdentifier: 0xFEED, firstUsn: 0, nextUsn: 200);
 
         await FailWithJournalEntriesDeletedAsync(harness, 'T');
 
@@ -177,7 +177,7 @@ public class FileIndexMidSessionCheckpointLossTests
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(driveLetter =>
         {
             queriedDrives.Enqueue(char.ToUpperInvariant(driveLetter));
-            return new JournalWindow(WatchedJournalId, ArmedUsn - 50, ArmedUsn + 4_000,
+            return new JournalWindow(WatchedJournalIdentifier, ArmedUsn - 50, ArmedUsn + 4_000,
                 AllocationDelta, MaximumSize);
         });
 
@@ -237,13 +237,13 @@ public class FileIndexMidSessionCheckpointLossTests
     public async Task ASuccessfulRescanClearsAMidSessionLoss()
     {
         using var harness = await StartedHarnessAsync('T', 'U');
-        using (Journal(WatchedJournalId, firstUsn: ArmedUsn + 500, nextUsn: ArmedUsn + 4_000))
+        using (Journal(WatchedJournalIdentifier, firstUsn: ArmedUsn + 500, nextUsn: ArmedUsn + 4_000))
         {
             await FailWithJournalEntriesDeletedAsync(harness, 'T');
             Assert.IsNotNull(harness.DriveFor('T').Watch.CheckpointLoss);
         }
 
-        harness.SetNextProducedCursor('T', WatchedJournalId, ArmedUsn + 4_000);
+        harness.SetNextProducedCursor('T', WatchedJournalIdentifier, ArmedUsn + 4_000);
         await harness.Index.RescanAsync('T', Token);
 
         Assert.IsNull(harness.DriveFor('T').Watch.CheckpointLoss,
@@ -287,7 +287,7 @@ public class FileIndexMidSessionCheckpointLossTests
     public async Task WatchFaultOnT_LiveWatchLossRecordedBeforeWatchFaultedRaised()
     {
         using var harness = await StartedHarnessAsync();
-        using var journal = Journal(WatchedJournalId,
+        using var journal = Journal(WatchedJournalIdentifier,
             firstUsn: ArmedUsn + 500, nextUsn: ArmedUsn + 4_000);
         var seenByHandler = new TaskCompletionSource<JournalCheckpointLoss?>(
             TaskCreationOptions.RunContinuationsAsynchronously);

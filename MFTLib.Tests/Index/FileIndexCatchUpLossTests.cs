@@ -41,7 +41,7 @@ public partial class FileIndexCatchUpLossTests
         var production = harness.HoldNextProduction('T');
         var pendingCatchUp = harness.Index.WaitForCatchUpAsync('T', Token);
         harness.ScriptScans('T', Lost('T'), Held);
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9500);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9500);
         var index = harness.Index;
         WatchCatchUpState? stateSeenByHandler = null;
         var retiredAtFirstLoss = false;

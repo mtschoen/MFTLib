@@ -156,7 +156,7 @@ public partial class SyntheticBlockTests
 
         Assert.AreEqual(tag, CacheDirectory.InspectCached(CacheDirectoryPath).Single().CacheTag);
         using var block = BlockFile.Open(path, Serial, out _)!;
-        Assert.AreEqual(Cursor.JournalIdentifier, block.Header.UsnJournalId);
+        Assert.AreEqual(Cursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(Cursor.NextUsn, block.Header.UsnNextUsn);
     }
 
@@ -236,7 +236,7 @@ public partial class SyntheticBlockTests
         }
 
         using var block = BlockFile.Open(path, Serial, out _)!;
-        Assert.AreEqual(8UL, block.Header.UsnJournalId);
+        Assert.AreEqual(8UL, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(9000L, block.Header.UsnNextUsn);
     }
 
@@ -362,7 +362,7 @@ public partial class SyntheticBlockTests
         var status = CacheDirectory.InspectCached(CacheDirectoryPath).Single();
         Assert.AreEqual(tag, status.CacheTag, "the producer copies the request's cache tag");
         using var block = BlockFile.Open(SyntheticBlock.CachedPath(CacheDirectoryPath, 'T', Serial), Serial, out _)!;
-        Assert.AreEqual(Cursor.JournalIdentifier, block.Header.UsnJournalId);
+        Assert.AreEqual(Cursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(Cursor.NextUsn, block.Header.UsnNextUsn);
     }
 

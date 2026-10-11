@@ -79,7 +79,7 @@ public partial class FileIndexCatchUpLossTests
         harness.ScriptScans('T', Lost('T'), Lost('T'), Lost('T'));
         await ThrowsAsync<JournalCatchUpLostException>(() => harness.Index.RescanAsync('T', Token));
         var heldScan = harness.HoldNextProduction('T');
-        harness.SetNextProducedCursor('T', journalId: 21, nextUsn: 7700);
+        harness.SetNextProducedCursor('T', journalIdentifier: 21, nextUsn: 7700);
 
         var rescan = harness.Index.RescanAsync('T', Token);
         await heldScan.Entered.WaitAsync(HangGuard);

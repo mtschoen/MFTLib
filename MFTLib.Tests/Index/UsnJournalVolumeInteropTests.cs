@@ -69,11 +69,11 @@ public class UsnJournalVolumeInteropTests
     }
 
     /// <summary>A <c>USN_JOURNAL_DATA_V0</c> buffer: seven 8-byte fields.</summary>
-    static byte[] BuildJournalData(ulong journalId = 0xABCD, long firstUsn = 1_000, long nextUsn = 4_600,
+    static byte[] BuildJournalData(ulong journalIdentifier = 0xABCD, long firstUsn = 1_000, long nextUsn = 4_600,
         ulong maximumSize = 128UL * 1024 * 1024, ulong allocationDelta = 16UL * 1024 * 1024)
     {
         var data = new byte[7 * 8];
-        BinaryPrimitives.WriteUInt64LittleEndian(data, journalId);
+        BinaryPrimitives.WriteUInt64LittleEndian(data, journalIdentifier);
         BinaryPrimitives.WriteInt64LittleEndian(data.AsSpan(8), firstUsn);
         BinaryPrimitives.WriteInt64LittleEndian(data.AsSpan(16), nextUsn);
         BinaryPrimitives.WriteUInt64LittleEndian(data.AsSpan(40), maximumSize);
@@ -116,12 +116,12 @@ public class UsnJournalVolumeInteropTests
             return;
         }
 
-        ServeJournalData(BuildJournalData(journalId: 0xFEED, firstUsn: 2_048, nextUsn: 9_216));
+        ServeJournalData(BuildJournalData(journalIdentifier: 0xFEED, firstUsn: 2_048, nextUsn: 9_216));
 
         using var handle = UsnJournalVolumeInterop.OpenVolumeRoot('C', "read its journal for a test");
         var journal = UsnJournalVolumeInterop.QueryJournalData(handle);
 
-        Assert.AreEqual(0xFEEDul, journal.UsnJournalId);
+        Assert.AreEqual(0xFEEDul, journal.UsnJournalIdentifier);
         Assert.AreEqual(2_048L, journal.FirstUsn);
         Assert.AreEqual(9_216L, journal.NextUsn);
         Assert.AreEqual(128UL * 1024 * 1024, journal.MaximumSize);
@@ -144,7 +144,7 @@ public class UsnJournalVolumeInteropTests
         FailIoControl(UsnJournalVolumeInterop.FsctlQueryUsnJournal, ErrorJournalNotActive);
         using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
 
-        Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0xABCD, checkpointUsn: 10,
+        Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0xABCD, checkpointUsn: 10,
             JournalCheckpointLossDetection.DriveOpening));
     }
 
@@ -186,7 +186,7 @@ public class UsnJournalVolumeInteropTests
         }
 
         using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
-        var loss = JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0,
+        var loss = JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening);
 
         Assert.IsNotNull(loss);
@@ -215,12 +215,12 @@ public class UsnJournalVolumeInteropTests
         }
 
         // C: really does have a journal, and really would answer, yet the check says nothing.
-        Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0,
+        Assert.IsNull(JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening));
 
         // The real read is still reachable for a test that asks for it.
         using var live = JournalCheckpointCheck.OverrideJournalForTest(JournalCheckpointCheck.ReadLiveJournal);
-        Assert.IsNotNull(JournalCheckpointCheck.Check('C', checkpointJournalId: 0, checkpointUsn: 0,
+        Assert.IsNotNull(JournalCheckpointCheck.Check('C', checkpointJournalIdentifier: 0, checkpointUsn: 0,
             JournalCheckpointLossDetection.DriveOpening));
     }
 

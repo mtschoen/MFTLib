@@ -158,7 +158,7 @@ public class FileIndexWatchTests
         var applied = throughTestExtensions
             ? FileIndexTestAccess.ApplyJournalEntries(_index, 'T', synthetic,
                 new SyntheticJournalCursor(5, 100))
-            : _index.ApplyJournalEntries('T', entries, journalId: 5, nextUsn: 100);
+            : _index.ApplyJournalEntries('T', entries, journalIdentifier: 5, nextUsn: 100);
 
         Assert.AreEqual(1, applied.Count);
         Assert.AreEqual(1, observed.Count);
@@ -166,7 +166,7 @@ public class FileIndexWatchTests
         Assert.AreEqual("injected.txt", observed[0].Entry.Name);
         Assert.AreEqual(observed[0], applied[0]);
         var root = _index.Root('T');
-        Assert.AreEqual(5UL, root.DriveBlock.Block.Header.UsnJournalId);
+        Assert.AreEqual(5UL, root.DriveBlock.Block.Header.UsnJournalIdentifier);
         Assert.AreEqual(100L, root.DriveBlock.Block.Header.UsnNextUsn);
         Assert.AreEqual(1, _index.Search(new SearchQuery("injected")).Count);
     }
@@ -183,7 +183,7 @@ public class FileIndexWatchTests
     {
         _index.ApplyJournalEntries('T',
             [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)],
-            journalId: 5, nextUsn: 100);
+            journalIdentifier: 5, nextUsn: 100);
 
         Assert.AreEqual(1, _index.Search(new SearchQuery("injected")).Count);
     }
@@ -196,7 +196,7 @@ public class FileIndexWatchTests
 
         var applied = _index.ApplyJournalEntries('T',
             [Entry(recordNumber, 0, "readme.md", UsnReason.FileDelete | UsnReason.Close)],
-            journalId: 5, nextUsn: 200);
+            journalIdentifier: 5, nextUsn: 200);
 
         Assert.AreEqual(FileChangeKind.Deleted, applied[0].Kind);
         Assert.IsTrue(target.IsDeleted);
@@ -242,7 +242,7 @@ public class FileIndexWatchTests
                 var name = iteration % 2 == 0 ? shortName : longName;
                 _index.ApplyJournalEntries('T',
                     [Entry(recordNumber, 1, name, UsnReason.RenameNewName | UsnReason.Close)],
-                    journalId: 5, nextUsn: iteration + 1);
+                    journalIdentifier: 5, nextUsn: iteration + 1);
                 Thread.Yield();
             }
         }
@@ -263,7 +263,7 @@ public class FileIndexWatchTests
     {
         _index.ApplyJournalEntries('T',
             [Entry(50_000_000, 0, "far.txt", UsnReason.FileCreate | UsnReason.Close)],
-            journalId: 5, nextUsn: 300);
+            journalIdentifier: 5, nextUsn: 300);
 
         Assert.AreEqual(DriveState.Ready, _index.Drives[0].State);
         Assert.IsTrue(_index.Drives[0].Block.CompactionNeeded);
@@ -313,7 +313,7 @@ public class FileIndexWatchTests
                 Entry(20, 0, "first.txt", UsnReason.FileCreate | UsnReason.Close),
                 Entry(21, 0, "second.txt", UsnReason.FileCreate | UsnReason.Close)
             ],
-            journalId: 5, nextUsn: 100));
+            journalIdentifier: 5, nextUsn: 100));
 
         Assert.AreEqual("boom", thrown.Message);
         Assert.AreEqual(2, secondSubscriberChanges.Count);
@@ -329,7 +329,7 @@ public class FileIndexWatchTests
 
         var thrown = Assert.ThrowsException<AggregateException>(() => _index.ApplyJournalEntries('T',
             [Entry(20, 0, "first.txt", UsnReason.FileCreate | UsnReason.Close)],
-            journalId: 5, nextUsn: 100));
+            journalIdentifier: 5, nextUsn: 100));
 
         Assert.AreEqual(2, thrown.InnerExceptions.Count);
         CollectionAssert.AreEquivalent(new[] { "first boom", "second boom" },
@@ -343,7 +343,7 @@ public class FileIndexWatchTests
 
         var thrown = Assert.ThrowsException<InvalidOperationException>(() => _index.ApplyJournalEntries('T',
             [Entry(20, 0, "first.txt", UsnReason.FileCreate | UsnReason.Close)],
-            journalId: 5, nextUsn: 100));
+            journalIdentifier: 5, nextUsn: 100));
 
         // Rethrowing the caught instance directly would replace this frame with the throw site
         // inside MFTLib, leaving a consumer no way to find the handler that actually failed.
@@ -357,9 +357,9 @@ public class FileIndexWatchTests
         _index.Changed += observed.Add;
 
         var first = _index.ApplyJournalEntries('T',
-            [Entry(20, 0, "injected.txt", UsnReason.FileCreate)], journalId: 5, nextUsn: 100);
+            [Entry(20, 0, "injected.txt", UsnReason.FileCreate)], journalIdentifier: 5, nextUsn: 100);
         var second = _index.ApplyJournalEntries('T',
-            [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)], journalId: 5, nextUsn: 101);
+            [Entry(20, 0, "injected.txt", UsnReason.FileCreate | UsnReason.Close)], journalIdentifier: 5, nextUsn: 101);
 
         Assert.AreEqual(1, first.Count);
         Assert.AreEqual(0, second.Count);
@@ -373,11 +373,11 @@ public class FileIndexWatchTests
         var target = _index.Find(Path.Combine(_treeRoot, "Documents", "readme.md"))!.Value;
         var recordNumber = target.RecordKey.RecordNumber;
         _index.ApplyJournalEntries('T',
-            [Entry(recordNumber, 1, "readme.md", UsnReason.DataExtend)], journalId: 5, nextUsn: 100);
+            [Entry(recordNumber, 1, "readme.md", UsnReason.DataExtend)], journalIdentifier: 5, nextUsn: 100);
 
         var second = _index.ApplyJournalEntries('T',
             [Entry(recordNumber, 1, "readme.md", UsnReason.DataExtend | UsnReason.DataTruncation | UsnReason.Close)],
-            journalId: 5, nextUsn: 101);
+            journalIdentifier: 5, nextUsn: 101);
 
         Assert.AreEqual(1, second.Count);
         Assert.AreEqual(FileChangeKind.Modified, second[0].Kind);

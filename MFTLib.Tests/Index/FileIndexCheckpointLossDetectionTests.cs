@@ -68,7 +68,7 @@ public class FileIndexCheckpointLossDetectionTests
     static IDisposable Journal(long firstUsn, long nextUsn)
     {
         return JournalCheckpointCheck.OverrideJournalForTest(
-            _ => new JournalWindow(CachedJournalId, firstUsn, nextUsn, AllocationDelta, MaximumSize));
+            _ => new JournalWindow(CachedJournalIdentifier, firstUsn, nextUsn, AllocationDelta, MaximumSize));
     }
 
     /// <summary>Writes the cache block a later open will try to warm-start from.</summary>

@@ -182,7 +182,7 @@ public class BenchmarkRunnerTests
             {
                 var writer = new BlockWriter(block);
                 writer.TryWriteRow(5, "", new RowColumns(5, RowFlags.InUse | RowFlags.Directory, 0, 0, 0, 0));
-                block.Header.UsnJournalId = 123;
+                block.Header.UsnJournalIdentifier = 123;
                 block.Header.UsnNextUsn = 456;
                 writer.Complete(DateTime.UtcNow, null);
             }

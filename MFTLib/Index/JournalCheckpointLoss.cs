@@ -47,7 +47,7 @@ public enum JournalCheckpointLossCause
     CheckpointTrimmed,
 
     /// <summary>
-    ///     The journal was deleted and recreated, so it carries a different journal id and a
+    ///     The journal was deleted and recreated, so it carries a different journal identifier and a
     ///     fresh USN space. The checkpoint names a record in a journal that no longer exists;
     ///     no journal size would have preserved it, and none is suggested.
     /// </summary>

@@ -76,7 +76,7 @@ whether a cached block's checkpoint is still resumable, and a faulting watch
 reads it again to decide whether that drive's position is still in the journal,
 so a test that warm-starts or watches a synthetic MFT-kind block over a drive
 letter that happens to name a real NTFS volume would have that block rejected as
-`JournalRecreated`: a synthetic journal id never matches a real one. The same
+`JournalRecreated`: a synthetic journal identifier never matches a real one. The same
 test would cold-scan on one machine and warm-start on another. Measured before
 the guard, nine existing test methods reached the live read on letters `T` and
 `U`, which pass here only because neither letter is mounted on this machine.

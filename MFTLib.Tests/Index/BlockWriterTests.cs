@@ -306,7 +306,7 @@ public partial class BlockWriterTests
         var writer = new BlockWriter(block);
 
         writer.SetJournalCursor(0xABCD, 5000);
-        Assert.AreEqual(0xABCDul, block.Header.UsnJournalId);
+        Assert.AreEqual(0xABCDul, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(5000L, block.Header.UsnNextUsn);
 
         Assert.AreEqual(1ul, writer.BumpGeneration());

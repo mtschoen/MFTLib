@@ -36,7 +36,7 @@ static class JournalCheckpointCheck
     ///     yields null: MFTLib reports causes it can detect and invents none.
     /// </summary>
     /// <param name="driveLetter">The drive to read the journal of.</param>
-    /// <param name="checkpointJournalId">The journal id the block's cursor was written against.</param>
+    /// <param name="checkpointJournalIdentifier">The journal identifier the block's cursor was written against.</param>
     /// <param name="checkpointUsn">The USN the drive would resume from.</param>
     /// <param name="detectedDuring">
     ///     Which caller is asking, stamped onto any loss returned. The two callers run at
@@ -44,20 +44,20 @@ static class JournalCheckpointCheck
     ///     which one produced it rather than leaving a reader to infer it from context that is
     ///     gone by the time the report is read.
     /// </param>
-    public static JournalCheckpointLoss? Check(char driveLetter, ulong checkpointJournalId, long checkpointUsn,
+    public static JournalCheckpointLoss? Check(char driveLetter, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring)
-        => CheckObservation(driveLetter, checkpointJournalId, checkpointUsn, detectedDuring, requireUnmoved: false);
+        => CheckObservation(driveLetter, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: false);
 
     /// <summary>
     ///     Checks a scan-only cache against one journal observation: recreation and trimming take
     ///     precedence, then any unequal next USN requires a rescan. An unavailable or incoherent
     ///     observation reports nothing, just as the resumability check does.
     /// </summary>
-    internal static JournalCheckpointLoss? CheckUnmoved(char driveLetter, ulong checkpointJournalId,
+    internal static JournalCheckpointLoss? CheckUnmoved(char driveLetter, ulong checkpointJournalIdentifier,
         long checkpointUsn, JournalCheckpointLossDetection detectedDuring)
-        => CheckObservation(driveLetter, checkpointJournalId, checkpointUsn, detectedDuring, requireUnmoved: true);
+        => CheckObservation(driveLetter, checkpointJournalIdentifier, checkpointUsn, detectedDuring, requireUnmoved: true);
 
-    static JournalCheckpointLoss? CheckObservation(char driveLetter, ulong checkpointJournalId, long checkpointUsn,
+    static JournalCheckpointLoss? CheckObservation(char driveLetter, ulong checkpointJournalIdentifier, long checkpointUsn,
         JournalCheckpointLossDetection detectedDuring, bool requireUnmoved)
     {
         if (ProcessJournal.Read(driveLetter) is not { } journal)
@@ -76,7 +76,7 @@ static class JournalCheckpointCheck
 
         var journalSettings = new UsnJournalSettings { AllocationDelta = allocationDelta, MaximumSize = journal.MaximumSize };
 
-        if (journal.JournalIdentifier != checkpointJournalId)
+        if (journal.JournalIdentifier != checkpointJournalIdentifier)
         {
             return new JournalCheckpointLoss(driveLetter, detectedDuring, JournalCheckpointLossCause.JournalRecreated,
                 journalSettings)
@@ -188,7 +188,7 @@ static class JournalCheckpointCheck
             using var handle = UsnJournalVolumeInterop.OpenVolumeRoot(
                 driveLetter, "check whether its USN journal still holds the cached checkpoint");
             var data = UsnJournalVolumeInterop.QueryJournalData(handle);
-            return new JournalWindow(data.UsnJournalId, data.FirstUsn, data.NextUsn,
+            return new JournalWindow(data.UsnJournalIdentifier, data.FirstUsn, data.NextUsn,
                 checked((long)data.AllocationDelta), checked((long)data.MaximumSize));
         }
         catch (IOException)

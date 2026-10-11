@@ -46,7 +46,7 @@ public class FileIndexWatchCatchUpTests
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
         Assert.AreEqual(WatchCatchUpState.CaughtUp, harness.DriveFor('T').Watch.CatchUpState);
 
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
         Assert.AreEqual(WatchCatchUpState.CatchingUp, harness.DriveFor('T').Watch.CatchUpState);
@@ -117,7 +117,7 @@ public class FileIndexWatchCatchUpTests
         await harness.Index.StartWatchingAsync('T', Token);
         await harness.Source.WatchFor('T').Publish(new DriveCaughtUp());
 
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
         var wait = harness.Index.WaitForCatchUpAsync('T', Token);
         Assert.IsFalse(wait.IsCompleted);

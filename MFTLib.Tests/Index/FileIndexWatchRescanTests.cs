@@ -63,7 +63,7 @@ public partial class FileIndexWatchRescanTests
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
 
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
         var starts = harness.Source.TargetsFor('T');
@@ -91,7 +91,7 @@ public partial class FileIndexWatchRescanTests
         await otherHandle.Publish(WatchHarness.Batch(9, "before.txt", nextUsn: 150));
         Assert.AreEqual(150L, harness.BlockFor('U').Header.UsnNextUsn);
 
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
         await otherHandle.Publish(WatchHarness.Batch(10, "after.txt", nextUsn: 250));
@@ -136,7 +136,7 @@ public partial class FileIndexWatchRescanTests
         await harness.Index.StartWatchingAsync('T', Token);
         await harness.Index.StartWatchingAsync('U', Token);
         var production = harness.HoldNextProduction('T');
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         var rescan = harness.Index.RescanAsync('T', Token);
         await production.Entered.WaitAsync(HangGuard);
 
@@ -171,7 +171,7 @@ public partial class FileIndexWatchRescanTests
         var queued = harness.Source.WatchFor('T').Queue(WatchHarness.Batch(9, "stale.txt", nextUsn: 5000));
         await applying.Entered.WaitAsync(HangGuard);
 
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         var rescan = harness.Index.RescanAsync('T', Token);
         Assert.IsFalse(rescan.IsCompleted, "the rescan waits for the retiring pump to drain");
         applying.Release();
@@ -181,7 +181,7 @@ public partial class FileIndexWatchRescanTests
         // The pump had already read the batch, so no source-side rule can reach it: the scoping
         // rule drops it because its instance is no longer the drive's current one.
         Assert.AreEqual(0, harness.Changes.Count);
-        Assert.AreEqual(13ul, harness.BlockFor('T').Header.UsnJournalId);
+        Assert.AreEqual(13ul, harness.BlockFor('T').Header.UsnJournalIdentifier);
         Assert.AreEqual(9000L, harness.BlockFor('T').Header.UsnNextUsn);
         await harness.Index.StopWatchingAsync('T', Token);
     }
@@ -198,7 +198,7 @@ public partial class FileIndexWatchRescanTests
         await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'T');
         var uFault = await harness.WaitForFaultAsync(WatchFaultKind.Drive, 'U');
 
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
         var starts = harness.Source.TargetsFor('T');
@@ -223,14 +223,14 @@ public partial class FileIndexWatchRescanTests
     {
         using var harness = new WatchHarness('T', 'U');
 
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
         Assert.AreEqual(0, harness.Source.Starts.Count);
         var drive = harness.DriveFor('T');
         Assert.IsFalse(drive.Watch.Requested);
         Assert.AreEqual(WatchCatchUpState.NotStarted, drive.Watch.CatchUpState);
-        Assert.AreEqual(13ul, harness.BlockFor('T').Header.UsnJournalId);
+        Assert.AreEqual(13ul, harness.BlockFor('T').Header.UsnJournalIdentifier);
         Assert.AreEqual(9000L, harness.BlockFor('T').Header.UsnNextUsn);
         await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => harness.Index.WaitForCatchUpAsync('T', Token));
     }
@@ -271,7 +271,7 @@ public partial class FileIndexWatchRescanTests
             var initialBlock = harness.Index.Root('T').DriveBlock;
             var initialProducedBlock = harness.BlockFor('T');
             using var rescanCancellation = new CancellationTokenSource();
-            harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+            harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
 
             var rescan = harness.Index.RescanAsync('T', rescanCancellation.Token);
             var producedBlock = await WaitForReplacementBlockAsync(harness, 'T', initialProducedBlock, rescan);
@@ -297,7 +297,7 @@ public partial class FileIndexWatchRescanTests
     FileIndexOptions CacheOnlyWatchOptions(ScriptedWatchSource source, bool failDriveT)
     {
         SeededBlocks.Write(Path.Combine(_cacheDirectory, CacheDirectory.BlockFileName('U', 2)),
-            volumeSerial: 2, journalId: 22, nextUsn: 8484, moment: SeededBlocks.SeededMoment);
+            volumeSerial: 2, journalIdentifier: 22, nextUsn: 8484, moment: SeededBlocks.SeededMoment);
         return new FileIndexOptions
         {
             Drives = [new IndexedDrive('T', _treeRoot, 1), new IndexedDrive('U', _treeRoot, 2)],
@@ -310,7 +310,7 @@ public partial class FileIndexWatchRescanTests
                     throw new UnauthorizedAccessException("elevation declined");
                 }
 
-                SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
+                SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
                 return Task.FromResult(new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));

@@ -9,9 +9,9 @@ internal static class UncancelableUsnWatch
     ///     Calls the cancelable native watch with a zero-valued event handle, which the native side treats as no
     ///     cancellation event.
     /// </summary>
-    internal static IntPtr Read(SafeHandle volumeHandle, long startUsn, ulong journalId)
+    internal static IntPtr Read(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier)
     {
         using var noCancellationEvent = new SafeWaitHandle(IntPtr.Zero, false);
-        return MFTLibNative._watchUsnJournalBatchCancelable(volumeHandle, startUsn, journalId, noCancellationEvent);
+        return MFTLibNative._watchUsnJournalBatchCancelable(volumeHandle, startUsn, journalIdentifier, noCancellationEvent);
     }
 }

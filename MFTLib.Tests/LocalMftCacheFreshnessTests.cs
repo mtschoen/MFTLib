@@ -16,7 +16,7 @@ public class LocalMftCacheFreshnessTests
     [DataRow(99UL, 2001L, 3000L, false, JournalCheckpointLossCause.CheckpointTrimmed)]
     [DataRow(99UL, 1000L, 2001L, true, JournalCheckpointLossCause.JournalAdvanced)]
     public async Task Reopen_ChangedJournalRescansOrFlagsCacheOnlySnapshot(
-        ulong journalId, long firstUsn, long nextUsn, bool cacheOnly, JournalCheckpointLossCause cause)
+        ulong journalIdentifier, long firstUsn, long nextUsn, bool cacheOnly, JournalCheckpointLossCause cause)
     {
         var directories = new OwnedIndexDirectories();
         try
@@ -44,7 +44,7 @@ public class LocalMftCacheFreshnessTests
                 Assert.AreEqual(DriveState.Ready, initial.Drives.Single().State);
             }
             using var journal = JournalCheckpointCheck.OverrideJournalForTest(
-                _ => new JournalWindow(journalId, firstUsn, nextUsn, 64, 32768));
+                _ => new JournalWindow(journalIdentifier, firstUsn, nextUsn, 64, 32768));
             options = options with { InitialOpenCacheOnly = cacheOnly };
             await using var reopened = await FileIndex.OpenAsync(options, TestContext.CancellationTokenSource.Token);
             var status = reopened.Drives.Single();

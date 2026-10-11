@@ -88,7 +88,7 @@ public partial class JournalBrokerHostTests
                     DiagEntry(4242, "real.txt")
                 }, new UsnJournalCursor(7UL, 110L))
             };
-            // queryCursor returns default: the (7,100) start cursor never matches tip journal id 0,
+            // queryCursor returns default: the (7,100) start cursor never matches tip journal identifier 0,
             // so no CaughtUp frame precedes the batch.
             var host = CreateWatchHost(
                 queryCursor: _ => default,
@@ -116,7 +116,7 @@ public partial class JournalBrokerHostTests
             (new[] { DiagEntry(DiagOwnLogReference), DiagEntry(4242, "real.txt") },
                 new UsnJournalCursor(7UL, 110L))
         };
-        // queryCursor returns default: the (7,100) start cursor never matches tip journal id 0,
+        // queryCursor returns default: the (7,100) start cursor never matches tip journal identifier 0,
         // so no CaughtUp frame precedes the batch.
         var host = CreateWatchHost(
             queryCursor: _ => default,

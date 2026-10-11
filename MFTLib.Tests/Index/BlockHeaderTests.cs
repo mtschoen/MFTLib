@@ -22,7 +22,7 @@ public class BlockHeaderTests
             SlotCapacity = 100,
             NamePoolUsed = 40,
             NamePoolCapacity = 1000,
-            UsnJournalId = 0,
+            UsnJournalIdentifier = 0,
             UsnNextUsn = 0,
             Generation = 1,
             RowRegionOffset = BlockLayout.RowRegionOffset,
@@ -47,7 +47,7 @@ public class BlockHeaderTests
     public void Header_EightByteFieldsAreEightByteAligned()
     {
         Assert.AreEqual(24, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.ScanTimestampTicks)));
-        Assert.AreEqual(48, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.UsnJournalId)));
+        Assert.AreEqual(48, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.UsnJournalIdentifier)));
         Assert.AreEqual(56, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.UsnNextUsn)));
         Assert.AreEqual(64, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.Generation)));
         Assert.AreEqual(72, (int)Marshal.OffsetOf<BlockHeader>(nameof(BlockHeader.RowRegionOffset)));

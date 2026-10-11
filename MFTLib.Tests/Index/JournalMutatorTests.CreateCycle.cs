@@ -25,7 +25,7 @@ public partial class JournalMutatorTests
         for (var start = 0; start < records.Length; start += recordsPerBatch)
         {
             var batch = records.Skip(start).Take(recordsPerBatch).ToArray();
-            changes.AddRange(mutator.Apply(_snapshot, 0, batch, journalId: 7, nextUsn: 1000 + start + batch.Length));
+            changes.AddRange(mutator.Apply(_snapshot, 0, batch, journalIdentifier: 7, nextUsn: 1000 + start + batch.Length));
         }
 
         Assert.AreEqual(1, changes.Count(change => change.Kind == FileChangeKind.Created),

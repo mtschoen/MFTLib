@@ -16,12 +16,12 @@ uint8_t* AllocatePages(size_t byteCount) {
                : static_cast<uint8_t*>(VirtualAlloc(nullptr, byteCount, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
 }
 
-READ_USN_JOURNAL_DATA_V1 MakeReadRequest(int64_t startUsn, uint64_t journalId, DWORD bytesToWaitFor) {
+READ_USN_JOURNAL_DATA_V1 MakeReadRequest(int64_t startUsn, uint64_t journalIdentifier, DWORD bytesToWaitFor) {
     READ_USN_JOURNAL_DATA_V1 request{};
     request.StartUsn = startUsn;
     request.ReasonMask = 0xFFFFFFFF;
     request.BytesToWaitFor = bytesToWaitFor;
-    request.UsnJournalID = journalId;
+    request.UsnJournalID = journalIdentifier;
     request.MinMajorVersion = 2;
     request.MaxMajorVersion = 2;
     return request;
@@ -218,7 +218,7 @@ EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
         return info;
     }
 
-    info->journalId = journalData.UsnJournalID;
+    info->journalIdentifier = journalData.UsnJournalID;
     info->firstUsn = journalData.FirstUsn;
     info->nextUsn = journalData.NextUsn;
     info->lowestValidUsn = journalData.LowestValidUsn;
@@ -231,10 +231,10 @@ EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
 EXPORT void FreeUsnJournalInfo(const UsnJournalInfo* info) { std::unique_ptr<const UsnJournalInfo> owned(info); }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
-EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId,
+EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, uint64_t journalIdentifier,
                                         uint32_t maximumBufferReads) {
     auto* result = new UsnJournalResult{};
-    result->journalId = journalId;
+    result->journalIdentifier = journalIdentifier;
 
     constexpr size_t readBufferSize = 64ULL * 1024;
     auto* readBuffer = AllocatePages(readBufferSize);
@@ -252,7 +252,7 @@ EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, u
         return result;
     }
 
-    auto readData = MakeReadRequest(startUsn, journalId, 0);
+    auto readData = MakeReadRequest(startUsn, journalIdentifier, 0);
 
     int64_t nextUsn = startUsn;
 
@@ -318,10 +318,10 @@ EXPORT void FreeUsnJournalResult(const UsnJournalResult* result) {
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
-EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int64_t startUsn, uint64_t journalId,
-                                                        HANDLE cancellationEvent) {
+EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int64_t startUsn,
+                                                        uint64_t journalIdentifier, HANDLE cancellationEvent) {
     auto* result = new UsnJournalResult{};
-    result->journalId = journalId;
+    result->journalIdentifier = journalIdentifier;
     result->nextUsn = startUsn;
 
     constexpr size_t readBufferSize = 64ULL * 1024;
@@ -331,7 +331,7 @@ EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int
         return result;
     }
 
-    auto readData = MakeReadRequest(startUsn, journalId, 1);
+    auto readData = MakeReadRequest(startUsn, journalIdentifier, 1);
 
     OVERLAPPED overlapped{};
     overlapped.hEvent = ShouldFailAlloc() ? nullptr : CreateEventW(nullptr, TRUE, FALSE, nullptr);

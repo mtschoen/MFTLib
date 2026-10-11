@@ -21,13 +21,13 @@ public class JournalCheckpointCheckTests
     [DataRow(JournalIdentifier, 2001L, 3000L, JournalCheckpointLossCause.CheckpointTrimmed)]
     [DataRow(99UL, 2001L, 3000L, JournalCheckpointLossCause.JournalRecreated)]
     public void Unmoved_UsesOneObservationAndPrioritizesRecreationThenTrimming(
-        ulong journalId, long firstUsn, long nextUsn, JournalCheckpointLossCause? expectedCause)
+        ulong journalIdentifier, long firstUsn, long nextUsn, JournalCheckpointLossCause? expectedCause)
     {
         var reads = 0;
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
         {
             reads++;
-            return new JournalWindow(journalId, firstUsn, nextUsn, 64, 32768);
+            return new JournalWindow(journalIdentifier, firstUsn, nextUsn, 64, 32768);
         });
         var loss = JournalCheckpointCheck.CheckUnmoved('T', JournalIdentifier, 2000,
             JournalCheckpointLossDetection.DriveOpening);
@@ -66,11 +66,11 @@ public class JournalCheckpointCheckTests
             JournalCheckpointLossDetection.DriveOpening));
     }
 
-    static IDisposable Journal(ulong journalId = JournalIdentifier, long firstUsn = 1_000, long nextUsn = 5_000,
+    static IDisposable Journal(ulong journalIdentifier = JournalIdentifier, long firstUsn = 1_000, long nextUsn = 5_000,
         long maximumSize = 128L * 1024 * 1024, long allocationDelta = 64)
     {
         return JournalCheckpointCheck.OverrideJournalForTest(
-            _ => new JournalWindow(journalId, firstUsn, nextUsn, allocationDelta, maximumSize));
+            _ => new JournalWindow(journalIdentifier, firstUsn, nextUsn, allocationDelta, maximumSize));
     }
 
     /// <summary>
@@ -90,7 +90,7 @@ public class JournalCheckpointCheckTests
             Assert.AreEqual(detectedDuring, trimmed.DetectedDuring);
         }
 
-        using (Journal(journalId: 0xFEED, firstUsn: 1_000, nextUsn: 5_000))
+        using (Journal(journalIdentifier: 0xFEED, firstUsn: 1_000, nextUsn: 5_000))
         {
             var recreated = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 900, detectedDuring);
             Assert.IsNotNull(recreated);
@@ -137,7 +137,7 @@ public class JournalCheckpointCheckTests
     [TestMethod]
     public void JournalRecreated_SuggestsNoSizeBecauseNoSizeWouldHaveHelped()
     {
-        using var journal = Journal(journalId: 0xFEED, firstUsn: 0, nextUsn: 200);
+        using var journal = Journal(journalIdentifier: 0xFEED, firstUsn: 0, nextUsn: 200);
 
         // The checkpoint names a record in a journal instance that no longer exists, so its
         // USN and this journal's USNs are not comparable at all.
@@ -158,7 +158,7 @@ public class JournalCheckpointCheckTests
     [TestMethod]
     public void JournalRecreated_OutranksACheckpointThatLooksInRange()
     {
-        using var journal = Journal(journalId: 0xFEED, firstUsn: 0, nextUsn: 5_000);
+        using var journal = Journal(journalIdentifier: 0xFEED, firstUsn: 0, nextUsn: 5_000);
 
         var loss = JournalCheckpointCheck.Check('C', JournalIdentifier, checkpointUsn: 900,
             JournalCheckpointLossDetection.DriveOpening);

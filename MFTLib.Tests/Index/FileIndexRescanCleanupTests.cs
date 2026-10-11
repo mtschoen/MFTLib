@@ -61,7 +61,7 @@ public class FileIndexRescanCleanupTests
             ProducerPolicy = ProducerPolicy.Mft,
             MftSource = new MftIndexSource((request, _cancellationToken) =>
             {
-                SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
+                SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
                 var block = BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!;
                 producedBlocks.Add(block);
                 if (producedBlocks.Count == 2)
@@ -135,7 +135,7 @@ public class FileIndexRescanCleanupTests
                     throw producerFailure;
                 }
 
-                SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
+                SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
                 return Task.FromResult(new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
@@ -180,7 +180,7 @@ public class FileIndexRescanCleanupTests
             {
                 producerEntered.TrySetResult();
                 await producerMayReturn.Task;
-                SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
+                SeededBlocks.Write(request.BlockPath, request.VolumeSerial, journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
                 return new MftBlockProduceResult(
                     BlockFile.Open(request.BlockPath, request.VolumeSerial, out _)!,
                     JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0);
@@ -238,7 +238,7 @@ public class FileIndexRescanCleanupTests
         Assert.AreEqual(WatchCatchUpState.Faulted, harness.DriveFor('T').Watch.CatchUpState);
         Assert.IsNotNull(harness.DriveFor('T').Watch.FailureMessage);
 
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
         var drive = harness.DriveFor('T');

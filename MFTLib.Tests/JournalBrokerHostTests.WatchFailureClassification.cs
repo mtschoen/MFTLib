@@ -35,10 +35,10 @@ public partial class JournalBrokerHostTests
     [TestMethod]
     [DataRow(7L, 101L)]
     [DataRow(8L, 0L)]
-    public async Task StartWatch_LostCursor_DecoratesWithoutMessageKeywords(long journalId, long firstUsn)
+    public async Task StartWatch_LostCursor_DecoratesWithoutMessageKeywords(long journalIdentifier, long firstUsn)
     {
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(_ =>
-            new JournalWindow((ulong)journalId, firstUsn, 1000L, 64L, 4096L));
+            new JournalWindow((ulong)journalIdentifier, firstUsn, 1000L, 64L, 4096L));
 
         const string message = "Read failed: opaque native diagnostic";
         Assert.AreEqual(

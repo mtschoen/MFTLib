@@ -84,9 +84,9 @@ public sealed partial class FileIndex
     ///     is blocked waiting on this call.
     /// </remarks>
     internal IReadOnlyList<FileChange> ApplyJournalEntries(char driveLetter,
-        IReadOnlyList<UsnJournalEntry> entries, ulong journalId, long nextUsn)
+        IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
-        var changes = ApplyJournalEntriesCore(driveLetter, instance: null, entries, journalId, nextUsn);
+        var changes = ApplyJournalEntriesCore(driveLetter, instance: null, entries, journalIdentifier, nextUsn);
         RaiseChanged(changes);
         return changes;
     }
@@ -100,7 +100,7 @@ public sealed partial class FileIndex
     ///     last batch therefore never reaches a successor's block.
     /// </summary>
     IReadOnlyList<FileChange> ApplyJournalEntriesCore(char driveLetter, WatchInstance? instance,
-        IReadOnlyList<UsnJournalEntry> entries, ulong journalId, long nextUsn)
+        IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(entries);
@@ -150,7 +150,7 @@ public sealed partial class FileIndex
             ApplyJournalEntriesInsideWriteGateForTest?.Invoke(upperDriveLetter);
             var writer = new BlockWriter(driveBlock.Block);
             var mutator = new JournalMutator(writer);
-            return mutator.Apply(snapshot, driveOrdinal, entries, journalId, nextUsn);
+            return mutator.Apply(snapshot, driveOrdinal, entries, journalIdentifier, nextUsn);
         }
         finally
         {

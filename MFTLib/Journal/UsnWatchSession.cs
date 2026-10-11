@@ -18,11 +18,11 @@ sealed class UsnWatchSession(SafeHandle watchHandle) : IDisposable
     }
 
     /// <summary>Blocks on a thread-pool thread until the journal has entries at or after the position.</summary>
-    public Task<IntPtr> ReadBatchAsync(long currentUsn, ulong journalId, CancellationToken cancellationToken)
+    public Task<IntPtr> ReadBatchAsync(long currentUsn, ulong journalIdentifier, CancellationToken cancellationToken)
     {
         return Task.Factory.StartNew(
             () => MFTLibNative._watchUsnJournalBatchCancelable(
-                watchHandle, currentUsn, journalId, _cancellationEvent.SafeWaitHandle),
+                watchHandle, currentUsn, journalIdentifier, _cancellationEvent.SafeWaitHandle),
             cancellationToken,
             TaskCreationOptions.DenyChildAttach,
             TaskScheduler.Default);

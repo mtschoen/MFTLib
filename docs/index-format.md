@@ -142,7 +142,7 @@ Little-endian throughout. Every region boundary is 4096-byte aligned.
 | 36 | slot capacity | u32 | Rows region size, in rows |
 | 40 | name pool used | u32 | Bytes |
 | 44 | name pool capacity | u32 | Bytes |
-| 48 | USN journal id | u64 | Zero for enumeration blocks |
+| 48 | USN journal identifier | u64 | Zero for enumeration blocks |
 | 56 | USN next USN | i64 | |
 | 64 | generation | u64 | Bumped once per mutation batch |
 | 72 | row region offset | u64 | |
@@ -330,7 +330,7 @@ the row resets the cycle, since the MFT segment was reused by a new file.
 Each MFT-backed drive has its own watch handle and catch-up state. When
 `FileIndex.StartWatchingAsync(char, CancellationToken)` starts a drive, or a rescan restarts
 one whose watch is still requested, that drive arms from the journal cursor persisted in its
-block header (`USN journal id` and `USN next USN`). Other drives' handles and blocks are
+block header (`USN journal identifier` and `USN next USN`). Other drives' handles and blocks are
 untouched.
 
 The source captures the journal tip for the arm. Backlog batches between the persisted

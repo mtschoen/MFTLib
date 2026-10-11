@@ -91,7 +91,7 @@
       per-drive catch-up refuse with `Drive {letter}: this source does not support watching.`,
       batched start and catch-up report `NotApplicable`, and `DriveWatchStatus.Supported` is false. Concurrent
       direct live-volume and dump scans share the process's parse threads through `ParseThreadAllocator`. Cache reopening
-      adopts only when the journal id matches and its next USN exactly equals the stamped cursor;
+      adopts only when the journal identifier matches and its next USN exactly equals the stamped cursor;
       recreation, trimming or movement causes a rescan, with `JournalAdvanced` reporting movement
       without retention-size hints. An unavailable or incoherent journal observation adopts without loss.
       Cache-only opens keep the snapshot flagged unresumable with its loss report. NoCache scans skip

@@ -274,13 +274,13 @@ internal sealed class BlockWriter
     }
 
     /// <summary>Stores the journal checkpoint from which this completed block can be watched.</summary>
-    /// <param name="journalId">Current USN journal identifier.</param>
+    /// <param name="journalIdentifier">Current USN journal identifier.</param>
     /// <param name="nextUsn">Next unread USN cursor.</param>
-    public void SetJournalCursor(ulong journalId, long nextUsn)
+    public void SetJournalCursor(ulong journalIdentifier, long nextUsn)
     {
         using var access = Block.TakeAccess();
         ref var header = ref Block.Header;
-        header.UsnJournalId = journalId;
+        header.UsnJournalIdentifier = journalIdentifier;
         header.UsnNextUsn = nextUsn;
     }
 

@@ -167,7 +167,7 @@ internal sealed partial class JournalBrokerHost
         var tip = _queryCursor(channel.Drive);
         var effectiveSince = since.JournalIdentifier == 0 ? tip : since;
 
-        // No backlog at all: the drive starts on live entries, so the marker leads. The journal id
+        // No backlog at all: the drive starts on live entries, so the marker leads. The journal identifier
         // guard runs on both comparisons: two journals' USN offsets are not comparable, and a
         // mismatched tip belongs to a dead journal generation.
         var caughtUpReported = effectiveSince.JournalIdentifier == tip.JournalIdentifier &&

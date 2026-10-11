@@ -122,7 +122,7 @@ static class UsnJournalVolumeInterop
     [StructLayout(LayoutKind.Sequential)]
     internal struct UsnJournalDataV0
     {
-        public ulong UsnJournalId;
+        public ulong UsnJournalIdentifier;
         public long FirstUsn;
         public long NextUsn;
         public long LowestValidUsn;

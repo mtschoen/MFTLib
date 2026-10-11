@@ -16,8 +16,8 @@ public class FileIndexWatchPumpTests
     public async Task StartWatchingAsync_EachDriveStartsFromItsOwnHeaderCursor()
     {
         using var harness = new WatchHarness('T', 'U');
-        harness.SetNextProducedCursor('T', journalId: 11, nextUsn: 4242);
-        harness.SetNextProducedCursor('U', journalId: 22, nextUsn: 8484);
+        harness.SetNextProducedCursor('T', journalIdentifier: 11, nextUsn: 4242);
+        harness.SetNextProducedCursor('U', journalIdentifier: 22, nextUsn: 8484);
         await harness.Index.RescanAsync('T', Token);
         await harness.Index.RescanAsync('U', Token);
 

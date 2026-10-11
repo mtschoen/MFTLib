@@ -144,7 +144,7 @@ public partial class JournalBrokerHostTests
     }
 
     [TestMethod]
-    public async Task StartWatch_JournalIdMismatchOnTheCachedCursor_IsAlsoAStaleCursorError()
+    public async Task StartWatch_JournalIdentifierMismatchOnTheCachedCursor_IsAlsoAStaleCursorError()
     {
         using var journal = JournalCheckpointCheck.OverrideJournalForTest(drive => drive == 'C'
             ? new JournalWindow(8UL, 0L, 1000L, 64L, 4096L)

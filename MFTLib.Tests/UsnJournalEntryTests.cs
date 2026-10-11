@@ -70,7 +70,7 @@ public class UsnJournalEntryTests
             EntryCount = 1,
             Entries = entriesPointer,
             NextUsn = 1,
-            JournalId = 1
+            JournalIdentifier = 1
         };
         var resultPointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
         Marshal.StructureToPtr(nativeResult, resultPointer, false);

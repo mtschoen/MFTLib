@@ -39,7 +39,7 @@ public partial class JournalBrokerHostRealSeamsTests
         MFTLibNative._queryUsnJournal = _ =>
         {
             var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalId = 7, NextUsn = 200 }, pointer, false);
+            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalIdentifier = 7, NextUsn = 200 }, pointer, false);
             return pointer;
         };
         MFTLibNative._freeUsnJournalInfo = Marshal.FreeHGlobal;
@@ -147,10 +147,10 @@ public partial class JournalBrokerHostRealSeamsTests
         // The first bounded read advances 100 USNs past the armed cursor; the journal tip stays
         // there, so the next read returns the cursor unchanged and catch-up ends.
         long? tip = null;
-        MFTLibNative._readUsnJournal = (_, nextUsn, journalId, _) =>
+        MFTLibNative._readUsnJournal = (_, nextUsn, journalIdentifier, _) =>
         {
             tip ??= nextUsn + 100;
-            return BuildEmptyWatchResult(journalId, tip.Value);
+            return BuildEmptyWatchResult(journalIdentifier, tip.Value);
         };
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
         await using var harness = new HostChannelHarness(JournalBrokerHost.CreateDefault(), writer);
@@ -162,21 +162,21 @@ public partial class JournalBrokerHostRealSeamsTests
         return frames;
     }
 
-    static IntPtr BuildEmptyWatchResult(ulong journalId, long nextUsn)
+    static IntPtr BuildEmptyWatchResult(ulong journalIdentifier, long nextUsn)
     {
         var nativeResult = new UsnJournalResultNative
         {
             EntryCount = 0,
             Entries = IntPtr.Zero,
             NextUsn = nextUsn,
-            JournalId = journalId
+            JournalIdentifier = journalIdentifier
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
         Marshal.StructureToPtr(nativeResult, resultPtr, false);
         return resultPtr;
     }
 
-    static unsafe IntPtr BuildSingleEntryWatchResult(ulong journalId, long nextUsn, string fileName, uint reason)
+    static unsafe IntPtr BuildSingleEntryWatchResult(ulong journalIdentifier, long nextUsn, string fileName, uint reason)
     {
         var entrySize = MftVolume.NativeUsnEntrySize;
         var entriesPtr = Marshal.AllocHGlobal(entrySize);
@@ -197,7 +197,7 @@ public partial class JournalBrokerHostRealSeamsTests
             EntryCount = 1,
             Entries = entriesPtr,
             NextUsn = nextUsn,
-            JournalId = journalId
+            JournalIdentifier = journalIdentifier
         };
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
         Marshal.StructureToPtr(nativeResult, resultPtr, false);

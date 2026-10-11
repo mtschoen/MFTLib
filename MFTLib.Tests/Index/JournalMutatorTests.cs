@@ -63,7 +63,7 @@ public partial class JournalMutatorTests
         var mutator = new JournalMutator(_writer);
         var changes = mutator.Apply(_snapshot, 0,
             [CreateEntry(5, 1, "brand-new.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment)],
-            journalId: 7, nextUsn: 2000);
+            journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(1, changes.Count);
         Assert.AreEqual(FileChangeKind.Created, changes[0].Kind);
@@ -81,7 +81,7 @@ public partial class JournalMutatorTests
         var mutator = new JournalMutator(_writer);
         var changes = mutator.Apply(_snapshot, 0,
             [CreateEntry(2, 1, "existing.txt", UsnReason.FileDelete | UsnReason.Close, ChangeMoment)],
-            journalId: 7, nextUsn: 2000);
+            journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(FileChangeKind.Deleted, changes[0].Kind);
         Assert.IsTrue(_block.Rows[2].IsDeleted);
@@ -102,14 +102,14 @@ public partial class JournalMutatorTests
                 UsnReason.FileCreate | UsnReason.Close, ChangeMoment),
             CreateEntry(5, 1, nameTooLargeForTheRemainingPool,
                 UsnReason.FileDelete | UsnReason.Close, ChangeMoment)
-        ], journalId: 7, nextUsn: 2000);
+        ], journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(0, changes.Count);
         Assert.IsTrue(mutator.CompactionNeeded);
         Assert.IsFalse(_block.Rows[5].IsInUse);
         Assert.IsFalse(_block.Rows[5].IsDeleted);
         Assert.AreEqual(generationBefore, _block.Header.Generation);
-        Assert.AreEqual(7ul, _block.Header.UsnJournalId);
+        Assert.AreEqual(7ul, _block.Header.UsnJournalIdentifier);
         Assert.AreEqual(2000L, _block.Header.UsnNextUsn);
     }
 
@@ -119,7 +119,7 @@ public partial class JournalMutatorTests
         var mutator = new JournalMutator(_writer);
         var changes = mutator.Apply(_snapshot, 0,
             [CreateEntry(2, 1, "renamed.txt", UsnReason.RenameNewName | UsnReason.Close, ChangeMoment)],
-            journalId: 7, nextUsn: 2000);
+            journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(FileChangeKind.Renamed, changes[0].Kind);
         Assert.AreEqual(Path.Combine(TestDriveRoot.For('T'), "Documents", "existing.txt"), changes[0].PreviousPath);
@@ -214,7 +214,7 @@ public partial class JournalMutatorTests
 
         mutator.Apply(_snapshot, 0,
             [CreateEntry(2, 0, "existing.txt", UsnReason.RenameNewName | UsnReason.Close, ChangeMoment)],
-            journalId: 7, nextUsn: 2000);
+            journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(0u, _block.Rows[2].ParentRow);
         Assert.AreEqual(namePoolUsedBefore, _block.Header.NamePoolUsed);
@@ -222,7 +222,7 @@ public partial class JournalMutatorTests
 
         mutator.Apply(_snapshot, 0,
             [CreateEntry(2, 0, "renamed.txt", UsnReason.RenameNewName | UsnReason.Close, ChangeMoment)],
-            journalId: 7, nextUsn: 2100);
+            journalIdentifier: 7, nextUsn: 2100);
 
         Assert.IsTrue(_block.Header.NamePoolUsed > namePoolUsedAfterMove);
     }
@@ -233,7 +233,7 @@ public partial class JournalMutatorTests
         var mutator = new JournalMutator(_writer);
         var changes = mutator.Apply(_snapshot, 0,
             [CreateEntry(2, 1, "existing.txt", UsnReason.RenameOldName, ChangeMoment)],
-            journalId: 7, nextUsn: 2000);
+            journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(0, changes.Count);
         Assert.AreEqual("existing.txt", new string(NamePool.ReadRowName(_block, 2)));
@@ -245,7 +245,7 @@ public partial class JournalMutatorTests
         var mutator = new JournalMutator(_writer);
         var changes = mutator.Apply(_snapshot, 0,
             [CreateEntry(2, 1, "existing.txt", UsnReason.DataExtend | UsnReason.Close, ChangeMoment)],
-            journalId: 7, nextUsn: 2000);
+            journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(FileChangeKind.Modified, changes[0].Kind);
         Assert.AreEqual(ChangeMoment.Ticks, _block.Rows[2].ModifiedTicks);
@@ -258,7 +258,7 @@ public partial class JournalMutatorTests
         var mutator = new JournalMutator(_writer);
         var changes = mutator.Apply(_snapshot, 0,
             [CreateEntry(2, 1, "existing.txt", UsnReason.Close, ChangeMoment)],
-            journalId: 7, nextUsn: 2000);
+            journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(0, changes.Count);
     }
@@ -271,7 +271,7 @@ public partial class JournalMutatorTests
         [
             CreateEntry(9999, 1, "far.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment),
             CreateEntry(6, 1, "near.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment)
-        ], journalId: 7, nextUsn: 2000);
+        ], journalIdentifier: 7, nextUsn: 2000);
 
         Assert.IsTrue(mutator.CompactionNeeded);
         Assert.IsTrue(_block.Header.IsCompactionNeeded);
@@ -290,7 +290,7 @@ public partial class JournalMutatorTests
             entries.Add(CreateEntry(recordNumber, 1, longName, UsnReason.FileCreate | UsnReason.Close, ChangeMoment));
         }
 
-        mutator.Apply(_snapshot, 0, entries, journalId: 7, nextUsn: 2000);
+        mutator.Apply(_snapshot, 0, entries, journalIdentifier: 7, nextUsn: 2000);
 
         Assert.IsTrue(mutator.CompactionNeeded);
     }
@@ -302,7 +302,7 @@ public partial class JournalMutatorTests
         var changes = mutator.Apply(_snapshot, 0,
             [CreateEntry(5, 1, "NewFolder", UsnReason.FileCreate | UsnReason.Close, ChangeMoment,
                 fileAttributes: FileAttributes.Directory)],
-            journalId: 7, nextUsn: 2000);
+            journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(1, changes.Count);
         Assert.IsTrue(_block.Rows[5].IsDirectory);
@@ -320,7 +320,7 @@ public partial class JournalMutatorTests
         var changes = mutator.Apply(_snapshot, 0,
             [CreateEntry(2, 1, hugeName, UsnReason.RenameNewName | UsnReason.RenameOldName | UsnReason.Close,
                 ChangeMoment)],
-            journalId: 7, nextUsn: 2000);
+            journalIdentifier: 7, nextUsn: 2000);
 
         Assert.AreEqual(0, changes.Count);
         Assert.IsTrue(_block.Header.IsCompactionNeeded);
@@ -337,10 +337,10 @@ public partial class JournalMutatorTests
         [
             CreateEntry(5, 1, "one.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment),
             CreateEntry(6, 1, "two.txt", UsnReason.FileCreate | UsnReason.Close, ChangeMoment)
-        ], journalId: 0xABCD, nextUsn: 9999);
+        ], journalIdentifier: 0xABCD, nextUsn: 9999);
 
         Assert.AreEqual(generationBefore + 1, _block.Header.Generation);
-        Assert.AreEqual(0xABCDul, _block.Header.UsnJournalId);
+        Assert.AreEqual(0xABCDul, _block.Header.UsnJournalIdentifier);
         Assert.AreEqual(9999L, _block.Header.UsnNextUsn);
     }
 
@@ -350,7 +350,7 @@ public partial class JournalMutatorTests
         var mutator = new JournalMutator(_writer);
         var generationBefore = _block.Header.Generation;
 
-        var changes = mutator.Apply(_snapshot, 0, [], journalId: 0xABCD, nextUsn: 4242);
+        var changes = mutator.Apply(_snapshot, 0, [], journalIdentifier: 0xABCD, nextUsn: 4242);
 
         Assert.AreEqual(0, changes.Count);
         Assert.AreEqual(generationBefore, _block.Header.Generation);
@@ -366,12 +366,12 @@ public partial class JournalMutatorTests
         var mutator = new JournalMutator(_writer);
         mutator.Apply(_snapshot, 0,
             [CreateEntry(2, 1, "existing.txt", UsnReason.FileDelete | UsnReason.Close, ChangeMoment)],
-            journalId: 7, nextUsn: 2000);
+            journalIdentifier: 7, nextUsn: 2000);
         Assert.IsTrue(_block.Rows[2].IsDeleted);
 
         var changes = mutator.Apply(_snapshot, 0,
             [CreateEntry(2, parentRecordNumber, fileName, UsnReason.FileCreate | UsnReason.Close, ChangeMoment)],
-            journalId: 7, nextUsn: 2100);
+            journalIdentifier: 7, nextUsn: 2100);
 
         Assert.AreEqual(1, changes.Count);
         Assert.AreEqual(FileChangeKind.Created, changes[0].Kind);

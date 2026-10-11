@@ -165,7 +165,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> CountingProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             invocationCount++;
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
@@ -326,7 +326,7 @@ public class FileIndexProducerSelectionTests
     {
         Task<MftBlockProduceResult> FakeProducer(MftBlockProduceRequest request, CancellationToken _)
         {
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
@@ -343,7 +343,7 @@ public class FileIndexProducerSelectionTests
     {
         Task<MftBlockProduceResult> MismatchedProducer(MftBlockProduceRequest request, CancellationToken _)
         {
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalIdentifier: 99, NextUsn: 12345, SkippedRecordCount: 0));
         }
 
@@ -363,7 +363,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> CountingProducer(MftBlockProduceRequest request, CancellationToken _)
         {
             invocationCount++;
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
@@ -459,7 +459,7 @@ public class FileIndexProducerSelectionTests
         Task<MftBlockProduceResult> Producer(MftBlockProduceRequest request, CancellationToken _)
         {
             invocationCount++;
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
@@ -521,7 +521,7 @@ public class FileIndexProducerSelectionTests
                 throw new UnauthorizedAccessException("elevation declined");
             }
 
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalIdentifier: 7, NextUsn: 4096, SkippedRecordCount: 0));
         }
 
@@ -550,7 +550,7 @@ public class FileIndexProducerSelectionTests
     {
         Task<MftBlockProduceResult> MismatchedProducer(MftBlockProduceRequest request, CancellationToken _)
         {
-            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalId: 7, nextUsn: 4096, moment: FixedMoment),
+            return Task.FromResult(new MftBlockProduceResult(SeededBlocks.Build(request, journalIdentifier: 7, nextUsn: 4096, moment: FixedMoment),
                 JournalIdentifier: 99, NextUsn: 12345, SkippedRecordCount: 0));
         }
 

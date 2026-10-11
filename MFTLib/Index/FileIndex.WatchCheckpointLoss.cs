@@ -36,7 +36,7 @@ public sealed partial class FileIndex
     {
         var driveLetter = runtime.DriveLetter;
         var driveBlock = instance.ArmedBlock;
-        ulong journalId;
+        ulong journalIdentifier;
         long watchPositionUsn;
         lock (_stateLock)
         {
@@ -46,11 +46,11 @@ public sealed partial class FileIndex
             }
 
             ref readonly var header = ref driveBlock.Block.Header;
-            journalId = header.UsnJournalId;
+            journalIdentifier = header.UsnJournalIdentifier;
             watchPositionUsn = header.UsnNextUsn;
         }
 
-        if (JournalCheckpointCheck.Check(driveLetter, journalId, watchPositionUsn,
+        if (JournalCheckpointCheck.Check(driveLetter, journalIdentifier, watchPositionUsn,
                 JournalCheckpointLossDetection.LiveWatch) is not { } loss)
         {
             // The position is still in the journal, so this fault was not the journal's doing.
@@ -170,6 +170,6 @@ public sealed partial class FileIndex
     static IndexWatchTarget BuildWatchTarget(DriveBlock driveBlock)
     {
         ref readonly var header = ref driveBlock.Block.Header;
-        return new IndexWatchTarget(driveBlock.DriveLetter, header.UsnJournalId, header.UsnNextUsn);
+        return new IndexWatchTarget(driveBlock.DriveLetter, header.UsnJournalIdentifier, header.UsnNextUsn);
     }
 }

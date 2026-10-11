@@ -168,7 +168,7 @@ public class FileIndexWatchFailedRescanTests
         await ThrowsAsync<InvalidOperationException>(() => harness.Index.RescanAsync('T', Token));
         AssertStillFaulted(harness, before, original, startCount: 1);
 
-        harness.SetNextProducedCursor('T', journalId: 13, nextUsn: 9000);
+        harness.SetNextProducedCursor('T', journalIdentifier: 13, nextUsn: 9000);
         await harness.Index.RescanAsync('T', Token);
 
         var starts = harness.Source.TargetsFor('T');

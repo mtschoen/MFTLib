@@ -253,7 +253,7 @@ public sealed partial class FileIndex
         ValidateProducedCacheTag(produceResult, blockPath);
 
         var header = produceResult.Block.Header;
-        if (header.UsnJournalId != produceResult.JournalIdentifier || header.UsnNextUsn != produceResult.NextUsn)
+        if (header.UsnJournalIdentifier != produceResult.JournalIdentifier || header.UsnNextUsn != produceResult.NextUsn)
         {
             // Nothing has adopted the block yet, so its mapping is closed directly.
             produceResult.Block.Dispose();
@@ -265,7 +265,7 @@ public sealed partial class FileIndex
             BlockFile.TryDeleteFailedCreate(blockPath, _options.Diagnostics,
                 "the MFT producer's block failed the journal cursor consistency check");
             throw new InvalidOperationException(
-                $"The MFT producer's block header carries journal cursor ({header.UsnJournalId}, " +
+                $"The MFT producer's block header carries journal cursor ({header.UsnJournalIdentifier}, " +
                 $"{header.UsnNextUsn}) but its result reported cursor ({produceResult.JournalIdentifier}, " +
                 $"{produceResult.NextUsn}). A producer that contradicts its own block cannot be trusted.");
         }
@@ -304,9 +304,9 @@ public sealed partial class FileIndex
         {
             ref readonly var header = ref candidate.Header;
             var checkpointLoss = WatchSourceOrNull is null
-                ? JournalCheckpointCheck.CheckUnmoved(driveLetter, header.UsnJournalId, header.UsnNextUsn,
+                ? JournalCheckpointCheck.CheckUnmoved(driveLetter, header.UsnJournalIdentifier, header.UsnNextUsn,
                     JournalCheckpointLossDetection.DriveOpening)
-                : JournalCheckpointCheck.Check(driveLetter, header.UsnJournalId, header.UsnNextUsn,
+                : JournalCheckpointCheck.Check(driveLetter, header.UsnJournalIdentifier, header.UsnNextUsn,
                     JournalCheckpointLossDetection.DriveOpening);
             if (checkpointLoss is not { } loss)
             {

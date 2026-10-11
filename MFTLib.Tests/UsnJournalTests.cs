@@ -49,7 +49,7 @@ public class UsnJournalTests
     {
         var info = new UsnJournalInfoNative
         {
-            JournalId = 0x123456789ABCDEF0,
+            JournalIdentifier = 0x123456789ABCDEF0,
             FirstUsn = 0,
             NextUsn = 42000,
             LowestValidUsn = 100,
@@ -146,7 +146,7 @@ public class UsnJournalTests
             EntryCount = 2,
             Entries = entriesPtr,
             NextUsn = 3000,
-            JournalId = 0xABCD
+            JournalIdentifier = 0xABCD
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
@@ -183,7 +183,7 @@ public class UsnJournalTests
             EntryCount = 0,
             Entries = IntPtr.Zero,
             NextUsn = 500,
-            JournalId = 0xABCD
+            JournalIdentifier = 0xABCD
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
@@ -374,15 +374,15 @@ public class UsnJournalTests
     {
         var callCount = 0;
 
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalIdentifier, _) =>
         {
             callCount++;
             if (callCount == 1)
             {
-                return BuildSingleEntryWatchResult(journalId, startUsn + 100, "created.txt", 0x00000100);
+                return BuildSingleEntryWatchResult(journalIdentifier, startUsn + 100, "created.txt", 0x00000100);
             }
 
-            return BuildEmptyWatchResult(journalId, startUsn);
+            return BuildEmptyWatchResult(journalIdentifier, startUsn);
         };
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
@@ -462,13 +462,13 @@ public class UsnJournalTests
         // and the token is already cancelled by the time we check.
         using var cancellationTokenSource = new CancellationTokenSource();
 
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalIdentifier, _) =>
         {
             // Simulate CancelIoEx race: cancel token then return empty result.
             // ReSharper disable once AccessToDisposedClosure
             // cancellationTokenSource is captured by this delegate; delegate runs synchronously during await foreach.
             cancellationTokenSource.Cancel();
-            return BuildEmptyWatchResult(journalId, startUsn);
+            return BuildEmptyWatchResult(journalIdentifier, startUsn);
         };
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         MFTLibNative._freeUsnJournalResult = _ => { };
@@ -495,12 +495,12 @@ public class UsnJournalTests
     {
         // Call 1 returns empty (not cancelled) → continue; call 2 returns an entry → yield (entries, cursor).
         var callCount = 0;
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalIdentifier, _) =>
         {
             callCount++;
             return callCount == 1
-                ? BuildEmptyWatchResult(journalId, startUsn)
-                : BuildSingleEntryWatchResult(journalId, startUsn + 100, "created.txt", 0x00000100);
+                ? BuildEmptyWatchResult(journalIdentifier, startUsn)
+                : BuildSingleEntryWatchResult(journalIdentifier, startUsn + 100, "created.txt", 0x00000100);
         };
         MFTLibNative._cancelUsnJournalWatch = _ => true;
         MFTLibNative._freeUsnJournalResult = Marshal.FreeHGlobal;
@@ -527,7 +527,7 @@ public class UsnJournalTests
 
     // --- Watch test helpers ---
 
-    static unsafe IntPtr BuildSingleEntryWatchResult(ulong journalId, long nextUsn, string fileName, uint reason)
+    static unsafe IntPtr BuildSingleEntryWatchResult(ulong journalIdentifier, long nextUsn, string fileName, uint reason)
     {
         var entrySize = MftVolume.NativeUsnEntrySize;
         var entriesPtr = Marshal.AllocHGlobal(entrySize);
@@ -548,7 +548,7 @@ public class UsnJournalTests
             EntryCount = 1,
             Entries = entriesPtr,
             NextUsn = nextUsn,
-            JournalId = journalId
+            JournalIdentifier = journalIdentifier
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());
@@ -556,14 +556,14 @@ public class UsnJournalTests
         return resultPtr;
     }
 
-    static IntPtr BuildEmptyWatchResult(ulong journalId, long nextUsn)
+    static IntPtr BuildEmptyWatchResult(ulong journalIdentifier, long nextUsn)
     {
         var nativeResult = new UsnJournalResultNative
         {
             EntryCount = 0,
             Entries = IntPtr.Zero,
             NextUsn = nextUsn,
-            JournalId = journalId
+            JournalIdentifier = journalIdentifier
         };
 
         var resultPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());

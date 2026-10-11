@@ -197,6 +197,6 @@ public class FileIndexDisposalRaceTests
         await index.DisposeAsync();
 
         Assert.ThrowsException<ObjectDisposedException>(
-            () => index.ApplyJournalEntries('T', [], journalId: 1, nextUsn: 1));
+            () => index.ApplyJournalEntries('T', [], journalIdentifier: 1, nextUsn: 1));
     }
 }

@@ -65,13 +65,13 @@ public partial class UsnJournalSyntheticTests
     }
 
     // A FSCTL_QUERY_USN_JOURNAL output buffer (USN_JOURNAL_DATA_V0: 8 fields × 8 bytes).
-    static byte[] BuildQueryBuffer(ulong journalId = 0xABCD, long firstUsn = 0,
+    static byte[] BuildQueryBuffer(ulong journalIdentifier = 0xABCD, long firstUsn = 0,
         long nextUsn = 5000, long lowestValid = 0, long maxUsn = 1_000_000,
         ulong maxSize = 0x200000, ulong allocDelta = 0x100000)
     {
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
-        w.Write(journalId);
+        w.Write(journalIdentifier);
         w.Write(firstUsn);
         w.Write(nextUsn);
         w.Write(lowestValid);
@@ -502,7 +502,7 @@ public partial class UsnJournalSyntheticTests
             Assert.AreEqual(0UL, result.EntryCount);
             Assert.IsTrue(string.IsNullOrEmpty(result.ErrorMessage), result.ErrorMessage);
             Assert.AreEqual(Cursor.NextUsn, result.NextUsn);
-            Assert.AreEqual(Cursor.JournalIdentifier, result.JournalId);
+            Assert.AreEqual(Cursor.JournalIdentifier, result.JournalIdentifier);
         }
         finally
         {

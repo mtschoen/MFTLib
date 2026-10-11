@@ -60,7 +60,7 @@ internal sealed class CacheOnlyUnresumableFixture : IDisposable
     static IDisposable Journal(long firstUsn)
     {
         return JournalCheckpointCheck.OverrideJournalForTest(_ =>
-            new JournalWindow(CachedJournalId, firstUsn, CachedNextUsn + 4_000, 64, 128L * 1024 * 1024));
+            new JournalWindow(CachedJournalIdentifier, firstUsn, CachedNextUsn + 4_000, 64, 128L * 1024 * 1024));
     }
 
 }

@@ -58,10 +58,10 @@ public class FileIndexCheckpointLossTests
         };
     }
 
-    static IDisposable Journal(ulong journalId, long firstUsn, long nextUsn, long allocationDelta = 64)
+    static IDisposable Journal(ulong journalIdentifier, long firstUsn, long nextUsn, long allocationDelta = 64)
     {
         return JournalCheckpointCheck.OverrideJournalForTest(
-            _ => new JournalWindow(journalId, firstUsn, nextUsn, allocationDelta, 128L * 1024 * 1024));
+            _ => new JournalWindow(journalIdentifier, firstUsn, nextUsn, allocationDelta, 128L * 1024 * 1024));
     }
 
     /// <summary>Writes the cache block a later open will try to warm-start from.</summary>
@@ -69,7 +69,7 @@ public class FileIndexCheckpointLossTests
     {
         // The journal still holds the checkpoint while the cache is being written, so this
         // open is an ordinary cold scan and leaves a resumable block behind.
-        using var journal = Journal(CachedJournalId, firstUsn: 0, nextUsn: CachedNextUsn);
+        using var journal = Journal(CachedJournalIdentifier, firstUsn: 0, nextUsn: CachedNextUsn);
         await using var index = await FileIndex.OpenAsync(Options(), CancellationToken.None);
         Assert.AreEqual(BlockSource.ProducedByScan, index.Drives.Single().Block.Source);
         Assert.IsNull(index.Drives.Single().Watch.CheckpointLoss);
@@ -81,7 +81,7 @@ public class FileIndexCheckpointLossTests
     public async Task ValidCheckpoint_WarmStartsAndReportsNoLoss(bool watchCapable)
     {
         await SeedCacheAsync();
-        using var journal = Journal(CachedJournalId, firstUsn: CachedNextUsn - 500,
+        using var journal = Journal(CachedJournalIdentifier, firstUsn: CachedNextUsn - 500,
             nextUsn: watchCapable ? CachedNextUsn + 4_000 : CachedNextUsn);
 
         var options = Options() with
@@ -101,7 +101,7 @@ public class FileIndexCheckpointLossTests
         await SeedCacheAsync();
         // The journal has moved on past the cached checkpoint by 500 bytes, and its tip is
         // 4000 bytes past it.
-        using var journal = Journal(CachedJournalId,
+        using var journal = Journal(CachedJournalIdentifier,
             firstUsn: CachedNextUsn + 500, nextUsn: CachedNextUsn + 4_000, allocationDelta: 64);
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
@@ -127,7 +127,7 @@ public class FileIndexCheckpointLossTests
     public async Task JournalRecreated_RescansAndSuggestsNoSize()
     {
         await SeedCacheAsync();
-        using var journal = Journal(journalId: 0xFEED, firstUsn: 0, nextUsn: 200);
+        using var journal = Journal(journalIdentifier: 0xFEED, firstUsn: 0, nextUsn: 200);
 
         await using var reopened = await FileIndex.OpenAsync(Options(), CancellationToken.None);
 
@@ -190,7 +190,7 @@ public class FileIndexCheckpointLossTests
     public async Task UnrepresentableRetentionSize_RescansWithNullHintAndClosesCandidate()
     {
         await SeedCacheAsync();
-        using var journal = Journal(CachedJournalId,
+        using var journal = Journal(CachedJournalIdentifier,
             firstUsn: CachedNextUsn + 500, nextUsn: long.MaxValue,
             allocationDelta: 1L << 62);
         var scanCount = 0;
@@ -236,7 +236,7 @@ public class FileIndexCheckpointLossTests
     public async Task UnrepresentableRetentionSize_CacheOnlyAdoptsTheBlockAndReportsTheLoss()
     {
         await SeedCacheAsync();
-        using var journal = Journal(CachedJournalId,
+        using var journal = Journal(CachedJournalIdentifier,
             firstUsn: CachedNextUsn + 500, nextUsn: long.MaxValue,
             allocationDelta: 1L << 62);
         var options = Options() with

@@ -68,7 +68,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
         Assert.AreEqual("published.txt", renamed.Name);
         Assert.AreEqual(23UL, index.Find(At("documents", "published.txt"))!.Value.RecordKey.RecordNumber);
         Assert.IsNull(index.Find(At("documents", "draft.txt")));
-        Assert.AreEqual(AdvancedCursor.JournalIdentifier, block.Header.UsnJournalId);
+        Assert.AreEqual(AdvancedCursor.JournalIdentifier, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(AdvancedCursor.NextUsn, block.Header.UsnNextUsn);
         Assert.IsTrue(block.Header.UsnNextUsn > ArmedCursor.NextUsn);
     }
@@ -150,7 +150,7 @@ public class MftProducerEndToEndTests : BrokerBlockTestBase
             CancellationToken.None).WaitAsync(HangGuard);
         var previous = index.Find(At("documents", "notes.txt"))!.Value;
         var previousBlock = previous.DriveBlock.Block;
-        var firstBlockCursor = new UsnJournalCursor(previousBlock.Header.UsnJournalId, previousBlock.Header.UsnNextUsn);
+        var firstBlockCursor = new UsnJournalCursor(previousBlock.Header.UsnJournalIdentifier, previousBlock.Header.UsnNextUsn);
 
         await index.StartWatchingAsync('C', CancellationToken.None).WaitAsync(HangGuard);
 

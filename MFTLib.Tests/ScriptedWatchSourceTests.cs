@@ -17,8 +17,8 @@ public class ScriptedWatchSourceTests
 
     CancellationToken Token => TestContext.CancellationTokenSource.Token;
 
-    static IndexWatchTarget Target(char driveLetter, ulong journalId = 7, long nextUsn = 100) =>
-        new(driveLetter, journalId, nextUsn);
+    static IndexWatchTarget Target(char driveLetter, ulong journalIdentifier = 7, long nextUsn = 100) =>
+        new(driveLetter, journalIdentifier, nextUsn);
 
     async Task<ScriptedDriveWatch> StartAsync(ScriptedWatchSource source, IndexWatchTarget target) =>
         (ScriptedDriveWatch)await ((IIndexWatchSource)source).StartAsync(target, Token);

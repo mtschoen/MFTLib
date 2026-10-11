@@ -158,7 +158,7 @@ internal sealed class OpenScenario : IDisposable
             }
 
             SeededBlocks.Write(request.BlockPath, request.VolumeSerial,
-                journalId: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
+                journalIdentifier: 7, nextUsn: 4096, moment: SeededBlocks.SeededMoment);
             var loss = _losses.TryGetValue(driveLetter, out var queue) && queue.TryDequeue(out var scripted)
                 ? scripted
                 : null;

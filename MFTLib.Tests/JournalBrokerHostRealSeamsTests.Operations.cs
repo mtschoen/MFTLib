@@ -16,7 +16,7 @@ public partial class JournalBrokerHostRealSeamsTests
     [TestMethod]
     public async Task ServeAsync_ScanAndCatchUp_UseRealMftVolumeSeams()
     {
-        var queryInfo = new UsnJournalInfoNative { JournalId = 0xABCD, NextUsn = 5000 };
+        var queryInfo = new UsnJournalInfoNative { JournalIdentifier = 0xABCD, NextUsn = 5000 };
         var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
         Marshal.StructureToPtr(queryInfo, queryPtr, false);
         MFTLibNative._queryUsnJournal = _ => queryPtr;
@@ -44,7 +44,7 @@ public partial class JournalBrokerHostRealSeamsTests
     [TestMethod]
     public async Task ServeAsync_DefaultSource_AdaptsNativeProgressWithoutFreedRows()
     {
-        var queryInfo = new UsnJournalInfoNative { JournalId = 7UL, NextUsn = 100 };
+        var queryInfo = new UsnJournalInfoNative { JournalIdentifier = 7UL, NextUsn = 100 };
         var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
         Marshal.StructureToPtr(queryInfo, queryPtr, false);
         MFTLibNative._queryUsnJournal = _ => queryPtr;
@@ -85,17 +85,17 @@ public partial class JournalBrokerHostRealSeamsTests
         // The watch's third read blocks like a live kernel wait until the watch is cancelled.
         var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var callCount = 0;
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalIdentifier, _) =>
         {
             switch (Interlocked.Increment(ref callCount))
             {
                 case 1:
-                    return BuildEmptyWatchResult(journalId, startUsn);
+                    return BuildEmptyWatchResult(journalIdentifier, startUsn);
                 case 2:
-                    return BuildSingleEntryWatchResult(journalId, startUsn + 100, "watched.txt", 0x100 /* FileCreate */);
+                    return BuildSingleEntryWatchResult(journalIdentifier, startUsn + 100, "watched.txt", 0x100 /* FileCreate */);
                 default:
                     cancelled.Task.Wait(HostChannelHarness.HangGuard);
-                    return BuildEmptyWatchResult(journalId, startUsn);
+                    return BuildEmptyWatchResult(journalIdentifier, startUsn);
             }
         };
         MFTLibNative._cancelUsnJournalWatch = _ =>
@@ -131,11 +131,11 @@ public partial class JournalBrokerHostRealSeamsTests
         // from a cancelled Task.Run throwing OperationCanceledException.
         var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var watchEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalId, _) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, startUsn, journalIdentifier, _) =>
         {
             watchEntered.TrySetResult();
             cancelled.Task.Wait(HostChannelHarness.HangGuard);
-            return BuildEmptyWatchResult(journalId, startUsn);
+            return BuildEmptyWatchResult(journalIdentifier, startUsn);
         };
         MFTLibNative._cancelUsnJournalWatch = _ =>
         {
@@ -159,7 +159,7 @@ public partial class JournalBrokerHostRealSeamsTests
     [TestMethod]
     public async Task ServeAsync_DefaultSource_IncludesRootDirectoryRow()
     {
-        var queryInfo = new UsnJournalInfoNative { JournalId = 0x1234, NextUsn = 1000 };
+        var queryInfo = new UsnJournalInfoNative { JournalIdentifier = 0x1234, NextUsn = 1000 };
         var queryPtr = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
         Marshal.StructureToPtr(queryInfo, queryPtr, false);
         MFTLibNative._queryUsnJournal = _ => queryPtr;
@@ -257,7 +257,7 @@ public partial class JournalBrokerHostRealSeamsTests
             return true;
         }
 
-        public IntPtr WatchUsnJournalBatchCancelable(SafeHandle volumeHandle, long startUsn, ulong journalId,
+        public IntPtr WatchUsnJournalBatchCancelable(SafeHandle volumeHandle, long startUsn, ulong journalIdentifier,
             SafeHandle cancellationHandle)
         {
             _watchEntered.Signal();
@@ -265,7 +265,7 @@ public partial class JournalBrokerHostRealSeamsTests
             GetCancelSignal(volumeHandle).Task.GetAwaiter().GetResult();
             // Return the synchronous ERROR_OPERATION_ABORTED result:
             // an empty result with original cursor untouched and no error message.
-            return BuildEmptyWatchResult(journalId, startUsn);
+            return BuildEmptyWatchResult(journalIdentifier, startUsn);
         }
 
         public void WaitForAllDrivesEntered(CancellationToken token)
@@ -392,7 +392,7 @@ public partial class JournalBrokerHostRealSeamsTests
         var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
         Marshal.StructureToPtr(new UsnJournalInfoNative
         {
-            JournalId = 7,
+            JournalIdentifier = 7,
             NextUsn = 200,
             MaximumSize = maximumSize,
             AllocationDelta = allocationDelta

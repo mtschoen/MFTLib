@@ -126,7 +126,7 @@ public class LocalMftBlockProducerTests
         Assert.IsTrue(block.Header.IsComplete);
         Assert.AreEqual(0UL, result.JournalIdentifier);
         Assert.AreEqual(0L, result.NextUsn);
-        Assert.AreEqual(0UL, block.Header.UsnJournalId);
+        Assert.AreEqual(0UL, block.Header.UsnJournalIdentifier);
         Assert.AreEqual(0L, block.Header.UsnNextUsn);
         Assert.AreEqual(0, result.SkippedRecordCount);
         Assert.IsNull(result.CatchUpLoss);

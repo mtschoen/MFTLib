@@ -8,7 +8,7 @@ struct UsnJournalResultNative
     public ulong EntryCount;
     public IntPtr Entries; // UsnJournalEntry*, owned by native side
     public long NextUsn;
-    public ulong JournalId;
+    public ulong JournalIdentifier;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
     public string ErrorMessage;

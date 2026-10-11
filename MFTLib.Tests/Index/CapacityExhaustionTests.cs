@@ -73,7 +73,7 @@ public class CapacityExhaustionTests
             var mutator = new JournalMutator(writer);
             var changes = mutator.Apply(snapshot, 0,
                 [Create(1, "fits.txt"), Create(400, "does-not-fit.txt"), Create(2, "also-fits.txt")],
-                journalId: 1, nextUsn: 10);
+                journalIdentifier: 1, nextUsn: 10);
 
             Assert.AreEqual(2, changes.Count);
             Assert.IsTrue(block.Header.IsCompactionNeeded);
@@ -102,7 +102,7 @@ public class CapacityExhaustionTests
                 entries.Add(Create(recordNumber, $"name-number-{recordNumber}.txt"));
             }
 
-            var changes = mutator.Apply(snapshot, 0, entries, journalId: 1, nextUsn: 20);
+            var changes = mutator.Apply(snapshot, 0, entries, journalIdentifier: 1, nextUsn: 20);
 
             Assert.AreEqual(1, changes.Count);
             Assert.IsTrue(block.Header.IsCompactionNeeded);
@@ -124,7 +124,7 @@ public class CapacityExhaustionTests
         {
             var mutator = new JournalMutator(writer);
             mutator.Apply(snapshot, 0, [Create(1, "survivor.txt"), Create(900, "lost.txt")],
-                journalId: 1, nextUsn: 30);
+                journalIdentifier: 1, nextUsn: 30);
 
             var results = SearchEngine.Search(snapshot, new SearchQuery("survivor"));
             Assert.AreEqual(1, results.Count);

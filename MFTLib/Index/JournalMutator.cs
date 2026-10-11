@@ -35,7 +35,7 @@ internal sealed class JournalMutator
     ///     than grouped, because a create and a delete for one record can share a batch.
     /// </summary>
     public IReadOnlyList<FileChange> Apply(Snapshot snapshot, ushort driveOrdinal,
-        IReadOnlyList<UsnJournalEntry> entries, ulong journalId, long nextUsn)
+        IReadOnlyList<UsnJournalEntry> entries, ulong journalIdentifier, long nextUsn)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(entries);
@@ -51,7 +51,7 @@ internal sealed class JournalMutator
             }
         }
 
-        Writer.SetJournalCursor(journalId, nextUsn);
+        Writer.SetJournalCursor(journalIdentifier, nextUsn);
         if (changes.Count > 0 || rowMutated)
         {
             Writer.BumpGeneration();

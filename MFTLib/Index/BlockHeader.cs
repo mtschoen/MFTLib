@@ -40,7 +40,7 @@ internal struct BlockHeader
     /// <summary>Total capacity, in bytes, of the UTF-16 name pool.</summary>
     [FieldOffset(44)] public uint NamePoolCapacity;
     /// <summary>USN journal identifier captured for this block, or zero when no journal was read.</summary>
-    [FieldOffset(48)] public ulong UsnJournalId;
+    [FieldOffset(48)] public ulong UsnJournalIdentifier;
     /// <summary>Next USN cursor captured for this block, or zero when no journal was read.</summary>
     [FieldOffset(56)] public long UsnNextUsn;
     /// <summary>
@@ -48,7 +48,7 @@ internal struct BlockHeader
     ///     changed at least one row: a reported create, delete, rename, or modification, or a
     ///     close record that restamped a live row's timestamp and attributes. Header-only writes
     ///     leave it unchanged: every batch advances the journal checkpoint
-    ///     (<see cref="UsnJournalId" /> and <see cref="UsnNextUsn" />), and a rejection (record
+    ///     (<see cref="UsnJournalIdentifier" /> and <see cref="UsnNextUsn" />), and a rejection (record
     ///     number past slot capacity, name pool exhausted, or parent record number out of range)
     ///     sets the compaction-needed flag without bumping the generation. Producer completion
     ///     stamps 1 on a block no batch has mutated.

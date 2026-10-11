@@ -92,7 +92,7 @@ public class DefaultElevatedEntryRunnerTests
         MFTLibNative._queryUsnJournal = _ =>
         {
             var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalId = 7, NextUsn = 200 }, pointer, false);
+            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalIdentifier = 7, NextUsn = 200 }, pointer, false);
             return pointer;
         };
         MFTLibNative._freeUsnJournalInfo = Marshal.FreeHGlobal;
@@ -105,11 +105,11 @@ public class DefaultElevatedEntryRunnerTests
         // the one that lands on the broken pipe, which is what used to kill the child.
         var watchEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseWatch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, journalId, _) =>
+        MFTLibNative._watchUsnJournalBatchCancelable = (_, _, journalIdentifier, _) =>
         {
             watchEntered.TrySetResult();
             releaseWatch.Task.GetAwaiter().GetResult();
-            return BuildWatchFailureResult(journalId, "FSCTL_READ_USN_JOURNAL watch failed");
+            return BuildWatchFailureResult(journalIdentifier, "FSCTL_READ_USN_JOURNAL watch failed");
         };
 
         int? exitCode = null;
@@ -167,7 +167,7 @@ public class DefaultElevatedEntryRunnerTests
             cursorQueried.TrySetResult();
             releaseCursorQuery.Task.GetAwaiter().GetResult();
             var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalInfoNative>());
-            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalId = 7, NextUsn = 200 }, pointer, false);
+            Marshal.StructureToPtr(new UsnJournalInfoNative { JournalIdentifier = 7, NextUsn = 200 }, pointer, false);
             return pointer;
         };
         MFTLibNative._freeUsnJournalInfo = Marshal.FreeHGlobal;
@@ -322,14 +322,14 @@ public class DefaultElevatedEntryRunnerTests
         }
     }
 
-    static IntPtr BuildWatchFailureResult(ulong journalId, string errorMessage)
+    static IntPtr BuildWatchFailureResult(ulong journalIdentifier, string errorMessage)
     {
         var nativeResult = new UsnJournalResultNative
         {
             EntryCount = 0,
             Entries = IntPtr.Zero,
             NextUsn = 0,
-            JournalId = journalId,
+            JournalIdentifier = journalIdentifier,
             ErrorMessage = errorMessage
         };
         var resultPointer = Marshal.AllocHGlobal(Marshal.SizeOf<UsnJournalResultNative>());

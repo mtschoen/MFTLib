@@ -118,8 +118,8 @@ internal static partial class BrokerProtocol
 
     static UsnJournalCursor ReadCursor(ref PayloadReader payload)
     {
-        var journalId = payload.UInt64();
-        return new UsnJournalCursor(journalId, payload.Int64());
+        var journalIdentifier = payload.UInt64();
+        return new UsnJournalCursor(journalIdentifier, payload.Int64());
     }
 
     static BrokerFrame ReadArmAndScanFrame(ref PayloadReader payload)
