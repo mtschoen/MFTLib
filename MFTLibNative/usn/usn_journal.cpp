@@ -8,8 +8,32 @@
     #include "../framework.h"
     #include "../mft_api.h"
     #include "../internal.h"
+    #include "../core/exception_barrier.h"
 
 namespace {
+template <typename Operation>
+UsnJournalResult* UsnResultBoundary(Operation operation, int64_t startUsn) noexcept {
+    UsnJournalResult* result = nullptr;
+    return NativeBoundary(
+        [&]() {
+            ThrowInjectedException(ExceptionTestPoint::UsnAllocation);
+            result = new UsnJournalResult{};
+            return operation(result);
+        },
+        [&](const wchar_t* message) {
+            if (result != nullptr) {
+                if (result->entries != nullptr) {
+                    VirtualFree(result->entries, 0, MEM_RELEASE);
+                }
+                result->entries = nullptr;
+                result->entryCount = 0;
+                result->nextUsn = startUsn;
+                SetErrorMessage(result->errorMessage, message);
+            }
+            return result;
+        });
+}
+
 uint8_t* AllocatePages(size_t byteCount) {
     return ShouldFailAlloc()
                ? nullptr
@@ -205,30 +229,42 @@ void PopulateWatchEntries(UsnJournalResult* result, const uint8_t* readBuffer, D
 
 extern "C" {
 EXPORT UsnJournalInfo* QueryUsnJournal(HANDLE volumeHandle) {
-    auto* info = new UsnJournalInfo{};
+    UsnJournalInfo* info = nullptr;
+    return NativeBoundary(
+        [&]() {
+            ThrowInjectedException(ExceptionTestPoint::UsnAllocation);
+            info = new UsnJournalInfo{};
 
-    USN_JOURNAL_DATA_V0 journalData{};
-    DWORD bytesReturned = 0;
-    if (UsnDeviceIoControl(volumeHandle, FSCTL_QUERY_USN_JOURNAL, IoBuffer{nullptr, 0},
-                           IoBuffer{&journalData, static_cast<DWORD>(sizeof(journalData))}, &bytesReturned,
-                           nullptr) == 0) {
-        DWORD error = GetLastError();
-        if (const wchar_t* message = DescribeJournalError(error)) {
-            SetErrorMessage(info->errorMessage, message);
-        } else {
-            SetErrorMessage(info->errorMessage, L"FSCTL_QUERY_USN_JOURNAL failed. Error: %lu", error);
-        }
-        return info;
-    }
+            USN_JOURNAL_DATA_V0 journalData{};
+            DWORD bytesReturned = 0;
+            if (UsnDeviceIoControl(volumeHandle, FSCTL_QUERY_USN_JOURNAL, IoBuffer{nullptr, 0},
+                                   IoBuffer{&journalData, static_cast<DWORD>(sizeof(journalData))}, &bytesReturned,
+                                   nullptr) == 0) {
+                DWORD error = GetLastError();
+                if (const wchar_t* message = DescribeJournalError(error)) {
+                    SetErrorMessage(info->errorMessage, message);
+                } else {
+                    SetErrorMessage(info->errorMessage, L"FSCTL_QUERY_USN_JOURNAL failed. Error: %lu", error);
+                }
+                return info;
+            }
 
-    info->journalIdentifier = journalData.UsnJournalID;
-    info->firstUsn = journalData.FirstUsn;
-    info->nextUsn = journalData.NextUsn;
-    info->lowestValidUsn = journalData.LowestValidUsn;
-    info->maxUsn = journalData.MaxUsn;
-    info->maximumSize = journalData.MaximumSize;
-    info->allocationDelta = journalData.AllocationDelta;
-    return info;
+            info->journalIdentifier = journalData.UsnJournalID;
+            info->firstUsn = journalData.FirstUsn;
+            info->nextUsn = journalData.NextUsn;
+            info->lowestValidUsn = journalData.LowestValidUsn;
+            info->maxUsn = journalData.MaxUsn;
+            info->maximumSize = journalData.MaximumSize;
+            info->allocationDelta = journalData.AllocationDelta;
+            return info;
+        },
+        [&](const wchar_t* message) {
+            if (info != nullptr) {
+                *info = UsnJournalInfo{};
+                SetErrorMessage(info->errorMessage, message);
+            }
+            return info;
+        });
 }
 
 EXPORT void FreeUsnJournalInfo(const UsnJournalInfo* info) { std::unique_ptr<const UsnJournalInfo> owned(info); }
@@ -236,81 +272,87 @@ EXPORT void FreeUsnJournalInfo(const UsnJournalInfo* info) { std::unique_ptr<con
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
 EXPORT UsnJournalResult* ReadUsnJournal(HANDLE volumeHandle, int64_t startUsn, uint64_t journalIdentifier,
                                         uint32_t maximumBufferReads) {
-    auto* result = new UsnJournalResult{};
-    result->journalIdentifier = journalIdentifier;
+    return UsnResultBoundary(
+        [&](UsnJournalResult* result) {
+            result->journalIdentifier = journalIdentifier;
 
-    constexpr size_t readBufferSize = 64ULL * 1024;
-    auto* readBuffer = AllocatePages(readBufferSize);
-    if (readBuffer == nullptr) {
-        SetErrorMessage(result->errorMessage, L"Failed to allocate read buffer");
-        return result;
-    }
-
-    constexpr uint64_t initialCapacity = 1024;
-    uint64_t capacity = initialCapacity;
-    result->entries = reinterpret_cast<UsnJournalEntry*>(AllocatePages(capacity * sizeof(UsnJournalEntry)));
-    if (result->entries == nullptr) {
-        VirtualFree(readBuffer, 0, MEM_RELEASE);
-        SetErrorMessage(result->errorMessage, L"Failed to allocate entry array");
-        return result;
-    }
-
-    auto readData = MakeReadRequest(startUsn, journalIdentifier, 0);
-
-    int64_t nextUsn = startUsn;
-
-    // maximumBufferReads == 0 reads to the journal tip; otherwise at most that many 64 KB buffers.
-    for (uint32_t reads = 0; maximumBufferReads == 0 || reads < maximumBufferReads; reads++) {
-        readData.StartUsn = nextUsn;
-
-        DWORD bytesReturned = 0;
-        BOOL success = UsnDeviceIoControl(
-            volumeHandle, FSCTL_READ_USN_JOURNAL, IoBuffer{&readData, static_cast<DWORD>(sizeof(readData))},
-            IoBuffer{readBuffer, static_cast<DWORD>(readBufferSize)}, &bytesReturned, nullptr);
-        if (success == 0) {
-            ApplyUsnReadError(result, GetLastError(), L"FSCTL_READ_USN_JOURNAL failed");
-            break;
-        }
-
-        if (bytesReturned < sizeof(int64_t)) {
-            break;
-        }
-
-        int64_t bufferNextUsn;
-        memcpy(&bufferNextUsn, readBuffer, sizeof(int64_t));
-
-        if (bufferNextUsn == nextUsn) {
-            break;
-        }
-
-        nextUsn = bufferNextUsn;
-
-        uint8_t* recordPtr = readBuffer + sizeof(int64_t);
-        const uint8_t* endPtr = readBuffer + bytesReturned;
-
-        while (recordPtr + sizeof(USN_RECORD_V2) <= endPtr) {
-            const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPtr);
-            if (usnRecord->RecordLength == 0) {
-                break;
-            }
-
-            if (result->entryCount >= capacity && !GrowUsnEntries(result, capacity)) {
-                VirtualFree(readBuffer, 0, MEM_RELEASE);
-                result->nextUsn = nextUsn;
+            constexpr size_t readBufferSize = 64ULL * 1024;
+            auto* readBuffer = AllocatePages(readBufferSize);
+            const NativeScopeExit buffer([&]() {
+                if (readBuffer != nullptr) {
+                    VirtualFree(readBuffer, 0, MEM_RELEASE);
+                }
+            });
+            if (readBuffer == nullptr) {
+                SetErrorMessage(result->errorMessage, L"Failed to allocate read buffer");
                 return result;
             }
 
-            auto& entry = result->entries[result->entryCount];
-            CopyUsnRecordToEntry(entry, usnRecord);
+            constexpr uint64_t initialCapacity = 1024;
+            uint64_t capacity = initialCapacity;
+            result->entries = reinterpret_cast<UsnJournalEntry*>(AllocatePages(capacity * sizeof(UsnJournalEntry)));
+            if (result->entries == nullptr) {
+                SetErrorMessage(result->errorMessage, L"Failed to allocate entry array");
+                return result;
+            }
 
-            result->entryCount++;
-            recordPtr += usnRecord->RecordLength;
-        }
-    }
+            auto readData = MakeReadRequest(startUsn, journalIdentifier, 0);
+            ThrowInjectedException(ExceptionTestPoint::UsnProcessing);
 
-    VirtualFree(readBuffer, 0, MEM_RELEASE);
-    result->nextUsn = nextUsn;
-    return result;
+            int64_t nextUsn = startUsn;
+
+            // maximumBufferReads == 0 reads to the journal tip; otherwise at most that many 64 KB buffers.
+            for (uint32_t reads = 0; maximumBufferReads == 0 || reads < maximumBufferReads; reads++) {
+                readData.StartUsn = nextUsn;
+
+                DWORD bytesReturned = 0;
+                BOOL success = UsnDeviceIoControl(
+                    volumeHandle, FSCTL_READ_USN_JOURNAL, IoBuffer{&readData, static_cast<DWORD>(sizeof(readData))},
+                    IoBuffer{readBuffer, static_cast<DWORD>(readBufferSize)}, &bytesReturned, nullptr);
+                if (success == 0) {
+                    ApplyUsnReadError(result, GetLastError(), L"FSCTL_READ_USN_JOURNAL failed");
+                    break;
+                }
+
+                if (bytesReturned < sizeof(int64_t)) {
+                    break;
+                }
+
+                int64_t bufferNextUsn;
+                memcpy(&bufferNextUsn, readBuffer, sizeof(int64_t));
+
+                if (bufferNextUsn == nextUsn) {
+                    break;
+                }
+
+                nextUsn = bufferNextUsn;
+
+                uint8_t* recordPtr = readBuffer + sizeof(int64_t);
+                const uint8_t* endPtr = readBuffer + bytesReturned;
+
+                while (recordPtr + sizeof(USN_RECORD_V2) <= endPtr) {
+                    const auto* usnRecord = reinterpret_cast<const USN_RECORD_V2*>(recordPtr);
+                    if (usnRecord->RecordLength == 0) {
+                        break;
+                    }
+
+                    if (result->entryCount >= capacity && !GrowUsnEntries(result, capacity)) {
+                        result->nextUsn = nextUsn;
+                        return result;
+                    }
+
+                    auto& entry = result->entries[result->entryCount];
+                    CopyUsnRecordToEntry(entry, usnRecord);
+
+                    result->entryCount++;
+                    recordPtr += usnRecord->RecordLength;
+                }
+            }
+
+            result->nextUsn = nextUsn;
+            return result;
+        },
+        startUsn);
 }
 
 EXPORT void FreeUsnJournalResult(const UsnJournalResult* result) {
@@ -323,52 +365,61 @@ EXPORT void FreeUsnJournalResult(const UsnJournalResult* result) {
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): C-ABI export, fixed C# P/Invoke signature
 EXPORT UsnJournalResult* WatchUsnJournalBatchCancelable(HANDLE volumeHandle, int64_t startUsn,
                                                         uint64_t journalIdentifier, HANDLE cancellationEvent) {
-    auto* result = new UsnJournalResult{};
-    result->journalIdentifier = journalIdentifier;
-    result->nextUsn = startUsn;
+    return UsnResultBoundary(
+        [&](UsnJournalResult* result) {
+            result->journalIdentifier = journalIdentifier;
+            result->nextUsn = startUsn;
 
-    constexpr size_t readBufferSize = 64ULL * 1024;
-    auto* readBuffer = AllocatePages(readBufferSize);
-    if (readBuffer == nullptr) {
-        SetErrorMessage(result->errorMessage, L"Failed to allocate read buffer");
-        return result;
-    }
+            constexpr size_t readBufferSize = 64ULL * 1024;
+            auto* readBuffer = AllocatePages(readBufferSize);
+            const NativeScopeExit buffer([&]() {
+                if (readBuffer != nullptr) {
+                    VirtualFree(readBuffer, 0, MEM_RELEASE);
+                }
+            });
+            if (readBuffer == nullptr) {
+                SetErrorMessage(result->errorMessage, L"Failed to allocate read buffer");
+                return result;
+            }
 
-    auto readData = MakeReadRequest(startUsn, journalIdentifier, 1);
+            auto readData = MakeReadRequest(startUsn, journalIdentifier, 1);
 
-    OVERLAPPED overlapped{};
-    overlapped.hEvent = ShouldFailAlloc() ? nullptr : CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    if (overlapped.hEvent == nullptr) {
-        VirtualFree(readBuffer, 0, MEM_RELEASE);
-        SetErrorMessage(result->errorMessage, L"Failed to create event. Error: %lu", GetLastError());
-        return result;
-    }
+            OVERLAPPED overlapped{};
+            overlapped.hEvent = ShouldFailAlloc() ? nullptr : CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            const NativeScopeExit event([&]() {
+                if (overlapped.hEvent != nullptr) {
+                    CloseHandle(overlapped.hEvent);
+                }
+            });
+            if (overlapped.hEvent == nullptr) {
+                SetErrorMessage(result->errorMessage, L"Failed to create event. Error: %lu", GetLastError());
+                return result;
+            }
+            ThrowInjectedException(ExceptionTestPoint::UsnProcessing);
 
-    DWORD bytesReturned = 0;
-    BOOL success = UsnDeviceIoControl(
-        volumeHandle, FSCTL_READ_USN_JOURNAL, IoBuffer{&readData, static_cast<DWORD>(sizeof(readData))},
-        IoBuffer{readBuffer, static_cast<DWORD>(readBufferSize)}, &bytesReturned, &overlapped);
+            DWORD bytesReturned = 0;
+            BOOL success = UsnDeviceIoControl(
+                volumeHandle, FSCTL_READ_USN_JOURNAL, IoBuffer{&readData, static_cast<DWORD>(sizeof(readData))},
+                IoBuffer{readBuffer, static_cast<DWORD>(readBufferSize)}, &bytesReturned, &overlapped);
 
-    DWORD error = success != FALSE ? ERROR_SUCCESS : GetLastError();
-    if (success == FALSE && error == ERROR_IO_PENDING) {
-        success = CompleteWatchRead(volumeHandle, &overlapped, &bytesReturned, cancellationEvent);
-        error = success != FALSE ? ERROR_SUCCESS : GetLastError();
-    }
-    if (success == FALSE) {
-        CloseHandle(overlapped.hEvent);
-        VirtualFree(readBuffer, 0, MEM_RELEASE);
-        // ERROR_OPERATION_ABORTED is the CancelIoEx-driven stop and returns an empty result so the managed iterator
-        // can end the stream normally.
-        if (error != ERROR_OPERATION_ABORTED) {
-            ApplyUsnReadError(result, error, L"FSCTL_READ_USN_JOURNAL watch failed");
-        }
-        return result;
-    }
+            DWORD error = success != FALSE ? ERROR_SUCCESS : GetLastError();
+            if (success == FALSE && error == ERROR_IO_PENDING) {
+                success = CompleteWatchRead(volumeHandle, &overlapped, &bytesReturned, cancellationEvent);
+                error = success != FALSE ? ERROR_SUCCESS : GetLastError();
+            }
+            if (success == FALSE) {
+                // ERROR_OPERATION_ABORTED is the CancelIoEx-driven stop and returns an empty result so the managed
+                // iterator can end the stream normally.
+                if (error != ERROR_OPERATION_ABORTED) {
+                    ApplyUsnReadError(result, error, L"FSCTL_READ_USN_JOURNAL watch failed");
+                }
+                return result;
+            }
 
-    CloseHandle(overlapped.hEvent);
-    PopulateWatchEntries(result, readBuffer, bytesReturned);
-    VirtualFree(readBuffer, 0, MEM_RELEASE);
-    return result;
+            PopulateWatchEntries(result, readBuffer, bytesReturned);
+            return result;
+        },
+        startUsn);
 }
 
 EXPORT BOOL CancelUsnJournalWatch(HANDLE volumeHandle) { return CancelIoEx(volumeHandle, nullptr); }

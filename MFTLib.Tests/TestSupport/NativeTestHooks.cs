@@ -14,6 +14,9 @@ internal static class NativeTestHooks
     [DllImport(LibraryName, EntryPoint = "SetMaxThreads", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetMaxThreads(uint maxThreads);
 
+    // Positive values fail the Nth allocation. Negative values inject one exception:
+    // -1 parse allocation, -2 third thread start, -3 USN result allocation,
+    // -4 parse worker, -5 I/O worker, -6 USN processing allocation.
     [DllImport(LibraryName, EntryPoint = "SetAllocFailCountdown", CallingConvention = CallingConvention.Cdecl)]
     internal static extern void NativeSetAllocFailCountdown(int countdown);
 

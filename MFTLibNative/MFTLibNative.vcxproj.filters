@@ -42,6 +42,9 @@
     <ClInclude Include="core\platform.h">
       <Filter>Source Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="core\exception_barrier.h">
+      <Filter>Source Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="mft\mft.internal.h">
       <Filter>Source Files\mft</Filter>
     </ClInclude>

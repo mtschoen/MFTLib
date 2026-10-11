@@ -9,7 +9,6 @@
 #include <cstdint>
 // aislop-ignore-next-line CppUnusedIncludeDirective -- std::swprintf below needs this on GCC/Clang
 #include <cwchar>
-#include <vector>
 
 #ifndef _WIN32
     #include <cerrno>
@@ -48,9 +47,12 @@ void SetErrorMessageBuffer(char16_t* buffer, size_t bufferLength, const wchar_t*
     if (buffer == nullptr || bufferLength == 0) {
         return;
     }
-    std::vector<wchar_t> wide(bufferLength);
-    SetErrorMessageBuffer(wide.data(), bufferLength, format, arguments...);
-    std::transform(wide.begin(), wide.end(), buffer, [](wchar_t unit) { return static_cast<char16_t>(unit); });
+    // Native ABI message buffers are at most 256 units. Formatting failure text must not allocate.
+    std::array<wchar_t, 256> wide{};
+    const size_t length = (std::min)(bufferLength, wide.size());
+    SetErrorMessageBuffer(wide.data(), length, format, arguments...);
+    std::transform(wide.begin(), wide.begin() + length, buffer,
+                   [](wchar_t unit) { return static_cast<char16_t>(unit); });
 }
 #endif
 
@@ -104,7 +106,7 @@ class ParseThreadRecording {
     ParseThreadRecording& operator=(const ParseThreadRecording&) = delete;
     ParseThreadRecording(ParseThreadRecording&&) = delete;
     ParseThreadRecording& operator=(ParseThreadRecording&&) = delete;
-    ~ParseThreadRecording();
+    ~ParseThreadRecording() noexcept;
 
     void Record(unsigned threadCount) {
         if (length_ < counts_.size()) {
@@ -119,6 +121,16 @@ class ParseThreadRecording {
 
 // Test hook declarations (defined in core/test_hooks.cpp)
 bool ShouldFailAlloc();
+// Negative SetAllocFailCountdown modes inject exceptions without adding ABI exports.
+enum class ExceptionTestPoint : int8_t {
+    ParseAllocation = -1,
+    ThreadStart = -2,
+    UsnAllocation = -3,
+    WorkerFailure = -4,
+    ReadWorker = -5,
+    UsnProcessing = -6
+};
+void ThrowInjectedException(ExceptionTestPoint point);
 bool ShouldFailRead();
 // The Nth parse cancellation check after SetCancelCheckCountdown(N), and every check after it,
 // reports cancelled, so a test can cancel inside a chunk's workers.

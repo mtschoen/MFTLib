@@ -8,13 +8,19 @@
 #include <atomic>
 #include <mutex>
 #include <thread>
+#include <new>
+#include <system_error>
+#include <stdexcept>
 
 #include "../internal.h"
 #include "../mft_api.h"
+#include "exception_barrier.h"
 
 namespace {
 unsigned g_maxThreads = 0;
 int g_allocFailCountdown = 0;
+std::atomic<int> g_exceptionMode{0};
+std::atomic<int> g_threadStartCountdown{0};
 int g_readFailCountdown = 0;
 int g_failFileSize = 0;
 int g_failPlatformReadCountdown = 0;
@@ -69,10 +75,15 @@ unsigned EffectiveThreadCount(const MftParseControl* control) {
     return threadCount;
 }
 
-ParseThreadRecording::~ParseThreadRecording() {
-    std::scoped_lock lock(g_parseThreadCountsMutex);
-    std::copy_n(counts_.begin(), length_, g_chunkThreadCounts.begin());
-    g_chunkThreadCountLength = length_;
+// Runs during unwinding, so a failed lock leaves the previous observation instead of terminating.
+ParseThreadRecording::~ParseThreadRecording() noexcept {
+    try {
+        std::scoped_lock lock(g_parseThreadCountsMutex);
+        std::copy_n(counts_.begin(), length_, g_chunkThreadCounts.begin());
+        g_chunkThreadCountLength = length_;
+    } catch (const std::system_error&) {
+        return;
+    }
 }
 
 bool ShouldFailAlloc() {
@@ -80,6 +91,26 @@ bool ShouldFailAlloc() {
         return false;
     }
     return --g_allocFailCountdown == 0;
+}
+
+void ThrowInjectedException(ExceptionTestPoint point) {
+    int expected = static_cast<int>(point);
+    if (g_exceptionMode.load() != expected) {
+        return;
+    }
+    if (point == ExceptionTestPoint::ThreadStart && g_threadStartCountdown.fetch_sub(1) > 1) {
+        return;
+    }
+    if (!g_exceptionMode.compare_exchange_strong(expected, 0)) {
+        return;
+    }
+    if (point == ExceptionTestPoint::ThreadStart) {
+        throw std::system_error(std::make_error_code(std::errc::resource_unavailable_try_again));
+    }
+    if (point == ExceptionTestPoint::WorkerFailure || point == ExceptionTestPoint::ReadWorker) {
+        throw std::runtime_error("Injected native worker failure");
+    }
+    throw std::bad_alloc{};
 }
 
 bool ShouldForceCancel() {
@@ -171,7 +202,12 @@ bool TryUsnWatchPipeRead(HANDLE handle, void* buffer, DWORD size, DWORD* bytesRe
 
 extern "C" {
 EXPORT void SetMaxThreads(unsigned maxThreads) { g_maxThreads = maxThreads; }
-EXPORT void SetAllocFailCountdown(int countdown) { g_allocFailCountdown = countdown; }
+EXPORT void SetAllocFailCountdown(int countdown) {
+    g_allocFailCountdown = (std::max)(countdown, 0);
+    g_exceptionMode = countdown < 0 ? countdown : 0;
+    // The I/O thread and first parse worker start before the next start fails.
+    g_threadStartCountdown = 3;
+}
 EXPORT void SetReadFailCountdown(int countdown) { g_readFailCountdown = countdown; }
 EXPORT void SetFailFileSize(int fail) { g_failFileSize = fail; }
 EXPORT void SetFailPlatformRead(int countdown) { g_failPlatformReadCountdown = countdown; }
@@ -190,10 +226,12 @@ EXPORT unsigned GetNativeHardwareThreadCount() {
 // Copies the thread count each chunk of the most recent parse used, in order, into counts
 // and returns how many were copied (at most capacity).
 EXPORT unsigned GetChunkThreadCounts(unsigned* counts, unsigned capacity) {
+    return NativeBoundary([&]() {
     std::scoped_lock lock(g_parseThreadCountsMutex);
     const unsigned copied = (std::min)(capacity, g_chunkThreadCountLength);
     std::copy_n(g_chunkThreadCounts.begin(), copied, counts);
     return copied;
+    }, [](const wchar_t*) { return 0U; });
 }
 #ifdef _WIN32
 // C-ABI test hook; (error, countdown) order is fixed by the C# P/Invoke harness.
@@ -224,8 +262,10 @@ EXPORT void SetUsnWatchPipe(HANDLE handle, HANDLE beforeIssue, HANDLE continueIs
     g_usnGateReadNumber = gateReadNumber;
 }
 EXPORT void ResetTestState() {
+    NativeBoundary([&]() {
     g_maxThreads = 0;
     g_allocFailCountdown = 0;
+    g_exceptionMode = 0;
     g_readFailCountdown = 0;
     g_failFileSize = 0;
     g_failPlatformReadCountdown = 0;
@@ -244,11 +284,14 @@ EXPORT void ResetTestState() {
     g_usnContinueIssue = nullptr;
     g_usnIssued = nullptr;
     g_usnGateReadNumber = 0;
+    }, [](const wchar_t*) {});
 }
 #else
 EXPORT void ResetTestState() {
+    NativeBoundary([&]() {
     g_maxThreads = 0;
     g_allocFailCountdown = 0;
+    g_exceptionMode = 0;
     g_readFailCountdown = 0;
     g_failFileSize = 0;
     g_failPlatformReadCountdown = 0;
@@ -257,6 +300,7 @@ EXPORT void ResetTestState() {
     ClearRecordedParseThreadCounts();
     g_cancelCheckCountdownArmed = false;
     g_cancelCheckCountdown = 0;
+    }, [](const wchar_t*) {});
 }
 #endif
 }

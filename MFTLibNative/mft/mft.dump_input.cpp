@@ -145,39 +145,51 @@ EXPORT MftDumpInput* OpenMftDumpInput(const char* filePathUtf8, MftDumpInputInfo
         return nullptr;
     }
     *info = MftDumpInputInfo{};
+    return NativeBoundary(
+        [&]() -> MftDumpInput* {
+            auto* file = mftlib::platform::open_read(filePathUtf8);
+            const NativeScopeExit opened([&]() { mftlib::platform::close_file(file); });
+            if (file == nullptr) {
+                SetErrorMessage(info->errorMessage, L"Failed to open file. Error: %lu",
+                                static_cast<unsigned long>(mftlib::platform::last_error()));
+                return nullptr;
+            }
 
-    auto* file = mftlib::platform::open_read(filePathUtf8);
-    if (file == nullptr) {
-        SetErrorMessage(info->errorMessage, L"Failed to open file. Error: %lu",
-                        static_cast<unsigned long>(mftlib::platform::last_error()));
-        return nullptr;
-    }
+            const DumpInspection inspection = InspectDump(file);
+            auto* input = (inspection.rejection != nullptr || ShouldFailAlloc())
+                              ? nullptr
+                              : new (std::nothrow) MftDumpInput{file, inspection.lengthBytes, inspection.geometry};
+            if (input == nullptr) {
+                SetErrorMessage(info->errorMessage, inspection.rejection != nullptr ? inspection.rejection
+                                                                                    : L"Failed to allocate dump input");
+                info->invalidInput = inspection.invalidInput ? 1 : 0;
+                return nullptr;
+            }
 
-    const DumpInspection inspection = InspectDump(file);
-    auto* input = (inspection.rejection != nullptr || ShouldFailAlloc())
-                      ? nullptr
-                      : new (std::nothrow) MftDumpInput{file, inspection.lengthBytes, inspection.geometry};
-    if (input == nullptr) {
-        mftlib::platform::close_file(file);
-        SetErrorMessage(info->errorMessage,
-                        inspection.rejection != nullptr ? inspection.rejection : L"Failed to allocate dump input");
-        info->invalidInput = inspection.invalidInput ? 1 : 0;
-        return nullptr;
-    }
-
-    info->lengthBytes = inspection.lengthBytes;
-    info->recordSize = inspection.geometry.recordSize;
-    return input;
+            info->lengthBytes = inspection.lengthBytes;
+            info->recordSize = inspection.geometry.recordSize;
+            file = nullptr;
+            return input;
+        },
+        [&](const wchar_t* message) -> MftDumpInput* {
+            *info = MftDumpInputInfo{};
+            SetErrorMessage(info->errorMessage, message);
+            return nullptr;
+        });
 }
 
 // Parses every allocated base record of an opened dump; freed records are never emitted. Fails with invalidInput set
 // when an allocated record's fixup is invalid or the file cannot be read to the length OpenMftDumpInput reported.
 EXPORT MftParseResult* ParseMftDumpInput(const MftDumpInput* input, uint32_t bufferSizeRecords,
                                          const MftParseControl* control, MftProgressCallback callback, void* context) {
-    if (input == nullptr) {
-        return CreateParseResult(L"Dump input is invalid");
-    }
-    return ParseDump(*input, ParseRequest{false, bufferSizeRecords, control, callback, context});
+    return NativeBoundary(
+        [&]() {
+            if (input == nullptr) {
+                return CreateParseResult(L"Dump input is invalid");
+            }
+            return ParseDump(*input, ParseRequest{false, bufferSizeRecords, control, callback, context});
+        },
+        [](const wchar_t*) -> MftParseResult* { return nullptr; });
 }
 
 // Closes the file and frees the input. Safe with null.

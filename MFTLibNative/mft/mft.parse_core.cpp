@@ -146,6 +146,7 @@ bool RejectInvalidFixup(MftParseResult* result) {
 bool ParseChunkSerial(uint8_t* buffer, ChunkSpan chunk, const ScanContext& scan, ParseState& state,
                       MftParseResult* result) {
     SliceResult batchSlice;
+    ThrowInjectedException(ExceptionTestPoint::ParseAllocation);
     batchSlice.entries.reserve(chunk.chunkSize / 4);
     batchSlice.strings.reserve(batchSlice.entries.capacity() * 32);
 
@@ -169,6 +170,8 @@ bool ParseChunkParallel(uint8_t* buffer, ChunkSpan chunk, unsigned numThreads, c
     std::vector<SliceResult> slices(numThreads);
     std::vector<double> threadFixupMs(numThreads, 0.0);
     unsigned actualThreads = ForEachRange(chunk.chunkSize, numThreads, [&](unsigned index, SliceRange range) {
+        ThrowInjectedException(ExceptionTestPoint::ParseAllocation);
+        ThrowInjectedException(ExceptionTestPoint::WorkerFailure);
         const uint64_t initialCapacity = std::max<uint64_t>((range.end - range.start) / 4, 64);
         slices[index].entries.reserve(initialCapacity);
         slices[index].strings.reserve(initialCapacity * 32);
@@ -228,7 +231,18 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
 
         uint64_t nextChunkSize = 0;
         double nextIoMs = 0;
-        std::thread ioThread([&]() { nextChunkSize = reader.read(1 - curBuf, nextIoMs); });
+        NativeFailure readFailure = NativeFailure::None;
+        auto ioThread = StartNativeThread(
+            [&]() {
+                ThrowInjectedException(ExceptionTestPoint::ReadWorker);
+                nextChunkSize = reader.read(1 - curBuf, nextIoMs);
+            },
+            readFailure);
+        const NativeScopeExit joined([&]() {
+            if (ioThread.joinable()) {
+                ioThread.join();
+            }
+        });
 
         uint8_t* buffer = (*reader.buf)[curBuf];
         const ChunkSpan chunk{recordIndex, currentChunkSize};
@@ -253,6 +267,7 @@ ParseOutcome ParseAllChunks(ChunkReader& reader, const ScanContext& scan, ParseS
         }
 
         ioThread.join();
+        ThrowNativeFailure(readFailure);
         state.ioMs += nextIoMs;
 
         currentChunkSize = nextChunkSize;
@@ -317,58 +332,65 @@ MftParseResult* ParseMFTImpl(const ParseSource& source, const ParseRequest& requ
     if (result == nullptr) {
         return nullptr;
     }
-    const uint64_t totalRecords = source.totalRecords;
-    const ParseGeometry geometry = source.geometry;
-    const MftParseControl* control = request.control;
-    const uint32_t bufferSizeRecords = request.bufferSizeRecords;
-    result->totalRecords = totalRecords;
-
-    const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * geometry.recordSize;
-
     ParseState state = {};
     state.threadRecording = &threadRecording;
-    // The record total comes from an unvalidated length, so it only sizes the first allocation
-    // up to a fixed ceiling; a larger result grows as records are actually parsed.
-    constexpr uint64_t kMaximumInitialEntries = uint64_t{4} * 1024 * 1024;
-    state.output.entryCapacity = std::clamp<uint64_t>(totalRecords / 4, 1024, kMaximumInitialEntries);
-    state.output.stringCapacity = std::max<uint64_t>(state.output.entryCapacity * 32, 1024);
-
     std::array<uint8_t*, 2> buf = {};
-    if (!AllocateParseBuffers(buf, bufSize, state, result)) {
-        return result;
-    }
+    const size_t bufSize = static_cast<size_t>(request.bufferSizeRecords) * source.geometry.recordSize;
+    return NativeBoundary(
+        [&]() {
+            const uint64_t totalRecords = source.totalRecords;
+            const ParseGeometry geometry = source.geometry;
+            const MftParseControl* control = request.control;
+            result->totalRecords = totalRecords;
 
-    const ScanContext scan{request.includeFreed, totalRecords, geometry, control, source.rejectInvalidFixup};
-    ChunkReader reader{&source, &buf};
-    ProgressHook progress{request.callback, request.progressContext, wallStart};
-    const ParseOutcome outcome = ParseAllChunks(reader, scan, state, result, progress);
+            // The record total comes from an unvalidated length, so it only sizes the first allocation
+            // up to a fixed ceiling; a larger result grows as records are actually parsed.
+            constexpr uint64_t kMaximumInitialEntries = uint64_t{4} * 1024 * 1024;
+            state.output.entryCapacity = std::clamp<uint64_t>(totalRecords / 4, 1024, kMaximumInitialEntries);
+            state.output.stringCapacity = std::max<uint64_t>(state.output.entryCapacity * 32, 1024);
 
-    mftlib::platform::big_free(buf[0], bufSize);
-    mftlib::platform::big_free(buf[1], bufSize);
+            if (!AllocateParseBuffers(buf, bufSize, state, result)) {
+                return result;
+            }
+            const NativeScopeExit buffers([&]() {
+                mftlib::platform::big_free(buf[0], bufSize);
+                mftlib::platform::big_free(buf[1], bufSize);
+            });
 
-    if (outcome == ParseOutcome::Cancelled) {
-        return FinishCancelled(state, result);
-    }
-    if (outcome == ParseOutcome::Incomplete) {
-        return FinishIncomplete(state, result, source);
-    }
-    if (outcome == ParseOutcome::Failed) {
-        result->entries = state.output.entries;
-        result->usedRecords = state.output.entryCount;
-        result->entryStrings = state.output.strings;
-        result->entryStringUnits = state.output.stringUnits;
-        return result;
-    }
+            const ScanContext scan{request.includeFreed, totalRecords, geometry, control, source.rejectInvalidFixup};
+            ChunkReader reader{&source, &buf};
+            ProgressHook progress{request.callback, request.progressContext, wallStart};
+            const ParseOutcome outcome = ParseAllChunks(reader, scan, state, result, progress);
 
-    result->usedRecords = state.output.entryCount;
-    result->invalidFixupRecords = state.invalidFixupRecords;
-    result->entries = state.output.entries;
-    result->entryStrings = state.output.strings;
-    result->entryStringUnits = state.output.stringUnits;
+            if (outcome == ParseOutcome::Cancelled) {
+                return FinishCancelled(state, result);
+            }
+            if (outcome == ParseOutcome::Incomplete) {
+                return FinishIncomplete(state, result, source);
+            }
+            if (outcome == ParseOutcome::Failed) {
+                result->entries = state.output.entries;
+                result->usedRecords = state.output.entryCount;
+                result->entryStrings = state.output.strings;
+                result->entryStringUnits = state.output.stringUnits;
+                return result;
+            }
 
-    result->ioTimeMs = state.ioMs;
-    result->fixupTimeMs = state.fixupMs;
-    result->parseTimeMs = state.parseMs;
-    result->totalTimeMs = ElapsedMs(wallStart, SteadyClock::now());
-    return result;
+            result->usedRecords = state.output.entryCount;
+            result->invalidFixupRecords = state.invalidFixupRecords;
+            result->entries = state.output.entries;
+            result->entryStrings = state.output.strings;
+            result->entryStringUnits = state.output.stringUnits;
+
+            result->ioTimeMs = state.ioMs;
+            result->fixupTimeMs = state.fixupMs;
+            result->parseTimeMs = state.parseMs;
+            result->totalTimeMs = ElapsedMs(wallStart, SteadyClock::now());
+            return result;
+        },
+        [&](const wchar_t* message) {
+            DiscardOutput(state);
+            SetErrorMessage(result->errorMessage, message);
+            return result;
+        });
 }

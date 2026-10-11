@@ -206,6 +206,7 @@ bool GenerateFixtureMFTImpl(const char* filePath) {
     if (buffer == nullptr) {
         return false;
     }
+    const NativeScopeExit buffers([&]() { mftlib::platform::big_free(buffer, fileSize); });
 
     memset(buffer, 0, fileSize);
     BuildFixtureRecord(buffer + (0 * kFixtureRecordSize),
@@ -227,14 +228,12 @@ bool GenerateFixtureMFTImpl(const char* filePath) {
     BuildFreedFixtureRecords(buffer);
 
     auto* file = mftlib::platform::open_write(filePath);
+    const NativeScopeExit opened([&]() { mftlib::platform::close_file(file); });
     if (file == nullptr) {
-        mftlib::platform::big_free(buffer, fileSize);
         return false;
     }
 
     int64_t written = mftlib::platform::pwrite_at(file, buffer, fileSize, mftlib::platform::FileOffset{0});
     bool success = (written == static_cast<int64_t>(fileSize));
-    mftlib::platform::close_file(file);
-    mftlib::platform::big_free(buffer, fileSize);
     return success;
 }

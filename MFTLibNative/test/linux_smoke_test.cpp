@@ -377,6 +377,30 @@ bool test_max_threads_clamping() {
     return testPassed;
 }
 
+bool test_exception_barriers() {
+    if (!generate_fixture()) {
+        return false;
+    }
+    bool passed = true;
+    for (const int mode : {-1, -2, -4, -5}) {
+        SetMaxThreads(2);
+        SetAllocFailCountdown(mode);
+        auto* result = parse_dump(kFixturePath, kDefaultBufferRecords);
+        const char* message = mode == -1 ? "Out of memory in native operation" : "Native exception in operation";
+        passed = passed && result != nullptr && result->usedRecords == 0 && result->entries == nullptr &&
+                 result->entryStrings == nullptr && message_is(result->errorMessage, message);
+        FreeMftResult(result);
+        ResetTestState();
+        SetMaxThreads(2);
+        result = parse_dump(kFixturePath, kDefaultBufferRecords);
+        passed = passed && result != nullptr && result->usedRecords > 0 && result->errorMessage[0] == 0;
+        FreeMftResult(result);
+    }
+    ResetTestState();
+    remove_fixture();
+    return passed;
+}
+
 #include "linux_smoke_test.parse.cpp"
 #include "linux_smoke_test.freed.cpp"
 #include "linux_smoke_test.dump.cpp"
@@ -452,7 +476,8 @@ struct TestCase {
 }  // namespace
 
 int main() {
-    const std::array<TestCase, 28> tests = {{
+    const std::array<TestCase, 29> tests = {{
+        {"exception_barriers", test_exception_barriers},
         {"abi_version", test_abi_version},
         {"dump_excludes_freed", test_dump_excludes_freed},
         {"round_trip", test_round_trip},

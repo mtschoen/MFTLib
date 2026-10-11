@@ -35,7 +35,11 @@ File* open_read(const char* path_utf8) {
     if (handle == INVALID_HANDLE_VALUE) {
         return nullptr;
     }
-    return new File{handle};
+    auto* file = new (std::nothrow) File{handle};
+    if (file == nullptr) {
+        CloseHandle(handle);
+    }
+    return file;
 }
 
 File* open_write(const char* path_utf8) {
@@ -45,7 +49,11 @@ File* open_write(const char* path_utf8) {
     if (handle == INVALID_HANDLE_VALUE) {
         return nullptr;
     }
-    return new File{handle};
+    auto* file = new (std::nothrow) File{handle};
+    if (file == nullptr) {
+        CloseHandle(handle);
+    }
+    return file;
 }
 
 int64_t size_of(const File* file) {

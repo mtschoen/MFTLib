@@ -7,6 +7,7 @@
 
 #include "../framework.h"
 #include "../mft_api.h"
+#include "../core/exception_barrier.h"
 
 namespace mftlib::ntfs {
 struct DataRun {
@@ -96,17 +97,30 @@ unsigned ForEachRange(uint64_t total, unsigned threadCount, Function body) {
         return 1;
     }
     uint64_t perThread = (total + threadCount - 1) / threadCount;
+    std::vector<NativeFailure> failures(threadCount, NativeFailure::None);
     std::vector<std::thread> workers;
+    workers.reserve(threadCount);
+    const NativeScopeExit joined([&]() {
+        for (auto& worker : workers) {
+            if (worker.joinable()) {
+                worker.join();
+            }
+        }
+    });
     for (unsigned index = 0; index < threadCount; index++) {
         uint64_t start = static_cast<uint64_t>(index) * perThread;
         if (start >= total) {
             break;
         }
         uint64_t end = (std::min)(start + perThread, total);
-        workers.emplace_back([&body, index, start, end]() { body(index, SliceRange{start, end}); });
+        workers.push_back(
+            StartNativeThread([&body, index, start, end]() { body(index, SliceRange{start, end}); }, failures[index]));
     }
     for (auto& worker : workers) {
         worker.join();
+    }
+    for (const auto& failure : failures) {
+        ThrowNativeFailure(failure);
     }
     return static_cast<unsigned>(workers.size());
 }

@@ -232,6 +232,7 @@ const wchar_t* MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEA
     if (attrListData == nullptr) {
         return kIncompleteVolumeReadMessage;
     }
+    const NativeScopeExit attributeData([&]() { free(attrListData); });
 
     std::vector<uint64_t> extensionRecords = CollectExtensionRecordNumbers(attrListData, attrListSize);
     std::vector<uint8_t> extRecord(geometry.recordSize);
@@ -245,32 +246,13 @@ const wchar_t* MergeExtensionDataRuns(HANDLE volumeHandle, PATTRIBUTE_RECORD_HEA
             break;
         }
     }
-    free(attrListData);
     return failure;
 }
 
-}  // namespace
-
-extern "C" {
-EXPORT uint32_t GetMftNativeAbiVersion() { return MFT_NATIVE_ABI_VERSION; }
-
-EXPORT void FreeMftResult(MftParseResult* result) {
-    if (result != nullptr) {
-        free(result->entries);
-        free(result->entryStrings);
-        free(result);
-    }
-}
-
 // Parses every allocated base record of a volume; includeFreed nonzero also emits freed base records.
-EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t includeFreed,
-                                                   uint32_t bufferSizeRecords, const MftParseControl* control,
-                                                   MftProgressCallback callback, void* context) {
-    auto* result = CreateParseResult();
-    if (result == nullptr) {
-        return nullptr;
-    }
-
+MftParseResult* ParseVolume(HANDLE volumeHandle, uint32_t includeFreed, uint32_t bufferSizeRecords,
+                            const MftParseControl* control, MftProgressCallback callback, void* context,
+                            MftParseResult*& result) {
     if (volumeHandle == INVALID_HANDLE_VALUE) {
         SetErrorMessage(result->errorMessage, L"Volume handle is invalid");
         return result;
@@ -364,8 +346,41 @@ EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t
     ctx.geometry = *geometry;
 
     free(result);
+    result = nullptr;
     const ParseSource source{
         VolumeReadChunk, &ctx, totalRecords, *geometry, VolumeReadIncomplete, false, kIncompleteVolumeReadMessage};
     return ParseMFTImpl(source, ParseRequest{includeFreed != 0, ctx.bufferSizeRecords, control, callback, context});
+}
+
+}  // namespace
+
+extern "C" {
+EXPORT uint32_t GetMftNativeAbiVersion() { return MFT_NATIVE_ABI_VERSION; }
+
+EXPORT void FreeMftResult(MftParseResult* result) {
+    if (result != nullptr) {
+        free(result->entries);
+        free(result->entryStrings);
+        free(result);
+    }
+}
+
+EXPORT MftParseResult* ParseMFTRecordsWithProgress(HANDLE volumeHandle, uint32_t includeFreed,
+                                                   uint32_t bufferSizeRecords, const MftParseControl* control,
+                                                   MftProgressCallback callback, void* context) {
+    auto* result = CreateParseResult();
+    if (result == nullptr) {
+        return nullptr;
+    }
+    return NativeBoundary(
+        [&]() {
+            return ParseVolume(volumeHandle, includeFreed, bufferSizeRecords, control, callback, context, result);
+        },
+        [&](const wchar_t* message) {
+            if (result != nullptr) {
+                SetErrorMessage(result->errorMessage, message);
+            }
+            return result;
+        });
 }
 }

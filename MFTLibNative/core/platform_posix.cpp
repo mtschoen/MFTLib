@@ -25,7 +25,11 @@ File* open_read(const char* path_utf8) {
         return nullptr;
     }
     posix_fadvise(fileDescriptor, 0, 0, POSIX_FADV_SEQUENTIAL);
-    return new File{fileDescriptor};
+    auto* file = new (std::nothrow) File{fileDescriptor};
+    if (file == nullptr) {
+        ::close(fileDescriptor);
+    }
+    return file;
 }
 
 File* open_write(const char* path_utf8) {
@@ -36,7 +40,11 @@ File* open_write(const char* path_utf8) {
     if (fileDescriptor < 0) {
         return nullptr;
     }
-    return new File{fileDescriptor};
+    auto* file = new (std::nothrow) File{fileDescriptor};
+    if (file == nullptr) {
+        ::close(fileDescriptor);
+    }
+    return file;
 }
 
 int64_t size_of(const File* file) {

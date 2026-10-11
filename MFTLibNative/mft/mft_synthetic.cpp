@@ -298,20 +298,18 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
     if (hFile == nullptr) {
         return false;
     }
+    const NativeScopeExit opened([&]() { mftlib::platform::close_file(hFile); });
 
     unsigned numThreads = EffectiveThreadCount(nullptr);
     const size_t bufSize = static_cast<size_t>(bufferSizeRecords) * recordSize;
     std::array<uint8_t*, 2> buf = {};
+    const NativeScopeExit buffers([&]() {
+        mftlib::platform::big_free(buf[0], bufSize);
+        mftlib::platform::big_free(buf[1], bufSize);
+    });
     buf[0] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
     buf[1] = ShouldFailAlloc() ? nullptr : static_cast<uint8_t*>(mftlib::platform::big_alloc(bufSize));
     if ((buf[0] == nullptr) || (buf[1] == nullptr)) {
-        if (buf[0] != nullptr) {
-            mftlib::platform::big_free(buf[0], bufSize);
-        }
-        if (buf[1] != nullptr) {
-            mftlib::platform::big_free(buf[1], bufSize);
-        }
-        mftlib::platform::close_file(hFile);
         return false;
     }
 
@@ -320,6 +318,12 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
     int curBuf = 0;
     bool writeOk = true;
     std::thread writeThread;
+    NativeFailure writeFailure = NativeFailure::None;
+    const NativeScopeExit joined([&]() {
+        if (writeThread.joinable()) {
+            writeThread.join();
+        }
+    });
     bool hasWritePending = false;
     int64_t writeOffset = 0;
 
@@ -332,6 +336,7 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
 
         if (hasWritePending) {
             writeThread.join();
+            ThrowNativeFailure(writeFailure);
             hasWritePending = false;
             if (!writeOk) {
                 break;
@@ -341,12 +346,14 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
         uint64_t writeSize = batchSize;
         uint8_t* writeBuf = buffer;
         int64_t curOffset = writeOffset;
-        writeThread = std::thread([hFile, writeBuf, writeSize, curOffset, recordSize, &writeOk]() {
-            auto byteCount = static_cast<size_t>(writeSize * recordSize);
-            int64_t written =
-                mftlib::platform::pwrite_at(hFile, writeBuf, byteCount, mftlib::platform::FileOffset{curOffset});
-            writeOk = (written == static_cast<int64_t>(byteCount));
-        });
+        writeThread = StartNativeThread(
+            [hFile, writeBuf, writeSize, curOffset, recordSize, &writeOk]() {
+                auto byteCount = static_cast<size_t>(writeSize * recordSize);
+                int64_t written =
+                    mftlib::platform::pwrite_at(hFile, writeBuf, byteCount, mftlib::platform::FileOffset{curOffset});
+                writeOk = (written == static_cast<int64_t>(byteCount));
+            },
+            writeFailure);
         hasWritePending = true;
         writeOffset += static_cast<int64_t>(batchSize * recordSize);
 
@@ -358,10 +365,8 @@ bool GenerateSyntheticMFTImpl(const char* filePath, RecordCount recordCount, uin
     if (hasWritePending) {
         writeThread.join();
     }
+    ThrowNativeFailure(writeFailure);
 
-    mftlib::platform::big_free(buf[0], bufSize);
-    mftlib::platform::big_free(buf[1], bufSize);
-    mftlib::platform::close_file(hFile);
     return writeOk;
 }
 
@@ -378,9 +383,13 @@ EXPORT bool GenerateSyntheticMFTSizedUtf8(const char* filePath, uint64_t recordC
     if (!IsSupportedRecordSize(recordSize)) {
         return false;
     }
-    return GenerateSyntheticMFTImpl(filePath, RecordCount{recordCount}, bufferSizeRecords, recordSize);
+    return NativeBoundary(
+        [&]() { return GenerateSyntheticMFTImpl(filePath, RecordCount{recordCount}, bufferSizeRecords, recordSize); },
+        [](const wchar_t*) { return false; });
 }
 
 // Path is UTF-8 on every platform.
-EXPORT bool GenerateFixtureMFTUtf8(const char* filePath) { return GenerateFixtureMFTImpl(filePath); }
+EXPORT bool GenerateFixtureMFTUtf8(const char* filePath) {
+    return NativeBoundary([&]() { return GenerateFixtureMFTImpl(filePath); }, [](const wchar_t*) { return false; });
+}
 }

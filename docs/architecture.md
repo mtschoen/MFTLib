@@ -164,7 +164,9 @@
 
 ### Native error messages
 
-Native exports write failure reasons into fixed-size `MftMessageChar errorMessage[256]` buffers on their result structs (`MftParseResult`, `MftDumpInputInfo`, `UsnJournalInfo`, `UsnJournalResult`). Each unit is UTF-16: `wchar_t` on Windows and `char16_t` elsewhere. Use the `SetErrorMessage` helper in `MFTLibNative/internal.h` - a variadic template that deduces buffer size, truncates via `_snwprintf_s(..., _TRUNCATE, ...)` on Windows or `std::swprintf` with explicit NUL termination on POSIX, narrows the ASCII message into UTF-16 units on POSIX, and asserts in debug builds if a message doesn't fit. Avoid calling `swprintf_s` / `snprintf_s` directly at error-write sites; the helper keeps `cert-err33-c` silent and centralizes the truncation semantic.
+C++ exceptions do not cross the native C ABI: exports translate them into their existing error-message, null-pointer or boolean failure channels, and exception failures return no entries. Worker exceptions are carried to the joining thread, all started workers are joined on failure, and out-of-memory handling does not allocate.
+
+Native exports write failure reasons into fixed-size `MftMessageChar errorMessage[256]` buffers on their result structs (`MftParseResult`, `MftDumpInputInfo`, `UsnJournalInfo`, `UsnJournalResult`). Each unit is UTF-16: `wchar_t` on Windows and `char16_t` elsewhere. Use the `SetErrorMessage` helper in `MFTLibNative/internal.h` - a variadic template that deduces buffer size, truncates via `_snwprintf_s(..., _TRUNCATE, ...)` on Windows or `std::swprintf` with explicit NUL termination on POSIX, uses fixed stack storage to narrow the ASCII message into UTF-16 units on POSIX, and asserts in debug builds if a message doesn't fit. Avoid calling `swprintf_s` / `snprintf_s` directly at error-write sites; the helper keeps `cert-err33-c` silent and centralizes the truncation semantic.
 
 ### Native test hooks ship in the release DLL
 
