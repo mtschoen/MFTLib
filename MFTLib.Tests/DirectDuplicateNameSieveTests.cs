@@ -75,11 +75,17 @@ public class DirectDuplicateNameSieveTests
     }
 
     [TestMethod]
-    public async Task Find_TwentyThousandUniqueNamesProduceNoGroups()
+    public async Task Find_TwentyThousandUniqueNames_ProducesNoGroupsAndMaterializesAtMostOnePercentOfNames()
     {
         using var builder = BuildLargeBlock(includeDuplicates: false);
         await using var index = await OpenIndexAsync(builder);
-        Assert.AreEqual(0, DuplicateNameSieve.Find(index, CancellationToken.None, SieveBitmap.MinimumBucketCount).Count);
+        var materializedCount = 0;
+        var groups = DuplicateNameSieve.Find(index, CancellationToken.None,
+            bucketCountOverride: SieveBitmap.MinimumBucketCount,
+            nameMaterializedForTest: count => materializedCount = count);
+        Assert.AreEqual(0, groups.Count);
+        Assert.IsTrue(materializedCount <= 200,
+            $"{materializedCount} names were materialized; the hash passes should leave at most one percent of 20000 unique names as candidates.");
     }
 
     [DataTestMethod]

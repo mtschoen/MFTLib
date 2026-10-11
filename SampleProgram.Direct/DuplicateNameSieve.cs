@@ -17,7 +17,8 @@ internal static class DuplicateNameSieve
     const int CandidateThresholdDivisor = 256;
 
     internal static IReadOnlyList<DuplicateNameGroup> Find(FileIndex index, CancellationToken cancellationToken,
-        int? bucketCountOverride = null, Action<int>? resultAssembledForTest = null)
+        int? bucketCountOverride = null, Action<int>? resultAssembledForTest = null,
+        Action<int>? nameMaterializedForTest = null)
     {
         ArgumentNullException.ThrowIfNull(index);
         cancellationToken.ThrowIfCancellationRequested();
@@ -25,6 +26,7 @@ internal static class DuplicateNameSieve
         var bucketCount = bucketCountOverride ?? SieveBitmap.ComputeBucketCount(LiveRowCount(index));
         var passes = RunHashPasses(index, query, bucketCount, cancellationToken);
 
+        var materializedNameCount = 0;
         var byName = new Dictionary<string, List<FileEntry>>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in index.EnumerateRows(query, cancellationToken))
         {
@@ -34,6 +36,8 @@ internal static class DuplicateNameSieve
             }
 
             var name = new string(row.Name);
+            materializedNameCount++;
+            nameMaterializedForTest?.Invoke(materializedNameCount);
             if (!byName.TryGetValue(name, out var entries))
             {
                 byName[name] = entries = [];
